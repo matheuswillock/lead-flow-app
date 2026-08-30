@@ -1,6 +1,6 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
-import { asaasApi, asaasFetch } from "@/lib/asaas"
+import { asaasApi, asaasFetch, type AsaasAccountId } from "@/lib/asaas"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
@@ -1283,9 +1283,27 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return mapPayment(adhesion)
   }
 
+  /**
+   * Fallback de processPaymentWebhook quando o pagamento não é achado nem
+   * por asaasPaymentId nem pelo ledger: resolve a adesão pelo id interno
+   * (extraído do externalReference) e, mesmo assim, confirma que ela
+   * pertence à conta do evento (E4/C33) — um id interno nunca colide entre
+   * contas, mas nada impede um evento com externalReference forjado ou de
+   * uma conta errada apontar para uma adesão real de outra conta.
+   */
+  private async findByIdMatchingAccount(
+    adhesionId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficeAdhesionWithRelations | null> {
+    const adhesion = await this.repo.findById(adhesionId)
+    if (!adhesion || adhesion.asaasAccount !== account) return null
+    return adhesion
+  }
+
   async processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
+    account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }> {
     if (!payment.id) {
@@ -1294,15 +1312,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const parsedRef = parseAdhesionExternalReference(payment.externalReference)
     const adhesion =
-      (await this.repo.findByAsaasPaymentId(payment.id)) ??
-      (await this.repo.findByLedgerAsaasPaymentId(payment.id)) ??
-      (parsedRef ? await this.repo.findById(parsedRef.adhesionId) : null)
+      (await this.repo.findByAsaasPaymentId(payment.id, account)) ??
+      (await this.repo.findByLedgerAsaasPaymentId(payment.id, account)) ??
+      (parsedRef ? await this.findByIdMatchingAccount(parsedRef.adhesionId, account) : null)
 
     if (!adhesion) {
       console.info("[BackofficeAdhesionService][processPaymentWebhook] adesão não encontrada", {
         paymentId: payment.id,
         externalReference: payment.externalReference ?? null,
         event,
+        account,
       })
       return { processed: false }
     }
@@ -1778,7 +1797,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return adhesion
     }
 
-    await this.processPaymentWebhook(mapSyncedPaymentEvent(payment), payment)
+    await this.processPaymentWebhook(mapSyncedPaymentEvent(payment), payment, adhesion.asaasAccount)
 
     const updated = await this.repo.findById(adhesion.id)
     if (!updated) {

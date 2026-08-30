@@ -1,5 +1,6 @@
 import type { BackofficePayment } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   IBackofficePaymentRepository,
   CreateBackofficePaymentInput,
@@ -39,8 +40,11 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
     return prisma.backofficePayment.findUnique({ where: { id } })
   }
 
-  async findByAsaasPaymentId(asaasPaymentId: string): Promise<BackofficePayment | null> {
-    return prisma.backofficePayment.findUnique({ where: { asaasPaymentId } })
+  async findByAsaasPaymentId(
+    asaasPaymentId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficePayment | null> {
+    return prisma.backofficePayment.findFirst({ where: { asaasPaymentId, asaasAccount: account } })
   }
 
   async updateStatus(

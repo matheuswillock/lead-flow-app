@@ -1,6 +1,7 @@
 import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
+import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
@@ -162,22 +163,25 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
   }
 
   async findByAsaasPaymentId(
-    paymentId: string
+    paymentId: string,
+    account: AsaasAccountId
   ): Promise<BackofficeAdhesionWithRelations | null> {
-    return prisma.backofficeAdhesion.findUnique({
-      where: { asaasPaymentId: paymentId },
+    return prisma.backofficeAdhesion.findFirst({
+      where: { asaasPaymentId: paymentId, asaasAccount: account },
       include: backofficeAdhesionInclude,
     })
   }
 
   async findByLedgerAsaasPaymentId(
-    paymentId: string
+    paymentId: string,
+    account: AsaasAccountId
   ): Promise<BackofficeAdhesionWithRelations | null> {
     const payload = JSON.stringify([{ asaasPaymentId: paymentId }])
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
       FROM backoffice_adhesions
       WHERE "installmentLedger" @> CAST(${payload} AS jsonb)
+        AND "asaasAccount" = ${account}::"asaas_account"
       LIMIT 1
     `
     const id = rows[0]?.id

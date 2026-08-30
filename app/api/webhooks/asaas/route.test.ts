@@ -66,6 +66,7 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   publishAsaasWebhookEvent: publishAsaasWebhookEventMock,
 }))
 
+process.env.ASAAS_ENV = "sandbox"
 process.env.ASAAS_WEBHOOK_TOKEN = "test-token"
 
 const { POST } = await import("./route")
@@ -172,8 +173,40 @@ describe("Asaas webhook route", () => {
     expect(publishAsaasWebhookEventMock).toHaveBeenCalledWith({
       eventId: "evt-1",
       body: VALID_BODY,
+      account: "primary",
     })
     expect(markFailedMock).not.toHaveBeenCalled()
+  })
+
+  it("claimForProcessing recebe account resolvido (M3.1/M3.3 — E4/T-10.9)", async () => {
+    resetMocks()
+    claimForProcessingMock.mockResolvedValue("process")
+
+    await POST(makeRequest(VALID_BODY))
+
+    expect(claimForProcessingMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "evt-1", account: "primary" })
+    )
+  })
+
+  it("token da conta legacy (quando configurada) → account=legacy", async () => {
+    resetMocks()
+    process.env.ASAAS_LEGACY_API_KEY = "aact_legacy_key"
+    process.env.ASAAS_LEGACY_WEBHOOK_TOKEN = "legacy-token"
+
+    try {
+      const response = await POST(
+        makeRequest(VALID_BODY, { "asaas-access-token": "legacy-token" })
+      )
+
+      expect(response.status).toBe(200)
+      expect(claimForProcessingMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "evt-1", account: "legacy" })
+      )
+    } finally {
+      delete process.env.ASAAS_LEGACY_API_KEY
+      delete process.env.ASAAS_LEGACY_WEBHOOK_TOKEN
+    }
   })
 
   it("publish falha 3x → after resolve, markFailed com queue_publish_failed", async () => {

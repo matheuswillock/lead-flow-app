@@ -8,7 +8,7 @@ import {
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
-import { isValidAsaasWebhookToken } from "./isValidAsaasWebhookToken";
+import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
 import {
   resolveAsaasWebhookEventId,
   type AsaasWebhookBody,
@@ -23,7 +23,6 @@ function getErrorMessage(error: unknown): string {
 export async function POST(request: NextRequest) {
   try {
     const asaasToken = request.headers.get("asaas-access-token");
-    const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN?.trim();
     const receivedToken = asaasToken?.trim();
 
     if (!receivedToken) {
@@ -34,7 +33,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isValidAsaasWebhookToken(receivedToken, expectedToken)) {
+    // M3.1 (E4): resolve qual conta (primary/legacy) enviou o evento
+    // comparando contra os dois tokens, cada um via timingSafeEqual (E3).
+    const account = resolveAsaasWebhookAccount(receivedToken);
+
+    if (!account) {
       console.error("[AsaasWebhookRoute][POST] Token inválido");
       return NextResponse.json(
         { error: "Unauthorized: Token inválido" },
@@ -47,6 +50,7 @@ export async function POST(request: NextRequest) {
 
     console.info("[AsaasWebhookRoute][POST] recebido", {
       eventId,
+      account,
       event: body.event,
       paymentId: body.payment?.id ?? null,
       paymentStatus: body.payment?.status ?? null,
@@ -64,6 +68,7 @@ export async function POST(request: NextRequest) {
       id: eventId,
       eventType: body.event ?? null,
       payload: body as object,
+      account,
     });
 
     if (claim === "already_processed" || claim === "already_processing") {
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
     after(async () => {
       try {
         const publishResult = await publishWithRetry(() =>
-          publishAsaasWebhookEvent({ eventId, body })
+          publishAsaasWebhookEvent({ eventId, body, account })
         );
         if (!publishResult.ok) {
           const message = getErrorMessage(publishResult.error);

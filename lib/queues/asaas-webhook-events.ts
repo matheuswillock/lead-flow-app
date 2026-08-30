@@ -1,5 +1,6 @@
 import { QueueClient } from "@vercel/queue"
 import type { AsaasWebhookBody } from "@/app/api/webhooks/asaas/processAsaasWebhookEvent"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 /**
  * Fila do webhook Asaas (PR2.2 — after() só publica, sem processamento
@@ -17,6 +18,8 @@ const queue = new QueueClient({ region: "gru1" })
 export type AsaasWebhookEventPayload = {
   eventId: string
   body: AsaasWebhookBody
+  /** Conta Asaas que originou o evento (E4 — M3.1/M3.3). */
+  account: AsaasAccountId
 }
 
 export async function publishAsaasWebhookEvent(

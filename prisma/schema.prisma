@@ -166,6 +166,17 @@ enum AsaasWebhookEventStatus {
   @@map("asaas_webhook_event_status")
 }
 
+/// Conta Asaas — E4 de [[10 — Fundações Multi-conta — Backend]] (DA4/DA5).
+/// `primary` = conta nova (CNPJ correto); `legacy` = conta antiga, somente
+/// leitura. Todo dado existente antes desta migration nasce `legacy` (era a
+/// única conta até aqui); `primary` só é gravado por fluxos novos.
+enum AsaasAccount {
+  primary
+  legacy
+
+  @@map("asaas_account")
+}
+
 enum BackofficeWebhookTokenStatus {
   active
   replaced
@@ -915,6 +926,12 @@ model Profile {
   managerId                String?             @db.Uuid
   sponsorMasterId          String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
+  // Conta Asaas dona do asaasCustomerId acima (E4 de
+  // [[10 — Fundações Multi-conta — Backend]], C33) — todo lookup de webhook
+  // por asaasCustomerId MUST filtrar por esta coluna também, para não
+  // aplicar evento de uma conta no profile de outra (colisão de cus_ entre
+  // as duas contas durante a janela dual).
+  asaasCustomerAccount     AsaasAccount        @default(legacy)
   subscriptionId           String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
   subscriptionPlan         SubscriptionPlan?
@@ -923,6 +940,9 @@ model Profile {
   subscriptionEndDate      DateTime?           @db.Timestamptz(6)
   trialEndDate             DateTime?           @db.Timestamptz(6)
   asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
+  // Conta Asaas dona do asaasSubscriptionId acima — mesma razão de
+  // asaasCustomerAccount, para o caso sub_ (CheckoutAsaasUseCase:772).
+  asaasSubscriptionAccount AsaasAccount        @default(legacy)
   subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
   subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
   activeTeamId             String?             @db.Uuid
@@ -1029,8 +1049,8 @@ model Profile {
   backofficeBansLifted                 BackofficeBannedUser[]                @relation("BackofficeBannedUserLifter")
 
   // Product subscription (master only; operators inherit via managerId)
-  subscription ProfileSubscription?
-  subscriptionChangeLogs       SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
+  subscription                  ProfileSubscription?
+  subscriptionChangeLogs        SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
   subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
 
   // User type (Comum / Member PRO)
@@ -1051,9 +1071,9 @@ model Profile {
   whatsappMessageActionCommands WhatsAppMessageActionCommand[] @relation("WhatsAppMessageActionCommandProfile")
   whatsappAuditEvents           WhatsAppAuditEvent[]           @relation("WhatsAppAuditActor")
 
-  proposalReviewsReviewed   LeadProposalReview[]   @relation("LeadProposalReviewReviewer")
-  requiredDocumentsReviewed LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
-  leadDocumentRequestsCreated LeadDocumentRequest[] @relation("LeadDocumentRequestCreator")
+  proposalReviewsReviewed     LeadProposalReview[]   @relation("LeadProposalReviewReviewer")
+  requiredDocumentsReviewed   LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
+  leadDocumentRequestsCreated LeadDocumentRequest[]  @relation("LeadDocumentRequestCreator")
 
   authorizedSponsorRecord        BackofficeAuthorizedSponsor?       @relation("AuthorizedSponsorProfile")
   authorizedSponsorsGranted      BackofficeAuthorizedSponsor[]      @relation("AuthorizedSponsorGrantedBy")
@@ -1083,6 +1103,8 @@ model Profile {
   @@index([cpfCnpj])
   @@index([googleConnectionId])
   @@index([deletedAt])
+  @@index([asaasCustomerId, asaasCustomerAccount], map: "corretor_studio_profiles_asaas_customer_account_idx")
+  @@index([asaasSubscriptionId, asaasSubscriptionAccount], map: "corretor_studio_profiles_asaas_subscription_account_idx")
   @@map("corretor_studio_profiles")
 }
 
@@ -1215,21 +1237,21 @@ model BackofficeDeletionAuditLog {
 }
 
 model BackofficeDatabaseBackup {
-  id                   String                         @id @default(uuid()) @db.Uuid
-  startedAt            DateTime                       @default(now()) @map("startedAt") @db.Timestamptz(6)
-  finishedAt           DateTime?                      @map("finishedAt") @db.Timestamptz(6)
-  status               BackofficeDatabaseBackupStatus @default(pending)
-  source               BackofficeDatabaseBackupSource @default(cron)
-  triggeredByProfileId String?                        @map("triggeredByProfileId") @db.Uuid
-  filePath             String?                        @map("filePath") @db.Text
-  fileName             String?                        @map("fileName") @db.Text
-  sizeBytes            BigInt?                        @map("sizeBytes")
-  checksumSha256       String?                        @map("checksumSha256") @db.Text
-  storageSyncPath      String?                        @map("storageSyncPath") @db.Text
-  errorMessage         String?                        @map("errorMessage") @db.Text
-  googleDriveFileId    String?                        @map("googleDriveFileId") @db.Text
-  googleDriveDownloadUrl String?                      @map("googleDriveDownloadUrl") @db.Text
-  createdAt            DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  id                     String                         @id @default(uuid()) @db.Uuid
+  startedAt              DateTime                       @default(now()) @map("startedAt") @db.Timestamptz(6)
+  finishedAt             DateTime?                      @map("finishedAt") @db.Timestamptz(6)
+  status                 BackofficeDatabaseBackupStatus @default(pending)
+  source                 BackofficeDatabaseBackupSource @default(cron)
+  triggeredByProfileId   String?                        @map("triggeredByProfileId") @db.Uuid
+  filePath               String?                        @map("filePath") @db.Text
+  fileName               String?                        @map("fileName") @db.Text
+  sizeBytes              BigInt?                        @map("sizeBytes")
+  checksumSha256         String?                        @map("checksumSha256") @db.Text
+  storageSyncPath        String?                        @map("storageSyncPath") @db.Text
+  errorMessage           String?                        @map("errorMessage") @db.Text
+  googleDriveFileId      String?                        @map("googleDriveFileId") @db.Text
+  googleDriveDownloadUrl String?                        @map("googleDriveDownloadUrl") @db.Text
+  createdAt              DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
 
   @@index([status, startedAt(sort: Desc)])
   @@index([source, startedAt(sort: Desc)])
@@ -1324,8 +1346,8 @@ model BackofficeTeamEmailLimitGrant {
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
 
-  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  grantedBy Profile @relation("TeamEmailLimitGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: Restrict)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  grantedBy Profile  @relation("TeamEmailLimitGrantedBy", fields: [grantedByProfileId], references: [id], onDelete: Restrict)
   revokedBy Profile? @relation("TeamEmailLimitRevokedBy", fields: [revokedByProfileId], references: [id], onDelete: SetNull)
 
   @@index([isActive], map: "backoffice_team_email_limit_grants_is_active_idx")
@@ -1379,24 +1401,33 @@ model BackofficeClient {
 }
 
 model BackofficePayment {
-  id                 String    @id @default(uuid()) @db.Uuid
-  clientId           String    @map("clientId") @db.Uuid
-  asaasPaymentId     String?   @unique @map("asaasPaymentId") @db.Text
-  billingType        String    @default("PIX") @map("billingType") @db.Text
-  status             String    @default("PENDING") @db.Text
-  amount             Decimal   @db.Decimal(12, 2)
-  dueDate            DateTime? @map("dueDate") @db.Timestamptz(6)
-  description        String?   @db.Text
-  invoiceUrl         String?   @map("invoiceUrl") @db.Text
-  pixQrCode          String?   @map("pixQrCode") @db.Text
-  pixPayload         String?   @map("pixPayload") @db.Text
-  createdByProfileId String?   @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  id                 String       @id @default(uuid()) @db.Uuid
+  clientId           String       @map("clientId") @db.Uuid
+  // Não é mais @unique isolado: a mesma cobrança pode colidir de id entre
+  // as duas contas Asaas durante a janela dual (baixa probabilidade, mas o
+  // threat model de C33 trata como real) — a unicidade real é o par
+  // (asaasPaymentId, asaasAccount), ver @@unique abaixo.
+  asaasPaymentId     String?      @map("asaasPaymentId") @db.Text
+  // Conta Asaas dona do asaasPaymentId acima (E4 de
+  // [[10 — Fundações Multi-conta — Backend]], C33) — todo lookup por
+  // asaasPaymentId MUST filtrar por esta coluna também.
+  asaasAccount       AsaasAccount @default(legacy) @map("asaasAccount")
+  billingType        String       @default("PIX") @map("billingType") @db.Text
+  status             String       @default("PENDING") @db.Text
+  amount             Decimal      @db.Decimal(12, 2)
+  dueDate            DateTime?    @map("dueDate") @db.Timestamptz(6)
+  description        String?      @db.Text
+  invoiceUrl         String?      @map("invoiceUrl") @db.Text
+  pixQrCode          String?      @map("pixQrCode") @db.Text
+  pixPayload         String?      @map("pixPayload") @db.Text
+  createdByProfileId String?      @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime     @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
   client  BackofficeClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
   creator Profile?         @relation("BackofficePaymentCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
 
+  @@unique([asaasPaymentId, asaasAccount], map: "backoffice_payments_asaas_payment_account_key")
   @@index([clientId], map: "backoffice_payments_client_id_idx")
   @@index([status], map: "backoffice_payments_status_idx")
   @@index([dueDate], map: "backoffice_payments_due_date_idx")
@@ -1554,8 +1585,15 @@ model BackofficeAdhesion {
   closerBackofficeUserId            String?                        @map("closerBackofficeUserId") @db.Uuid
   createdByBackofficeUserId         String?                        @map("createdByBackofficeUserId") @db.Uuid
   asaasCustomerId                   String?                        @map("asaasCustomerId") @db.Text
-  asaasPaymentId                    String?                        @unique @map("asaasPaymentId") @db.Text
+  // Não é mais @unique isolado: unicidade real é (asaasPaymentId,
+  // asaasAccount), ver @@unique abaixo — mesma razão de BackofficePayment.
+  asaasPaymentId                    String?                        @map("asaasPaymentId") @db.Text
   asaasInstallmentId                String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
+  // Conta Asaas dona do customer/payment/installments desta adesão (E4 de
+  // [[10 — Fundações Multi-conta — Backend]], C33) — uma adesão inteira
+  // pertence a uma única conta; usada para filtrar tanto o lookup direto
+  // por asaasPaymentId quanto o lookup por ledger (installmentLedger).
+  asaasAccount                      AsaasAccount                   @default(legacy) @map("asaasAccount")
   discountPercent                   Decimal?                       @map("discountPercent") @db.Decimal(5, 2)
   discountStatus                    String?                        @map("discountStatus") @db.Text
   discountApprovedByProfileId       String?                        @map("discountApprovedByProfileId") @db.Uuid
@@ -1595,6 +1633,7 @@ model BackofficeAdhesion {
 
   profileSubscription ProfileSubscription?
 
+  @@unique([asaasPaymentId, asaasAccount], map: "backoffice_adhesions_asaas_payment_account_key")
   @@index([productId], map: "backoffice_adhesions_product_id_idx")
   @@index([status], map: "backoffice_adhesions_status_idx")
   @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
@@ -1751,18 +1790,18 @@ model BackofficeWebhookRequestLog {
 }
 
 model BackofficeCronExecution {
-  id           String                  @id @default(cuid())
-  cronKey      String                  @map("cronKey") @db.Text
-  cronPath     String                  @map("cronPath") @db.Text
-  status       BackofficeCronStatus    @default(running)
-  startedAt    DateTime                @default(now()) @map("startedAt") @db.Timestamptz(6)
-  finishedAt   DateTime?               @map("finishedAt") @db.Timestamptz(6)
-  durationMs   Int?                    @map("durationMs")
-  errorSummary String?                 @map("errorSummary") @db.Text
-  errorDetail  String?                 @map("errorDetail") @db.Text
+  id           String               @id @default(cuid())
+  cronKey      String               @map("cronKey") @db.Text
+  cronPath     String               @map("cronPath") @db.Text
+  status       BackofficeCronStatus @default(running)
+  startedAt    DateTime             @default(now()) @map("startedAt") @db.Timestamptz(6)
+  finishedAt   DateTime?            @map("finishedAt") @db.Timestamptz(6)
+  durationMs   Int?                 @map("durationMs")
+  errorSummary String?              @map("errorSummary") @db.Text
+  errorDetail  String?              @map("errorDetail") @db.Text
   metadata     Json?
-  createdAt    DateTime                @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt    DateTime                @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  createdAt    DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt    DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
   @@index([cronKey, status], map: "backoffice_cron_executions_cron_key_status_idx")
   @@index([startedAt], map: "backoffice_cron_executions_started_at_idx")
@@ -2056,8 +2095,8 @@ model Lead {
   whatsappMessages      WhatsAppMessage[]
 
   // Lead Tags
-  tagAssignments    LeadTagAssignment[]
-  documentRequests  LeadDocumentRequest[]
+  tagAssignments   LeadTagAssignment[]
+  documentRequests LeadDocumentRequest[]
 
   // Unique per tenant
   @@unique([teamId, email])
@@ -2092,7 +2131,7 @@ model LeadActivity {
 
   // Contact-specific fields (used when type is call | whatsapp | email | meeting | visit | missed)
   outcome     String?   @db.Text
-  duration    Int?      // duration in minutes
+  duration    Int? // duration in minutes
   contactDate DateTime? @db.Date
   contactTime String?   @db.Text // HH:mm format
 
@@ -2339,10 +2378,10 @@ model LeadAttachment {
   uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
-  lead                  Lead                        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  uploader              Profile                     @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  lead                  Lead                      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploader              Profile                   @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
   requiredDocumentLinks LeadRequiredDocument[]
-  documentRequestItems  LeadDocumentRequestItem[]   @relation("DocumentRequestItemAttachment")
+  documentRequestItems  LeadDocumentRequestItem[] @relation("DocumentRequestItemAttachment")
 
   @@index([leadId])
   @@index([uploadedBy])
@@ -2440,7 +2479,7 @@ model Team {
   leads                      Lead[]
   pendingOperators           PendingOperator[]
   pendingActions             PendingAction[]
-  platformPurchases          PlatformPurchase[] @relation("PlatformPurchaseTeam")
+  platformPurchases          PlatformPurchase[]            @relation("PlatformPurchaseTeam")
   notifications              Notification[]
   studioWebhookConfig        TeamStudioWebhookConfig?
   studioWebhookRequestLogs   TeamStudioWebhookRequestLog[]
@@ -2464,19 +2503,19 @@ model Team {
   portfolioEntries           LeadPortfolio[]
 
   // Email campaigns relations
-  emailTemplates          EmailTemplate[]          @relation("TeamEmailTemplates")
-  emailContactLists       EmailContactList[]       @relation("TeamEmailContactLists")
-  emailImportJobs         EmailImportJob[]         @relation("TeamEmailImportJobs")
+  emailTemplates              EmailTemplate[]               @relation("TeamEmailTemplates")
+  emailContactLists           EmailContactList[]            @relation("TeamEmailContactLists")
+  emailImportJobs             EmailImportJob[]              @relation("TeamEmailImportJobs")
   emailContactRadarSyncOutbox EmailContactRadarSyncOutbox[] @relation("TeamEmailContactRadarSyncOutbox")
-  emailCampaigns          EmailCampaign[]          @relation("TeamEmailCampaigns")
-  emailCampaignDispatches EmailCampaignDispatch[]  @relation("TeamEmailCampaignDispatches")
-  emailLogs               EmailLog[]               @relation("TeamEmailLogs")
-  emailSettings           EmailTeamSettings?       @relation("TeamEmailSettings")
-  emailDomainEvents       EmailTeamDomainEvent[]   @relation("TeamEmailDomainEvents")
-  emailSenders            EmailTeamSender[]        @relation("TeamEmailSenders")
-  emailVariables          EmailTeamVariable[]      @relation("TeamEmailVariables")
-  emailTemplateHistory    EmailTemplateHistory[]
-  emailCreditSubscription EmailCreditSubscription? @relation("TeamEmailCreditSubscription")
+  emailCampaigns              EmailCampaign[]               @relation("TeamEmailCampaigns")
+  emailCampaignDispatches     EmailCampaignDispatch[]       @relation("TeamEmailCampaignDispatches")
+  emailLogs                   EmailLog[]                    @relation("TeamEmailLogs")
+  emailSettings               EmailTeamSettings?            @relation("TeamEmailSettings")
+  emailDomainEvents           EmailTeamDomainEvent[]        @relation("TeamEmailDomainEvents")
+  emailSenders                EmailTeamSender[]             @relation("TeamEmailSenders")
+  emailVariables              EmailTeamVariable[]           @relation("TeamEmailVariables")
+  emailTemplateHistory        EmailTemplateHistory[]
+  emailCreditSubscription     EmailCreditSubscription?      @relation("TeamEmailCreditSubscription")
 
   // WhatsApp relations
   whatsappConfig                TeamWhatsAppConfig?
@@ -2898,24 +2937,24 @@ model ProfileWebPushConsent {
 // PENDING ACTIONS (public.pending_actions)
 // -----------------------------
 model PlatformPurchase {
-  id                String                  @id @default(uuid()) @db.Uuid
-  profileId         String                  @map("profile_id") @db.Uuid
-  teamId            String?                 @map("team_id") @db.Uuid
-  productSlug       String                  @map("product_slug") @db.Text
-  purchaseType      PlatformPurchaseType    @map("purchase_type")
-  status            PlatformPurchaseStatus  @default(pending)
-  billingType       String?                 @map("billing_type") @db.Text
-  amount            Decimal                 @db.Decimal(12, 2)
+  id                String                 @id @default(uuid()) @db.Uuid
+  profileId         String                 @map("profile_id") @db.Uuid
+  teamId            String?                @map("team_id") @db.Uuid
+  productSlug       String                 @map("product_slug") @db.Text
+  purchaseType      PlatformPurchaseType   @map("purchase_type")
+  status            PlatformPurchaseStatus @default(pending)
+  billingType       String?                @map("billing_type") @db.Text
+  amount            Decimal                @db.Decimal(12, 2)
   quantity          Int?
-  description       String?                 @db.Text
+  description       String?                @db.Text
   metadata          Json?
-  asaasPaymentId    String?                 @unique @map("asaas_payment_id") @db.Text
-  asaasCustomerId   String?                 @map("asaas_customer_id") @db.Text
-  externalReference String                  @unique @map("external_reference") @db.Text
-  paidAt            DateTime?               @map("paid_at") @db.Timestamptz(6)
-  appliedAt         DateTime?               @map("applied_at") @db.Timestamptz(6)
-  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  asaasPaymentId    String?                @unique @map("asaas_payment_id") @db.Text
+  asaasCustomerId   String?                @map("asaas_customer_id") @db.Text
+  externalReference String                 @unique @map("external_reference") @db.Text
+  paidAt            DateTime?              @map("paid_at") @db.Timestamptz(6)
+  appliedAt         DateTime?              @map("applied_at") @db.Timestamptz(6)
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   profile Profile @relation("PlatformPurchaseProfile", fields: [profileId], references: [id], onDelete: Cascade)
   team    Team?   @relation("PlatformPurchaseTeam", fields: [teamId], references: [id], onDelete: SetNull)
@@ -3053,13 +3092,13 @@ model EmailCreditSubscription {
 /// Ledger idempotente de pagamentos aplicados a créditos (paymentId Asaas único).
 /// Compra canônica fica em PlatformPurchase (purchaseType=email_credits); este grant evita reaplicar o mesmo paymentId.
 model EmailCreditPaymentGrant {
-  id             String         @id @default(uuid()) @db.Uuid
-  teamId         String         @db.Uuid
+  id             String          @id @default(uuid()) @db.Uuid
+  teamId         String          @db.Uuid
   plan           EmailCreditPlan
-  paymentId      String         @unique
+  paymentId      String          @unique
   checkoutId     String?
   monthlyCredits Int
-  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
 
   @@index([teamId])
   @@map("corretor_studio_email_credit_payment_grants")
@@ -3219,10 +3258,10 @@ model EmailImportJob {
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
-  team                    Team             @relation("TeamEmailImportJobs", fields: [teamId], references: [id], onDelete: Cascade)
-  list                    EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
-  requester               Profile          @relation("EmailImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
-  managedByBackofficeUser BackofficeUser?  @relation("EmailImportJobManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  team                    Team                          @relation("TeamEmailImportJobs", fields: [teamId], references: [id], onDelete: Cascade)
+  list                    EmailContactList              @relation(fields: [listId], references: [id], onDelete: Cascade)
+  requester               Profile                       @relation("EmailImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  managedByBackofficeUser BackofficeUser?               @relation("EmailImportJobManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
   radarSyncOutboxEntries  EmailContactRadarSyncOutbox[]
 
   @@index([teamId, status])
@@ -3232,22 +3271,22 @@ model EmailImportJob {
 }
 
 model EmailContact {
-  id             String   @id @default(uuid()) @db.Uuid
-  listId         String   @db.Uuid
-  email          String   @db.Text
-  name           String?  @db.Text
+  id             String    @id @default(uuid()) @db.Uuid
+  listId         String    @db.Uuid
+  email          String    @db.Text
+  name           String?   @db.Text
   customFields   Json?
-  isUnsubscribed Boolean  @default(false)
-  isBounced      Boolean  @default(false)
-  isComplained   Boolean  @default(false)
+  isUnsubscribed Boolean   @default(false)
+  isBounced      Boolean   @default(false)
+  isComplained   Boolean   @default(false)
   // Preenchidos só na linha que vive na lista de bloqueados do time — a
   // blocklist é uma lista, e a linha do contato nela é o registro de supressão.
   blockReason    String?   @db.Text
   blockedAt      DateTime? @db.Timestamptz(6)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
 
-  list EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  list            EmailContactList             @relation(fields: [listId], references: [id], onDelete: Cascade)
   radarSyncOutbox EmailContactRadarSyncOutbox?
 
   @@unique([listId, email])
@@ -3302,7 +3341,7 @@ model EmailCampaign {
   parentCampaignId          String?             @db.Uuid
   subCampaignIndex          Int?
   audienceContactIds        String[]            @default([]) @db.Uuid
-  sourceContactListIds      String[]            @default([]) @db.Uuid @map("source_contact_list_ids")
+  sourceContactListIds      String[]            @default([]) @map("source_contact_list_ids") @db.Uuid
   status                    EmailCampaignStatus @default(draft)
   scheduledAt               DateTime?           @db.Timestamptz(6)
   sentAt                    DateTime?           @db.Timestamptz(6)
@@ -3338,39 +3377,45 @@ model EmailCampaign {
 }
 
 model EmailCampaignDispatch {
-  id                    String                      @id @default(uuid()) @db.Uuid
-  campaignId            String                      @db.Uuid
-  teamId                String                      @db.Uuid
-  dispatchNumber        Int
-  templateId            String                      @db.Uuid
-  templateVersionNumber Int
-  templateName          String                      @db.Text
-  templateSubject       String                      @db.Text
-  templateHtml          String                      @db.Text
-  contactListId         String?                     @db.Uuid
-  contactListName       String?                     @db.Text
-  radarSegmentSlug      String?                     @db.Text
-  dispatchedAt          DateTime                    @default(now()) @db.Timestamptz(6)
-  triggeredBy           String                      @db.Uuid
-  totalRecipients       Int                         @default(0)
-  totalSent             Int                         @default(0)
-  totalDelivered        Int                         @default(0)
-  totalOpened           Int                         @default(0)
-  totalClicked          Int                         @default(0)
-  totalBounced          Int                         @default(0)
-  totalComplained       Int                         @default(0)
-  status                EmailCampaignDispatchStatus @default(sending)
-  batchIdempotencyScheme EmailCampaignBatchIdempotencyScheme @default(positional)
-  retryFailedOnly       Boolean                     @default(false)
-  /** Créditos reservados na criação do dispatch (Fase 4 / PR1: fila multi-lote precisa reler no finalize, não só no isolate que reservou). */
-  reservedCredits       Int                         @default(0)
-  /** Snapshot do beta de campanhas no momento da reserva; usado para não re-resolver feature access no finalize. */
-  hasCampaignsBetaAccess Boolean                    @default(false)
-  /** Cursor da fonte da audiência (IDs Radar / skip da lista / índice retry), não emailLog.count. */
-  materializeSourceOffset Int                       @default(0)
-  errorMessage          String?                     @map("errorMessage") @db.Text
-  createdAt             DateTime                    @default(now()) @db.Timestamptz(6)
-  updatedAt             DateTime                    @updatedAt @db.Timestamptz(6)
+  id                      String                              @id @default(uuid()) @db.Uuid
+  campaignId              String                              @db.Uuid
+  teamId                  String                              @db.Uuid
+  dispatchNumber          Int
+  templateId              String                              @db.Uuid
+  templateVersionNumber   Int
+  templateName            String                              @db.Text
+  templateSubject         String                              @db.Text
+  templateHtml            String                              @db.Text
+  contactListId           String?                             @db.Uuid
+  contactListName         String?                             @db.Text
+  radarSegmentSlug        String?                             @db.Text
+  dispatchedAt            DateTime                            @default(now()) @db.Timestamptz(6)
+  triggeredBy             String                              @db.Uuid
+  totalRecipients         Int                                 @default(0)
+  totalSent               Int                                 @default(0)
+  totalDelivered          Int                                 @default(0)
+  totalOpened             Int                                 @default(0)
+  totalClicked            Int                                 @default(0)
+  totalBounced            Int                                 @default(0)
+  totalComplained         Int                                 @default(0)
+  status                  EmailCampaignDispatchStatus         @default(sending)
+  batchIdempotencyScheme  EmailCampaignBatchIdempotencyScheme @default(positional)
+  retryFailedOnly         Boolean                             @default(false)
+  /**
+   * Créditos reservados na criação do dispatch (Fase 4 / PR1: fila multi-lote precisa reler no finalize, não só no isolate que reservou).
+   */
+  reservedCredits         Int                                 @default(0)
+  /**
+   * Snapshot do beta de campanhas no momento da reserva; usado para não re-resolver feature access no finalize.
+   */
+  hasCampaignsBetaAccess  Boolean                             @default(false)
+  /**
+   * Cursor da fonte da audiência (IDs Radar / skip da lista / índice retry), não emailLog.count.
+   */
+  materializeSourceOffset Int                                 @default(0)
+  errorMessage            String?                             @map("errorMessage") @db.Text
+  createdAt               DateTime                            @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime                            @updatedAt @db.Timestamptz(6)
 
   campaign    EmailCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   team        Team              @relation("TeamEmailCampaignDispatches", fields: [teamId], references: [id], onDelete: Cascade)
@@ -3524,55 +3569,59 @@ model EmailOrphanEvent {
 }
 
 model ResendWebhookProcessingFailure {
-  id           String                               @id @default(uuid()) @db.Uuid
-  svixId       String                               @unique @db.Text
-  eventType    String                               @db.Text
-  payload      Json
-  status       ResendWebhookProcessingFailureStatus @default(pending)
-  attemptCount Int                                  @default(1)
-  nextAttemptAt DateTime                            @default(now()) @db.Timestamptz(6)
-  lastError    String?                              @db.Text
-  failureReason String?                             @db.Text
-  createdAt    DateTime                             @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime                             @updatedAt @db.Timestamptz(6)
+  id            String                               @id @default(uuid()) @db.Uuid
+  svixId        String                               @unique @db.Text
+  eventType     String                               @db.Text
+  payload       Json
+  status        ResendWebhookProcessingFailureStatus @default(pending)
+  attemptCount  Int                                  @default(1)
+  nextAttemptAt DateTime                             @default(now()) @db.Timestamptz(6)
+  lastError     String?                              @db.Text
+  failureReason String?                              @db.Text
+  createdAt     DateTime                             @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime                             @updatedAt @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
   @@map("corretor_studio_resend_webhook_processing_failures")
 }
 
-/** PR2.3 — outbox fallback compartilhado para os dois pontos de fila de
+/**
+ * PR2.3 — outbox fallback compartilhado para os dois pontos de fila de
  * formulários públicos (métricas + submissão), no mesmo padrão de
  * ResendWebhookProcessingFailure/AsaasWebhookEvent: só recebe uma linha
  * depois de 3 tentativas de publish esgotadas (failureReason=queue_publish_failed).
  * `kind` diferencia o payload (métrica vs. job de submissão) para o cron
- * de retry saber qual use case chamar. */
+ * de retry saber qual use case chamar.
+ */
 model PublicFormQueueEventFailure {
-  id             String                             @id @default(uuid()) @db.Uuid
+  id             String                            @id @default(uuid()) @db.Uuid
   kind           PublicFormQueueEventKind
-  idempotencyKey String                             @unique @db.Text
+  idempotencyKey String                            @unique @db.Text
   payload        Json
   status         PublicFormQueueEventFailureStatus @default(pending)
-  attemptCount   Int                                @default(1)
-  nextAttemptAt  DateTime                           @default(now()) @db.Timestamptz(6)
-  lastError      String?                            @db.Text
-  failureReason  String?                            @db.Text
-  eventId        String?                            @db.Uuid
+  attemptCount   Int                               @default(1)
+  nextAttemptAt  DateTime                          @default(now()) @db.Timestamptz(6)
+  lastError      String?                           @db.Text
+  failureReason  String?                           @db.Text
+  eventId        String?                           @db.Uuid
   schemaVersion  Int?
-  topic          String?                            @db.Text
-  failureStage   String?                            @db.Text
-  lastErrorCode  String?                            @db.Text
-  createdAt      DateTime                           @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime                           @updatedAt @db.Timestamptz(6)
+  topic          String?                           @db.Text
+  failureStage   String?                           @db.Text
+  lastErrorCode  String?                           @db.Text
+  createdAt      DateTime                          @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                          @updatedAt @db.Timestamptz(6)
 
   @@index([status, nextAttemptAt])
   @@index([eventId])
   @@map("corretor_studio_public_form_queue_event_failures")
 }
 
-/** Outbox de dead-letter das filas Vercel: o consumer persiste e dá ack
+/**
+ * Outbox de dead-letter das filas Vercel: o consumer persiste e dá ack
  * após `deliveryCount >= N` (default 20). `topic` em texto (OCP) — um cron
  * único republica via mapa topic → publish*. Asaas persiste e acka; o cron
- * dedicado de webhook Asaas continua responsável pelo retry. */
+ * dedicado de webhook Asaas continua responsável pelo retry.
+ */
 model QueueProcessingFailure {
   id             String                       @id @default(uuid()) @db.Uuid
   topic          String                       @db.Text
@@ -3985,7 +4034,7 @@ model EmailTeamSettings {
   /// colapsa tudo num rótulo: um domínio com envio íntegro e tracking pendente
   /// fica `partially_failed`, indistinguível de um com DKIM quebrado. Derivado
   /// registro a registro em `syncFromResendDomain`.
-  resendSendingDnsVerified Boolean  @default(false)
+  resendSendingDnsVerified Boolean @default(false)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -4974,25 +5023,25 @@ enum SegmentSourceType {
 }
 
 model TeamRadarSegment {
-  id                String              @id @default(uuid()) @db.Uuid
-  teamId            String              @db.Uuid
-  createdBy         String              @db.Uuid
-  name              String              @db.Text
-  description       String?             @db.Text
-  rulesJson         Json
-  isSystem          Boolean             @default(false)
-  isActive          Boolean             @default(true)
-  parentId          String?             @db.Uuid
-  sourceType        SegmentSourceType   @default(manual)
-  sourceCampaignId  String?             @db.Uuid
-  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime            @updatedAt @db.Timestamptz(6)
+  id               String            @id @default(uuid()) @db.Uuid
+  teamId           String            @db.Uuid
+  createdBy        String            @db.Uuid
+  name             String            @db.Text
+  description      String?           @db.Text
+  rulesJson        Json
+  isSystem         Boolean           @default(false)
+  isActive         Boolean           @default(true)
+  parentId         String?           @db.Uuid
+  sourceType       SegmentSourceType @default(manual)
+  sourceCampaignId String?           @db.Uuid
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(6)
 
-  team            Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creator         Profile           @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  parent          TeamRadarSegment? @relation("SegmentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children        TeamRadarSegment[] @relation("SegmentHierarchy")
-  sourceCampaign  EmailCampaign?    @relation("SegmentFromCampaign", fields: [sourceCampaignId], references: [id], onDelete: SetNull)
+  team           Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator        Profile            @relation("TeamRadarSegmentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  parent         TeamRadarSegment?  @relation("SegmentHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children       TeamRadarSegment[] @relation("SegmentHierarchy")
+  sourceCampaign EmailCampaign?     @relation("SegmentFromCampaign", fields: [sourceCampaignId], references: [id], onDelete: SetNull)
 
   emailContactLists EmailContactList[]
 
@@ -5046,9 +5095,9 @@ model RadarImportJob {
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
 
-  team              Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  requester         Profile                    @relation("RadarImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
-  fieldDefinitions  TeamRadarFieldDefinition[]
+  team             Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  requester        Profile                    @relation("RadarImportJobRequester", fields: [requestedBy], references: [id], onDelete: Restrict)
+  fieldDefinitions TeamRadarFieldDefinition[]
 
   @@index([teamId, status])
   @@index([status, createdAt])
@@ -5499,10 +5548,16 @@ model BackofficeBotAiDailyUsage {
 }
 
 model AsaasWebhookEvent {
-  id           String                  @id @db.Text
-  eventType    String?                 @map("eventType") @db.Text
-  payload      Json
-  status       AsaasWebhookEventStatus @default(pending)
+  id            String                  @id @db.Text
+  eventType     String?                 @map("eventType") @db.Text
+  payload       Json
+  status        AsaasWebhookEventStatus @default(pending)
+  // Conta Asaas que originou o evento (E4 de
+  // [[10 — Fundações Multi-conta — Backend]], M3.1/M3.3) — resolvida pela
+  // rota a partir de qual token bateu (primary/legacy), persistida por
+  // claimForProcessing antes do processamento. Default legacy: todo evento
+  // existente antes desta migration veio da única conta que existia.
+  account       AsaasAccount            @default(legacy)
   errorMessage  String?                 @map("errorMessage") @db.Text
   attemptCount  Int                     @default(0) @map("attemptCount")
   nextAttemptAt DateTime                @default(now()) @map("nextAttemptAt") @db.Timestamptz(6)
@@ -5713,61 +5768,61 @@ model PublicFormRateLimit {
 }
 
 model PublicForm {
-  id                        String                     @id @default(uuid()) @db.Uuid
-  teamId                    String                     @db.Uuid
-  createdById               String                     @db.Uuid
-  assignedSdrId             String?                    @db.Uuid
-  reviewedById              String?                    @db.Uuid
-  managedByBackofficeUserId String?                    @db.Uuid
-  name                      String                     @db.Text
-  description               String?                    @db.Text
-  publicId                  String                     @unique @default(uuid()) @db.Uuid
-  status                    PublicFormStatus           @default(draft)
-  approvalStatus            PublicFormApprovalStatus   @default(draft)
-  coverTitle                String?                    @db.Text
-  coverDescription          String?                    @db.Text
-  coverBadge                String?                    @db.Text
-  coverHighlights           Json?
-  ctaLabel                  String                     @default("Começar") @db.Text
-  successTitle              String                     @default("Respostas enviadas") @db.Text
-  successDescription        String?                    @db.Text
-  successActions            Json?
-  thankYouPages             Json?
-  defaultThankYouPageId     String?                    @db.Uuid
-  useDefaultTheme           Boolean                    @default(true)
-  backgroundColor           String?                    @db.VarChar(7)
-  textColor                 String?                    @db.VarChar(7)
-  lineColor                 String?                    @db.VarChar(7)
-  accentColor               String?                    @db.VarChar(7)
-  buttonTextColor           String?                    @db.VarChar(7)
-  inputBackgroundColor      String?                    @db.VarChar(7)
-  schedulingEnabled         Boolean                    @default(false)
-  meetingDurationMinutes    Int                        @default(30)
-  schedulingMessage         String?                    @db.Text
-  formKind                  String                     @default("standard") @db.VarChar(40)
+  id                           String                     @id @default(uuid()) @db.Uuid
+  teamId                       String                     @db.Uuid
+  createdById                  String                     @db.Uuid
+  assignedSdrId                String?                    @db.Uuid
+  reviewedById                 String?                    @db.Uuid
+  managedByBackofficeUserId    String?                    @db.Uuid
+  name                         String                     @db.Text
+  description                  String?                    @db.Text
+  publicId                     String                     @unique @default(uuid()) @db.Uuid
+  status                       PublicFormStatus           @default(draft)
+  approvalStatus               PublicFormApprovalStatus   @default(draft)
+  coverTitle                   String?                    @db.Text
+  coverDescription             String?                    @db.Text
+  coverBadge                   String?                    @db.Text
+  coverHighlights              Json?
+  ctaLabel                     String                     @default("Começar") @db.Text
+  successTitle                 String                     @default("Respostas enviadas") @db.Text
+  successDescription           String?                    @db.Text
+  successActions               Json?
+  thankYouPages                Json?
+  defaultThankYouPageId        String?                    @db.Uuid
+  useDefaultTheme              Boolean                    @default(true)
+  backgroundColor              String?                    @db.VarChar(7)
+  textColor                    String?                    @db.VarChar(7)
+  lineColor                    String?                    @db.VarChar(7)
+  accentColor                  String?                    @db.VarChar(7)
+  buttonTextColor              String?                    @db.VarChar(7)
+  inputBackgroundColor         String?                    @db.VarChar(7)
+  schedulingEnabled            Boolean                    @default(false)
+  meetingDurationMinutes       Int                        @default(30)
+  schedulingMessage            String?                    @db.Text
+  formKind                     String                     @default("standard") @db.VarChar(40)
   /// Aceita `cs_el` (EmailLog.id) em links de campanha e atribui abertura/preenchimento ao destinatário.
-  emailCampaignTrackingEnabled Boolean                 @default(true)
+  emailCampaignTrackingEnabled Boolean                    @default(true)
   /// SPEC 40 E4/DA4: opt-out explícito de captação. Publica sem pergunta de
   /// contato mapeada (formulário de pesquisa) e, em troca, **suprime** as
   /// métricas de lead do form — sem promessa de funil onde não há captação.
-  leadCaptureDisabled       Boolean                    @default(false)
-  reviewComment             String?                    @db.Text
-  reviewedAt                DateTime?                  @db.Timestamptz(6)
-  createdAt                 DateTime                   @default(now()) @db.Timestamptz(6)
-  updatedAt                 DateTime                   @updatedAt @db.Timestamptz(6)
-  team                      Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creator                   Profile                    @relation("PublicFormCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  assignedSdr               Profile?                   @relation("PublicFormAssignedSdr", fields: [assignedSdrId], references: [id], onDelete: SetNull)
-  reviewer                  Profile?                   @relation("PublicFormReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  managedByBackofficeUser   BackofficeUser?            @relation("PublicFormManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
-  eligibleClosers           PublicFormEligibleCloser[]
-  questions                 PublicFormQuestion[]
-  rules                     PublicFormRule[]
-  scoreBands                PublicFormScoreBand[]
-  publications              PublicFormPublication[]
-  submissions               PublicFormSubmission[]
-  metricEvents              PublicFormMetricEvent[]
-  journeySessions           PublicFormJourneySession[]
+  leadCaptureDisabled          Boolean                    @default(false)
+  reviewComment                String?                    @db.Text
+  reviewedAt                   DateTime?                  @db.Timestamptz(6)
+  createdAt                    DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt                    DateTime                   @updatedAt @db.Timestamptz(6)
+  team                         Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator                      Profile                    @relation("PublicFormCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedSdr                  Profile?                   @relation("PublicFormAssignedSdr", fields: [assignedSdrId], references: [id], onDelete: SetNull)
+  reviewer                     Profile?                   @relation("PublicFormReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  managedByBackofficeUser      BackofficeUser?            @relation("PublicFormManagedByBackoffice", fields: [managedByBackofficeUserId], references: [id], onDelete: SetNull)
+  eligibleClosers              PublicFormEligibleCloser[]
+  questions                    PublicFormQuestion[]
+  rules                        PublicFormRule[]
+  scoreBands                   PublicFormScoreBand[]
+  publications                 PublicFormPublication[]
+  submissions                  PublicFormSubmission[]
+  metricEvents                 PublicFormMetricEvent[]
+  journeySessions              PublicFormJourneySession[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
@@ -5836,20 +5891,20 @@ model PublicFormOption {
 }
 
 model PublicFormRule {
-  id               String                 @id @default(uuid()) @db.Uuid
-  formId           String                 @db.Uuid
-  sourceQuestionId String                 @db.Uuid
-  targetQuestionId String?                @db.Uuid
-  targetThankYouPageId String?            @db.Uuid
-  operator         PublicFormRuleOperator
-  comparisonValue  Json?
-  action           PublicFormRuleAction
-  elseAction       PublicFormRuleAction   @default(show)
-  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
-  form             PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)
-  sourceQuestion   PublicFormQuestion     @relation("PublicFormRuleSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
-  targetQuestion   PublicFormQuestion?    @relation("PublicFormRuleTarget", fields: [targetQuestionId], references: [id], onDelete: Cascade)
+  id                   String                 @id @default(uuid()) @db.Uuid
+  formId               String                 @db.Uuid
+  sourceQuestionId     String                 @db.Uuid
+  targetQuestionId     String?                @db.Uuid
+  targetThankYouPageId String?                @db.Uuid
+  operator             PublicFormRuleOperator
+  comparisonValue      Json?
+  action               PublicFormRuleAction
+  elseAction           PublicFormRuleAction   @default(show)
+  createdAt            DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime               @updatedAt @db.Timestamptz(6)
+  form                 PublicForm             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sourceQuestion       PublicFormQuestion     @relation("PublicFormRuleSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
+  targetQuestion       PublicFormQuestion?    @relation("PublicFormRuleTarget", fields: [targetQuestionId], references: [id], onDelete: Cascade)
 
   @@index([formId])
   @@index([sourceQuestionId])
@@ -5875,17 +5930,17 @@ model PublicFormScoreBand {
 }
 
 model PublicFormPublication {
-  id            String                  @id @default(uuid()) @db.Uuid
-  formId        String                  @db.Uuid
-  publishedById String                  @db.Uuid
-  version       Int
-  snapshot      Json
-  publishedAt   DateTime                @default(now()) @db.Timestamptz(6)
-  endedAt       DateTime?               @db.Timestamptz(6)
-  form          PublicForm              @relation(fields: [formId], references: [id], onDelete: Cascade)
-  publishedBy   Profile                 @relation("PublicFormPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
-  submissions   PublicFormSubmission[]
-  metricEvents  PublicFormMetricEvent[]
+  id              String                     @id @default(uuid()) @db.Uuid
+  formId          String                     @db.Uuid
+  publishedById   String                     @db.Uuid
+  version         Int
+  snapshot        Json
+  publishedAt     DateTime                   @default(now()) @db.Timestamptz(6)
+  endedAt         DateTime?                  @db.Timestamptz(6)
+  form            PublicForm                 @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publishedBy     Profile                    @relation("PublicFormPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  submissions     PublicFormSubmission[]
+  metricEvents    PublicFormMetricEvent[]
   journeySessions PublicFormJourneySession[]
 
   @@unique([formId, version])
@@ -5894,36 +5949,36 @@ model PublicFormPublication {
 }
 
 model PublicFormSubmission {
-  id             String                     @id @default(uuid()) @db.Uuid
-  formId         String                     @db.Uuid
-  publicationId  String                     @db.Uuid
-  leadId             String?                    @db.Uuid
-  requestKey         String                     @unique @db.Text
-  eventId            String?                    @db.Uuid
-  visitorSessionId   String?                    @db.Text
-  completionStatus   PublicFormCompletionStatus @default(initial)
-  status             PublicFormSubmissionStatus @default(processing)
-  score          Int                        @default(0)
-  scoreBandLabel String?                    @db.Text
-  origin         Json?
-  errorMessage   String?                    @db.Text
-  submittedAt    DateTime?                  @db.Timestamptz(6)
+  id                       String                     @id @default(uuid()) @db.Uuid
+  formId                   String                     @db.Uuid
+  publicationId            String                     @db.Uuid
+  leadId                   String?                    @db.Uuid
+  requestKey               String                     @unique @db.Text
+  eventId                  String?                    @db.Uuid
+  visitorSessionId         String?                    @db.Text
+  completionStatus         PublicFormCompletionStatus @default(initial)
+  status                   PublicFormSubmissionStatus @default(processing)
+  score                    Int                        @default(0)
+  scoreBandLabel           String?                    @db.Text
+  origin                   Json?
+  errorMessage             String?                    @db.Text
+  submittedAt              DateTime?                  @db.Timestamptz(6)
   /// SPEC 40 E0/DA6: marcador positivo de aceite, gravado no POST de envio antes
   /// do enqueue. O cron de re-despacho só reivindica submissão com este carimbo —
   /// casca criada pelo `/progress` nunca entra no despacho.
-  submitRequestedAt  DateTime?               @db.Timestamptz(6)
-  dispatchAcceptedAt DateTime?               @db.Timestamptz(6)
-  dispatchAttemptCount Int                    @default(0)
-  nextDispatchAt DateTime?                    @db.Timestamptz(6)
-  lastDispatchError String?                   @db.Text
-  thankYouPageId String?                      @db.Uuid
-  scheduledMeetingStartsAt DateTime?          @db.Timestamptz(6)
-  createdAt      DateTime                   @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime                   @updatedAt @db.Timestamptz(6)
-  form           PublicForm                 @relation(fields: [formId], references: [id], onDelete: Restrict)
-  publication    PublicFormPublication      @relation(fields: [publicationId], references: [id], onDelete: Restrict)
-  lead           Lead?                      @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  answers        PublicFormAnswer[]
+  submitRequestedAt        DateTime?                  @db.Timestamptz(6)
+  dispatchAcceptedAt       DateTime?                  @db.Timestamptz(6)
+  dispatchAttemptCount     Int                        @default(0)
+  nextDispatchAt           DateTime?                  @db.Timestamptz(6)
+  lastDispatchError        String?                    @db.Text
+  thankYouPageId           String?                    @db.Uuid
+  scheduledMeetingStartsAt DateTime?                  @db.Timestamptz(6)
+  createdAt                DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime                   @updatedAt @db.Timestamptz(6)
+  form                     PublicForm                 @relation(fields: [formId], references: [id], onDelete: Restrict)
+  publication              PublicFormPublication      @relation(fields: [publicationId], references: [id], onDelete: Restrict)
+  lead                     Lead?                      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  answers                  PublicFormAnswer[]
 
   @@index([formId, createdAt(sort: Desc)])
   @@index([publicationId, createdAt(sort: Desc)])
@@ -6034,15 +6089,15 @@ enum BackofficeCompanyType {
 }
 
 model BackofficeLeadExtraction {
-  id         String                         @id @default(uuid()) @db.Uuid
-  profileId  String                         @db.Uuid
-  filters    Json                           @default("{}")
-  totalCount Int                            @default(0)
-  status     BackofficeLeadExtractionStatus @default(PENDING)
-  createdAt  DateTime                       @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime                       @updatedAt @db.Timestamptz(6)
+  id         String                           @id @default(uuid()) @db.Uuid
+  profileId  String                           @db.Uuid
+  filters    Json                             @default("{}")
+  totalCount Int                              @default(0)
+  status     BackofficeLeadExtractionStatus   @default(PENDING)
+  createdAt  DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                         @updatedAt @db.Timestamptz(6)
   results    BackofficeLeadExtractionResult[]
-  profile    Profile                        @relation(fields: [profileId], references: [id])
+  profile    Profile                          @relation(fields: [profileId], references: [id])
 
   @@index([profileId, createdAt(sort: Desc)])
   @@map("backoffice_lead_extractions")

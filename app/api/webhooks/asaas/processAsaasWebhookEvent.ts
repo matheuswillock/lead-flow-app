@@ -9,6 +9,7 @@ import { PaymentValidationUseCase } from "@/app/api/useCases/payments/PaymentVal
 import { getFullUrl } from "@/lib/utils/app-url";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 export type AsaasWebhookBody = {
   id?: string;
@@ -58,12 +59,16 @@ function parseBrazilianDate(dateStr: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<void> {
+export async function processAsaasWebhookEvent(
+  body: AsaasWebhookBody,
+  account: AsaasAccountId
+): Promise<void> {
   const startedAt = Date.now();
   const eventId = resolveAsaasWebhookEventId(body);
 
   console.info("[AsaasWebhookRoute][process] start", {
     eventId,
+    account,
     event: body.event,
     paymentId: body.payment?.id ?? null,
     externalReference: body.payment?.externalReference ?? null,
@@ -120,6 +125,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
       const adhesionOutput = await backofficeAdhesionUseCase.processPaymentWebhook(
         body.event ?? "",
         body.payment,
+        account,
         { deferEmailDelivery: true }
       );
 
@@ -346,9 +352,12 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
     if (subscription?.id && subscription?.customer) {
       try {
         const { prisma } = await import("@/app/api/infra/data/prisma");
+        // C33 (E4): filtra pela conta do evento — sem isso um cus_ colidindo
+        // entre as duas contas aplicaria a assinatura no profile errado.
         const manager = await prisma.profile.findFirst({
           where: {
             asaasCustomerId: subscription.customer,
+            asaasCustomerAccount: account,
             role: "manager",
           },
         });
@@ -357,10 +366,12 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
           const nextDueDate = parseBrazilianDate(subscription.nextDueDate ?? "");
           const updateData: {
             asaasSubscriptionId: string;
+            asaasSubscriptionAccount: AsaasAccountId;
             subscriptionCycle: string;
             subscriptionNextDueDate?: Date;
           } = {
             asaasSubscriptionId: subscription.id,
+            asaasSubscriptionAccount: account,
             subscriptionCycle: subscription.cycle || "MONTHLY",
           };
 
@@ -397,9 +408,11 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
   if (subscriptionStatusChangeEvents.includes(body.event ?? "") && body.subscription?.customer) {
     try {
       const { prisma } = await import("@/app/api/infra/data/prisma");
+      // C33 (E4): mesma razão do lookup acima — filtra pela conta do evento.
       const manager = await prisma.profile.findFirst({
         where: {
           asaasCustomerId: body.subscription.customer,
+          asaasCustomerAccount: account,
           role: "manager",
         },
       });
@@ -453,7 +466,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         "@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository"
       );
       const backofficePaymentRepo = new BackofficePaymentRepository();
-      const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id);
+      const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id, account);
       if (existing) {
         await backofficePaymentRepo.updateStatus(existing.id, body.payment.status ?? "", {
           invoiceUrl: body.payment.invoiceUrl ?? existing.invoiceUrl ?? undefined,
