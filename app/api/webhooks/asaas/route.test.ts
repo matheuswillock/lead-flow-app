@@ -121,6 +121,18 @@ describe("Asaas webhook route", () => {
     expect(response.status).toBe(401)
   })
 
+  it("token inválido de mesmo comprimento do esperado → 401 (T-10.7)", async () => {
+    resetMocks()
+
+    // "test-token" tem 10 caracteres; "test-tokeX" também.
+    const response = await POST(
+      makeRequest(VALID_BODY, { "asaas-access-token": "test-tokeX" })
+    )
+
+    expect(response.status).toBe(401)
+    expect(claimForProcessingMock).not.toHaveBeenCalled()
+  })
+
   it("payment sem ID → 200 com mensagem ignorado, sem chamar claimForProcessing", async () => {
     resetMocks()
 

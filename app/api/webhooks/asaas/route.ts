@@ -8,6 +8,7 @@ import {
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
+import { isValidAsaasWebhookToken } from "./isValidAsaasWebhookToken";
 import {
   resolveAsaasWebhookEventId,
   type AsaasWebhookBody,
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (receivedToken !== expectedToken) {
+    if (!isValidAsaasWebhookToken(receivedToken, expectedToken)) {
       console.error("[AsaasWebhookRoute][POST] Token inválido");
       return NextResponse.json(
         { error: "Unauthorized: Token inválido" },
