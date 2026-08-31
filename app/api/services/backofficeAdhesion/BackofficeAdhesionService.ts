@@ -9,6 +9,7 @@ import {
   calculateBackofficeAdhesionPricing,
   resolveCardMonthlyPriceFromRule,
   resolveProductPriceForCycle,
+  resolveProductPriceForCycleOrNull,
   scaleInstallmentScheduleToTotal,
 } from "@/lib/backoffice-adhesions/adhesion-pricing"
 import {
@@ -500,7 +501,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       )
     }
 
-    const prices = await this.resolvePrices(normalized.cycle, crmWithRules.id)
+    const prices = await this.resolvePrices(normalized.cycle, crmWithRules.id, {
+      extraTeams: normalized.extraTeams,
+      extraUsers: normalized.extraUsers,
+    })
     const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
     const resolvedBillingType = normalized.billingType ?? "PIX"
     const resolvedMonthlyTotalAmount =
@@ -756,7 +760,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       CRM_PRODUCT_SLUG,
       input.productId ?? existing.productId
     )
-    const prices = await this.resolvePrices(next.cycle, crmWithRules.id)
+    const prices = await this.resolvePrices(next.cycle, crmWithRules.id, {
+      extraTeams: next.extraTeams,
+      extraUsers: next.extraUsers,
+    })
     if (!crmWithRules?.isActive) {
       throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
     }
@@ -2036,10 +2043,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const cycles = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
 
-    const entries = cycles.map((cycle) => {
-      const baseMonthlyPrice = resolveProductPriceForCycle(crmWithRules, cycle)
-      const extraTeamPrice = resolveProductPriceForCycle(extraTeamProduct, cycle)
-      const extraUserPrice = resolveProductPriceForCycle(extraUserProduct, cycle)
+    // Só anuncia ciclos que os três produtos padrão precificam — um ciclo novo
+    // (ex.: quadrimester, exclusivo de variante não-default) não pode derrubar as opções.
+    const entries = cycles.flatMap((cycle) => {
+      const baseMonthlyPrice = resolveProductPriceForCycleOrNull(crmWithRules, cycle)
+      const extraTeamPrice = resolveProductPriceForCycleOrNull(extraTeamProduct, cycle)
+      const extraUserPrice = resolveProductPriceForCycleOrNull(extraUserProduct, cycle)
+      if (baseMonthlyPrice == null || extraTeamPrice == null || extraUserPrice == null) {
+        return []
+      }
 
       const pixRule = crmWithRules.paymentRules.find(
         (r) => r.billingCycle === cycle && r.paymentMethod === "PIX"
@@ -2048,7 +2060,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         (r) => r.billingCycle === cycle && r.paymentMethod === "CREDIT_CARD"
       )
 
-      return [cycle, {
+      return [[cycle, {
         baseMonthlyPrice,
         extraTeamPrice,
         extraUserPrice,
@@ -2056,7 +2068,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         cardBaseMonthlyPrice: cardRule
           ? resolveCardMonthlyPriceFromRule(cardRule, cycle)
           : null,
-      }] as const
+      }] as const]
     })
 
     return Object.fromEntries(entries) as BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
@@ -2064,7 +2076,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
   private async resolvePrices(
     cycle: BackofficeAdhesionBillingCycle,
-    baseProductId?: string | null
+    baseProductId?: string | null,
+    extras?: { extraTeams: number; extraUsers: number }
   ): Promise<BackofficeAdhesionPrices> {
     const [crmProduct, extraTeamProduct, extraUserProduct] = await Promise.all([
       baseProductId
@@ -2079,10 +2092,21 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       this.getDefaultProductByFeatureSlug(EXTRA_USER_PRODUCT_SLUG),
     ])
 
+    // Add-ons podem não precificar um ciclo exclusivo de variante (ex.: quadrimester).
+    // Sem extras solicitados isso não pode travar a adesão; com extras, erro claro.
+    const extraTeamPrice = resolveProductPriceForCycleOrNull(extraTeamProduct, cycle) ?? 0
+    const extraUserPrice = resolveProductPriceForCycleOrNull(extraUserProduct, cycle) ?? 0
+    if ((extras?.extraTeams ?? 0) > 0 && extraTeamPrice <= 0) {
+      throw new Error(`Times adicionais não estão disponíveis para o ciclo ${cycle}`)
+    }
+    if ((extras?.extraUsers ?? 0) > 0 && extraUserPrice <= 0) {
+      throw new Error(`Usuários adicionais não estão disponíveis para o ciclo ${cycle}`)
+    }
+
     return {
       baseMonthlyPrice: resolveProductPriceForCycle(crmProduct, cycle),
-      extraTeamPrice: resolveProductPriceForCycle(extraTeamProduct, cycle),
-      extraUserPrice: resolveProductPriceForCycle(extraUserProduct, cycle),
+      extraTeamPrice,
+      extraUserPrice,
     }
   }
 

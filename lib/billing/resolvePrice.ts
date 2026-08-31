@@ -57,11 +57,12 @@ function toBillingCycle(cycle: string): BackofficeAdhesionBillingCycle | null {
   const c = cycle.toUpperCase();
   if (c === "MONTHLY" || c === "MONTH") return "monthly";
   if (c === "QUARTERLY" || c === "QUARTER") return "quarterly";
+  if (c === "QUADRIMESTER" || c === "QUADRIMESTRAL" || c === "FOUR_MONTHLY") return "quadrimester";
   if (c === "SEMIANNUALLY" || c === "SEMIANNUAL" || c === "SEMI_ANNUAL") return "semiannual";
   if (c === "YEARLY" || c === "ANNUAL" || c === "YEAR") return "annual";
   if (c === "MONTHLY".toLowerCase()) return "monthly";
   const lower = cycle.toLowerCase();
-  if (lower === "monthly" || lower === "quarterly" || lower === "semiannual" || lower === "annual") {
+  if (lower === "monthly" || lower === "quarterly" || lower === "quadrimester" || lower === "semiannual" || lower === "annual") {
     return lower as BackofficeAdhesionBillingCycle;
   }
   return null;

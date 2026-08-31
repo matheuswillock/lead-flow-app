@@ -36,28 +36,16 @@ import type {
   InstallmentGroup,
 } from "../context/BackofficePricingTypes"
 import { BILLING_CYCLE_META, flattenSchedule } from "../context/BackofficePricingTypes"
-
-function normalizePriceInput(value: string): string {
-  return value.replace(/[^\d,.]/g, "").replace(",", ".")
-}
-
-function displayCurrencyInput(raw: string): string {
-  const n = parseFloat(raw.replace(",", "."))
-  if (!isFinite(n) || n <= 0) return raw
-  return `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-function parseCurrencyInput(display: string): string {
-  return normalizePriceInput(display.replace(/^R\$\s*/, ""))
-}
+import { parseBrazilianCurrency } from "../utils/currencyInput"
+import { CurrencyField } from "./CurrencyField"
 
 function hasPositivePrice(value: string): boolean {
-  const parsed = Number.parseFloat(value.replace(",", "."))
-  return Number.isFinite(parsed) && parsed > 0
+  const parsed = parseBrazilianCurrency(value)
+  return parsed != null && parsed > 0
 }
 
 function parsePrice(value: string): number {
-  return Number.parseFloat(value.replace(",", ".")) || 0
+  return parseBrazilianCurrency(value) ?? 0
 }
 
 function formatCurrency(value: number): string {
@@ -73,8 +61,8 @@ function isScheduleValid(groups: InstallmentGroup[]): boolean {
     groups.length >= 1 &&
     groups.every((g) => {
       const count = parseInt(g.count, 10)
-      const value = parseFloat(g.value.replace(",", "."))
-      return count >= 1 && isFinite(value) && value > 0
+      const value = parseBrazilianCurrency(g.value)
+      return count >= 1 && value != null && value > 0
     })
   )
 }
@@ -331,7 +319,7 @@ export function BackofficeProductDialog() {
               {formData.activeCycles.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                   Nenhum ciclo adicionado. Use os botões acima para incluir Mensal, Trimestral,
-                  Semestral ou Anual.
+                  Quadrimestral, Semestral ou Anual.
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -373,15 +361,12 @@ export function BackofficeProductDialog() {
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="flex flex-col gap-2">
                             <Label htmlFor={`${key}-pix`}>Valor no PIX (por mês) *</Label>
-                            <Input
+                            <CurrencyField
                               id={`${key}-pix`}
-                              inputMode="decimal"
                               placeholder="R$ 0,00"
-                              value={displayCurrencyInput(entry.pixPrice)}
+                              value={entry.pixPrice}
                               disabled={isSaving}
-                              onChange={(e) =>
-                                setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
-                              }
+                              onValueChange={(value) => setPaymentRuleField(key, "pixPrice", value)}
                             />
                             <p className="text-xs text-muted-foreground">
                               Total PIX: {totalPix > 0 ? formatCurrency(totalPix) : "—"}
@@ -417,18 +402,13 @@ export function BackofficeProductDialog() {
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="flex flex-col gap-2">
                               <Label htmlFor={`${key}-card`}>Valor no cartão (por mês do ciclo) *</Label>
-                              <Input
+                              <CurrencyField
                                 id={`${key}-card`}
-                                inputMode="decimal"
                                 placeholder="R$ 0,00"
-                                value={displayCurrencyInput(entry.cardPrice)}
+                                value={entry.cardPrice}
                                 disabled={isSaving}
-                                onChange={(e) =>
-                                  setPaymentRuleField(
-                                    key,
-                                    "cardPrice",
-                                    parseCurrencyInput(e.target.value)
-                                  )
+                                onValueChange={(value) =>
+                                  setPaymentRuleField(key, "cardPrice", value)
                                 }
                               />
                               <p className="text-xs text-muted-foreground">
@@ -477,20 +457,14 @@ export function BackofficeProductDialog() {
                                     }
                                   />
                                   <span className="text-xs text-muted-foreground">×</span>
-                                  <Input
+                                  <CurrencyField
                                     className="h-8 w-28"
-                                    inputMode="decimal"
                                     placeholder="R$ 0,00"
                                     aria-label={`Valor do grupo ${idx + 1}`}
-                                    value={displayCurrencyInput(group.value)}
+                                    value={group.value}
                                     disabled={isSaving}
-                                    onChange={(e) =>
-                                      setInstallmentGroup(
-                                        key,
-                                        idx,
-                                        "value",
-                                        parseCurrencyInput(e.target.value)
-                                      )
+                                    onValueChange={(value) =>
+                                      setInstallmentGroup(key, idx, "value", value)
                                     }
                                   />
                                   <Button
@@ -541,14 +515,12 @@ export function BackofficeProductDialog() {
           ) : (
             <div className="flex flex-col gap-2">
               <Label htmlFor="product-lifetime">Preço vitalício</Label>
-              <Input
+              <CurrencyField
                 id="product-lifetime"
-                inputMode="decimal"
+                placeholder="R$ 0,00"
                 value={formData.priceLifetime}
                 disabled={isSaving}
-                onChange={(event) =>
-                  setFormField("priceLifetime", normalizePriceInput(event.target.value))
-                }
+                onValueChange={(value) => setFormField("priceLifetime", value)}
               />
             </div>
           )}

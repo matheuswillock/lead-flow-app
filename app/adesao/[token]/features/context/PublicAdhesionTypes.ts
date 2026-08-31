@@ -5,7 +5,7 @@ export type PublicAdhesionStatusKey =
   | "expired"
   | "canceled"
 
-export type PublicAdhesionBillingCycleKey = "monthly" | "quarterly" | "semiannual"
+export type PublicAdhesionBillingCycleKey = "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
 export type PublicAdhesionBillingType = "PIX" | "CREDIT_CARD"
 
 export interface PublicAdhesionDetails {

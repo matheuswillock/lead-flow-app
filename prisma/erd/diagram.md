@@ -116,6 +116,7 @@ canceled canceled
         backoffice_adhesion_billing_cycle {
             monthly monthly
 quarterly quarterly
+quadrimester quadrimester
 semiannual semiannual
 annual annual
         }
@@ -2941,6 +2942,7 @@ completed completed
     BackofficeProductBillingMode billingMode 
     Decimal priceMonthly "❓"
     Decimal priceQuarterly "❓"
+    Decimal priceQuadrimester "❓"
     Decimal priceSemiannual "❓"
     Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
