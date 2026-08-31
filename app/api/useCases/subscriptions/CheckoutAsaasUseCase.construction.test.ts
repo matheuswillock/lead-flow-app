@@ -32,6 +32,10 @@ mock.module("@/lib/services/EmailService", () => ({
 mock.module("@/lib/asaas", () => ({
   asaasFetch: mock(async () => ({})),
   asaasApi: { customers: "x", checkouts: "x", payments: "x", subscriptions: "x" },
+  createAsaasClient: () => ({
+    endpoints: { customers: "x", checkouts: "x", payments: "x", subscriptions: "x" },
+    request: mock(async () => ({})),
+  }),
 }))
 
 describe("CheckoutAsaasUseCase — construção sem argumentos (E5, controle negativo)", () => {

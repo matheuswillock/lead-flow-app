@@ -22,6 +22,13 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
         pixQrCode: data.pixQrCode,
         pixPayload: data.pixPayload,
         createdByProfileId: data.createdByProfileId,
+        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): toda
+        // cobrança nova nasce na conta primary — o único chamador
+        // (BackofficePaymentUseCase.createPayment) cria a cobrança no Asaas
+        // via asaasFetch, que aponta para a primary. Sem isso a coluna cai
+        // no default do schema (legacy) e o lookup do webhook, que filtra
+        // por conta, nunca encontra o pagamento.
+        asaasAccount: "primary",
       },
     })
   }

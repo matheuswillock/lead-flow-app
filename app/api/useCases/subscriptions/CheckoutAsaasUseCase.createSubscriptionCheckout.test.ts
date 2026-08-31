@@ -26,6 +26,10 @@ const asaasFetchMock = mock(async (_url: string, _init?: RequestInit) => ({ id: 
 mock.module("@/lib/asaas", () => ({
   asaasFetch: asaasFetchMock,
   asaasApi: { customers: "x", checkouts: "x", payments: "x", subscriptions: "x" },
+  createAsaasClient: () => ({
+    endpoints: { customers: "x", checkouts: "x", payments: "x", subscriptions: "x" },
+    request: mock(async () => ({})),
+  }),
 }))
 
 const { CheckoutAsaasUseCase } = await import("./CheckoutAsaasUseCase")
