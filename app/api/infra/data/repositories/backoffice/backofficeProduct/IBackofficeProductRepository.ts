@@ -17,6 +17,7 @@ export interface CreateBackofficeProductInput {
   billingMode: BackofficeProductBillingMode
   priceMonthly?: number | null
   priceQuarterly?: number | null
+  priceQuadrimester?: number | null
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
@@ -32,6 +33,7 @@ export interface UpdateBackofficeProductInput {
   billingMode?: BackofficeProductBillingMode
   priceMonthly?: number | null
   priceQuarterly?: number | null
+  priceQuadrimester?: number | null
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
@@ -62,18 +64,18 @@ export interface IBackofficeProductRepository {
   syncPaymentRules(
     productId: string,
     rules: UpsertPaymentRuleInput[],
-    lockedCycles: Array<"monthly" | "quarterly" | "semiannual" | "annual">
+    lockedCycles: Array<"monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual">
   ): Promise<{ blockedRemovals: string[]; blockedUpdates: string[] }>
   findLockedBillingCycles(
     productId: string
-  ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">>
+  ): Promise<Array<"monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual">>
   delete(id: string): Promise<void>
   hasActiveSubscriptions(id: string): Promise<boolean>
 }
 
 export interface UpsertPaymentRuleInput {
   paymentMethod: "PIX" | "CREDIT_CARD"
-  billingCycle: "monthly" | "quarterly" | "semiannual" | "annual"
+  billingCycle: "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
   price: number
   canInstallment: boolean
   maxInstallments: number

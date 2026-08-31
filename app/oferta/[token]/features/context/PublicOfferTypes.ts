@@ -5,6 +5,7 @@ export interface PublicOfferItem {
   type: string
   priceMonthly: number | null
   priceQuarterly: number | null
+  priceQuadrimester: number | null
   priceSemiannual: number | null
   priceAnnual: number | null
   priceLifetime: number | null
