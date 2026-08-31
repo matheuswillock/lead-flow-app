@@ -128,6 +128,7 @@ enum BackofficeAdhesionPlan {
 enum BackofficeAdhesionBillingCycle {
   monthly
   quarterly
+  quadrimester
   semiannual
   annual
 
@@ -3601,9 +3602,10 @@ model BackofficeProduct {
   description     String?                      @db.Text
   type            BackofficeProductType
   billingMode     BackofficeProductBillingMode @default(RECURRING)
-  priceMonthly    Decimal?                     @db.Decimal(10, 2)
-  priceQuarterly  Decimal?                     @db.Decimal(10, 2)
-  priceSemiannual Decimal?                     @db.Decimal(10, 2)
+  priceMonthly      Decimal?                   @db.Decimal(10, 2)
+  priceQuarterly    Decimal?                   @db.Decimal(10, 2)
+  priceQuadrimester Decimal?                   @db.Decimal(10, 2)
+  priceSemiannual   Decimal?                   @db.Decimal(10, 2)
   priceAnnual     Decimal?                     @db.Decimal(10, 2)
   priceLifetime   Decimal?                     @db.Decimal(10, 2)
   isDefault       Boolean                      @default(false)

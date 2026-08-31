@@ -50,12 +50,14 @@ const NO_SELECTION_VALUE = "__none__"
 const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   monthly: 1,
   quarterly: 3,
+  quadrimester: 4,
   semiannual: 6,
   annual: 12,
 }
 const CYCLE_DAYS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   monthly: 30,
   quarterly: 90,
+  quadrimester: 120,
   semiannual: 180,
   annual: 365,
 }

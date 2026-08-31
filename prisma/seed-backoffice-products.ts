@@ -723,6 +723,90 @@ async function main() {
   })
   console.info("[seed:backoffice-products] Precificação CRM - Radar pronta")
 
+  // 9. CRM - RADAR - GERENCIADO (quadrimestral EQUAL, cobrança única de R$ 10.000, não default)
+  const crmRadarGerenciadoData = {
+    featureSlugs: ["crm", "radar", "email", "public-forms"],
+    name: "CRM - RADAR - GERENCIADO",
+    description:
+      "Plano gerenciado quadrimestral — R$ 10.000 em cobrança única (cartão em até 4x iguais); libera CRM, Radar, E-mails e Formulários.",
+    type: BackofficeProductType.PLAN,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: null as number | null,
+    priceQuarterly: null as number | null,
+    priceQuadrimester: 2500,
+    priceSemiannual: null as number | null,
+    priceAnnual: null as number | null,
+    priceLifetime: null as number | null,
+    isActive: true,
+    isDefault: false,
+  }
+  let crmRadarGerenciadoProduct = await prisma.backofficeProduct.findFirst({
+    where: { name: "CRM - RADAR - GERENCIADO" },
+  })
+  if (crmRadarGerenciadoProduct) {
+    crmRadarGerenciadoProduct = await prisma.backofficeProduct.update({
+      where: { id: crmRadarGerenciadoProduct.id },
+      data: crmRadarGerenciadoData,
+    })
+  } else {
+    crmRadarGerenciadoProduct = await prisma.backofficeProduct.create({
+      data: crmRadarGerenciadoData,
+    })
+  }
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarGerenciadoProduct.id,
+        paymentMethod: BackofficePaymentMethod.PIX,
+        billingCycle: BackofficeAdhesionBillingCycle.quadrimester,
+      },
+    },
+    create: {
+      productId: crmRadarGerenciadoProduct.id,
+      paymentMethod: BackofficePaymentMethod.PIX,
+      billingCycle: BackofficeAdhesionBillingCycle.quadrimester,
+      price: 2500,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+    update: {
+      price: 2500,
+      canInstallment: false,
+      maxInstallments: 1,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+  })
+  await prisma.backofficeProductPaymentRule.upsert({
+    where: {
+      productId_paymentMethod_billingCycle: {
+        productId: crmRadarGerenciadoProduct.id,
+        paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+        billingCycle: BackofficeAdhesionBillingCycle.quadrimester,
+      },
+    },
+    create: {
+      productId: crmRadarGerenciadoProduct.id,
+      paymentMethod: BackofficePaymentMethod.CREDIT_CARD,
+      billingCycle: BackofficeAdhesionBillingCycle.quadrimester,
+      price: 2500,
+      canInstallment: true,
+      maxInstallments: 4,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+    update: {
+      price: 2500,
+      canInstallment: true,
+      maxInstallments: 4,
+      installmentSplitMode: "EQUAL",
+      installmentSchedule: [],
+    },
+  })
+  console.info("[seed:backoffice-products] Precificação CRM - RADAR - GERENCIADO pronta")
+
   console.info("[seed:backoffice-products] Concluído.")
 }
 
