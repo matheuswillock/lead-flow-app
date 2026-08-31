@@ -45,10 +45,20 @@ function TeamAccessFields({
   access,
   onChange,
   disabled,
+  roleLocked,
 }: {
   access: TeamAccessFormState
   onChange: (next: TeamAccessFormState) => void
   disabled: boolean
+  /**
+   * Trava o nível de acesso do master da própria conta. Nem toda autorização
+   * do produto é master-aware: `hasLeadAccess` e `hasLeadActivityAccess`
+   * (`app/api/v1/utils/teamAccess.ts`) recebem só o `teamMember`, e as rotas de
+   * `app/api/v1/integrations/**` comparam `teamMember.role !== "manager"` na
+   * mão. Rebaixar o dono da conta aqui produziria 403 na busca de leads e na
+   * gestão de webhooks para ele mesmo.
+   */
+  roleLocked: boolean
 }) {
   function patchAccess(partial: Partial<TeamAccessFormState>) {
     onChange(normalizeAccessForRole({ ...access, ...partial }))
@@ -69,6 +79,12 @@ function TeamAccessFields({
     <div className="flex flex-col gap-4 pt-2">
       <div className="flex flex-col gap-2">
         <Label>Nível de acesso</Label>
+        {roleLocked ? (
+          <p className="text-xs text-muted-foreground">
+            O nível de acesso do master da conta é fixo em Manager. Rebaixá-lo tiraria o
+            próprio dono da busca de leads e da gestão de webhooks.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-2">
           {ROLE_OPTIONS.map((item) => (
             <div
@@ -83,7 +99,7 @@ function TeamAccessFields({
                 aria-label={item.label}
                 checked={access.role === item.value}
                 onCheckedChange={() => setRole(item.value)}
-                disabled={disabled}
+                disabled={disabled || roleLocked}
               />
             </div>
           ))}
@@ -398,6 +414,7 @@ export function BackofficeMemberTeamAccordions({
                           updateTeam(team.teamId, (current) => ({ ...current, access }))
                         }
                         disabled={isSubmitting}
+                        roleLocked={memberIsMaster}
                       />
                     </AccordionContent>
                   ) : null}

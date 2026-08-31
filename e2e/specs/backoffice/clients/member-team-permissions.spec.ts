@@ -177,11 +177,19 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
     // O defeito: para o Master o AccordionContent não era renderizado, mesmo com
     // o trigger habilitado. Estes asserts ficam vermelhos antes da correção.
     for (const label of ["Manager", "Backoffice", "Operator", "SDR", "Closer"]) {
-      const control = dialog.getByRole("switch", { name: label, exact: true });
-      await expect(control, `switch "${label}" deve estar visível`).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(control, `switch "${label}" deve estar habilitado`).toBeEnabled();
+      await expect(
+        dialog.getByRole("switch", { name: label, exact: true }),
+        `switch "${label}" deve estar visível`,
+      ).toBeVisible({ timeout: 15_000 });
+    }
+
+    // Funções são editáveis para o master; o nível de acesso fica travado
+    // (coberto pelo teste dedicado logo abaixo).
+    for (const label of ["SDR", "Closer"]) {
+      await expect(
+        dialog.getByRole("switch", { name: label, exact: true }),
+        `função "${label}" deve estar habilitada`,
+      ).toBeEnabled();
     }
 
     // Estado inicial vindo do banco: manager + CLOSER.
@@ -202,12 +210,13 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
     });
   });
 
-  test("Master: alterar o papel no time persiste no banco", async ({ page }) => {
+  test("Master: alterar as funções no time persiste no banco", async ({ page }) => {
     const prisma = getPrisma();
     const dialog = await openMemberEditDialog(page, masterEmail);
 
-    await dialog.getByRole("switch", { name: "Operator", exact: true }).click();
-    await expect(dialog.getByRole("switch", { name: "Operator", exact: true })).toBeChecked();
+    // Funções são livres para o master; o nível de acesso é que fica travado.
+    await dialog.getByRole("switch", { name: "SDR", exact: true }).click();
+    await expect(dialog.getByRole("switch", { name: "SDR", exact: true })).toBeChecked();
 
     await dialog.getByRole("button", { name: "Salvar alterações" }).click();
     await expect(page.getByText("Membro atualizado com sucesso")).toBeVisible({ timeout: 30_000 });
@@ -217,19 +226,53 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
         async () => {
           const membership = await prisma.teamMember.findFirst({
             where: { teamId: created.teamId!, profileId: created.masterProfileId! },
-            select: { role: true },
+            select: { role: true, functions: true },
           });
-          return membership?.role ?? null;
+          return membership ? `${membership.role}:${[...membership.functions].sort().join(",")}` : null;
         },
-        { timeout: 20_000, message: "teamMember.role do master deveria virar operator" },
+        { timeout: 20_000, message: "funções do master deveriam ganhar SDR, sem mexer no papel" },
       )
-      .toBe("operator");
+      .toBe("manager:CLOSER,SDR");
 
     // Restaura para não contaminar os demais testes deste arquivo.
     await prisma.teamMember.updateMany({
       where: { teamId: created.teamId!, profileId: created.masterProfileId! },
       data: { role: "manager", functions: ["CLOSER"] },
     });
+  });
+
+  test("Master: nível de acesso é travado na UI e recusado pela API", async ({ page, request }) => {
+    const prisma = getPrisma();
+    const dialog = await openMemberEditDialog(page, masterEmail);
+
+    // UI: os switches de papel ficam desabilitados, com a explicação visível.
+    for (const label of ["Manager", "Backoffice", "Operator"]) {
+      await expect(
+        dialog.getByRole("switch", { name: label, exact: true }),
+        `switch de papel "${label}" deve estar travado para o master`,
+      ).toBeDisabled();
+    }
+    await expect(dialog.getByText(/nível de acesso do master da conta é fixo/i)).toBeVisible();
+
+    // As funções continuam editáveis — o bloqueio é só do papel.
+    await expect(dialog.getByRole("switch", { name: "Closer", exact: true })).toBeEnabled();
+
+    // API: a trava não pode viver só no cliente.
+    const baseUrl = process.env.E2E_BASE_URL || "http://127.0.0.1:3000";
+    const response = await request.patch(
+      `${baseUrl}/api/v1/backoffice/members/${created.masterProfileId}`,
+      {
+        headers: { "x-supabase-user-id": backofficeSupabaseId },
+        data: { teamId: created.teamId, role: "operator", functions: [] },
+      },
+    );
+    expect(response.ok(), "PATCH rebaixando o master deveria falhar").toBeFalsy();
+
+    const membership = await prisma.teamMember.findFirst({
+      where: { teamId: created.teamId!, profileId: created.masterProfileId! },
+      select: { role: true },
+    });
+    expect(membership?.role, "papel do master no banco não pode mudar").toBe("manager");
   });
 
   test("Master: remoção do time continua bloqueada", async ({ page }) => {
