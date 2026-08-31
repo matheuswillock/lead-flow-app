@@ -1,0 +1,211 @@
+import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { disconnectPrisma, getPrisma } from "../../support/db";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PrismaAny = any;
+
+const BASE_URL = process.env.E2E_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000";
+
+test.describe("api/v1/backoffice/campanhas-analytics", () => {
+  test.setTimeout(90_000);
+
+  let backofficeSupabaseId: string;
+  let backofficeProfileId: string;
+  let nonBackofficeSupabaseId: string;
+  let nonBackofficeProfileId: string;
+  let masterId: string;
+  let teamId: string;
+  let campaignId: string;
+  let templateId: string;
+  let dispatchId: string;
+
+  test.beforeAll(async () => {
+    const prisma: PrismaAny = getPrisma();
+    const suffix = randomUUID().slice(0, 8);
+
+    backofficeSupabaseId = randomUUID();
+    const backofficeProfile = await prisma.profile.create({
+      data: {
+        supabaseId: backofficeSupabaseId,
+        email: `e2e.ca.backoffice.${suffix}@example.com`,
+        fullName: "E2E CA Backoffice",
+        role: "backoffice",
+        isMaster: false,
+      },
+      select: { id: true },
+    });
+    backofficeProfileId = backofficeProfile.id;
+    await prisma.backofficeUser.create({
+      data: {
+        profileId: backofficeProfileId,
+        email: `e2e.ca.backoffice.${suffix}@example.com`,
+        fullAccess: true,
+        isActive: true,
+      },
+    });
+
+    nonBackofficeSupabaseId = randomUUID();
+    const nonBackofficeProfile = await prisma.profile.create({
+      data: {
+        supabaseId: nonBackofficeSupabaseId,
+        email: `e2e.ca.manager.${suffix}@example.com`,
+        fullName: "E2E CA Manager",
+        role: "manager",
+        isMaster: true,
+      },
+      select: { id: true },
+    });
+    nonBackofficeProfileId = nonBackofficeProfile.id;
+
+    const master = await prisma.profile.create({
+      data: {
+        supabaseId: randomUUID(),
+        email: `e2e.ca.master.${suffix}@example.com`,
+        fullName: "E2E CA Master",
+        isMaster: true,
+      },
+      select: { id: true },
+    });
+    masterId = master.id;
+
+    const team = await prisma.team.create({ data: { name: `E2E CA Team ${suffix}`, masterId: master.id } });
+    teamId = team.id;
+
+    const templateIdValue = randomUUID();
+    const template = await prisma.emailTemplate.create({
+      data: {
+        id: templateIdValue,
+        teamId: team.id,
+        createdBy: master.id,
+        name: `Template ${suffix}`,
+        subject: "Assunto",
+        html: "<p>Oi</p>",
+        versionGroupId: templateIdValue,
+      },
+    });
+    templateId = template.id;
+
+    const campaign = await prisma.emailCampaign.create({
+      data: { teamId: team.id, createdBy: master.id, templateId: template.id, name: `Campanha ${suffix}` },
+    });
+    campaignId = campaign.id;
+
+    const dispatch = await prisma.emailCampaignDispatch.create({
+      data: {
+        campaignId: campaign.id,
+        teamId: team.id,
+        dispatchNumber: 1,
+        templateId: template.id,
+        templateVersionNumber: 1,
+        templateName: "Template E2E",
+        templateSubject: "Assunto",
+        templateHtml: "<p>Oi</p>",
+        dispatchedAt: new Date(),
+        triggeredBy: master.id,
+        totalRecipients: 10,
+        totalSent: 10,
+        totalDelivered: 9,
+        totalOpened: 3,
+        totalClicked: 1,
+        totalBounced: 1,
+        status: "completed",
+      },
+    });
+    dispatchId = dispatch.id;
+  });
+
+  test.afterAll(async () => {
+    const prisma: PrismaAny = getPrisma();
+    if (dispatchId) await prisma.emailCampaignDispatch.deleteMany({ where: { id: dispatchId } }).catch(() => null);
+    if (campaignId) await prisma.emailCampaign.deleteMany({ where: { id: campaignId } }).catch(() => null);
+    if (templateId) await prisma.emailTemplate.deleteMany({ where: { id: templateId } }).catch(() => null);
+    if (teamId) await prisma.team.deleteMany({ where: { id: teamId } }).catch(() => null);
+    if (masterId) await prisma.profile.deleteMany({ where: { id: masterId } }).catch(() => null);
+    if (backofficeProfileId) {
+      await prisma.backofficeUser.deleteMany({ where: { profileId: backofficeProfileId } }).catch(() => null);
+      await prisma.profile.deleteMany({ where: { id: backofficeProfileId } }).catch(() => null);
+    }
+    if (nonBackofficeProfileId) {
+      await prisma.profile.deleteMany({ where: { id: nonBackofficeProfileId } }).catch(() => null);
+    }
+    await disconnectPrisma();
+  });
+
+  const range = () => {
+    const today = new Date();
+    const from = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const to = today.toISOString().slice(0, 10);
+    return { from, to };
+  };
+
+  test("GET summary — 200 com shape estável", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/summary?from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { isValid: boolean; result: { totals: Record<string, unknown>; rates: Record<string, unknown>; byTeam: unknown[] } };
+    expect(body.isValid).toBe(true);
+    expect(body.result.totals).toHaveProperty("sent");
+    expect(body.result.totals).toHaveProperty("leadsCreated");
+    expect(body.result.totals).toHaveProperty("leadsAttached");
+    expect(body.result.rates).toHaveProperty("openRate");
+    expect(Array.isArray(body.result.byTeam)).toBe(true);
+  });
+
+  test("GET summary — 400 quando o período ultrapassa 92 dias", async ({ request }) => {
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/summary?from=2026-01-01&to=2026-12-31`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(400);
+    const body = (await res.json()) as { isValid: boolean; errorMessages: string[] };
+    expect(body.isValid).toBe(false);
+    expect(body.errorMessages.join(" ")).toContain("92");
+  });
+
+  test("GET summary — 403 sem acesso backoffice", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/summary?from=${from}&to=${to}`,
+      { headers: { "x-supabase-user-id": nonBackofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(403);
+  });
+
+  test("GET dispatches — 200 paginado, contém o disparo semeado", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/dispatches?from=${from}&to=${to}&teamIds=${teamId}&page=1&pageSize=10`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { result: { rows: Array<{ id: string }>; page: number; pageSize: number } };
+    expect(body.result.page).toBe(1);
+    expect(body.result.pageSize).toBe(10);
+    expect(body.result.rows.some((row) => row.id === dispatchId)).toBe(true);
+  });
+
+  test("GET dispatches — 400 quando pageSize excede 100", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/dispatches?from=${from}&to=${to}&pageSize=500`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(400);
+  });
+
+  test("GET teams-series — 200 com série total agregada", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/teams-series?from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { result: { total: unknown[]; points: unknown[] } };
+    expect(Array.isArray(body.result.total)).toBe(true);
+    expect(Array.isArray(body.result.points)).toBe(true);
+  });
+});
