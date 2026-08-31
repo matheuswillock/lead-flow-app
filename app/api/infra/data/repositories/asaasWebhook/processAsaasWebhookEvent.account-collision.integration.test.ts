@@ -1,5 +1,13 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
 import { randomUUID } from "crypto"
+
+// lib/cache/invalidation.ts importa "server-only" — processAsaasWebhookEvent
+// chama invalidateAccountAccessStatusCache como efeito colateral de cache,
+// não faz parte do que este teste verifica (colisão de conta no Postgres
+// real). Mockado como no-op para não derrubar o import fora de contexto Next.
+mock.module("@/lib/cache/invalidation", () => ({
+  invalidateAccountAccessStatusCache: () => {},
+}))
 
 /**
  * E4 de [[10 — Fundações Multi-conta — Backend]] (C33, DA4) — T-10.10 e a

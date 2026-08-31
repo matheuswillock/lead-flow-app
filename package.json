@@ -66,7 +66,7 @@
     "test:integration:email-domain:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:email-domain",
     "test:integration:public-forms": "PUBLIC_FORMS_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/publicForms",
     "test:integration:public-forms:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:public-forms",
-    "test:integration:asaas-webhook": "ASAAS_WEBHOOK_INTEGRATION_TEST=1 bun test --isolate app/api/webhooks/asaas/processAsaasWebhookEvent.account-collision.integration.test.ts",
+    "test:integration:asaas-webhook": "ASAAS_WEBHOOK_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/asaasWebhook/processAsaasWebhookEvent.account-collision.integration.test.ts",
     "test:integration:asaas-webhook:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:asaas-webhook",
     "test:aggregation": "METRIC_AGGREGATION_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/publicForms/metric-aggregation.integration.test.ts",
     "test:aggregation:local": "bun run local:up && METRIC_AGGREGATION_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:aggregation",
