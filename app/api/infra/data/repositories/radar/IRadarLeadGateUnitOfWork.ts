@@ -56,6 +56,14 @@ export interface IPublicFormFactsRepository {
     formId: string
     visitorSessionId: string
     leadId: string
+    /**
+     * Lead do qual a submissão deve ser **retirada** além do caso `leadId`
+     * nulo. Só a divergência de identidade usa: a sessão pode ter sido anexada
+     * ao lead do destinatário numa resposta anterior (identidade ainda
+     * incompleta), e sem isso a submissão ficaria no card errado e cada revisão
+     * seguinte criaria mais um lead de indicação.
+     */
+    replaceLeadId?: string | null
   }): Promise<void>
   findSubmittedIdentity(input: {
     formId: string
@@ -90,6 +98,13 @@ export interface IRadarCrmLeadPort {
     existingLeadId: string | null
     origin: Record<string, unknown>
     referral?: RadarLeadGateReferral | null
+    /**
+     * Semente do `leadCode` quando o lead nasce fora do par 1:1 com o perfil.
+     * `Lead.leadCode` é `@unique` global: no caminho de divergência o mesmo
+     * perfil promove um segundo lead, e derivar o código só do perfil colidiria
+     * (P2002) com o card do destinatário.
+     */
+    leadCodeSeed?: string | null
   }): Promise<RadarLeadGatePromotionResult>
 }
 

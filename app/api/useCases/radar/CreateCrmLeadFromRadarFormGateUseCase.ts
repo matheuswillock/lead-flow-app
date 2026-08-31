@@ -100,6 +100,7 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
                   origin: input.origin ?? {},
                 })
               : null,
+            leadCodeSeed: divergence ? input.visitorSessionId : null,
           })
 
           // Divergência = o perfil do Radar continua sendo o do DESTINATÁRIO do
@@ -140,6 +141,12 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
             formId: input.formId,
             visitorSessionId: input.visitorSessionId,
             leadId: promotion.leadId,
+            // A sessão pode ter sido anexada ao lead do destinatário numa
+            // resposta anterior, quando a identidade digitada ainda estava
+            // incompleta. Puxar a submissão para o card novo é o que fecha o
+            // ciclo: a atividade de conclusão vai para o card certo e a próxima
+            // revisão enxerga `sessionLeadId` já correto, sem criar outro lead.
+            replaceLeadId: divergence ? divergence.candidateLeadId : null,
           })
 
           console.info("[CreateCrmLeadFromRadarFormGateUseCase][execute] lead materializado", {

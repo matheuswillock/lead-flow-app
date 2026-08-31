@@ -102,12 +102,14 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       existingLeadId: null,
       origin: {},
       referral: null,
+      leadCodeSeed: null,
     })
     expect(linkLeadIdentity).toHaveBeenCalledTimes(1)
     expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
       formId: input.formId,
       visitorSessionId: "session-1",
       leadId: "lead-1",
+      replaceLeadId: null,
     })
   })
 
@@ -236,6 +238,9 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       formId: input.formId,
       visitorSessionId: "session-1",
       leadId: "lead-alexandre",
+      // Na divergência a submissão nunca pode ficar no card do destinatário,
+      // mesmo que uma resposta anterior já a tenha anexado lá.
+      replaceLeadId: "lead-vladicea",
     })
   })
 
@@ -257,6 +262,51 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       expect.objectContaining({ existingLeadId: "lead-alexandre" }),
     )
     expect(linkLeadIdentity).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Review do PR #1107 (Codex P1). O gate roda a cada resposta de identidade:
+   * quando o telefone chega antes do e-mail, a identidade ainda está incompleta
+   * e a submissão é anexada ao lead do destinatário. Na resposta seguinte a
+   * divergência aparece — mas `attachLeadToPendingSubmissions` só preenchia
+   * `leadId` nulo, então a submissão continuava apontando para o card errado e
+   * cada revisão seguinte criava mais um lead.
+   */
+  it("reatribui a submissão já anexada ao lead do destinatário quando a divergência aparece", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      sessionLeadId: "lead-vladicea",
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(output.result).toEqual({ leadId: "lead-alexandre", created: true })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: null }),
+    )
+    expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
+      formId: input.formId,
+      visitorSessionId: "session-1",
+      leadId: "lead-alexandre",
+      replaceLeadId: "lead-vladicea",
+    })
+  })
+
+  /**
+   * Review do PR #1107 (Cursor/Codex P1). `Lead.leadCode` é `@unique` global e
+   * o create derivava o código só do perfil: no caminho de divergência o mesmo
+   * perfil cria um segundo lead e o código colidia (P2002), abortando a
+   * transação — o prospect divergente ficaria sem card nenhum.
+   */
+  it("manda semente própria de leadCode quando cria por divergência", async () => {
+    arrangeDivergentSubmission()
+
+    await useCase.execute(input)
+
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ leadCodeSeed: "session-1" }),
+    )
   })
 
   it("anexa quando o telefone digitado bate com o lead vinculado", async () => {

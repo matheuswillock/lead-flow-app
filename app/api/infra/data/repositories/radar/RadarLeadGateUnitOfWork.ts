@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { ActivityType, LeadStatus, Prisma, type PrismaClient } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
@@ -190,6 +191,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     existingLeadId: string | null
     origin: Record<string, unknown>
     referral?: RadarLeadGateReferral | null
+    leadCodeSeed?: string | null
   }): Promise<RadarLeadGatePromotionResult> {
     const phone = input.profile.displayPhone ?? input.profile.normalizedPhone
     const email = input.profile.primaryEmail ?? input.profile.normalizedPrimaryEmail
@@ -226,10 +228,22 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     })
     if (!team) throw new Error("Time do perfil Radar não encontrado")
 
-    const stableProfileCode = input.profile.id.replaceAll("-", "").slice(0, 12).toUpperCase()
+    // `Lead.leadCode` é `@unique` global. O código derivado do perfil só é
+    // estável enquanto vale o par 1:1 perfil → lead; na divergência de
+    // identidade o mesmo perfil promove um segundo lead, e reusar o código
+    // levantaria P2002 e abortaria a transação — o respondente divergente
+    // ficaria sem card nenhum. A semente da sessão mantém o código
+    // determinístico (retry do mesmo gate gera o mesmo) sem colidir.
+    const stableCode = input.leadCodeSeed
+      ? createHash("sha1")
+          .update(`${input.profile.id}:${input.leadCodeSeed}`)
+          .digest("hex")
+          .slice(0, 12)
+          .toUpperCase()
+      : input.profile.id.replaceAll("-", "").slice(0, 12).toUpperCase()
     const lead = await this.transaction.lead.create({
       data: {
-        leadCode: `R${stableProfileCode}`,
+        leadCode: `R${stableCode}`,
         managerId: team.masterId,
         teamId: input.teamId,
         status: LeadStatus.new_opportunity,
@@ -349,12 +363,20 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     formId: string
     visitorSessionId: string
     leadId: string
+    replaceLeadId?: string | null
   }): Promise<void> {
     await this.transaction.publicFormSubmission.updateMany({
       where: {
         formId: input.formId,
         visitorSessionId: input.visitorSessionId,
-        leadId: null,
+        // Sem `replaceLeadId` o filtro continua sendo "submissão sem lead". Com
+        // ele (divergência de identidade), a submissão que uma resposta
+        // anterior anexou ao lead do destinatário é puxada para o card novo —
+        // senão a atividade de conclusão vai para o card errado e a próxima
+        // revisão de identidade cria mais um lead de indicação.
+        ...(input.replaceLeadId
+          ? { OR: [{ leadId: null }, { leadId: input.replaceLeadId }] }
+          : { leadId: null }),
       },
       data: { leadId: input.leadId },
     })
