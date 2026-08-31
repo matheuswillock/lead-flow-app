@@ -1,5 +1,6 @@
 import type { BackofficePayment } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   IBackofficePaymentRepository,
   CreateBackofficePaymentInput,
@@ -21,6 +22,13 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
         pixQrCode: data.pixQrCode,
         pixPayload: data.pixPayload,
         createdByProfileId: data.createdByProfileId,
+        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): toda
+        // cobrança nova nasce na conta primary — o único chamador
+        // (BackofficePaymentUseCase.createPayment) cria a cobrança no Asaas
+        // via asaasFetch, que aponta para a primary. Sem isso a coluna cai
+        // no default do schema (legacy) e o lookup do webhook, que filtra
+        // por conta, nunca encontra o pagamento.
+        asaasAccount: "primary",
       },
     })
   }
@@ -39,8 +47,11 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
     return prisma.backofficePayment.findUnique({ where: { id } })
   }
 
-  async findByAsaasPaymentId(asaasPaymentId: string): Promise<BackofficePayment | null> {
-    return prisma.backofficePayment.findUnique({ where: { asaasPaymentId } })
+  async findByAsaasPaymentId(
+    asaasPaymentId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficePayment | null> {
+    return prisma.backofficePayment.findFirst({ where: { asaasPaymentId, asaasAccount: account } })
   }
 
   async updateStatus(

@@ -155,6 +155,13 @@ failed failed
     
 
 
+        asaas_account {
+            primary primary
+legacy legacy
+        }
+    
+
+
         backoffice_webhook_token_status {
             active active
 replaced replaced
@@ -1534,6 +1541,7 @@ completed completed
     Boolean hasUnlimitedUsers 
     Boolean multiskillEnabled 
     String asaasCustomerId "❓"
+    AsaasAccount asaasCustomerAccount 
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
@@ -1542,6 +1550,7 @@ completed completed
     DateTime subscriptionEndDate "❓"
     DateTime trialEndDate "❓"
     String asaasSubscriptionId "❓"
+    AsaasAccount asaasSubscriptionAccount 
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
     String activeTeamId "❓"
@@ -1714,6 +1723,7 @@ completed completed
   "backoffice_payments" {
     String id "🗝️"
     String asaasPaymentId "❓"
+    AsaasAccount asaasAccount 
     String billingType 
     String status 
     Decimal amount 
@@ -1825,6 +1835,7 @@ completed completed
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"
+    AsaasAccount asaasAccount 
     Decimal discountPercent "❓"
     String discountStatus "❓"
     DateTime discountApprovedAt "❓"
@@ -3869,6 +3880,7 @@ completed completed
     String eventType "❓"
     Json payload 
     AsaasWebhookEventStatus status 
+    AsaasAccount account 
     String errorMessage "❓"
     Int attemptCount 
     DateTime nextAttemptAt 
@@ -4209,8 +4221,10 @@ completed completed
   
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
+    "corretor_studio_profiles" |o--|| "AsaasAccount" : "enum:asaasCustomerAccount"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
+    "corretor_studio_profiles" |o--|| "AsaasAccount" : "enum:asaasSubscriptionAccount"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "sponsorMaster"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
@@ -4249,6 +4263,7 @@ completed completed
     "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
+    "backoffice_payments" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o corretor_studio_profiles : "creator"
     "backoffice_contracts" }o--|o backoffice_clients : "client"
@@ -4267,6 +4282,7 @@ completed completed
     "backoffice_adhesions" |o--|| "BackofficeAdhesionPlan" : "enum:plan"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
+    "backoffice_adhesions" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_adhesions" |o--|| backoffice_leads : "lead"
     "backoffice_adhesions" }o--|o backoffice_products : "product"
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
@@ -4690,6 +4706,7 @@ completed completed
     "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiProvider" : "enum:provider"
     "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiCapability" : "enum:capability"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
+    "asaas_webhook_events" |o--|| "AsaasAccount" : "enum:account"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"

@@ -1,6 +1,7 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
 import type {
@@ -78,47 +79,43 @@ const normalizeAsaasCycle = (value: string | null | undefined): AsaasCycle => {
 
 const roundCurrency = (value: number) => Number(value.toFixed(2));
 
+// E5 de [[10 — Fundações Multi-conta — Backend]] (DA5/M4.8): criação de
+// customer passa pelo AsaasCustomerGateway — nunca POST /customers direto.
 const createAsaasCustomer = async (master: BillingOwnerProfile): Promise<string> => {
-  const customer = await asaasFetch(asaasApi.customers, {
-    method: "POST",
-    body: JSON.stringify({
-      name: master.fullName || master.email,
-      email: master.email,
-      cpfCnpj: master.cpfCnpj || "",
-      phone: master.phone || undefined,
-      postalCode: master.postalCode || undefined,
-      address: master.address || undefined,
-      addressNumber: master.addressNumber || undefined,
-      complement: master.complement || undefined,
-      province: master.neighborhood || undefined,
-      externalReference: master.id,
-    }),
+  const customer = await asaasCustomerGateway.createCustomer({
+    profileId: master.id,
+    name: master.fullName || master.email,
+    email: master.email,
+    cpfCnpj: master.cpfCnpj || "",
+    phone: master.phone || undefined,
+    postalCode: master.postalCode || undefined,
+    address: master.address || undefined,
+    addressNumber: master.addressNumber || undefined,
+    complement: master.complement || undefined,
+    province: master.neighborhood || undefined,
   });
 
-  return customer.id as string;
+  return customer.id;
 };
 
 const createAsaasCustomerFromOverride = async (
   masterId: string,
   override: IncrementalChargeCustomerOverride
 ): Promise<string> => {
-  const customer = await asaasFetch(asaasApi.customers, {
-    method: "POST",
-    body: JSON.stringify({
-      name: override.fullName,
-      email: override.email,
-      cpfCnpj: override.cpfCnpj || "",
-      phone: override.phone || undefined,
-      postalCode: override.postalCode || undefined,
-      address: override.address || undefined,
-      addressNumber: override.addressNumber || undefined,
-      complement: override.complement || undefined,
-      province: override.neighborhood || undefined,
-      externalReference: masterId,
-    }),
+  const customer = await asaasCustomerGateway.createCustomer({
+    profileId: masterId,
+    name: override.fullName,
+    email: override.email,
+    cpfCnpj: override.cpfCnpj || "",
+    phone: override.phone || undefined,
+    postalCode: override.postalCode || undefined,
+    address: override.address || undefined,
+    addressNumber: override.addressNumber || undefined,
+    complement: override.complement || undefined,
+    province: override.neighborhood || undefined,
   });
 
-  return customer.id as string;
+  return customer.id;
 };
 
 const getAsaasSubscription = async (subscriptionId: string): Promise<AsaasSubscriptionDetails> => {

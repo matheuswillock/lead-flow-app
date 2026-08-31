@@ -6,6 +6,7 @@ import {
   type AsaasCustomerNotification,
   type AsaasCustomerNotificationUpdate,
 } from '@/lib/asaas';
+import { asaasCustomerGateway } from '@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway';
 
 export interface AsaasCustomer {
   name: string;              // Nome completo do Manager
@@ -61,36 +62,42 @@ export class AsaasCustomerService implements IAsaasCustomerService {
     AsaasCustomerService.disableCustomerFacingNotifications;
 
   /**
-   * Cria um novo cliente Manager no Asaas
+   * Cria um novo cliente Manager no Asaas.
+   *
+   * Delega para AsaasCustomerGateway (E5 de
+   * [[10 — Fundações Multi-conta — Backend]], DA5/M4.8) — nenhum POST
+   * /customers monta aqui; `externalReference`/`notificationDisabled` são
+   * fixados pelo gateway, não pelo `data.notificationDisabled` que este
+   * método aceitava antes (mantido no tipo por compat de chamadores
+   * existentes, mas ignorado — o gateway sempre envia silencioso).
    */
   static async createCustomer(data: AsaasCustomer) {
     try {
-      // Debug: Log the actual data being sent (with masked sensitive info)
-      console.info('🚀 [AsaasCustomerService] Enviando para Asaas:', {
+      console.info('🚀 [AsaasCustomerService] Criando cliente via AsaasCustomerGateway:', {
+        name: data.name,
+        email: data.email,
+        cpfCnpjLength: data.cpfCnpj?.length || 0,
+        externalReference: data.externalReference,
+      });
+
+      const customer = await asaasCustomerGateway.createCustomer({
+        profileId: data.externalReference,
         name: data.name,
         email: data.email,
         cpfCnpj: data.cpfCnpj,
-        cpfCnpjLength: data.cpfCnpj?.length || 0,
-        cpfCnpjType: typeof data.cpfCnpj,
-        phone: data.phone?.substring(0, 4) + '***',
-        phoneLength: data.phone?.length || 0,
-        notificationDisabled: data.notificationDisabled ?? true,
-      });
-
-      const payload: AsaasCustomer = {
-        ...data,
-        notificationDisabled: data.notificationDisabled ?? true,
-      };
-      
-      const customer = await asaasFetch(asaasApi.customers, {
-        method: 'POST',
-        body: JSON.stringify(payload),
+        phone: data.phone,
+        mobilePhone: data.mobilePhone,
+        postalCode: data.postalCode,
+        address: data.address,
+        addressNumber: data.addressNumber,
+        complement: data.complement,
+        province: data.province,
       });
 
       return {
         success: true,
         customerId: customer.id,
-        data: customer as AsaasCustomerResponse,
+        data: customer as unknown as AsaasCustomerResponse,
       };
     } catch (error: any) {
       console.error('❌ Erro ao criar cliente Asaas:', error);

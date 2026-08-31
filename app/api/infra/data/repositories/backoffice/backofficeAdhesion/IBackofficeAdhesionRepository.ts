@@ -7,6 +7,7 @@ import type {
   BackofficeUser,
   Profile,
 } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export type BackofficeAdhesionUserRelation = Pick<
   BackofficeUser,
@@ -188,8 +189,20 @@ export interface IBackofficeAdhesionRepository {
   list(input: ListBackofficeAdhesionsInput): Promise<ListBackofficeAdhesionsResult>
   findById(id: string): Promise<BackofficeAdhesionWithRelations | null>
   findByLeadId(leadId: string): Promise<BackofficeAdhesionWithRelations | null>
-  findByAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
-  findByLedgerAsaasPaymentId(paymentId: string): Promise<BackofficeAdhesionWithRelations | null>
+  /**
+   * Filtra por conta (E4 de [[10 — Fundações Multi-conta — Backend]], C33):
+   * o mesmo `asaasPaymentId` pode existir nas duas contas durante a janela
+   * dual.
+   */
+  findByAsaasPaymentId(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficeAdhesionWithRelations | null>
+  /** Mesma razão de findByAsaasPaymentId — filtra pela conta da adesão. */
+  findByLedgerAsaasPaymentId(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficeAdhesionWithRelations | null>
   findByCreatedProfileId(profileId: string): Promise<BackofficeAdhesionInvoiceSource[]>
   mutateInstallmentLedger(
     id: string,

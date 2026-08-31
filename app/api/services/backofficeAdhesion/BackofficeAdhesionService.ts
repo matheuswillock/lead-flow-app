@@ -1,6 +1,7 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
-import { asaasApi, asaasFetch } from "@/lib/asaas"
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
+import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
@@ -788,7 +789,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     if (shouldResetPaymentData && existing.asaasPaymentId) {
       try {
-        await asaasFetch(`${asaasApi.payments}/${existing.asaasPaymentId}`, {
+        // C33: cancela na conta em que a cobrança foi de fato criada, não
+        // sempre na primary.
+        const asaasClient = createAsaasClient(existing.asaasAccount)
+        await asaasClient.request(`${asaasClient.endpoints.payments}/${existing.asaasPaymentId}`, {
           method: "DELETE",
         })
       } catch (cancelErr) {
@@ -1008,10 +1012,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       )
     }
 
+    // C33: as faturas pertencem à conta da própria adesão.
+    const asaasClient = createAsaasClient(adhesion.asaasAccount)
     const invoices: Array<{ installmentIndex: number; amount: number; invoiceUrl: string }> = []
     for (const entry of pendingAsaas) {
       if (!entry.asaasPaymentId) continue
-      const payment = await asaasFetch(`${asaasApi.payments}/${entry.asaasPaymentId}`)
+      const payment = await asaasClient.request(`${asaasClient.endpoints.payments}/${entry.asaasPaymentId}`)
       const invoiceUrl = (payment.invoiceUrl as string | undefined)?.trim()
       if (invoiceUrl) {
         invoices.push({
@@ -1178,7 +1184,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           })
         } catch (chargeError) {
           try {
-            await asaasFetch(`${asaasApi.payments}/${firstResult.paymentId}`, {
+            const asaasClient = createAsaasClient(adhesion.asaasAccount)
+            await asaasClient.request(`${asaasClient.endpoints.payments}/${firstResult.paymentId}`, {
               method: "DELETE",
             })
           } catch (rollbackErr) {
@@ -1290,9 +1297,27 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return mapPayment(adhesion)
   }
 
+  /**
+   * Fallback de processPaymentWebhook quando o pagamento não é achado nem
+   * por asaasPaymentId nem pelo ledger: resolve a adesão pelo id interno
+   * (extraído do externalReference) e, mesmo assim, confirma que ela
+   * pertence à conta do evento (E4/C33) — um id interno nunca colide entre
+   * contas, mas nada impede um evento com externalReference forjado ou de
+   * uma conta errada apontar para uma adesão real de outra conta.
+   */
+  private async findByIdMatchingAccount(
+    adhesionId: string,
+    account: AsaasAccountId
+  ): Promise<BackofficeAdhesionWithRelations | null> {
+    const adhesion = await this.repo.findById(adhesionId)
+    if (!adhesion || adhesion.asaasAccount !== account) return null
+    return adhesion
+  }
+
   async processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
+    account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }> {
     if (!payment.id) {
@@ -1301,15 +1326,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const parsedRef = parseAdhesionExternalReference(payment.externalReference)
     const adhesion =
-      (await this.repo.findByAsaasPaymentId(payment.id)) ??
-      (await this.repo.findByLedgerAsaasPaymentId(payment.id)) ??
-      (parsedRef ? await this.repo.findById(parsedRef.adhesionId) : null)
+      (await this.repo.findByAsaasPaymentId(payment.id, account)) ??
+      (await this.repo.findByLedgerAsaasPaymentId(payment.id, account)) ??
+      (parsedRef ? await this.findByIdMatchingAccount(parsedRef.adhesionId, account) : null)
 
     if (!adhesion) {
       console.info("[BackofficeAdhesionService][processPaymentWebhook] adesão não encontrada", {
         paymentId: payment.id,
         externalReference: payment.externalReference ?? null,
         event,
+        account,
       })
       return { processed: false }
     }
@@ -1628,6 +1654,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
   }
 
+  /**
+   * E5 de [[10 — Fundações Multi-conta — Backend]] (DA5/M4.8): criação de
+   * customer via AsaasCustomerGateway — nunca POST /customers direto. Estes
+   * dois caminhos criam o customer ANTES de existir um Profile (checkout de
+   * adesão pré-conversão), por isso usam `adhesionId` em vez de `profileId`
+   * — o gateway resolve o mesmo `externalReference` que já era montado à
+   * mão aqui (`backoffice-adhesion-<id>`), e agora também fixa
+   * `notificationDisabled: true`, que faltava nos dois (§4 da auditoria).
+   */
   private async ensureAsaasCustomer(
     adhesion: BackofficeAdhesionWithRelations,
     input: BackofficeAdhesionCheckoutInput
@@ -1636,23 +1671,20 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return adhesion.asaasCustomerId
     }
 
-    const customer = await asaasFetch(asaasApi.customers, {
-      method: "POST",
-      body: JSON.stringify({
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj: input.cpfCnpj,
-        mobilePhone: input.phone,
-        postalCode: input.postalCode,
-        address: input.address,
-        addressNumber: input.addressNumber,
-        complement: input.complement ?? undefined,
-        province: input.neighborhood,
-        externalReference: `backoffice-adhesion-${adhesion.id}`,
-      }),
+    const customer = await asaasCustomerGateway.createCustomer({
+      adhesionId: adhesion.id,
+      name: input.fullName,
+      email: input.email,
+      cpfCnpj: input.cpfCnpj,
+      mobilePhone: input.phone,
+      postalCode: input.postalCode,
+      address: input.address,
+      addressNumber: input.addressNumber,
+      complement: input.complement ?? undefined,
+      province: input.neighborhood,
     })
 
-    return String(customer.id)
+    return customer.id
   }
 
   private async createExternalAsaasCustomer(input: {
@@ -1662,25 +1694,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     cpfCnpj: string
     phone: string
   }): Promise<string> {
-    const customer = await asaasFetch(asaasApi.customers, {
-      method: "POST",
-      body: JSON.stringify({
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj: input.cpfCnpj,
-        mobilePhone: input.phone,
-        externalReference: `backoffice-adhesion-${input.adhesionId}`,
-        observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
-      }),
+    const customer = await asaasCustomerGateway.createCustomer({
+      adhesionId: input.adhesionId,
+      name: input.fullName,
+      email: input.email,
+      cpfCnpj: input.cpfCnpj,
+      mobilePhone: input.phone,
+      observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
     })
 
-    const customerId = customer?.id
-    if (!customerId) {
-      throw new Error(
-        `Asaas não retornou um ID válido para o cliente criado (adhesionId: ${input.adhesionId})`
-      )
-    }
-    return String(customerId)
+    return customer.id
   }
 
   private async createAsaasPayment(
@@ -1733,7 +1756,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
-    const payment = await asaasFetch(asaasApi.payments, {
+    // C33: a adesão pode já pertencer à conta legacy (pré-migration) — a
+    // cobrança nasce na mesma conta da adesão, nunca sempre na primary.
+    const asaasClient = createAsaasClient(adhesion.asaasAccount)
+    const payment = await asaasClient.request(asaasClient.endpoints.payments, {
       method: "POST",
       body: JSON.stringify(payload),
     })
@@ -1758,7 +1784,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     if (input.billingType === "PIX") {
-      const pix = await asaasFetch(asaasApi.pixQrCode(result.paymentId), { method: "GET" })
+      const pix = await asaasClient.request(asaasClient.endpoints.pixQrCode(result.paymentId), {
+        method: "GET",
+      })
       result.pix = {
         encodedImage: String(pix.encodedImage ?? ""),
         payload: String(pix.payload ?? ""),
@@ -1776,16 +1804,21 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return adhesion
     }
 
-    const payment = (await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
-      method: "GET",
-    })) as BackofficeAdhesionPaymentWebhookInput
+    // C33: a cobrança pertence à conta gravada na própria adesão, não
+    // sempre à primary — sync de uma adesão legacy contra a conta errada
+    // retorna 404 ou lê o pagamento de outra conta.
+    const asaasClient = createAsaasClient(adhesion.asaasAccount)
+    const payment = (await asaasClient.request(
+      `${asaasClient.endpoints.payments}/${adhesion.asaasPaymentId}`,
+      { method: "GET" }
+    )) as BackofficeAdhesionPaymentWebhookInput
 
     const status = payment.status?.toUpperCase() ?? ""
     if (status === "PENDING") {
       return adhesion
     }
 
-    await this.processPaymentWebhook(mapSyncedPaymentEvent(payment), payment)
+    await this.processPaymentWebhook(mapSyncedPaymentEvent(payment), payment, adhesion.asaasAccount)
 
     const updated = await this.repo.findById(adhesion.id)
     if (!updated) {
@@ -2191,10 +2224,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return [...ids]
   }
 
-  private async cancelAsaasPayments(paymentIds: string[]): Promise<void> {
+  private async cancelAsaasPayments(paymentIds: string[], account: AsaasAccountId): Promise<void> {
+    // C33: cancela na conta em que as cobranças foram criadas.
+    const asaasClient = createAsaasClient(account)
     for (const paymentId of [...new Set(paymentIds)]) {
       try {
-        await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+        await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
+          method: "DELETE",
+        })
       } catch (error) {
         console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
       }
@@ -2221,7 +2258,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     if (paymentIds.length > 0) {
-      await this.cancelAsaasPayments(paymentIds)
+      await this.cancelAsaasPayments(paymentIds, adhesion.asaasAccount)
     }
 
     const resetLedger = this.resetPendingLedgerPaymentIds(ledger)
@@ -2268,10 +2305,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const next = [...input.ledger]
     const scheduleBaseDate = input.adhesion.createdAt
     const createdPaymentIds: string[] = []
+    // C33: as parcelas nascem na conta da própria adesão.
+    const asaasClient = createAsaasClient(input.adhesion.asaasAccount)
     try {
       for (const entry of input.pending) {
         const dueDate = resolveAdhesionInstallmentDueDate(scheduleBaseDate, entry.index)
-        const payment = await asaasFetch(asaasApi.payments, {
+        const payment = await asaasClient.request(asaasClient.endpoints.payments, {
           method: "POST",
           body: JSON.stringify({
             customer: input.customerId,
@@ -2296,7 +2335,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     } catch (error) {
       for (const paymentId of createdPaymentIds) {
         try {
-          await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+          await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
+            method: "DELETE",
+          })
         } catch (rollbackErr) {
           console.error(
             "[BackofficeAdhesionService][chargePendingInstallments][rollback]",
