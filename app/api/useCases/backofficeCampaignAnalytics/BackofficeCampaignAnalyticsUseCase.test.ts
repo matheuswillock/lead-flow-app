@@ -132,3 +132,48 @@ describe("BackofficeCampaignAnalyticsUseCase.getTeamsSeries", () => {
     expect(result.total).toEqual([{ day: "2026-08-28", sent: 150, delivered: 135, opened: 30, clicked: 1 }])
   })
 })
+
+describe("BackofficeCampaignAnalyticsUseCase.getTemplates", () => {
+  it("T-10.6 — calcula openRate por linha e ordena desc", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+        { teamId: "t3", teamName: "Zero", templateName: "Sem envio", dispatches: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, failed: 0 },
+      ]
+    })
+    const output = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+    const rows = output.result as Array<{ templateName: string; openRate: number | null }>
+    expect(rows.map((row) => row.templateName)).toEqual(["v2 médicos", "Oficinas", "Sem envio"])
+    expect(Math.round((rows[0].openRate ?? 0) * 1000) / 1000).toBeCloseTo(0.37, 2)
+    expect(rows[2].openRate).toBeNull()
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.getFormsFunnel", () => {
+  it("T-10.6/T-10.7 — calcula startRate/closeRate, closeRate null quando starts=0, ordena desc por closeRate", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.funnel = [
+        { formId: "f1", formName: "Liber básico", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
+        { formId: "f2", formName: "Sabrina", teamId: "t2", teamName: "Sabrina", viewed: 227, started: 5, completed: 0, leadCreated: 0, leadAttached: 0 },
+        { formId: "f3", formName: "Kathrein médicos", teamId: "t3", teamName: "Kathrein", viewed: 108, started: 0, completed: 0, leadCreated: 0, leadAttached: 0 },
+      ]
+    })
+    const output = await useCase.getFormsFunnel({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+    const rows = output.result as Array<{ formId: string; startRate: number | null; closeRate: number | null }>
+
+    const liber = rows.find((row) => row.formId === "f1")
+    expect(Math.round((liber?.closeRate ?? 0) * 100) / 100).toBe(0.83)
+
+    const kathrein = rows.find((row) => row.formId === "f3")
+    expect(kathrein?.startRate).toBe(0)
+    expect(kathrein?.closeRate).toBeNull() // divisor zero (starts=0) -> null, nunca 0 sintético
+
+    const sabrina = rows.find((row) => row.formId === "f2")
+    expect(sabrina?.closeRate).toBe(0) // starts>0 mas completes=0 -> 0 real, não null
+
+    expect(rows.map((row) => row.formId)).toEqual(["f1", "f2", "f3"]) // desc por closeRate, null por último
+  })
+})

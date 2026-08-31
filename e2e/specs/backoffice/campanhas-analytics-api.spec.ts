@@ -19,6 +19,8 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
   let campaignId: string;
   let templateId: string;
   let dispatchId: string;
+  let formId: string;
+  let publicationId: string;
 
   test.beforeAll(async () => {
     const prisma: PrismaAny = getPrisma();
@@ -113,10 +115,53 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
       },
     });
     dispatchId = dispatch.id;
+
+    const form = await prisma.publicForm.create({
+      data: {
+        teamId: team.id,
+        createdById: master.id,
+        publicId: randomUUID(),
+        name: `Form E2E ${suffix}`,
+        status: "published",
+        approvalStatus: "approved",
+      },
+    });
+    formId = form.id;
+
+    const publication = await prisma.publicFormPublication.create({
+      data: { formId: form.id, publishedById: master.id, version: 1, snapshot: {} },
+    });
+    publicationId = publication.id;
+
+    const now = new Date();
+    const funnelEvents = [
+      { eventType: "form_viewed", visitorSessionId: "e2e-s1" },
+      { eventType: "form_viewed", visitorSessionId: "e2e-s2" },
+      { eventType: "form_started", visitorSessionId: "e2e-s1" },
+      { eventType: "form_completed", visitorSessionId: "e2e-s1" },
+      { eventType: "lead_created", visitorSessionId: "e2e-s1" },
+    ];
+    for (const [index, event] of funnelEvents.entries()) {
+      await prisma.publicFormMetricEvent.create({
+        data: {
+          formId: form.id,
+          publicationId: publication.id,
+          visitorSessionId: event.visitorSessionId,
+          eventType: event.eventType,
+          eventKey: `e2e-ca-${suffix}-${index}`,
+          createdAt: now,
+        },
+      });
+    }
   });
 
   test.afterAll(async () => {
     const prisma: PrismaAny = getPrisma();
+    if (formId) {
+      await prisma.publicFormMetricEvent.deleteMany({ where: { formId } }).catch(() => null);
+      await prisma.publicFormPublication.deleteMany({ where: { formId } }).catch(() => null);
+      await prisma.publicForm.deleteMany({ where: { id: formId } }).catch(() => null);
+    }
     if (dispatchId) await prisma.emailCampaignDispatch.deleteMany({ where: { id: dispatchId } }).catch(() => null);
     if (campaignId) await prisma.emailCampaign.deleteMany({ where: { id: campaignId } }).catch(() => null);
     if (templateId) await prisma.emailTemplate.deleteMany({ where: { id: templateId } }).catch(() => null);
@@ -207,5 +252,47 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
     const body = (await res.json()) as { result: { total: unknown[]; points: unknown[] } };
     expect(Array.isArray(body.result.total)).toBe(true);
     expect(Array.isArray(body.result.points)).toBe(true);
+  });
+
+  test("GET templates — 200, openRate calculado e ordenado desc", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/templates?from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { result: Array<{ templateName: string; openRate: number | null }> };
+    const row = body.result.find((entry) => entry.templateName === "Template E2E");
+    expect(row).toBeDefined();
+    expect(row?.openRate).toBeCloseTo(0.3, 1); // 3 abertos / 10 enviados
+  });
+
+  test("GET forms-funnel — 200, lead_created e lead_attached separados, closeRate null sem starts", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/forms-funnel?from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as {
+      result: Array<{
+        formId: string;
+        viewed: number;
+        started: number;
+        completed: number;
+        leadCreated: number;
+        leadAttached: number;
+        startRate: number | null;
+        closeRate: number | null;
+      }>;
+    };
+    const row = body.result.find((entry) => entry.formId === formId);
+    expect(row).toBeDefined();
+    expect(row?.viewed).toBe(2);
+    expect(row?.started).toBe(1);
+    expect(row?.completed).toBe(1);
+    expect(row?.leadCreated).toBe(1);
+    expect(row?.leadAttached).toBe(0);
+    expect(row?.closeRate).toBe(1);
   });
 });

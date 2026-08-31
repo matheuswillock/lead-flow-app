@@ -5,7 +5,19 @@ import type {
   IBackofficeCampaignAnalyticsRepository,
 } from "@/app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics/IBackofficeCampaignAnalyticsRepository"
 import { resolveCampaignAnalyticsDateRange } from "@/lib/backoffice-campaign-analytics/dateRange"
-import { finalScore, openRate } from "@/lib/backoffice-campaign-analytics/metrics"
+import { finalScore, formCloseRate, openRate, startRate } from "@/lib/backoffice-campaign-analytics/metrics"
+
+// Ordena desc pela taxa; null (divisor zero) sempre por último — nunca tratado como 0.
+function sortByRateDesc<T>(rows: T[], getRate: (row: T) => number | null): T[] {
+  return [...rows].sort((a, b) => {
+    const rateA = getRate(a)
+    const rateB = getRate(b)
+    if (rateA === null && rateB === null) return 0
+    if (rateA === null) return 1
+    if (rateB === null) return -1
+    return rateB - rateA
+  })
+}
 
 const DEFAULT_PAGE_SIZE = 25
 const MAX_PAGE_SIZE = 100
@@ -151,6 +163,42 @@ export class BackofficeCampaignAnalyticsUseCase {
     } catch (error) {
       console.error("[BackofficeCampaignAnalyticsUseCase][getTeamsSeries]", error)
       return new Output(false, [], ["Erro ao carregar a série de campanhas"], null)
+    }
+  }
+
+  async getTemplates(input: CampaignAnalyticsRangeInput): Promise<Output> {
+    const range = resolveCampaignAnalyticsDateRange({ from: input.from, to: input.to })
+    if (!range.ok) return new Output(false, [], [range.error], null)
+
+    try {
+      const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
+      const templates = await this.repository.aggregateByTemplate(filter)
+
+      const rows = templates.map((row) => ({ ...row, openRate: openRate(row.opened, row.sent) }))
+      return new Output(true, [], [], sortByRateDesc(rows, (row) => row.openRate))
+    } catch (error) {
+      console.error("[BackofficeCampaignAnalyticsUseCase][getTemplates]", error)
+      return new Output(false, [], ["Erro ao carregar os templates"], null)
+    }
+  }
+
+  async getFormsFunnel(input: CampaignAnalyticsRangeInput): Promise<Output> {
+    const range = resolveCampaignAnalyticsDateRange({ from: input.from, to: input.to })
+    if (!range.ok) return new Output(false, [], [range.error], null)
+
+    try {
+      const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
+      const funnel = await this.repository.formFunnel(filter)
+
+      const rows = funnel.map((row) => ({
+        ...row,
+        startRate: startRate(row.started, row.viewed),
+        closeRate: formCloseRate(row.completed, row.started),
+      }))
+      return new Output(true, [], [], sortByRateDesc(rows, (row) => row.closeRate))
+    } catch (error) {
+      console.error("[BackofficeCampaignAnalyticsUseCase][getFormsFunnel]", error)
+      return new Output(false, [], ["Erro ao carregar o funil de formulários"], null)
     }
   }
 }
