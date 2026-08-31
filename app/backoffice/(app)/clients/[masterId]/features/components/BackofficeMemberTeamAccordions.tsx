@@ -1,7 +1,7 @@
 "use client"
 
 import { ChevronDown, UserMinus, UserPlus } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -80,6 +80,7 @@ function TeamAccessFields({
                 <span className="text-xs text-muted-foreground">{item.description}</span>
               </div>
               <Switch
+                aria-label={item.label}
                 checked={access.role === item.value}
                 onCheckedChange={() => setRole(item.value)}
                 disabled={disabled}
@@ -102,6 +103,7 @@ function TeamAccessFields({
                 <span className="text-xs text-muted-foreground">{item.description}</span>
               </div>
               <Switch
+                aria-label={item.label}
                 checked={access.functions.includes(item.value)}
                 onCheckedChange={() => toggleFunction(item.value)}
                 disabled={disabled}
@@ -128,6 +130,7 @@ function TeamAccessFields({
               </span>
             </div>
             <Switch
+              aria-label="Pode cadastrar novos usuários"
               checked={access.canCreateAccountUsers}
               onCheckedChange={(checked) => patchAccess({ canCreateAccountUsers: checked })}
               disabled={disabled}
@@ -142,6 +145,7 @@ function TeamAccessFields({
               </span>
             </div>
             <Switch
+              aria-label="Pode gerenciar times"
               checked={access.canManageAccountTeams}
               onCheckedChange={(checked) => patchAccess({ canManageAccountTeams: checked })}
               disabled={disabled}
@@ -169,6 +173,7 @@ function TeamAccessFields({
               </span>
             </div>
             <Switch
+              aria-label="Pode transferir leads entre times"
               checked={access.canTransferAccountLeads}
               onCheckedChange={(checked) => patchAccess({ canTransferAccountLeads: checked })}
               disabled={disabled}
@@ -183,6 +188,7 @@ function TeamAccessFields({
               </span>
             </div>
             <Switch
+              aria-label="Pode visualizar todos os times"
               checked={access.canViewAllTeams}
               onCheckedChange={(checked) => patchAccess({ canViewAllTeams: checked })}
               disabled={disabled}
@@ -192,6 +198,39 @@ function TeamAccessFields({
       ) : null}
     </div>
   )
+}
+
+/**
+ * Alterna a membership do time no draft. Desfazer uma adição ou uma remoção
+ * pendente volta ao estado original; adicionar parte de um acesso de operator.
+ */
+function nextMembershipDraft(current: TeamMembershipDraft): TeamMembershipDraft {
+  if (current.isPendingAdd) {
+    return {
+      ...current,
+      isMember: false,
+      isPendingAdd: false,
+      access: defaultOperatorAccess(),
+      originalAccess: undefined,
+    }
+  }
+
+  if (current.isPendingRemove) {
+    return { ...current, isMember: true, isPendingRemove: false }
+  }
+
+  if (current.isMember) {
+    return { ...current, isMember: false, isPendingRemove: true }
+  }
+
+  return {
+    ...current,
+    isMember: true,
+    isPendingAdd: true,
+    isPendingRemove: false,
+    access: defaultOperatorAccess(),
+    originalAccess: undefined,
+  }
 }
 
 export function BackofficeMemberTeamAccordions({
@@ -205,14 +244,10 @@ export function BackofficeMemberTeamAccordions({
   defaultExpandedTeamIds = [],
 }: BackofficeMemberTeamAccordionsProps) {
   const teamList = Object.values(teams).sort((a, b) => a.teamName.localeCompare(b.teamName))
+  // O estado inicial é semeado pelo remount que `BackofficeMemberEditDialog`
+  // força via `key` quando o fetch dos times termina — não há segunda
+  // estratégia de inicialização aqui.
   const [openTeamIds, setOpenTeamIds] = useState<string[]>(defaultExpandedTeamIds)
-  const expandedInitializedRef = useRef(false)
-
-  useEffect(() => {
-    if (isLoading || expandedInitializedRef.current) return
-    expandedInitializedRef.current = true
-    setOpenTeamIds(defaultExpandedTeamIds)
-  }, [defaultExpandedTeamIds, isLoading])
 
   function updateTeam(teamId: string, updater: (current: TeamMembershipDraft) => TeamMembershipDraft) {
     const current = teams[teamId]
@@ -223,48 +258,20 @@ export function BackofficeMemberTeamAccordions({
   function handleToggleMembership(teamId: string) {
     if (!canManage || isSubmitting || memberIsMaster) return
 
-    updateTeam(teamId, (current) => {
-      if (current.isPendingAdd) {
-        return {
-          ...current,
-          isMember: false,
-          isPendingAdd: false,
-          access: defaultOperatorAccess(),
-          originalAccess: undefined,
-        }
-      }
+    const current = teams[teamId]
+    if (!current) return
 
-      if (current.isPendingRemove) {
-        setOpenTeamIds((previous) => previous.filter((id) => id !== teamId))
-        return {
-          ...current,
-          isMember: true,
-          isPendingRemove: false,
-        }
-      }
+    const next = nextMembershipDraft(current)
+    onTeamsChange({ ...teams, [teamId]: next })
 
-      if (current.isMember) {
-        setOpenTeamIds((previous) => previous.filter((id) => id !== teamId))
-        return {
-          ...current,
-          isMember: false,
-          isPendingRemove: true,
-        }
-      }
-
-      return {
-        ...current,
-        isMember: true,
-        isPendingAdd: true,
-        isPendingRemove: false,
-        access: defaultOperatorAccess(),
-        originalAccess: undefined,
-      }
+    // O painel de permissões só existe enquanto a membership resultante está
+    // ativa (mesmo predicado de `isExpandable`). Uma decisão só, no fim — três
+    // `setOpenTeamIds` concorrentes na mesma fila se anulavam entre si.
+    const shouldStayOpen = next.isMember && !next.isPendingRemove
+    setOpenTeamIds((previous) => {
+      const withoutTeam = previous.filter((id) => id !== teamId)
+      return shouldStayOpen ? [...withoutTeam, teamId] : withoutTeam
     })
-
-    setOpenTeamIds((previous) =>
-      previous.includes(teamId) ? previous : [...previous, teamId]
-    )
   }
 
   return (
@@ -343,26 +350,47 @@ export function BackofficeMemberTeamAccordions({
                       title={
                         memberIsMaster && team.isMember
                           ? "Não é possível remover o usuário master do time"
-                          : team.isMember
-                            ? "Remover deste time"
-                            : "Adicionar a este time"
+                          : team.isPendingRemove
+                            ? "Desfazer a remoção deste time"
+                            : team.isMember
+                              ? "Remover deste time"
+                              : team.isPendingAdd
+                                ? "Desfazer a adição a este time"
+                                : "Adicionar a este time"
                       }
                     >
-                      {team.isMember ? (
+                      {/* `isPendingRemove` zera `isMember`, então a checagem
+                          precisa vir antes — senão o desfazer da remoção
+                          aparece como "Adicionar". */}
+                      {team.isPendingRemove ? (
+                        <>
+                          <UserPlus data-icon="inline-start" />
+                          Desfazer
+                        </>
+                      ) : team.isMember ? (
                         <>
                           <UserMinus data-icon="inline-start" />
-                          {team.isPendingRemove ? "Desfazer" : "Remover"}
+                          Remover
+                        </>
+                      ) : team.isPendingAdd ? (
+                        <>
+                          <UserMinus data-icon="inline-start" />
+                          Desfazer
                         </>
                       ) : (
                         <>
                           <UserPlus data-icon="inline-start" />
-                          {team.isPendingAdd ? "Desfazer" : "Adicionar"}
+                          Adicionar
                         </>
                       )}
                     </Button>
                   </div>
 
-                  {isExpandable && !memberIsMaster ? (
+                  {/* Mesmo predicado do trigger (`isExpandable`): condição
+                      diferente aqui deixa o accordion abrir vazio. Se algum
+                      caso precisar bloquear a expansão, bloqueie em
+                      `isExpandable`, nunca só no render do conteúdo. */}
+                  {isExpandable ? (
                     <AccordionContent className="px-3 pb-4">
                       <TeamAccessFields
                         access={team.access}
