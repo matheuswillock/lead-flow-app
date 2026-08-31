@@ -3,6 +3,8 @@ import type {
   IRadarLeadGateUnitOfWork,
   RadarLeadGateProfile,
   RadarLeadGateTransaction,
+  RadarLeadIdentity,
+  RadarSubmittedIdentity,
 } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
 import { CreateCrmLeadFromRadarFormGateUseCase } from "./CreateCrmLeadFromRadarFormGateUseCase"
 import { EvaluateRadarProfileLeadEligibilityUseCase } from "./EvaluateRadarProfileLeadEligibilityUseCase"
@@ -29,14 +31,18 @@ const createOrUpdateFromRadarProfile = mock(async () => ({ leadId: "lead-1", cre
 const linkLeadIdentity = mock(async () => {})
 const appendGateEvent = mock(async () => {})
 const attachLeadToPendingSubmissions = mock(async () => {})
+const findSubmittedIdentity = mock(async () => null as RadarSubmittedIdentity | null)
+const findLeadIdentity = mock(async () => null as RadarLeadIdentity | null)
 
 const transaction: RadarLeadGateTransaction = {
   reloadProfile,
   findIdentityMatches,
+  findLeadIdentity,
   createOrUpdateFromRadarProfile,
   linkLeadIdentity,
   appendGateEvent,
   attachLeadToPendingSubmissions,
+  findSubmittedIdentity,
 }
 const unitOfWork: IRadarLeadGateUnitOfWork = {
   async execute<T>(
@@ -78,6 +84,10 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     linkLeadIdentity.mockImplementation(async () => {})
     appendGateEvent.mockImplementation(async () => {})
     attachLeadToPendingSubmissions.mockImplementation(async () => {})
+    findSubmittedIdentity.mockReset()
+    findLeadIdentity.mockReset()
+    findSubmittedIdentity.mockImplementation(async () => null)
+    findLeadIdentity.mockImplementation(async () => null)
   })
 
   it("cria com nome de uma palavra e telefone brasileiro válido sem exigir e-mail", async () => {
@@ -91,6 +101,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       profile,
       existingLeadId: null,
       origin: {},
+      referral: null,
     })
     expect(linkLeadIdentity).toHaveBeenCalledTimes(1)
     expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
@@ -141,6 +152,148 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     expect(createOrUpdateFromRadarProfile).not.toHaveBeenCalled()
     expect(appendGateEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "radar.crm_identity_conflict" }),
+    )
+  })
+
+  // Caso real de produção (31/08, Liber): o perfil do `alexandre@` está
+  // vinculado desde 11/08 ao lead "vladicea". Toda resposta que entra pelo link
+  // dos e-mails dele caía naquele card, seja qual for a identidade digitada.
+  const alexandreProfile: RadarLeadGateProfile = {
+    ...profile,
+    displayName: "Alexandre",
+    normalizedName: "alexandre",
+    displayPhone: "(13) 99788-9618",
+    normalizedPhone: "5513997889618",
+    primaryEmail: "alexandre@libercorretora.com.br",
+    normalizedPrimaryEmail: "alexandre@libercorretora.com.br",
+    leadId: "lead-vladicea",
+  }
+  const alexandreTyped: RadarSubmittedIdentity = {
+    name: "Alexandre",
+    phone: "(13) 99788-9618",
+    email: "alexandre@libercorretora.com.br",
+    sessionLeadId: null,
+  }
+  const vladiceaLead: RadarLeadIdentity = {
+    id: "lead-vladicea",
+    name: "vladicea",
+    phone: "(11) 94072-9650",
+    email: "diretoria@libercorretora.com.br",
+  }
+
+  function arrangeDivergentSubmission() {
+    reloadProfile.mockImplementation(async () => alexandreProfile)
+    findIdentityMatches.mockImplementation(async () => ({
+      leadIdMatch: "lead-vladicea",
+      phoneMatch: null,
+      emailMatch: null,
+    }))
+    findSubmittedIdentity.mockImplementation(async () => alexandreTyped)
+    findLeadIdentity.mockImplementation(async () => vladiceaLead)
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-alexandre",
+      created: true,
+    }))
+  }
+
+  it("cria card novo quando a identidade digitada diverge do lead vinculado ao perfil", async () => {
+    arrangeDivergentSubmission()
+
+    const output = await useCase.execute({
+      ...input,
+      origin: { emailLogId: "log-1", campaignId: "campaign-1" },
+    })
+
+    expect(output.result).toEqual({ leadId: "lead-alexandre", created: true })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledTimes(1)
+    const [firstCall] = createOrUpdateFromRadarProfile.mock.calls as unknown as [
+      [
+        {
+          existingLeadId: string | null
+          profile: RadarLeadGateProfile
+          referral: Record<string, unknown> | null
+        },
+      ],
+    ]
+    const call = firstCall[0]
+    // Lead antigo intocado: nenhuma chamada carrega o id dele.
+    expect(call.existingLeadId).toBeNull()
+    expect(call.profile.displayPhone).toBe("(13) 99788-9618")
+    expect(call.profile.primaryEmail).toBe("alexandre@libercorretora.com.br")
+    expect(call.referral).toEqual({
+      reason: "typed_identity_divergence",
+      referralOfLeadId: "lead-vladicea",
+      referralOfRadarProfileId: "profile-1",
+      referralOfEmailLogId: "log-1",
+      referralOfCampaignId: "campaign-1",
+    })
+    expect(appendGateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "radar.crm_lead_created" }),
+    )
+    // O vínculo do perfil continua com o lead do destinatário original.
+    expect(linkLeadIdentity).not.toHaveBeenCalled()
+    expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
+      formId: input.formId,
+      visitorSessionId: "session-1",
+      leadId: "lead-alexandre",
+    })
+  })
+
+  it("reaproveita o lead já materializado pela sessão em vez de criar outro", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      sessionLeadId: "lead-alexandre",
+    }))
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-alexandre",
+      created: false,
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(output.result).toEqual({ leadId: "lead-alexandre", created: false })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: "lead-alexandre" }),
+    )
+    expect(linkLeadIdentity).not.toHaveBeenCalled()
+  })
+
+  it("anexa quando o telefone digitado bate com o lead vinculado", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      phone: vladiceaLead.phone,
+    }))
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-vladicea",
+      created: false,
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(output.result).toEqual({ leadId: "lead-vladicea", created: false })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: "lead-vladicea" }),
+    )
+    expect(linkLeadIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it("anexa quando a submissão não trouxe identidade digitada completa", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      email: null,
+    }))
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-vladicea",
+      created: false,
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: "lead-vladicea" }),
     )
   })
 

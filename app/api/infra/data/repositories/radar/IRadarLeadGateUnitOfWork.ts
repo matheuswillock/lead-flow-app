@@ -21,12 +21,46 @@ export type RadarLeadGatePromotionResult = {
   created: boolean
 }
 
+/**
+ * Identidade **digitada** nas respostas da sessão (perguntas com
+ * `mappingTarget: native_field` e `mappingKey` name/phone/email), lida da
+ * submissão em andamento. O perfil que chega ao gate é o do destinatário do
+ * e-mail; só a submissão sabe quem de fato respondeu.
+ */
+export type RadarSubmittedIdentity = {
+  name: string | null
+  phone: string | null
+  email: string | null
+  /** Lead que esta sessão já materializou — âncora de idempotência do gate. */
+  sessionLeadId: string | null
+}
+
+export type RadarLeadIdentity = {
+  id: string
+  name: string | null
+  phone: string | null
+  email: string | null
+}
+
+/** Encaminhamento detectado: quem respondeu não é o contato do `cs_el`. */
+export type RadarLeadGateReferral = {
+  reason: "typed_identity_divergence"
+  referralOfLeadId: string
+  referralOfRadarProfileId: string
+  referralOfEmailLogId: string | null
+  referralOfCampaignId: string | null
+}
+
 export interface IPublicFormFactsRepository {
   attachLeadToPendingSubmissions(input: {
     formId: string
     visitorSessionId: string
     leadId: string
   }): Promise<void>
+  findSubmittedIdentity(input: {
+    formId: string
+    visitorSessionId: string
+  }): Promise<RadarSubmittedIdentity | null>
 }
 
 export interface IRadarLeadGateProfileRepository {
@@ -48,12 +82,14 @@ export interface IRadarLeadGateProfileRepository {
 
 export interface IRadarCrmLeadPort {
   findIdentityMatches(profile: RadarLeadGateProfile): Promise<RadarCrmIdentityMatch>
+  findLeadIdentity(input: { teamId: string; leadId: string }): Promise<RadarLeadIdentity | null>
   createOrUpdateFromRadarProfile(input: {
     teamId: string
     formId: string
     profile: RadarLeadGateProfile
     existingLeadId: string | null
     origin: Record<string, unknown>
+    referral?: RadarLeadGateReferral | null
   }): Promise<RadarLeadGatePromotionResult>
 }
 

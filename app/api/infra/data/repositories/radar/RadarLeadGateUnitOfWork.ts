@@ -6,6 +6,9 @@ import type {
   RadarLeadGateProfile,
   RadarLeadGateTransaction,
   RadarLeadGatePromotionResult,
+  RadarLeadGateReferral,
+  RadarLeadIdentity,
+  RadarSubmittedIdentity,
 } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
@@ -123,12 +126,70 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     }
   }
 
+  async findLeadIdentity(input: {
+    teamId: string
+    leadId: string
+  }): Promise<RadarLeadIdentity | null> {
+    const lead = await this.transaction.lead.findFirst({
+      where: { id: input.leadId, teamId: input.teamId, deletedAt: null },
+      select: { id: true, name: true, phone: true, email: true },
+    })
+    if (!lead) return null
+    return { id: lead.id, name: lead.name, phone: lead.phone, email: lead.email }
+  }
+
+  /**
+   * Identidade digitada da sessão. Lê as respostas já persistidas pelo
+   * `/progress` (o gate roda depois da gravação de cada campo), filtrando por
+   * `mappingTarget: native_field` no snapshot da pergunta — o `mappingKey`
+   * sozinho também existe em `custom_field` chamado "email".
+   */
+  async findSubmittedIdentity(input: {
+    formId: string
+    visitorSessionId: string
+  }): Promise<RadarSubmittedIdentity | null> {
+    const submission = await this.transaction.publicFormSubmission.findFirst({
+      where: { formId: input.formId, visitorSessionId: input.visitorSessionId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        leadId: true,
+        answers: {
+          select: { value: true, mappingKey: true, questionSnapshot: true },
+        },
+      },
+    })
+    if (!submission) return null
+
+    const identity: Record<string, string> = {}
+    for (const answer of submission.answers) {
+      const snapshot =
+        answer.questionSnapshot && typeof answer.questionSnapshot === "object"
+          ? (answer.questionSnapshot as Record<string, unknown>)
+          : {}
+      if (snapshot.mappingTarget !== "native_field") continue
+      const mappingKey =
+        answer.mappingKey ?? (typeof snapshot.mappingKey === "string" ? snapshot.mappingKey : null)
+      if (mappingKey !== "name" && mappingKey !== "phone" && mappingKey !== "email") continue
+      const value = typeof answer.value === "string" ? answer.value.trim() : ""
+      if (!value) continue
+      identity[mappingKey] = value
+    }
+
+    return {
+      name: identity.name ?? null,
+      phone: identity.phone ?? null,
+      email: identity.email ?? null,
+      sessionLeadId: submission.leadId,
+    }
+  }
+
   async createOrUpdateFromRadarProfile(input: {
     teamId: string
     formId: string
     profile: RadarLeadGateProfile
     existingLeadId: string | null
     origin: Record<string, unknown>
+    referral?: RadarLeadGateReferral | null
   }): Promise<RadarLeadGatePromotionResult> {
     const phone = input.profile.displayPhone ?? input.profile.normalizedPhone
     const email = input.profile.primaryEmail ?? input.profile.normalizedPrimaryEmail
@@ -185,6 +246,9 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
           formName: form.name,
           ...(campaignId ? { campaignId } : {}),
           ...(emailLogId ? { emailLogId } : {}),
+          // Indicação: a resposta veio pelo link do e-mail de outra pessoa. É
+          // sinal comercial, e cabe no JSON que já existe — sem coluna nova.
+          ...(input.referral ? { referral: { ...input.referral } } : {}),
         },
         createdBy: team.masterId,
         updatedBy: team.masterId,
