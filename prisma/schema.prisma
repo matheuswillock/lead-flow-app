@@ -931,7 +931,15 @@ model Profile {
   // por asaasCustomerId MUST filtrar por esta coluna também, para não
   // aplicar evento de uma conta no profile de outra (colisão de cus_ entre
   // as duas contas durante a janela dual).
-  asaasCustomerAccount     AsaasAccount        @default(legacy)
+  //
+  // Default primary, não legacy (achado cursor[bot] no PR #1100, RUN_ID
+  // bc-6fc80ca1): pré-cutover só ASAAS_WEBHOOK_TOKEN existe, e
+  // resolveAsaasWebhookAccount resolve todo evento como "primary" — se o
+  // estoque atual nascesse "legacy", nenhum webhook bateria com nenhum
+  // registro existente. "legacy" só passa a existir de fato no dia do
+  // cutover (E6), via UPDATE idempotente no mesmo deploy que move as keys
+  // atuais para ASAAS_LEGACY_*.
+  asaasCustomerAccount     AsaasAccount        @default(primary)
   subscriptionId           String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
   subscriptionPlan         SubscriptionPlan?
@@ -942,7 +950,8 @@ model Profile {
   asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
   // Conta Asaas dona do asaasSubscriptionId acima — mesma razão de
   // asaasCustomerAccount, para o caso sub_ (CheckoutAsaasUseCase:772).
-  asaasSubscriptionAccount AsaasAccount        @default(legacy)
+  // Default primary pelo mesmo motivo (ver comentário de asaasCustomerAccount).
+  asaasSubscriptionAccount AsaasAccount        @default(primary)
   subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
   subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
   activeTeamId             String?             @db.Uuid
@@ -1411,7 +1420,8 @@ model BackofficePayment {
   // Conta Asaas dona do asaasPaymentId acima (E4 de
   // [[10 — Fundações Multi-conta — Backend]], C33) — todo lookup por
   // asaasPaymentId MUST filtrar por esta coluna também.
-  asaasAccount       AsaasAccount @default(legacy) @map("asaasAccount")
+  // Default primary — mesmo motivo de Profile.asaasCustomerAccount.
+  asaasAccount       AsaasAccount @default(primary) @map("asaasAccount")
   billingType        String       @default("PIX") @map("billingType") @db.Text
   status             String       @default("PENDING") @db.Text
   amount             Decimal      @db.Decimal(12, 2)
@@ -1593,7 +1603,8 @@ model BackofficeAdhesion {
   // [[10 — Fundações Multi-conta — Backend]], C33) — uma adesão inteira
   // pertence a uma única conta; usada para filtrar tanto o lookup direto
   // por asaasPaymentId quanto o lookup por ledger (installmentLedger).
-  asaasAccount                      AsaasAccount                   @default(legacy) @map("asaasAccount")
+  // Default primary — mesmo motivo de Profile.asaasCustomerAccount.
+  asaasAccount                      AsaasAccount                   @default(primary) @map("asaasAccount")
   discountPercent                   Decimal?                       @map("discountPercent") @db.Decimal(5, 2)
   discountStatus                    String?                        @map("discountStatus") @db.Text
   discountApprovedByProfileId       String?                        @map("discountApprovedByProfileId") @db.Uuid
@@ -5555,9 +5566,13 @@ model AsaasWebhookEvent {
   // Conta Asaas que originou o evento (E4 de
   // [[10 — Fundações Multi-conta — Backend]], M3.1/M3.3) — resolvida pela
   // rota a partir de qual token bateu (primary/legacy), persistida por
-  // claimForProcessing antes do processamento. Default legacy: todo evento
-  // existente antes desta migration veio da única conta que existia.
-  account       AsaasAccount            @default(legacy)
+  // claimForProcessing antes do processamento. Default primary, não legacy
+  // (achado cursor[bot] no PR #1100, RUN_ID bc-6fc80ca1): pré-cutover só
+  // ASAAS_WEBHOOK_TOKEN existe e todo evento — passado ou futuro — resolve
+  // como "primary" (DA1: nome de env fixo, não a conta que um dia vai virar
+  // legacy). Um evento pending/failed pré-migration que caísse em "legacy"
+  // seria reprocessado com o token errado.
+  account       AsaasAccount            @default(primary)
   errorMessage  String?                 @map("errorMessage") @db.Text
   attemptCount  Int                     @default(0) @map("attemptCount")
   nextAttemptAt DateTime                @default(now()) @map("nextAttemptAt") @db.Timestamptz(6)
