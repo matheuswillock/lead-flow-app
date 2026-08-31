@@ -133,10 +133,28 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   }): Promise<RadarLeadIdentity | null> {
     const lead = await this.transaction.lead.findFirst({
       where: { id: input.leadId, teamId: input.teamId, deletedAt: null },
-      select: { id: true, name: true, phone: true, email: true },
+      select: { id: true, name: true, phone: true, email: true, originMetadata: true },
     })
     if (!lead) return null
-    return { id: lead.id, name: lead.name, phone: lead.phone, email: lead.email }
+
+    const metadata =
+      lead.originMetadata && typeof lead.originMetadata === "object"
+        ? (lead.originMetadata as Record<string, unknown>)
+        : {}
+    const referral =
+      metadata.referral && typeof metadata.referral === "object"
+        ? (metadata.referral as Record<string, unknown>)
+        : {}
+    return {
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      referralOfRadarProfileId:
+        typeof referral.referralOfRadarProfileId === "string"
+          ? referral.referralOfRadarProfileId
+          : null,
+    }
   }
 
   /**
@@ -153,6 +171,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       where: { formId: input.formId, visitorSessionId: input.visitorSessionId },
       orderBy: { createdAt: "desc" },
       select: {
+        id: true,
         leadId: true,
         answers: {
           select: { value: true, mappingKey: true, questionSnapshot: true },
@@ -180,6 +199,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       name: identity.name ?? null,
       phone: identity.phone ?? null,
       email: identity.email ?? null,
+      submissionId: submission.id,
       sessionLeadId: submission.leadId,
     }
   }
@@ -364,22 +384,44 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     visitorSessionId: string
     leadId: string
     replaceLeadId?: string | null
+    submissionId?: string | null
   }): Promise<void> {
+    // A reatribuição exige a submissão corrente. Uma sessão de visitante
+    // longeva pode ter conversões antigas já concluídas neste mesmo formulário
+    // (atribuições de campanha diferentes são caso suportado) — sem o `id`, o
+    // `updateMany` arrastaria esse histórico para o card novo.
+    const reassign = input.replaceLeadId && input.submissionId ? input.replaceLeadId : null
+
     await this.transaction.publicFormSubmission.updateMany({
       where: {
         formId: input.formId,
         visitorSessionId: input.visitorSessionId,
-        // Sem `replaceLeadId` o filtro continua sendo "submissão sem lead". Com
-        // ele (divergência de identidade), a submissão que uma resposta
-        // anterior anexou ao lead do destinatário é puxada para o card novo —
-        // senão a atividade de conclusão vai para o card errado e a próxima
-        // revisão de identidade cria mais um lead de indicação.
-        ...(input.replaceLeadId
-          ? { OR: [{ leadId: null }, { leadId: input.replaceLeadId }] }
+        // Sem reatribuição o filtro continua sendo "submissão sem lead". Com
+        // ela, a submissão que uma resposta anterior anexou ao lead do
+        // destinatário é puxada para o card novo — senão a próxima revisão de
+        // identidade cria mais um lead de indicação.
+        ...(reassign
+          ? { id: input.submissionId as string, OR: [{ leadId: null }, { leadId: reassign }] }
           : { leadId: null }),
       },
       data: { leadId: input.leadId },
     })
+
+    // O worker da submissão e o gate correm em filas diferentes. Se a conclusão
+    // comitou primeiro, a atividade com identidade e respostas já nasceu no
+    // card do destinatário; movê-la junto, na mesma transação, é o que impede a
+    // resposta de ficar legível no card errado. Escopada pela submissão via
+    // `payload.submissionId`, então a atividade de outra conversão da mesma
+    // sessão não é tocada.
+    if (reassign) {
+      await this.transaction.leadActivity.updateMany({
+        where: {
+          leadId: reassign,
+          payload: { path: ["submissionId"], equals: input.submissionId as string },
+        },
+        data: { leadId: input.leadId },
+      })
+    }
 
     // SPEC 40 E2 × modo radar (review #1051). O evento de progresso que move o
     // gate e o job da submissão vivem em filas diferentes, sem ordem garantida:

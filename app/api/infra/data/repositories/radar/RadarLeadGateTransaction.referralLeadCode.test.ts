@@ -14,6 +14,7 @@ const { RadarLeadGateUnitOfWork } = await import("./RadarLeadGateUnitOfWork")
 
 const FORM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const PROFILE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+const SUBMISSION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 
 const profile = {
   id: PROFILE_ID,
@@ -38,6 +39,7 @@ const referral = {
 function makeUnitOfWork() {
   const leadCreate = mock(async () => ({ id: "lead-alexandre" }))
   const submissionUpdateMany = mock(async () => ({ count: 1 }))
+  const activityUpdateMany = mock(async () => ({ count: 1 }))
   const transaction = {
     $executeRaw: mock(async () => 1),
     publicForm: {
@@ -45,6 +47,7 @@ function makeUnitOfWork() {
     },
     team: { findUnique: mock(async () => ({ masterId: "master-1" })) },
     lead: { create: leadCreate, update: mock(async () => ({})) },
+    leadActivity: { updateMany: activityUpdateMany },
     publicFormSubmission: { updateMany: submissionUpdateMany },
     publicFormMetricEvent: { deleteMany: mock(async () => ({ count: 0 })) },
   }
@@ -55,6 +58,7 @@ function makeUnitOfWork() {
     unitOfWork: new RadarLeadGateUnitOfWork(database as never),
     leadCreate,
     submissionUpdateMany,
+    activityUpdateMany,
   }
 }
 
@@ -99,7 +103,14 @@ describe("createOrUpdateFromRadarProfile — leadCode do lead de indicação", (
 })
 
 describe("attachLeadToPendingSubmissions — reatribuição na divergência", () => {
-  it("move a submissão que já estava anexada ao lead do destinatário", async () => {
+  /**
+   * Review #1107 (Codex P2). Uma sessão de visitante longeva pode ter conversões
+   * antigas **já concluídas** no mesmo formulário — atribuições de campanha
+   * diferentes são caso suportado. Um `updateMany` por sessão arrastaria esse
+   * histórico para o card de indicação; a reatribuição vale só para a submissão
+   * corrente.
+   */
+  it("reatribui apenas a submissão corrente, nunca o histórico da sessão", async () => {
     const { unitOfWork, submissionUpdateMany } = makeUnitOfWork()
 
     await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
@@ -108,6 +119,7 @@ describe("attachLeadToPendingSubmissions — reatribuição na divergência", ()
         visitorSessionId: "sessao-alexandre",
         leadId: "lead-alexandre",
         replaceLeadId: "lead-vladicea",
+        submissionId: SUBMISSION_ID,
       }),
     )
 
@@ -115,14 +127,62 @@ describe("attachLeadToPendingSubmissions — reatribuição na divergência", ()
       where: {
         formId: FORM_ID,
         visitorSessionId: "sessao-alexandre",
+        id: SUBMISSION_ID,
         OR: [{ leadId: null }, { leadId: "lead-vladicea" }],
       },
       data: { leadId: "lead-alexandre" },
     })
   })
 
+  /**
+   * Review #1107 (Codex P1, metade da corrida). Se o worker da submissão
+   * concluiu antes do gate, a atividade rica já nasceu no card do destinatário.
+   * A mesma transação que move a submissão move a atividade daquela submissão.
+   */
+  it("leva junto a atividade de conclusão daquela submissão", async () => {
+    const { unitOfWork, activityUpdateMany } = makeUnitOfWork()
+
+    await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
+      transaction.attachLeadToPendingSubmissions({
+        formId: FORM_ID,
+        visitorSessionId: "sessao-alexandre",
+        leadId: "lead-alexandre",
+        replaceLeadId: "lead-vladicea",
+        submissionId: SUBMISSION_ID,
+      }),
+    )
+
+    expect(activityUpdateMany).toHaveBeenCalledWith({
+      where: {
+        leadId: "lead-vladicea",
+        payload: { path: ["submissionId"], equals: SUBMISSION_ID },
+      },
+      data: { leadId: "lead-alexandre" },
+    })
+  })
+
+  it("sem submissão corrente não reatribui nada — só submissão sem lead", async () => {
+    const { unitOfWork, submissionUpdateMany, activityUpdateMany } = makeUnitOfWork()
+
+    await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
+      transaction.attachLeadToPendingSubmissions({
+        formId: FORM_ID,
+        visitorSessionId: "sessao-alexandre",
+        leadId: "lead-alexandre",
+        replaceLeadId: "lead-vladicea",
+        submissionId: null,
+      }),
+    )
+
+    expect(submissionUpdateMany).toHaveBeenCalledWith({
+      where: { formId: FORM_ID, visitorSessionId: "sessao-alexandre", leadId: null },
+      data: { leadId: "lead-alexandre" },
+    })
+    expect(activityUpdateMany).not.toHaveBeenCalled()
+  })
+
   it("sem reatribuição pedida, continua tocando só submissão sem lead", async () => {
-    const { unitOfWork, submissionUpdateMany } = makeUnitOfWork()
+    const { unitOfWork, submissionUpdateMany, activityUpdateMany } = makeUnitOfWork()
 
     await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
       transaction.attachLeadToPendingSubmissions({
@@ -137,5 +197,6 @@ describe("attachLeadToPendingSubmissions — reatribuição na divergência", ()
       where: { formId: FORM_ID, visitorSessionId: "sessao-alexandre", leadId: null },
       data: { leadId: "lead-alexandre" },
     })
+    expect(activityUpdateMany).not.toHaveBeenCalled()
   })
 })

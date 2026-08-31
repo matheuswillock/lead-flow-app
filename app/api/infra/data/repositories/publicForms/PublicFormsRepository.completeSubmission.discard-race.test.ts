@@ -28,7 +28,13 @@ const answerFindMany = mock(async () => [] as unknown[])
 const answerDeleteMany = mock(async () => ({ count: 0 }))
 
 const transactionClient = {
-  publicFormSubmission: { update: submissionUpdate, findFirst: submissionFindFirst },
+  publicFormSubmission: {
+    update: submissionUpdate,
+    findFirst: submissionFindFirst,
+    // A conclusão relê o `leadId` da linha que acabou de travar — é assim que
+    // ela deixou de rebaixar a reatribuição do gate (review do #1107).
+    findUnique: mock(async () => ({ leadId: null }) as { leadId: string | null }),
+  },
   publicFormMetricEvent: { upsert: metricUpsert },
   publicFormAnswer: {
     findMany: answerFindMany,

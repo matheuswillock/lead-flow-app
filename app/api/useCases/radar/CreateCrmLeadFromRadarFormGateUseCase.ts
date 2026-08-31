@@ -77,25 +77,28 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
 
           const candidateLeadId =
             matches.leadIdMatch ?? matches.phoneMatch ?? matches.emailMatch ?? null
-          const divergence = await this.resolveTypedIdentityDivergence({
+          const placement = await this.resolveSessionPlacement({
             transaction,
             teamId: input.teamId,
             formId: input.formId,
             visitorSessionId: input.visitorSessionId,
+            radarProfileId: profile.id,
             candidateLeadId,
           })
+          const divergence = placement.divergentFromLeadId
 
           const promotion = await transaction.createOrUpdateFromRadarProfile({
             teamId: input.teamId,
             formId: input.formId,
-            profile: divergence
-              ? overlayTypedIdentityOnProfile(profile, divergence.typed)
-              : profile,
-            existingLeadId: divergence ? divergence.sessionLeadId : candidateLeadId,
+            profile:
+              divergence && placement.typed
+                ? overlayTypedIdentityOnProfile(profile, placement.typed)
+                : profile,
+            existingLeadId: divergence ? placement.sessionReferralLeadId : candidateLeadId,
             origin: input.origin ?? {},
             referral: divergence
               ? buildReferral({
-                  leadId: divergence.candidateLeadId,
+                  leadId: divergence,
                   radarProfileId: profile.id,
                   origin: input.origin ?? {},
                 })
@@ -132,7 +135,7 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
               ...(divergence
                 ? {
                     typedIdentityDivergence: true,
-                    referralOfLeadId: divergence.candidateLeadId,
+                    referralOfLeadId: divergence,
                   }
                 : {}),
             },
@@ -141,12 +144,21 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
             formId: input.formId,
             visitorSessionId: input.visitorSessionId,
             leadId: promotion.leadId,
-            // A sessão pode ter sido anexada ao lead do destinatário numa
-            // resposta anterior, quando a identidade digitada ainda estava
-            // incompleta. Puxar a submissão para o card novo é o que fecha o
-            // ciclo: a atividade de conclusão vai para o card certo e a próxima
-            // revisão enxerga `sessionLeadId` já correto, sem criar outro lead.
-            replaceLeadId: divergence ? divergence.candidateLeadId : null,
+            // Duas direções, o mesmo princípio: a submissão corrente pertence
+            // ao lead que o gate acabou de resolver.
+            //
+            // Divergência — a sessão pode ter sido anexada ao lead do
+            // destinatário numa resposta anterior, quando a identidade digitada
+            // ainda estava incompleta; sem puxá-la, a conclusão fica no card
+            // errado e a revisão seguinte cria mais um lead de indicação.
+            //
+            // Sem divergência — o respondente pode ter CORRIGIDO a identidade
+            // para a do destinatário depois de já ter ganhado um card de
+            // indicação; aí a submissão volta. Só um card de indicação **deste
+            // gate para este perfil** é remanejado: lead que a sessão ganhou por
+            // outro fluxo não é nosso para mover.
+            replaceLeadId: divergence ? candidateLeadId : placement.sessionReferralLeadId,
+            submissionId: placement.typed?.submissionId ?? null,
           })
 
           console.info("[CreateCrmLeadFromRadarFormGateUseCase][execute] lead materializado", {
@@ -170,49 +182,77 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
   }
 
   /**
+   * Onde a submissão desta sessão pertence.
+   *
    * O gate ancora no perfil do destinatário do e-mail — quem responde um
    * encaminhamento é outra pessoa. Quando telefone **e** e-mail digitados
    * divergem do lead candidato, a resposta merece card próprio; era esse anexo
    * mudo que fazia o prospect real desaparecer dentro do card do destinatário.
    *
-   * Devolve `null` quando não há divergência (dedupe legítimo, identidade
-   * incompleta, ou nenhum lead candidato) — o caminho de anexo segue intacto.
+   * `sessionReferralLeadId` é o card de indicação que **este gate** já criou
+   * para **este perfil** nesta sessão. Serve de âncora de idempotência na
+   * divergência (sem ele, cada campo digitado criaria um card) e de destino de
+   * volta quando o respondente corrige a identidade. Lead que a sessão ganhou
+   * por outro fluxo nunca entra aqui.
    */
-  private async resolveTypedIdentityDivergence(input: {
+  private async resolveSessionPlacement(input: {
     transaction: RadarLeadGateTransaction
     teamId: string
     formId: string
     visitorSessionId: string
+    radarProfileId: string
     candidateLeadId: string | null
   }): Promise<{
-    typed: RadarSubmittedIdentity
-    candidateLeadId: string
-    sessionLeadId: string | null
-  } | null> {
+    typed: RadarSubmittedIdentity | null
+    divergentFromLeadId: string | null
+    sessionReferralLeadId: string | null
+  }> {
+    const empty = { typed: null, divergentFromLeadId: null, sessionReferralLeadId: null }
     const candidateLeadId = input.candidateLeadId
-    if (!candidateLeadId) return null
+    if (!candidateLeadId) return empty
 
     const typed = await input.transaction.findSubmittedIdentity({
       formId: input.formId,
       visitorSessionId: input.visitorSessionId,
     })
-    if (!typed) return null
+    if (!typed) return empty
 
-    const leadIdentity = await input.transaction.findLeadIdentity({
+    const sessionReferralLeadId = await this.resolveSessionReferralLead({
+      transaction: input.transaction,
+      teamId: input.teamId,
+      radarProfileId: input.radarProfileId,
+      sessionLeadId: typed.sessionLeadId,
+      candidateLeadId,
+    })
+
+    const candidateIdentity = await input.transaction.findLeadIdentity({
       teamId: input.teamId,
       leadId: candidateLeadId,
     })
-    if (!isTypedIdentityDivergentFromLead(typed, leadIdentity)) return null
+    const divergent = isTypedIdentityDivergentFromLead(typed, candidateIdentity)
 
     return {
       typed,
-      candidateLeadId,
-      // Segunda resposta de identidade da mesma sessão volta a cair aqui. Sem
-      // reaproveitar o lead que a sessão já materializou, cada campo digitado
-      // criaria um card novo.
-      sessionLeadId:
-        typed.sessionLeadId && typed.sessionLeadId !== candidateLeadId ? typed.sessionLeadId : null,
+      divergentFromLeadId: divergent ? candidateLeadId : null,
+      sessionReferralLeadId,
     }
+  }
+
+  private async resolveSessionReferralLead(input: {
+    transaction: RadarLeadGateTransaction
+    teamId: string
+    radarProfileId: string
+    sessionLeadId: string | null
+    candidateLeadId: string
+  }): Promise<string | null> {
+    const { sessionLeadId } = input
+    if (!sessionLeadId || sessionLeadId === input.candidateLeadId) return null
+
+    const sessionLead = await input.transaction.findLeadIdentity({
+      teamId: input.teamId,
+      leadId: sessionLeadId,
+    })
+    return sessionLead?.referralOfRadarProfileId === input.radarProfileId ? sessionLeadId : null
   }
 }
 

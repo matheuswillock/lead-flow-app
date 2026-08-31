@@ -31,6 +31,8 @@ export type RadarSubmittedIdentity = {
   name: string | null
   phone: string | null
   email: string | null
+  /** Submissão corrente da sessão — escopo de toda reatribuição do gate. */
+  submissionId: string
   /** Lead que esta sessão já materializou — âncora de idempotência do gate. */
   sessionLeadId: string | null
 }
@@ -40,6 +42,13 @@ export type RadarLeadIdentity = {
   name: string | null
   phone: string | null
   email: string | null
+  /**
+   * Perfil de origem quando este lead nasceu como indicação deste gate
+   * (`originMetadata.referral.referralOfRadarProfileId`). É o que distingue
+   * "card que nós criamos para esta sessão" de "lead que outro fluxo anexou" —
+   * só o primeiro pode ser remanejado por uma revisão de identidade.
+   */
+  referralOfRadarProfileId: string | null
 }
 
 /** Encaminhamento detectado: quem respondeu não é o contato do `cs_el`. */
@@ -58,12 +67,17 @@ export interface IPublicFormFactsRepository {
     leadId: string
     /**
      * Lead do qual a submissão deve ser **retirada** além do caso `leadId`
-     * nulo. Só a divergência de identidade usa: a sessão pode ter sido anexada
-     * ao lead do destinatário numa resposta anterior (identidade ainda
-     * incompleta), e sem isso a submissão ficaria no card errado e cada revisão
-     * seguinte criaria mais um lead de indicação.
+     * nulo. A sessão pode ter sido anexada ao lead do destinatário numa
+     * resposta anterior (identidade ainda incompleta), e sem isso a submissão
+     * ficaria no card errado e cada revisão seguinte criaria mais um lead.
+     *
+     * Exige `submissionId`: uma sessão longa pode ter conversões antigas já
+     * concluídas no mesmo formulário, e um `updateMany` por sessão arrastaria
+     * o histórico junto.
      */
     replaceLeadId?: string | null
+    /** Submissão corrente — obrigatória para qualquer reatribuição. */
+    submissionId?: string | null
   }): Promise<void>
   findSubmittedIdentity(input: {
     formId: string

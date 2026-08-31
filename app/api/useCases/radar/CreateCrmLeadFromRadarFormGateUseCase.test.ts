@@ -32,7 +32,9 @@ const linkLeadIdentity = mock(async () => {})
 const appendGateEvent = mock(async () => {})
 const attachLeadToPendingSubmissions = mock(async () => {})
 const findSubmittedIdentity = mock(async () => null as RadarSubmittedIdentity | null)
-const findLeadIdentity = mock(async () => null as RadarLeadIdentity | null)
+const findLeadIdentity = mock(
+  async (_input: { teamId: string; leadId: string }) => null as RadarLeadIdentity | null,
+)
 
 const transaction: RadarLeadGateTransaction = {
   reloadProfile,
@@ -110,6 +112,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       visitorSessionId: "session-1",
       leadId: "lead-1",
       replaceLeadId: null,
+      submissionId: null,
     })
   })
 
@@ -174,6 +177,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     name: "Alexandre",
     phone: "(13) 99788-9618",
     email: "alexandre@libercorretora.com.br",
+    submissionId: "sub-corrente",
     sessionLeadId: null,
   }
   const vladiceaLead: RadarLeadIdentity = {
@@ -181,6 +185,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     name: "vladicea",
     phone: "(11) 94072-9650",
     email: "diretoria@libercorretora.com.br",
+    referralOfRadarProfileId: null,
   }
 
   function arrangeDivergentSubmission() {
@@ -241,6 +246,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       // Na divergência a submissão nunca pode ficar no card do destinatário,
       // mesmo que uma resposta anterior já a tenha anexado lá.
       replaceLeadId: "lead-vladicea",
+      submissionId: "sub-corrente",
     })
   })
 
@@ -250,6 +256,20 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       ...alexandreTyped,
       sessionLeadId: "lead-alexandre",
     }))
+    // O reaproveitamento exige que o lead da sessão seja indicação DESTE gate
+    // para ESTE perfil — senão o gate estaria assumindo card de outro fluxo.
+    findLeadIdentity.mockImplementation(async ({ leadId }) => {
+      if (leadId === "lead-alexandre") {
+        return {
+          id: "lead-alexandre",
+          name: "Alexandre",
+          phone: "(13) 99788-9618",
+          email: "alexandre@libercorretora.com.br",
+          referralOfRadarProfileId: "profile-1",
+        }
+      }
+      return vladiceaLead
+    })
     createOrUpdateFromRadarProfile.mockImplementation(async () => ({
       leadId: "lead-alexandre",
       created: false,
@@ -290,6 +310,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       visitorSessionId: "session-1",
       leadId: "lead-alexandre",
       replaceLeadId: "lead-vladicea",
+      submissionId: "sub-corrente",
     })
   })
 
@@ -306,6 +327,88 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
 
     expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
       expect.objectContaining({ leadCodeSeed: "session-1" }),
+    )
+  })
+
+  /**
+   * Review #1107 (Codex P2). O respondente digita identidade divergente, ganha
+   * card de indicação, e então CORRIGE o telefone/e-mail para o do destinatário.
+   * A divergência some — e sem trazer a submissão de volta, a conclusão ficaria
+   * gravada no card de indicação enquanto o CRM aponta para o candidato.
+   */
+  it("traz a sessão de volta quando a identidade corrigida passa a bater com o lead", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      phone: vladiceaLead.phone,
+      submissionId: "sub-corrente",
+      sessionLeadId: "lead-alexandre",
+    }))
+    findLeadIdentity.mockImplementation(async ({ leadId }) => {
+      if (leadId === "lead-alexandre") {
+        return {
+          id: "lead-alexandre",
+          name: "Alexandre",
+          phone: "(13) 99788-9618",
+          email: "alexandre@libercorretora.com.br",
+          referralOfRadarProfileId: "profile-1",
+        }
+      }
+      return vladiceaLead
+    })
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-vladicea",
+      created: false,
+    }))
+
+    await useCase.execute(input)
+
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: "lead-vladicea" }),
+    )
+    expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
+      formId: input.formId,
+      visitorSessionId: "session-1",
+      leadId: "lead-vladicea",
+      replaceLeadId: "lead-alexandre",
+      submissionId: "sub-corrente",
+    })
+  })
+
+  /**
+   * Guarda do mesmo caminho: lead que a sessão ganhou por OUTRO fluxo (ex.:
+   * atribuição de campanha) não é indicação nossa e não pode ser remanejado —
+   * senão o gate passaria a mover submissão alheia entre cards.
+   */
+  it("não remaneja a sessão quando o lead dela não é indicação deste gate", async () => {
+    arrangeDivergentSubmission()
+    findSubmittedIdentity.mockImplementation(async () => ({
+      ...alexandreTyped,
+      phone: vladiceaLead.phone,
+      submissionId: "sub-corrente",
+      sessionLeadId: "lead-de-outro-fluxo",
+    }))
+    findLeadIdentity.mockImplementation(async ({ leadId }) => {
+      if (leadId === "lead-de-outro-fluxo") {
+        return {
+          id: "lead-de-outro-fluxo",
+          name: "Outro",
+          phone: null,
+          email: null,
+          referralOfRadarProfileId: null,
+        }
+      }
+      return vladiceaLead
+    })
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-vladicea",
+      created: false,
+    }))
+
+    await useCase.execute(input)
+
+    expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith(
+      expect.objectContaining({ replaceLeadId: null }),
     )
   })
 

@@ -20,7 +20,7 @@ type AnswerRow = {
 }
 
 function makeUnitOfWork(
-  submission: { leadId: string | null; answers: AnswerRow[] } | null,
+  submission: { id: string; leadId: string | null; answers: AnswerRow[] } | null,
 ) {
   const findFirst = mock(async () => submission)
   const transaction = {
@@ -33,7 +33,7 @@ function makeUnitOfWork(
   return { unitOfWork: new RadarLeadGateUnitOfWork(database as never), findFirst }
 }
 
-function read(submission: { leadId: string | null; answers: AnswerRow[] } | null) {
+function read(submission: { id: string; leadId: string | null; answers: AnswerRow[] } | null) {
   const { unitOfWork } = makeUnitOfWork(submission)
   return unitOfWork.execute({ teamId: "team-1", radarProfileId: "profile-1" }, (transaction) =>
     transaction.findSubmittedIdentity({ formId: FORM_ID, visitorSessionId: SESSION }),
@@ -49,6 +49,7 @@ const nativeAnswer = (mappingKey: string, value: unknown): AnswerRow => ({
 describe("findSubmittedIdentity", () => {
   it("devolve nome, telefone e e-mail digitados e o lead da sessão", async () => {
     const identity = await read({
+      id: "sub-corrente",
       leadId: "lead-da-sessao",
       answers: [
         nativeAnswer("name", "Alexandre"),
@@ -61,12 +62,14 @@ describe("findSubmittedIdentity", () => {
       name: "Alexandre",
       phone: "(13) 99788-9618",
       email: "alexandre@libercorretora.com.br",
+      submissionId: "sub-corrente",
       sessionLeadId: "lead-da-sessao",
     })
   })
 
   it("ignora resposta que não é native_field, mesmo com mappingKey de identidade", async () => {
     const identity = await read({
+      id: "sub-corrente",
       leadId: null,
       answers: [
         {
@@ -82,6 +85,7 @@ describe("findSubmittedIdentity", () => {
       name: null,
       phone: "(13) 99788-9618",
       email: null,
+      submissionId: "sub-corrente",
       sessionLeadId: null,
     })
   })
