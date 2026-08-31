@@ -95,10 +95,11 @@ export function scaleInstallmentScheduleToTotal(
   return scaled
 }
 
-export function resolveProductPriceForCycle(
+/** Devolve o preço do ciclo ou null quando o produto não precifica esse ciclo. */
+export function resolveProductPriceForCycleOrNull(
   product: BackofficeProduct,
   cycle: BackofficeAdhesionBillingCycle
-): number {
+): number | null {
   const value =
     cycle === "quarterly"
       ? product.priceQuarterly
@@ -110,15 +111,22 @@ export function resolveProductPriceForCycle(
             ? product.priceAnnual
             : product.priceMonthly
 
-  if (value == null) {
-    throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)
-  }
+  if (value == null) return null
 
   const price = Number(value.toString())
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Produto ${product.name} com preço inválido para o ciclo ${cycle}`)
-  }
+  if (!Number.isFinite(price) || price <= 0) return null
 
+  return price
+}
+
+export function resolveProductPriceForCycle(
+  product: BackofficeProduct,
+  cycle: BackofficeAdhesionBillingCycle
+): number {
+  const price = resolveProductPriceForCycleOrNull(product, cycle)
+  if (price == null) {
+    throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)
+  }
   return price
 }
 

@@ -6,6 +6,7 @@ import {
   calculateBackofficeAdhesionPricing,
   resolveCardMonthlyPriceFromRule,
   resolveProductPriceForCycle,
+  resolveProductPriceForCycleOrNull,
 } from "./adhesion-pricing"
 
 describe("resolveCardMonthlyPriceFromRule", () => {
@@ -79,5 +80,21 @@ describe("ciclo quadrimestral (4 meses) — precificação CRM - RADAR - GERENCI
     expect(pricing.totalAmount).toBe(10000)
     expect(pricing.pixTotalAmount).toBe(pricing.creditCardTotalAmount)
     expect(pricing.maxCardInstallments).toBe(4)
+  })
+
+  it("resolveProductPriceForCycleOrNull devolve null (sem lançar) quando o produto não tem preço no ciclo", () => {
+    const crmDefault = {
+      name: "CRM",
+      priceMonthly: { toString: () => "79.9" },
+      priceQuarterly: { toString: () => "219" },
+      priceQuadrimester: null,
+      priceSemiannual: { toString: () => "399" },
+      priceAnnual: { toString: () => "719" },
+    } as unknown as BackofficeProduct
+
+    expect(resolveProductPriceForCycleOrNull(crmDefault, quadrimester as never)).toBeNull()
+    expect(resolveProductPriceForCycleOrNull(crmDefault, "monthly")).toBe(79.9)
+    // a versão estrita continua lançando — comportamento preservado
+    expect(() => resolveProductPriceForCycle(crmDefault, quadrimester as never)).toThrow()
   })
 })
