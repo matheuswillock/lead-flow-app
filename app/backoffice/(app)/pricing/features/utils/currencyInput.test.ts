@@ -24,6 +24,23 @@ describe("parseBrazilianCurrency", () => {
       expect(parseBrazilianCurrency("12,35")).toBe(12.35)
     })
 
+    it("aceita fração de 1 dígito", () => {
+      expect(parseBrazilianCurrency("0,5")).toBe(0.5)
+    })
+
+    it("rejeita fração com mais de 2 dígitos (review #1102: 1,234 divergia entre tela e banco)", () => {
+      expect(parseBrazilianCurrency("1,234")).toBeNull()
+      expect(parseBrazilianCurrency("2.500,123")).toBeNull()
+    })
+
+    it("rejeita agrupamento de milhar inválido antes da vírgula", () => {
+      expect(parseBrazilianCurrency("12.34,56")).toBeNull()
+    })
+
+    it("entrada de fração inválida fica crua no state para a validação bloquear", () => {
+      expect(normalizeCurrencyState("1,234")).toBe("1,234")
+    })
+
     it("ignora o prefixo R$", () => {
       expect(parseBrazilianCurrency("R$ 12.345,67")).toBe(12345.67)
     })

@@ -26,8 +26,14 @@ export function parseBrazilianCurrency(input: string): number | null {
 
   let normalized: string
   if (commaCount === 1) {
-    // Com vírgula, todo ponto é milhar.
-    normalized = compact.replace(/\./g, "").replace(",", ".")
+    // Com vírgula: fração de 1-2 dígitos e, se houver pontos, agrupamento de
+    // milhar válido — "1,234" e "12.34,56" são inválidos (fração de 3 dígitos
+    // divergia entre tela e banco; review do PR #1102).
+    const [integerPart, fractionPart] = compact.split(",")
+    if (!/^\d{1,2}$/.test(fractionPart)) return null
+    if (integerPart.includes(".") && !THOUSAND_GROUPS.test(integerPart)) return null
+    if (!integerPart || !/^[\d.]+$/.test(integerPart)) return null
+    normalized = integerPart.replace(/\./g, "") + "." + fractionPart
   } else if (!compact.includes(".")) {
     normalized = compact
   } else if (CANONICAL_US_DECIMAL.test(compact)) {
