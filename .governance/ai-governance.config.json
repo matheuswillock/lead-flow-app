@@ -92,7 +92,6 @@
       "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
@@ -121,7 +120,6 @@
       "app/api/useCases/leads/LeadTagUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
@@ -284,7 +282,6 @@
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
@@ -387,7 +384,6 @@
       "app/backoffice/(app)/lead-quick-entry/page.tsx",
       "app/backoffice/(app)/page.tsx",
       "app/backoffice/(app)/payments/page.tsx",
-      "app/backoffice/(app)/pricing/page.tsx",
       "app/backoffice/(app)/radar/engajamento/page.tsx",
       "app/backoffice/(app)/radar/outbox/page.tsx",
       "app/backoffice/(app)/regras-transicao/page.tsx",
@@ -424,7 +420,8 @@
   "e2ePageCoverage": {
     "coveredBy": {
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
-      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts"
+      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
     }
   }
 }

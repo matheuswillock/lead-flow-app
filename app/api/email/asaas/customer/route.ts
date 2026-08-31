@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server"
-import { createAsaasCustomer } from "@/lib/asaas"
-import { Output } from "@/lib/output"
+import { createAsaasCustomerUseCase } from "@/app/api/useCases/asaasCustomer/CreateAsaasCustomerUseCase"
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json()
-    const data = await createAsaasCustomer(body)
-    const output = new Output(true, ["Customer created successfully"], [], data);
-    return NextResponse.json(output, { status: 200 })
-  } catch (error: any) {
-    const output = new Output(false, [], [error.message || "Failed to create customer"], null);
-    return NextResponse.json(output, { status: 500 })
+  const body = (await req.json()) as { profileId?: unknown; [key: string]: unknown }
+  const { profileId, ...customerData } = body ?? {}
+
+  if (typeof profileId !== "string" || !profileId.trim()) {
+    return NextResponse.json(
+      { isValid: false, successMessages: [], errorMessages: ["profileId é obrigatório"], result: null },
+      { status: 400 }
+    )
   }
+
+  const output = await createAsaasCustomerUseCase.execute({
+    ...customerData,
+    profileId,
+  } as Parameters<typeof createAsaasCustomerUseCase.execute>[0])
+
+  return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
 }

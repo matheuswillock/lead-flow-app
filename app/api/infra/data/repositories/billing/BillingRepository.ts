@@ -140,9 +140,12 @@ class PrismaBillingRepository implements IBillingRepository {
   }
 
   async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+    // E5 de [[10 — Fundações Multi-conta — Backend]] (DA1/M4.7): o único
+    // chamador (IncrementalBillingService.ensureCustomer) grava um
+    // customerId recém-criado via AsaasCustomerGateway — sempre primary.
     await prisma.profile.update({
       where: { id: profileId },
-      data: { asaasCustomerId },
+      data: { asaasCustomerId, asaasCustomerAccount: "primary" },
     });
   }
 

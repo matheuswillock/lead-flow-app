@@ -26,6 +26,14 @@ const OPTIONAL_EMPTY_KEYS = new Set([
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "EVO_API_BASE_URL",
   "EVO_WEBHOOK_PUBLIC_URL",
+  // Conta Asaas "legacy" (antiga) — só existe a partir da criação da conta
+  // nova ([[10 — Fundações Multi-conta — Backend]] E2); pré-cutover ficam
+  // ausentes sem quebrar nada (resolveAsaasAccount("legacy") lança em
+  // runtime com mensagem clara se forem pedidas sem estarem configuradas).
+  "ASAAS_SANDBOX_API_KEY",
+  "ASAAS_LEGACY_API_KEY",
+  "ASAAS_LEGACY_WEBHOOK_TOKEN",
+  "ASAAS_LEGACY_SANDBOX_API_KEY",
 ]);
 
 const SENSITIVE_KEYS = new Set([
@@ -38,6 +46,10 @@ const SENSITIVE_KEYS = new Set([
   "RESEND_WEBHOOK_SECRET",
   "ASAAS_API_KEY",
   "ASAAS_WEBHOOK_TOKEN",
+  "ASAAS_SANDBOX_API_KEY",
+  "ASAAS_LEGACY_API_KEY",
+  "ASAAS_LEGACY_WEBHOOK_TOKEN",
+  "ASAAS_LEGACY_SANDBOX_API_KEY",
   "ENCRYPTION_KEY",
   "INTEGRATIONS_ENCRYPTION_KEY",
   "GOOGLE_OAUTH_CLIENT_SECRET",

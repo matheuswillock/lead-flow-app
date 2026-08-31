@@ -29,6 +29,7 @@ const baseBody: AsaasWebhookBody = {
 const basePayload = {
   eventId: "evt-asaas-1",
   body: baseBody,
+  account: "primary" as const,
 }
 
 describe("publishAsaasWebhookEvent", () => {

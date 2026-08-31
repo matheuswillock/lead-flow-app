@@ -8,6 +8,7 @@ import {
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
+import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
 import {
   resolveAsaasWebhookEventId,
   type AsaasWebhookBody,
@@ -22,19 +23,31 @@ function getErrorMessage(error: unknown): string {
 export async function POST(request: NextRequest) {
   try {
     const asaasToken = request.headers.get("asaas-access-token");
-    const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN?.trim();
     const receivedToken = asaasToken?.trim();
 
     if (!receivedToken) {
       console.error("[AsaasWebhookRoute][POST] Token não fornecido");
+      // E7 (C36): observabilidade mínima do 401 em série — sintoma
+      // precursor da fila pausada pelo Asaas (15 falhas consecutivas).
+      Sentry.captureMessage("[AsaasWebhookRoute] Token não fornecido", {
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      });
       return NextResponse.json(
         { error: "Unauthorized: Token não fornecido" },
         { status: 401 }
       );
     }
 
-    if (receivedToken !== expectedToken) {
+    // M3.1 (E4): resolve qual conta (primary/legacy) enviou o evento
+    // comparando contra os dois tokens, cada um via timingSafeEqual (E3).
+    const account = resolveAsaasWebhookAccount(receivedToken);
+
+    if (!account) {
       console.error("[AsaasWebhookRoute][POST] Token inválido");
+      // E7 (C36): idem — ver comentário acima.
+      Sentry.captureMessage("[AsaasWebhookRoute] Token inválido", {
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      });
       return NextResponse.json(
         { error: "Unauthorized: Token inválido" },
         { status: 401 }
@@ -46,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     console.info("[AsaasWebhookRoute][POST] recebido", {
       eventId,
+      account,
       event: body.event,
       paymentId: body.payment?.id ?? null,
       paymentStatus: body.payment?.status ?? null,
@@ -63,6 +77,7 @@ export async function POST(request: NextRequest) {
       id: eventId,
       eventType: body.event ?? null,
       payload: body as object,
+      account,
     });
 
     if (claim === "already_processed" || claim === "already_processing") {
@@ -76,7 +91,7 @@ export async function POST(request: NextRequest) {
     after(async () => {
       try {
         const publishResult = await publishWithRetry(() =>
-          publishAsaasWebhookEvent({ eventId, body })
+          publishAsaasWebhookEvent({ eventId, body, account })
         );
         if (!publishResult.ok) {
           const message = getErrorMessage(publishResult.error);
