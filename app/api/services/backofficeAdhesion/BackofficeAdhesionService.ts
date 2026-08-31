@@ -1,6 +1,6 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
-import { asaasApi, asaasFetch, type AsaasAccountId } from "@/lib/asaas"
+import { asaasApi, asaasFetch, createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
@@ -1786,9 +1786,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return adhesion
     }
 
-    const payment = (await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
-      method: "GET",
-    })) as BackofficeAdhesionPaymentWebhookInput
+    // C33: a cobrança pertence à conta gravada na própria adesão, não
+    // sempre à primary — sync de uma adesão legacy contra a conta errada
+    // retorna 404 ou lê o pagamento de outra conta.
+    const asaasClient = createAsaasClient(adhesion.asaasAccount)
+    const payment = (await asaasClient.request(
+      `${asaasClient.endpoints.payments}/${adhesion.asaasPaymentId}`,
+      { method: "GET" }
+    )) as BackofficeAdhesionPaymentWebhookInput
 
     const status = payment.status?.toUpperCase() ?? ""
     if (status === "PENDING") {

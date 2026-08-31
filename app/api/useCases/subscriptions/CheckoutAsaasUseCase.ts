@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output";
-import { asaasFetch, asaasApi, type AsaasAccountId } from "@/lib/asaas";
+import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -745,9 +745,12 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
     try {
       console.info('💰 [processCheckoutPaid] Processando pagamento de checkout:', { checkoutId, account });
 
-      // Buscar cobrança no Asaas para obter subscription
-      const payment = await asaasFetch(
-        `${asaasApi.payments}/${checkoutId}`,
+      // Buscar cobrança no Asaas para obter subscription (C33: a cobrança
+      // pertence à conta do evento, não sempre à primary — buscar na conta
+      // errada retorna 404 ou, pior, lê o ID de outra conta).
+      const asaasClient = createAsaasClient(account);
+      const payment = await asaasClient.request(
+        `${asaasClient.endpoints.payments}/${checkoutId}`,
         { method: 'GET' }
       );
 
