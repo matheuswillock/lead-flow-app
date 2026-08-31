@@ -6,6 +6,7 @@ export const BACKOFFICE_ADHESION_CYCLE_MONTHS: Record<
 > = {
   monthly: 1,
   quarterly: 3,
+  quadrimester: 4,
   semiannual: 6,
   annual: 12,
 }
@@ -16,6 +17,7 @@ export const BACKOFFICE_ADHESION_CYCLE_LABELS: Record<
 > = {
   monthly: "Mensal",
   quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
   semiannual: "Semestral",
   annual: "Anual",
 }
@@ -93,28 +95,38 @@ export function scaleInstallmentScheduleToTotal(
   return scaled
 }
 
+/** Devolve o preço do ciclo ou null quando o produto não precifica esse ciclo. */
+export function resolveProductPriceForCycleOrNull(
+  product: BackofficeProduct,
+  cycle: BackofficeAdhesionBillingCycle
+): number | null {
+  const value =
+    cycle === "quarterly"
+      ? product.priceQuarterly
+      : cycle === "quadrimester"
+        ? product.priceQuadrimester
+        : cycle === "semiannual"
+          ? product.priceSemiannual
+          : cycle === "annual"
+            ? product.priceAnnual
+            : product.priceMonthly
+
+  if (value == null) return null
+
+  const price = Number(value.toString())
+  if (!Number.isFinite(price) || price <= 0) return null
+
+  return price
+}
+
 export function resolveProductPriceForCycle(
   product: BackofficeProduct,
   cycle: BackofficeAdhesionBillingCycle
 ): number {
-  const value =
-    cycle === "quarterly"
-      ? product.priceQuarterly
-      : cycle === "semiannual"
-        ? product.priceSemiannual
-        : cycle === "annual"
-          ? product.priceAnnual
-        : product.priceMonthly
-
-  if (value == null) {
+  const price = resolveProductPriceForCycleOrNull(product, cycle)
+  if (price == null) {
     throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)
   }
-
-  const price = Number(value.toString())
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`Produto ${product.name} com preço inválido para o ciclo ${cycle}`)
-  }
-
   return price
 }
 
