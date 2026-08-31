@@ -387,7 +387,6 @@
       "app/backoffice/(app)/lead-quick-entry/page.tsx",
       "app/backoffice/(app)/page.tsx",
       "app/backoffice/(app)/payments/page.tsx",
-      "app/backoffice/(app)/pricing/page.tsx",
       "app/backoffice/(app)/radar/engajamento/page.tsx",
       "app/backoffice/(app)/radar/outbox/page.tsx",
       "app/backoffice/(app)/regras-transicao/page.tsx",
@@ -424,7 +423,8 @@
   "e2ePageCoverage": {
     "coveredBy": {
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
-      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts"
+      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
     }
   }
 }
