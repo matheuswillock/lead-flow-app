@@ -6,6 +6,7 @@ export const BACKOFFICE_ADHESION_CYCLE_MONTHS: Record<
 > = {
   monthly: 1,
   quarterly: 3,
+  quadrimester: 4,
   semiannual: 6,
   annual: 12,
 }
@@ -16,6 +17,7 @@ export const BACKOFFICE_ADHESION_CYCLE_LABELS: Record<
 > = {
   monthly: "Mensal",
   quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
   semiannual: "Semestral",
   annual: "Anual",
 }
@@ -100,11 +102,13 @@ export function resolveProductPriceForCycle(
   const value =
     cycle === "quarterly"
       ? product.priceQuarterly
-      : cycle === "semiannual"
-        ? product.priceSemiannual
-        : cycle === "annual"
-          ? product.priceAnnual
-        : product.priceMonthly
+      : cycle === "quadrimester"
+        ? product.priceQuadrimester
+        : cycle === "semiannual"
+          ? product.priceSemiannual
+          : cycle === "annual"
+            ? product.priceAnnual
+            : product.priceMonthly
 
   if (value == null) {
     throw new Error(`Produto ${product.name} sem preço para o ciclo ${cycle}`)

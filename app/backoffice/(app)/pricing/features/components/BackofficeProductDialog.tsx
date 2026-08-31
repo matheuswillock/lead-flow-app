@@ -331,7 +331,7 @@ export function BackofficeProductDialog() {
               {formData.activeCycles.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                   Nenhum ciclo adicionado. Use os botões acima para incluir Mensal, Trimestral,
-                  Semestral ou Anual.
+                  Quadrimestral, Semestral ou Anual.
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">

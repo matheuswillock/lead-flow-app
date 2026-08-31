@@ -34,6 +34,7 @@ export interface BackofficeProductDTO {
   billingMode: BackofficeProductBillingMode
   priceMonthly: number | null
   priceQuarterly: number | null
+  priceQuadrimester: number | null
   priceSemiannual: number | null
   priceAnnual: number | null
   priceLifetime: number | null
@@ -52,6 +53,7 @@ export interface CreateBackofficeProductUseCaseInput {
   billingMode: BackofficeProductBillingMode
   priceMonthly?: number | null
   priceQuarterly?: number | null
+  priceQuadrimester?: number | null
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
@@ -68,6 +70,7 @@ export interface UpdateBackofficeProductUseCaseInput {
   billingMode?: BackofficeProductBillingMode
   priceMonthly?: number | null
   priceQuarterly?: number | null
+  priceQuadrimester?: number | null
   priceSemiannual?: number | null
   priceAnnual?: number | null
   priceLifetime?: number | null
@@ -198,6 +201,11 @@ export class BackofficeProductUseCase {
             : existing.priceQuarterly !== null
               ? Number(existing.priceQuarterly)
               : null,
+          priceQuadrimester: Object.prototype.hasOwnProperty.call(input, "priceQuadrimester")
+            ? input.priceQuadrimester
+            : existing.priceQuadrimester !== null
+              ? Number(existing.priceQuadrimester)
+              : null,
           priceSemiannual: Object.prototype.hasOwnProperty.call(input, "priceSemiannual")
             ? input.priceSemiannual
             : existing.priceSemiannual !== null
@@ -255,7 +263,7 @@ export class BackofficeProductUseCase {
         )
         const blockedRemovals = existingRules
           .filter((rule) => !incomingKeys.has(`${rule.paymentMethod}:${rule.billingCycle}`))
-          .filter((rule) => locked.has(rule.billingCycle as "monthly" | "quarterly" | "semiannual" | "annual"))
+          .filter((rule) => locked.has(rule.billingCycle as "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"))
           .map((rule) => rule.billingCycle)
         const blockedUpdates: string[] = []
         for (const rule of paymentRules) {
@@ -352,6 +360,7 @@ export class BackofficeProductUseCase {
     prices: {
       priceMonthly?: number | null
       priceQuarterly?: number | null
+      priceQuadrimester?: number | null
       priceSemiannual?: number | null
       priceAnnual?: number | null
       priceLifetime?: number | null
@@ -363,6 +372,7 @@ export class BackofficeProductUseCase {
       const hasFlat =
         (prices.priceMonthly != null && prices.priceMonthly > 0) ||
         (prices.priceQuarterly != null && prices.priceQuarterly > 0) ||
+        (prices.priceQuadrimester != null && prices.priceQuadrimester > 0) ||
         (prices.priceSemiannual != null && prices.priceSemiannual > 0) ||
         (prices.priceAnnual != null && prices.priceAnnual > 0)
       if (!hasRule && !hasFlat) {
@@ -421,6 +431,7 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
     billingMode: product.billingMode,
     priceMonthly: decimalToNumber(product.priceMonthly),
     priceQuarterly: decimalToNumber(product.priceQuarterly),
+    priceQuadrimester: decimalToNumber(product.priceQuadrimester),
     priceSemiannual: decimalToNumber(product.priceSemiannual),
     priceAnnual: decimalToNumber(product.priceAnnual),
     priceLifetime: decimalToNumber(product.priceLifetime),

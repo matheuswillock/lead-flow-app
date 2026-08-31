@@ -18,7 +18,7 @@ type ParsedAdditionalTeam = {
   name: string
 }
 
-const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
+const ADHESION_CYCLES = ["monthly", "quarterly", "quadrimester", "semiannual", "annual"] as const
 const ACTIVATION_MODES = ["checkout", "external_paid"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
 type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
