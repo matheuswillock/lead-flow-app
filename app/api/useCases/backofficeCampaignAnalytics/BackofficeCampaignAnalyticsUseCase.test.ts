@@ -177,3 +177,81 @@ describe("BackofficeCampaignAnalyticsUseCase.getFormsFunnel", () => {
     expect(rows.map((row) => row.formId)).toEqual(["f1", "f2", "f3"]) // desc por closeRate, null por último
   })
 })
+
+describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
+  it("T-10.9 — rejeita dataset inválido", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "invalido" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("dataset")
+  })
+
+  it("T-10.9 — rejeita range acima de 92 dias", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportCsv({ from: "2026-05-01", to: "2026-08-31", teamIds: undefined, dataset: "templates" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("92")
+  })
+
+  it("T-10.8 — dataset=templates: BOM, header PT-BR, filename com dataset/from/to", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+      ]
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "templates" })
+    expect(output.isValid).toBe(true)
+    const result = output.result as { csv: string; filename: string }
+    expect(result.csv.startsWith("﻿")).toBe(true)
+    expect(result.csv).toContain(";")
+    expect(result.csv).toContain("Kathrein;v2 médicos")
+    expect(result.filename).toBe(`campanhas_templates_${VALID_RANGE.from}_${VALID_RANGE.to}.csv`)
+  })
+
+  it("T-10.10 — dataset=templates: paridade linha a linha com getTemplates", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+      ]
+    })
+    const jsonOutput = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
+    const jsonRows = jsonOutput.result as Array<{ templateName: string }>
+
+    const csvOutput = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "templates" })
+    const { csv } = csvOutput.result as { csv: string }
+    const dataLines = csv.replace("﻿", "").split("\r\n").filter(Boolean).slice(1)
+
+    expect(dataLines.length).toBe(jsonRows.length)
+    dataLines.forEach((line, index) => {
+      expect(line).toContain(jsonRows[index].templateName)
+    })
+  })
+
+  it("T-10.10 — dataset=forms: closeRate null vira célula vazia no CSV", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.funnel = [
+        { formId: "f3", formName: "Kathrein médicos", teamId: "t3", teamName: "Kathrein", viewed: 108, started: 0, completed: 0, leadCreated: 0, leadAttached: 0 },
+      ]
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "forms" })
+    const { csv } = output.result as { csv: string }
+    const dataLine = csv.replace("﻿", "").split("\r\n").filter(Boolean)[1]
+    expect(dataLine.endsWith(";")).toBe(true) // última coluna (Taxa de Fechamento) vazia
+  })
+
+  it("T-10.10 — dataset=series: paridade com os pontos de getTeamsSeries", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.series = [
+        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 },
+      ]
+    })
+    const jsonOutput = await useCase.getTeamsSeries({ ...VALID_RANGE, teamIds: undefined })
+    const jsonPoints = (jsonOutput.result as { points: Array<{ day: string }> }).points
+
+    const csvOutput = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "series" })
+    const { csv } = csvOutput.result as { csv: string }
+    const dataLines = csv.replace("﻿", "").split("\r\n").filter(Boolean).slice(1)
+    expect(dataLines.length).toBe(jsonPoints.length)
+  })
+})

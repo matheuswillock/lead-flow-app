@@ -6,6 +6,7 @@ import type {
 } from "@/app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics/IBackofficeCampaignAnalyticsRepository"
 import { resolveCampaignAnalyticsDateRange } from "@/lib/backoffice-campaign-analytics/dateRange"
 import { finalScore, formCloseRate, openRate, startRate } from "@/lib/backoffice-campaign-analytics/metrics"
+import { buildCampaignAnalyticsCsv, formatCsvDateTime, formatCsvInteger, formatCsvRate } from "@/lib/backoffice-campaign-analytics/csv"
 
 // Ordena desc pela taxa; null (divisor zero) sempre por último — nunca tratado como 0.
 function sortByRateDesc<T>(rows: T[], getRate: (row: T) => number | null): T[] {
@@ -32,6 +33,17 @@ export type CampaignAnalyticsDispatchesInput = CampaignAnalyticsRangeInput & {
   page: number | undefined
   pageSize: number | undefined
 }
+
+export const CAMPAIGN_ANALYTICS_CSV_DATASETS = ["dispatches", "templates", "forms", "series"] as const
+export type CampaignAnalyticsCsvDataset = (typeof CAMPAIGN_ANALYTICS_CSV_DATASETS)[number]
+
+export type CampaignAnalyticsExportCsvInput = CampaignAnalyticsRangeInput & {
+  dataset: string
+}
+
+// Todo dispatch do período cabe numa exportação — evita fatiar em páginas de 100
+// só para depois remontar o CSV. Limite de segurança: 50 páginas (5.000 linhas).
+const CSV_DISPATCH_PAGE_LIMIT = 50
 
 function sumTemplateTotals(templates: { sent: number; delivered: number; opened: number; clicked: number; bounced: number; failed: number; dispatches: number }[]) {
   return templates.reduce(
@@ -172,10 +184,7 @@ export class BackofficeCampaignAnalyticsUseCase {
 
     try {
       const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
-      const templates = await this.repository.aggregateByTemplate(filter)
-
-      const rows = templates.map((row) => ({ ...row, openRate: openRate(row.opened, row.sent) }))
-      return new Output(true, [], [], sortByRateDesc(rows, (row) => row.openRate))
+      return new Output(true, [], [], await this.buildTemplateRows(filter))
     } catch (error) {
       console.error("[BackofficeCampaignAnalyticsUseCase][getTemplates]", error)
       return new Output(false, [], ["Erro ao carregar os templates"], null)
@@ -188,18 +197,136 @@ export class BackofficeCampaignAnalyticsUseCase {
 
     try {
       const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
-      const funnel = await this.repository.formFunnel(filter)
-
-      const rows = funnel.map((row) => ({
-        ...row,
-        startRate: startRate(row.started, row.viewed),
-        closeRate: formCloseRate(row.completed, row.started),
-      }))
-      return new Output(true, [], [], sortByRateDesc(rows, (row) => row.closeRate))
+      return new Output(true, [], [], await this.buildFormFunnelRows(filter))
     } catch (error) {
       console.error("[BackofficeCampaignAnalyticsUseCase][getFormsFunnel]", error)
       return new Output(false, [], ["Erro ao carregar o funil de formulários"], null)
     }
+  }
+
+  async exportCsv(input: CampaignAnalyticsExportCsvInput): Promise<Output> {
+    if (!(CAMPAIGN_ANALYTICS_CSV_DATASETS as readonly string[]).includes(input.dataset)) {
+      return new Output(
+        false,
+        [],
+        [`"dataset" inválido — use um de: ${CAMPAIGN_ANALYTICS_CSV_DATASETS.join(", ")}.`],
+        null
+      )
+    }
+    const dataset = input.dataset as CampaignAnalyticsCsvDataset
+
+    const range = resolveCampaignAnalyticsDateRange({ from: input.from, to: input.to })
+    if (!range.ok) return new Output(false, [], [range.error], null)
+
+    try {
+      const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
+      const csv = await this.buildCsvForDataset(dataset, filter)
+      const filename = `campanhas_${dataset}_${input.from}_${input.to}.csv`
+      return new Output(true, [], [], { csv, filename })
+    } catch (error) {
+      console.error("[BackofficeCampaignAnalyticsUseCase][exportCsv]", error)
+      return new Output(false, [], ["Erro ao gerar o export CSV"], null)
+    }
+  }
+
+  private async buildTemplateRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
+    const templates = await this.repository.aggregateByTemplate(filter)
+    const rows = templates.map((row) => ({ ...row, openRate: openRate(row.opened, row.sent) }))
+    return sortByRateDesc(rows, (row) => row.openRate)
+  }
+
+  private async buildFormFunnelRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
+    const funnel = await this.repository.formFunnel(filter)
+    const rows = funnel.map((row) => ({
+      ...row,
+      startRate: startRate(row.started, row.viewed),
+      closeRate: formCloseRate(row.completed, row.started),
+    }))
+    return sortByRateDesc(rows, (row) => row.closeRate)
+  }
+
+  private async fetchAllDispatches(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
+    const rows: Awaited<ReturnType<IBackofficeCampaignAnalyticsRepository["aggregateDispatches"]>>["rows"] = []
+    for (let page = 1; page <= CSV_DISPATCH_PAGE_LIMIT; page++) {
+      const result = await this.repository.aggregateDispatches(filter, { page, pageSize: MAX_PAGE_SIZE })
+      rows.push(...result.rows)
+      if (rows.length >= result.total || result.rows.length < MAX_PAGE_SIZE) break
+    }
+    return rows
+  }
+
+  private async buildCsvForDataset(
+    dataset: CampaignAnalyticsCsvDataset,
+    filter: { from: Date; to: Date; teamIds: string[] | undefined }
+  ): Promise<string> {
+    if (dataset === "dispatches") {
+      const rows = await this.fetchAllDispatches(filter)
+      return buildCampaignAnalyticsCsv(
+        ["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"],
+        rows.map((row) => [
+          formatCsvDateTime(row.dispatchedAt),
+          row.teamName,
+          row.templateName,
+          row.status,
+          formatCsvInteger(row.totalSent),
+          formatCsvInteger(row.totalDelivered),
+          formatCsvInteger(row.totalOpened),
+          formatCsvInteger(row.totalClicked),
+          formatCsvInteger(row.totalBounced),
+          row.errorMessage ?? "",
+        ])
+      )
+    }
+
+    if (dataset === "templates") {
+      const rows = await this.buildTemplateRows(filter)
+      return buildCampaignAnalyticsCsv(
+        ["Time", "Template", "Disparos", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Falhas", "Taxa de Abertura"],
+        rows.map((row) => [
+          row.teamName,
+          row.templateName,
+          formatCsvInteger(row.dispatches),
+          formatCsvInteger(row.sent),
+          formatCsvInteger(row.delivered),
+          formatCsvInteger(row.opened),
+          formatCsvInteger(row.clicked),
+          formatCsvInteger(row.bounced),
+          formatCsvInteger(row.failed),
+          formatCsvRate(row.openRate),
+        ])
+      )
+    }
+
+    if (dataset === "forms") {
+      const rows = await this.buildFormFunnelRows(filter)
+      return buildCampaignAnalyticsCsv(
+        ["Time", "Formulário", "Visualizações", "Inícios", "Conclusões", "Leads Criados", "Leads Anexados", "Taxa de Início", "Taxa de Fechamento"],
+        rows.map((row) => [
+          row.teamName,
+          row.formName,
+          formatCsvInteger(row.viewed),
+          formatCsvInteger(row.started),
+          formatCsvInteger(row.completed),
+          formatCsvInteger(row.leadCreated),
+          formatCsvInteger(row.leadAttached),
+          formatCsvRate(row.startRate),
+          formatCsvRate(row.closeRate),
+        ])
+      )
+    }
+
+    const points = await this.repository.dailySeries(filter)
+    return buildCampaignAnalyticsCsv(
+      ["Dia", "Time", "Enviados", "Entregues", "Abertos", "Cliques"],
+      points.map((row) => [
+        row.day,
+        row.teamName,
+        formatCsvInteger(row.sent),
+        formatCsvInteger(row.delivered),
+        formatCsvInteger(row.opened),
+        formatCsvInteger(row.clicked),
+      ])
+    )
   }
 }
 

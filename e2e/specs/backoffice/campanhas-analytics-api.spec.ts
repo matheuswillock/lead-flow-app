@@ -295,4 +295,45 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
     expect(row?.leadAttached).toBe(0);
     expect(row?.closeRate).toBe(1);
   });
+
+  test("GET export.csv — dataset=templates: BOM, ';', header PT-BR, filename e paridade com o JSON", async ({ request }) => {
+    const { from, to } = range();
+    const jsonRes = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/templates?from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    const jsonBody = (await jsonRes.json()) as { result: Array<{ templateName: string }> };
+
+    const csvRes = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/export.csv?dataset=templates&from=${from}&to=${to}&teamIds=${teamId}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(csvRes.status()).toBe(200);
+    expect(csvRes.headers()["content-type"]).toContain("text/csv");
+    expect(csvRes.headers()["content-disposition"]).toContain(`campanhas_templates_${from}_${to}.csv`);
+
+    const csvText = await csvRes.text();
+    expect(csvText.charCodeAt(0)).toBe(0xfeff); // BOM
+    const lines = csvText.slice(1).split("\r\n").filter(Boolean);
+    expect(lines[0]).toBe("Time;Template;Disparos;Enviados;Entregues;Abertos;Cliques;Bounces;Falhas;Taxa de Abertura");
+    expect(lines.length - 1).toBe(jsonBody.result.length); // paridade de linhas (T-10.10)
+    expect(lines.some((line) => line.includes("Template E2E"))).toBe(true);
+  });
+
+  test("GET export.csv — dataset inválido retorna 400", async ({ request }) => {
+    const { from, to } = range();
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/export.csv?dataset=invalido&from=${from}&to=${to}`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(400);
+  });
+
+  test("GET export.csv — range acima de 92 dias retorna 400", async ({ request }) => {
+    const res = await request.get(
+      `${BASE_URL}/api/v1/backoffice/campanhas-analytics/export.csv?dataset=templates&from=2026-01-01&to=2026-12-31`,
+      { headers: { "x-supabase-user-id": backofficeSupabaseId } }
+    );
+    expect(res.status()).toBe(400);
+  });
 });
