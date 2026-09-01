@@ -103,7 +103,12 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
                   origin: input.origin ?? {},
                 })
               : null,
-            leadCodeSeed: divergence ? input.visitorSessionId : null,
+            // Semente pela SUBMISSÃO, não pela sessão: o cookie de sessão dura
+            // 30 dias e o mesmo formulário aceita uma segunda conversão (outra
+            // campanha) dentro dela. Semeando pela sessão, duas indicações
+            // divergentes derivariam o mesmo `leadCode` — `@unique` global — e a
+            // segunda morreria em P2002, deixando o respondente sem card.
+            leadCodeSeed: divergence ? (placement.typed?.submissionId ?? null) : null,
           })
 
           // Divergência = o perfil do Radar continua sendo o do DESTINATÁRIO do

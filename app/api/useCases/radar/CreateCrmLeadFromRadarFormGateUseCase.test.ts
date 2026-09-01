@@ -320,13 +320,16 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
    * perfil cria um segundo lead e o código colidia (P2002), abortando a
    * transação — o prospect divergente ficaria sem card nenhum.
    */
-  it("manda semente própria de leadCode quando cria por divergência", async () => {
+  it("semeia o leadCode com a submissão, não com a sessão", async () => {
     arrangeDivergentSubmission()
 
     await useCase.execute(input)
 
+    // A sessão dura 30 dias e o mesmo formulário aceita uma segunda conversão
+    // (outra campanha) dentro dela. Semeando pela sessão, duas indicações
+    // divergentes derivariam o MESMO `leadCode` e a segunda morreria em P2002.
     expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ leadCodeSeed: "session-1" }),
+      expect.objectContaining({ leadCodeSeed: "sub-corrente" }),
     )
   })
 
