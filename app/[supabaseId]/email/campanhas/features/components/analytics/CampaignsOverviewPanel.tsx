@@ -1,9 +1,10 @@
 "use client"
 
-import { Trophy } from "lucide-react"
+import { Info, Trophy } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { MetricTrendIndicator } from "./MetricTrendIndicator"
 import { TrackingDegradedAlert } from "./TrackingDegradedAlert"
 import { useCampaignsOverview } from "./useCampaignsOverview"
@@ -14,13 +15,26 @@ type OverviewMetricProps = {
   subtitle: string
   delta?: Parameters<typeof MetricTrendIndicator>[0]["delta"]
   isRate?: boolean
+  tooltip?: string
 }
 
-function OverviewMetric({ title, value, subtitle, delta, isRate }: OverviewMetricProps) {
+function OverviewMetric({ title, value, subtitle, delta, isRate, tooltip }: OverviewMetricProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
+          {title}
+          {tooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help">
+                  <Info className="h-3.5 w-3.5 shrink-0" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap items-end gap-2">
@@ -83,6 +97,7 @@ export function CampaignsOverviewPanel() {
         />
         <OverviewMetric
           title="Taxa de Abertura (hoje)"
+          tooltip="Abertura medida pelo provedor; Apple/Gmail podem inflar — use o clique como sinal de intenção."
           value={`${rates.openRate.toFixed(1)}%`}
           subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
           delta={deltas?.rates.openRate}

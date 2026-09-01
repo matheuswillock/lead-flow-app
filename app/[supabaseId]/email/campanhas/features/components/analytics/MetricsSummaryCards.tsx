@@ -99,7 +99,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
       />
       <MetricCard
         title="Taxa de Abertura"
-        tooltip="Percentual de destinatários que abriram o e-mail pelo menos uma vez."
+        tooltip="Abertura medida pelo provedor; Apple/Gmail podem inflar — use o clique como sinal de intenção."
         value={`${rates.openRate.toFixed(1)}%`}
         subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
         delta={deltas?.rates.openRate}
