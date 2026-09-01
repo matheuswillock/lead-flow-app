@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.294.0",
+  "version": "0.294.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -202,6 +202,7 @@
     "svix": "^1.90.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
+    "tldts": "^7.4.11",
     "vaul": "^1.1.2",
     "vercel": "^59.10.0",
     "web-push": "^3.6.7",
