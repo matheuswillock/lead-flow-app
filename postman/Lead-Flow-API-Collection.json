@@ -14564,6 +14564,200 @@
           ]
         },
         {
+          "name": "Backoffice Campanhas Analytics",
+          "item": [
+            {
+              "name": "GET Resumo de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/summary?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "summary"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "KPIs do período (disparos, enviados, entregues, abertos, cliques, bounces, falhas, leads criados/anexados/total) e ranking por time. from/to obrigatórios (AAAA-MM-DD), range máximo de 92 dias, teamIds opcional (CSV de UUIDs)."
+              }
+            },
+            {
+              "name": "GET Disparos de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/dispatches?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}&page=1&pageSize=25",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "dispatches"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" },
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "25" }
+                  ]
+                },
+                "description": "Tabela paginada de disparos do período (pageSize máximo 25 padrão / 100 limite)."
+              }
+            },
+            {
+              "name": "GET Série Diária de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/teams-series?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "teams-series"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Série diária (por time e total agregado) de enviados/entregues/abertos/cliques, para o gráfico de área."
+              }
+            },
+            {
+              "name": "GET Templates de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/templates?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "templates"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Agregado por time+template com taxa de abertura calculada, ordenado desc."
+              }
+            },
+            {
+              "name": "GET Funil de Formulários de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/forms-funnel?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "forms-funnel"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Funil por formulário (views/starts/completes, dos metric events) com leadsCreated e leadsAttached SEMPRE separados, startRate/closeRate calculados. v1.1 (01/09): leadsCreated/leadsAttached derivam de submissão completa + lead (lead.createdAt vs. submission.createdAt), não mais dos eventos lead_created/lead_attached — o fluxo legado do gate rotula esses eventos errado (mislabel confirmado em produção)."
+              }
+            },
+            {
+              "name": "GET Export CSV de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/export.csv?dataset=dispatches&from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "export.csv"
+                  ],
+                  "query": [
+                    { "key": "dataset", "value": "dispatches" },
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Export CSV (UTF-8 BOM, separador ';', decimal com vírgula, header PT-BR) do dataset dispatches|templates|forms|series. Content-Disposition com filename campanhas_<dataset>_<from>_<to>.csv."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Lead Quick Entry",
           "item": [
             {
