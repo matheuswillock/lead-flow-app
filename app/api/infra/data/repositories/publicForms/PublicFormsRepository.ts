@@ -1806,16 +1806,32 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     input: PublicFormCompleteSubmissionInput<TMetricEvent>,
   ): Promise<TMetricEvent[]> {
     return prisma.$transaction(async (tx) => {
+      // O `leadId` fica de fora deste update de propósito. `input.leadId` foi
+      // resolvido lá atrás, em `processInBackground`, e o gate do Radar pode ter
+      // reatribuído a sessão para um card de indicação nesse meio-tempo —
+      // gravá-lo aqui desfaria a reatribuição e mandaria a atividade com
+      // identidade e respostas para o card do destinatário. Este update segura a
+      // linha; a releitura logo abaixo enxerga o que o gate comitou.
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId ?? undefined,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),
           errorMessage: input.processingAlerts?.slice(0, 2000) ?? null,
         },
       })
+      const current = await tx.publicFormSubmission.findUnique({
+        where: { id: input.submissionId },
+        select: { leadId: true },
+      })
+      const resolvedLeadId = current?.leadId ?? input.leadId ?? null
+      if (!current?.leadId && input.leadId) {
+        await tx.publicFormSubmission.update({
+          where: { id: input.submissionId },
+          data: { leadId: input.leadId },
+        })
+      }
       await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
 
       // SPEC 40 E2 × modo radar (review #1058). A decisão de emitir
@@ -1831,10 +1847,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         ? await this.dropDiscardWhenLeadAttached(tx, input)
         : input.metricEvents
 
-      if (input.leadId && input.activityBody && input.activityPayload) {
+      if (resolvedLeadId && input.activityBody && input.activityPayload) {
         await tx.leadActivity.create({
           data: {
-            leadId: input.leadId,
+            leadId: resolvedLeadId,
             type: ActivityType.note,
             body: input.activityBody,
             payload: input.activityPayload,

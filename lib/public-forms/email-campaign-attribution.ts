@@ -6,7 +6,9 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export const FORM_START_ACTIVITY_BODY = "Início do preenchimento do formulário"
-export const FORM_COMPLETE_ACTIVITY_BODY = "Fim do preenchimento do formulário"
+// O par de conclusão ("Fim do preenchimento do formulário") saiu daqui: a
+// atividade agora traz identidade e respostas, em
+// `lib/public-forms/form-completion-activity.ts`.
 export const EMAIL_CAMPAIGN_LEAD_CREATED_ACTIVITY_PREFIX =
   "Lead criado via atribuição de campanha de e-mail"
 
