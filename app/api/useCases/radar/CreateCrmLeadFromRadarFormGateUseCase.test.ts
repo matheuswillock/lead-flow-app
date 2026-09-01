@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { LeadStatus } from "@prisma/client"
 import type {
   IRadarLeadGateUnitOfWork,
+  RadarCrmIdentityMatch,
   RadarLeadGateProfile,
   RadarLeadGateTransaction,
   RadarLeadIdentity,
@@ -22,11 +24,13 @@ const profile: RadarLeadGateProfile = {
 }
 
 const reloadProfile = mock(async () => profile as RadarLeadGateProfile | null)
-const findIdentityMatches = mock(async () => ({
-  leadIdMatch: null as string | null,
-  phoneMatch: null as string | null,
-  emailMatch: null as string | null,
-}))
+const findIdentityMatches = mock(
+  async (): Promise<RadarCrmIdentityMatch> => ({
+    leadIdMatch: null,
+    phoneMatch: null,
+    emailMatch: null,
+  }),
+)
 const createOrUpdateFromRadarProfile = mock(async () => ({ leadId: "lead-1", created: true }))
 const linkLeadIdentity = mock(async () => {})
 const appendGateEvent = mock(async () => {})
@@ -131,10 +135,10 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     expect(createOrUpdateFromRadarProfile).not.toHaveBeenCalled()
   })
 
-  it("prioriza lead_id e atualiza o lead existente", async () => {
+  it("prioriza lead_id e atualiza o lead existente quando está em nova oportunidade", async () => {
     findIdentityMatches.mockImplementation(async () => ({
-      leadIdMatch: "lead-linked",
-      phoneMatch: "lead-linked",
+      leadIdMatch: { leadId: "lead-linked", status: LeadStatus.new_opportunity },
+      phoneMatch: { leadId: "lead-linked", status: LeadStatus.new_opportunity },
       emailMatch: null,
     }))
     createOrUpdateFromRadarProfile.mockImplementation(async () => ({
@@ -159,8 +163,8 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
   it("registra conflito e não cria terceiro lead quando telefone e e-mail divergem", async () => {
     findIdentityMatches.mockImplementation(async () => ({
       leadIdMatch: null,
-      phoneMatch: "lead-phone",
-      emailMatch: "lead-email",
+      phoneMatch: { leadId: "lead-phone", status: LeadStatus.new_opportunity },
+      emailMatch: { leadId: "lead-email", status: LeadStatus.new_opportunity },
     }))
 
     const output = await useCase.execute(input)
@@ -172,9 +176,12 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     )
   })
 
-  // Caso real de produção (31/08, Liber): o perfil do `alexandre@` está
-  // vinculado desde 11/08 ao lead "vladicea". Toda resposta que entra pelo link
-  // dos e-mails dele caía naquele card, seja qual for a identidade digitada.
+  /**
+   * Caso real de produção (31/08, Liber): o perfil do `alexandre@` está
+   * vinculado desde 11/08 ao lead "vladicea", em `new_opportunity`. Toda
+   * resposta que entra pelo link dos e-mails dele caía naquele card, seja
+   * qual for a identidade digitada.
+   */
   const alexandreProfile: RadarLeadGateProfile = {
     ...profile,
     displayName: "Alexandre",
@@ -203,7 +210,7 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
   function arrangeDivergentSubmission() {
     reloadProfile.mockImplementation(async () => alexandreProfile)
     findIdentityMatches.mockImplementation(async () => ({
-      leadIdMatch: "lead-vladicea",
+      leadIdMatch: { leadId: "lead-vladicea", status: LeadStatus.new_opportunity },
       phoneMatch: null,
       emailMatch: null,
     }))
@@ -427,7 +434,13 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     )
   })
 
-  it("anexa quando o telefone digitado bate com o lead vinculado", async () => {
+  /**
+   * Adenda do owner (31/08, pós-#1107) — regra 1, guarda do comportamento
+   * atual: lead casado (por vínculo/telefone/e-mail) em `new_opportunity`
+   * continua recebendo ANEXO. Caso real "vladicea" (nota do vault): o card
+   * ainda não foi trabalhado, então a mesma identidade cai nele.
+   */
+  it("anexa quando o telefone digitado bate com o lead vinculado E o lead está em nova oportunidade", async () => {
     arrangeDivergentSubmission()
     findSubmittedIdentity.mockImplementation(async () => ({
       ...alexandreTyped,
@@ -462,6 +475,77 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
 
     expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
       expect.objectContaining({ existingLeadId: "lead-vladicea" }),
+    )
+  })
+
+  /**
+   * Adenda do owner (31/08, pós-#1107) — regra 1, o caso vermelho central: o
+   * lead casado (mesma identidade, sem divergência) está em QUALQUER status
+   * diferente de `new_opportunity` — aqui, `opportunityLost`, o mesmo cenário
+   * da nota do vault ("simule o mesmo perfil com lead em opportunityLost").
+   * Dedupe por identidade não basta mais: o card antigo já foi trabalhado e
+   * fechado, então a resposta materializa um card NOVO — e esse card novo é
+   * vinculado ao perfil (regra 2 é o que torna isso possível: antes,
+   * `linkLeadIdentity` recusaria o segundo vínculo).
+   */
+  it("cria card novo e vincula ao perfil quando o lead vinculado não está em nova oportunidade", async () => {
+    reloadProfile.mockImplementation(async () => alexandreProfile)
+    findIdentityMatches.mockImplementation(async () => ({
+      leadIdMatch: { leadId: "lead-vladicea", status: LeadStatus.opportunityLost },
+      phoneMatch: null,
+      emailMatch: null,
+    }))
+    // Sem identidade digitada ainda — isola o efeito do status do divergente.
+    findSubmittedIdentity.mockImplementation(async () => null)
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-vladicea-reaberto",
+      created: true,
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(output.result).toEqual({ leadId: "lead-vladicea-reaberto", created: true })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: null, referral: null }),
+    )
+    expect(linkLeadIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({ leadId: "lead-vladicea-reaberto" }),
+    )
+    expect(appendGateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "radar.crm_lead_created",
+        metadata: expect.objectContaining({
+          statusReopened: true,
+          previousLeadId: "lead-vladicea",
+        }),
+      }),
+    )
+  })
+
+  /**
+   * Mesma regra 1, via telefone/e-mail casado (sem vínculo `lead_id` ainda no
+   * perfil) — a checagem de status vale para qualquer um dos três matches, não
+   * só para `leadIdMatch`.
+   */
+  it("cria card novo quando o lead casado por telefone não está em nova oportunidade", async () => {
+    findIdentityMatches.mockImplementation(async () => ({
+      leadIdMatch: null,
+      phoneMatch: { leadId: "lead-fechado", status: LeadStatus.contract_finalized },
+      emailMatch: null,
+    }))
+    createOrUpdateFromRadarProfile.mockImplementation(async () => ({
+      leadId: "lead-fechado-novo",
+      created: true,
+    }))
+
+    const output = await useCase.execute(input)
+
+    expect(output.result).toEqual({ leadId: "lead-fechado-novo", created: true })
+    expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ existingLeadId: null }),
+    )
+    expect(linkLeadIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({ leadId: "lead-fechado-novo" }),
     )
   })
 

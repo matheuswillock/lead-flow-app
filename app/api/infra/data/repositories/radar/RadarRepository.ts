@@ -2306,6 +2306,41 @@ export class RadarRepository {
   }
 
   /**
+   * Regra 2/3 (adenda 31/08, pós-#1107): leads relacionados ao perfil, na
+   * ordem dos vínculos `lead_id` — mais recente primeiro. Um perfil pode ter
+   * N vínculos (histórico), então esta lista alimenta a seção "Leads no CRM"
+   * do perfil unificado, não mais um único lead.
+   */
+  async findRelatedLeadsForProfile(scope: RadarTeamScope, profileId: string) {
+    const identities = await this.db.radarIdentity.findMany({
+      where: {
+        teamId: scope.teamId,
+        profileId,
+        type: "lead_id",
+        NOT: { normalizedValue: { startsWith: PENDING_LEAD_IDENTITY_PREFIX } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { normalizedValue: true },
+    })
+    const orderedLeadIds = identities.map((identity) => identity.normalizedValue)
+    if (orderedLeadIds.length === 0) return []
+
+    // `deletedAt: null` — o merge de leads preserva o vínculo Radar do lead
+    // de origem depois de soft-deletá-lo (`MergeLeadsUseCase`). Sem o filtro,
+    // o card mergeado aparece na lista com um link quebrado:
+    // `LeadRepository.findByLeadCode` exige `deletedAt: null` (achado do
+    // review do PR #1114).
+    const leads = await this.db.lead.findMany({
+      where: { teamId: scope.teamId, id: { in: orderedLeadIds }, deletedAt: null },
+      select: { id: true, leadCode: true, name: true, status: true, createdAt: true },
+    })
+    const leadById = new Map(leads.map((lead) => [lead.id, lead]))
+    return orderedLeadIds
+      .map((leadId) => leadById.get(leadId))
+      .filter((lead): lead is NonNullable<typeof lead> => Boolean(lead))
+  }
+
+  /**
    * D17: carrega assignedTo/closerId dos leads associados a um perfil,
    * com nomes resolvidos via Profile (assignee/closer).
    */

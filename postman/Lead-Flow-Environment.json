@@ -276,6 +276,13 @@
       "description": "supabaseId de um usuário com role=backoffice (header x-supabase-user-id)"
     },
     {
+      "key": "backofficeTeamId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "teamId (UUID) usado nos filtros de teamIds das rotas de campanhas analytics do backoffice"
+    },
+    {
       "key": "backofficeUserId",
       "value": "",
       "type": "default",

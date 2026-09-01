@@ -50,7 +50,17 @@ export const QUESTION_IDENTITY_KEY_SQL = Prisma.sql`
  * no `processInBackground` e no backfill); o `COALESCE` cobre as linhas
  * históricas e os eventos de cliente que nunca tiveram o campo.
  */
-const PERIOD_ANCHOR_SQL = Prisma.sql`COALESCE("occurredAt", "createdAt")`
+export const PERIOD_ANCHOR_SQL = Prisma.sql`COALESCE("occurredAt", "createdAt")`
+
+/**
+ * Mesmo âncora, qualificada por alias — para consultas que juntam a tabela de
+ * métricas com outra que também tenha `occurredAt`/`createdAt` (ex.:
+ * `corretor_studio_public_forms` também tem `createdAt`). Mesma razão do
+ * `notFabricatedByDispatcherSql`: sem o alias a coluna fica ambígua.
+ */
+export function periodAnchorSql(alias: string): Prisma.Sql {
+  return Prisma.sql`COALESCE(${Prisma.raw(`"${alias}"`)}."occurredAt", ${Prisma.raw(`"${alias}"`)}."createdAt")`
+}
 
 /**
  * SPEC 40 E0 / todo 23 — as conclusões que o cron de despacho inventou ficam

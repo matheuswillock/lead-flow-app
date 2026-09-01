@@ -14,7 +14,6 @@ import type {
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import {
-  isPendingLeadIdentity,
   PENDING_LEAD_IDENTITY_PREFIX,
   PENDING_LEAD_IDENTITY_STALE_MS,
 } from "@/lib/radar/lead-identity"
@@ -40,10 +39,17 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
         identities: {
           // A reserva provisória da promoção também é `lead_id`, mas não é
           // vínculo — sem este filtro o `leadId` do gate viraria `pending:…`.
+          //
+          // Histórico (regra 2, adenda 31/08): um perfil pode ter N vínculos
+          // reais. `orderBy: createdAt desc` + `take: 1` decide "o lead do
+          // perfil" como o vínculo MAIS RECENTE — é o candidato que a regra 1
+          // usa para decidir anexar × criar, e o que dá idempotência natural
+          // ao card recém-reaberto (ele passa a ser o mais recente).
           where: {
             type: "lead_id",
             NOT: { normalizedValue: { startsWith: PENDING_LEAD_IDENTITY_PREFIX } },
           },
+          orderBy: { createdAt: "desc" },
           select: { value: true, normalizedValue: true },
           take: 1,
         },
@@ -89,7 +95,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       profile.leadId
         ? this.transaction.lead.findFirst({
             where: { id: profile.leadId, teamId: profile.teamId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, status: true },
           })
         : null,
       phoneSuffix.length >= 10
@@ -103,8 +109,15 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
                 { phone: { contains: phoneSuffix } },
               ],
             },
-            select: { id: true },
-            orderBy: { createdAt: "asc" },
+            select: { id: true, status: true },
+            // Vínculo MAIS RECENTE, igual a `reloadProfile` (regra 2): depois
+            // de uma reabertura por status, o card novo nasce com o mesmo
+            // telefone/e-mail do perfil, e `leadIdMatch` já aponta pra ele.
+            // `asc` faria este candidato apontar para o card antigo,
+            // `distinctLeadIds` veria dois ids e devolveria um
+            // `identity_conflict` falso — travando a próxima submissão de
+            // anexar no card recém-reaberto (achado do review do PR #1114).
+            orderBy: { createdAt: "desc" },
           })
         : null,
       emailToMatch
@@ -114,16 +127,25 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
               deletedAt: null,
               email: { equals: escapeLikePattern(emailToMatch), mode: "insensitive" },
             },
-            select: { id: true },
-            orderBy: { createdAt: "asc" },
+            select: { id: true, status: true },
+            // Vínculo MAIS RECENTE, igual a `reloadProfile` (regra 2): depois
+            // de uma reabertura por status, o card novo nasce com o mesmo
+            // telefone/e-mail do perfil, e `leadIdMatch` já aponta pra ele.
+            // `asc` faria este candidato apontar para o card antigo,
+            // `distinctLeadIds` veria dois ids e devolveria um
+            // `identity_conflict` falso — travando a próxima submissão de
+            // anexar no card recém-reaberto (achado do review do PR #1114).
+            orderBy: { createdAt: "desc" },
           })
         : null,
     ])
 
+    // Status junto com o id (regra 1, adenda 31/08): o use case decide anexar
+    // × criar por candidato, não só por qual dos três sinais bateu.
     return {
-      leadIdMatch: leadIdMatch?.id ?? null,
-      phoneMatch: phoneMatch?.id ?? null,
-      emailMatch: emailMatch?.id ?? null,
+      leadIdMatch: leadIdMatch ? { leadId: leadIdMatch.id, status: leadIdMatch.status } : null,
+      phoneMatch: phoneMatch ? { leadId: phoneMatch.id, status: phoneMatch.status } : null,
+      emailMatch: emailMatch ? { leadId: emailMatch.id, status: emailMatch.status } : null,
     }
   }
 
@@ -303,25 +325,52 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     return { leadId: lead.id, created: true }
   }
 
+  /**
+   * Histórico, não 1:1 (regra 2, adenda 31/08 pós-#1107). Antes, qualquer
+   * vínculo real existente para OUTRO lead fazia esta função lançar e abortar
+   * a transação inteira — era isso que impedia a regra 1 (dedupe sensível a
+   * status) de vincular ao perfil o card novo criado quando o lead casado sai
+   * de `new_opportunity`. Cada card que o gate cria ou anexa vira um vínculo;
+   * o perfil unificado (Radar) lista todos.
+   *
+   * A reserva `pending:` da promoção MANUAL continua uma exclusão mútua de
+   * verdade — essa promoção segue 1:1 por decisão de escopo (só o gate
+   * automático evolui para histórico).
+   */
   async linkLeadIdentity(input: {
     teamId: string
     radarProfileId: string
     leadId: string
     source: string
   }): Promise<void> {
-    const existing = await this.transaction.radarIdentity.findFirst({
-      where: { teamId: input.teamId, profileId: input.radarProfileId, type: "lead_id" },
-      select: { id: true, normalizedValue: true, createdAt: true },
+    const alreadyLinked = await this.transaction.radarIdentity.findFirst({
+      where: {
+        teamId: input.teamId,
+        profileId: input.radarProfileId,
+        type: "lead_id",
+        normalizedValue: input.leadId,
+      },
+      select: { id: true },
     })
-    if (existing?.normalizedValue === input.leadId) return
+    if (alreadyLinked) return
 
-    if (existing && isPendingLeadIdentity(existing.normalizedValue)) {
+    const pending = await this.transaction.radarIdentity.findFirst({
+      where: {
+        teamId: input.teamId,
+        profileId: input.radarProfileId,
+        type: "lead_id",
+        normalizedValue: { startsWith: PENDING_LEAD_IDENTITY_PREFIX },
+      },
+      select: { id: true, createdAt: true },
+    })
+
+    if (pending) {
       // Reserva FRESCA = promoção manual em andamento. Apagá-la aqui faria a
       // promoção finalizar sobre uma linha que não existe mais (o `updateMany`
       // vira no-op), e o sync dela criaria um SEGUNDO `lead_id` no perfil —
       // dois vínculos de CRM e Lead duplicado. Recusar é o certo: a promoção
       // termina em segundos e o gate reprocessa.
-      const ageMs = Date.now() - existing.createdAt.getTime()
+      const ageMs = Date.now() - pending.createdAt.getTime()
       if (ageMs < PENDING_LEAD_IDENTITY_STALE_MS) {
         throw new Error("Perfil Radar tem promoção manual em andamento")
       }
@@ -329,9 +378,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       // Passada a janela, a reserva é órfã (a liberação é best-effort e pode
       // ter falhado). Assumir a linha evita o perfil ficar recusado para
       // sempre por causa de algo que nem lead é.
-      await this.transaction.radarIdentity.delete({ where: { id: existing.id } })
-    } else if (existing) {
-      throw new Error("Perfil Radar já está vinculado a outro lead")
+      await this.transaction.radarIdentity.delete({ where: { id: pending.id } })
     }
 
     await this.transaction.radarIdentity.create({

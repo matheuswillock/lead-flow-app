@@ -47,6 +47,25 @@ function isValidEmail(value: string): boolean {
 export class BackofficeMemberUseCase {
   constructor(private readonly repository: IBackofficeMemberRepository) {}
 
+  /**
+   * O membro é o master da conta cujo acesso está sendo alterado? Compara pelo
+   * dono da conta alvo (`accountMasterId`, ou o `masterId` do time), não pelo
+   * `profile.isMaster` global — um master da conta A pode ser operator na conta B.
+   */
+  private async isAccountMasterOf(
+    memberId: string,
+    data: Pick<UpdateMemberInput, "teamId" | "accountMasterId">
+  ): Promise<boolean> {
+    if (data.accountMasterId) {
+      return data.accountMasterId === memberId
+    }
+    if (!data.teamId) {
+      return false
+    }
+    const team = await this.repository.findTeamById(data.teamId)
+    return team?.masterId === memberId
+  }
+
   async updateMember(memberId: string, data: UpdateMemberInput): Promise<Output> {
     try {
       const member = await this.repository.findMemberForUpdate(memberId)
@@ -94,6 +113,24 @@ export class BackofficeMemberUseCase {
 
       if (hasTeamAccessUpdate && data.teamId === undefined && data.accountMasterId === undefined) {
         return new Output(false, [], ["teamId é obrigatório para alterar permissões do membro"], null)
+      }
+
+      // O papel do master na própria conta é fixo em "manager". Nem toda
+      // autorização do produto é master-aware — `hasLeadAccess` e
+      // `hasLeadActivityAccess` (`app/api/v1/utils/teamAccess.ts`) recebem só o
+      // `teamMember`, e as rotas de `app/api/v1/integrations/**` comparam
+      // `teamMember.role !== "manager"` na mão. Rebaixá-lo daria 403 ao próprio
+      // dono da conta na busca de leads e na gestão de webhooks.
+      if (data.role !== undefined && data.role !== "manager") {
+        const ownsTargetAccount = await this.isAccountMasterOf(memberId, data)
+        if (ownsTargetAccount) {
+          return new Output(
+            false,
+            [],
+            ["O nível de acesso do master da conta é fixo em manager"],
+            null
+          )
+        }
       }
 
       const profilePayloadEmpty = Object.keys(payload).length === 0
