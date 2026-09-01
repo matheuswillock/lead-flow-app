@@ -16,7 +16,10 @@ import {
   parseDateKeyToUtc,
   resolveTimezone,
 } from "@/lib/dates"
-import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
+import {
+  IBackofficePlatformUsersRepository,
+  type MasterPlatformUserPlanSubscriptionRecord,
+} from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
@@ -118,10 +121,21 @@ function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): 
   `
 }
 
-interface PlanInfo {
+export interface PlanInfo {
   label: string
+  /** Valor cobrado hoje (o que o cliente paga) — nunca preço hardcoded por enum (E5/§7.7). */
   amount: number | null
+  /** Valor de tabela do produto para o mesmo ciclo, quando disponível — divergência com `amount` é informação, não erro a esconder. */
+  listAmount: number | null
   kind: "lifetime" | "monthly" | "trial" | "none"
+}
+
+const BILLING_CYCLE_LABEL_PT: Record<string, string> = {
+  monthly: "Mensal",
+  quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
+  semiannual: "Semestral",
+  annual: "Anual",
 }
 
 interface AsaasPaymentItem {
@@ -470,21 +484,22 @@ function formatInvoiceCurrency(value?: number): string {
   }).format(normalizeAsaasValue(value))
 }
 
-function getMonthlyPlanAmount(plan: SubscriptionPlan | null, operatorCount: number): number | null {
-  if (plan === "manager_base") return 59.9
-  if (plan === "with_operators") return 59.9 + Math.max(operatorCount, 0) * 19.9
-  return null
-}
-
-function getPlanInfo(
+/**
+ * E5 (§7.7): rótulo e valor derivam da cadeia real (assinatura → adesão →
+ * produto) — nunca de preço fixo por enum. `getMonthlyPlanAmount` (que
+ * fixava 59,90/19,90 para qualquer `manager_base`/`with_operators`,
+ * independente do que foi vendido) foi removida.
+ */
+export function getPlanInfo(
   hasPermanentSubscription: boolean,
   subscriptionPlan: SubscriptionPlan | null,
-  operatorCount: number
+  planSubscription: MasterPlatformUserPlanSubscriptionRecord | null
 ): PlanInfo {
   if (hasPermanentSubscription) {
     return {
       label: "Vitalício",
       amount: null,
+      listAmount: null,
       kind: "lifetime",
     }
   }
@@ -493,15 +508,22 @@ function getPlanInfo(
     return {
       label: "Trial",
       amount: null,
+      listAmount: null,
       kind: "trial",
     }
   }
 
-  const amount = getMonthlyPlanAmount(subscriptionPlan, operatorCount)
-  if (amount !== null) {
+  if (planSubscription && (planSubscription.productName || planSubscription.chargedAmount !== null)) {
+    const cycleLabel = planSubscription.cycle
+      ? BILLING_CYCLE_LABEL_PT[planSubscription.cycle] ?? planSubscription.cycle
+      : null
+    const productLabel = planSubscription.productName ?? "Plano"
+    const label = cycleLabel ? `${productLabel} — ${cycleLabel}` : productLabel
+
     return {
-      label: "Mensal",
-      amount,
+      label,
+      amount: planSubscription.chargedAmount,
+      listAmount: planSubscription.listAmount,
       kind: "monthly",
     }
   }
@@ -509,6 +531,7 @@ function getPlanInfo(
   return {
     label: "Sem plano ativo",
     amount: null,
+    listAmount: null,
     kind: "none",
   }
 }
@@ -580,7 +603,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         const plan = getPlanInfo(
           master.hasPermanentSubscription,
           master.subscriptionPlan,
-          master.operatorCount
+          master.planSubscription
         )
 
         return {
@@ -639,7 +662,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const plan = getPlanInfo(
         master.hasPermanentSubscription,
         master.subscriptionPlan,
-        master.operatorCount
+        master.planSubscription
       )
 
       const hasAccess =
