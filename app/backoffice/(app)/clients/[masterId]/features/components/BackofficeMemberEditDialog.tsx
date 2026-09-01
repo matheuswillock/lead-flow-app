@@ -218,13 +218,16 @@ export function BackofficeMemberEditDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Editar membro
+            {/* Um master de outra conta aparece aqui como membro comum. O selo
+                precisa dizer de qual conta ele é dono, senão o operador lê
+                "Master" e supõe que os controles travados são esperados. */}
             {member.isMaster ? (
               <Badge
                 variant="outline"
                 className="border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning"
               >
                 <Crown className="size-3 mr-1" />
-                Master
+                {member.isAccountMaster ? "Master" : "Master de outra conta"}
               </Badge>
             ) : null}
           </DialogTitle>
@@ -288,7 +291,7 @@ export function BackofficeMemberEditDialog({
                 key={`${member.id}-${isLoadingTeams ? "loading" : "ready"}`}
                 teams={teamsDraft}
                 onTeamsChange={setTeamsDraft}
-                memberIsMaster={member.isMaster}
+                memberIsAccountMaster={member.isAccountMaster}
                 canManage={canManage}
                 isSubmitting={isSubmitting}
                 isLoading={isLoadingTeams}
