@@ -10,6 +10,7 @@ import {
   isBrazilianLandlinePhone,
   isBrazilianMobilePhone,
   isValidPersonLeadName,
+  resolveLeadDiscardReason,
 } from "./lead-identity"
 import type { PublicFormSnapshot } from "./types"
 
@@ -200,5 +201,70 @@ describe("lead identity from public forms", () => {
     expect(unified.name).toBe("Maria Silva")
     expect(unified.normalizedPhone).toBe("11988887777")
     expect(hasCrmGateAC(unified)).toBe(true)
+  })
+
+  // SPEC 40-E1 adenda (bug 2026-09-01, caso GERSON/KKJ): telefone digitado
+  // com o código do país (55) precisa normalizar ANTES da régua, protegendo
+  // qualquer canal que entregue o valor de 12-13 dígitos inteiro ao servidor
+  // (import, colagem, API) — não só o form corrigido pela máscara do
+  // frontend.
+  it("T-F1.6: normaliza telefone com DDI 55 de 12-13 dígitos e cria o lead (caso GERSON)", () => {
+    const gerson = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Gerson de Oliveira" },
+      { questionId: phoneId, value: "55 11 2422-2006" },
+    ])
+    expect(gerson.normalizedPhone).toBe("1124222006")
+    expect(canCreateLeadFromExtracted(gerson)).toBe(true)
+    expect(resolveLeadDiscardReason(gerson, { hasMatchingLead: false })).toBeNull()
+
+    const celularComDdi = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Nathany Souza" },
+      { questionId: phoneId, value: "+55 (11) 98230-8088" },
+    ])
+    expect(celularComDdi.normalizedPhone).toBe("11982308088")
+    expect(canCreateLeadFromExtracted(celularComDdi)).toBe(true)
+  })
+
+  it("T-F1.6: nunca remove o 55 de um DDD 55 (RS) legítimo", () => {
+    const celularGaucho = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Rosane Goncalves" },
+      { questionId: phoneId, value: "(55) 99632-6534" },
+    ])
+    expect(celularGaucho.normalizedPhone).toBe("55996326534")
+    expect(canCreateLeadFromExtracted(celularGaucho)).toBe(true)
+
+    const fixoGaucho = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Rosane Goncalves" },
+      { questionId: phoneId, value: "55 3261-1122" },
+    ])
+    expect(fixoGaucho.normalizedPhone).toBe("5532611122")
+    expect(canCreateLeadFromExtracted(fixoGaucho)).toBe(true)
+  })
+
+  it("T-F1.6 (controle): valor sem forma válida após o strip continua descartado — backend não inventa dígito", () => {
+    const matheusTeste = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Matheus Teste" },
+      { questionId: phoneId, value: "(55) 19118-0656" },
+    ])
+    expect(matheusTeste.normalizedPhone).toBe("55191180656")
+    expect(canCreateLeadFromExtracted(matheusTeste)).toBe(false)
+    expect(resolveLeadDiscardReason(matheusTeste, { hasMatchingLead: false })).toBe(
+      "telefone_invalido",
+    )
+  })
+
+  it("T-F1.7: telefone já normalizado não muda — round-trip idempotente", () => {
+    const already = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
+      { questionId: phoneId, value: "(11) 98888-7777" },
+    ])
+    expect(already.normalizedPhone).toBe("11988887777")
+
+    const reprocessed = extractLeadDataFromSnapshot(snapshot(), [
+      { questionId: nameId, value: "Maria Silva" },
+      { questionId: phoneId, value: already.normalizedPhone },
+    ])
+    expect(reprocessed.normalizedPhone).toBe(already.normalizedPhone)
+    expect(canCreateLeadFromExtracted(reprocessed)).toBe(true)
   })
 })
