@@ -71,27 +71,15 @@ The repository has three fully CI-automated PR flows. Agents **MUST** rely on th
 
 Before creating or starting work on a `feature/*` or `bugfix/*` branch, agents **MUST** update the local branch from `develop` first (e.g. `git fetch origin develop && git checkout -b <branch> origin/develop`, or `git pull origin develop` if the branch already exists) to avoid a stale base and avoidable merge conflicts.
 
-### Push seguro — nunca force-push (MUST)
+### Safe push — never force-push (MUST)
 
-Sempre que um novo push para o remoto for necessário numa branch já publicada (a
-branch já tem commits no `origin`, e não só na primeira publicação), o agente
-**MUST NOT**, sob nenhuma circunstância, usar `git push --force`, `--force-with-lease`
-ou `-f` sem autorização explícita e inequívoca do dono do projeto. Antes de cada push
-subsequente, nesta ordem:
+Whenever a new push to the remote is needed on a branch that has already been published (the branch already has commits on `origin`, not just its first publication), agents **MUST NOT**, under any circumstances, use `git push --force`, `--force-with-lease`, or `-f` without explicit, unambiguous authorization from the project owner. Before every subsequent push, in this order:
 
-1. `git pull origin <própria-branch>` — a branch pode ter recebido commits no remoto
-   desde o último push local (ex.: resolução de comentário de review feita por outra
-   sessão, push manual do dono).
-2. `git pull origin develop` (merge de `develop` na própria branch) — trazer o que
-   mudou em `develop` desde que a branch foi criada ou desde o último pull, evitando
-   divergência que só aparece na CI ou no PR.
-3. `git push origin <própria-branch>` — só depois dos dois pulls acima, nunca antes.
+1. `git pull origin <own-branch>` — the branch may have received commits on the remote since the last local push (e.g. a review comment resolved by another session, or a manual push by the owner).
+2. `git pull origin develop` (merge `develop` into the own branch) — bring in whatever changed on `develop` since the branch was created or since the last pull, avoiding divergence that only surfaces in CI or in the PR.
+3. `git push origin <own-branch>` — only after both pulls above, never before.
 
-Conflitos de merge nos passos 1–2 **MUST** ser resolvidos localmente, revisando cada
-hunk — nunca com resolução automática cega (`--theirs`/`--ours` em massa). Se o
-histórico local e o remoto tiverem divergido de um jeito que só um force resolveria,
-o agente **MUST** parar e perguntar ao dono; nunca sobrescrever histórico remoto para
-"destravar" o push.
+Merge conflicts from steps 1–2 **MUST** be resolved locally, reviewing each hunk — never with blind automatic resolution (bulk `--theirs`/`--ours`). If local and remote history have diverged in a way that only a force-push would resolve, the agent **MUST** stop and ask the owner; never overwrite remote history to "unblock" the push.
 
 ### Pull Requests are pipeline-only (MUST NOT)
 
