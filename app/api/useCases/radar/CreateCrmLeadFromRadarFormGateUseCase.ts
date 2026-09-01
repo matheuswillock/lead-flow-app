@@ -1,6 +1,8 @@
+import { LeadStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
 import type {
   IRadarLeadGateUnitOfWork,
+  RadarCrmIdentityMatchCandidate,
   RadarLeadGateProfile,
   RadarLeadGateReferral,
   RadarLeadGateTransaction,
@@ -53,9 +55,11 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
 
           const matches = await transaction.findIdentityMatches(profile)
           const distinctLeadIds = new Set(
-            [matches.leadIdMatch, matches.phoneMatch, matches.emailMatch].filter(
-              (leadId): leadId is string => Boolean(leadId),
-            ),
+            [matches.leadIdMatch, matches.phoneMatch, matches.emailMatch]
+              .filter((match): match is NonNullable<RadarCrmIdentityMatchCandidate> =>
+                Boolean(match),
+              )
+              .map((match) => match.leadId),
           )
           if (distinctLeadIds.size > 1) {
             await transaction.appendGateEvent({
@@ -64,9 +68,9 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
               eventType: "radar.crm_identity_conflict",
               eventId: input.eventId,
               metadata: {
-                leadIdMatch: matches.leadIdMatch,
-                phoneMatch: matches.phoneMatch,
-                emailMatch: matches.emailMatch,
+                leadIdMatch: matches.leadIdMatch?.leadId ?? null,
+                phoneMatch: matches.phoneMatch?.leadId ?? null,
+                emailMatch: matches.emailMatch?.leadId ?? null,
               },
             })
             return new Output(true, [], [], {
@@ -75,8 +79,8 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
             })
           }
 
-          const candidateLeadId =
-            matches.leadIdMatch ?? matches.phoneMatch ?? matches.emailMatch ?? null
+          const candidate = matches.leadIdMatch ?? matches.phoneMatch ?? matches.emailMatch
+          const candidateLeadId = candidate?.leadId ?? null
           const placement = await this.resolveSessionPlacement({
             transaction,
             teamId: input.teamId,
@@ -87,6 +91,16 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
           })
           const divergence = placement.divergentFromLeadId
 
+          // Regra 1 (adenda 31/08, pós-#1107): dedupe sensível a status. O
+          // candidato só recebe ANEXO se estiver em `new_opportunity` — em
+          // qualquer outro status (agendado, negociação, fechado, perdido…) o
+          // card já foi trabalhado, e a mesma identidade em outro momento da
+          // negociação é uma oportunidade NOVA, não uma anotação no card morto.
+          // Só se aplica quando a identidade não já divergiu (a divergência do
+          // #1107 já força card novo por outro motivo).
+          const statusReopen =
+            !divergence && candidate !== null && candidate.status !== LeadStatus.new_opportunity
+
           const promotion = await transaction.createOrUpdateFromRadarProfile({
             teamId: input.teamId,
             formId: input.formId,
@@ -94,7 +108,11 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
               divergence && placement.typed
                 ? overlayTypedIdentityOnProfile(profile, placement.typed)
                 : profile,
-            existingLeadId: divergence ? placement.sessionReferralLeadId : candidateLeadId,
+            existingLeadId: divergence
+              ? placement.sessionReferralLeadId
+              : statusReopen
+                ? null
+                : candidateLeadId,
             origin: input.origin ?? {},
             referral: divergence
               ? buildReferral({
@@ -103,23 +121,32 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
                   origin: input.origin ?? {},
                 })
               : null,
-            // Semente pela SUBMISSÃO, não pela sessão: o cookie de sessão dura
-            // 30 dias e o mesmo formulário aceita uma segunda conversão (outra
-            // campanha) dentro dela. Semeando pela sessão, duas indicações
-            // divergentes derivariam o mesmo `leadCode` — `@unique` global — e a
-            // segunda morreria em P2002, deixando o respondente sem card.
-            leadCodeSeed: divergence ? (placement.typed?.submissionId ?? null) : null,
+            // Semente por SUBMISSÃO (divergência) ou por CANDIDATO REABERTO
+            // (regra 1), nunca pela sessão nem pelo perfil sozinho:
+            // `Lead.leadCode` é `@unique` global e os dois caminhos promovem um
+            // SEGUNDO (ou terceiro…) lead do mesmo perfil — sem semente própria
+            // o código colidiria (P2002) com um lead anterior do mesmo perfil,
+            // deixando o respondente sem card nenhum.
+            leadCodeSeed: divergence
+              ? (placement.typed?.submissionId ?? null)
+              : statusReopen
+                ? `reopen:${candidateLeadId}`
+                : null,
           })
 
           // Divergência = o perfil do Radar continua sendo o do DESTINATÁRIO do
           // e-mail, e o vínculo dele segue com o lead original. Revincular aqui
           // apontaria o perfil do destinatário para o card de quem respondeu o
-          // encaminhamento — e `linkLeadIdentity` recusaria de qualquer forma
-          // ("Perfil Radar já está vinculado a outro lead"), derrubando a
-          // transação inteira. O lead novo nasce sem vínculo de perfil; quem o
+          // encaminhamento. O lead novo nasce sem vínculo de perfil; quem o
           // ganha é o perfil do próprio respondente quando ele aparecer pela
           // identidade digitada. A âncora de idempotência do gate é o
           // `leadId` da submissão da sessão, não o vínculo do perfil.
+          //
+          // Reabertura por status (regra 1) É vinculada ao perfil — regra 2
+          // (histórico) é o que torna isso possível: o card novo passa a ser o
+          // vínculo MAIS RECENTE, e a próxima chamada do gate já o encontra
+          // como candidato em `new_opportunity`, anexando nele — idempotência
+          // sem precisar de âncora extra.
           if (!divergence) {
             await transaction.linkLeadIdentity({
               teamId: input.teamId,
@@ -141,6 +168,12 @@ export class CreateCrmLeadFromRadarFormGateUseCase {
                 ? {
                     typedIdentityDivergence: true,
                     referralOfLeadId: divergence,
+                  }
+                : {}),
+              ...(statusReopen
+                ? {
+                    statusReopened: true,
+                    previousLeadId: candidateLeadId,
                   }
                 : {}),
             },
