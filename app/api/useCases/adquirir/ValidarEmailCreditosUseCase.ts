@@ -5,9 +5,13 @@ import { slackEmailCreditsService } from "@/app/api/services/slackEmailCredits/S
 import { getAsaasCheckoutBaseUrl } from "@/lib/asaas";
 import type { EmailCreditPlan } from "@/app/api/services/slackEmailCredits/ISlackEmailCreditsService";
 
-const ASAAS_CREDIT_CHECKOUT_IDS: Record<EmailCreditPlan, string> = {
-  "25k": "7t6pqaxdfc0yyc65",
-  "50k": "g8wl8a5xrn009icv",
+// DA3/E1 de [[40 — Checkout, Adesões e Add-ons — Backend]] (C17): o ID do
+// checkout hospedado pertence à conta Asaas onde foi criado — nunca literal
+// de código. Vem de env validada, sem fallback: ausência é Output inválido,
+// não um ID legado silenciosamente reusado.
+const ASAAS_CREDIT_CHECKOUT_ENV_KEYS: Record<EmailCreditPlan, string> = {
+  "25k": "ASAAS_CREDIT_CHECKOUT_ID_25K",
+  "50k": "ASAAS_CREDIT_CHECKOUT_ID_50K",
 };
 
 const validarCreditosSchema = z.object({
@@ -33,6 +37,21 @@ export class ValidarEmailCreditosUseCase implements IValidarEmailCreditosUseCase
     const normalizedEmail = parsed.data.email.trim().toLowerCase();
     const plan = parsed.data.plan as EmailCreditPlan;
 
+    const checkoutEnvKey = ASAAS_CREDIT_CHECKOUT_ENV_KEYS[plan];
+    const checkoutId = process.env[checkoutEnvKey];
+
+    if (!checkoutId) {
+      console.error(
+        `[ValidarEmailCreditosUseCase] Checkout hospedado não configurado — env ${checkoutEnvKey} ausente.`
+      );
+      return new Output(
+        false,
+        [],
+        ["Checkout de créditos temporariamente indisponível. Tente novamente em instantes."],
+        null,
+      );
+    }
+
     const profile = await profileRepository.findByEmail(normalizedEmail);
 
     if (!profile) {
@@ -54,7 +73,7 @@ export class ValidarEmailCreditosUseCase implements IValidarEmailCreditosUseCase
       console.error("[ValidarEmailCreditosUseCase] Falha ao notificar Slack:", slackResult.error);
     }
 
-    const checkoutUrl = `${getAsaasCheckoutBaseUrl()}/c/${ASAAS_CREDIT_CHECKOUT_IDS[plan]}`;
+    const checkoutUrl = `${getAsaasCheckoutBaseUrl()}/c/${checkoutId}`;
 
     return new Output(true, [], [], { checkoutUrl, plan, email: normalizedEmail });
   }
