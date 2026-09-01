@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { UpdatePermanentSubscriptionUseCase } from "@/app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess";
+import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 /**
@@ -19,6 +20,9 @@ export async function PUT(
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status });
     }
+
+    const denied = requireManagerAccess(accessResult.access);
+    if (denied) return denied;
 
     const body = await request.json();
     const { hasPermanentSubscription } = body;
