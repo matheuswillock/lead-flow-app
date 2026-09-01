@@ -249,6 +249,9 @@ export function BackofficeAllUsersContainer() {
       googleEmail: null,
       functions: [],
       isMaster: item.isMaster,
+      // Fallback usado só quando o usuário não tem vínculo de time; a conta
+      // resolvida por `getMasterId` é a dele mesmo quando ele é master.
+      isAccountMaster: item.isMaster,
       canCreateAccountUsers: false,
       canManageAccountTeams: false,
       canTransferAccountLeads: false,
