@@ -30,7 +30,13 @@ import {
   validateAnswer,
 } from "@/lib/public-forms/engine"
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
-import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
+import { formatCurrencyBR } from "@/lib/public-forms/masks"
+import {
+  findLeadPhoneQuestion,
+  getPhoneFieldInlineError,
+  normalizeAndMaskPhoneInput,
+  shouldBlockFirstPhoneSubmitAttempt,
+} from "@/lib/public-forms/phone-field"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
@@ -146,6 +152,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
   const previousVisibleIds = useRef<string[]>([])
   const submitLockRef = useRef(false)
+  // Adenda 41-E2 (owner, 01/09): telefone invalido barra o PRIMEIRO clique em
+  // Enviar para o visitante ver o aviso, mas nunca o segundo — a regua de
+  // lead nao vira regua de submissao.
+  const phoneSubmitWarningAcknowledgedRef = useRef(false)
 
   const answerList = useMemo(
     () => Object.entries(answers).map(([questionId, value]) => ({ questionId, value })),
@@ -463,6 +473,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       if (question && isLeadNameQuestion(question)) {
         setError(validateAnswer(question, value))
       }
+      if (question && question.type === "phone") {
+        setError(getPhoneFieldInlineError(value))
+      }
     },
     [preview, publicId, sendWithOutbox, session, snapshot.questions],
   )
@@ -550,6 +563,33 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     }
     if (!publicId || !session) return
     if (sending || done || submitLockRef.current) return
+    // O telefone que decide o lead é o mapeado para native_field.phone — um
+    // telefone de recado (custom_field) válido não pode suprimir o aviso.
+    const phoneQuestion = findLeadPhoneQuestion(snapshot.questions)
+    if (phoneQuestion) {
+      const phoneValue = answers[phoneQuestion.id]
+      if (
+        shouldBlockFirstPhoneSubmitAttempt({
+          value: phoneValue,
+          alreadyWarnedOnce: phoneSubmitWarningAcknowledgedRef.current,
+        })
+      ) {
+        phoneSubmitWarningAcknowledgedRef.current = true
+        setError(getPhoneFieldInlineError(phoneValue))
+        // Volta para a página do campo de telefone: quando o submit parte de
+        // uma página posterior (agendamento/resultado do simulador), o aviso
+        // sem navegação apontaria para um campo fora da tela e o visitante
+        // não teria como corrigir antes do segundo clique.
+        const phonePageIndex = pages.findIndex((page) =>
+          page.some((item) => item.id === phoneQuestion.id),
+        )
+        if (phonePageIndex >= 0) {
+          setIndex(phonePageIndex)
+          setPhase("form")
+        }
+        return
+      }
+    }
     submitLockRef.current = true
     track("form_submit_attempted", undefined, {
       ...(currentPageId ? { pageId: currentPageId } : {}),
@@ -1189,8 +1229,8 @@ function Question({
         inputMode={auto.inputMode ?? "tel"}
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "(11) 99999-9999"}
-        onChange={(event) => onChange(formatPhoneBR(event.target.value))}
-        onBlur={(event) => onBlur?.(question.id, formatPhoneBR(event.currentTarget.value))}
+        onChange={(event) => onChange(normalizeAndMaskPhoneInput(event.target.value))}
+        onBlur={(event) => onBlur?.(question.id, normalizeAndMaskPhoneInput(event.currentTarget.value))}
         className="h-14 border-input bg-background text-lg"
       />
     )
