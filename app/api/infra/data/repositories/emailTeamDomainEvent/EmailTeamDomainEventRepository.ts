@@ -119,6 +119,38 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
     })
   }
 
+  /**
+   * Falha NÃO é marco único como "domain_added": o painel do Resend mostra a
+   * falha MAIS RECENTE ("DNS invalid — Sep 01"), e o `recordEventIfMissing`
+   * congelava a primeira para sempre (interplaza: falha de 27/08 exibida com a
+   * verificação refeita em 01/09). Aqui a linha existente é retocada quando a
+   * nova falha é mais nova — os marcos de sucesso continuam imutáveis.
+   */
+  private async recordOrRefreshFailureEvent(
+    teamId: string,
+    occurredAt: Date,
+    metadata: Record<string, unknown>
+  ): Promise<void> {
+    const existing = await prisma.emailTeamDomainEvent.findFirst({
+      where: { teamId, type: "domain_failed" },
+      select: { id: true, occurredAt: true },
+    })
+
+    if (!existing) {
+      await prisma.emailTeamDomainEvent.create({
+        data: { teamId, type: "domain_failed", occurredAt, metadata: metadata as Prisma.InputJsonValue },
+      })
+      return
+    }
+
+    if (existing.occurredAt >= occurredAt) return
+
+    await prisma.emailTeamDomainEvent.update({
+      where: { id: existing.id },
+      data: { occurredAt, metadata: metadata as Prisma.InputJsonValue },
+    })
+  }
+
   async findTeamByResendDomainId(resendDomainId: string) {
     return prisma.emailTeamSettings.findFirst({
       where: { resendDomainId },
@@ -217,7 +249,7 @@ export class EmailTeamDomainEventRepository implements IEmailTeamDomainEventRepo
     }
 
     if (status === "failed" || status === "temporary_failure") {
-      await this.recordEventIfMissing(teamId, "domain_failed", occurredAt, {
+      await this.recordOrRefreshFailureEvent(teamId, occurredAt, {
         domainId: domain.id,
         domainName: domain.name,
         status,

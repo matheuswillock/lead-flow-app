@@ -91,11 +91,19 @@ function buildResend(): ReturnType<typeof assertResend> {
   } as unknown as ReturnType<typeof assertResend>
 }
 
-function buildUseCase(): EmailTeamSettingsUseCase {
+/**
+ * `domainExistence` SEMPRE injetado: o default do use case consulta DNS/RDAP
+ * reais, e teste unitário não pode depender da rede da máquina.
+ */
+function buildUseCase(
+  domainExistence: (name: string) => Promise<"exists" | "not_registered" | "unknown"> = async () =>
+    "exists" as const
+): EmailTeamSettingsUseCase {
   return new EmailTeamSettingsUseCase({
     settingsRepo: buildSettingsRepository(),
     resendFactory: buildResend,
     domainEvents: buildDomainEvents(),
+    domainExistence,
   })
 }
 
@@ -251,5 +259,44 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
     expect(output.isValid).toBe(false)
     expect(output.errorMessages[0]).toBe("Nome de domínio inválido")
     expect(domainsCreateMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Incidente Gorrilhas (01/09): domínio digitado errado/não registrado só
+   * aparecia como "Falhou" dias depois, na verificação assíncrona de DNS. A
+   * recusa tem que acontecer no submit, ANTES de criar o domínio no provedor.
+   */
+  it("domínio não registrado é recusado no submit, sem tocar o provedor", async () => {
+    const output = await buildUseCase(async () => "not_registered").connectDomain(
+      "naoexiste-xyz.com.br",
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toBe(
+      'O domínio "naoexiste-xyz.com.br" não existe ou ainda não foi registrado. Confira a grafia — o domínio precisa estar registrado antes de ser conectado.'
+    )
+    expect(domainsCreateMock).not.toHaveBeenCalled()
+    expect(saveConnectedDomainMock).not.toHaveBeenCalled()
+  })
+
+  it("a checagem de existência recebe o domínio JÁ sanitizado", async () => {
+    const consulted: string[] = []
+    await buildUseCase(async (name) => {
+      consulted.push(name)
+      return "exists"
+    }).connectDomain("  HTTP://Empresa.COM.br/  ", teamCtx)
+
+    expect(consulted).toEqual(["empresa.com.br"])
+  })
+
+  it("resolver indisponível (unknown) não bloqueia a conexão — fail-open", async () => {
+    const output = await buildUseCase(async () => "unknown").connectDomain(
+      "empresaxyz.com.br",
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(true)
+    expect(domainsCreateMock).toHaveBeenCalledTimes(1)
   })
 })
