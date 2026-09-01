@@ -288,6 +288,23 @@ export type RadarProfileTouchpoints = {
   breakdown: RadarTouchpointChannel[]
 }
 
+/**
+ * Seção "Leads no CRM" do perfil unificado (regra 3, adenda 31/08 pós-#1107):
+ * todos os leads vinculados ao perfil ao longo da vida da negociação —
+ * histórico (regra 2), não mais um único lead. Mais recente primeiro.
+ */
+export type RadarRelatedLead = {
+  id: string
+  leadCode: string
+  name: string
+  status: string
+  createdAt: string
+}
+
+export type RadarProfileRelatedLeads = {
+  items: RadarRelatedLead[]
+}
+
 export type RadarContractHolder = {
   id: string
   name: string

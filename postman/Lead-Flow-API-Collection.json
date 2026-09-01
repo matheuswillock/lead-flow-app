@@ -19611,6 +19611,44 @@
           "response": []
         },
         {
+          "name": "Leads no CRM do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/related-leads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "related-leads"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "Adenda 31/08 (pós-#1107): todos os leads vinculados ao perfil ao longo da vida da negociação (histórico via radarIdentity type lead_id, 1:N), mais recente primeiro."
+          },
+          "response": []
+        },
+        {
           "name": "Perfis do segmento do sistema",
           "request": {
             "method": "GET",
