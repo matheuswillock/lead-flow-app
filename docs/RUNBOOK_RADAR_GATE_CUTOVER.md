@@ -31,9 +31,12 @@ rollback, não implementa a ativação.
 2. [[40]] E1 (`required` no servidor) em produção. **Confirmado**: `#1030` em
    `origin/main`.
 3. Relatório shadow com ≥7 dias limpos (`radar.crm_lead_gate_shadow` × decisão
-   legada real, cascas do E0 excluídas da amostra). **Bloqueado nesta sessão**
-   — sem acesso de leitura ao Supabase de produção (MCP não autenticado). Ver
-   seção "Como rodar a validação do shadow" abaixo.
+   legada real, cascas do E0 excluídas da amostra). **Rodado nesta sessão**
+   (Supabase MCP autenticado em 2026-09-01, produção `wcnxwdcoambpfwxwubka`) —
+   ver "Resultado da validação do shadow (2026-09-01)" abaixo. N=79, cobre os
+   7 dias mínimos (25/08→01/09) mas fica abaixo do alvo N≥100 da SPEC —
+   recomendação: estender mais alguns dias antes do canary, ou aceitar dado o
+   padrão já ser claro (ver análise).
 4. D2b resolvida pelo dono ([[90 — Decisões em aberto (owner)]]). **Não
    resolvida em 2026-09-01** — segue com as opções A/B/C em aberto, sem
    `Atualização` registrada como D1 recebeu. O cutover congela a régua vigente
@@ -43,31 +46,45 @@ rollback, não implementa a ativação.
 
 ## Como rodar a validação do shadow (pré-condição do passo 1)
 
-Query de referência (produção, projeto Supabase `wcnxwdcoambpfwxwubka`, MCP
-`mcp__plugin_supabase_supabase__execute_sql` ou `psql` read-only):
+**Tabelas físicas corretas** (o schema `radar` não existe como namespace
+Postgres — é convenção de `eventType`; as tabelas vivem em `public`):
+`radar.crm_lead_gate_shadow` = `corretor_studio_radar_events` filtrado por
+`"eventType" = 'radar.crm_lead_gate_shadow'`; leads reais em
+`corretor_studio_leads`; funil legado em
+`corretor_studio_public_form_metric_events`.
 
 ```sql
 -- Decisão do gate novo (shadow) por time, desde a ativação em 2026-08-25
 select
   "teamId",
-  metadata->>'eligible' as eligible,
-  metadata->>'reason' as reason,
+  (metadata->>'eligible')::text as eligible,
+  coalesce(metadata->>'reason','') as reason,
   count(*) as n
-from radar.crm_lead_gate_shadow
-where "occurredAt" >= '2026-08-25'
+from corretor_studio_radar_events
+where "eventType" = 'radar.crm_lead_gate_shadow'
+  and "occurredAt" >= '2026-08-25'
 group by 1, 2, 3
 order by 1, n desc;
 
 -- Decisão real do legado no mesmo período (form_completed -> lead_created/lead_attached/lead_discarded)
 select
-  eventType,
-  origin->>'reason' as discard_reason,
+  f."teamId",
+  e."eventType",
+  coalesce(e.origin->>'reason','') as discard_reason,
   count(*) as n
-from corretor_studio_public_form_metric_events
-where "eventType" in ('lead_created','lead_attached','lead_discarded')
-  and "occurredAt" >= '2026-08-25'
-group by 1, 2
+from corretor_studio_public_form_metric_events e
+join corretor_studio_public_forms f on f.id = e."formId"
+where e."eventType" in ('lead_created','lead_attached','lead_discarded')
+  and e."createdAt" >= '2026-08-25'
+group by 1, 2, 3
 order by 1, n desc;
+
+-- Leads REAIS criados no período (contorna o mislabel — ver achado abaixo)
+select "teamId", count(*) as leads_created
+from corretor_studio_leads
+where "originChannel" in ('public_form','email_campaign')
+  and "createdAt" >= '2026-08-25'
+group by 1;
 ```
 
 Cruzar por submissão (join por `visitorSessionId`/`formId`/janela de tempo) e
@@ -76,11 +93,50 @@ classificar cada divergência: **esperada** (ex.: gate novo recusa
 design, D2) vs. **não explicada** (para tudo e reporta ao dono, conforme o
 contrato de execução da rodada).
 
-## Passo 1 — Confirmar shadow limpo
+## Passo 1 — Resultado da validação do shadow (2026-09-01)
 
-Critério: N ≥ 100 decisões, toda divergência classificada, nenhuma classe não
-explicada. Ver query acima. Produto do passo: tabela de paridade anexada ao
-relatório final e a esta nota (10-E8).
+Rodado contra produção (`wcnxwdcoambpfwxwubka`), janela 2026-08-25→2026-09-01
+(7 dias, o mínimo exigido):
+
+| Métrica | N |
+|---|---:|
+| Total de decisões shadow (`radar.crm_lead_gate_shadow`) | 79 |
+| Shadow `eligible=true` | 27 |
+| Shadow `eligible=false` (`invalid_phone` 44, `invalid_name` 8) | 52 |
+| Funil legado: `lead_attached` | 26 |
+| Funil legado: `lead_discarded` (`telefone_invalido`) | 1 |
+| Funil legado: `lead_created` | **0** |
+| Leads REAIS criados (`originChannel` public_form/email_campaign) | 20 |
+
+Times amostrados: MultiSkill, Backoffice, Liber Corretora, Calli Seguros — 4
+dos ~dezenas de times ativos (amostra viesada para quem teve tráfego de
+formulário na janela; times sem `question_answered` ficam fora, viés
+conhecido de H20).
+
+**Classes de divergência:**
+
+1. **`lead_created` sempre 0 no funil, mas 20 leads reais nasceram no
+   período** — não é ausência de criação, é **mislabel confirmado** (ver
+   achado abaixo). Classe: **esperada dado o bug, mas grave** — todo
+   dashboard que lê `lead_created` como proxy de criação está cego. Some no
+   cutover (caminho A para de existir em modo `radar`).
+2. **Shadow eligible=true (27) ≈ funil legado com desfecho (27 = 26 attached
+   + 1 discarded)** — na mesma ordem de grandeza; consistente com D2 já ser a
+   mesma régua nos dois caminhos (não é coincidência garantida por join
+   direto — shadow dispara por `question_answered`, o funil por conclusão —
+   mas a proximidade dos totais não indica divergência de régua). **Classe:
+   sem sinal de divergência de elegibilidade.**
+3. **Shadow eligible=false por `invalid_phone`/`invalid_name` (52)** — não
+   verificado linha a linha se o legado criava lead mesmo assim para esses
+   casos (precisaria join por submissão, não feito nesta sessão por custo/
+   tempo). Recomendação: antes do canary, rodar esse join fino pelo menos uma
+   vez para descartar divergência de régua não esperada.
+
+**Veredito do passo 1:** shadow **não está "sujo"** — nenhuma classe de
+divergência não explicada foi encontrada — mas **N=79 < 100** (alvo da SPEC)
+e o item 3 acima não foi verificado no nível de submissão. Recomendação:
+manter shadow ativo mais alguns dias e rodar o join fino do item 3 antes de
+autorizar o canary.
 
 ## Passo 2 — Canary
 
@@ -153,22 +209,51 @@ where "originChannel" in ('public_form','email_campaign')
 -- esperado: 0 linhas
 ```
 
-## Achado de telemetria registrado em 2026-09-01 (ver nota 01 §1 / nota 30)
+## Achado de telemetria — CONFIRMADO em 2026-09-01 (ver nota 01 §1 / nota 30)
 
-O legado emite `lead_attached` mesmo quando cria o lead — achado relatado
-contra produção (card "PEDRO TESTE", 01/09 11:20/11:21). A leitura do código
-em `origin/develop` (commit `1623d0dda`, em `origin/main` desde antes de
-31/08) mostra o ponto de emissão (`PublicFormSubmissionUseCase.ts:546-547`)
-já correto — `eventType` deriva de `upserted.outcome === "created"` — e
-coberto por teste (`PublicFormSubmissionUseCase.lead-discarded.test.ts:201-212`).
-O candidato mais provável para reconciliar a observação é o caminho de
-atribuição por `cs_el` (`ResolveEmailCampaignFormAttributionUseCase`), que
-resolve `resolvedLeadId` a partir de um lead **já existente** do destinatário
-quando o upsert direto não resolve identidade — nesse caso `lead_attached` é
-o rótulo correto por desenho (teste
-`PublicFormSubmissionUseCase.lead-discarded.test.ts:241-252`), mas pode SER
-confundido com "criação mal rotulada" por quem está olhando o card no CRM sem
-saber que a atribuição por e-mail achou um lead pré-existente. **Precisa de
-confirmação com leitura real de produção (join submissão×evento×lead) antes
-de decidir se é preciso código novo** — não foi possível nesta sessão por
-falta de acesso ao Supabase MCP.
+**Causa raiz confirmada com dado real de produção** (Supabase MCP, projeto
+`wcnxwdcoambpfwxwubka`, join submissão×evento×lead pela `formId`/janela de
+tempo):
+
+O caso "PEDRO TESTE" (lead `ceeab6ab-34c9-445a-bb4d-9338858d2617`,
+`corretor_studio_leads."createdAt" = 2026-09-01 11:21:01.846+00`) tem o
+`form_completed`/`lead_attached` emitido em `11:21:11.404+00` — **10 segundos
+depois** do lead já existir. O que aconteceu: `PublicFormProgressUseCase.ts`
+(caminho A, disparado a cada `/progress` durante a digitação) chama
+`LegacyPublicFormProgressLeadService.createOrUpdate` com
+`allowCreate: !sessionLeadId` — e esse serviço é um wrapper fino que só
+delega para `upsertLeadFromFormAnswers`
+(`app/api/services/PublicForms/LegacyPublicFormProgressLeadService.ts:26-30`),
+**a mesma função de criação usada na conclusão**. O lead nasce no meio da
+digitação (assim que nome+telefone válidos aparecem), **sem nenhum evento de
+métrica** — `grep` confirma zero ocorrência de `recordMetric`/
+`publishServerPublicFormMetricEvent` nesse arquivo. Quando a submissão
+completa minutos (ou segundos) depois, `processInBackground` roda o mesmo
+`upsertLeadFromFormAnswers`, `findMatchingLead` acha o lead que o caminho A
+já criou, e o outcome sai `"updated"` → `lead_attached`, corretamente segundo
+a lógica do código (`PublicFormSubmissionUseCase.ts:546-547`), mas
+**nenhum evento em lugar nenhum jamais diz `lead_created`** para essa
+identidade — o momento real da criação não é instrumentado.
+
+Isso explica **integralmente** `lead_created = 0` desde 18/08: não é bug no
+ponto de emissão do evento de conclusão (que está correto e testado desde
+`1623d0dda`, 24/08) — é a ausência estrutural de instrumentação no ponto real
+de criação (caminho A, `/progress`). Confirmado com os 20 leads reais criados
+25/08→01/09 (query acima) contra 0 `lead_created` no funil no mesmo período.
+
+**Por que o cutover resolve isso de graça:** em modo `radar`,
+`PublicFormProgressUseCase` **nunca chama** `LegacyPublicFormProgressLeadService`
+(guard `leadGateMode !== "radar"` em `PublicFormProgressUseCase.ts:130`) — o
+caminho A silencioso deixa de existir. Quem cria passa a ser
+`CreateCrmLeadFromRadarFormGateUseCase` (gate C), que emite
+`radar.crm_lead_created`/`radar.crm_lead_attached` corretamente e agora tem
+trava de regressão por teste (ver acima). **Não é necessário nenhum código
+novo para corrigir isto no modo radar** — só o cutover em si.
+
+**Pendência que NÃO é desta sessão:** enquanto o modo `legacy`/`shadow`
+continuar ativo (antes do cutover), todo dashboard que lê `lead_created` como
+proxy de criação real segue cego. Instrumentar `lead_created` no caminho A
+seria trabalho novo em [[40 — Motor de Formulários — Backend]] (não em
+[[10]]) e só vale a pena se o cutover atrasar — registrado como possível
+follow-up, não implementado aqui (fora do escopo do E8 e o cutover o torna
+moot).
