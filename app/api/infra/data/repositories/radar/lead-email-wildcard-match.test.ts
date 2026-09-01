@@ -220,7 +220,7 @@ describe("RadarLeadGateUnitOfWork.findIdentityMatches — curinga de ILIKE", () 
         }),
     )
 
-    expect(matches.emailMatch).toBe("lead-maria")
+    expect(matches.emailMatch?.leadId).toBe("lead-maria")
   })
 
   // Codex, PR #993: sem este caso o gate cria um lead duplicado só por
@@ -241,6 +241,6 @@ describe("RadarLeadGateUnitOfWork.findIdentityMatches — curinga de ILIKE", () 
         }),
     )
 
-    expect(matches.emailMatch).toBe("lead-maria")
+    expect(matches.emailMatch?.leadId).toBe("lead-maria")
   })
 })

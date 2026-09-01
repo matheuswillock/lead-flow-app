@@ -1,3 +1,5 @@
+import type { LeadStatus } from "@prisma/client"
+
 export type RadarLeadGateProfile = {
   id: string
   teamId: string
@@ -7,13 +9,25 @@ export type RadarLeadGateProfile = {
   normalizedPhone: string | null
   primaryEmail: string | null
   normalizedPrimaryEmail: string | null
+  /** Lead do vínculo `lead_id` MAIS RECENTE do perfil — não é mais 1:1 (ver [[RadarCrmIdentityMatch]]). */
   leadId: string | null
 }
 
+/**
+ * Candidato a lead casado, com status — a regra 1 (adenda 31/08) só anexa
+ * quando o candidato está em `new_opportunity`; em qualquer outro status o
+ * gate materializa um card novo.
+ */
+export type RadarCrmIdentityMatchCandidate = {
+  leadId: string
+  /** `null` = lead ainda em rascunho (`Lead.status` é opcional) — nunca é `new_opportunity`, então também não recebe anexo. */
+  status: LeadStatus | null
+} | null
+
 export type RadarCrmIdentityMatch = {
-  leadIdMatch: string | null
-  phoneMatch: string | null
-  emailMatch: string | null
+  leadIdMatch: RadarCrmIdentityMatchCandidate
+  phoneMatch: RadarCrmIdentityMatchCandidate
+  emailMatch: RadarCrmIdentityMatchCandidate
 }
 
 export type RadarLeadGatePromotionResult = {
