@@ -1,4 +1,5 @@
 import type { SubscriptionPlan, SubscriptionStatus } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface TeamSummaryRecord {
   id: string
@@ -101,7 +102,9 @@ export interface MasterPlatformUserBillingRecord {
   neighborhood: string | null
   complement: string | null
   asaasCustomerId: string | null
+  asaasCustomerAccount: AsaasAccountId
   asaasSubscriptionId: string | null
+  asaasSubscriptionAccount: AsaasAccountId
   subscriptionStatus: SubscriptionStatus | null
   subscriptionNextDueDate: Date | null
   subscriptionEndDate: Date | null

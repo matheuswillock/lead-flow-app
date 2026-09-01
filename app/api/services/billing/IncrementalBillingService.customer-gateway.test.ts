@@ -25,14 +25,20 @@ const asaasFetchMock = mock(async (_url: string, _init?: RequestInit) => ({
   cycle: "MONTHLY",
 }))
 
+const endpoints = {
+  subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
+  customers: "https://sandbox.asaas.com/api/v3/customers",
+  payments: "https://sandbox.asaas.com/api/v3/payments",
+  pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
+}
+
 mock.module("@/lib/asaas", () => ({
-  asaasApi: {
-    subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
-    customers: "https://sandbox.asaas.com/api/v3/customers",
-    payments: "https://sandbox.asaas.com/api/v3/payments",
-    pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
-  },
+  asaasApi: endpoints,
   asaasFetch: asaasFetchMock,
+  createAsaasClient: (_accountId: string) => ({
+    endpoints,
+    request: asaasFetchMock,
+  }),
 }))
 
 const { IncrementalBillingService } = await import("./IncrementalBillingService")
@@ -49,7 +55,9 @@ const baseMaster = {
   neighborhood: null,
   complement: null,
   asaasCustomerId: null,
+  asaasCustomerAccount: "primary" as const,
   asaasSubscriptionId: null,
+  asaasSubscriptionAccount: "primary" as const,
   subscriptionStatus: null,
   subscriptionNextDueDate: null,
   subscriptionCycle: null,
