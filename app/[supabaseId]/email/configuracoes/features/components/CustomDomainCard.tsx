@@ -158,6 +158,91 @@ function isTrackingRecord(record: DomainRecord): boolean {
   return purpose === "Tracking" || purpose === "TrackingCAA"
 }
 
+/**
+ * Paridade com o painel do Resend: os registros são exibidos por seção
+ * (Verificação do domínio / Envio / Tracking), cada uma com o próprio banner de
+ * erro quando um registro falhou. Antes a tabela era única e todo status
+ * não-verificado virava um relógio neutro — registro com VALOR ERRADO no DNS
+ * (caso interplaza.com.br, 01/09) aparecia como "aguardando", e o operador não
+ * tinha como saber qual linha corrigir.
+ */
+type RecordSection = {
+  key: string
+  title: string
+  records: DomainRecord[]
+}
+
+const SECTION_ORDER: Array<{ key: string; title: string; matches: (purpose: string) => boolean }> = [
+  { key: "dkim", title: "Verificação do domínio (DKIM)", matches: (p) => p === "DKIM" },
+  { key: "spf", title: "Envio (SPF)", matches: (p) => p === "SPF" },
+  { key: "tracking", title: "Tracking", matches: (p) => p === "Tracking" || p === "TrackingCAA" },
+  { key: "receiving", title: "Recebimento", matches: (p) => p === "Receiving" },
+]
+
+function groupRecordsBySection(records: DomainRecord[]): RecordSection[] {
+  const sections: RecordSection[] = SECTION_ORDER.map((section) => ({
+    key: section.key,
+    title: section.title,
+    records: records.filter((record) => section.matches(record.record?.trim() ?? "")),
+  }))
+  const matched = new Set(sections.flatMap((section) => section.records))
+  const leftovers = records.filter((record) => !matched.has(record))
+  if (leftovers.length > 0) {
+    sections.push({ key: "outros", title: "Outros registros", records: leftovers })
+  }
+  return sections.filter((section) => section.records.length > 0)
+}
+
+function sectionFailures(section: RecordSection): DomainRecord[] {
+  return section.records.filter((record) => record.status === "failed")
+}
+
+function sectionTemporaryFailures(section: RecordSection): DomainRecord[] {
+  return section.records.filter((record) => record.status === "temporary_failure")
+}
+
+function recordFailureSentence(record: DomainRecord): string {
+  return `${purposeLabel(record)} ${record.type} inválido: o valor publicado no DNS está incorreto ou ausente. Atualize o registro "${record.name}" para o valor mostrado na tabela e clique em "Verificar DNS".`
+}
+
+const RECORD_STATUS_META: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
+  verified: {
+    label: "Verificado",
+    icon: <CheckCircle2 className="size-3" />,
+    className: "border-semantic-success/30 bg-semantic-success/10 text-semantic-success",
+  },
+  failed: {
+    label: "Falhou",
+    icon: <AlertCircle className="size-3" />,
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
+  },
+  temporary_failure: {
+    label: "Falha temporária",
+    icon: <AlertCircle className="size-3" />,
+    className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
+  },
+  pending: {
+    label: "Pendente",
+    icon: <Clock className="size-3" />,
+    className: "border-semantic-warning/30 bg-semantic-warning-surface text-semantic-warning",
+  },
+  not_started: {
+    label: "Não iniciado",
+    icon: <Clock className="size-3" />,
+    className: "border-border bg-background text-muted-foreground",
+  },
+}
+
+function RecordStatusBadge({ status }: { status?: string }) {
+  const meta = RECORD_STATUS_META[status ?? ""] ?? RECORD_STATUS_META.pending!
+  return (
+    <Badge variant="outline" className={cn("gap-1 whitespace-nowrap rounded-lg", meta.className)}>
+      {meta.icon}
+      {meta.label}
+    </Badge>
+  )
+}
+
 async function copyToClipboard(value: string, label: string) {
   try {
     await navigator.clipboard.writeText(value)
@@ -465,50 +550,92 @@ export function CustomDomainCard() {
                 <Skeleton className="h-10 w-full rounded-xl" />
               </div>
             ) : domainRecords.length > 0 ? (
-              <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/80">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Propósito</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead>Prioridade</TableHead>
-                      <TableHead>TTL</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {domainRecords.map((record, index) => (
-                      <TableRow
-                        key={`${record.type}-${record.name}-${index}`}
-                        className={cn(isTrackingRecord(record) && "bg-primary/5")}
-                      >
-                        <TableCell className="text-xs font-medium">{purposeLabel(record)}</TableCell>
-                        <TableCell className="font-mono text-xs">{record.type}</TableCell>
-                        <TableCell>
-                          <CopyableCell value={record.name} label="Nome" />
-                        </TableCell>
-                        <TableCell>
-                          <CopyableCell value={record.value} label="Valor" />
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {record.priority !== undefined && record.priority !== null
-                            ? record.priority
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-xs">{record.ttl}</TableCell>
-                        <TableCell>
-                          {record.status === "verified" ? (
-                            <CheckCircle2 className="size-4 text-semantic-success" />
-                          ) : (
-                            <Clock className="size-4 text-semantic-warning" />
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="flex flex-col gap-5">
+                {groupRecordsBySection(domainRecords).map((section) => {
+                  const failures = sectionFailures(section)
+                  const temporaryFailures = sectionTemporaryFailures(section)
+                  return (
+                    <div key={section.key} className="flex flex-col gap-3">
+                      <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
+                        {section.title}
+                      </p>
+                      {failures.length > 0 ? (
+                        <Alert variant="destructive">
+                          <AlertCircle className="size-4" />
+                          <AlertTitle>Registro com valor incorreto</AlertTitle>
+                          <AlertDescription className="flex flex-col gap-1">
+                            {failures.map((record) => (
+                              <span key={`${record.type}-${record.name}`}>
+                                {recordFailureSentence(record)}
+                              </span>
+                            ))}
+                          </AlertDescription>
+                        </Alert>
+                      ) : null}
+                      {temporaryFailures.length > 0 ? (
+                        <Alert className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground">
+                          <AlertCircle className="size-4 text-semantic-warning" />
+                          <AlertTitle>Falha temporária na verificação</AlertTitle>
+                          <AlertDescription className="flex flex-col gap-1">
+                            {temporaryFailures.map((record) => (
+                              <span key={`${record.type}-${record.name}`}>
+                                {purposeLabel(record)} {record.type}: a última checagem não conseguiu
+                                confirmar o registro. Confira o valor e clique em &quot;Verificar
+                                DNS&quot;.
+                              </span>
+                            ))}
+                          </AlertDescription>
+                        </Alert>
+                      ) : null}
+                      <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/80">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Propósito</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Nome</TableHead>
+                              <TableHead>Valor</TableHead>
+                              <TableHead>Prioridade</TableHead>
+                              <TableHead>TTL</TableHead>
+                              <TableHead>Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {section.records.map((record, index) => (
+                              <TableRow
+                                key={`${record.type}-${record.name}-${index}`}
+                                className={cn(
+                                  isTrackingRecord(record) && "bg-primary/5",
+                                  record.status === "failed" && "bg-destructive/5"
+                                )}
+                              >
+                                <TableCell className="text-xs font-medium">
+                                  {purposeLabel(record)}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">{record.type}</TableCell>
+                                <TableCell>
+                                  <CopyableCell value={record.name} label="Nome" />
+                                </TableCell>
+                                <TableCell>
+                                  <CopyableCell value={record.value} label="Valor" />
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  {record.priority !== undefined && record.priority !== null
+                                    ? record.priority
+                                    : "—"}
+                                </TableCell>
+                                <TableCell className="text-xs">{record.ttl}</TableCell>
+                                <TableCell>
+                                  <RecordStatusBadge status={record.status} />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
