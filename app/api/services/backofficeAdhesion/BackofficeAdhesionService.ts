@@ -26,6 +26,7 @@ import {
 } from "@/lib/backoffice-adhesions/installment-ledger"
 import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
 import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
+import { validateAdhesionSubscriptionWrite } from "@/lib/billing/adhesion-guards"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -1887,6 +1888,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
       const subscriptionEndDate = addMonthsInTz(subscriptionStartDate, cycleMonths, DEFAULT_TZ)
+
+      // Guard na origem (20 — Assinaturas — Backend E7, C4/DA6): due ≤ fim e
+      // valor total coerente com o ciclo — mata na gravação o elo 1 da
+      // cadeia do §4 da 01 (adesão errada → customer barulhento → Asaas
+      // notifica o cliente com o valor errado). Roda ANTES de qualquer
+      // escrita (createPaidManagerProfile ainda não chamado) — rejeição não
+      // deixa persistência parcial.
+      const subscriptionWriteGuard = validateAdhesionSubscriptionWrite({
+        cycle: adhesion.cycle,
+        subscriptionEndDate,
+        subscriptionNextDueDate: subscriptionEndDate,
+        monthlyTotalAmount: adhesion.monthlyTotalAmount,
+        totalAmount: adhesion.totalAmount,
+      })
+      if (!subscriptionWriteGuard.valid) {
+        throw new Error(
+          `Adesão ${adhesion.id} rejeitada pelo guard de assinatura: ${subscriptionWriteGuard.errors.join(" | ")}`,
+        )
+      }
 
       const isGuest = adhesion.requestedUserTypeSlug === "guest"
       let resolvedSponsorMasterId = adhesion.sponsorMasterId ?? null
