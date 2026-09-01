@@ -25,6 +25,7 @@ import {
   type AdhesionInstallmentLedgerEntry,
 } from "@/lib/backoffice-adhesions/installment-ledger"
 import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
+import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -1985,6 +1986,22 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionStartDate,
         subscriptionEndDate,
         subscriptionNextDueDate: subscriptionEndDate,
+      })
+
+      // Timeline (20 — Assinaturas — Backend E1, C12): primeira assinatura de
+      // um profile recém-criado por adesão paga — sempre "contracted", nunca
+      // ambíguo com renovação/reativação (o profile não existia antes).
+      await logSubscriptionChange({
+        profileId: createdProfile.profileId,
+        source: "BackofficeAdhesionService.ensureAccountForPaidAdhesion",
+        changeType: "contracted",
+        eventType: "contracted",
+        after: {
+          subscriptionStatus: "active",
+          subscriptionCycle: adhesion.cycle,
+          subscriptionEndDate,
+        },
+        metadata: { adhesionId: adhesion.id, productId: crmProduct.id },
       })
 
       provisionedProfileId = createdProfile.profileId
