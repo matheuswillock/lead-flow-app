@@ -40,25 +40,44 @@ describe("checkSendingDomainExistence", () => {
     expect(await checkSendingDomainExistence("gorrilhaseguros.com.br", deps)).toBe("exists")
   })
 
-  it("NXDOMAIN + RDAP 404 em toda a cadeia é not_registered", async () => {
+  /**
+   * Achado da revisão do PR #1117: `rdap.org/domain/com.br` responde 200, não
+   * 404 — consultar o sufixo público validava qualquer `.com.br` inexistente.
+   * O RDAP só é consultado no eTLD+1; o mock devolve 200 para o sufixo de
+   * propósito, e isso NÃO pode contar como existência do apex digitado.
+   */
+  it("apex .com.br com RDAP 404 é not_registered — sufixo público (200) nunca é consultado", async () => {
     const consulted: string[] = []
     const deps = buildDeps({
       fetchRdapStatus: mock(async (name: string) => {
         consulted.push(name)
-        return 404
+        return name === "com.br" ? 200 : 404
       }),
     })
 
     expect(await checkSendingDomainExistence("naoexiste-xyz.com.br", deps)).toBe("not_registered")
-    expect(consulted).toEqual(["naoexiste-xyz.com.br", "com.br"])
+    expect(consulted).toEqual(["naoexiste-xyz.com.br"])
   })
 
-  it("subdomínio sem DNS de domínio registrado é exists (RDAP acha o apex)", async () => {
+  it("subdomínio sem DNS resolve pela consulta única ao apex registrável (eTLD+1)", async () => {
+    const consulted: string[] = []
     const deps = buildDeps({
-      fetchRdapStatus: mock(async (name: string) => (name === "empresa.com.br" ? 200 : 404)),
+      fetchRdapStatus: mock(async (name: string) => {
+        consulted.push(name)
+        return name === "empresa.com.br" ? 200 : 404
+      }),
     })
 
     expect(await checkSendingDomainExistence("envio.empresa.com.br", deps)).toBe("exists")
+    expect(consulted).toEqual(["empresa.com.br"])
+  })
+
+  it("nome que É sufixo público puro (sem eTLD+1) é not_registered sem consultar RDAP", async () => {
+    const fetchRdapStatus = mock(async () => 200)
+    const deps = buildDeps({ fetchRdapStatus })
+
+    expect(await checkSendingDomainExistence("com.br", deps)).toBe("not_registered")
+    expect(fetchRdapStatus).not.toHaveBeenCalled()
   })
 
   it("resolver fora do ar é unknown (fail-open), sem consultar RDAP", async () => {
@@ -73,15 +92,15 @@ describe("checkSendingDomainExistence", () => {
     expect(fetchRdapStatus).not.toHaveBeenCalled()
   })
 
-  it("RDAP indisponível (erro/5xx) é unknown, nunca not_registered", async () => {
-    const porErro = buildDeps({
-      fetchRdapStatus: mock(async () => {
-        throw new Error("network")
-      }),
+  it("RDAP indisponível (erro/5xx) é unknown imediato — uma consulta, sem soma de timeouts", async () => {
+    const failingFetch = mock(async () => {
+      throw new Error("network")
     })
+    const porErro = buildDeps({ fetchRdapStatus: failingFetch })
     const por5xx = buildDeps({ fetchRdapStatus: mock(async () => 503) })
 
-    expect(await checkSendingDomainExistence("empresa.com.br", porErro)).toBe("unknown")
+    expect(await checkSendingDomainExistence("envio.empresa.com.br", porErro)).toBe("unknown")
+    expect(failingFetch).toHaveBeenCalledTimes(1)
     expect(await checkSendingDomainExistence("empresa.com.br", por5xx)).toBe("unknown")
   })
 })

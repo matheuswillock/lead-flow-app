@@ -1,4 +1,5 @@
 import { promises as nodeDns } from "node:dns"
+import { getDomain } from "tldts"
 
 /**
  * Existência do domínio de envio ANTES de criá-lo no provedor.
@@ -10,15 +11,19 @@ import { promises as nodeDns } from "node:dns"
  *
  * Duas camadas, na ordem do custo:
  * 1. **DNS (NS/SOA)** — se o nome resolve, o domínio existe; encerra sem HTTP.
- * 2. **RDAP (registro)** — só quando o DNS devolve NXDOMAIN. Um subdomínio
- *    recém-planejado (`envio.empresa.com.br`) dá NXDOMAIN sem estar errado, por
- *    isso o RDAP caminha do nome digitado até o apex: se QUALQUER nível estiver
- *    registrado, o domínio existe. Sufixo público (`com.br`) responde 404 no
- *    RDAP, então a caminhada não produz falso "existe".
+ * 2. **RDAP (registro)** — só quando o DNS devolve NXDOMAIN, e em **uma única
+ *    consulta**: RDAP só cataloga domínios registráveis, então o alvo é o
+ *    eTLD+1 do nome digitado (`tldts.getDomain`, Public Suffix List real).
+ *    Um subdomínio recém-planejado (`envio.empresa.com.br`) dá NXDOMAIN sem
+ *    estar errado — a consulta ao apex registrável decide por ele. Sufixo
+ *    público (`com.br` responde **200** no RDAP) nunca é consultado: sem a
+ *    PSL, a caminhada por rótulos validava qualquer `.com.br` inexistente
+ *    (achado da revisão do PR #1117).
  *
  * Falha de rede/timeout em qualquer camada = `unknown`, e quem chama segue em
  * frente (fail-open): indisponibilidade de resolver não pode bloquear conexão
- * de domínio legítimo.
+ * de domínio legítimo. O fallback RDAP é 1 request com deadline próprio — não
+ * existe soma de timeouts por candidato.
  */
 
 export type SendingDomainExistence = "exists" | "not_registered" | "unknown"
@@ -79,16 +84,6 @@ async function existsInDns(
   }
 }
 
-/** `sub.empresa.com.br` → `["sub.empresa.com.br", "empresa.com.br", "com.br"]`. */
-function candidateChain(name: string): string[] {
-  const labels = name.split(".").filter(Boolean)
-  const chain: string[] = []
-  for (let start = 0; start <= labels.length - 2; start += 1) {
-    chain.push(labels.slice(start).join("."))
-  }
-  return chain
-}
-
 export async function checkSendingDomainExistence(
   domainName: string,
   deps: SendingDomainExistenceDeps = defaultSendingDomainExistenceDeps
@@ -97,15 +92,17 @@ export async function checkSendingDomainExistence(
   if (dnsResult === "exists") return "exists"
   if (dnsResult === "unknown") return "unknown"
 
-  let sawUnknown = false
-  for (const candidate of candidateChain(domainName)) {
-    try {
-      const status = await deps.fetchRdapStatus(candidate)
-      if (status === 200) return "exists"
-      if (status !== 404) sawUnknown = true
-    } catch {
-      sawUnknown = true
-    }
+  // eTLD+1 via PSL. `null` = o nome digitado é um sufixo público puro ou não
+  // tem TLD reconhecível — nenhum dos dois é um domínio de envio conectável.
+  const registrableDomain = getDomain(domainName)
+  if (!registrableDomain) return "not_registered"
+
+  try {
+    const status = await deps.fetchRdapStatus(registrableDomain)
+    if (status === 200) return "exists"
+    if (status === 404) return "not_registered"
+    return "unknown"
+  } catch {
+    return "unknown"
   }
-  return sawUnknown ? "unknown" : "not_registered"
 }
