@@ -1,6 +1,6 @@
 export const CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS = 92
 
-const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 export type CampaignAnalyticsDateRange = {
   from: Date
@@ -12,9 +12,22 @@ export type CampaignAnalyticsDateRangeResult =
   | { ok: false; error: string }
 
 function parseUtcDateOnly(value: string): Date | null {
-  if (!DATE_ONLY_PATTERN.test(value)) return null
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return Number.isNaN(date.getTime()) ? null : date
+  const match = DATE_ONLY_PATTERN.exec(value)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+
+  // `Date.UTC`/o parser de string ISO rolam datas de calendário inexistentes
+  // para o próximo mês em vez de rejeitar (ex.: 2026-02-31 -> 2026-03-03).
+  // Conferir o round-trip dos componentes é a única forma de pegar isso.
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null
+  }
+
+  return date
 }
 
 // DA5 (SPEC 10): from/to obrigatórios (ISO date), dia fechado em UTC

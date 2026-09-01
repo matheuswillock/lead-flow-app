@@ -32,6 +32,29 @@ describe("resolveCampaignAnalyticsDateRange", () => {
     expect(result.ok).toBe(false)
   })
 
+  it("rejeita data de calendário inexistente em vez de normalizar (2026-02-31 NÃO vira 2026-03-03)", () => {
+    // `to` fica bem perto do resultado normalizado (2026-03-03) de propósito: se o
+    // bug reaparecer, o range de 1 dia passaria no limite de 92 dias e o teste só
+    // pegaria a data inválida se a validação de calendário estiver certa.
+    const result = resolveCampaignAnalyticsDateRange({ from: "2026-02-31", to: "2026-03-03" })
+    expect(result.ok).toBe(false)
+  })
+
+  it("rejeita mês inexistente (2026-13-01)", () => {
+    const result = resolveCampaignAnalyticsDateRange({ from: "2026-13-01", to: "2026-01-31" })
+    expect(result.ok).toBe(false)
+  })
+
+  it("aceita 29/02 em ano bissexto (2028)", () => {
+    const result = resolveCampaignAnalyticsDateRange({ from: "2028-02-29", to: "2028-02-29" })
+    expect(result.ok).toBe(true)
+  })
+
+  it("rejeita 29/02 em ano não bissexto (2026 NÃO vira 2026-03-01)", () => {
+    const result = resolveCampaignAnalyticsDateRange({ from: "2026-02-29", to: "2026-03-01" })
+    expect(result.ok).toBe(false)
+  })
+
   it("rejeita to antes de from", () => {
     const result = resolveCampaignAnalyticsDateRange({ from: "2026-08-31", to: "2026-08-01" })
     expect(result.ok).toBe(false)

@@ -13,6 +13,8 @@ import type {
 
 class FakeRepository implements IBackofficeCampaignAnalyticsRepository {
   dispatchPage: DispatchPage = { rows: [], total: 0, page: 1, pageSize: 25 }
+  /** Quando definido, simula um total maior que o array de linhas devolvido por página (para T-10.9b). */
+  simulatedDispatchTotal: number | undefined
   templates: TemplateAggregate[] = []
   series: DailySeriesPoint[] = []
   funnel: FormFunnelRow[] = []
@@ -22,6 +24,15 @@ class FakeRepository implements IBackofficeCampaignAnalyticsRepository {
     _filter: CampaignAnalyticsFilter,
     pagination: CampaignAnalyticsPagination
   ): Promise<DispatchPage> {
+    if (this.simulatedDispatchTotal !== undefined) {
+      const sampleRow = this.dispatchPage.rows[0]
+      return {
+        rows: sampleRow ? Array(pagination.pageSize).fill(sampleRow) : [],
+        total: this.simulatedDispatchTotal,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+      }
+    }
     return { ...this.dispatchPage, page: pagination.page, pageSize: pagination.pageSize }
   }
 
@@ -191,6 +202,28 @@ describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
     const output = await useCase.exportCsv({ from: "2026-05-01", to: "2026-08-31", teamIds: undefined, dataset: "templates" })
     expect(output.isValid).toBe(false)
     expect(output.errorMessages.join(" ")).toContain("92")
+  })
+
+  it("T-10.9b — dataset=dispatches: falha explicitamente em vez de truncar silenciosamente quando o total excede o limite de export", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.dispatchPage = {
+        rows: [
+          {
+            id: "d1", teamId: "t1", teamName: "Time", templateName: "T", dispatchedAt: new Date(),
+            status: "completed", totalRecipients: 1, totalSent: 1, totalDelivered: 1, totalOpened: 0,
+            totalClicked: 0, totalBounced: 0, errorMessage: null,
+          },
+        ],
+        total: 0,
+        page: 1,
+        pageSize: 100,
+      }
+      repo.simulatedDispatchTotal = 1_000_000 // muito acima de qualquer 92 dias real
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "dispatches" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toMatch(/limite|reduza/i)
+    expect(output.result).toBeNull() // nunca devolve um CSV parcial se não pode buscar tudo
   })
 
   it("T-10.8 — dataset=templates: BOM, header PT-BR, filename com dataset/from/to", async () => {

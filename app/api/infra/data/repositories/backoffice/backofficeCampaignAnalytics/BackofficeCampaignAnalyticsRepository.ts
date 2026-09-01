@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { notFabricatedByDispatcherSql, periodAnchorSql } from "@/app/api/infra/data/repositories/publicForms/MetricEventAggregationSql"
 import type {
   CampaignAnalyticsFilter,
   CampaignAnalyticsPagination,
@@ -150,15 +151,25 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
   }
 
   async formFunnel(filter: CampaignAnalyticsFilter): Promise<FormFunnelRow[]> {
-    const grouped = await prisma.publicFormMetricEvent.groupBy({
-      by: ["formId", "eventType"],
-      where: {
-        eventType: { in: [...FUNNEL_EVENT_TYPES] },
-        createdAt: { gte: filter.from, lt: filter.to },
-        form: filter.teamIds?.length ? { teamId: { in: filter.teamIds } } : undefined,
-      },
-      _count: { _all: true },
-    })
+    // Prisma Client não expressa COALESCE nem "chave JSON não existe" com lógica
+    // de três valores segura (ver MetricEventAggregationSql.ts) — daqui pra
+    // frente é SQL cru, ancorado no mesmo predicado de período/fabricação que o
+    // funil de formulário público já usa.
+    const teamFilter = filter.teamIds?.length
+      ? Prisma.sql`AND f."teamId" = ANY(${filter.teamIds}::uuid[])`
+      : Prisma.empty
+
+    const grouped = await prisma.$queryRaw<Array<{ formId: string; eventType: string; count: bigint }>>(Prisma.sql`
+      SELECT e."formId" AS "formId", e."eventType"::text AS "eventType", COUNT(*) AS count
+      FROM "corretor_studio_public_form_metric_events" e
+      JOIN "corretor_studio_public_forms" f ON f.id = e."formId"
+      WHERE e."eventType" = ANY(${[...FUNNEL_EVENT_TYPES]}::"PublicFormMetricType"[])
+        AND ${notFabricatedByDispatcherSql("e")}
+        AND ${periodAnchorSql("e")} >= ${filter.from}
+        AND ${periodAnchorSql("e")} < ${filter.to}
+        ${teamFilter}
+      GROUP BY 1, 2
+    `)
 
     if (grouped.length === 0) return []
 
@@ -186,7 +197,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
         leadAttached: 0,
       }
 
-      const count = row._count._all
+      const count = Number(row.count)
       if (row.eventType === "form_viewed") existing.viewed = count
       if (row.eventType === "form_started") existing.started = count
       if (row.eventType === "form_completed") existing.completed = count

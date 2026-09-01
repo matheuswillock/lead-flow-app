@@ -42,8 +42,18 @@ export type CampaignAnalyticsExportCsvInput = CampaignAnalyticsRangeInput & {
 }
 
 // Todo dispatch do período cabe numa exportação — evita fatiar em páginas de 100
-// só para depois remontar o CSV. Limite de segurança: 50 páginas (5.000 linhas).
-const CSV_DISPATCH_PAGE_LIMIT = 50
+// só para depois remontar o CSV. Acima do limite de segurança o export FALHA
+// explicitamente (400) em vez de devolver um CSV truncado que parece completo
+// (review #1111 — silêncio aqui seria um dado incompleto disfarçado de sucesso).
+const CSV_DISPATCH_ROW_SAFETY_LIMIT = 20_000
+
+class CampaignAnalyticsExportTooLargeError extends Error {
+  constructor(public readonly total: number) {
+    super(
+      `O período selecionado tem ${total} disparos, acima do limite de ${CSV_DISPATCH_ROW_SAFETY_LIMIT} linhas por export — reduza o período ou os times filtrados.`
+    )
+  }
+}
 
 function sumTemplateTotals(templates: { sent: number; delivered: number; opened: number; clicked: number; bounced: number; failed: number; dispatches: number }[]) {
   return templates.reduce(
@@ -224,6 +234,9 @@ export class BackofficeCampaignAnalyticsUseCase {
       const filename = `campanhas_${dataset}_${input.from}_${input.to}.csv`
       return new Output(true, [], [], { csv, filename })
     } catch (error) {
+      if (error instanceof CampaignAnalyticsExportTooLargeError) {
+        return new Output(false, [], [error.message], null)
+      }
       console.error("[BackofficeCampaignAnalyticsUseCase][exportCsv]", error)
       return new Output(false, [], ["Erro ao gerar o export CSV"], null)
     }
@@ -247,10 +260,14 @@ export class BackofficeCampaignAnalyticsUseCase {
 
   private async fetchAllDispatches(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
     const rows: Awaited<ReturnType<IBackofficeCampaignAnalyticsRepository["aggregateDispatches"]>>["rows"] = []
-    for (let page = 1; page <= CSV_DISPATCH_PAGE_LIMIT; page++) {
+    let page = 1
+    while (true) {
       const result = await this.repository.aggregateDispatches(filter, { page, pageSize: MAX_PAGE_SIZE })
       rows.push(...result.rows)
-      if (rows.length >= result.total || result.rows.length < MAX_PAGE_SIZE) break
+      if (rows.length >= result.total) break
+      if (rows.length >= CSV_DISPATCH_ROW_SAFETY_LIMIT) throw new CampaignAnalyticsExportTooLargeError(result.total)
+      if (result.rows.length < MAX_PAGE_SIZE) break // proteção contra total inconsistente/loop infinito
+      page++
     }
     return rows
   }

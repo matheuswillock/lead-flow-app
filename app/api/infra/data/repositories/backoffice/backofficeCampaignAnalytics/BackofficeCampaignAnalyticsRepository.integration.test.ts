@@ -315,4 +315,57 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
     // Evento fora do range não deve inflar "viewed"
     expect(row?.viewed).not.toBe(4)
   })
+
+  it("T-10.3b — ancora o período no fato (occurredAt), não no drenar da fila (createdAt), e exclui eventos fabricados pelo dispatcher", async () => {
+    // Ocorreu DENTRO do período mas só drenou (createdAt) DEPOIS do fim do range — deve contar.
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        visitorSessionId: "s-late-drain",
+        eventType: "form_viewed",
+        eventKey: `ca-${suffix}-late-drain`,
+        occurredAt: new Date("2026-08-29T23:00:00.000Z"),
+        createdAt: new Date("2026-09-02T00:00:00.000Z"),
+      },
+    })
+
+    // Drenou (createdAt) DENTRO do período mas ocorreu ANTES do início — não deve contar.
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        visitorSessionId: "s-early-occurred",
+        eventType: "form_viewed",
+        eventKey: `ca-${suffix}-early-occurred`,
+        occurredAt: new Date("2026-08-01T00:00:00.000Z"),
+        createdAt: new Date("2026-08-29T10:00:00.000Z"),
+      },
+    })
+
+    // Fabricado pelo dispatcher (SPEC 40 E0) — nunca deve contar, mesmo dentro do range.
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        visitorSessionId: "s-fabricated",
+        eventType: "form_completed",
+        eventKey: `ca-${suffix}-fabricated`,
+        createdAt: new Date("2026-08-29T10:00:00.000Z"),
+        origin: { fabricatedByDispatcher: true },
+      },
+    })
+
+    const rows = await backofficeCampaignAnalyticsRepository.formFunnel({
+      from: FROM,
+      to: TO,
+      teamIds: [scope.teamAId!],
+    })
+    const row = rows.find((entry) => entry.formId === scope.formId)
+    expect(row).toBeDefined()
+    // base (T-10.3) era 3; +1 do late-drain (âncora por occurredAt); early-occurred NÃO soma
+    expect(row?.viewed).toBe(4)
+    // base era 1; o completed fabricado NÃO soma
+    expect(row?.completed).toBe(1)
+  })
 })
