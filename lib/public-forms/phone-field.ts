@@ -30,8 +30,19 @@ function stripCountryCodeTolerantForTyping(digits: string): string {
   // telefone válido (ex.: celular gaúcho "(55) 99632-6534" + uma tecla extra),
   // o excedente é truncado — o mesmo destino que a máscara dá a qualquer outro
   // DDD — e o número legítimo nunca é reinterpretado como DDI + resto.
+  // EXCEÇÃO: se o resto após o "55" parece um celular em digitação (10 dígitos
+  // com o 3º = 9, ex.: DDI + DDD 91–99 de Belém aos 12 dígitos), a hipótese
+  // DDI vence — truncar aqui gravaria um DDD 55 + número errado que PASSA na
+  // validação. A tecla seguinte completa o celular e resolve a ambiguidade.
   if (digits.length >= 12 && isBrazilianContactPhoneDigits(digits.slice(0, 11))) {
-    return digits.slice(0, 11)
+    const remainderAfterCountryCode = digits.slice(2)
+    const remainderLooksLikeMobileMidTyping =
+      digits.startsWith("55") &&
+      remainderAfterCountryCode.length === 10 &&
+      remainderAfterCountryCode[2] === "9"
+    if (!remainderLooksLikeMobileMidTyping) {
+      return digits.slice(0, 11)
+    }
   }
   const isMidTypingWithCountryCode =
     digits.startsWith("55") && digits.length >= 12 && !isBrazilianContactPhoneDigits(digits)

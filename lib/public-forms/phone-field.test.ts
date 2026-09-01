@@ -74,6 +74,15 @@ describe("normalizeAndMaskPhoneInput — digitação incremental (valor exibido 
   it("fat-finger em DDD comum continua só truncando (paridade de comportamento)", () => {
     expect(normalizeAndMaskPhoneInput("(11) 98230-8088" + "9")).toBe("(11) 98230-8088")
   })
+
+  it("celular com DDI + DDD 9x digitado tecla a tecla (13 díg., Belém) → (91) 98230-8088 (achado cursor r2)", () => {
+    // Aos 11 dígitos "55919823080" o valor parece um celular gaúcho completo e
+    // a guarda de fat-finger, sozinha, engoliria o 12º/13º dígito — gravando
+    // um DDD 55 + número truncado que PASSA na validação (pior que descarte).
+    // Quando o resto após o "55" parece celular em digitação (10 díg., 3º = 9),
+    // a hipótese DDI vence a hipótese fat-finger.
+    expect(typeDigitByDigit("5591982308088")).toBe("(91) 98230-8088")
+  })
 })
 
 describe("findLeadPhoneQuestion", () => {
