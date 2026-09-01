@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { createAsaasClient } from "@/lib/asaas";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 
 /**
@@ -62,7 +62,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+    // E3 (C20/linha 72): o pagamento pertence à conta do billing owner —
+    // roteia pela conta dele em vez do transporte global primary-only.
+    const billingOwnerIdForAccount = profile.isMaster ? profile.id : profile.managerId;
+    const billingOwnerAccountProfile = billingOwnerIdForAccount
+      ? await prisma.profile.findUnique({
+          where: { id: billingOwnerIdForAccount },
+          select: { asaasCustomerAccount: true },
+        })
+      : null;
+    const account = billingOwnerAccountProfile?.asaasCustomerAccount ?? "primary";
+
+    const client = createAsaasClient(account);
+    const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
       method: "GET",
     });
 
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
+    const result = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId, account);
     return NextResponse.json(result, { status: result.isValid ? 201 : 400 });
   } catch (error: any) {
     console.error("[POST /api/v1/teams/confirm-payment] Erro:", error);

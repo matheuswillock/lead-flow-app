@@ -221,7 +221,7 @@ export async function processAsaasWebhookEvent(
         const { pendingActionUseCase } = await import(
           "@/app/api/useCases/pendingActions/PendingActionUseCase"
         );
-        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
+        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId, account);
 
         if (!actionResult.isValid) {
           console.error("[AsaasWebhookRoute][process] pending action payment failed", {

@@ -292,7 +292,10 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId);
+        // Addon checkout é criação de entidade nova — nasce sempre na
+        // primary (categoria (a) do censo). Roteamento completo desta rota
+        // de polling por conta do master é escopo de E6.
+        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, "primary");
         currentStatus = "applied";
       }
 

@@ -5,7 +5,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getEmailService } from "@/lib/services/EmailService";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
@@ -66,12 +66,18 @@ export class PendingActionUseCase {
     return this.applyResolvedPendingAction(action, paymentId);
   }
 
-  async applyPendingActionByPaymentId(paymentId: string): Promise<Output> {
+  // account: conta Asaas de onde o evento se origina (E3 de
+  // [[40 — Checkout, Adesões e Add-ons — Backend]]) — propagada pelo chamador
+  // (webhook, rota de confirmação), nunca lida do transporte global.
+  async applyPendingActionByPaymentId(paymentId: string, account: AsaasAccountId): Promise<Output> {
     let action = await pendingActionRepository.findApplicableByPaymentId(paymentId);
 
     if (!action) {
       try {
-        const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "GET" });
+        const client = createAsaasClient(account);
+        const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
+          method: "GET",
+        });
         const externalReference = payment?.externalReference as string | undefined;
 
         if (externalReference?.startsWith("pending-action-")) {
@@ -138,10 +144,51 @@ export class PendingActionUseCase {
     }
 
     if (action.paymentId) {
-      try {
-        const payment = await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, {
-          method: "GET",
-        });
+      // E3 (C20): a cobrança de um PendingAction nasce na conta do próprio
+      // master (createIncrementalCharge roteia por asaasCustomerAccount, ver
+      // E2). Durante a janela de migração o master pode ter migrado de conta
+      // depois de a cobrança ter sido criada — por isso, um 404 na conta
+      // atual tenta a outra antes de desistir (única exceção documentada ao
+      // veto de retry cross-conta da DA2, restrita a esta janela).
+      const primaryAccount: AsaasAccountId = action.master.asaasCustomerAccount;
+      const fallbackAccount: AsaasAccountId = primaryAccount === "legacy" ? "primary" : "legacy";
+
+      let payment: { status?: string } | null = null;
+      let foundOnAccount: AsaasAccountId | null = null;
+
+      for (const account of [primaryAccount, fallbackAccount]) {
+        try {
+          const client = createAsaasClient(account);
+          payment = await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
+            method: "GET",
+          });
+          foundOnAccount = account;
+          break;
+        } catch (error) {
+          const statusCode = (error as { statusCode?: number } | null)?.statusCode;
+          if (statusCode !== 404) {
+            console.error(
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge][GET][${account}] paymentId=${action.paymentId}:`,
+              error
+            );
+            return new Output(
+              false,
+              [],
+              ["Não foi possível verificar a cobrança Asaas aberta antes de dispensar"],
+              null
+            );
+          }
+          // 404 nesta conta — tenta a próxima antes de tratar como inexistente.
+        }
+      }
+
+      if (!payment) {
+        // Não existe em nenhuma das duas contas: trata como já cancelado e
+        // segue a dispensa (fail-open) em vez de travar a ação para sempre.
+        console.error(
+          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas ${action.paymentId} não encontrada em nenhuma conta (primary/legacy) — tratando como já cancelada`
+        );
+      } else {
         const paymentStatus = String(payment?.status ?? "PENDING");
         const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
         if (paidStatuses.has(paymentStatus)) {
@@ -156,23 +203,28 @@ export class PendingActionUseCase {
         }
 
         const cancelableStatuses = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"]);
-        if (cancelableStatuses.has(paymentStatus)) {
-          await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, { method: "DELETE" });
-          console.info(
-            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus}`
-          );
+        if (cancelableStatuses.has(paymentStatus) && foundOnAccount) {
+          try {
+            const client = createAsaasClient(foundOnAccount);
+            await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
+              method: "DELETE",
+            });
+            console.info(
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus} account=${foundOnAccount}`
+            );
+          } catch (error) {
+            console.error(
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
+              error
+            );
+            return new Output(
+              false,
+              [],
+              ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
+              null
+            );
+          }
         }
-      } catch (error) {
-        console.error(
-          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
-          error
-        );
-        return new Output(
-          false,
-          [],
-          ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
-          null
-        );
       }
 
       await pendingActionRepository.clearPaymentId(action.id);
