@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { ActivityType, LeadStatus, Prisma, type PrismaClient } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
@@ -6,6 +7,9 @@ import type {
   RadarLeadGateProfile,
   RadarLeadGateTransaction,
   RadarLeadGatePromotionResult,
+  RadarLeadGateReferral,
+  RadarLeadIdentity,
+  RadarSubmittedIdentity,
 } from "@/app/api/infra/data/repositories/radar/IRadarLeadGateUnitOfWork"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
@@ -123,12 +127,91 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     }
   }
 
+  async findLeadIdentity(input: {
+    teamId: string
+    leadId: string
+  }): Promise<RadarLeadIdentity | null> {
+    const lead = await this.transaction.lead.findFirst({
+      where: { id: input.leadId, teamId: input.teamId, deletedAt: null },
+      select: { id: true, name: true, phone: true, email: true, originMetadata: true },
+    })
+    if (!lead) return null
+
+    const metadata =
+      lead.originMetadata && typeof lead.originMetadata === "object"
+        ? (lead.originMetadata as Record<string, unknown>)
+        : {}
+    const referral =
+      metadata.referral && typeof metadata.referral === "object"
+        ? (metadata.referral as Record<string, unknown>)
+        : {}
+    return {
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      referralOfRadarProfileId:
+        typeof referral.referralOfRadarProfileId === "string"
+          ? referral.referralOfRadarProfileId
+          : null,
+    }
+  }
+
+  /**
+   * Identidade digitada da sessão. Lê as respostas já persistidas pelo
+   * `/progress` (o gate roda depois da gravação de cada campo), filtrando por
+   * `mappingTarget: native_field` no snapshot da pergunta — o `mappingKey`
+   * sozinho também existe em `custom_field` chamado "email".
+   */
+  async findSubmittedIdentity(input: {
+    formId: string
+    visitorSessionId: string
+  }): Promise<RadarSubmittedIdentity | null> {
+    const submission = await this.transaction.publicFormSubmission.findFirst({
+      where: { formId: input.formId, visitorSessionId: input.visitorSessionId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        leadId: true,
+        answers: {
+          select: { value: true, mappingKey: true, questionSnapshot: true },
+        },
+      },
+    })
+    if (!submission) return null
+
+    const identity: Record<string, string> = {}
+    for (const answer of submission.answers) {
+      const snapshot =
+        answer.questionSnapshot && typeof answer.questionSnapshot === "object"
+          ? (answer.questionSnapshot as Record<string, unknown>)
+          : {}
+      if (snapshot.mappingTarget !== "native_field") continue
+      const mappingKey =
+        answer.mappingKey ?? (typeof snapshot.mappingKey === "string" ? snapshot.mappingKey : null)
+      if (mappingKey !== "name" && mappingKey !== "phone" && mappingKey !== "email") continue
+      const value = typeof answer.value === "string" ? answer.value.trim() : ""
+      if (!value) continue
+      identity[mappingKey] = value
+    }
+
+    return {
+      name: identity.name ?? null,
+      phone: identity.phone ?? null,
+      email: identity.email ?? null,
+      submissionId: submission.id,
+      sessionLeadId: submission.leadId,
+    }
+  }
+
   async createOrUpdateFromRadarProfile(input: {
     teamId: string
     formId: string
     profile: RadarLeadGateProfile
     existingLeadId: string | null
     origin: Record<string, unknown>
+    referral?: RadarLeadGateReferral | null
+    leadCodeSeed?: string | null
   }): Promise<RadarLeadGatePromotionResult> {
     const phone = input.profile.displayPhone ?? input.profile.normalizedPhone
     const email = input.profile.primaryEmail ?? input.profile.normalizedPrimaryEmail
@@ -165,10 +248,22 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     })
     if (!team) throw new Error("Time do perfil Radar não encontrado")
 
-    const stableProfileCode = input.profile.id.replaceAll("-", "").slice(0, 12).toUpperCase()
+    // `Lead.leadCode` é `@unique` global. O código derivado do perfil só é
+    // estável enquanto vale o par 1:1 perfil → lead; na divergência de
+    // identidade o mesmo perfil promove um segundo lead, e reusar o código
+    // levantaria P2002 e abortaria a transação — o respondente divergente
+    // ficaria sem card nenhum. A semente da sessão mantém o código
+    // determinístico (retry do mesmo gate gera o mesmo) sem colidir.
+    const stableCode = input.leadCodeSeed
+      ? createHash("sha1")
+          .update(`${input.profile.id}:${input.leadCodeSeed}`)
+          .digest("hex")
+          .slice(0, 12)
+          .toUpperCase()
+      : input.profile.id.replaceAll("-", "").slice(0, 12).toUpperCase()
     const lead = await this.transaction.lead.create({
       data: {
-        leadCode: `R${stableProfileCode}`,
+        leadCode: `R${stableCode}`,
         managerId: team.masterId,
         teamId: input.teamId,
         status: LeadStatus.new_opportunity,
@@ -185,6 +280,9 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
           formName: form.name,
           ...(campaignId ? { campaignId } : {}),
           ...(emailLogId ? { emailLogId } : {}),
+          // Indicação: a resposta veio pelo link do e-mail de outra pessoa. É
+          // sinal comercial, e cabe no JSON que já existe — sem coluna nova.
+          ...(input.referral ? { referral: { ...input.referral } } : {}),
         },
         createdBy: team.masterId,
         updatedBy: team.masterId,
@@ -285,15 +383,45 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     formId: string
     visitorSessionId: string
     leadId: string
+    replaceLeadId?: string | null
+    submissionId?: string | null
   }): Promise<void> {
+    // A reatribuição exige a submissão corrente. Uma sessão de visitante
+    // longeva pode ter conversões antigas já concluídas neste mesmo formulário
+    // (atribuições de campanha diferentes são caso suportado) — sem o `id`, o
+    // `updateMany` arrastaria esse histórico para o card novo.
+    const reassign = input.replaceLeadId && input.submissionId ? input.replaceLeadId : null
+
     await this.transaction.publicFormSubmission.updateMany({
       where: {
         formId: input.formId,
         visitorSessionId: input.visitorSessionId,
-        leadId: null,
+        // Sem reatribuição o filtro continua sendo "submissão sem lead". Com
+        // ela, a submissão que uma resposta anterior anexou ao lead do
+        // destinatário é puxada para o card novo — senão a próxima revisão de
+        // identidade cria mais um lead de indicação.
+        ...(reassign
+          ? { id: input.submissionId as string, OR: [{ leadId: null }, { leadId: reassign }] }
+          : { leadId: null }),
       },
       data: { leadId: input.leadId },
     })
+
+    // O worker da submissão e o gate correm em filas diferentes. Se a conclusão
+    // comitou primeiro, a atividade com identidade e respostas já nasceu no
+    // card do destinatário; movê-la junto, na mesma transação, é o que impede a
+    // resposta de ficar legível no card errado. Escopada pela submissão via
+    // `payload.submissionId`, então a atividade de outra conversão da mesma
+    // sessão não é tocada.
+    if (reassign) {
+      await this.transaction.leadActivity.updateMany({
+        where: {
+          leadId: reassign,
+          payload: { path: ["submissionId"], equals: input.submissionId as string },
+        },
+        data: { leadId: input.leadId },
+      })
+    }
 
     // SPEC 40 E2 × modo radar (review #1051). O evento de progresso que move o
     // gate e o job da submissão vivem em filas diferentes, sem ordem garantida:
