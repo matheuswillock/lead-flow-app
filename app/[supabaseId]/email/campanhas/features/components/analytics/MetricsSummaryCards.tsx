@@ -35,10 +35,11 @@ function MetricCard({
         <CardTitle className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
           {title}
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="cursor-help">
-                <Info className="h-3.5 w-3.5 shrink-0" />
-              </span>
+            <TooltipTrigger
+              aria-label={`Mais informações sobre ${title}`}
+              className="cursor-help rounded-full border-0 bg-transparent p-0"
+            >
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
           </Tooltip>
@@ -99,7 +100,7 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
       />
       <MetricCard
         title="Taxa de Abertura"
-        tooltip="Percentual de destinatários que abriram o e-mail pelo menos uma vez."
+        tooltip="Abertura medida pelo provedor; Apple/Gmail podem inflar — use o clique como sinal de intenção."
         value={`${rates.openRate.toFixed(1)}%`}
         subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
         delta={deltas?.rates.openRate}

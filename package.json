@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.294.1",
+  "version": "0.295.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -64,6 +64,8 @@
     "test:integration:local": "bun run local:up && RADAR_INTEGRATION_TEST=1 MANAGER_USERS_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration",
     "test:integration:email-domain": "EMAIL_DOMAIN_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/emailTeamSettings/EmailTeamSettingsRepository.sending-dns.integration.test.ts",
     "test:integration:email-domain:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:email-domain",
+    "test:integration:email-log": "EMAIL_LOG_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/emailLog/EmailLogRepository.opened-dedupe.integration.test.ts",
+    "test:integration:email-log:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:email-log",
     "test:integration:public-forms": "PUBLIC_FORMS_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/publicForms",
     "test:integration:public-forms:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:public-forms",
     "test:integration:asaas-webhook": "ASAAS_WEBHOOK_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/asaasWebhook/processAsaasWebhookEvent.account-collision.integration.test.ts",

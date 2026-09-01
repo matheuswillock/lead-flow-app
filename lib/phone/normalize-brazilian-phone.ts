@@ -1,11 +1,15 @@
 /**
  * Regras de numeração de telefone brasileiro (ANATEL) e normalização do
  * prefixo de código do país (+55/55) — isomórfico, sem `Bun.*`/APIs Node-only,
- * porque roda tanto no campo do formulário público (mask no client) quanto na
- * régua de criação de lead no servidor. Ver bug 2026-09-01: telefone digitado
- * com "55" na frente vira DDD, desloca o número e trunca o último dígito
- * antes de qualquer validação — `lib/public-forms/lead-identity.ts` consome
- * este módulo para nunca duplicar a régua entre canais.
+ * porque é a fonte única para as duas pontas do fix do bug 2026-09-01:
+ * este PR liga a régua server-side de criação de lead (SPEC 40-E1;
+ * `lib/public-forms/lead-identity.ts`), e o PR de frontend empilhado
+ * (SPEC 41-E2) liga a máscara do campo do formulário público importando
+ * ESTAS funções — nunca uma cópia da regra. Enquanto o PR de frontend não
+ * mergear, o strip protege os canais que entregam 12-13 dígitos intactos ao
+ * servidor (import, API, colagem em outros fluxos). Contexto do bug:
+ * telefone digitado com "55" na frente vira DDD, desloca o número e trunca
+ * o último dígito antes de qualquer validação.
  */
 
 /** Celular: 11 dígitos (DDD + 9 do local), terceiro dígito sempre "9". */
