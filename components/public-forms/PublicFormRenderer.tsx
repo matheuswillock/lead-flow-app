@@ -32,6 +32,7 @@ import {
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
 import { formatCurrencyBR } from "@/lib/public-forms/masks"
 import {
+  findLeadPhoneQuestion,
   getPhoneFieldInlineError,
   normalizeAndMaskPhoneInput,
   shouldBlockFirstPhoneSubmitAttempt,
@@ -562,7 +563,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     }
     if (!publicId || !session) return
     if (sending || done || submitLockRef.current) return
-    const phoneQuestion = snapshot.questions.find((item) => item.type === "phone")
+    // O telefone que decide o lead é o mapeado para native_field.phone — um
+    // telefone de recado (custom_field) válido não pode suprimir o aviso.
+    const phoneQuestion = findLeadPhoneQuestion(snapshot.questions)
     if (phoneQuestion) {
       const phoneValue = answers[phoneQuestion.id]
       if (
@@ -573,6 +576,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       ) {
         phoneSubmitWarningAcknowledgedRef.current = true
         setError(getPhoneFieldInlineError(phoneValue))
+        // Volta para a página do campo de telefone: quando o submit parte de
+        // uma página posterior (agendamento/resultado do simulador), o aviso
+        // sem navegação apontaria para um campo fora da tela e o visitante
+        // não teria como corrigir antes do segundo clique.
+        const phonePageIndex = pages.findIndex((page) =>
+          page.some((item) => item.id === phoneQuestion.id),
+        )
+        if (phonePageIndex >= 0) {
+          setIndex(phonePageIndex)
+          setPhase("form")
+        }
         return
       }
     }

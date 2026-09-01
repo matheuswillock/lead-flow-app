@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  findLeadPhoneQuestion,
   getPhoneFieldInlineError,
   isValidPhoneFieldValue,
   normalizeAndMaskPhoneInput,
@@ -59,6 +60,48 @@ describe("normalizeAndMaskPhoneInput — digitação incremental (valor exibido 
 
   it("celular RS local digitado tecla a tecla (11 díg.) → intocado", () => {
     expect(typeDigitByDigit("55996326534")).toBe("(55) 99632-6534")
+  })
+
+  it("fat-finger após celular RS completo: tecla extra é truncada, número NÃO vira DDI (achado cursor)", () => {
+    // Sem a guarda, "559963265349" (12 díg.) dispara o strip tolerante e o
+    // número gaúcho legítimo vira "(99) 6326-5349" — a mesma população que o
+    // fix protege. O excedente deve ser truncado como a máscara faz com
+    // qualquer outro DDD.
+    expect(normalizeAndMaskPhoneInput("(55) 99632-6534" + "9")).toBe("(55) 99632-6534")
+    expect(typeDigitByDigit("55996326534" + "9")).toBe("(55) 99632-6534")
+  })
+
+  it("fat-finger em DDD comum continua só truncando (paridade de comportamento)", () => {
+    expect(normalizeAndMaskPhoneInput("(11) 98230-8088" + "9")).toBe("(11) 98230-8088")
+  })
+})
+
+describe("findLeadPhoneQuestion", () => {
+  const mappedPhone = {
+    id: "q-mapped",
+    type: "phone",
+    mappingTarget: "native_field",
+    mappingKey: "phone",
+  }
+  const customPhone = {
+    id: "q-custom",
+    type: "phone",
+    mappingTarget: "custom_field",
+    mappingKey: "telefone_recado",
+  }
+
+  it("prefere a pergunta mapeada para native_field.phone mesmo vindo depois de outro campo phone (achado codex P1)", () => {
+    expect(findLeadPhoneQuestion([customPhone, mappedPhone])?.id).toBe("q-mapped")
+  })
+
+  it("cai para a primeira pergunta phone quando nenhuma está mapeada", () => {
+    expect(findLeadPhoneQuestion([customPhone])?.id).toBe("q-custom")
+  })
+
+  it("retorna null quando não há pergunta phone", () => {
+    expect(
+      findLeadPhoneQuestion([{ id: "q-nome", type: "text", mappingTarget: "native_field", mappingKey: "name" }]),
+    ).toBeNull()
   })
 })
 

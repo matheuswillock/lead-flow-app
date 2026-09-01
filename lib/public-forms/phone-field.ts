@@ -26,6 +26,13 @@ import { formatPhoneBR, phoneDigitCount } from "./masks"
 function stripCountryCodeTolerantForTyping(digits: string): string {
   const strictlyStripped = stripBrazilCountryCode(digits)
   if (strictlyStripped !== digits) return strictlyStripped
+  // Fat-finger após telefone completo: se os 11 primeiros dígitos JÁ formam um
+  // telefone válido (ex.: celular gaúcho "(55) 99632-6534" + uma tecla extra),
+  // o excedente é truncado — o mesmo destino que a máscara dá a qualquer outro
+  // DDD — e o número legítimo nunca é reinterpretado como DDI + resto.
+  if (digits.length >= 12 && isBrazilianContactPhoneDigits(digits.slice(0, 11))) {
+    return digits.slice(0, 11)
+  }
   const isMidTypingWithCountryCode =
     digits.startsWith("55") && digits.length >= 12 && !isBrazilianContactPhoneDigits(digits)
   return isMidTypingWithCountryCode ? digits.slice(2) : digits
@@ -56,6 +63,35 @@ export function isValidPhoneFieldValue(value: unknown): boolean {
 
 export function getPhoneFieldInlineError(value: unknown): string | null {
   return isValidPhoneFieldValue(value) ? null : PHONE_FIELD_INLINE_ERROR_MESSAGE
+}
+
+type LeadPhoneQuestionCandidate = {
+  type: string
+  mappingTarget?: string | null
+  mappingKey?: string | null
+}
+
+/**
+ * O gate identifica o telefone do lead pela pergunta mapeada para
+ * `native_field.phone` (`lib/public-forms/lead-identity.ts`) — não pela
+ * primeira pergunta de tipo `phone`. Um formulário pode ter um telefone de
+ * recado (custom_field) ANTES do telefone do lead; olhar só o tipo faria um
+ * recado válido suprimir o aviso do telefone que realmente decide o lead.
+ * Fallback para a primeira pergunta `phone` quando nenhuma está mapeada.
+ */
+export function findLeadPhoneQuestion<T extends LeadPhoneQuestionCandidate>(
+  questions: readonly T[],
+): T | null {
+  return (
+    questions.find(
+      (question) =>
+        question.type === "phone" &&
+        question.mappingTarget === "native_field" &&
+        question.mappingKey === "phone",
+    ) ??
+    questions.find((question) => question.type === "phone") ??
+    null
+  )
 }
 
 /**
