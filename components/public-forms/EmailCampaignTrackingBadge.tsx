@@ -29,7 +29,7 @@ export function EmailCampaignTrackingBadge({ className, enabled = true }: Props)
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
-          Rastreia abertura e preenchimento a partir de campanhas de e-mail (parâmetro cs_el).
+          Rastreia clique e preenchimento a partir de campanhas de e-mail (parâmetro cs_el).
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

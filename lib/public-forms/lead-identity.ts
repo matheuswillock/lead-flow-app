@@ -1,4 +1,9 @@
-import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import {
+  isBrazilianContactPhoneDigits,
+  isBrazilianLandlinePhoneDigits,
+  isBrazilianMobilePhoneDigits,
+  normalizeBrazilianPhoneDigits,
+} from "@/lib/phone/normalize-brazilian-phone"
 import { parseCurrencyBR } from "@/lib/public-forms/masks"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 
@@ -87,7 +92,7 @@ export function extractLeadDataFromSnapshot(
   const name = typeof native.name === "string" ? native.name.trim() : ""
   const email = typeof native.email === "string" ? native.email.trim().toLowerCase() : ""
   const phone = typeof native.phone === "string" ? native.phone : ""
-  const normalizedPhone = phone ? normalizeLeadPhoneDigits(phone) : ""
+  const normalizedPhone = phone ? normalizeBrazilianPhoneDigits(phone) : ""
 
   return { native, custom, notes, name, email, phone, normalizedPhone }
 }
@@ -146,17 +151,20 @@ export function isValidPersonLeadName(name: string, email?: string): boolean {
   return true
 }
 
+// Delega para lib/phone/normalize-brazilian-phone.ts (SSOT das regras de
+// numeração BR) — mantido como re-export porque vários módulos já importam
+// esses nomes daqui (EvaluateRadarProfileLeadEligibilityUseCase,
+// public-form-identity-projection, testes).
 export function isBrazilianMobilePhone(normalizedDigits: string): boolean {
-  return /^\d{11}$/.test(normalizedDigits) && normalizedDigits[2] === "9"
+  return isBrazilianMobilePhoneDigits(normalizedDigits)
 }
 
 export function isBrazilianLandlinePhone(normalizedDigits: string): boolean {
-  // ANATEL: DDD + 8-digit subscriber starting 2–5. Rejects truncated mobiles (9…).
-  return /^\d{2}[2-5]\d{7}$/.test(normalizedDigits)
+  return isBrazilianLandlinePhoneDigits(normalizedDigits)
 }
 
 export function isBrazilianContactPhone(normalizedDigits: string): boolean {
-  return isBrazilianMobilePhone(normalizedDigits) || isBrazilianLandlinePhone(normalizedDigits)
+  return isBrazilianContactPhoneDigits(normalizedDigits)
 }
 
 export function canCreateLeadFromExtracted(data: ExtractedLeadData): boolean {
@@ -232,7 +240,7 @@ export function overlayRadarIdentityOnExtracted(
   let phone = extracted.phone
   let normalizedPhone = extracted.normalizedPhone
   if (!normalizedPhone) {
-    const overlayDigits = normalizeLeadPhoneDigits(
+    const overlayDigits = normalizeBrazilianPhoneDigits(
       overlay.normalizedPhone || overlay.displayPhone || "",
     )
     if (overlayDigits) {
