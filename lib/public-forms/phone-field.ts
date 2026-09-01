@@ -8,16 +8,36 @@
  * para nunca divergir: se o campo aprovasse um valor que o gate descarta, o
  * lead nasceria "válido" no navegador e sumiria no servidor de novo.
  */
-import { isBrazilianContactPhoneDigits, normalizeBrazilianPhoneDigits } from "@/lib/phone/normalize-brazilian-phone"
+import { isBrazilianContactPhoneDigits, stripBrazilCountryCode } from "@/lib/phone/normalize-brazilian-phone"
 import { formatPhoneBR, phoneDigitCount } from "./masks"
 
 /**
- * Aplica a régua compartilhada de remoção do código do país ANTES da máscara
- * BR — é o único ponto que salva o dígito que a máscara, sozinha, cortaria.
- * Usar tanto no `onChange` quanto no `onBlur` do campo `phone`.
+ * A régua estrita do gate (`stripBrazilCountryCode`) só remove o "55" quando o
+ * RESTO já é um telefone válido — correto no servidor, que sempre recebe o
+ * valor final. O campo controlado é diferente: cada tecla realimenta o valor
+ * exibido, e no celular com DDI (13 dígitos, caso Nathany) o 12º dígito forma
+ * um resto de 10 que ainda não é válido; sem tolerância a digitação em
+ * andamento, a máscara corta de volta para 11 e o 12º dígito é engolido a
+ * cada tecla — o 13º nunca acumula. Regra tolerante DO CAMPO (nunca do gate):
+ * 12+ dígitos começando com "55" cujo valor completo não é um telefone válido
+ * têm o DDI removido mesmo com o resto ainda incompleto. Telefone completo
+ * válido (ex.: DDD 55 gaúcho) continua vencendo primeiro e nunca é alterado.
+ */
+function stripCountryCodeTolerantForTyping(digits: string): string {
+  const strictlyStripped = stripBrazilCountryCode(digits)
+  if (strictlyStripped !== digits) return strictlyStripped
+  const isMidTypingWithCountryCode =
+    digits.startsWith("55") && digits.length >= 12 && !isBrazilianContactPhoneDigits(digits)
+  return isMidTypingWithCountryCode ? digits.slice(2) : digits
+}
+
+/**
+ * Aplica a remoção do código do país ANTES da máscara BR — é o único ponto
+ * que salva o dígito que a máscara, sozinha, cortaria. Usar tanto no
+ * `onChange` quanto no `onBlur` do campo `phone`.
  */
 export function normalizeAndMaskPhoneInput(raw: string): string {
-  return formatPhoneBR(normalizeBrazilianPhoneDigits(raw))
+  return formatPhoneBR(stripCountryCodeTolerantForTyping(raw.replace(/\D/g, "")))
 }
 
 export const PHONE_FIELD_INLINE_ERROR_MESSAGE =

@@ -29,6 +29,39 @@ describe("normalizeAndMaskPhoneInput", () => {
   })
 })
 
+describe("normalizeAndMaskPhoneInput — digitação incremental (valor exibido realimentado a cada tecla)", () => {
+  /**
+   * O campo é controlado: a cada tecla o valor JÁ mascarado volta pela cadeia
+   * com o dígito novo no fim. Sem a regra tolerante a digitação em andamento,
+   * aos 12 dígitos o resto de 10 ainda não é um telefone válido, o strip por
+   * validade não dispara, e a máscara corta de volta para 11 — o 12º dígito é
+   * engolido a cada tecla e o 13º nunca acumula (caso Nathany, celular com DDI).
+   */
+  function typeDigitByDigit(digits: string): string {
+    let value = ""
+    for (const digit of digits) {
+      value = normalizeAndMaskPhoneInput(value + digit)
+    }
+    return value
+  }
+
+  it("fixo com DDI digitado tecla a tecla (12 díg., caso GERSON) → (11) 2422-2006", () => {
+    expect(typeDigitByDigit("551124222006")).toBe("(11) 2422-2006")
+  })
+
+  it("celular com DDI digitado tecla a tecla (13 díg., caso Nathany) → (11) 98230-8088", () => {
+    expect(typeDigitByDigit("5511982308088")).toBe("(11) 98230-8088")
+  })
+
+  it("celular RS com DDI digitado tecla a tecla (13 díg.) → (55) 99632-6534", () => {
+    expect(typeDigitByDigit("5555996326534")).toBe("(55) 99632-6534")
+  })
+
+  it("celular RS local digitado tecla a tecla (11 díg.) → intocado", () => {
+    expect(typeDigitByDigit("55996326534")).toBe("(55) 99632-6534")
+  })
+})
+
 describe("isValidPhoneFieldValue", () => {
   it("aceita vazio (obrigatoriedade é responsabilidade de validateAnswer)", () => {
     expect(isValidPhoneFieldValue("")).toBe(true)
