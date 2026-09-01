@@ -8,6 +8,7 @@ type CreatedRecords = {
   backofficeProfileId: string | null;
   masterProfileId: string | null;
   operatorProfileId: string | null;
+  foreignMasterProfileId: string | null;
   teamId: string | null;
 };
 
@@ -22,6 +23,7 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
     backofficeProfileId: null,
     masterProfileId: null,
     operatorProfileId: null,
+    foreignMasterProfileId: null,
     teamId: null,
   };
   let backofficeSupabaseId = "";
@@ -30,6 +32,7 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
   let masterEmail = "";
   let teamName = "";
   let operatorEmail = "";
+  let foreignMasterEmail = "";
 
   test.beforeAll(async () => {
     const prisma = getPrisma();
@@ -112,6 +115,31 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
         functions: ["SDR"],
       },
     });
+
+    // Master da própria conta participando desta conta como operator — o
+    // `profile.isMaster` global é true, mas aqui ele é membro comum.
+    foreignMasterEmail = uniqueEmail("e2e.foreign-master.team-perms");
+    const foreignMasterProfile = await prisma.profile.create({
+      data: {
+        supabaseId: randomUUID(),
+        email: foreignMasterEmail,
+        fullName: `E2E Master de Outra Conta ${suffix}`,
+        role: "manager",
+        isMaster: true,
+        hasPermanentSubscription: true,
+      },
+      select: { id: true },
+    });
+    created.foreignMasterProfileId = foreignMasterProfile.id;
+
+    await prisma.teamMember.create({
+      data: {
+        teamId: team.id,
+        profileId: foreignMasterProfile.id,
+        role: "operator",
+        functions: ["SDR"],
+      },
+    });
   });
 
   test.afterAll(async () => {
@@ -120,7 +148,11 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
       await prisma.teamMember.deleteMany({ where: { teamId: created.teamId } }).catch(() => null);
       await prisma.team.deleteMany({ where: { id: created.teamId } }).catch(() => null);
     }
-    for (const profileId of [created.operatorProfileId, created.masterProfileId]) {
+    for (const profileId of [
+      created.operatorProfileId,
+      created.foreignMasterProfileId,
+      created.masterProfileId,
+    ]) {
       if (profileId) {
         await prisma.profile.deleteMany({ where: { id: profileId } }).catch(() => null);
       }
@@ -285,6 +317,46 @@ test.describe("app/backoffice/(app)/clients/[masterId] — permissões por time 
     const memberRow = page.locator("tr", { hasText: masterEmail });
     await memberRow.getByRole("button").last().click();
     await expect(page.getByRole("menuitem", { name: "Remover do time" })).toHaveCount(0);
+  });
+
+  test("Master de outra conta: é membro comum — papel editável e removível do time", async ({
+    page,
+  }) => {
+    const prisma = getPrisma();
+    const dialog = await openMemberEditDialog(page, foreignMasterEmail);
+
+    // O selo precisa dizer de qual conta ele é dono.
+    await expect(dialog.getByText("Master de outra conta")).toBeVisible();
+
+    // Nada aqui pode ser tratado como o master desta conta: o papel é editável
+    // e a explicação da trava não aparece.
+    await expect(dialog.getByText(/nível de acesso do master da conta é fixo/i)).toHaveCount(0);
+    for (const label of ["Manager", "Backoffice", "Operator"]) {
+      await expect(
+        dialog.getByRole("switch", { name: label, exact: true }),
+        `switch de papel "${label}" deve estar editável para master de outra conta`,
+      ).toBeEnabled();
+    }
+
+    // Remover do time tem de funcionar ponta a ponta — o guard do backend
+    // também comparava o `isMaster` global e recusava a operação.
+    const removeButton = dialog.getByRole("button", { name: "Remover" });
+    await expect(removeButton).toBeEnabled();
+    await removeButton.click();
+    await expect(dialog.getByText("Remoção pendente")).toBeVisible();
+
+    await dialog.getByRole("button", { name: "Salvar alterações" }).click();
+    await expect(page.getByText("Membro atualizado com sucesso")).toBeVisible({ timeout: 30_000 });
+
+    await expect
+      .poll(
+        async () =>
+          prisma.teamMember.count({
+            where: { teamId: created.teamId!, profileId: created.foreignMasterProfileId! },
+          }),
+        { timeout: 20_000, message: "master de outra conta deveria sair do time" },
+      )
+      .toBe(0);
   });
 
   test("Não-master: painel continua editável e o toggle de membership abre/fecha o painel", async ({

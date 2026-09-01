@@ -294,10 +294,6 @@ export class BackofficeMemberUseCase {
         return new Output(false, [], ["Membro não encontrado"], null)
       }
 
-      if (member.isMaster) {
-        return new Output(false, [], ["Não é permitido remover um usuário master de times"], null)
-      }
-
       const membership = await this.repository.findTeamMembership(teamId, memberId)
       if (!membership) {
         return new Output(false, [], ["Membro não pertence a este time"], null)
@@ -306,6 +302,18 @@ export class BackofficeMemberUseCase {
       const team = await this.repository.findTeamById(teamId)
       if (!team) {
         return new Output(false, [], ["Time não encontrado"], null)
+      }
+
+      // Só o dono da conta é intocável no próprio time — um time sem o master
+      // fica órfão. O `profile.isMaster` global não serve como critério: o
+      // master da conta A pode ser operator na conta B, e lá é membro comum.
+      if (team.masterId === memberId) {
+        return new Output(
+          false,
+          [],
+          ["Não é permitido remover o master da conta de um time da própria conta"],
+          null
+        )
       }
 
       if (actorProfileId) {
