@@ -34,9 +34,13 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository — fix
     teamLiberId?: string
     teamKathreinId?: string
     teamFillerId?: string
+    teamTrapId?: string
     dispatchIds: string[]
     leadIds: string[]
-  } = { dispatchIds: [], leadIds: [] }
+    trapFormId?: string
+    trapPublicationId?: string
+    submissionIds: string[]
+  } = { dispatchIds: [], leadIds: [], submissionIds: [] }
 
   beforeAll(async () => {
     const master = await prisma.profile.create({
@@ -159,9 +163,82 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository — fix
       })
       scope.leadIds.push(lead.id)
     }
+
+    // Prova viva do bug documentado na adenda de 01/09 (bugs/2026-08-31-formulario-anexa-
+    // ...md): o card "PEDRO TESTE" nasceu 01/09 11:20 (1 min após a submissão) e o
+    // fluxo legado emitiu um evento lead_attached mislabeled 11:21 — mesmo assim é uma
+    // CRIAÇÃO real. Time isolado (não Liber/Kathrein/Filler) para não alterar os números
+    // do artefato acima. O artefato de 31/08 não tem um total leadsCreated/leadsAttached
+    // medido sob a derivação nova para a janela inteira (ele foi montado com a métrica
+    // antiga, que é exatamente o que este bug corrige) — por isso este teste prova a
+    // derivação contra o caso documentado, em vez de fixar um agregado não medido.
+    const teamTrap = await prisma.team.create({ data: { name: `Trap ${suffix}`, masterId: master.id } })
+    scope.teamTrapId = teamTrap.id
+
+    const trapForm = await prisma.publicForm.create({
+      data: {
+        team: { connect: { id: teamTrap.id } },
+        creator: { connect: { id: master.id } },
+        publicId: randomUUID(),
+        name: `Formulário Armadilha ${suffix}`,
+        status: "published",
+        approvalStatus: "approved",
+      },
+    })
+    scope.trapFormId = trapForm.id
+
+    const trapPublication = await prisma.publicFormPublication.create({
+      data: { form: { connect: { id: trapForm.id } }, publishedBy: { connect: { id: master.id } }, version: 1, snapshot: {} },
+    })
+    scope.trapPublicationId = trapPublication.id
+
+    const trapSubmittedAt = new Date("2026-08-29T11:20:00.000Z")
+    const trapLead = await prisma.lead.create({
+      data: {
+        name: "PEDRO TESTE",
+        leadCode: `parity-${suffix}-pedro-teste`,
+        team: { connect: { id: teamTrap.id } },
+        manager: { connect: { id: master.id } },
+        originChannel: "public_form",
+        createdAt: new Date("2026-08-29T11:21:00.000Z"), // 1 min depois — criação real
+      },
+    })
+    scope.leadIds.push(trapLead.id)
+
+    const trapSubmission = await prisma.publicFormSubmission.create({
+      data: {
+        form: { connect: { id: trapForm.id } },
+        publication: { connect: { id: trapPublication.id } },
+        lead: { connect: { id: trapLead.id } },
+        requestKey: `parity-${suffix}-pedro-teste`,
+        completionStatus: "complete",
+        status: "completed",
+        createdAt: trapSubmittedAt,
+      },
+    })
+    scope.submissionIds.push(trapSubmission.id)
+
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: trapForm.id } },
+        publication: { connect: { id: trapPublication.id } },
+        visitorSessionId: "pedro-teste-session",
+        eventType: "lead_attached", // mislabel confirmado em produção — não pode contaminar
+        eventKey: `parity-${suffix}-pedro-teste-event`,
+        createdAt: new Date("2026-08-29T11:21:30.000Z"),
+      },
+    })
   })
 
   afterAll(async () => {
+    if (scope.submissionIds.length) {
+      await prisma.publicFormSubmission.deleteMany({ where: { id: { in: scope.submissionIds } } })
+    }
+    if (scope.trapFormId) {
+      await prisma.publicFormMetricEvent.deleteMany({ where: { formId: scope.trapFormId } })
+      await prisma.publicFormPublication.deleteMany({ where: { formId: scope.trapFormId } })
+      await prisma.publicForm.deleteMany({ where: { id: scope.trapFormId } })
+    }
     if (scope.leadIds.length) await prisma.lead.deleteMany({ where: { id: { in: scope.leadIds } } })
     if (scope.dispatchIds.length) await prisma.emailCampaignDispatch.deleteMany({ where: { id: { in: scope.dispatchIds } } })
     await prisma.emailCampaign.deleteMany({
@@ -170,7 +247,7 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository — fix
     await prisma.emailTemplate.deleteMany({
       where: { teamId: { in: [scope.teamLiberId, scope.teamKathreinId, scope.teamFillerId].filter((id): id is string => Boolean(id)) } },
     })
-    for (const teamId of [scope.teamLiberId, scope.teamKathreinId, scope.teamFillerId]) {
+    for (const teamId of [scope.teamLiberId, scope.teamKathreinId, scope.teamFillerId, scope.teamTrapId]) {
       if (teamId) await prisma.team.deleteMany({ where: { id: teamId } })
     }
     if (scope.masterId) await prisma.profile.deleteMany({ where: { id: scope.masterId } })
@@ -223,5 +300,17 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository — fix
     expect(row?.sent).toBe(6739)
     expect(row?.opened).toBe(2494)
     expect(Math.round((openRateFn(row?.opened ?? 0, row?.sent ?? 0) ?? 0) * 1000) / 1000).toBeCloseTo(0.37, 2)
+  })
+
+  it("v1.1 do contrato (01/09) — reproduz o caso documentado 'PEDRO TESTE': lead nascido 1 min após a submissão conta CRIADO, mesmo com o evento lead_attached mislabeled emitido pelo fluxo legado", async () => {
+    const rows = await backofficeCampaignAnalyticsRepository.formFunnel({
+      from: FROM,
+      to: TO,
+      teamIds: [scope.teamTrapId!],
+    })
+    const row = rows.find((entry) => entry.formId === scope.trapFormId)
+    expect(row).toBeDefined()
+    expect(row?.leadCreated).toBe(1)
+    expect(row?.leadAttached).toBe(0)
   })
 })

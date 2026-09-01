@@ -21,6 +21,8 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
   let dispatchId: string;
   let formId: string;
   let publicationId: string;
+  let leadCreatedId: string;
+  const submissionIds: string[] = [];
 
   test.beforeAll(async () => {
     const prisma: PrismaAny = getPrisma();
@@ -139,7 +141,6 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
       { eventType: "form_viewed", visitorSessionId: "e2e-s2" },
       { eventType: "form_started", visitorSessionId: "e2e-s1" },
       { eventType: "form_completed", visitorSessionId: "e2e-s1" },
-      { eventType: "lead_created", visitorSessionId: "e2e-s1" },
     ];
     for (const [index, event] of funnelEvents.entries()) {
       await prisma.publicFormMetricEvent.create({
@@ -153,10 +154,41 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
         },
       });
     }
+
+    // leadsCreated/leadsAttached (v1.1 do contrato, 01/09) derivam de submissão completa
+    // + lead, não mais de metric events — ver "05 — Contrato de API (congelado)".
+    const createdLead = await prisma.lead.create({
+      data: {
+        name: "E2E CA Lead Criado",
+        leadCode: `e2e-ca-${suffix}-created`,
+        teamId: team.id,
+        managerId: master.id,
+        originChannel: "public_form",
+        createdAt: new Date(now.getTime() + 2 * 60_000),
+      },
+    });
+    leadCreatedId = createdLead.id;
+    const submissionCreated = await prisma.publicFormSubmission.create({
+      data: {
+        formId: form.id,
+        publicationId: publication.id,
+        leadId: createdLead.id,
+        requestKey: `e2e-ca-${suffix}-sub-created`,
+        completionStatus: "complete",
+        status: "completed",
+        createdAt: now,
+      },
+    });
+    submissionIds.push(submissionCreated.id);
   });
 
   test.afterAll(async () => {
     const prisma: PrismaAny = getPrisma();
+    if (submissionIds.length) {
+      // PublicForm -> PublicFormSubmission é onDelete: Restrict.
+      await prisma.publicFormSubmission.deleteMany({ where: { id: { in: submissionIds } } }).catch(() => null);
+    }
+    if (leadCreatedId) await prisma.lead.deleteMany({ where: { id: leadCreatedId } }).catch(() => null);
     if (formId) {
       await prisma.publicFormMetricEvent.deleteMany({ where: { formId } }).catch(() => null);
       await prisma.publicFormPublication.deleteMany({ where: { formId } }).catch(() => null);
@@ -267,7 +299,7 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
     expect(row?.openRate).toBeCloseTo(0.3, 1); // 3 abertos / 10 enviados
   });
 
-  test("GET forms-funnel — 200, lead_created e lead_attached separados, closeRate null sem starts", async ({ request }) => {
+  test("GET forms-funnel — 200, leadCreated/leadAttached derivados de submissão+lead (v1.1), separados, closeRate null sem starts", async ({ request }) => {
     const { from, to } = range();
     const res = await request.get(
       `${BASE_URL}/api/v1/backoffice/campanhas-analytics/forms-funnel?from=${from}&to=${to}&teamIds=${teamId}`,

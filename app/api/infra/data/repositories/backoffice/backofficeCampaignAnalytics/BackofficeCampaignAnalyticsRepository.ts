@@ -12,7 +12,21 @@ import type {
   TemplateAggregate,
 } from "./IBackofficeCampaignAnalyticsRepository"
 
-const FUNNEL_EVENT_TYPES = ["form_viewed", "form_started", "form_completed", "lead_created", "lead_attached"] as const
+// v1.1 do contrato (nota "05 — Contrato de API", 2026-09-01): lead_created/lead_attached
+// SAIRAM desta lista. O fluxo legado do gate emite lead_attached mesmo quando CRIA o
+// lead (mislabel confirmado em produção — bugs/2026-08-31-formulario-anexa-...md,
+// adenda 01/09: card "PEDRO TESTE" criado 01/09 11:20, evento emitido 11:21 foi
+// lead_attached). view/start/complete continuam corretos e vêm daqui; created/attached
+// agora vêm de fetchLeadOutcomesByForm (submissão completa + lead), ver formFunnel.
+const FUNNEL_EVENT_TYPES = ["form_viewed", "form_started", "form_completed"] as const
+
+// Janela de tolerância entre o aceite da submissão (POST, "createdAt" da linha) e a
+// transação do gate criar o lead (assíncrona, mas rápida): se o lead nasceu até 5 min
+// antes até qualquer tempo depois da submissão, ele nasceu COM ela — CRIADO. Se já
+// existia mais de 5 min antes, a resposta ANEXOU num lead pré-existente. Reverter para
+// os metric events quando o cutover do gate (rodada CDP, 10-E8) corrigir o rótulo na
+// origem — registrar a decisão na nota "05 — Contrato de API" se isso acontecer.
+const LEAD_CREATION_WINDOW_MINUTES = 5
 
 function buildDispatchWhere(filter: CampaignAnalyticsFilter): Prisma.EmailCampaignDispatchWhereInput {
   return {
@@ -159,34 +173,41 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
       ? Prisma.sql`AND f."teamId" = ANY(${filter.teamIds}::uuid[])`
       : Prisma.empty
 
-    const grouped = await prisma.$queryRaw<Array<{ formId: string; eventType: string; count: bigint }>>(Prisma.sql`
-      SELECT e."formId" AS "formId", e."eventType"::text AS "eventType", COUNT(*) AS count
-      FROM "corretor_studio_public_form_metric_events" e
-      JOIN "corretor_studio_public_forms" f ON f.id = e."formId"
-      WHERE e."eventType" = ANY(${[...FUNNEL_EVENT_TYPES]}::"PublicFormMetricType"[])
-        AND ${notFabricatedByDispatcherSql("e")}
-        AND ${periodAnchorSql("e")} >= ${filter.from}
-        AND ${periodAnchorSql("e")} < ${filter.to}
-        ${teamFilter}
-      GROUP BY 1, 2
-    `)
+    const [grouped, outcomesByForm] = await Promise.all([
+      prisma.$queryRaw<Array<{ formId: string; eventType: string; count: number }>>(Prisma.sql`
+        SELECT e."formId" AS "formId", e."eventType"::text AS "eventType", COUNT(DISTINCT e."visitorSessionId")::int AS count
+        FROM "corretor_studio_public_form_metric_events" e
+        JOIN "corretor_studio_public_forms" f ON f.id = e."formId"
+        WHERE e."eventType" = ANY(${[...FUNNEL_EVENT_TYPES]}::"PublicFormMetricType"[])
+          AND ${notFabricatedByDispatcherSql("e")}
+          AND ${periodAnchorSql("e")} >= ${filter.from}
+          AND ${periodAnchorSql("e")} < ${filter.to}
+          ${teamFilter}
+        GROUP BY 1, 2
+      `),
+      this.fetchLeadOutcomesByForm(filter),
+    ])
 
-    if (grouped.length === 0) return []
+    const formIds = new Set<string>(grouped.map((row) => row.formId))
+    for (const formId of outcomesByForm.keys()) formIds.add(formId)
+    if (formIds.size === 0) return []
 
-    const formIds = [...new Set(grouped.map((row) => row.formId))]
     const forms = await prisma.publicForm.findMany({
-      where: { id: { in: formIds } },
+      where: { id: { in: [...formIds] } },
       select: { id: true, name: true, teamId: true, team: { select: { name: true } } },
     })
     const formById = new Map(forms.map((form) => [form.id, form]))
 
     const funnelByForm = new Map<string, FormFunnelRow>()
-    for (const row of grouped) {
-      const form = formById.get(row.formId)
-      if (!form) continue
+    const getOrCreateRow = (formId: string): FormFunnelRow | null => {
+      const existing = funnelByForm.get(formId)
+      if (existing) return existing
 
-      const existing = funnelByForm.get(row.formId) ?? {
-        formId: row.formId,
+      const form = formById.get(formId)
+      if (!form) return null
+
+      const row: FormFunnelRow = {
+        formId,
         formName: form.name,
         teamId: form.teamId,
         teamName: form.team.name,
@@ -196,18 +217,61 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
         leadCreated: 0,
         leadAttached: 0,
       }
+      funnelByForm.set(formId, row)
+      return row
+    }
+
+    for (const row of grouped) {
+      const entry = getOrCreateRow(row.formId)
+      if (!entry) continue
 
       const count = Number(row.count)
-      if (row.eventType === "form_viewed") existing.viewed = count
-      if (row.eventType === "form_started") existing.started = count
-      if (row.eventType === "form_completed") existing.completed = count
-      if (row.eventType === "lead_created") existing.leadCreated = count
-      if (row.eventType === "lead_attached") existing.leadAttached = count
+      if (row.eventType === "form_viewed") entry.viewed = count
+      if (row.eventType === "form_started") entry.started = count
+      if (row.eventType === "form_completed") entry.completed = count
+    }
 
-      funnelByForm.set(row.formId, existing)
+    for (const [formId, outcome] of outcomesByForm) {
+      const entry = getOrCreateRow(formId)
+      if (!entry) continue
+      entry.leadCreated = outcome.created
+      entry.leadAttached = outcome.attached
     }
 
     return [...funnelByForm.values()]
+  }
+
+  // v1.1 do contrato — deriva leadCreated/leadAttached de submissão completa + lead,
+  // não de metric events (ver comentário de FUNNEL_EVENT_TYPES acima). Uma linha por
+  // formId, agregada no banco via COUNT(*) FILTER — nunca carrega submissão a submissão.
+  private async fetchLeadOutcomesByForm(
+    filter: CampaignAnalyticsFilter
+  ): Promise<Map<string, { created: number; attached: number }>> {
+    const teamFilter = filter.teamIds?.length
+      ? Prisma.sql`AND f."teamId" = ANY(${filter.teamIds}::uuid[])`
+      : Prisma.empty
+
+    const rows = await prisma.$queryRaw<Array<{ formId: string; created: number; attached: number }>>(Prisma.sql`
+      SELECT
+        s."formId" AS "formId",
+        COUNT(*) FILTER (
+          WHERE l."createdAt" >= s."createdAt" - (${LEAD_CREATION_WINDOW_MINUTES}::int * interval '1 minute')
+        )::int AS created,
+        COUNT(*) FILTER (
+          WHERE l."createdAt" < s."createdAt" - (${LEAD_CREATION_WINDOW_MINUTES}::int * interval '1 minute')
+        )::int AS attached
+      FROM "corretor_studio_public_form_submissions" s
+      JOIN "corretor_studio_leads" l ON l.id = s."leadId"
+      JOIN "corretor_studio_public_forms" f ON f.id = s."formId"
+      WHERE s."completionStatus" = 'complete'::"PublicFormCompletionStatus"
+        AND s."leadId" IS NOT NULL
+        AND s."createdAt" >= ${filter.from} AND s."createdAt" < ${filter.to}
+        AND l."deletedAt" IS NULL
+        ${teamFilter}
+      GROUP BY 1
+    `)
+
+    return new Map(rows.map((row) => [row.formId, { created: Number(row.created), attached: Number(row.attached) }]))
   }
 
   async leadsByOrigin(filter: CampaignAnalyticsFilter): Promise<LeadsByOriginRow[]> {

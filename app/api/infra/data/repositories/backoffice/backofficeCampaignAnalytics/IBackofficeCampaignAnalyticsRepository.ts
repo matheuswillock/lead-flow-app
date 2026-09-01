@@ -1,8 +1,10 @@
 // Porta administrativa read-only (DA1, SPEC 10 — Campanhas Analytics 2026-08).
 // Tabelas físicas lidas por esta porta, todas SOMENTE leitura (nenhum create/update/delete):
-//   - corretor_studio_email_campaign_dispatches (model EmailCampaignDispatch)
-//   - corretor_studio_email_logs                (model EmailLog — agregado, nunca linha a linha com PII)
-//   - corretor_studio_public_form_metric_events  (model PublicFormMetricEvent)
+//   - corretor_studio_email_campaign_dispatches   (model EmailCampaignDispatch)
+//   - corretor_studio_email_logs                  (model EmailLog — agregado, nunca linha a linha com PII)
+//   - corretor_studio_public_form_metric_events   (model PublicFormMetricEvent)
+//   - corretor_studio_public_form_submissions     (model PublicFormSubmission — v1.1 do
+//     contrato, 2026-09-01: fonte de leadCreated/leadAttached, ver formFunnel)
 //   - corretor_studio_public_forms                (model PublicForm)
 //   - corretor_studio_leads                       (model Lead)
 //   - corretor_studio_teams                       (model Team)

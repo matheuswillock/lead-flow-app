@@ -14720,7 +14720,7 @@
                     { "key": "teamIds", "value": "{{backofficeTeamId}}" }
                   ]
                 },
-                "description": "Funil por formulário (views/starts/completes) com lead_created e lead_attached SEMPRE separados, startRate/closeRate calculados."
+                "description": "Funil por formulário (views/starts/completes, dos metric events) com leadsCreated e leadsAttached SEMPRE separados, startRate/closeRate calculados. v1.1 (01/09): leadsCreated/leadsAttached derivam de submissão completa + lead (lead.createdAt vs. submission.createdAt), não mais dos eventos lead_created/lead_attached — o fluxo legado do gate rotula esses eventos errado (mislabel confirmado em produção)."
               }
             },
             {

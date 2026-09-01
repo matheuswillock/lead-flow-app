@@ -25,7 +25,8 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
     formId?: string
     publicationId?: string
     leadIds: string[]
-  } = { leadIds: [] }
+    submissionIds: string[]
+  } = { leadIds: [], submissionIds: [] }
 
   const FROM = new Date("2026-08-26T18:00:00.000Z")
   const TO = new Date("2026-08-31T00:00:00.000Z") // limite superior exclusivo (DA5)
@@ -141,7 +142,9 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
     })
     scope.publicationId = publication.id
 
-    // Funil dentro do range: 3 views, 2 starts, 1 completes, 1 lead_created, 1 lead_attached (SEPARADOS — D3/T-10.3)
+    // Funil dentro do range: 3 views, 2 starts, 1 completes (D3/T-10.3 — só o funil de
+    // visualização/interação continua vindo dos metric events; leadCreated/leadAttached
+    // migraram para a derivação por submissão+lead, v1.1 do contrato — ver T-10.3 abaixo).
     const events: { eventType: string; visitorSessionId: string }[] = [
       { eventType: "form_viewed", visitorSessionId: "s1" },
       { eventType: "form_viewed", visitorSessionId: "s2" },
@@ -149,8 +152,6 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
       { eventType: "form_started", visitorSessionId: "s1" },
       { eventType: "form_started", visitorSessionId: "s2" },
       { eventType: "form_completed", visitorSessionId: "s1" },
-      { eventType: "lead_created", visitorSessionId: "s1" },
-      { eventType: "lead_attached", visitorSessionId: "s2" },
     ]
     for (const [index, event] of events.entries()) {
       await prisma.publicFormMetricEvent.create({
@@ -173,6 +174,86 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
         eventType: "form_viewed",
         eventKey: `ca-${suffix}-outside`,
         createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      },
+    })
+
+    // Submissões completas + leads (T-10.3 — derivação criado×anexado, v1.1 do contrato
+    // de 01/09: leadCreated/leadAttached deixam de vir de metric events e passam a
+    // comparar lead."createdAt" com submission."createdAt").
+    async function createCompletedSubmissionWithLead(options: {
+      key: string
+      submissionCreatedAt: Date
+      leadCreatedAt: Date
+      leadCode: string
+      leadName: string
+    }) {
+      const lead = await prisma.lead.create({
+        data: {
+          name: options.leadName,
+          leadCode: options.leadCode,
+          team: { connect: { id: teamA.id } },
+          manager: { connect: { id: master.id } },
+          originChannel: "public_form",
+          createdAt: options.leadCreatedAt,
+        },
+      })
+      scope.leadIds.push(lead.id)
+
+      const submission = await prisma.publicFormSubmission.create({
+        data: {
+          form: { connect: { id: form.id } },
+          publication: { connect: { id: publication.id } },
+          lead: { connect: { id: lead.id } },
+          requestKey: options.key,
+          completionStatus: "complete",
+          status: "completed",
+          createdAt: options.submissionCreatedAt,
+        },
+      })
+      scope.submissionIds.push(submission.id)
+      return { lead, submission }
+    }
+
+    const SUBMITTED_AT = new Date("2026-08-29T10:00:00.000Z")
+
+    // Caso CRIADO: o lead nasceu 2 min depois da submissão (dentro da janela de 5 min).
+    await createCompletedSubmissionWithLead({
+      key: `ca-${suffix}-sub-created`,
+      submissionCreatedAt: SUBMITTED_AT,
+      leadCreatedAt: new Date(SUBMITTED_AT.getTime() + 2 * 60_000),
+      leadCode: `ca-${suffix}-sub-created`,
+      leadName: "Lead Criado Junto",
+    })
+
+    // Caso ANEXADO: o lead já existia dias antes da submissão.
+    await createCompletedSubmissionWithLead({
+      key: `ca-${suffix}-sub-attached`,
+      submissionCreatedAt: new Date("2026-08-29T11:00:00.000Z"),
+      leadCreatedAt: new Date("2026-08-01T00:00:00.000Z"),
+      leadCode: `ca-${suffix}-sub-attached`,
+      leadName: "Lead Anexado Antigo",
+    })
+
+    // Caso-armadilha (bug real de produção — adenda 01/09 do bug do gate, card "PEDRO
+    // TESTE"): o lead nasceu 1 min depois da submissão (é uma CRIAÇÃO real), mas o fluxo
+    // legado também emitiu um evento lead_attached mislabeled para essa mesma sessão.
+    // A derivação nova NÃO pode se contaminar com o evento errado — só olha
+    // submissão+lead. Este é o teste que nasce vermelho na implementação por metric event.
+    await createCompletedSubmissionWithLead({
+      key: `ca-${suffix}-sub-trap`,
+      submissionCreatedAt: new Date("2026-08-29T12:00:00.000Z"),
+      leadCreatedAt: new Date("2026-08-29T12:01:00.000Z"),
+      leadCode: `ca-${suffix}-sub-trap`,
+      leadName: "PEDRO TESTE (armadilha)",
+    })
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: form.id } },
+        publication: { connect: { id: publication.id } },
+        visitorSessionId: "s-trap",
+        eventType: "lead_attached",
+        eventKey: `ca-${suffix}-trap-event`,
+        createdAt: new Date("2026-08-29T12:01:30.000Z"),
       },
     })
 
@@ -228,10 +309,15 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
         createdAt: new Date("2026-08-29T12:00:00.000Z"),
       },
     })
-    scope.leadIds = [leadInsideEmail.id, leadInsideForm.id, leadDeleted.id, leadOutsideRange.id, leadOtherTeam.id]
+    scope.leadIds.push(leadInsideEmail.id, leadInsideForm.id, leadDeleted.id, leadOutsideRange.id, leadOtherTeam.id)
   })
 
   afterAll(async () => {
+    if (scope.submissionIds.length) {
+      // PublicForm -> PublicFormSubmission é onDelete: Restrict — as submissões
+      // MUST sair antes do form, senão o deleteMany do form abaixo falha.
+      await prisma.publicFormSubmission.deleteMany({ where: { id: { in: scope.submissionIds } } })
+    }
     if (scope.leadIds.length) {
       await prisma.lead.deleteMany({ where: { id: { in: scope.leadIds } } })
     }
@@ -293,13 +379,16 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
       teamIds: [scope.teamAId!],
     })
     const total = rows.reduce((sum, row) => sum + row.count, 0)
-    expect(total).toBe(2) // leadInsideEmail + leadInsideForm; exclui deletado, fora do range e do outro time
+    // leadInsideEmail + leadInsideForm + os 2 leads do fixture de T-10.3 (criado/armadilha,
+    // ambos public_form, dentro do range) — exclui deletado, o anexado (fora do range),
+    // fora do range e do outro time.
+    expect(total).toBe(4)
     const byChannel = Object.fromEntries(rows.map((row) => [row.originChannel, row.count]))
     expect(byChannel.email_campaign).toBe(1)
-    expect(byChannel.public_form).toBe(1)
+    expect(byChannel.public_form).toBe(3)
   })
 
-  it("T-10.3 — formFunnel conta lead_created e lead_attached SEPARADOS (nunca somados)", async () => {
+  it("T-10.3 — formFunnel deriva leadCreated/leadAttached de submissão+lead (v1.1), NUNCA de metric events, e não se contamina com o evento mislabeled (armadilha PEDRO TESTE, adenda 01/09)", async () => {
     const rows = await backofficeCampaignAnalyticsRepository.formFunnel({
       from: FROM,
       to: TO,
@@ -310,10 +399,104 @@ describe.skipIf(!RUN_INTEGRATION)("BackofficeCampaignAnalyticsRepository (Postgr
     expect(row?.viewed).toBe(3)
     expect(row?.started).toBe(2)
     expect(row?.completed).toBe(1)
-    expect(row?.leadCreated).toBe(1)
-    expect(row?.leadAttached).toBe(1)
     // Evento fora do range não deve inflar "viewed"
     expect(row?.viewed).not.toBe(4)
+
+    // 2 CRIADOS (caso normal + o caso-armadilha, cujo evento lead_attached mislabeled
+    // NÃO pode contaminar a contagem) + 1 ANEXADO — a implementação por metric event
+    // reportaria leadCreated=0, leadAttached=1 aqui (o evento real emitido é só o
+    // lead_attached da armadilha); esta é a asserção que prova a correção.
+    expect(row?.leadCreated).toBe(2)
+    expect(row?.leadAttached).toBe(1)
+  })
+
+  it("T-10.3c — trava o limiar de 5 minutos: lead 4 min antes da submissão conta como CRIADO, 6 min antes conta como ANEXADO", async () => {
+    const submittedAt = new Date("2026-08-30T09:00:00.000Z")
+
+    const created4min = await prisma.lead.create({
+      data: {
+        name: "Lead 4 min antes",
+        leadCode: `ca-${suffix}-threshold-4min`,
+        team: { connect: { id: scope.teamAId! } },
+        manager: { connect: { id: scope.masterId! } },
+        originChannel: "public_form",
+        createdAt: new Date(submittedAt.getTime() - 4 * 60_000),
+      },
+    })
+    scope.leadIds.push(created4min.id)
+    const submissionCreated4min = await prisma.publicFormSubmission.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        lead: { connect: { id: created4min.id } },
+        requestKey: `ca-${suffix}-threshold-4min`,
+        completionStatus: "complete",
+        status: "completed",
+        createdAt: submittedAt,
+      },
+    })
+    scope.submissionIds.push(submissionCreated4min.id)
+
+    const attached6min = await prisma.lead.create({
+      data: {
+        name: "Lead 6 min antes",
+        leadCode: `ca-${suffix}-threshold-6min`,
+        team: { connect: { id: scope.teamAId! } },
+        manager: { connect: { id: scope.masterId! } },
+        originChannel: "public_form",
+        createdAt: new Date(submittedAt.getTime() - 6 * 60_000),
+      },
+    })
+    scope.leadIds.push(attached6min.id)
+    const submissionAttached6min = await prisma.publicFormSubmission.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        lead: { connect: { id: attached6min.id } },
+        requestKey: `ca-${suffix}-threshold-6min`,
+        completionStatus: "complete",
+        status: "completed",
+        createdAt: submittedAt,
+      },
+    })
+    scope.submissionIds.push(submissionAttached6min.id)
+
+    const rows = await backofficeCampaignAnalyticsRepository.formFunnel({
+      from: FROM,
+      to: TO,
+      teamIds: [scope.teamAId!],
+    })
+    const row = rows.find((entry) => entry.formId === scope.formId)
+    expect(row).toBeDefined()
+    // base do T-10.3 (2 criados/1 anexado) + 1 criado (4min) + 1 anexado (6min)
+    expect(row?.leadCreated).toBe(3)
+    expect(row?.leadAttached).toBe(2)
+  })
+
+  it("T-10.3d — conta sessões DISTINTAS, não linhas (review #1111: backfill de atribuição pode gravar mais de um form_viewed/form_started para a mesma sessão)", async () => {
+    // Mesma sessão "s1" da base do T-10.3, linha extra simulando o backfill de
+    // atribuição (lib/public-forms/origin.ts / backfill-form-viewed-attribution.ts) —
+    // não pode inflar a contagem de "viewed".
+    await prisma.publicFormMetricEvent.create({
+      data: {
+        form: { connect: { id: scope.formId! } },
+        publication: { connect: { id: scope.publicationId! } },
+        visitorSessionId: "s1",
+        eventType: "form_viewed",
+        eventKey: `ca-${suffix}-s1-attribution-backfill`,
+        createdAt: new Date("2026-08-29T10:05:00.000Z"),
+      },
+    })
+
+    const rows = await backofficeCampaignAnalyticsRepository.formFunnel({
+      from: FROM,
+      to: TO,
+      teamIds: [scope.teamAId!],
+    })
+    const row = rows.find((entry) => entry.formId === scope.formId)
+    expect(row).toBeDefined()
+    // s1, s2, s3 — 3 sessões distintas, mesmo com a linha duplicada de s1.
+    expect(row?.viewed).toBe(3)
   })
 
   it("T-10.3b — ancora o período no fato (occurredAt), não no drenar da fila (createdAt), e exclui eventos fabricados pelo dispatcher", async () => {
