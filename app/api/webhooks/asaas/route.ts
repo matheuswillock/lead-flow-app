@@ -6,8 +6,10 @@ import {
   asaasWebhookEventRepository,
 } from "@/app/api/infra/data/repositories/asaasWebhook/AsaasWebhookEventRepository";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { getClientIpFromRequest } from "@/lib/http/get-client-ip";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
+import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
 import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
 import {
   resolveAsaasWebhookEventId,
@@ -20,12 +22,34 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Erro desconhecido ao processar webhook";
 }
 
+/**
+ * S2/DA3: só tentativa com token inválido consome o limiter (por IP).
+ * Token válido nunca chama esta função — passa sempre, mesmo com o
+ * orçamento de tentativas inválidas estourado para o mesmo IP (anti-C36:
+ * uma rajada de eventos legítimos do Asaas não pode virar 429).
+ */
+async function rejectIfInvalidTokenRateLimited(request: NextRequest): Promise<NextResponse | null> {
+  const ip = getClientIpFromRequest(request);
+  const result = await consumeBillingRateLimit(
+    `webhook-invalid-token:${ip}`,
+    BILLING_RATE_LIMIT_DEFAULTS.webhookInvalidToken
+  );
+  if (result.allowed) return null;
+  return NextResponse.json(
+    { error: "Too Many Requests" },
+    { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const asaasToken = request.headers.get("asaas-access-token");
     const receivedToken = asaasToken?.trim();
 
     if (!receivedToken) {
+      const limited = await rejectIfInvalidTokenRateLimited(request);
+      if (limited) return limited;
+
       console.error("[AsaasWebhookRoute][POST] Token não fornecido");
       // E7 (C36): observabilidade mínima do 401 em série — sintoma
       // precursor da fila pausada pelo Asaas (15 falhas consecutivas).
@@ -43,6 +67,9 @@ export async function POST(request: NextRequest) {
     const account = resolveAsaasWebhookAccount(receivedToken);
 
     if (!account) {
+      const limited = await rejectIfInvalidTokenRateLimited(request);
+      if (limited) return limited;
+
       console.error("[AsaasWebhookRoute][POST] Token inválido");
       // E7 (C36): idem — ver comentário acima.
       Sentry.captureMessage("[AsaasWebhookRoute] Token inválido", {

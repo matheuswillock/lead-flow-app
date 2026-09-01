@@ -9,6 +9,8 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { emailService } from "@/lib/services/EmailService";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { getClientIpFromRequest } from "@/lib/http/get-client-ip";
+import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
 
 const formatTeamName = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 const normalizeBillingType = (value: unknown): "PIX" | "CREDIT_CARD" | null => {
@@ -47,6 +49,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         new Output(false, [], ["Apenas o master ou um manager delegado pode criar times"], null),
         { status: 403 }
+      );
+    }
+
+    // S2/DA2: checkout self-service — por profileId + IP, evita fábrica de
+    // cobranças/customers (T-50.5).
+    const rateLimitKey = `${profileId}:${getClientIpFromRequest(request)}`;
+    const rateLimitResult = await consumeBillingRateLimit(
+      rateLimitKey,
+      BILLING_RATE_LIMIT_DEFAULTS.checkoutCreate
+    );
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        new Output(false, [], ["Muitas tentativas. Tente novamente em instantes."], null),
+        {
+          status: 429,
+          headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) },
+        }
       );
     }
 
