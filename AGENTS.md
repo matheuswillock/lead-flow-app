@@ -67,13 +67,23 @@ The repository has three fully CI-automated PR flows. Agents **MUST** rely on th
 
 | Push to | Workflow | What it does |
 |---------|----------|---------------|
-| `feature/*`, `bugfix/*` (and `cursor/*`, `Codex/*`) | `ci-feature.yml` / `ci-bugfix.yml` / `ci-cursor.yml` / `ci-Codex.yml` → `ci-branch-reusable.yml` (`auto-pr` job) | Creates/updates the PR into `develop` automatically. |
+| `feature/*`, `bugfix/*` (and `cursor/*`, `claude/*`) | `ci-feature.yml` / `ci-bugfix.yml` / `ci-cursor.yml` / `ci-claude.yml` → `ci-branch-reusable.yml` (`auto-pr` job) | Creates/updates the PR into `develop` automatically. |
 | `develop` | `ci-develop.yml` (`auto-pr-develop-to-main` job) | Resets/force-pushes the `release/develop-to-main` branch from the validated `develop` commit and creates/updates the PR into `main`. |
 | `main` | `ci-sync-develop.yml` | Creates/updates the sync-back PR (`features/sync-main-to-develop` → `develop`). |
 
 ### Before starting new work (MUST)
 
 Before creating or starting work on a `feature/*` or `bugfix/*` branch, agents **MUST** update the local branch from `develop` first (e.g. `git fetch origin develop && git checkout -b <branch> origin/develop`, or `git pull origin develop` if the branch already exists) to avoid a stale base and avoidable merge conflicts.
+
+### Safe push — never force-push (MUST)
+
+Whenever a new push to the remote is needed on a branch that has already been published (the branch already has commits on `origin`, not just its first publication), agents **MUST NOT**, under any circumstances, use `git push --force`, `--force-with-lease`, or `-f` without explicit, unambiguous authorization from the project owner. Before every subsequent push, in this order:
+
+1. `git fetch origin <own-branch> && git merge origin/<own-branch>` — the branch may have received commits on the remote since the last local push (e.g. a review comment resolved by another session, or a manual push by the owner). Use an explicit fetch-and-merge, not a bare `git pull`: if the agent's local git config has `pull.rebase=true`, a bare `git pull` rebases the already-published branch instead of merging it, rewriting the commits' hashes — the very next (non-force) push would then be rejected by the remote.
+2. `git fetch origin develop && git merge origin/develop` — bring in whatever changed on `develop` since the branch was created or since the last pull, avoiding divergence that only surfaces in CI or in the PR. Same explicit fetch-and-merge reasoning as step 1.
+3. `git push origin <own-branch>` — only after both merges above, never before.
+
+Merge conflicts from steps 1–2 **MUST** be resolved locally, reviewing each hunk — never with blind automatic resolution (bulk `--theirs`/`--ours`). If local and remote history have diverged in a way that only a force-push would resolve, the agent **MUST** stop and ask the owner; never overwrite remote history to "unblock" the push.
 
 ### Pull Requests are pipeline-only (MUST NOT)
 
@@ -273,7 +283,7 @@ observar a tela renderizada. Ordem de fallback:
 
 1. Playwright (`bun run test:e2e:local`, ou o MCP quando disponível)
 2. Preview / dev server
-3. `Codex-in-chrome`
+3. `claude-in-chrome`
 4. Pedir um screenshot ao dono
 
 Verificar **MUST** incluir, no mínimo: a tela carrega sem erro de console, o
@@ -438,7 +448,7 @@ tela, a landing **MUST** ter asserts medidos na spec E2E — não julgamento:
 ## Source of Truth and Distribution
 
 - Agents **MUST** treat `agents.md` as the canonical instruction file.
-- Adapter files (`.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `AGENTS.md`, `AGENTS.md`) **MUST** be generated from this file.
+- Adapter files (`.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `CLAUDE.md`, `AGENTS.md`) **MUST** be generated from this file.
 - Team members and agents **MUST NOT** manually edit generated adapter files.
 - Whenever any AI governance/instruction file is changed, the equivalent rule update **MUST** be propagated to every generated adapter in the same change by running `bun run governance:sync`.
 - An AI-governance rule change is **NOT** complete until the canonical file and every generated adapter reflect the same rule set.
