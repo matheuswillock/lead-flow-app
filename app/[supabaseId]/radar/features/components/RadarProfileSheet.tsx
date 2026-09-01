@@ -121,9 +121,15 @@ function RelatedLeadCard({ lead, supabaseId }: { lead: RadarRelatedLead; supabas
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium">{lead.name || "Sem nome"}</span>
-        <Badge variant="outline" className={cn("font-normal", getLeadStatusBadgeClass(lead.status))}>
-          {getLeadStatusLabel(lead.status)}
-        </Badge>
+        {lead.status ? (
+          <Badge variant="outline" className={cn("font-normal", getLeadStatusBadgeClass(lead.status))}>
+            {getLeadStatusLabel(lead.status)}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="font-normal text-muted-foreground">
+            Rascunho
+          </Badge>
+        )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
         <span className="inline-flex items-center gap-1">

@@ -2325,8 +2325,13 @@ export class RadarRepository {
     const orderedLeadIds = identities.map((identity) => identity.normalizedValue)
     if (orderedLeadIds.length === 0) return []
 
+    // `deletedAt: null` — o merge de leads preserva o vínculo Radar do lead
+    // de origem depois de soft-deletá-lo (`MergeLeadsUseCase`). Sem o filtro,
+    // o card mergeado aparece na lista com um link quebrado:
+    // `LeadRepository.findByLeadCode` exige `deletedAt: null` (achado do
+    // review do PR #1114).
     const leads = await this.db.lead.findMany({
-      where: { teamId: scope.teamId, id: { in: orderedLeadIds } },
+      where: { teamId: scope.teamId, id: { in: orderedLeadIds }, deletedAt: null },
       select: { id: true, leadCode: true, name: true, status: true, createdAt: true },
     })
     const leadById = new Map(leads.map((lead) => [lead.id, lead]))

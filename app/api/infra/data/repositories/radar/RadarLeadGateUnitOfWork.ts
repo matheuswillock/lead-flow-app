@@ -110,7 +110,14 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
               ],
             },
             select: { id: true, status: true },
-            orderBy: { createdAt: "asc" },
+            // Vínculo MAIS RECENTE, igual a `reloadProfile` (regra 2): depois
+            // de uma reabertura por status, o card novo nasce com o mesmo
+            // telefone/e-mail do perfil, e `leadIdMatch` já aponta pra ele.
+            // `asc` faria este candidato apontar para o card antigo,
+            // `distinctLeadIds` veria dois ids e devolveria um
+            // `identity_conflict` falso — travando a próxima submissão de
+            // anexar no card recém-reaberto (achado do review do PR #1114).
+            orderBy: { createdAt: "desc" },
           })
         : null,
       emailToMatch
@@ -121,7 +128,14 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
               email: { equals: escapeLikePattern(emailToMatch), mode: "insensitive" },
             },
             select: { id: true, status: true },
-            orderBy: { createdAt: "asc" },
+            // Vínculo MAIS RECENTE, igual a `reloadProfile` (regra 2): depois
+            // de uma reabertura por status, o card novo nasce com o mesmo
+            // telefone/e-mail do perfil, e `leadIdMatch` já aponta pra ele.
+            // `asc` faria este candidato apontar para o card antigo,
+            // `distinctLeadIds` veria dois ids e devolveria um
+            // `identity_conflict` falso — travando a próxima submissão de
+            // anexar no card recém-reaberto (achado do review do PR #1114).
+            orderBy: { createdAt: "desc" },
           })
         : null,
     ])

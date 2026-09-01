@@ -297,7 +297,8 @@ export type RadarRelatedLead = {
   id: string
   leadCode: string
   name: string
-  status: string
+  /** `Lead.status` é opcional — `null` = lead ainda em rascunho. */
+  status: string | null
   createdAt: string
 }
 
