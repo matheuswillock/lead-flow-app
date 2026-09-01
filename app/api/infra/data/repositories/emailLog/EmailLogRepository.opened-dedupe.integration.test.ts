@@ -18,8 +18,17 @@ import { randomUUID } from "crypto"
  *
  * Rodar: `bun run test:integration:email-log:local` (Postgres em :55322).
  */
-const RUN_INTEGRATION =
-  process.env.EMAIL_LOG_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
+const INTEGRATION_FLAG_SET = process.env.EMAIL_LOG_INTEGRATION_TEST === "1"
+
+// Falhar alto, não pular em silêncio: `describe.skip` com o flag ligado mas
+// sem `DATABASE_URL` sai "0 pass, 2 skip" — verde, mas sem provar nada.
+if (INTEGRATION_FLAG_SET && !process.env.DATABASE_URL) {
+  throw new Error(
+    "EMAIL_LOG_INTEGRATION_TEST=1 mas DATABASE_URL não está definido — rode via `bun run test:integration:email-log:local`."
+  )
+}
+
+const RUN_INTEGRATION = INTEGRATION_FLAG_SET && Boolean(process.env.DATABASE_URL)
 
 let prisma: typeof import("@/app/api/infra/data/prisma").prisma
 let emailLogRepository: typeof import("./EmailLogRepository").emailLogRepository
@@ -201,5 +210,78 @@ describeIntegration("EmailLogRepository.applyWebhookEvent — dedupe de 'opened'
 
     expect(campaignAfter.totalOpened - campaignBefore.totalOpened).toBe(1)
     expect(dispatchAfter.totalOpened - dispatchBefore.totalOpened).toBe(1)
+  })
+
+  it("duas entregas concorrentes do webhook a partir do MESMO snapshot (openedAt null) só uma reivindica a abertura", async () => {
+    // Chamar `applyOpened` (que refaz o SELECT antes de cada escrita) em
+    // sequência não exercita a corrida de verdade: quando a segunda chamada
+    // lê o log, a primeira já commitou e `openedAt` não é mais null. Este
+    // teste captura o snapshot UMA vez com `openedAt: null` e usa o MESMO
+    // objeto nas duas chamadas concorrentes — exatamente como dois workers
+    // processando o mesmo webhook em paralelo (ou o prefetch do Apple Mail
+    // Privacy Protection colidindo com a abertura real) veriam o log antes de
+    // qualquer transação começar. Se a trava atômica no banco regredir para a
+    // comparação antiga em memória (`log.openedAt` lido antes da transação),
+    // as duas chamadas veem `null` e as duas reivindicam — este teste fica
+    // vermelho onde o sequencial acima ficaria verde.
+    const raceLogId = await createOpenedLog()
+    const sharedSnapshot = await prisma.emailLog.findUniqueOrThrow({
+      where: { id: raceLogId },
+      select: {
+        id: true,
+        teamId: true,
+        status: true,
+        recipientEmail: true,
+        recipientName: true,
+        campaignId: true,
+        dispatchId: true,
+        deliveredAt: true,
+        openedAt: true,
+        clickedAt: true,
+        bouncedAt: true,
+        complainedAt: true,
+      },
+    })
+    expect(sharedSnapshot.openedAt).toBeNull()
+
+    const campaignBefore = await prisma.emailCampaign.findUniqueOrThrow({
+      where: { id: campaignId },
+      select: { totalOpened: true },
+    })
+
+    const primeiraAbertura = new Date("2026-09-01T12:00:00.000Z")
+    const segundaAbertura = new Date("2026-09-01T12:00:00.500Z")
+
+    await Promise.all([
+      emailLogRepository.applyWebhookEvent({
+        log: sharedSnapshot,
+        eventType: "opened",
+        occurredAt: primeiraAbertura,
+        metadata: {},
+        eventId: randomUUID(),
+      }),
+      emailLogRepository.applyWebhookEvent({
+        log: sharedSnapshot,
+        eventType: "opened",
+        occurredAt: segundaAbertura,
+        metadata: {},
+        eventId: randomUUID(),
+      }),
+    ])
+
+    const campaignAfter = await prisma.emailCampaign.findUniqueOrThrow({
+      where: { id: campaignId },
+      select: { totalOpened: true },
+    })
+    expect(campaignAfter.totalOpened - campaignBefore.totalOpened).toBe(1)
+
+    const log = await prisma.emailLog.findUniqueOrThrow({
+      where: { id: raceLogId },
+      select: { openedAt: true },
+    })
+    expect(log.openedAt).not.toBeNull()
+    expect([primeiraAbertura.toISOString(), segundaAbertura.toISOString()]).toContain(
+      log.openedAt!.toISOString()
+    )
   })
 })

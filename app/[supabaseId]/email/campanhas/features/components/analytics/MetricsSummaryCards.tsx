@@ -35,10 +35,11 @@ function MetricCard({
         <CardTitle className="flex items-center gap-1 text-sm font-medium text-muted-foreground">
           {title}
           <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="cursor-help">
-                <Info className="h-3.5 w-3.5 shrink-0" />
-              </span>
+            <TooltipTrigger
+              aria-label={`Mais informações sobre ${title}`}
+              className="cursor-help rounded-full border-0 bg-transparent p-0"
+            >
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
           </Tooltip>
