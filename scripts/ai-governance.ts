@@ -308,10 +308,29 @@ function toAbsolutePath(relativePath: string): string {
   return path.join(ROOT, ...relativePath.split("/"));
 }
 
-function isSamePath(pathA: string, pathB: string): boolean {
+// review #1113 (P1): um `.toLowerCase()` cego tratava AGENTS.md e agents.md
+// como o mesmo arquivo em QUALQUER filesystem, inclusive case-sensitive (Linux),
+// onde são dois arquivos de verdade — o adapter AGENTS.md nunca era sincronizado.
+// Só pula a escrita quando o SO confirma que os dois caminhos resolvem para o
+// mesmo inode (filesystem case-insensitive de verdade, ex.: macOS/Windows).
+export async function isSamePath(
+  pathA: string,
+  pathB: string,
+): Promise<boolean> {
   const resolvedA = path.resolve(pathA);
   const resolvedB = path.resolve(pathB);
-  return resolvedA.toLowerCase() === resolvedB.toLowerCase();
+  if (resolvedA === resolvedB) return true;
+  if (resolvedA.toLowerCase() !== resolvedB.toLowerCase()) return false;
+
+  try {
+    const [statA, statB] = await Promise.all([
+      fs.stat(resolvedA),
+      fs.stat(resolvedB),
+    ]);
+    return statA.dev === statB.dev && statA.ino === statB.ino;
+  } catch {
+    return false;
+  }
 }
 
 function getMaxExamples(config: GovernanceConfig): number {
@@ -507,7 +526,7 @@ async function syncAdapters(
 ): Promise<void> {
   for (const adapter of config.adapters) {
     const targetAbsolutePath = toAbsolutePath(adapter.path);
-    if (isSamePath(targetAbsolutePath, canonicalAbsolutePath)) {
+    if (await isSamePath(targetAbsolutePath, canonicalAbsolutePath)) {
       console.info(
         "[governance:sync] Skipped",
         adapter.path,
@@ -559,7 +578,7 @@ async function validateAdapters(
 ): Promise<void> {
   for (const adapter of config.adapters) {
     const absolutePath = toAbsolutePath(adapter.path);
-    if (isSamePath(absolutePath, canonicalAbsolutePath)) {
+    if (await isSamePath(absolutePath, canonicalAbsolutePath)) {
       if (!(await pathExists(canonicalAbsolutePath))) {
         issues.push(
           `Canonical/adaptor shared path missing: ${adapter.path} (${config.canonical.path})`,

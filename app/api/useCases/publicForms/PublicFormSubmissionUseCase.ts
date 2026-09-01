@@ -37,10 +37,8 @@ import {
   leadFromUpsertOutcome,
   type UpsertLeadOutcome,
 } from "@/lib/public-forms/lead-upsert-outcome"
-import {
-  FORM_COMPLETE_ACTIVITY_BODY,
-  parseEmailLogIdFromOrigin,
-} from "@/lib/public-forms/email-campaign-attribution"
+import { parseEmailLogIdFromOrigin } from "@/lib/public-forms/email-campaign-attribution"
+import { buildFormCompletionActivityBody } from "@/lib/public-forms/form-completion-activity"
 import {
   buildPublicFormLeadDiscardedEventKey,
   buildPublicFormMetricEventKey,
@@ -629,7 +627,21 @@ export class PublicFormSubmissionUseCase {
         leadId: resolvedLeadId,
         processingAlerts: formatLeadSyncAlerts(alerts),
         answers,
-        activityBody: resolvedLeadId ? FORM_COMPLETE_ACTIVITY_BODY : undefined,
+        // A identidade digitada e as respostas vão para a timeline (bug 31/08):
+        // o note genérico não dizia quem respondeu nem o quê, e um anexo no card
+        // errado ficava invisível para quem lê o card.
+        activityBody: resolvedLeadId
+          ? buildFormCompletionActivityBody({
+              snapshot: job.snapshot,
+              answers: job.visibleAnswers,
+              visibleIds: visible,
+              identity: {
+                name: extracted.name,
+                phone: extracted.phone,
+                email: extracted.email,
+              },
+            })
+          : undefined,
         activityPayload: resolvedLeadId
           ? json({
               kind: "public_form_completed",
