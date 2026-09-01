@@ -71,6 +71,28 @@ The repository has three fully CI-automated PR flows. Agents **MUST** rely on th
 
 Before creating or starting work on a `feature/*` or `bugfix/*` branch, agents **MUST** update the local branch from `develop` first (e.g. `git fetch origin develop && git checkout -b <branch> origin/develop`, or `git pull origin develop` if the branch already exists) to avoid a stale base and avoidable merge conflicts.
 
+### Push seguro — nunca force-push (MUST)
+
+Sempre que um novo push para o remoto for necessário numa branch já publicada (a
+branch já tem commits no `origin`, e não só na primeira publicação), o agente
+**MUST NOT**, sob nenhuma circunstância, usar `git push --force`, `--force-with-lease`
+ou `-f` sem autorização explícita e inequívoca do dono do projeto. Antes de cada push
+subsequente, nesta ordem:
+
+1. `git pull origin <própria-branch>` — a branch pode ter recebido commits no remoto
+   desde o último push local (ex.: resolução de comentário de review feita por outra
+   sessão, push manual do dono).
+2. `git pull origin develop` (merge de `develop` na própria branch) — trazer o que
+   mudou em `develop` desde que a branch foi criada ou desde o último pull, evitando
+   divergência que só aparece na CI ou no PR.
+3. `git push origin <própria-branch>` — só depois dos dois pulls acima, nunca antes.
+
+Conflitos de merge nos passos 1–2 **MUST** ser resolvidos localmente, revisando cada
+hunk — nunca com resolução automática cega (`--theirs`/`--ours` em massa). Se o
+histórico local e o remoto tiverem divergido de um jeito que só um force resolveria,
+o agente **MUST** parar e perguntar ao dono; nunca sobrescrever histórico remoto para
+"destravar" o push.
+
 ### Pull Requests are pipeline-only (MUST NOT)
 
 Agents **MUST NOT** create Pull Requests manually (via `gh pr create` or the GitHub UI) for any of the three flows above, under any circumstances. These PRs **MUST** be created exclusively by the CI jobs listed. The correct flow is: push the branch and verify the CI opened/updated the PR (`gh pr list --head <branch>`) — never open one manually.
