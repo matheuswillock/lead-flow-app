@@ -725,6 +725,10 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             googleEmail: member.googleEmail,
             functions: member.functions,
             isMaster: member.isMaster,
+            // `isMaster` é o flag global do perfil: continua true para o master
+            // da conta A que participa da conta B como operator. Quem decide
+            // trava de papel e remoção de time é o dono *desta* conta.
+            isAccountMaster: member.id === master.id,
             canCreateAccountUsers: member.canCreateAccountUsers,
             canManageAccountTeams: member.canManageAccountTeams,
             canTransferAccountLeads: member.canTransferAccountLeads,

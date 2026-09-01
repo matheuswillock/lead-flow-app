@@ -33,7 +33,12 @@ export interface ExternalTeamMembershipRow {
 interface BackofficeMemberTeamAccordionsProps {
   teams: Record<string, TeamMembershipDraft>
   onTeamsChange: (teams: Record<string, TeamMembershipDraft>) => void
-  memberIsMaster: boolean
+  /**
+   * O membro é o dono *desta* conta? Não confundir com `profile.isMaster`
+   * global: o master da conta A pode participar da conta B como operator, e
+   * lá é um membro comum — papel editável e removível do time.
+   */
+  memberIsAccountMaster: boolean
   canManage: boolean
   isSubmitting: boolean
   isLoading: boolean
@@ -252,7 +257,7 @@ function nextMembershipDraft(current: TeamMembershipDraft): TeamMembershipDraft 
 export function BackofficeMemberTeamAccordions({
   teams,
   onTeamsChange,
-  memberIsMaster,
+  memberIsAccountMaster,
   canManage,
   isSubmitting,
   isLoading,
@@ -272,10 +277,14 @@ export function BackofficeMemberTeamAccordions({
   }
 
   function handleToggleMembership(teamId: string) {
-    if (!canManage || isSubmitting || memberIsMaster) return
+    if (!canManage || isSubmitting) return
 
     const current = teams[teamId]
     if (!current) return
+
+    // Mesmo predicado de `actionDisabled`: o dono da conta não sai dos próprios
+    // times, mas pode ser adicionado a um time do qual ainda não participa.
+    if (memberIsAccountMaster && current.isMember) return
 
     const next = nextMembershipDraft(current)
     onTeamsChange({ ...teams, [teamId]: next })
@@ -321,7 +330,8 @@ export function BackofficeMemberTeamAccordions({
           >
             {teamList.map((team) => {
               const isExpandable = team.isMember && !team.isPendingRemove
-              const actionDisabled = !canManage || isSubmitting || (team.isMember && memberIsMaster)
+              const actionDisabled =
+                !canManage || isSubmitting || (team.isMember && memberIsAccountMaster)
 
               return (
                 <AccordionItem key={team.teamId} value={team.teamId} className="border-b last:border-b-0">
@@ -364,8 +374,8 @@ export function BackofficeMemberTeamAccordions({
                       }}
                       disabled={actionDisabled}
                       title={
-                        memberIsMaster && team.isMember
-                          ? "Não é possível remover o usuário master do time"
+                        memberIsAccountMaster && team.isMember
+                          ? "Não é possível remover o master da conta de um time da própria conta"
                           : team.isPendingRemove
                             ? "Desfazer a remoção deste time"
                             : team.isMember
@@ -414,7 +424,7 @@ export function BackofficeMemberTeamAccordions({
                           updateTeam(team.teamId, (current) => ({ ...current, access }))
                         }
                         disabled={isSubmitting}
-                        roleLocked={memberIsMaster}
+                        roleLocked={memberIsAccountMaster}
                       />
                     </AccordionContent>
                   ) : null}
