@@ -107,6 +107,12 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
       leadCodeSeed: null,
     })
     expect(linkLeadIdentity).toHaveBeenCalledTimes(1)
+    // Rótulo do funil (CDP 2026-08, cutover E8): o gate no comando NUNCA pode
+    // repetir o mislabel do legado (attached emitido mesmo em criação nova) —
+    // `promotion.created === true` MUST emitir `radar.crm_lead_created`.
+    expect(appendGateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "radar.crm_lead_created" }),
+    )
     expect(attachLeadToPendingSubmissions).toHaveBeenCalledWith({
       formId: input.formId,
       visitorSessionId: "session-1",
@@ -141,6 +147,12 @@ describe("CreateCrmLeadFromRadarFormGateUseCase", () => {
     expect(output.result).toEqual({ leadId: "lead-linked", created: false })
     expect(createOrUpdateFromRadarProfile).toHaveBeenCalledWith(
       expect.objectContaining({ existingLeadId: "lead-linked" }),
+    )
+    // Rótulo do funil: anexo a lead existente MUST emitir `radar.crm_lead_attached`,
+    // nunca `radar.crm_lead_created` — é o par exato do mislabel medido no legado
+    // (bug 2026-08-31, card "PEDRO TESTE").
+    expect(appendGateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "radar.crm_lead_attached" }),
     )
   })
 
