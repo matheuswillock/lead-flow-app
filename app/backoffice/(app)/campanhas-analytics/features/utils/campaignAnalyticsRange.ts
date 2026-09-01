@@ -31,13 +31,25 @@ export function validateCampaignAnalyticsRange(from: string, to: string): string
   return null
 }
 
+// Dia civil LOCAL (não UTC) — precisa bater com o "hoje" que o FiltersBar usa
+// no calendário/presets (react-day-picker exibe e seleciona em hora local).
+// Achado do Cursor review no PR #1126: usar UTC aqui e local no FiltersBar
+// diverge à noite em fusos atrás de UTC (ex.: America/Sao_Paulo) — o UTC já
+// virou o dia seguinte enquanto o picker ainda mostra "hoje" como local.
 function formatDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
-export function buildDefaultCampaignAnalyticsFilters(today: Date = new Date()): CampaignAnalyticsFiltersState {
-  const to = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
-  const from = new Date(to.getTime() - (CAMPAIGN_ANALYTICS_DEFAULT_RANGE_DAYS - 1) * 86_400_000)
+function subtractLocalCalendarDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - days)
+}
+
+export function buildDefaultCampaignAnalyticsFilters(now: Date = new Date()): CampaignAnalyticsFiltersState {
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const from = subtractLocalCalendarDays(to, CAMPAIGN_ANALYTICS_DEFAULT_RANGE_DAYS - 1)
   return { from: formatDateOnly(from), to: formatDateOnly(to), teamIds: [] }
 }
 

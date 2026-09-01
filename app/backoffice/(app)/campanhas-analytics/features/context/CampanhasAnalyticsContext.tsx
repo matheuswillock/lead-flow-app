@@ -84,6 +84,10 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
   const inFlightKeyRef = useRef<string | null>(null)
   const lastSuccessKeyRef = useRef<string | null>(null)
   const requestIdRef = useRef(0)
+  // Guard próprio para disparos: chamado tanto pela busca em grupo quanto pela
+  // paginação isolada, então precisa da própria proteção contra resposta
+  // obsoleta — o requestId do grupo não cobre esse caminho.
+  const dispatchesRequestIdRef = useRef(0)
 
   const rangeValidationError = useMemo(
     () => validateCampaignAnalyticsRange(draftFilters.from, draftFilters.to),
@@ -96,12 +100,19 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
 
   const fetchDispatchesPage = useCallback(
     async (filters: CampaignAnalyticsFiltersState, page: number, pageSize: number) => {
+      const requestId = ++dispatchesRequestIdRef.current
       setIsDispatchesLoading(true)
       setDispatchesError(null)
       const output = await safeFetch(
         service.getDispatches({ ...filters, page, pageSize }),
         "Erro ao carregar os disparos"
       )
+
+      // Uma chamada de disparos mais nova (grupo ou paginação) já foi
+      // disparada enquanto esta estava em voo — descarta esta resposta
+      // obsoleta em vez de sobrescrever a tabela com dado velho.
+      if (dispatchesRequestIdRef.current !== requestId) return
+
       if (output.isValid) {
         setDispatches(output.result as CampaignAnalyticsDispatchPage)
       } else {

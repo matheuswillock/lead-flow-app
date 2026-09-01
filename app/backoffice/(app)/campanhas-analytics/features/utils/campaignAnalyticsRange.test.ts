@@ -1,3 +1,8 @@
+// bun test força TZ=UTC por padrão; fixamos um fuso atrás de UTC explicitamente
+// para poder reproduzir/travar o bug de "hoje" divergente entre UTC e local
+// (ver teste "usa o dia civil LOCAL como 'hoje'" abaixo).
+process.env.TZ = "America/Sao_Paulo"
+
 import { describe, expect, it } from "bun:test"
 import {
   buildCampaignAnalyticsRequestKey,
@@ -42,6 +47,17 @@ describe("buildDefaultCampaignAnalyticsFilters", () => {
     expect(filters.to).toBe("2026-08-31")
     expect(filters.from).toBe("2026-08-02")
     expect(filters.teamIds).toEqual([])
+  })
+
+  // Achado do Cursor review no PR #1126: default usava dia civil UTC enquanto
+  // o FiltersBar (calendário/presets) usa dia civil LOCAL — em fusos atrás de
+  // UTC (ex.: America/Sao_Paulo, UTC-3), à noite o UTC já virou o dia
+  // seguinte, então o "hoje" do default divergia do "hoje" do picker.
+  it("usa o dia civil LOCAL como 'hoje', não o dia civil UTC", () => {
+    // 2026-09-01T23:30 em UTC-3 == 2026-09-02T02:30Z — já é dia seguinte em UTC.
+    const lateEveningUtcMinus3 = new Date("2026-09-01T23:30:00-03:00")
+    const filters = buildDefaultCampaignAnalyticsFilters(lateEveningUtcMinus3)
+    expect(filters.to).toBe(new Intl.DateTimeFormat("en-CA").format(lateEveningUtcMinus3))
   })
 })
 

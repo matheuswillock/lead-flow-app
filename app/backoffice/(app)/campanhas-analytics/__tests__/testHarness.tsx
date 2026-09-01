@@ -225,6 +225,52 @@ export class FakeCampanhasAnalyticsService implements ICampanhasAnalyticsService
   }
 }
 
+/**
+ * summary/series/templates/formsFunnel resolvem imediatamente; getDispatches
+ * fica pendente até o teste chamar `resolveDispatchesCall(index, page)` —
+ * permite reproduzir uma resposta de disparos mais antiga chegando DEPOIS de
+ * uma mais nova (regressão do PR #1126: `fetchDispatchesPage` não tinha guard
+ * de request id próprio).
+ */
+export class QueuedDispatchesCampanhasAnalyticsService implements ICampanhasAnalyticsService {
+  readonly dispatchesCalls: CampaignAnalyticsDispatchesParams[] = []
+  private readonly pendingDispatches: { resolve: (output: Output) => void }[] = []
+
+  async getSummary(): Promise<Output> {
+    return new Output(true, [], [], makeSummary())
+  }
+
+  async getDispatches(params: CampaignAnalyticsDispatchesParams): Promise<Output> {
+    this.dispatchesCalls.push(params)
+    return new Promise<Output>((resolve) => {
+      this.pendingDispatches.push({ resolve })
+    })
+  }
+
+  async getTeamsSeries(): Promise<Output> {
+    return new Output(true, [], [], makeTeamsSeries())
+  }
+
+  async getTemplates(): Promise<Output> {
+    return new Output(true, [], [], [makeTemplateRow()])
+  }
+
+  async getFormsFunnel(): Promise<Output> {
+    return new Output(true, [], [], [makeFormFunnelRow()])
+  }
+
+  async exportCsv(params: CampaignAnalyticsExportParams): Promise<CampaignAnalyticsExportResult> {
+    return { blob: new Blob(["csv"], { type: "text/csv" }), filename: `campanhas_${params.dataset}.csv` }
+  }
+
+  /** Resolve a chamada de índice `callIndex` com uma página de disparos identificável por `page`. */
+  resolveDispatchesCall(callIndex: number, page: number) {
+    const entry = this.pendingDispatches[callIndex]
+    if (!entry) throw new Error(`Nenhuma chamada de disparos pendente no índice ${callIndex}`)
+    entry.resolve(new Output(true, [], [], makeDispatchPage({ page, rows: [makeDispatchRow({ id: `page-${page}` })] })))
+  }
+}
+
 export function renderWithProvider(service: ICampanhasAnalyticsService, children: ReactNode) {
   return <CampanhasAnalyticsProvider service={service}>{children}</CampanhasAnalyticsProvider>
 }
