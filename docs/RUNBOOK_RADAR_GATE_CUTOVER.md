@@ -87,11 +87,21 @@ where "originChannel" in ('public_form','email_campaign')
 group by 1;
 ```
 
-Cruzar por submissão (join por `visitorSessionId`/`formId`/janela de tempo) e
-classificar cada divergência: **esperada** (ex.: gate novo recusa
-`invalid_phone` onde o legado criava mesmo assim — muda comportamento por
-design, D2) vs. **não explicada** (para tudo e reporta ao dono, conforme o
-contrato de execução da rodada).
+As três queries acima agregam (perdem `visitorSessionId`/`formId`/timestamp
+individuais) — servem para a comparação **por time**, que é o nível mínimo
+que a SPEC pede (E1: "medir... por time × eligible × reason"). Para
+classificar divergência **por submissão** (ex.: confirmar se um
+`eligible=false/invalid_phone` específico do shadow corresponde a um
+`lead_attached` real do legado, não só bater os totais), rode o SELECT sem
+`group by`/`count(*)` — mantendo `"teamId"`, `metadata`/`origin` e
+`"occurredAt"` — e junte manualmente por `teamId` + janela de tempo próxima
+(não há chave de correlação direta entre o evento shadow, que nasce no
+`question_answered`, e o evento de conclusão do funil legado). Classifique
+cada divergência: **esperada** (ex.: gate novo recusa `invalid_phone` onde o
+legado criava mesmo assim — muda comportamento por design, D2) vs. **não
+explicada** (para tudo e reporta ao dono, conforme o contrato de execução da
+rodada). O resultado agregado desta sessão está no "Passo 1" abaixo; o join
+fino por submissão fica como pendência explícita (item 3 do veredito).
 
 ## Passo 1 — Resultado da validação do shadow (2026-09-01)
 
@@ -185,26 +195,40 @@ elegível depois do passo 3 estabilizar.
 
 ## Verificação pós-cutover (T-R8.1/T-R8.2)
 
+Nomes físicos: `Lead` → `corretor_studio_leads` (plural — `@@map` em
+`prisma/schema.prisma`); eventos do gate C são linhas em
+`corretor_studio_radar_events` com `"eventType" in ('radar.crm_lead_created',
+'radar.crm_lead_attached')` (não existe tabela `radar.crm_lead_gate_events`
+nem `corretor_studio_lead` no singular — achados de review corrigidos aqui).
+T-R8.1 restringe a leads de origem formulário (mesmo predicado do T-R8.2) —
+sem isso, leads manuais/importados do time canário, que legitimamente não
+têm evento de gate, contariam como falso positivo.
+
 ```sql
--- T-R8.1: todo lead novo do time canário tem evento radar.crm_lead_created/_attached correspondente
+-- T-R8.1: todo lead novo de FORMULÁRIO do time canário tem evento de gate correspondente
 select l.id, l."createdAt"
-from corretor_studio_lead l
+from corretor_studio_leads l
 where l."teamId" = '<canary-team-id>'
   and l."createdAt" >= '<canary-start>'
+  and l."originChannel" in ('public_form','email_campaign')
+  and l."originMetadata"->>'formId' is not null
   and not exists (
-    select 1 from radar.crm_lead_gate_events e
-    where e.metadata->>'leadId' = l.id::text
+    select 1 from corretor_studio_radar_events e
+    where e."eventType" in ('radar.crm_lead_created','radar.crm_lead_attached')
+      and e.metadata->>'leadId' = l.id::text
   );
 -- esperado: 0 linhas
 
--- T-R8.2 (pós cutover global): zero leads nascidos pelos caminhos A/B
-select count(*) from corretor_studio_lead
-where "originChannel" in ('public_form','email_campaign')
-  and "createdAt" >= '<cutover-timestamp>'
-  and "originMetadata"->>'formId' is not null
+-- T-R8.2 (pós cutover global): zero leads de formulário nascidos pelos caminhos A/B
+select count(*)
+from corretor_studio_leads l
+where l."originChannel" in ('public_form','email_campaign')
+  and l."createdAt" >= '<cutover-timestamp>'
+  and l."originMetadata"->>'formId' is not null
   and not exists (
-    select 1 from radar.crm_lead_gate_events e
-    where e.metadata->>'leadId' = corretor_studio_lead.id::text
+    select 1 from corretor_studio_radar_events e
+    where e."eventType" in ('radar.crm_lead_created','radar.crm_lead_attached')
+      and e.metadata->>'leadId' = l.id::text
   );
 -- esperado: 0 linhas
 ```
