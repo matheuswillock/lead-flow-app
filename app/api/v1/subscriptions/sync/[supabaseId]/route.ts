@@ -117,6 +117,10 @@ export async function POST(
     // 3. Buscar assinaturas no Asaas (DA2: roteia pela conta do ponteiro
     // armazenado — cus_ pode pertencer à conta legacy durante a janela dual).
     const customerAccount: AsaasAccountId = profile.asaasCustomerAccount ?? 'primary';
+    // DA7 (achado P1 Cursor round 2): `sub_` e `cus_` podem estar em contas
+    // DIFERENTES durante a janela dual — o GET de uma assinatura por ID
+    // MUST usar a conta da própria assinatura, não a do customer.
+    const subscriptionAccount: AsaasAccountId = profile.asaasSubscriptionAccount ?? 'primary';
     const knownSubscriptionId = profile.asaasSubscriptionId;
 
     // 3a. Se já existe um ponteiro de assinatura conhecido, consultar ELE
@@ -128,7 +132,7 @@ export async function POST(
     // atual do profile, não "uma das últimas 5".
     if (knownSubscriptionId) {
       try {
-        const current = await AsaasSubscriptionService.getSubscription(knownSubscriptionId, customerAccount);
+        const current = await AsaasSubscriptionService.getSubscription(knownSubscriptionId, subscriptionAccount);
 
         if (current.status === 'ACTIVE') {
           return NextResponse.json(await applyActiveSubscription(supabaseId, current), { status: 200 });
@@ -153,7 +157,7 @@ export async function POST(
         console.warn('⚠️ [SyncSubscription] Lookup direto da assinatura conhecida falhou — caindo para varredura da lista', {
           supabaseId,
           knownSubscriptionId,
-          account: customerAccount,
+          account: subscriptionAccount,
           error: getError,
         });
       }

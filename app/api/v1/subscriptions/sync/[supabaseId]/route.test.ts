@@ -136,6 +136,7 @@ describe("POST /api/v1/subscriptions/sync/[supabaseId] — sem falso cancelament
         asaasCustomerId: "cus_6",
         asaasCustomerAccount: "legacy",
         asaasSubscriptionId: "sub_known_6",
+        asaasSubscriptionAccount: "legacy",
       }))
       getSubscriptionMock.mockImplementationOnce(async () => ({
         id: "sub_known_6",
@@ -205,6 +206,34 @@ describe("POST /api/v1/subscriptions/sync/[supabaseId] — sem falso cancelament
 
       expect(body.isValid).toBe(true)
       expect(profileUpdateMock).not.toHaveBeenCalled()
+    })
+
+    // Controle negativo do achado P1 do Cursor (round 2): sub_ e cus_ podem
+    // estar em contas DIFERENTES durante a janela dual (DA7). O GET da
+    // assinatura conhecida MUST usar asaasSubscriptionAccount, não
+    // asaasCustomerAccount — senão a busca 404a na conta errada.
+    it("janela dual: customer já na primary, assinatura ainda na legacy → GET usa a conta da ASSINATURA", async () => {
+      findUniqueMock.mockImplementationOnce(async () => ({
+        supabaseId: "sb-9",
+        asaasCustomerId: "cus_9_primary",
+        asaasCustomerAccount: "primary",
+        asaasSubscriptionId: "sub_9_legacy",
+        asaasSubscriptionAccount: "legacy",
+      }))
+      getSubscriptionMock.mockImplementationOnce(async () => ({
+        id: "sub_9_legacy",
+        status: "ACTIVE",
+        value: 59.9,
+        cycle: "MONTHLY",
+        nextDueDate: "2026-10-01",
+        dateCreated: "2026-01-01",
+      }))
+
+      const response = await POST(buildRequest(), { params: Promise.resolve({ supabaseId: "sb-9" }) })
+      const body = await response.json()
+
+      expect(body.isValid).toBe(true)
+      expect(getSubscriptionMock).toHaveBeenCalledWith("sub_9_legacy", "legacy")
     })
   })
 })

@@ -4,6 +4,7 @@ import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
+import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 import { getEmailService } from "@/lib/services/EmailService";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from '@/lib/utils/app-url';
@@ -367,7 +368,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🔍 [createOperatorFromPending] Verificando status no Asaas...');
       let paymentStatus;
       try {
-        paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
+        // DA2: mesma conta em que createAsaasCheckoutLink criou o payment
+        // (manager.asaasCustomerAccount) — evita a tentativa extra do
+        // fallback quando já sabemos a conta certa.
+        paymentStatus = await this.checkAsaasPaymentStatus(paymentId, pendingOperator.manager?.asaasCustomerAccount);
         console.info('📊 [createOperatorFromPending] Status Asaas:', paymentStatus);
       } catch (error) {
         console.error('❌ [createOperatorFromPending] Erro ao verificar status no Asaas:', error);
@@ -900,12 +904,24 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     }
   }
 
-  private async checkAsaasPaymentStatus(paymentId: string): Promise<any> {
+  /**
+   * DA2 (achado P1 Cursor round 2 no PR #1138): o checkout de operador cria
+   * o payment na conta resolvida do manager (createAsaasCheckoutLink), mas
+   * esta checagem consultava sempre a primary via `asaasFetch` global — um
+   * manager legacy pagava e nunca via o operador provisionado (404 aqui
+   * lido como "ainda não confirmado"). Usa o mesmo helper com fallback
+   * primary→legacy do E5 (`getPaymentByAccountWithFallback`); quando o
+   * caller já sabe a conta (manager.asaasCustomerAccount), passa direto e
+   * evita a tentativa extra.
+   */
+  private async checkAsaasPaymentStatus(paymentId: string, knownAccount?: AsaasAccountId | null): Promise<any> {
     try {
-      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-        method: 'GET',
-      });
+      const result = await getPaymentByAccountWithFallback(paymentId, knownAccount);
+      if (!result.found) {
+        return { success: false };
+      }
 
+      const payment = result.payment as any;
       return {
         success: true,
         status: payment.status,
