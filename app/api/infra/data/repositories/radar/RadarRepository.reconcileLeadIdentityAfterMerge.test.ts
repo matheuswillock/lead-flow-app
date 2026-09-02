@@ -42,7 +42,7 @@ describe("RadarRepository.reconcileLeadIdentityAfterMerge", () => {
     expect(deleteMock).not.toHaveBeenCalled()
   })
 
-  it("reaponta o valor da identidade para o lead alvo quando ninguém está vinculado a ele ainda", async () => {
+  it("reaponta value E normalizedValue para o lead alvo quando ninguém está vinculado a ele ainda", async () => {
     findUniqueMock
       .mockResolvedValueOnce({ id: "identity-source" })
       .mockResolvedValueOnce(null)
@@ -50,9 +50,12 @@ describe("RadarRepository.reconcileLeadIdentityAfterMerge", () => {
     const repo = new RadarRepository()
     await repo.reconcileLeadIdentityAfterMerge(TEAM_ID, SOURCE_LEAD_ID, TARGET_LEAD_ID)
 
+    // Os dois campos precisam mudar juntos: o gate resolve o lead preferindo
+    // `value` (RadarLeadGateUnitOfWork.getProfile: `value ?? normalizedValue`)
+    // — atualizar só o normalizado deixaria `value` preso ao UUID morto.
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "identity-source" },
-      data: { normalizedValue: TARGET_LEAD_ID },
+      data: { value: TARGET_LEAD_ID, normalizedValue: TARGET_LEAD_ID },
     })
     expect(deleteMock).not.toHaveBeenCalled()
   })

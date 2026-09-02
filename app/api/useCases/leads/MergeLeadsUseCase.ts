@@ -179,17 +179,25 @@ export class MergeLeadsUseCase implements IMergeLeadsUseCase {
           targetIdentity.profileId
         );
       }
+    } catch (error) {
+      console.error("[MergeLeadsUseCase][execute][radarMerge]", error);
+    }
 
-      // E3c: roda sempre (perfis já unificados acima, únicos, ou nem
-      // vinculados) — reaponta ou remove a identidade `lead_id` que ficou
-      // presa ao UUID do lead de origem, agora deletado.
+    // E3c: roda sempre (perfis já unificados acima, únicos, ou nem
+    // vinculados) — reaponta ou remove a identidade `lead_id` que ficou
+    // presa ao UUID do lead de origem, agora deletado. Em try/catch PRÓPRIO,
+    // independente do bloco E3b: se `mergeProfiles` lançar (ou commitar e
+    // falhar em seguida no update de score), o catch de cima não pode
+    // engolir esta reconciliação. As duas falhas continuam não-fatais para
+    // o merge do CRM, mas independentes entre si.
+    try {
       await this.radar.reconcileLeadIdentityAfterMerge(
         access.teamId,
         sourceLead.id,
         targetLead.id
       );
     } catch (error) {
-      console.error("[MergeLeadsUseCase][execute][radarMerge]", error);
+      console.error("[MergeLeadsUseCase][execute][radarIdentityReconcile]", error);
     }
 
     return new Output(

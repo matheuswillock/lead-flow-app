@@ -291,9 +291,15 @@ export class RadarRepository {
       return
     }
 
+    // `value` e `normalizedValue` sempre andam juntos nos writes de `lead_id`
+    // (ver `RadarLeadGateUnitOfWork.linkLeadIdentity`), e o gate resolve o
+    // lead com preferência pelo `value` (`getProfile`: `value ??
+    // normalizedValue`). Atualizar só o normalizado deixaria o `value` preso
+    // ao UUID do lead deletado — exatamente o vínculo morto que este método
+    // existe para corrigir.
     await this.db.radarIdentity.update({
       where: { id: sourceIdentity.id },
-      data: { normalizedValue: targetLeadId },
+      data: { value: targetLeadId, normalizedValue: targetLeadId },
     })
   }
 

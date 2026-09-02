@@ -194,6 +194,30 @@ describe("MergeLeadsUseCase", () => {
     );
   });
 
+  it("E3c: reconciliação roda mesmo quando mergeProfiles lança (try/catch independente)", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    findProfileByIdentityMock
+      .mockResolvedValueOnce({ profileId: "radar-target" })
+      .mockResolvedValueOnce({ profileId: "radar-source" });
+    mergeProfilesMock.mockRejectedValueOnce(new Error("radar down"));
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(mergeProfilesMock).toHaveBeenCalled();
+    expect(reconcileLeadIdentityAfterMergeMock).toHaveBeenCalledWith(
+      "team-1",
+      "source-1",
+      "target-1"
+    );
+  });
+
   it("E3c: falha ao reconciliar a identidade Radar não invalida a mesclagem", async () => {
     findByIdMock
       .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
