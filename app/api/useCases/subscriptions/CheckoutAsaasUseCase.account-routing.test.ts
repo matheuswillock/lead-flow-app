@@ -130,6 +130,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
       manager,
     })),
     updatePaymentId: mock(async () => {}),
+    markSubscriptionUpdated: mock(async () => {}),
     deleteById: mock(async () => {}),
     ...overrides.pendingOperatorRepository,
   }
@@ -178,6 +179,48 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
       (c) => c.account === "primary" && c.url.includes("/subscriptions?") && c.method === "DELETE"
     )
     expect(newSubDelete.length).toBeGreaterThan(0)
+  })
+
+  it("achado Codex (PR #1137, P1): retentativa após incremento aplicado não soma +19,90 de novo", async () => {
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        findByPaymentIdWithManager: mock(async () => ({
+          id: "pending-op-1",
+          managerId: manager.id,
+          teamId: "team-1",
+          name: "Novo Operador",
+          email: "novo-operador@example.test",
+          role: "operator",
+          functions: [],
+          paymentId: "checkout_session_1",
+          subscriptionId: "sub_new_1",
+          // marcador já setado por uma tentativa anterior que falhou depois do PUT
+          paymentStatus: "SUBSCRIPTION_UPDATED",
+          paymentMethod: "UNDEFINED",
+          operatorCreated: false,
+          operatorId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          manager,
+        })),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(true)
+    const oldSubPut = requestLog.filter(
+      (c) => c.account === "legacy" && c.url.includes("/subscriptions?") && c.method === "PUT"
+    )
+    expect(oldSubPut).toHaveLength(0)
+    expect(repos.pendingOperatorRepository.markSubscriptionUpdated).not.toHaveBeenCalled()
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

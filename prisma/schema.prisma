@@ -3110,17 +3110,24 @@ model EmailCreditSubscription {
   @@map("corretor_studio_email_credit_subscriptions")
 }
 
-/// Ledger idempotente de pagamentos aplicados a créditos (paymentId Asaas único).
+/// Ledger idempotente de pagamentos aplicados a créditos (paymentId Asaas + conta).
 /// Compra canônica fica em PlatformPurchase (purchaseType=email_credits); este grant evita reaplicar o mesmo paymentId.
 model EmailCreditPaymentGrant {
-  id             String          @id @default(uuid()) @db.Uuid
-  teamId         String          @db.Uuid
-  plan           EmailCreditPlan
-  paymentId      String          @unique
+  id        String          @id @default(uuid()) @db.Uuid
+  teamId    String          @db.Uuid
+  plan      EmailCreditPlan
+  paymentId String
+  // Achado Codex (PR #1137, P1): paymentId sozinho pode colidir entre as
+  // duas contas Asaas (C33) — sem esta coluna, a segunda compra paga (de
+  // outra conta, mesmo paymentId) seria reportada como "já aplicada" e o
+  // time correspondente nunca recebia os créditos. Default primary — mesmo
+  // motivo de Profile.asaasCustomerAccount.
+  asaasAccount   AsaasAccount @default(primary)
   checkoutId     String?
   monthlyCredits Int
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
 
+  @@unique([paymentId, asaasAccount], map: "corretor_studio_email_credit_payment_grants_payment_account_key")
   @@index([teamId])
   @@map("corretor_studio_email_credit_payment_grants")
 }

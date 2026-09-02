@@ -142,9 +142,12 @@ export class EmailCreditService implements IEmailCreditService {
     if (!paymentId) {
       throw new Error("paymentId é obrigatório para aplicar créditos")
     }
+    // Achado Codex (PR #1137, P1): paymentId sozinho colide entre as duas
+    // contas Asaas (C33) — a idempotência real é o par (paymentId, account).
+    const account = input.account ?? "primary"
 
-    const existingGrant = await prisma.emailCreditPaymentGrant.findUnique({
-      where: { paymentId },
+    const existingGrant = await prisma.emailCreditPaymentGrant.findFirst({
+      where: { paymentId, asaasAccount: account },
       select: { id: true },
     })
     if (existingGrant) {
@@ -164,6 +167,7 @@ export class EmailCreditService implements IEmailCreditService {
             teamId: input.teamId,
             plan: input.plan,
             paymentId,
+            asaasAccount: account,
             checkoutId: input.checkoutId ?? null,
             monthlyCredits,
           },

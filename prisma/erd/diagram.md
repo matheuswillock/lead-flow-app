@@ -2666,6 +2666,7 @@ completed completed
     String teamId 
     EmailCreditPlan plan 
     String paymentId 
+    AsaasAccount asaasAccount 
     String checkoutId "❓"
     Int monthlyCredits 
     DateTime createdAt 
@@ -4463,6 +4464,7 @@ completed completed
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_payment_grants" |o--|| "EmailCreditPlan" : "enum:plan"
+    "corretor_studio_email_credit_payment_grants" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_team_email_campaign_limit_grants" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"

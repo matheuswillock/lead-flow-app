@@ -32,5 +32,10 @@ export interface IPendingOperatorRepository {
   create(data: CreatePendingOperatorInput): Promise<PendingOperator>
   findByPaymentIdWithManager(paymentId: string): Promise<PendingOperatorWithManager | null>
   updatePaymentId(id: string, paymentId: string): Promise<void>
+  // Marca que o incremento de +R$19,90 na assinatura antiga do manager já
+  // foi aplicado (achado Codex no PR #1137, P1) — processOperatorCheckoutPaid
+  // consulta este marcador antes de reaplicar o incremento numa retentativa
+  // do webhook, evitando cobrar o mesmo operador duas vezes.
+  markSubscriptionUpdated(id: string): Promise<void>
   deleteById(id: string): Promise<void>
 }

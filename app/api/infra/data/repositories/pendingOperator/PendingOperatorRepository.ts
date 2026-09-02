@@ -69,6 +69,13 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
     })
   }
 
+  async markSubscriptionUpdated(id: string): Promise<void> {
+    await prisma.pendingOperator.update({
+      where: { id },
+      data: { paymentStatus: "SUBSCRIPTION_UPDATED" },
+    })
+  }
+
   async deleteById(id: string): Promise<void> {
     await prisma.pendingOperator.delete({ where: { id } })
   }

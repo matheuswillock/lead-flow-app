@@ -620,34 +620,47 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         new: newSubscriptionId
       });
 
-      // E4 (C22/DA2): a assinatura ANTIGA do manager roteia pela conta onde
-      // ela de fato vive — pode ser diferente da conta do evento/checkout.
-      const oldSubscriptionAccount = manager.asaasSubscriptionAccount;
-      const oldSubscriptionClient = createAsaasClient(oldSubscriptionAccount);
+      // Achado Codex (PR #1137, P1): o rethrow do E4 (webhook outbox) torna
+      // este método retryable — sem este marcador, uma retentativa após o
+      // PUT (mas antes do deleteById) leria o valor JÁ incrementado e
+      // somaria +R$19,90 de novo. paymentStatus persiste a barreira de
+      // idempotência entre tentativas.
+      if (pendingOperator.paymentStatus !== 'SUBSCRIPTION_UPDATED') {
+        // E4 (C22/DA2): a assinatura ANTIGA do manager roteia pela conta onde
+        // ela de fato vive — pode ser diferente da conta do evento/checkout.
+        const oldSubscriptionAccount = manager.asaasSubscriptionAccount;
+        const oldSubscriptionClient = createAsaasClient(oldSubscriptionAccount);
 
-      // Buscar valor atual da assinatura antiga
-      const oldSubscription = await oldSubscriptionClient.request(
-        `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
-        { method: 'GET' }
-      );
+        // Buscar valor atual da assinatura antiga
+        const oldSubscription = await oldSubscriptionClient.request(
+          `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
+          { method: 'GET' }
+        );
 
-      const newValue = oldSubscription.value + 19.90;
-      console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
-        oldValue: oldSubscription.value,
-        newValue,
-        increment: 19.90
-      });
+        const newValue = oldSubscription.value + 19.90;
+        console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
+          oldValue: oldSubscription.value,
+          newValue,
+          increment: 19.90
+        });
 
-      // Atualizar assinatura antiga com novo valor
-      await oldSubscriptionClient.request(
-        `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({ value: newValue })
-        }
-      );
+        // Atualizar assinatura antiga com novo valor
+        await oldSubscriptionClient.request(
+          `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ value: newValue })
+          }
+        );
 
-      console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+        await this.pendingOperatorRepository.markSubscriptionUpdated(pendingOperator.id);
+
+        console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+      } else {
+        console.info(
+          '↩️ [processOperatorCheckoutPaid] Assinatura já incrementada em tentativa anterior — pulando PUT'
+        );
+      }
 
       // Cancelar nova subscription (usamos apenas para gerar o checkout —
       // nasceu na conta do evento, mesmo client do payment acima).

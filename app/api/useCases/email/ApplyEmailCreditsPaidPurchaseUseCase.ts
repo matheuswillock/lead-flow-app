@@ -112,6 +112,7 @@ export class ApplyEmailCreditsPaidPurchaseUseCase {
           paymentId,
           checkoutId: input.checkoutId,
           timezone: input.timezone,
+          account: input.account,
         })
         return {
           handled: true,
@@ -150,6 +151,7 @@ export class ApplyEmailCreditsPaidPurchaseUseCase {
       paymentId,
       checkoutId: purchase.id,
       timezone: input.timezone,
+      account: input.account,
     })
 
     console.info("[ApplyEmailCreditsPaidPurchaseUseCase]", {

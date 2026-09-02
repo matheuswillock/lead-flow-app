@@ -72,6 +72,20 @@ export class PendingActionUseCase {
   async applyPendingActionByPaymentId(paymentId: string, account: AsaasAccountId): Promise<Output> {
     let action = await pendingActionRepository.findApplicableByPaymentId(paymentId);
 
+    // Achado Codex (PR #1137, P1): paymentId sozinho pode colidir entre as
+    // duas contas Asaas (C33) — findApplicableByPaymentId não tem coluna de
+    // conta pra filtrar. Se a ação encontrada não pertence à conta do
+    // evento, trata como "não encontrada" por este caminho e cai no lookup
+    // por externalReference abaixo, que É escopado pela conta certa (busca
+    // o payment via o client daquela conta específica).
+    if (action && action.master.asaasCustomerAccount !== account) {
+      console.warn(
+        "[PendingActionUseCase] paymentId colide entre contas — ação pertence a outra conta, ignorando",
+        { paymentId, actionAccount: action.master.asaasCustomerAccount, eventAccount: account }
+      );
+      action = null;
+    }
+
     if (!action) {
       try {
         const client = createAsaasClient(account);

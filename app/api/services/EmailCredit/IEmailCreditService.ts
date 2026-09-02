@@ -1,4 +1,5 @@
 import type { EmailCreditPlan } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface CreditStatus {
   hasSubscription: boolean
@@ -21,6 +22,10 @@ export type ApplyPaidPlanInput = {
   paymentId: string
   checkoutId?: string | null
   timezone?: string | null
+  // Achado Codex (PR #1137, P1): idempotência por paymentId sozinho colide
+  // entre contas Asaas (C33). Default primary preserva o comportamento para
+  // chamadores que ainda não propagam a conta do evento.
+  account?: AsaasAccountId
 }
 
 export type ApplyPaidPlanResult = {

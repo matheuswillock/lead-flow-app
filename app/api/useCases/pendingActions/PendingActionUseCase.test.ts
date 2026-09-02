@@ -179,4 +179,28 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
     expect(legacyGet).toBeDefined()
     expect(requestLog.some((c) => c.account === "primary")).toBe(false)
   })
+
+  it("achado Codex (PR #1137, P1): paymentId colidindo entre contas não aplica a ação da conta errada", async () => {
+    // findApplicableByPaymentId acha uma ação, mas ela pertence ao master
+    // primary — o evento é da conta legacy (mesmo paymentId, colisão C33).
+    findApplicableByIdMock.mockImplementation(async () => null)
+    findApplicableByPaymentIdMock.mockImplementation(async () => ({
+      ...baseAction,
+      master: { ...baseAction.master, asaasCustomerAccount: "primary" },
+    }))
+    requestImplByAccount.legacy = async (_url: string, method?: string) => {
+      if (method === "GET") return { externalReference: "pending-action-nao-existe" }
+      return {}
+    }
+
+    const useCase = new PendingActionUseCase()
+    const result = await useCase.applyPendingActionByPaymentId("pay_colidindo", "legacy")
+
+    expect(result.isValid).toBe(false)
+    expect(runInTransactionMock).not.toHaveBeenCalled()
+    // a ação da conta errada nunca foi aplicada — o lookup caiu no fallback
+    // por externalReference, escopado pela conta legacy do evento
+    const legacyGet = requestLog.find((c) => c.account === "legacy" && c.method === "GET")
+    expect(legacyGet).toBeDefined()
+  })
 })
