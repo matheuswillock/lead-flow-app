@@ -620,12 +620,22 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         new: newSubscriptionId
       });
 
-      // Achado Codex (PR #1137, P1): o rethrow do E4 (webhook outbox) torna
-      // este método retryable — sem este marcador, uma retentativa após o
-      // PUT (mas antes do deleteById) leria o valor JÁ incrementado e
-      // somaria +R$19,90 de novo. paymentStatus persiste a barreira de
-      // idempotência entre tentativas.
+      // Achado Codex (PR #1137, P1) + achado cursor[bot] no mesmo PR: o
+      // rethrow do E4 (webhook outbox) torna este método retryable — sem
+      // barreira, uma retentativa após o PUT (mas antes do deleteById) leria
+      // o valor JÁ incrementado e somaria +R$19,90 de novo. cursor[bot]
+      // apontou que marcar o incremento SÓ DEPOIS do PUT ainda deixa uma
+      // janela (queda entre o PUT e o markSubscriptionUpdated): o marcador
+      // agora é gravado ANTES do PUT — reduz a janela insegura para "gravou
+      // a marca mas nem chegou a chamar o PUT" (bem mais estreita que "PUT
+      // respondeu 200 mas a escrita no nosso banco falhou"). Efeito colateral
+      // aceito conscientemente: se o PUT falhar DEPOIS de marcado, a
+      // assinatura fica temporariamente abaixo do valor correto até
+      // reconciliação manual — pior cenário é sub-cobrança, nunca dupla
+      // cobrança (a assimetria certa: nunca cobrar duas vezes).
       if (pendingOperator.paymentStatus !== 'SUBSCRIPTION_UPDATED') {
+        await this.pendingOperatorRepository.markSubscriptionUpdated(pendingOperator.id);
+
         // E4 (C22/DA2): a assinatura ANTIGA do manager roteia pela conta onde
         // ela de fato vive — pode ser diferente da conta do evento/checkout.
         const oldSubscriptionAccount = manager.asaasSubscriptionAccount;
@@ -644,18 +654,28 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           increment: 19.90
         });
 
-        // Atualizar assinatura antiga com novo valor
-        await oldSubscriptionClient.request(
-          `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
-          {
-            method: 'PUT',
-            body: JSON.stringify({ value: newValue })
-          }
-        );
-
-        await this.pendingOperatorRepository.markSubscriptionUpdated(pendingOperator.id);
-
-        console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+        try {
+          // Atualizar assinatura antiga com novo valor
+          await oldSubscriptionClient.request(
+            `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify({ value: newValue })
+            }
+          );
+          console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+        } catch (incrementError) {
+          // Marcador já gravado (para nunca dobrar a cobrança numa
+          // retentativa) mas o incremento pode não ter sido aplicado de
+          // fato — precisa de reconciliação manual, log distinto e
+          // greppável para não passar despercebido.
+          console.error(
+            '🚨 [processOperatorCheckoutPaid] PUT de incremento falhou APÓS marcar SUBSCRIPTION_UPDATED — ' +
+              'assinatura pode estar sub-cobrada, requer reconciliação manual',
+            { managerId: manager.id, oldSubscriptionId, pendingOperatorId: pendingOperator.id, incrementError }
+          );
+          throw incrementError;
+        }
       } else {
         console.info(
           '↩️ [processOperatorCheckoutPaid] Assinatura já incrementada em tentativa anterior — pulando PUT'

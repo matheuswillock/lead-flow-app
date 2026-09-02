@@ -33,6 +33,21 @@ export type AsaasWebhookBody = {
   };
 };
 
+// Achado cursor[bot] no PR #1137 (P1): o gate anterior só escalava a
+// string genérica exata ("Erro ao processar pagamento do operador"), então
+// falhas posteriores ao incremento da assinatura (auth do Supabase, criação
+// de usuário) caíam num Output(false) com OUTRA mensagem e nunca eram
+// retentadas — cliente cobrado, operador nunca entregue, sem sinal. A lista
+// abaixo é o allowlist do que é *legitimamente* não-retryável (ocorre antes
+// de qualquer efeito colateral de cobrança): tudo que não bater aqui escala
+// para o outbox/retry por padrão (fail-safe, não fail-silent).
+const NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES = [
+  "Operador pendente não encontrado",
+  "Operador já foi criado",
+  "Pagamento não vinculado a assinatura",
+  "Manager não possui assinatura anterior",
+];
+
 export function resolveAsaasWebhookEventId(body: AsaasWebhookBody): string {
   const explicitId = typeof body.id === "string" ? body.id.trim() : "";
   if (explicitId) return explicitId;
@@ -184,17 +199,19 @@ export async function processAsaasWebhookEvent(
             externalReference,
           });
 
-          // E4 (C22): a falha genérica do catch interno de
-          // processOperatorCheckoutPaid é o modo "cliente pagou e nada foi
+          // E4 (C22) + achado cursor[bot]: qualquer falha que não seja um
+          // no-op legítimo conhecido é o modo "cliente pagou e nada foi
           // entregue" — não pode ficar só no log. Propagar aqui faz o evento
           // inteiro cair no outbox/retry que já existe em nível de evento
           // (AsaasWebhookEvent + fila + cron de retry), em vez de um
-          // Output(false) descartado silenciosamente. Os demais motivos
-          // (já criado, não encontrado, sem assinatura vinculada) são
-          // no-ops legítimos e não retryáveis — não escalam.
-          if (operatorResult.errorMessages.includes("Erro ao processar pagamento do operador")) {
+          // Output(false) descartado silenciosamente.
+          const isKnownNoOp = operatorResult.errorMessages.some((message) =>
+            NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES.some((noOp) => message.includes(noOp))
+          );
+          if (!isKnownNoOp) {
             throw new Error(
-              `[processOperatorCheckoutPaid] falha não idempotente para checkoutSessionId=${checkoutSessionId} paymentId=${paymentId}`
+              `[processOperatorCheckoutPaid] falha não idempotente para checkoutSessionId=${checkoutSessionId} ` +
+                `paymentId=${paymentId}: ${operatorResult.errorMessages.join("; ")}`
             );
           }
         }

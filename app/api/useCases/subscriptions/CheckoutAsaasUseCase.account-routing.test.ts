@@ -223,6 +223,33 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.pendingOperatorRepository.markSubscriptionUpdated).not.toHaveBeenCalled()
   })
 
+  it("achado cursor[bot] (PR #1137, P1): marca SUBSCRIPTION_UPDATED ANTES do PUT, não depois", async () => {
+    const callOrder: string[] = []
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        markSubscriptionUpdated: mock(async () => {
+          callOrder.push("mark")
+        }),
+      },
+    })
+    requestImplByAccount.legacy = async (_url: string, method?: string) => {
+      if (method === "PUT") callOrder.push("put")
+      if (method === "GET") return { value: 100 }
+      return {}
+    }
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(callOrder).toEqual(["mark", "put"])
+  })
+
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {
     const repos = fakeRepos()
     const useCase = new CheckoutAsaasUseCase(

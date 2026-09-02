@@ -101,4 +101,27 @@ describe("processAsaasWebhookEvent — falha do operador não fica só em Output
 
     await expect(processAsaasWebhookEvent(body, "primary")).resolves.toBeUndefined()
   })
+
+  it("achado cursor[bot] (PR #1137, P1): falha PÓS-billing com mensagem diferente da genérica também propaga", async () => {
+    // Antes do fix: só a string genérica exata escalava. Uma falha
+    // DEPOIS do incremento da assinatura (auth do Supabase, criação de
+    // usuário) tinha OUTRA mensagem e nunca era retentada — cliente
+    // cobrado, operador nunca entregue, sem sinal.
+    processOperatorCheckoutPaidMock.mockImplementationOnce(async () => {
+      const { Output } = await import("@/lib/output")
+      return new Output(false, [], ["Erro ao conectar com autenticação"], null)
+    })
+
+    const body = {
+      event: "PAYMENT_CONFIRMED",
+      payment: {
+        id: "pay_3",
+        status: "CONFIRMED",
+        checkoutSession: "checkout_session_1",
+        externalReference: undefined,
+      },
+    }
+
+    await expect(processAsaasWebhookEvent(body, "primary")).rejects.toThrow()
+  })
 })
