@@ -3,6 +3,7 @@ import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
+import { toBillingCycle } from "@/lib/billing/resolvePrice"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -71,12 +72,13 @@ function getProductListAmountForCycle(
  * preferencial vem da adesão (fonte da venda); `subscriptionCycle` legado
  * só cobre o caso sem adesão vinculada.
  */
-function mapPlanSubscription(
+export function mapPlanSubscription(
   subscription: PlanSubscriptionQueryResult | null
 ): MasterPlatformUserPlanSubscriptionRecord | null {
   if (!subscription) return null
 
-  const cycle = subscription.adhesion?.cycle ?? subscription.subscriptionCycle?.toLowerCase() ?? null
+  const cycle =
+    subscription.adhesion?.cycle ?? toBillingCycle(subscription.subscriptionCycle ?? "") ?? null
   const chargedAmount = subscription.adhesion
     ? decimalToNumber(subscription.adhesion.negotiatedTotalAmount ?? subscription.adhesion.totalAmount)
     : null

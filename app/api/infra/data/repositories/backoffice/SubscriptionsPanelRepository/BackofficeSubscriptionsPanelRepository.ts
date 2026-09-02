@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
+import { toBillingCycle } from "@/lib/billing/resolvePrice"
 import type {
   IBackofficeSubscriptionsPanelRepository,
   PanelSubscriptionRecord,
@@ -39,7 +40,8 @@ export class BackofficeSubscriptionsPanelRepository implements IBackofficeSubscr
 
     return masters.map((master) => {
       const subscription = master.subscription
-      const cycle = subscription?.adhesion?.cycle ?? subscription?.subscriptionCycle?.toLowerCase() ?? null
+      const cycle =
+        subscription?.adhesion?.cycle ?? toBillingCycle(subscription?.subscriptionCycle ?? "") ?? null
       const chargedAmount = subscription?.adhesion
         ? decimalToNumber(subscription.adhesion.negotiatedTotalAmount ?? subscription.adhesion.totalAmount)
         : null

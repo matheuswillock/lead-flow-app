@@ -62,4 +62,19 @@ describe("getPlanInfo — T-50.14", () => {
     expect(plan.label).toBe("Trial")
     expect(plan.kind).toBe("trial")
   })
+
+  it("subscriptionPlan=manager_base sem ProfileSubscription (legado sem relação) → rótulo neutro, nunca 'Sem plano ativo' nem preço inventado (achado codex[bot])", () => {
+    const plan = getPlanInfo(false, "manager_base", null)
+
+    expect(plan.label).not.toBe("Sem plano ativo")
+    expect(plan.label).toBe("Plano legado (sem detalhamento)")
+    expect(plan.amount).toBeNull()
+    expect(plan.listAmount).toBeNull()
+  })
+
+  it("subscriptionPlan=with_operators sem ProfileSubscription → mesmo rótulo neutro", () => {
+    const plan = getPlanInfo(false, "with_operators", null)
+
+    expect(plan.label).toBe("Plano legado (sem detalhamento)")
+  })
 })

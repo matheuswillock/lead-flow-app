@@ -680,6 +680,20 @@ export function getPlanInfo(
     }
   }
 
+  // Achado codex[bot] no PR #1134: master com o enum legado
+  // (manager_base/with_operators) mas sem ProfileSubscription vinculada não
+  // pode virar "Sem plano ativo" — isso apaga o sinal de que existe (ou
+  // existiu) uma cobrança, sem inventar preço (DA5). Rótulo neutro,
+  // amount/listAmount continuam null.
+  if (subscriptionPlan === "manager_base" || subscriptionPlan === "with_operators") {
+    return {
+      label: "Plano legado (sem detalhamento)",
+      amount: null,
+      listAmount: null,
+      kind: "monthly",
+    }
+  }
+
   return {
     label: "Sem plano ativo",
     amount: null,

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { NextRequest } from "next/server"
+import { Output } from "@/lib/output"
 
 const teamAccessMock = mock(async () => ({
   access: {
@@ -13,71 +15,10 @@ mock.module("@/app/api/v1/utils/teamAccess", () => ({
   hasDelegatedTeamManagementAccess: () => true,
 }))
 
-const findUniqueMock = mock(async ({ where }: { where: { id: string } }) => {
-  if (where.id === "profile-1") {
-    return { id: "profile-1", fullName: "Requester", email: "req@example.com", functions: [] }
-  }
-  return {
-    id: "manager-1",
-    fullName: "Master",
-    email: "master@example.com",
-    hasPermanentSubscription: true,
-    cpfCnpj: null,
-    phone: null,
-    postalCode: null,
-    address: null,
-    addressNumber: null,
-    neighborhood: null,
-    complement: null,
-    asaasCustomerId: null,
-    asaasSubscriptionId: null,
-    subscriptionStatus: "active",
-    subscriptionNextDueDate: null,
-    subscriptionEndDate: null,
-    subscriptionCycle: null,
-    timezone: "America/Sao_Paulo",
-  }
-})
-const teamCreateMock = mock(async () => ({ id: "team-1" }))
-const teamMemberCreateMock = mock(async () => ({ id: "member-1" }))
+const executeMock = mock(async () => new Output(true, ["Time criado com sucesso sem cobrança adicional"], [], { created: true }))
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  default: {
-    profile: { findUnique: findUniqueMock },
-    team: { create: teamCreateMock },
-    teamMember: { create: teamMemberCreateMock },
-  },
-}))
-
-mock.module("@/app/api/services/billing/IncrementalBillingService", () => ({
-  incrementalBillingService: {
-    calculateProportionalAmount: mock(async () => ({
-      billingDelta: 0,
-      totalCharge: 0,
-      remainingMonths: 0,
-      maxInstallments: 1,
-    })),
-  },
-}))
-
-mock.module("@/app/api/useCases/billing/MemberProBillingUseCase", () => ({
-  memberProBillingUseCase: {
-    shouldBypassIncrementalCharge: mock(async () => false),
-    syncUsageToSubscription: mock(async () => {}),
-  },
-}))
-
-const sendAddOnConfirmedEmailMock = mock(async () => {})
-
-mock.module("@/lib/services/EmailService", () => ({
-  emailService: {
-    sendAddOnConfirmedEmail: sendAddOnConfirmedEmailMock,
-    sendAddOnPendingPaymentEmail: mock(async () => {}),
-  },
-}))
-
-mock.module("@/lib/utils/app-url", () => ({
-  getFullUrl: (path: string) => `https://app.local${path}`,
+mock.module("@/app/api/useCases/teamCheckout/CreateTeamCheckoutUseCase", () => ({
+  createTeamCheckoutUseCase: { execute: executeMock },
 }))
 
 const consumeBillingRateLimitMock = mock(async () => ({ allowed: true, retryAfterSeconds: 1 }))
@@ -101,29 +42,87 @@ function makeRequest(body: unknown) {
   })
 }
 
-import { NextRequest } from "next/server"
-
 beforeEach(() => {
+  executeMock.mockClear()
   consumeBillingRateLimitMock.mockReset()
   consumeBillingRateLimitMock.mockResolvedValue({ allowed: true, retryAfterSeconds: 1 })
-  teamCreateMock.mockClear()
 })
 
-describe("POST /teams/payments/create — T-50.5 (S2/DA2)", () => {
-  it("acima do teto → 429 com Retry-After, use case não invocado", async () => {
+describe("POST /teams/payments/create — rota fina (refactor pós-allowlist)", () => {
+  it("sem x-supabase-user-id → 401, UseCase não invocado", async () => {
+    const request = new NextRequest("http://localhost/api/v1/teams/payments/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Novo Time" }),
+    })
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(401)
+    expect(executeMock).not.toHaveBeenCalled()
+  })
+
+  it("nome do time < 2 caracteres → 400, UseCase não invocado", async () => {
+    const response = await POST(makeRequest({ name: "A" }))
+
+    expect(response.status).toBe(400)
+    expect(executeMock).not.toHaveBeenCalled()
+  })
+
+  it("acima do teto de rate limit → 429 com Retry-After, UseCase não invocado", async () => {
     consumeBillingRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 17 })
 
     const response = await POST(makeRequest({ name: "Novo Time" }))
 
     expect(response.status).toBe(429)
     expect(response.headers.get("Retry-After")).toBe("17")
-    expect(teamCreateMock).not.toHaveBeenCalled()
+    expect(executeMock).not.toHaveBeenCalled()
   })
 
-  it("abaixo do teto → fluxo intocado (201, time criado)", async () => {
-    const response = await POST(makeRequest({ name: "Novo Time" }))
+  it("fluxo feliz → delega ao UseCase com o input correto, 201", async () => {
+    const response = await POST(makeRequest({ name: "Novo Time", billingType: "CREDIT_CARD" }))
+    const json = await response.json()
 
     expect(response.status).toBe(201)
-    expect(teamCreateMock).toHaveBeenCalled()
+    expect(json.result.created).toBe(true)
+    expect(executeMock).toHaveBeenCalledWith({
+      requesterProfileId: "profile-1",
+      masterProfileId: "manager-1",
+      teamName: "Novo Time",
+      billingType: "CREDIT_CARD",
+      requesterRole: "manager",
+      requesterFunctions: [],
+    })
+  })
+
+  it("UseCase devolve 'Perfil não encontrado' → 404", async () => {
+    executeMock.mockResolvedValueOnce(new Output(false, [], ["Perfil não encontrado"], null))
+
+    const response = await POST(makeRequest({ name: "Novo Time" }))
+
+    expect(response.status).toBe(404)
+  })
+
+  it("UseCase devolve outra falha de validação → 400", async () => {
+    executeMock.mockResolvedValueOnce(new Output(false, [], ["Master nao possui assinatura ativa"], null))
+
+    const response = await POST(makeRequest({ name: "Novo Time" }))
+
+    expect(response.status).toBe(400)
+  })
+
+  it("pending action criada → 201 com pendingActionId/checkoutUrl", async () => {
+    executeMock.mockResolvedValueOnce(
+      new Output(true, ["Cobrança pendente criada. Um link de pagamento foi enviado."], [], {
+        pendingActionId: "pa-1",
+        checkoutUrl: "https://app.local/addon-checkout/pa-1",
+      })
+    )
+
+    const response = await POST(makeRequest({ name: "Novo Time" }))
+    const json = await response.json()
+
+    expect(response.status).toBe(201)
+    expect(json.result.pendingActionId).toBe("pa-1")
   })
 })
