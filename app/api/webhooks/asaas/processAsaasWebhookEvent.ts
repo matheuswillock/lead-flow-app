@@ -160,14 +160,25 @@ export async function processAsaasWebhookEvent(
     if (checkoutSessionId) {
       try {
         const { prisma } = await import("@/app/api/infra/data/prisma");
+        // Achado cursor[bot] (PR #1137, round 10): checkoutSessionId
+        // colide entre contas (C33) igual paymentId — sem o filtro por
+        // account aqui, o gate podia marcar isOperatorPayment=true com a
+        // linha da OUTRA conta; processOperatorCheckoutPaid (que já filtra
+        // por account desde o round 7) então não achava nada,
+        // "Operador pendente não encontrado" era engolido como no-op
+        // conhecido (allowlist), e o fallback por externalReference nunca
+        // rodava porque isOperatorPayment já estava true — cliente pagou,
+        // não recebeu, sem retry.
         const pendingOperator = await prisma.pendingOperator.findFirst({
-          where: { paymentId: checkoutSessionId },
+          where: { paymentId: checkoutSessionId, asaasAccount: account },
         });
 
         isOperatorPayment = !!pendingOperator;
 
+        // Mesmo achado para PendingAction — filtra por account antes de
+        // suprimir o fallback por externalReference.
         const pendingAction = await prisma.pendingAction.findFirst({
-          where: { checkoutId: checkoutSessionId, status: "pending" },
+          where: { checkoutId: checkoutSessionId, status: "pending", asaasAccount: account },
         });
 
         isPendingActionPayment = !!pendingAction;
@@ -229,6 +240,7 @@ export async function processAsaasWebhookEvent(
         );
         const actionResult = await pendingActionUseCase.applyPendingActionByCheckout(
           checkoutSessionId!,
+          account,
           paymentId
         );
 

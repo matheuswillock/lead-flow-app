@@ -159,9 +159,12 @@ export class PendingActionRepository implements IPendingActionRepository {
 
   // --- Aplicação de ação pendente (checkout pago / dispensa de cobrança) ---
 
-  async findApplicableByCheckoutId(checkoutId: string): Promise<ApplicablePendingAction | null> {
+  async findApplicableByCheckoutId(
+    checkoutId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null> {
     return prisma.pendingAction.findFirst({
-      where: { checkoutId },
+      where: { checkoutId, asaasAccount: account },
       select: applicablePendingActionSelect,
     });
   }

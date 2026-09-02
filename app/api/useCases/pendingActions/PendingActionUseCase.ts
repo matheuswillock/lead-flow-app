@@ -57,8 +57,15 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
 });
 
 export class PendingActionUseCase {
-  async applyPendingActionByCheckout(checkoutId: string, paymentId?: string): Promise<Output> {
-    const action = await pendingActionRepository.findApplicableByCheckoutId(checkoutId);
+  // account: conta Asaas do evento (achado cursor[bot], PR #1137, round 10)
+  // — checkoutSessionId colide entre contas igual paymentId (C33); sem
+  // filtrar aqui, uma colisão aplicaria a action da conta ERRADA.
+  async applyPendingActionByCheckout(
+    checkoutId: string,
+    account: AsaasAccountId,
+    paymentId?: string
+  ): Promise<Output> {
+    const action = await pendingActionRepository.findApplicableByCheckoutId(checkoutId, account);
     if (!action) {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }

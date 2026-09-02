@@ -133,7 +133,12 @@ export interface IPendingActionRepository {
 
   // --- Aplicação de ação pendente (checkout pago / dispensa de cobrança) ---
 
-  findApplicableByCheckoutId(checkoutId: string): Promise<ApplicablePendingAction | null>;
+  // account: checkoutId colide entre contas igual paymentId (C33, achado
+  // cursor[bot] PR #1137 round 10) — nunca deve ser lido sem esse filtro.
+  findApplicableByCheckoutId(
+    checkoutId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null>;
   findApplicableById(id: string): Promise<ApplicablePendingAction | null>;
   // account: filtra pela conta PERSISTIDA no instante em que o paymentId
   // nasceu (achado Codex, PR #1137, P1) — nunca deriva do master atual, que
