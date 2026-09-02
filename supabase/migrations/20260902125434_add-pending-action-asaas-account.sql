@@ -15,12 +15,20 @@ begin
   -- (asaas_webhook_events.account, resolvido pelo token que bateu na rota
   -- — mesma semântica documentada no model). Isso é o dado mais confiável
   -- disponível, mais preciso que qualquer timestamp em pending_actions.
+  --
+  -- Achado cursor[bot] (PR #1137, round 4): resolveAsaasWebhookEventId
+  -- (processAsaasWebhookEvent.ts) prioriza body.id — o event id REAL do
+  -- Asaas (formato "evt_...") — e só cai no formato "{event}:payment:{id}"
+  -- quando body.id vem ausente. Em produção a coluna "id" quase sempre é
+  -- "evt_...", então o LIKE por paymentId não casava quase nada. O paymentId
+  -- real está em payload->'payment'->>'id' (AsaasWebhookBody.payment.id),
+  -- que existe independente do formato do id do evento.
   update "public"."corretor_studio_pending_actions" pa
   set "asaasAccount" = we.account
   from "public"."asaas_webhook_events" we
   where pa."asaasAccount" = 'primary'
     and pa."paymentId" is not null
-    and we.id like '%:payment:' || pa."paymentId"
+    and we.payload -> 'payment' ->> 'id' = pa."paymentId"
     and we.account = 'legacy';
 
   -- Preferência 2 (fallback, sem evento de webhook casado — ex.: cobrança
