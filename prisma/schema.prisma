@@ -2452,7 +2452,14 @@ model PendingOperator {
   email           String         @db.Text
   role            String         @db.Text // "operator" geralmente
   functions       UserFunction[] @default([])
-  paymentId       String?        @unique @db.Text // ID do pagamento no Asaas (opcional para assinaturas)
+  paymentId       String?        @db.Text // checkoutSessionId no Asaas (opcional para assinaturas)
+  // Achado Codex (PR #1137, P1, round 7): checkoutSessionId é emitido pelo
+  // Asaas por conta — um id histórico da legacy pode colidir com um novo da
+  // primary (C33), aplicando o operador errado para o manager errado.
+  // Persistida no instante em que o checkoutSessionId nasce (updatePaymentId
+  // grava os dois juntos), nunca derivada do master.asaasCustomerAccount
+  // atual — mesmo motivo de PendingAction.asaasAccount.
+  asaasAccount    AsaasAccount   @default(primary)
   subscriptionId  String?        @db.Text // ID da assinatura no Asaas
   paymentStatus   String         @db.Text // PENDING, CONFIRMED, FAILED
   paymentMethod   String         @db.Text // PIX, CREDIT_CARD
@@ -2465,6 +2472,7 @@ model PendingOperator {
   manager Profile @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
   team    Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
+  @@unique([paymentId, asaasAccount], map: "corretor_studio_pending_operators_payment_account_key")
   @@index([managerId])
   @@index([subscriptionId])
   @@index([email])

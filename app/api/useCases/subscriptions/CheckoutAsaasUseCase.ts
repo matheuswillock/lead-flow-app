@@ -500,8 +500,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       console.info('✅ [createOperatorCheckout] Checkout criado:', checkout.id);
 
-      // 5. Atualizar pendingOperator com checkoutId
-      await this.pendingOperatorRepository.updatePaymentId(pendingOperatorId, checkout.id);
+      // 5. Atualizar pendingOperator com checkoutId — asaasFetch (M4.5) só
+      // cria checkout na conta primary, nunca legacy.
+      await this.pendingOperatorRepository.updatePaymentId(pendingOperatorId, checkout.id, 'primary');
 
       // 6. Construir URL do checkout
       const checkoutUrl = `https://${getIsProduction() ? 'www' : 'sandbox'}.asaas.com/checkoutSession/show?id=${checkout.id}`;
@@ -571,9 +572,14 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         account,
       });
 
-      // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como paymentId)
+      // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como
+      // paymentId) — achado Codex (PR #1137, P1, round 7): filtra pela
+      // conta do evento (account) além do checkoutSessionId, porque um
+      // checkoutSessionId histórico da legacy pode colidir com um novo da
+      // primary (C33).
       const pendingOperator = await this.pendingOperatorRepository.findByPaymentIdWithManager(
-        checkoutSessionId
+        checkoutSessionId,
+        account
       );
 
       if (!pendingOperator) {

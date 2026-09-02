@@ -139,4 +139,26 @@ describe("POST /api/v1/teams/confirm-payment — roteia pela conta da PendingAct
     expect(response.status).toBe(404)
     expect(applyPendingActionByPaymentIdMock).not.toHaveBeenCalled()
   })
+
+  it("achado Codex (PR #1137, P2, round 7): pagamento órfão (updatePaymentId falhou) na legacy — sonda as duas contas e recupera via externalReference", async () => {
+    findByPaymentIdAndMasterIdMock.mockImplementation(async () => null)
+    requestImplByAccount.primary = async () => {
+      throw new Error("404 na primary")
+    }
+    requestImplByAccount.legacy = async () => ({
+      status: "CONFIRMED",
+      externalReference: "pending-action-pa-orphan-1",
+    })
+    findByIdSimpleMock.mockImplementation(async () => ({
+      id: "pa-orphan-1",
+      masterId,
+      status: "pending" as const,
+      asaasAccount: "legacy" as const,
+    }))
+
+    const response = await POST(makeRequest({ paymentId: "pay_orphan_1" }))
+
+    expect(response.status).toBe(201)
+    expect(applyPendingActionByPaymentIdMock).toHaveBeenCalledWith("pay_orphan_1", "legacy")
+  })
 })

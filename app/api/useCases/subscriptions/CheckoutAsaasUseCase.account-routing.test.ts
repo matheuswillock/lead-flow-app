@@ -171,6 +171,69 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     }
   })
 
+  it("achado Codex (PR #1137, P1, round 7): findByPaymentIdWithManager filtra pela conta do evento, não só pelo checkoutSessionId", async () => {
+    const findByPaymentIdWithManagerMock = mock(async (_checkoutSessionId: string, account: string) =>
+      account === "primary"
+        ? {
+            id: "pending-op-1",
+            managerId: manager.id,
+            teamId: "team-1",
+            name: "Novo Operador",
+            email: "novo-operador@example.test",
+            role: "operator",
+            functions: [],
+            paymentId: "checkout_session_1",
+            subscriptionId: "sub_new_1",
+            paymentStatus: "PENDING",
+            paymentMethod: "UNDEFINED",
+            operatorCreated: false,
+            operatorId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            manager,
+          }
+        : null
+    )
+    const repos = fakeRepos({
+      pendingOperatorRepository: { findByPaymentIdWithManager: findByPaymentIdWithManagerMock },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(true)
+    expect(findByPaymentIdWithManagerMock).toHaveBeenCalledWith("checkout_session_1", "primary")
+  })
+
+  it("achado Codex (PR #1137, P1, round 7): checkoutSessionId colidindo entre contas não aplica o pendingOperator errado", async () => {
+    const findByPaymentIdWithManagerMock = mock(async () => null)
+    const repos = fakeRepos({
+      pendingOperatorRepository: { findByPaymentIdWithManager: findByPaymentIdWithManagerMock },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    // Evento é da conta legacy, mas o checkoutSessionId só existe (por
+    // colisão) na primary — sem filtro por conta, o findFirst do
+    // repositório aplicaria o pendingOperator errado.
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "legacy")
+
+    expect(result.isValid).toBe(false)
+    expect(findByPaymentIdWithManagerMock).toHaveBeenCalledWith("checkout_session_1", "legacy")
+    expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
+  })
+
   it("T-40.13: processOperatorCheckoutPaid com sub legacy roteia GET/PUT pelo transporte legacy; operador é criado", async () => {
     const repos = fakeRepos()
     const useCase = new CheckoutAsaasUseCase(

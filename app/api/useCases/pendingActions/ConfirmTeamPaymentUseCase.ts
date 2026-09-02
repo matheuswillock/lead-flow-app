@@ -1,7 +1,14 @@
-import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
-import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
-import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
-import type { PendingActionOwnershipLookup } from "@/app/api/infra/data/repositories/pendingAction/IPendingActionRepository";
+import {
+  profileRepository as defaultProfileRepository,
+  type IProfileRepository,
+} from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { teamMembersRepository as defaultTeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
+import { pendingActionRepository as defaultPendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
+import type {
+  IPendingActionRepository,
+  PendingActionOwnershipLookup,
+} from "@/app/api/infra/data/repositories/pendingAction/IPendingActionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { Output } from "@/lib/output";
@@ -18,6 +25,10 @@ function failure(reason: ConfirmTeamPaymentFailureReason, message: string): Outp
   return new Output(false, [], [message], { reason });
 }
 
+const ASAAS_ACCOUNTS: AsaasAccountId[] = ["primary", "legacy"];
+
+type AsaasPaymentLookup = { status?: string; externalReference?: string };
+
 /**
  * Achado Codex/cursor[bot] (PR #1137): esta rota estava listada em
  * prismaInV1RouteAllowlist (Prisma direto na v1) — tocá-la exigiu o
@@ -25,18 +36,29 @@ function failure(reason: ConfirmTeamPaymentFailureReason, message: string): Outp
  * para o preflight e para applyPendingActionByPaymentId vem da
  * PendingAction (action.asaasAccount, persistida no instante em que o
  * paymentId nasceu — C33), nunca do estado atual do master.
+ *
+ * Achado Codex round 7 (P1): repositórios injetados via construtor
+ * (interface + implementação concreta default), não importados como
+ * singletons no corpo da classe — completa o DIP que o achado original
+ * exigia.
  */
 export class ConfirmTeamPaymentUseCase {
+  constructor(
+    private readonly profileRepository: IProfileRepository = defaultProfileRepository,
+    private readonly teamMembersRepository: ITeamMembersRepository = defaultTeamMembersRepository,
+    private readonly pendingActionRepository: IPendingActionRepository = defaultPendingActionRepository
+  ) {}
+
   async confirmTeamPayment(params: { supabaseId: string; paymentId: string }): Promise<Output> {
     const { supabaseId, paymentId } = params;
 
-    const profile = await profileRepository.findBySupabaseId(supabaseId);
+    const profile = await this.profileRepository.findBySupabaseId(supabaseId);
     if (!profile) {
       return failure("profile_not_found", "Perfil não encontrado");
     }
 
     const activeMembership = profile.activeTeamId
-      ? await teamMembersRepository.findMembership(profile.activeTeamId, profile.id)
+      ? await this.teamMembersRepository.findMembership(profile.activeTeamId, profile.id)
       : null;
 
     const canConfirmTeamPayment =
@@ -53,32 +75,55 @@ export class ConfirmTeamPaymentUseCase {
     const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
 
     let action: PendingActionOwnershipLookup | null = billingOwnerId
-      ? await pendingActionRepository.findByPaymentIdAndMasterId(paymentId, billingOwnerId)
+      ? await this.pendingActionRepository.findByPaymentIdAndMasterId(paymentId, billingOwnerId)
       : null;
 
-    // Sem a action ainda (paymentId pode ter chegado via externalReference
-    // do Asaas, não via campo próprio) — a conta atual do master é o
-    // melhor palpite disponível só para ESTA tentativa de descoberta.
-    const lookupAccount: AsaasAccountId =
-      action?.asaasAccount ??
-      (billingOwnerId ? (await profileRepository.findById(billingOwnerId))?.asaasCustomerAccount : undefined) ??
-      "primary";
+    let payment: AsaasPaymentLookup | null = null;
 
-    const client = createAsaasClient(lookupAccount);
-    const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
-      method: "GET",
-    });
+    if (action) {
+      const client = createAsaasClient(action.asaasAccount);
+      payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
+        method: "GET",
+      });
+    } else {
+      // Achado Codex (PR #1137, P2, round 7): sem action achada por
+      // masterId (ex.: o Asaas criou o pagamento mas updatePaymentId
+      // falhou depois), sonda as DUAS contas em vez de adivinhar uma só a
+      // partir do estado atual do master — que pode já ter migrado desde
+      // então (E4). Aceita apenas o resultado cujo externalReference
+      // resolve para uma action deste billing owner.
+      for (const candidateAccount of ASAAS_ACCOUNTS) {
+        let candidatePayment: AsaasPaymentLookup | null = null;
+        try {
+          const client = createAsaasClient(candidateAccount);
+          candidatePayment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
+            method: "GET",
+          });
+        } catch {
+          continue;
+        }
 
-    const status = payment?.status as string | undefined;
-    if (status !== "CONFIRMED" && status !== "RECEIVED") {
-      return failure("payment_not_confirmed", "Pagamento ainda não foi confirmado");
+        payment = candidatePayment;
+
+        const externalReference = candidatePayment?.externalReference;
+        if (externalReference?.startsWith("pending-action-")) {
+          const actionId = externalReference.replace("pending-action-", "");
+          const found = await this.pendingActionRepository.findByIdSimple(actionId);
+          if (found && found.masterId === billingOwnerId) {
+            action = found;
+            break;
+          }
+        }
+      }
     }
 
-    const externalReference = payment?.externalReference as string | undefined;
-    if (!action && externalReference?.startsWith("pending-action-")) {
-      const actionId = externalReference.replace("pending-action-", "");
-      const found = await pendingActionRepository.findByIdSimple(actionId);
-      action = found;
+    if (!payment) {
+      return failure("action_not_found", "Ação pendente não encontrada");
+    }
+
+    const status = payment.status;
+    if (status !== "CONFIRMED" && status !== "RECEIVED") {
+      return failure("payment_not_confirmed", "Pagamento ainda não foi confirmado");
     }
 
     if (!action) {

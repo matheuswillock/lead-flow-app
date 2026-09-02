@@ -1,5 +1,6 @@
 import type { PendingOperator } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   CreatePendingOperatorInput,
   IPendingOperatorRepository,
@@ -36,11 +37,14 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
     })
   }
 
-  async findByPaymentIdWithManager(paymentId: string): Promise<PendingOperatorWithManager | null> {
+  async findByPaymentIdWithManager(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<PendingOperatorWithManager | null> {
     // select (não include) com a relação aninhada — mesmo resultado, sem
     // trazer o Profile inteiro do manager (só os campos que o caller usa).
     return prisma.pendingOperator.findFirst({
-      where: { paymentId },
+      where: { paymentId, asaasAccount: account },
       select: {
         id: true,
         managerId: true,
@@ -50,6 +54,7 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
         role: true,
         functions: true,
         paymentId: true,
+        asaasAccount: true,
         subscriptionId: true,
         paymentStatus: true,
         paymentMethod: true,
@@ -62,10 +67,10 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
     })
   }
 
-  async updatePaymentId(id: string, paymentId: string): Promise<void> {
+  async updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void> {
     await prisma.pendingOperator.update({
       where: { id },
-      data: { paymentId },
+      data: { paymentId, asaasAccount: account },
     })
   }
 

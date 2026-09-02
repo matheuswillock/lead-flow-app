@@ -2329,6 +2329,7 @@ completed completed
     String role 
     UserFunction functions 
     String paymentId "❓"
+    AsaasAccount asaasAccount 
     String subscriptionId "❓"
     String paymentStatus 
     String paymentMethod 
@@ -4381,6 +4382,7 @@ completed completed
     "corretor_studio_lead_required_documents" }o--|o corretor_studio_lead_attachments : "attachment"
     "corretor_studio_lead_required_documents" }o--|o corretor_studio_profiles : "reviewedBy"
     "corretor_studio_pending_operators" |o--}o "UserFunction" : "enum:functions"
+    "corretor_studio_pending_operators" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"

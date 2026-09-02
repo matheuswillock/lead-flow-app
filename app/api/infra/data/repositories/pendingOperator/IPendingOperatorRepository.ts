@@ -1,4 +1,5 @@
 import type { PendingOperator, Profile, UserFunction } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export type PendingOperatorWithManager = PendingOperator & {
   manager: Pick<
@@ -30,8 +31,15 @@ export interface CreatePendingOperatorInput {
 
 export interface IPendingOperatorRepository {
   create(data: CreatePendingOperatorInput): Promise<PendingOperator>
-  findByPaymentIdWithManager(paymentId: string): Promise<PendingOperatorWithManager | null>
-  updatePaymentId(id: string, paymentId: string): Promise<void>
+  // account: filtra pela conta PERSISTIDA no instante em que o
+  // checkoutSessionId nasceu (achado Codex, PR #1137, P1, round 7) — um
+  // checkoutSessionId histórico da legacy pode colidir com um novo da
+  // primary (C33), aplicando o operador errado para o manager errado.
+  findByPaymentIdWithManager(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<PendingOperatorWithManager | null>
+  updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void>
   // Marca que o incremento de +R$19,90 na assinatura antiga do manager já
   // foi aplicado (achado Codex no PR #1137, P1) — processOperatorCheckoutPaid
   // consulta este marcador antes de reaplicar o incremento numa retentativa
