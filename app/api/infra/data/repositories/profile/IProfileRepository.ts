@@ -120,6 +120,7 @@ export interface IProfileRepository {
     neighborhood: string | null;
     complement: string | null;
     asaasCustomerId: string | null;
+    asaasCustomerAccount: AsaasAccountId;
   } | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
   /** Dados minimos de contato, para notificacao e rotulo em atividade. */

@@ -1001,6 +1001,7 @@ class PrismaProfileRepository implements IProfileRepository {
                 neighborhood: true,
                 complement: true,
                 asaasCustomerId: true,
+                asaasCustomerAccount: true,
             },
         });
     }
