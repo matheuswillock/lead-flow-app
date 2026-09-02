@@ -99,7 +99,7 @@ export function LeadWhatsAppCard({ leadId, supabaseId, teamId, enabled = true }:
       <p className="text-xs font-medium text-muted-foreground">WhatsApp</p>
       <Link
         href={`/${supabaseId}/whatsapp`}
-        className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/60 p-3 transition-colors hover:bg-accent"
+        className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/40 p-3 transition-colors hover:bg-muted/60"
       >
         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <MessageCircle className="size-4 text-primary" />

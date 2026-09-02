@@ -1290,7 +1290,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Activity feed scrollbar (hover to reveal) */
 .activity-scrollbar {
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent) transparent;
   scrollbar-width: none;
 }
 
@@ -1309,25 +1309,24 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .activity-scrollbar::-webkit-scrollbar-track {
-  background: rgba(5, 5, 5, 0.75);
+  background: transparent;
   border-radius: 999px;
 }
 
 .activity-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.9);
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   border-radius: 999px;
-  border: 2px solid rgba(5, 5, 5, 0.75);
 }
 
 .activity-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 220, 220, 0.95);
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
 
 /* Hover-reveal vertical scrollbar */
 .scroll-hover-y,
 .dialog-scrollbar {
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent) transparent;
   scrollbar-width: none;
 }
 
@@ -1350,20 +1349,19 @@ h1, h2, h3, h4, h5, h6 {
 
 .scroll-hover-y::-webkit-scrollbar-track,
 .dialog-scrollbar::-webkit-scrollbar-track {
-  background: rgba(5, 5, 5, 0.75);
+  background: transparent;
   border-radius: 999px;
 }
 
 .scroll-hover-y::-webkit-scrollbar-thumb,
 .dialog-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.9);
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   border-radius: 999px;
-  border: 2px solid rgba(5, 5, 5, 0.75);
 }
 
 .scroll-hover-y::-webkit-scrollbar-thumb:hover,
 .dialog-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 220, 220, 0.95);
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
 
 /* Template card banner gradients */

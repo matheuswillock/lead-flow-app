@@ -163,9 +163,9 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
   }
   if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
   return (
-    <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
+    <div className="activity-scrollbar mt-4 flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
       {items.map((submission) => (
-        <div className="rounded-lg border p-3" key={submission.id}>
+        <div className="rounded-lg border border-border/60 bg-muted/40 p-3" key={submission.id}>
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-medium">{submission.form.name}</p>
@@ -2689,7 +2689,7 @@ export default function LeadDialog({
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
         <DialogContent
-          className="bg-transparent border-none shadow-none p-0 w-[85vw] max-w-[85vw] sm:w-[80vw] sm:max-w-[80vw] lg:w-[65vw] lg:max-w-[65vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
+          className="p-0 gap-0 h-[90vh] max-h-[90vh] w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[80vw] lg:max-w-[1240px] [&>button]:hidden"
           onEscapeKeyDown={(e) => {
             if (isAttachmentUploading) { e.preventDefault(); return; }
             setOpen(false);
@@ -2699,8 +2699,8 @@ export default function LeadDialog({
             setOpen(false);
           }}
         >
-          <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
-            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[1_1_0%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
+          <div className="dialog-scrollbar flex h-full min-h-0 w-full flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+            <div className="flex min-h-0 flex-col p-6 max-lg:shrink-0 lg:h-full lg:flex-[1_1_0%] lg:overflow-hidden lg:border-r lg:border-border/60">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -2984,8 +2984,8 @@ export default function LeadDialog({
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:h-[95%] lg:max-h-[95%] lg:self-center">
-              <div className="flex items-center justify-between">
+            <div className="flex min-h-0 flex-col border-t border-border/60 p-4 max-lg:h-[85dvh] max-lg:shrink-0 lg:h-full lg:w-[360px] lg:min-w-[360px] lg:max-w-[360px] lg:border-t-0">
+              <div className="flex shrink-0 items-center justify-between">
                 <h3 className="text-base font-semibold">Informações do lead</h3>
                 <DialogClose asChild>
                   <Button type="button" size="icon" variant="ghost" className="h-8 w-8">
@@ -2993,7 +2993,7 @@ export default function LeadDialog({
                   </Button>
                 </DialogClose>
               </div>
-              <Tabs value={sidePanelTab} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3">
+              <Tabs value={sidePanelTab} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3 shrink-0">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="activities">Atividades</TabsTrigger>
                   <TabsTrigger value="forms">Formulários</TabsTrigger>
@@ -3002,7 +3002,21 @@ export default function LeadDialog({
 
               {sidePanelTab === "forms" ? (
                 currentLead && activeTeamId ? (
-                  <LeadPublicFormResponses leadId={currentLead.id} teamId={activeTeamId} supabaseId={supabaseId ?? ""} />
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    {hasAccess(FEATURE_SLUGS.RADAR) && (
+                      <div className="shrink-0">
+                        <LeadRadarTemperatureCard
+                          leadId={currentLead.id}
+                          supabaseId={supabaseId ?? ""}
+                          teamId={activeTeamId}
+                          enabled={open && !isLeadContentLoading}
+                        />
+                      </div>
+                    )}
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <LeadPublicFormResponses leadId={currentLead.id} teamId={activeTeamId} supabaseId={supabaseId ?? ""} />
+                    </div>
+                  </div>
                 ) : (
                   <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Respostas disponíveis após criar o lead.</div>
                 )
@@ -3010,24 +3024,17 @@ export default function LeadDialog({
               <>
 
               {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.WHATSAPP) && (
-                <LeadWhatsAppCard
-                  leadId={currentLead.id}
-                  supabaseId={supabaseId ?? ''}
-                  teamId={activeTeamId}
-                  enabled={!isLeadContentLoading}
-                />
+                <div className="shrink-0">
+                  <LeadWhatsAppCard
+                    leadId={currentLead.id}
+                    supabaseId={supabaseId ?? ''}
+                    teamId={activeTeamId}
+                    enabled={!isLeadContentLoading}
+                  />
+                </div>
               )}
 
-              {currentLead && activeTeamId && hasAccess(FEATURE_SLUGS.RADAR) && (
-                <LeadRadarTemperatureCard
-                  leadId={currentLead.id}
-                  supabaseId={supabaseId ?? ""}
-                  teamId={activeTeamId}
-                  enabled={open && !isLeadContentLoading}
-                />
-              )}
-
-              <div className="mt-4 flex-1 min-h-0 w-full">
+              <div className="mt-4 flex-1 min-h-0 w-full overflow-hidden">
                 {!currentLead ? (
                   <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
                     Atividades disponíveis após criar o lead.
@@ -3057,7 +3064,7 @@ export default function LeadDialog({
                 )}
               </div>
 
-              <div className="mt-auto border-t border-border/60 pt-4">
+              <div className="mt-auto shrink-0 border-t border-border/60 pt-4">
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Tipo de atividade</label>
                   <Select value={activityType} onValueChange={(value) => setActivityType(value as typeof activityType)}>
