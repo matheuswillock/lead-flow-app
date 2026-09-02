@@ -29,18 +29,8 @@ export function MessagingMessageBubbleSkeleton({ count = 4 }: MessagingMessageBu
                   : "rounded-bl-sm bg-muted"
               )}
             >
-              <div
-                className={cn(
-                  "h-2 rounded",
-                  isOutbound ? "w-3/4 bg-primary-foreground/20" : "w-full bg-foreground/10"
-                )}
-              />
-              <div
-                className={cn(
-                  "h-2 rounded",
-                  isOutbound ? "w-1/2 bg-primary-foreground/20" : "w-2/3 bg-foreground/10"
-                )}
-              />
+              <div className={cn("h-2 rounded bg-foreground/10", isOutbound ? "w-3/4" : "w-full")} />
+              <div className={cn("h-2 rounded bg-foreground/10", isOutbound ? "w-1/2" : "w-2/3")} />
             </div>
           </div>
         )
