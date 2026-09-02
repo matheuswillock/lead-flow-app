@@ -63,7 +63,7 @@ export function LeadsMultiFilter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 border-dashed">
+        <Button variant="outline" size="sm" className="h-8 max-lg:h-11 border-dashed">
           <PlusCircle className="mr-2 h-4 w-4" />
           {title}
           {selectedSet.size > 0 && (

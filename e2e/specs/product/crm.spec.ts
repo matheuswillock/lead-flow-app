@@ -3,6 +3,7 @@ import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
+import { runResponsiveChecks } from "../../support/responsive";
 
 const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
@@ -57,6 +58,7 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test.afterAll(async () => {
+    await getPrisma().lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
     await disconnectPrisma();
   });
 
@@ -68,6 +70,16 @@ test.describe("app/[supabaseId]/crm", () => {
     });
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
     await expect(page.getByText("Sem Acesso à Plataforma")).toHaveCount(0);
+  });
+
+  test("responsividade mobile-first do CRM", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
+    await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
+      timeout: 30_000,
+    });
+    // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
+    await runResponsiveChecks(page);
   });
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {

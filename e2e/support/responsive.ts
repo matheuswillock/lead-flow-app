@@ -48,20 +48,54 @@ async function waitForLayoutSettle(page: Page): Promise<void> {
   );
 }
 
-/** Luminância relativa (WCAG) a partir de "rgb(r, g, b)" ou "rgba(r, g, b, a)". */
-function relativeLuminance(rgb: string): number {
-  const match = /rgba?\(([^)]+)\)/.exec(rgb);
-  if (!match) return 1;
-  const [r, g, b] = match[1].split(",").map((part) => Number.parseFloat(part.trim()) / 255);
-  const linearize = (channel: number) =>
-    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+type Rgba = { r: number; g: number; b: number; a: number };
+
+function parseColor(color: string): Rgba | null {
+  const match = /rgba?\(([^)]+)\)/.exec(color);
+  if (!match) return null;
+  const parts = match[1].split(",").map((part) => Number.parseFloat(part.trim()));
+  const [r = 0, g = 0, b = 0] = parts;
+  const a = parts.length > 3 && !Number.isNaN(parts[3]) ? parts[3] : 1;
+  return { r, g, b, a };
 }
 
-/** Razão de contraste WCAG entre duas cores em formato `rgb()`/`rgba()`. */
+/** Composição alpha-over: `fg` sobre `bg` (bg tratado como já composto). */
+function compositeOver(fg: Rgba, bg: Rgba): Rgba {
+  const a = fg.a + bg.a * (1 - fg.a);
+  if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+  return {
+    r: (fg.r * fg.a + bg.r * bg.a * (1 - fg.a)) / a,
+    g: (fg.g * fg.a + bg.g * bg.a * (1 - fg.a)) / a,
+    b: (fg.b * fg.a + bg.b * bg.a * (1 - fg.a)) / a,
+    a,
+  };
+}
+
+/** Luminância relativa (WCAG) de uma cor já composta (opaca). */
+function relativeLuminance(color: Rgba): number {
+  const linearize = (channel: number) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linearize(color.r) + 0.7152 * linearize(color.g) + 0.0722 * linearize(color.b);
+}
+
+const OPAQUE_WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
+/**
+ * Razão de contraste WCAG entre duas cores `rgb()`/`rgba()`. Cores com alpha
+ * são compostas antes da luminância: o background sobre branco opaco
+ * (melhor aproximação sem conhecer a pilha real) e o foreground sobre esse
+ * background efetivo — `rgba(0,0,0,.5)` sobre branco vira ~4:1, não 21:1.
+ */
 export function contrastRatio(foreground: string, background: string): number {
-  const l1 = relativeLuminance(foreground);
-  const l2 = relativeLuminance(background);
+  const fg = parseColor(foreground);
+  const bg = parseColor(background);
+  if (!fg || !bg) return 21;
+  const effectiveBg = compositeOver(bg, OPAQUE_WHITE);
+  const effectiveFg = compositeOver(fg, effectiveBg);
+  const l1 = relativeLuminance(effectiveFg);
+  const l2 = relativeLuminance(effectiveBg);
   const lighter = Math.max(l1, l2);
   const darker = Math.min(l1, l2);
   return (lighter + 0.05) / (darker + 0.05);

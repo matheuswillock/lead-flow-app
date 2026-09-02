@@ -1287,6 +1287,14 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(220, 220, 220, 0.95);
 }
 
+/* Skeleton pulse é decorativo: um skeleton estático ainda comunica loading.
+   Spinners (animate-spin) ficam de fora — movimento essencial de progresso. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}
+
 /* Activity feed scrollbar (hover to reveal) */
 .activity-scrollbar {
   scrollbar-gutter: stable;
