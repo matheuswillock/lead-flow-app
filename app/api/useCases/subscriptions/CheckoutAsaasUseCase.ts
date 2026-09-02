@@ -738,16 +738,42 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           }
         });
 
-        if (authError || !authUser?.user) {
+        let authUserId: string;
+
+        if (authError?.code === 'email_exists') {
+          // Achado Codex (PR #1137, P1, follow-up de 27ac1321): createUser
+          // sucedeu numa tentativa anterior, mas createOperatorProfileFromPendingOperator
+          // falhou depois (profile ainda não existe — o resume acima não
+          // achou nada). Sem isto, o retry cai aqui de novo e falha para
+          // sempre com "e-mail já registrado". generateLink com
+          // type "recovery" só resolve para um usuário JÁ existente (nunca
+          // cria um novo), então serve como lookup por e-mail.
+          console.info(
+            '↩️ [processOperatorCheckoutPaid] E-mail já existe no Supabase Auth — recuperando identidade existente'
+          );
+          const { data: recovery, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'recovery',
+            email: pendingOperator.email,
+          });
+          if (recoveryError || !recovery?.user?.id) {
+            console.error(
+              '❌ [processOperatorCheckoutPaid] Erro ao recuperar usuário existente:',
+              recoveryError
+            );
+            return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+          }
+          authUserId = recovery.user.id;
+        } else if (authError || !authUser?.user) {
           console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
           return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+        } else {
+          authUserId = authUser.user.id;
+          console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUserId);
         }
-
-        console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUser.user.id);
 
         // 5. Criar perfil do operador no banco
         const created = await this.profileRepository.createOperatorProfileFromPendingOperator({
-          supabaseId: authUser.user.id,
+          supabaseId: authUserId,
           fullName: pendingOperator.name,
           email: pendingOperator.email,
           role: pendingOperator.role as UserRole,

@@ -61,7 +61,6 @@
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts",
       "app/api/v1/teams/active/route.ts",
-      "app/api/v1/teams/confirm-payment/route.ts",
       "app/api/v1/teams/payments/create/route.ts",
       "app/api/v1/teams/pending-actions/[id]/route.ts",
       "app/api/v1/teams/route.ts",

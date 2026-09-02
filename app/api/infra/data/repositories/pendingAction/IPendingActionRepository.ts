@@ -103,6 +103,13 @@ export type BillingPendingActionRecord = {
   payload: unknown;
 };
 
+export type PendingActionOwnershipLookup = {
+  id: string;
+  masterId: string;
+  status: string;
+  asaasAccount: AsaasAccountId;
+};
+
 export interface IPendingActionRepository {
   findById(id: string): Promise<(PendingAction & { master: any }) | null>;
   findByIdSimple(id: string): Promise<PendingAction | null>;
@@ -132,6 +139,10 @@ export interface IPendingActionRepository {
   // nasceu (achado Codex, PR #1137, P1) — nunca deriva do master atual, que
   // pode ter migrado de conta depois (E4).
   findApplicableByPaymentId(paymentId: string, account: AsaasAccountId): Promise<ApplicablePendingAction | null>;
+  // masterId é estável (ao contrário da conta Asaas do master, que pode
+  // migrar — E4) — usado pelo preflight de confirm-payment para achar a
+  // action ANTES de decidir qual conta consultar no Asaas (C33).
+  findByPaymentIdAndMasterId(paymentId: string, masterId: string): Promise<PendingActionOwnershipLookup | null>;
   markFailed(params: MarkPendingActionFailedParams): Promise<void>;
   findProfileContact(profileId: string): Promise<PendingActionProfileContact | null>;
   linkProfileSupabaseIdentity(profileId: string, supabaseId: string): Promise<void>;

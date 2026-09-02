@@ -15,33 +15,57 @@ mock.module("server-only", () => ({}))
 // estado ATUAL do master (mutável — E4, checkout de operador pode migrar de
 // legacy para primary) — precisa vir da conta PERSISTIDA na própria
 // PendingAction, no instante em que o paymentId nasceu (C33).
+//
+// Achado Codex (PR #1137, P1, follow-up): a rota estava em
+// prismaInV1RouteAllowlist — o refactor DIP moveu o acesso a dados para
+// repositories + ConfirmTeamPaymentUseCase; este teste mocka essas camadas.
 
 const masterId = "master-1"
 
-const profileFindUniqueMock = mock(async ({ where }: any) => {
-  if (where.supabaseId) {
-    return { id: masterId, isMaster: true, managerId: null, activeTeamId: null }
-  }
-  if (where.id === masterId) {
-    // conta ATUAL do master — já migrou para primary depois do pagamento nascer
-    return { asaasCustomerAccount: "primary" as const }
-  }
-  return null
-})
-const teamMemberFindUniqueMock = mock(async () => null)
-const pendingActionFindFirstMock = mock(async () => ({
-  id: "pa-1",
-  masterId,
-  status: "pending" as const,
-  asaasAccount: "legacy" as const,
+const findBySupabaseIdMock = mock(async () => ({
+  id: masterId,
+  isMaster: true,
+  managerId: null as string | null,
+  activeTeamId: null as string | null,
 }))
-const pendingActionFindUniqueMock = mock(async () => null)
+const findByIdMock = mock(async () => ({ asaasCustomerAccount: "primary" as const }))
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    profile: { findUnique: profileFindUniqueMock },
-    teamMember: { findUnique: teamMemberFindUniqueMock },
-    pendingAction: { findFirst: pendingActionFindFirstMock, findUnique: pendingActionFindUniqueMock },
+mock.module("@/app/api/infra/data/repositories/profile/ProfileRepository", () => ({
+  profileRepository: {
+    findBySupabaseId: findBySupabaseIdMock,
+    findById: findByIdMock,
+  },
+}))
+
+const findMembershipMock = mock(async () => null)
+
+mock.module("@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository", () => ({
+  teamMembersRepository: {
+    findMembership: findMembershipMock,
+  },
+}))
+
+type PendingActionOwnershipLookup = {
+  id: string
+  masterId: string
+  status: "pending" | "applied" | "failed" | "canceled"
+  asaasAccount: "primary" | "legacy"
+} | null
+
+const findByPaymentIdAndMasterIdMock = mock(
+  async (): Promise<PendingActionOwnershipLookup> => ({
+    id: "pa-1",
+    masterId,
+    status: "pending",
+    asaasAccount: "legacy",
+  })
+)
+const findByIdSimpleMock = mock(async (): Promise<PendingActionOwnershipLookup> => null)
+
+mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionRepository", () => ({
+  pendingActionRepository: {
+    findByPaymentIdAndMasterId: findByPaymentIdAndMasterIdMock,
+    findByIdSimple: findByIdSimpleMock,
   },
 }))
 
@@ -84,7 +108,13 @@ describe("POST /api/v1/teams/confirm-payment — roteia pela conta da PendingAct
   beforeEach(() => {
     requestLog.length = 0
     applyPendingActionByPaymentIdMock.mockClear()
-    pendingActionFindFirstMock.mockClear()
+    findByPaymentIdAndMasterIdMock.mockClear()
+    findByPaymentIdAndMasterIdMock.mockImplementation(async () => ({
+      id: "pa-1",
+      masterId,
+      status: "pending" as const,
+      asaasAccount: "legacy" as const,
+    }))
     requestImplByAccount.legacy = async () => ({ status: "CONFIRMED", externalReference: null })
     requestImplByAccount.primary = async () => {
       throw new Error("não deveria consultar a conta primary — a action nasceu na legacy")
@@ -98,5 +128,15 @@ describe("POST /api/v1/teams/confirm-payment — roteia pela conta da PendingAct
     expect(requestLog).toHaveLength(1)
     expect(requestLog[0].account).toBe("legacy")
     expect(applyPendingActionByPaymentIdMock).toHaveBeenCalledWith("pay_legacy_1", "legacy")
+  })
+
+  it("achado Codex (PR #1137, P1): ação não encontrada por masterId nem por externalReference → 404, sem tentar aplicar", async () => {
+    findByPaymentIdAndMasterIdMock.mockImplementation(async () => null)
+    requestImplByAccount.primary = async () => ({ status: "CONFIRMED", externalReference: null })
+
+    const response = await POST(makeRequest({ paymentId: "pay_desconhecido" }))
+
+    expect(response.status).toBe(404)
+    expect(applyPendingActionByPaymentIdMock).not.toHaveBeenCalled()
   })
 })

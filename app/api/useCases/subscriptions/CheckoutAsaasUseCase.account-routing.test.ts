@@ -42,13 +42,20 @@ mock.module("@/lib/asaas", () => ({
   }),
 }))
 
+const createUserMock = mock(async () => ({
+  data: { user: { id: "supabase-operator-1" } as { id: string } | null },
+  error: null as { code?: string; message?: string } | null,
+}))
+const generateLinkMock = mock(async () => ({
+  data: { user: null as { id: string } | null },
+  error: null as { message?: string } | null,
+}))
+
 const createSupabaseAdminMock = mock(() => ({
   auth: {
     admin: {
-      createUser: async () => ({
-        data: { user: { id: "supabase-operator-1" } },
-        error: null,
-      }),
+      createUser: createUserMock,
+      generateLink: generateLinkMock,
     },
   },
 }))
@@ -148,6 +155,12 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
   beforeEach(() => {
     requestLog.length = 0
     createSupabaseAdminMock.mockClear()
+    createUserMock.mockClear()
+    createUserMock.mockImplementation(async () => ({
+      data: { user: { id: "supabase-operator-1" } },
+      error: null,
+    }))
+    generateLinkMock.mockClear()
     requestImplByAccount.primary = async (_url: string, method?: string) => {
       if (method === "GET") return { value: 100, subscription: "sub_new_1" }
       return { id: "checkout_1" }
@@ -278,6 +291,35 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     )
     // idempotência preservada: incrementa o contador exatamente uma vez, com ou sem resume
     expect(repos.profileRepository.incrementOperatorCount).toHaveBeenCalledTimes(1)
+  })
+
+  it("achado Codex (PR #1137, P1, follow-up): createUser retornou email_exists (Auth criado, profile não) → recupera identidade via generateLink em vez de falhar para sempre", async () => {
+    createUserMock.mockImplementation(async () => ({
+      data: { user: null },
+      error: { code: "email_exists", message: "Email already registered" },
+    }))
+    generateLinkMock.mockImplementation(async () => ({
+      data: { user: { id: "supabase-operator-existing-auth-1" } },
+      error: null,
+    }))
+    const repos = fakeRepos()
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(true)
+    expect(generateLinkMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "recovery", email: "novo-operador@example.test" })
+    )
+    expect(repos.profileRepository.createOperatorProfileFromPendingOperator).toHaveBeenCalledWith(
+      expect.objectContaining({ supabaseId: "supabase-operator-existing-auth-1" })
+    )
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

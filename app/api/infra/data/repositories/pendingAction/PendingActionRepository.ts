@@ -8,6 +8,7 @@ import type {
   IPendingActionRepository,
   MarkPendingActionAppliedParams,
   MarkPendingActionFailedParams,
+  PendingActionOwnershipLookup,
   PendingActionProfileContact,
   TeamMemberAccessParams,
   TeamMembershipKey,
@@ -166,6 +167,16 @@ export class PendingActionRepository implements IPendingActionRepository {
     return prisma.pendingAction.findFirst({
       where: { paymentId, asaasAccount: account },
       select: applicablePendingActionSelect,
+    });
+  }
+
+  async findByPaymentIdAndMasterId(
+    paymentId: string,
+    masterId: string
+  ): Promise<PendingActionOwnershipLookup | null> {
+    return prisma.pendingAction.findFirst({
+      where: { paymentId, masterId },
+      select: { id: true, masterId: true, status: true, asaasAccount: true },
     });
   }
 
