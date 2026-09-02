@@ -2224,17 +2224,38 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return [...ids]
   }
 
+  // E5 (C21): 404 na conta certa = já cancelada (segue, só loga); qualquer
+  // outro erro MUST propagar — engolir aqui é o modo exato de dupla
+  // cobrança (cobrança legada viva sem cancelamento registrado).
   private async cancelAsaasPayments(paymentIds: string[], account: AsaasAccountId): Promise<void> {
     // C33: cancela na conta em que as cobranças foram criadas.
     const asaasClient = createAsaasClient(account)
+    const realErrors: Array<{ paymentId: string; error: unknown }> = []
+
     for (const paymentId of [...new Set(paymentIds)]) {
       try {
         await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
           method: "DELETE",
         })
       } catch (error) {
+        const statusCode = (error as { statusCode?: number } | null)?.statusCode
+        if (statusCode === 404) {
+          console.info(
+            "[BackofficeAdhesionService][cancelAsaasPayments] já cancelada (404)",
+            { paymentId, account }
+          )
+          continue
+        }
         console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
+        realErrors.push({ paymentId, error })
       }
+    }
+
+    if (realErrors.length > 0) {
+      throw new Error(
+        `Falha ao cancelar ${realErrors.length} cobrança(s) Asaas (conta ${account}): ` +
+          realErrors.map((entry) => entry.paymentId).join(", ")
+      )
     }
   }
 
