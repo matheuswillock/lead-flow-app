@@ -72,6 +72,8 @@
     "test:integration:asaas-webhook:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:asaas-webhook",
     "test:integration:billing-rate-limit": "BILLING_RATE_LIMIT_INTEGRATION_TEST=1 bun test --isolate lib/billing/billing-rate-limit.integration.test.ts",
     "test:integration:billing-rate-limit:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:billing-rate-limit",
+    "test:integration:subscriptions-panel": "SUBSCRIPTIONS_PANEL_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/backoffice/SubscriptionsPanelRepository/BackofficeSubscriptionsPanelRepository.integration.test.ts",
+    "test:integration:subscriptions-panel:local": "bun run local:up && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:integration:subscriptions-panel",
     "test:aggregation": "METRIC_AGGREGATION_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/publicForms/metric-aggregation.integration.test.ts",
     "test:aggregation:local": "bun run local:up && METRIC_AGGREGATION_INTEGRATION_TEST=1 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres bun run test:aggregation",
     "test:campaign-analytics": "CAMPAIGN_ANALYTICS_INTEGRATION_TEST=1 bun test --isolate app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics",
