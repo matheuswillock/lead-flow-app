@@ -1,5 +1,7 @@
-name: Run Playwright E2E
-description: Sobe Postgres supabase/postgres, seed E2E, build, Chromium e bun run test:e2e
+name: Run integration + Playwright E2E
+description: >-
+  Sobe Postgres supabase/postgres, aplica migrations (seed E2E), roda
+  bun run test:integration e depois build, Chromium e bun run test:e2e.
 inputs:
   include-slow:
     description: Incluir testes @slow (develop/main)
@@ -111,6 +113,27 @@ runs:
     - name: Seed E2E database
       shell: bash
       run: bun run db:seed:e2e
+
+    # Os testes de integração moram aqui, e não em um job próprio, porque tudo
+    # de que precisam já foi montado pelos passos acima: Postgres supabase/postgres
+    # em :55322, migrations aplicadas pelo `db:seed:e2e` e DATABASE_URL/DIRECT_URL
+    # já exportados para o `$GITHUB_ENV` apontando para ele. Um job dedicado
+    # duplicaria o `docker run` + `pg_isready` + seed — cerca de 60 linhas de
+    # infraestrutura idêntica — sem cobrir nada a mais.
+    #
+    # Vêm ANTES do build de propósito: a suíte roda em segundos e o `next build`
+    # leva minutos. Falhar aqui economiza o build inteiro.
+    #
+    # `assertLocalDatabase()` em manager-account-users.integration.test.ts aborta
+    # se DATABASE_URL não for 127.0.0.1/localhost — estes testes ESCREVEM no banco.
+    - name: Integration tests (Postgres local)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! bun run test:integration; then
+          echo "::error title=Testes de integração reprovaram::bun run test:integration falhou. A falha é dos TESTES DE INTEGRAÇÃO contra o Postgres :55322, não do Playwright — este job hospeda os dois. Reproduza local com: bun run test:integration:local"
+          exit 1
+        fi
 
     - name: Build
       shell: bash
