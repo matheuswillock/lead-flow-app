@@ -184,6 +184,7 @@ bun run typecheck > /tmp/lf-typecheck.log 2>&1; echo "typecheck EXIT=$?"; head -
 bun run lint
 bun run governance:check
 bun run governance:check-e2e-pages
+bun run governance:check-responsive
 bun run governance:check-api-masking
 bun run lint:pt-br
 ```
@@ -196,6 +197,7 @@ bun run lint:pt-br
     - Fix all errors immediately before moving to the next file or task.
     - If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
     - If `governance:check-api-masking` fails, replace hardcoded `/api/v1/...` client calls with `API_CLIENT_BASE` — do not add to `clientApiPathMaskingAllowlist` unless explicitly instructed.
+    - If `governance:check-responsive` fails, add `runResponsiveChecks` (from `e2e/support/responsive.ts`) to the flagged spec — do not add to `responsiveSpecAllowlist` unless explicitly instructed.
     - If `lint:pt-br` fails, fix the accentuation in the flagged UI text — only add the word to `IGNORE_WORDS` in `scripts/lint-pt-br.ts` when it is a proper noun/brand/technical term that is correct as written.
 
 ## Visual Implementation (FOR NEW FEATURES)
@@ -274,9 +276,11 @@ reportado como "aderente ao design system".
 Aplica-se a **toda** mudança visual — landing, app autenticado, backoffice,
 modal, formulário ou componente isolado. Nenhum comando da sequência de
 validação renderiza a tela: `design:check` compara blocos de token,
-`governance:check` não tem validador de contraste, hex ou responsividade, e a
-cobertura mínima de página E2E é funcional. Verde em todos eles **MUST NOT** ser
-tratado como evidência de que a tela está correta.
+`governance:check` valida responsividade apenas **estruturalmente** (a spec
+importa e chama o helper — ver `governance:check-responsive`) e segue sem
+validador de contraste ou hex, e a cobertura mínima de página E2E é funcional.
+Verde em todos eles **MUST NOT** ser tratado como evidência de que a tela está
+correta.
 
 Antes de reportar qualquer trabalho visual como concluído, o agente **MUST**
 observar a tela renderizada. Ordem de fallback:
@@ -440,6 +444,11 @@ tela, a landing **MUST** ter asserts medidos na spec E2E — não julgamento:
 - `document.documentElement.scrollWidth <= window.innerWidth + 1` em 360 e 375
 - `prefers-reduced-motion` respeitado
 
+Overflow, alvo de toque e reduced-motion vêm de `runResponsiveChecks`
+(`e2e/support/responsive.ts` — ver
+[Responsividade mobile-first](#responsividade-mobile-first-must)); o contraste
+é medido com `contrastRatio`, exportado do mesmo módulo.
+
 ## Project Context Reference
 
 - Agents **MUST** read `.github/instructions/project-context.instructions.md` at the start of every session or task to obtain full project context: tech stack, design system, database schema, architecture patterns, integrations, and conventions.
@@ -517,9 +526,18 @@ Playwright (`@playwright/test`), Chromium. Specs live in `e2e/specs/<dominio>/<s
 
 #### Ciclo TDD (MUST)
 
-1. Escrever a spec **antes** do código (red).
+1. Escrever a spec **antes** do código (red). Para tela nova, a spec red **MUST** já incluir `runResponsiveChecks(page)` (ver [Responsividade mobile-first](#responsividade-mobile-first-must)).
 2. Implementar até a spec ficar verde.
 3. Refatorar. A fase/PR só fecha quando a spec está verde na CI **e**, se a página estava em `e2ePageCoverageAllowlist`, ela **saiu** da allowlist.
+
+#### Responsividade mobile-first (MUST)
+
+- Frontend novo **MUST** ser **mobile-first**: layout base projetado para 360px, breakpoints progressivos para cima — nunca desktop primeiro com "ajuste mobile" depois.
+- Toda spec E2E de página **MUST** importar e chamar `runResponsiveChecks` de `e2e/support/responsive.ts`. O pacote é completo e obrigatório: sem overflow horizontal em 360/375, alvos de toque ≥ 44×44, `prefers-reduced-motion` respeitado. **MUST NOT** reimplementar esses asserts inline na spec — o helper é a fonte única.
+- No ciclo TDD, o teste de responsividade entra na fase **red** (antes do JSX), não como acréscimo no fim.
+- Ao **atualizar** um frontend existente, o agente **MUST** adicionar `runResponsiveChecks` à spec da página no mesmo PR; se a spec estava em `responsiveSpecAllowlist`, ela **sai** da allowlist nessa mesma mudança (mesmo modelo do `dipPrismaInUseCaseAllowlist`). A allowlist **MUST NOT crescer** — só encolhe.
+- Specs API-only (sem UI) usam o sufixo `-api.spec.ts` e são dispensadas do check. O sufixo **MUST NOT** ser usado para escapar do teste em spec que renderiza tela.
+- Check: `bun run governance:check-responsive` (também entra em `governance:check`). Ele é estrutural — não substitui a [Visual Verification](#visual-verification-must).
 
 #### Convenção de path
 
@@ -538,7 +556,7 @@ Um spec **MAY** cobrir lista+detalhe via `e2ePageCoverage.coveredBy` em `.govern
 1. Copiar `e2e/specs/_template.spec.ts`.
 2. `test.describe` com o nome da rota. `test.beforeEach` chama o fixture de sessão (`e2e/fixtures/auth.ts`) e o seed mínimo (`e2e/support/db.ts`) quando existirem.
 3. Arrange no banco (Prisma), Act no Playwright (`page.goto` + interações), Assert na UI **e** no banco.
-4. Cobertura mínima de página: carrega sem erro, título/heading visível, CTA principal funciona, estado vazio ou de loading com `Skeleton` (não crash).
+4. Cobertura mínima de página: carrega sem erro, título/heading visível, CTA principal funciona, estado vazio ou de loading com `Skeleton` (não crash), e responsividade via `runResponsiveChecks(page)` de `e2e/support/responsive.ts` (o passo de reduced-motion recarrega a página — chamar por último ou em teste dedicado).
 5. Feature de cobrança: além do mínimo, assertir produto, ciclo, valor e a **ausência do termo CDP**. Toda spec que cria customer, cobrança, checkout ou assinatura no Asaas **MUST** usar homologação (`ASAAS_ENV=sandbox`, API em `sandbox.asaas.com`) e chamar `assertAsaasSandbox()` de `e2e/support/asaas.ts` no `beforeAll`. **MUST NOT** apontar para produção (`www.asaas.com` / `ASAAS_ENV=production` / `ASAAS_API_KEY` de prod). O helper falha o teste antes de qualquer request se o ambiente não for sandbox.
 6. Rodar local: `bun run test:e2e:local -- e2e/specs/<arquivo>.spec.ts` com o Postgres `:55322` **e o app** já no ar — esse script não sobe o Next (ver [Receita de setup](#receita-de-setup-o-que-faz-a-tela-abrir)).
 
@@ -652,7 +670,7 @@ All webhook handlers **MUST** follow the pattern: **respond with HTTP 200 immedi
 
 ## LEGACY EXCEPTIONS
 
-Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `dipPrismaInUseCaseAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
+Deviations allowed only if explicitly listed in `.governance/ai-governance.config.json`. Categories: `prismaInV1RouteAllowlist`, `dipPrismaInUseCaseAllowlist`, `useCaseWithoutOutputAllowlist`, `frontendFeatureStructureAllowlist`, `nonTypeScriptFileAllowlist`, `clientApiPathMaskingAllowlist`, `responsiveSpecAllowlist`. When refactoring removes an exception, update the allowlist in the same PR.
 
 ## Automated Enforcement
 
@@ -661,6 +679,7 @@ CI **MUST** fail when governance checks fail.
 - Check: `bun run governance:check` (inclui validação model `@@map` ↔ `CREATE TABLE` em `supabase/migrations/**`, DIP em UseCases sem Prisma direto — ver [Clean Code & SOLID](#clean-code--solid-must) — e cobertura E2E de `page.tsx`)
 - Client API masking (CI step dedicado): `bun run governance:check-api-masking`
 - E2E page coverage (CI step dedicado): `bun run governance:check-e2e-pages`
+- Responsividade nas specs E2E (CI step dedicado): `bun run governance:check-responsive` — ver [Responsividade mobile-first](#responsividade-mobile-first-must)
 - Allowlist warnings (non-blocking): `bun run governance:warn-allowlist`
 
 ## Feature Registration Policy (FOR NEW FEATURES)
@@ -731,7 +750,9 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
 - [ ] Rodou `bun run governance:check-e2e-pages`?
+- [ ] Rodou `bun run governance:check-responsive`?
 - [ ] Rodou `bun run governance:check-api-masking`?
+- [ ] Criou ou alterou frontend? Layout mobile-first, `runResponsiveChecks` na spec da página e, se a spec estava em `responsiveSpecAllowlist`, ela saiu da allowlist?
 - [ ] Criou ou alterou `page.tsx` / fluxo de cobrança? Spec E2E no mesmo PR (TDD) e, se a página estava na allowlist, ela saiu de `e2ePageCoverageAllowlist`?
 
 ## Environment Essentials
