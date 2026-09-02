@@ -6,6 +6,7 @@ export type DevLocalOptions = {
   noStart: boolean;
   forceTurbo: boolean;
   fullSupabase: boolean;
+  remoteDb: boolean;
   stackMode: LocalStackMode;
   startEvolution: boolean;
   startN8n: boolean;
@@ -27,6 +28,7 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   let skipN8n = false;
   let forceTurbo = false;
   let fullSupabase = false;
+  let remoteDb = false;
   let hybridRequested = false;
   let dbOnlyRequested = false;
 
@@ -47,6 +49,10 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
     }
     if (arg === "--full-supabase") {
       fullSupabase = true;
+      continue;
+    }
+    if (arg === "--remote-db") {
+      remoteDb = true;
       continue;
     }
     if (arg === "--hybrid") {
@@ -101,6 +107,23 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   if (clone && skipClone) {
     errors.push("Cannot pass --clone and --skip-clone at the same time.");
   }
+  if (remoteDb && hybridRequested) {
+    errors.push("Cannot pass --remote-db and --hybrid at the same time.");
+  }
+  if (remoteDb && dbOnlyRequested) {
+    errors.push("Cannot pass --remote-db and --db-only at the same time.");
+  }
+  if (remoteDb && fullSupabase) {
+    errors.push("Cannot pass --remote-db and --full-supabase at the same time.");
+  }
+  if (remoteDb && clone) {
+    errors.push("Cannot pass --remote-db and --clone at the same time.");
+  }
+  if (remoteDb && requestedStacks.size > 0) {
+    // O modo remoto pula o preflight inteiro (único caminho que sobe stacks
+    // opcionais) — aceitar aqui seria ignorar o pedido silenciosamente.
+    errors.push("Cannot combine --remote-db with optional stacks (n8n/evolution/total).");
+  }
 
   const unknownStackLikeArgs = nextArgs.filter((arg) => {
     if (arg.startsWith("-")) return false;
@@ -118,6 +141,7 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
     noStart,
     forceTurbo,
     fullSupabase,
+    remoteDb,
     stackMode,
     startEvolution: requestedStacks.has("evolution") && !skipEvolution,
     startN8n: requestedStacks.has("n8n") && !skipN8n,
