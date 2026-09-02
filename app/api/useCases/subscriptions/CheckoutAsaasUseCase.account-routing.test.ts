@@ -42,17 +42,19 @@ mock.module("@/lib/asaas", () => ({
   }),
 }))
 
-mock.module("@/lib/supabase/server", () => ({
-  createSupabaseAdmin: () => ({
-    auth: {
-      admin: {
-        createUser: async () => ({
-          data: { user: { id: "supabase-operator-1" } },
-          error: null,
-        }),
-      },
+const createSupabaseAdminMock = mock(() => ({
+  auth: {
+    admin: {
+      createUser: async () => ({
+        data: { user: { id: "supabase-operator-1" } },
+        error: null,
+      }),
     },
-  }),
+  },
+}))
+
+mock.module("@/lib/supabase/server", () => ({
+  createSupabaseAdmin: createSupabaseAdminMock,
 }))
 
 mock.module("@/lib/services/EmailService", () => ({
@@ -145,6 +147,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
 describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)", () => {
   beforeEach(() => {
     requestLog.length = 0
+    createSupabaseAdminMock.mockClear()
     requestImplByAccount.primary = async (_url: string, method?: string) => {
       if (method === "GET") return { value: 100, subscription: "sub_new_1" }
       return { id: "checkout_1" }
@@ -248,6 +251,33 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
     expect(callOrder).toEqual(["mark", "put"])
+  })
+
+  it("achado Codex (PR #1137, P1): perfil já existe para o e-mail (retry pós-criação) → retoma sem recriar usuário", async () => {
+    const existingOperatorProfile = { id: "operator-existing-1", email: "novo-operador@example.test" }
+    const repos = fakeRepos({
+      profileRepository: {
+        findByEmail: mock(async () => existingOperatorProfile),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(true)
+    expect(createSupabaseAdminMock).not.toHaveBeenCalled()
+    expect(repos.profileRepository.createOperatorProfileFromPendingOperator).not.toHaveBeenCalled()
+    expect(repos.teamMembersRepository.createMember).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "operator-existing-1" })
+    )
+    // idempotência preservada: incrementa o contador exatamente uma vez, com ou sem resume
+    expect(repos.profileRepository.incrementOperatorCount).toHaveBeenCalledTimes(1)
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

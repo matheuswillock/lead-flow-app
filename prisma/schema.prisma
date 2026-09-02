@@ -3007,6 +3007,15 @@ model PendingAction {
   payload    Json
   checkoutId String?             @db.Text
   paymentId  String?             @db.Text
+  // Achado Codex (PR #1137, P1): master.asaasCustomerAccount é MUTÁVEL — o
+  // fluxo de operador (E4) pode migrar o master de legacy pra primary
+  // DEPOIS que esta cobrança já nasceu na conta antiga. Derivar a conta do
+  // polling/waive a partir do master atual (em vez desta coluna, gravada no
+  // instante em que o paymentId é atribuído) deixaria um pay_ colidindo
+  // entre contas aplicar a ação errada. Default primary — mesmo motivo de
+  // Profile.asaasCustomerAccount; só passa a valer algo quando paymentId é
+  // preenchido (updatePaymentId grava os dois juntos).
+  asaasAccount AsaasAccount      @default(primary)
   createdAt  DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
 

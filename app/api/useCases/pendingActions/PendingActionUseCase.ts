@@ -70,21 +70,12 @@ export class PendingActionUseCase {
   // [[40 — Checkout, Adesões e Add-ons — Backend]]) — propagada pelo chamador
   // (webhook, rota de confirmação), nunca lida do transporte global.
   async applyPendingActionByPaymentId(paymentId: string, account: AsaasAccountId): Promise<Output> {
-    let action = await pendingActionRepository.findApplicableByPaymentId(paymentId);
-
-    // Achado Codex (PR #1137, P1): paymentId sozinho pode colidir entre as
-    // duas contas Asaas (C33) — findApplicableByPaymentId não tem coluna de
-    // conta pra filtrar. Se a ação encontrada não pertence à conta do
-    // evento, trata como "não encontrada" por este caminho e cai no lookup
-    // por externalReference abaixo, que É escopado pela conta certa (busca
-    // o payment via o client daquela conta específica).
-    if (action && action.master.asaasCustomerAccount !== account) {
-      console.warn(
-        "[PendingActionUseCase] paymentId colide entre contas — ação pertence a outra conta, ignorando",
-        { paymentId, actionAccount: action.master.asaasCustomerAccount, eventAccount: account }
-      );
-      action = null;
-    }
+    // Achado Codex (PR #1137, P1): filtrado por conta na própria query — um
+    // paymentId colidindo entre as duas contas Asaas (C33) nunca chega a
+    // ser lido aqui. account é a conta PERSISTIDA no instante em que o
+    // paymentId nasceu (asaasAccount da linha), não o master atual (que
+    // pode ter migrado de conta depois, E4).
+    let action = await pendingActionRepository.findApplicableByPaymentId(paymentId, account);
 
     if (!action) {
       try {
@@ -99,8 +90,12 @@ export class PendingActionUseCase {
           action = await pendingActionRepository.findApplicableById(actionId);
 
           if (action && !action.paymentId) {
-            await pendingActionRepository.updatePaymentId(action.id, paymentId);
-            action = { ...action, paymentId };
+            // Achado Codex (PR #1137, P1): persiste a conta do EVENTO (onde
+            // acabamos de confirmar que este paymentId existe de fato) —
+            // não deriva de action.master.asaasCustomerAccount depois, que
+            // pode ter migrado (E4).
+            await pendingActionRepository.updatePaymentId(action.id, paymentId, account);
+            action = { ...action, paymentId, asaasAccount: account };
           }
         }
       } catch (error) {
@@ -158,51 +153,47 @@ export class PendingActionUseCase {
     }
 
     if (action.paymentId) {
-      // E3 (C20): a cobrança de um PendingAction nasce na conta do próprio
-      // master (createIncrementalCharge roteia por asaasCustomerAccount, ver
-      // E2). Durante a janela de migração o master pode ter migrado de conta
-      // depois de a cobrança ter sido criada — por isso, um 404 na conta
-      // atual tenta a outra antes de desistir (única exceção documentada ao
-      // veto de retry cross-conta da DA2, restrita a esta janela).
-      const primaryAccount: AsaasAccountId = action.master.asaasCustomerAccount;
-      const fallbackAccount: AsaasAccountId = primaryAccount === "legacy" ? "primary" : "legacy";
+      // Achado Codex (PR #1137, P1): action.asaasAccount é a conta
+      // PERSISTIDA no instante em que a cobrança nasceu — nunca
+      // action.master.asaasCustomerAccount, que pode ter migrado desde
+      // então (E4, checkout de operador muda a conta do master). Deduzir
+      // pela conta atual do master arriscava, numa colisão C33, tratar o
+      // GET de um pay_ de OUTRA conta como se fosse este. Com a conta
+      // persistida não há mais "primeira tentativa, tenta a outra se
+      // errar" — só ficou a exceção legítima: 404 na conta certa (payment
+      // pode ter sido cancelado/expirado do lado do Asaas) trata como já
+      // cancelado (fail-open), não tenta adivinhar em outra conta.
+      const account: AsaasAccountId = action.asaasAccount;
 
       let payment: { status?: string } | null = null;
-      let foundOnAccount: AsaasAccountId | null = null;
 
-      for (const account of [primaryAccount, fallbackAccount]) {
-        try {
-          const client = createAsaasClient(account);
-          payment = await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
-            method: "GET",
-          });
-          foundOnAccount = account;
-          break;
-        } catch (error) {
-          const statusCode = (error as { statusCode?: number } | null)?.statusCode;
-          if (statusCode !== 404) {
-            console.error(
-              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge][GET][${account}] paymentId=${action.paymentId}:`,
-              error
-            );
-            return new Output(
-              false,
-              [],
-              ["Não foi possível verificar a cobrança Asaas aberta antes de dispensar"],
-              null
-            );
-          }
-          // 404 nesta conta — tenta a próxima antes de tratar como inexistente.
+      try {
+        const client = createAsaasClient(account);
+        payment = await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
+          method: "GET",
+        });
+      } catch (error) {
+        const statusCode = (error as { statusCode?: number } | null)?.statusCode;
+        if (statusCode !== 404) {
+          console.error(
+            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge][GET][${account}] paymentId=${action.paymentId}:`,
+            error
+          );
+          return new Output(
+            false,
+            [],
+            ["Não foi possível verificar a cobrança Asaas aberta antes de dispensar"],
+            null
+          );
         }
+        // 404 na conta correta: trata como já cancelada e segue a dispensa
+        // (fail-open) em vez de travar a ação para sempre.
+        console.error(
+          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas ${action.paymentId} não encontrada na conta ${account} — tratando como já cancelada`
+        );
       }
 
-      if (!payment) {
-        // Não existe em nenhuma das duas contas: trata como já cancelado e
-        // segue a dispensa (fail-open) em vez de travar a ação para sempre.
-        console.error(
-          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas ${action.paymentId} não encontrada em nenhuma conta (primary/legacy) — tratando como já cancelada`
-        );
-      } else {
+      if (payment) {
         const paymentStatus = String(payment?.status ?? "PENDING");
         const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
         if (paidStatuses.has(paymentStatus)) {
@@ -217,14 +208,14 @@ export class PendingActionUseCase {
         }
 
         const cancelableStatuses = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"]);
-        if (cancelableStatuses.has(paymentStatus) && foundOnAccount) {
+        if (cancelableStatuses.has(paymentStatus)) {
           try {
-            const client = createAsaasClient(foundOnAccount);
+            const client = createAsaasClient(account);
             await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
               method: "DELETE",
             });
             console.info(
-              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus} account=${foundOnAccount}`
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus} account=${account}`
             );
           } catch (error) {
             console.error(

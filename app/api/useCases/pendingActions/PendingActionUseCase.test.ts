@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 const runInTransactionMock = mock(async (_cb: unknown) => ({ teamId: "team-1" }))
 const clearPaymentIdMock = mock(async () => {})
 const findApplicableByIdMock = mock(async (_id: string) => baseAction)
-const findApplicableByPaymentIdMock = mock(async (_paymentId: string) => null as any)
+const findApplicableByPaymentIdMock = mock(async (_paymentId: string, _account: string) => null as any)
 const markFailedMock = mock(async () => {})
 const updatePayloadMock = mock(async () => {})
 
@@ -72,6 +72,10 @@ const baseAction = {
   payload: { email: "novo@example.test", name: "Novo", role: "operator", teamId: "team-1" },
   checkoutId: null,
   paymentId: "pay_1",
+  // Achado Codex (PR #1137, P1): conta persistida no instante em que o
+  // paymentId nasceu — o forceApplyPendingActionWithoutCharge lê daqui,
+  // não de master.asaasCustomerAccount (que pode ter migrado desde então).
+  asaasAccount: "legacy" as const,
   createdAt: new Date(),
   updatedAt: new Date(),
   master: {
@@ -106,6 +110,8 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
     runInTransactionMock.mockClear()
     findApplicableByIdMock.mockClear()
     findApplicableByIdMock.mockImplementation(async () => ({ ...baseAction, paymentId: "pay_1" }))
+    findApplicableByPaymentIdMock.mockClear()
+    findApplicableByPaymentIdMock.mockImplementation(async () => null)
     requestImplByAccount.primary = async () => {
       throw statusError(404)
     }
@@ -134,11 +140,8 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
     expect(requestLog.some((c) => c.account === "primary")).toBe(false)
   })
 
-  it("T-40.11: 404 nas duas contas → dispensa prossegue (payment tratado como inexistente)", async () => {
+  it("T-40.11: 404 na conta persistida → dispensa prossegue (payment tratado como inexistente)", async () => {
     requestImplByAccount.legacy = async () => {
-      throw statusError(404)
-    }
-    requestImplByAccount.primary = async () => {
       throw statusError(404)
     }
 
@@ -153,9 +156,7 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
       expect(result.isValid).toBe(true)
       expect(clearPaymentIdMock).toHaveBeenCalledWith("pa-1")
       expect(
-        consoleErrorSpy.mock.calls.some((call) =>
-          String(call[0]).includes("não encontrada em nenhuma conta")
-        )
+        consoleErrorSpy.mock.calls.some((call) => String(call[0]).includes("não encontrada na conta"))
       ).toBe(true)
     } finally {
       console.error = originalError
@@ -181,13 +182,15 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
   })
 
   it("achado Codex (PR #1137, P1): paymentId colidindo entre contas não aplica a ação da conta errada", async () => {
-    // findApplicableByPaymentId acha uma ação, mas ela pertence ao master
-    // primary — o evento é da conta legacy (mesmo paymentId, colisão C33).
+    // O paymentId existe na conta primary (outra ação, outro master), mas
+    // o evento é da conta legacy (colisão C33) — o filtro por conta na
+    // própria query de findApplicableByPaymentId nunca devolve a linha
+    // errada; só o fallback por externalReference (escopado pela conta do
+    // evento) pode achar algo, e aqui não acha nada.
     findApplicableByIdMock.mockImplementation(async () => null)
-    findApplicableByPaymentIdMock.mockImplementation(async () => ({
-      ...baseAction,
-      master: { ...baseAction.master, asaasCustomerAccount: "primary" },
-    }))
+    findApplicableByPaymentIdMock.mockImplementation(async (_paymentId: string, account: string) =>
+      account === "primary" ? { ...baseAction, master: { ...baseAction.master, asaasCustomerAccount: "primary" } } : null
+    )
     requestImplByAccount.legacy = async (_url: string, method?: string) => {
       if (method === "GET") return { externalReference: "pending-action-nao-existe" }
       return {}
@@ -198,6 +201,7 @@ describe("PendingActionUseCase — dispensa nunca fica presa (E3/C20)", () => {
 
     expect(result.isValid).toBe(false)
     expect(runInTransactionMock).not.toHaveBeenCalled()
+    expect(findApplicableByPaymentIdMock).toHaveBeenCalledWith("pay_colidindo", "legacy")
     // a ação da conta errada nunca foi aplicada — o lookup caiu no fallback
     // por externalReference, escopado pela conta legacy do evento
     const legacyGet = requestLog.find((c) => c.account === "legacy" && c.method === "GET")

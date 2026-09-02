@@ -697,46 +697,67 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         // Não bloqueia o fluxo
       }
 
-      // 4. Criar usuário no Supabase Auth
-      console.info('👤 [processOperatorCheckoutPaid] Criando usuário no Supabase...');
+      // 4. Criar usuário no Supabase Auth + perfil (achado Codex/cursor[bot]
+      // no PR #1137, P1: idempotente por e-mail — se uma tentativa anterior
+      // já criou o usuário/perfil e caiu antes do deleteById, o
+      // pendingOperator ainda existe e esta função é alcançada de novo pelo
+      // retry; sem este resume, o createUser falharia com "e-mail já
+      // registrado" para sempre. A janela em que isto é seguro é exatamente
+      // "perfil já existe, mas o pendingOperator ainda não foi deletado" —
+      // depois do deleteById este registro nunca mais é encontrado por
+      // findByPaymentIdWithManager, então incrementOperatorCount abaixo
+      // ainda roda exatamente uma vez por operador, com ou sem resume.
+      const existingOperatorProfile = await this.profileRepository.findByEmail(pendingOperator.email);
+      let operator: { id: string; email: string };
 
-      const supabaseAdmin = createSupabaseAdminClient();
-      if (!supabaseAdmin) {
-        return new Output(false, [], ['Erro ao conectar com autenticação'], null);
-      }
+      if (existingOperatorProfile) {
+        console.info(
+          '↩️ [processOperatorCheckoutPaid] Perfil já existe para este e-mail — retomando provisionamento',
+          { profileId: existingOperatorProfile.id }
+        );
+        operator = existingOperatorProfile;
+      } else {
+        console.info('👤 [processOperatorCheckoutPaid] Criando usuário no Supabase...');
 
-      // Gerar senha temporária
-      const tempPassword = Math.random().toString(36).slice(-12);
-
-      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: pendingOperator.email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: {
-          full_name: pendingOperator.name,
-          role: pendingOperator.role,
-          manager_id: manager.supabaseId,
+        const supabaseAdmin = createSupabaseAdminClient();
+        if (!supabaseAdmin) {
+          return new Output(false, [], ['Erro ao conectar com autenticação'], null);
         }
-      });
 
-      if (authError || !authUser?.user) {
-        console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
-        return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+        // Gerar senha temporária
+        const tempPassword = Math.random().toString(36).slice(-12);
+
+        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email: pendingOperator.email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: pendingOperator.name,
+            role: pendingOperator.role,
+            manager_id: manager.supabaseId,
+          }
+        });
+
+        if (authError || !authUser?.user) {
+          console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
+          return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+        }
+
+        console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUser.user.id);
+
+        // 5. Criar perfil do operador no banco
+        const created = await this.profileRepository.createOperatorProfileFromPendingOperator({
+          supabaseId: authUser.user.id,
+          fullName: pendingOperator.name,
+          email: pendingOperator.email,
+          role: pendingOperator.role as UserRole,
+          functions: (pendingOperator.functions ?? []) as ("SDR" | "CLOSER")[],
+          managerId: manager.id,
+        });
+        operator = created;
+
+        console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
       }
-
-      console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUser.user.id);
-
-      // 5. Criar perfil do operador no banco
-      const operator = await this.profileRepository.createOperatorProfileFromPendingOperator({
-        supabaseId: authUser.user.id,
-        fullName: pendingOperator.name,
-        email: pendingOperator.email,
-        role: pendingOperator.role as UserRole,
-        functions: (pendingOperator.functions ?? []) as ("SDR" | "CLOSER")[],
-        managerId: manager.id,
-      });
-
-      console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
 
       // 5.1 Vincular operador ao time (TeamMember)
       let targetTeamId = pendingOperator.teamId;

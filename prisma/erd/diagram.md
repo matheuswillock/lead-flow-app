@@ -2612,6 +2612,7 @@ completed completed
     Json payload 
     String checkoutId "❓"
     String paymentId "❓"
+    AsaasAccount asaasAccount 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4446,6 +4447,7 @@ completed completed
     "corretor_studio_asaas_notification_backfill" |o--|| "AsaasNotificationBackfillStatus" : "enum:status"
     "corretor_studio_pending_actions" |o--|| "PendingActionType" : "enum:actionType"
     "corretor_studio_pending_actions" |o--|| "PendingActionStatus" : "enum:status"
+    "corretor_studio_pending_actions" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_pending_actions" }o--|| corretor_studio_profiles : "master"
     "corretor_studio_pending_actions" }o--|o corretor_studio_teams : "team"
     "corretor_studio_team_members" |o--|| "UserRole" : "enum:role"

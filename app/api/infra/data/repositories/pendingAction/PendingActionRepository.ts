@@ -14,6 +14,7 @@ import type {
 } from "./IPendingActionRepository";
 import { PendingAction, Prisma } from "@prisma/client";
 import type { UserFunction, UserRole } from "@prisma/client";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 export class PendingActionRepository implements IPendingActionRepository {
   async findById(id: string) {
@@ -35,7 +36,9 @@ export class PendingActionRepository implements IPendingActionRepository {
             city: true,
             state: true,
             asaasCustomerId: true,
+            asaasCustomerAccount: true,
             asaasSubscriptionId: true,
+            asaasSubscriptionAccount: true,
             subscriptionStatus: true,
             subscriptionNextDueDate: true,
             subscriptionCycle: true,
@@ -80,10 +83,10 @@ export class PendingActionRepository implements IPendingActionRepository {
     return pendingAction;
   }
 
-  async updatePaymentId(id: string, paymentId: string): Promise<void> {
+  async updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void> {
     await prisma.pendingAction.update({
       where: { id },
-      data: { paymentId },
+      data: { paymentId, asaasAccount: account },
     });
   }
 
@@ -156,9 +159,12 @@ export class PendingActionRepository implements IPendingActionRepository {
     });
   }
 
-  async findApplicableByPaymentId(paymentId: string): Promise<ApplicablePendingAction | null> {
+  async findApplicableByPaymentId(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null> {
     return prisma.pendingAction.findFirst({
-      where: { paymentId },
+      where: { paymentId, asaasAccount: account },
       select: applicablePendingActionSelect,
     });
   }

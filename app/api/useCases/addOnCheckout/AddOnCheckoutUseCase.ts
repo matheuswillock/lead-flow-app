@@ -2,7 +2,7 @@ import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
-import { asaas, createAsaasClient } from "@/lib/asaas";
+import { asaas, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -206,7 +206,14 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       const paymentId = chargeResult.paymentId;
 
-      await pendingActionRepository.updatePaymentId(pendingActionId, paymentId);
+      // Achado Codex (PR #1137, P1): persiste a conta ONDE a cobrança
+      // nasceu de fato (a do master neste instante) — não deriva depois,
+      // porque o master pode migrar de conta (E4, checkout de operador).
+      await pendingActionRepository.updatePaymentId(
+        pendingActionId,
+        paymentId,
+        (pendingAction.master as { asaasCustomerAccount: AsaasAccountId }).asaasCustomerAccount
+      );
 
       const response: Record<string, unknown> = {
         paymentId: chargeResult.paymentId,
@@ -276,7 +283,11 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         );
       }
 
-      const account = pendingAction.master.asaasCustomerAccount;
+      // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
+      // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
+      // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
+      // desde então (E4, checkout de operador migra o master de conta).
+      const account = pendingAction.asaasAccount;
       let payment: { status?: string; value?: number; dueDate?: string } | null = null;
 
       try {

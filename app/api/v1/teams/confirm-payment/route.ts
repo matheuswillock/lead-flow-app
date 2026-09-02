@@ -86,8 +86,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Achado Codex (PR #1137, P2): sem o filtro por conta, um paymentId
+    // colidindo com o de outro master (C33) fazia este preflight escolher
+    // a ação ERRADA e devolver 403 antes mesmo do use case (já
+    // collision-safe) rodar — bloqueando a confirmação legítima do dono
+    // real do pagamento.
     let action = await prisma.pendingAction.findFirst({
-      where: { paymentId },
+      where: { paymentId, asaasAccount: account },
       select: { id: true, masterId: true, status: true },
     });
 

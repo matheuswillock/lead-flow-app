@@ -59,6 +59,10 @@ const baseAction = {
   payload: {},
   checkoutId: null,
   paymentId: "pay_legacy_1",
+  // Achado Codex (PR #1137, P1): conta persistida no instante em que o
+  // paymentId nasceu — checkPaymentStatus lê daqui, não de
+  // master.asaasCustomerAccount (que pode ter migrado desde então).
+  asaasAccount: "legacy" as const,
   createdAt: new Date(),
   updatedAt: new Date(),
   master: {
