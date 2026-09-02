@@ -266,8 +266,12 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(callOrder).toEqual(["mark", "put"])
   })
 
-  it("achado Codex (PR #1137, P1): perfil já existe para o e-mail (retry pós-criação) → retoma sem recriar usuário", async () => {
-    const existingOperatorProfile = { id: "operator-existing-1", email: "novo-operador@example.test" }
+  it("achado Codex (PR #1137, P1): perfil já existe para o e-mail, criado por ESTA mesma execução (retry pós-criação) → retoma sem recriar usuário", async () => {
+    const existingOperatorProfile = {
+      id: "operator-existing-1",
+      email: "novo-operador@example.test",
+      managerId: manager.id,
+    }
     const repos = fakeRepos({
       profileRepository: {
         findByEmail: mock(async () => existingOperatorProfile),
@@ -293,13 +297,45 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.profileRepository.incrementOperatorCount).toHaveBeenCalledTimes(1)
   })
 
-  it("achado Codex (PR #1137, P1, follow-up): createUser retornou email_exists (Auth criado, profile não) → recupera identidade via generateLink em vez de falhar para sempre", async () => {
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 6): perfil com o e-mail existe mas NÃO foi criado por este checkout (managerId diferente) → não concede membership", async () => {
+    const unrelatedProfile = {
+      id: "operator-unrelated-1",
+      email: "novo-operador@example.test",
+      managerId: "outro-manager-9",
+    }
+    const repos = fakeRepos({
+      profileRepository: {
+        findByEmail: mock(async () => unrelatedProfile),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(false)
+    expect(createSupabaseAdminMock).not.toHaveBeenCalled()
+    expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
+    expect(repos.profileRepository.incrementOperatorCount).not.toHaveBeenCalled()
+  })
+
+  it("achado Codex (PR #1137, P1, follow-up): createUser retornou email_exists (Auth criado por ESTA execução, profile não) → recupera identidade via generateLink em vez de falhar para sempre", async () => {
     createUserMock.mockImplementation(async () => ({
       data: { user: null },
       error: { code: "email_exists", message: "Email already registered" },
     }))
     generateLinkMock.mockImplementation(async () => ({
-      data: { user: { id: "supabase-operator-existing-auth-1" } },
+      data: {
+        user: {
+          id: "supabase-operator-existing-auth-1",
+          user_metadata: { manager_id: manager.supabaseId },
+        },
+      },
       error: null,
     }))
     const repos = fakeRepos()
@@ -320,6 +356,36 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.profileRepository.createOperatorProfileFromPendingOperator).toHaveBeenCalledWith(
       expect.objectContaining({ supabaseId: "supabase-operator-existing-auth-1" })
     )
+  })
+
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 6): generateLink recupera identidade do Auth sem relação com este checkout → não concede membership", async () => {
+    createUserMock.mockImplementation(async () => ({
+      data: { user: null },
+      error: { code: "email_exists", message: "Email already registered" },
+    }))
+    generateLinkMock.mockImplementation(async () => ({
+      data: {
+        user: {
+          id: "supabase-operator-unrelated-auth-1",
+          user_metadata: { manager_id: "outro-manager-supabase-id" },
+        },
+      },
+      error: null,
+    }))
+    const repos = fakeRepos()
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(false)
+    expect(repos.profileRepository.createOperatorProfileFromPendingOperator).not.toHaveBeenCalled()
+    expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

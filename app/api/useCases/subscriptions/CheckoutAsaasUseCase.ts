@@ -710,6 +710,27 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       const existingOperatorProfile = await this.profileRepository.findByEmail(pendingOperator.email);
       let operator: { id: string; email: string };
 
+      // Achado Codex/cursor[bot] (PR #1137, P1, round 6): um Profile com
+      // este e-mail pode existir SEM ter sido criado por esta tentativa —
+      // um cadastro paralelo pode correr entre o convite e a confirmação
+      // do pagamento (race). Resumir sem checar a origem concederia
+      // membership no time do manager pagante a uma identidade não
+      // correlacionada (entitlement indevido). managerId é o correlator:
+      // só createOperatorProfileFromPendingOperator desta mesma execução
+      // (abaixo) grava managerId = manager.id.
+      if (existingOperatorProfile && existingOperatorProfile.managerId !== manager.id) {
+        console.error(
+          '❌ [processOperatorCheckoutPaid] E-mail já pertence a um perfil não correlacionado a este checkout',
+          { email: pendingOperator.email, existingProfileId: existingOperatorProfile.id }
+        );
+        return new Output(
+          false,
+          [],
+          ['E-mail já está em uso por um cadastro não relacionado a este checkout'],
+          null
+        );
+      }
+
       if (existingOperatorProfile) {
         console.info(
           '↩️ [processOperatorCheckoutPaid] Perfil já existe para este e-mail — retomando provisionamento',
@@ -761,6 +782,24 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
               recoveryError
             );
             return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+          }
+          // Achado Codex/cursor[bot] (PR #1137, P1, round 6): generateLink
+          // resolve QUALQUER usuário existente com este e-mail — pode ser
+          // uma identidade pré-existente sem relação nenhuma com este
+          // checkout. Só reaproveita se o user_metadata.manager_id bater
+          // com o manager pagante — o mesmo valor gravado no createUser
+          // acima numa tentativa anterior desta execução.
+          if (recovery.user.user_metadata?.manager_id !== manager.supabaseId) {
+            console.error(
+              '❌ [processOperatorCheckoutPaid] Identidade recuperada no Auth não corresponde a este checkout',
+              { email: pendingOperator.email, recoveredUserId: recovery.user.id }
+            );
+            return new Output(
+              false,
+              [],
+              ['E-mail já está em uso por um cadastro não relacionado a este checkout'],
+              null
+            );
           }
           authUserId = recovery.user.id;
         } else if (authError || !authUser?.user) {
