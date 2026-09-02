@@ -1119,13 +1119,6 @@ class PrismaProfileRepository implements IProfileRepository {
     });
   }
 
-  async incrementOperatorCount(profileId: string): Promise<void> {
-    await prisma.profile.update({
-      where: { id: profileId },
-      data: { operatorCount: { increment: 1 } },
-    });
-  }
-
   async findByAsaasSubscriptionIdAndAccount(
     subscriptionId: string,
     account: AsaasAccountId

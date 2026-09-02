@@ -105,11 +105,21 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
     })
   }
 
-  async markOperatorCreated(id: string, operatorId: string): Promise<void> {
-    await prisma.pendingOperator.update({
-      where: { id },
-      data: { operatorCreated: true, operatorId },
-    })
+  async finalizeOperatorCreation(
+    pendingOperatorId: string,
+    operatorId: string,
+    managerId: string
+  ): Promise<void> {
+    await prisma.$transaction([
+      prisma.profile.update({
+        where: { id: managerId },
+        data: { operatorCount: { increment: 1 } },
+      }),
+      prisma.pendingOperator.update({
+        where: { id: pendingOperatorId },
+        data: { operatorCreated: true, operatorId },
+      }),
+    ])
   }
 
   async deleteById(id: string): Promise<void> {

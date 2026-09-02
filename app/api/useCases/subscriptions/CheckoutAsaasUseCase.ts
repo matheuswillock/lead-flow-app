@@ -910,19 +910,23 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
-      // Achado Codex/cursor[bot] (PR #1137, P1, round 11): incrementOperatorCount
-      // não é idempotente (increment: 1) e rodava DEPOIS do deleteById — se
-      // falhasse ali, o retry não achava mais o PendingOperator (já
-      // deletado), "Operador pendente não encontrado" (allowlist de
-      // no-op conhecido) engolia o evento, e o contador do manager ficava
-      // permanentemente defasado (operador provisionado, cobrança sem
-      // reflexo). Incrementa ANTES do delete, guardado por
-      // pendingOperator.operatorId (marcador persistido, nulo por padrão —
-      // nunca setado antes desta correção): se já setado (retry depois de
-      // um delete que falhou), pula o incremento de novo.
+      // Achado Codex/cursor[bot] (PR #1137, P1, round 11 e 12): incrementar
+      // operatorCount precisa rodar ANTES do deleteById — se falhasse depois
+      // do delete, um retry não achava mais o PendingOperator ("Operador
+      // pendente não encontrado", allowlist de no-op conhecido) e o
+      // contador do manager ficava permanentemente defasado. Guardado por
+      // pendingOperator.operatorId (nulo por padrão): se já setado (retry
+      // depois de uma finalização anterior), pula tudo de novo. round 12:
+      // o increment e o marcador precisam ser atômicos entre si — dois
+      // writes sequenciais permitiam um retry duplo-incrementar se o
+      // primeiro write tivesse sucesso e o segundo falhasse antes de
+      // persistir. finalizeOperatorCreation roda os dois numa transação.
       if (!pendingOperator.operatorId) {
-        await this.profileRepository.incrementOperatorCount(manager.id);
-        await this.pendingOperatorRepository.markOperatorCreated(pendingOperator.id, operator.id);
+        await this.pendingOperatorRepository.finalizeOperatorCreation(
+          pendingOperator.id,
+          operator.id,
+          manager.id
+        );
 
         console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
       }

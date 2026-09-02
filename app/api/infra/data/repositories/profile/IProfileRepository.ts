@@ -159,7 +159,6 @@ export interface IProfileRepository {
     functions: ("SDR" | "CLOSER")[];
     managerId: string;
   }): Promise<Profile>;
-  incrementOperatorCount(profileId: string): Promise<void>;
   /**
    * Filtra por conta (E4/E5 de [[10 — Fundações Multi-conta — Backend]],
    * C33) — o mesmo asaasSubscriptionId pode existir nas duas contas durante

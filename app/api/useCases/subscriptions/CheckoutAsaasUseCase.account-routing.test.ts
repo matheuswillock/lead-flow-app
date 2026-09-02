@@ -104,7 +104,6 @@ function fakeRepos(overrides: Record<string, any> = {}) {
       id: "operator-1",
       email: "novo-operador@example.test",
     })),
-    incrementOperatorCount: mock(async () => {}),
     findByAsaasSubscriptionIdAndAccount: mock(async () => null),
     ...overrides.profileRepository,
   }
@@ -141,7 +140,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
     })),
     updatePaymentId: mock(async () => {}),
     markSubscriptionUpdated: mock(async () => {}),
-    markOperatorCreated: mock(async () => {}),
+    finalizeOperatorCreation: mock(async () => {}),
     deleteById: mock(async () => {}),
     ...overrides.pendingOperatorRepository,
   }
@@ -358,8 +357,8 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.teamMembersRepository.createMember).toHaveBeenCalledWith(
       expect.objectContaining({ profileId: "operator-existing-1" })
     )
-    // idempotência preservada: incrementa o contador exatamente uma vez, com ou sem resume
-    expect(repos.profileRepository.incrementOperatorCount).toHaveBeenCalledTimes(1)
+    // idempotência preservada: finaliza (increment + marca) exatamente uma vez, com ou sem resume
+    expect(repos.pendingOperatorRepository.finalizeOperatorCreation).toHaveBeenCalledTimes(1)
   })
 
   it("achado Codex/cursor[bot] (PR #1137, P1, round 6): perfil com o e-mail existe mas NÃO foi criado por este checkout (managerId diferente) → não concede membership", async () => {
@@ -386,7 +385,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(result.isValid).toBe(false)
     expect(createSupabaseAdminMock).not.toHaveBeenCalled()
     expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
-    expect(repos.profileRepository.incrementOperatorCount).not.toHaveBeenCalled()
+    expect(repos.pendingOperatorRepository.finalizeOperatorCreation).not.toHaveBeenCalled()
   })
 
   it("achado Codex (PR #1137, P1, follow-up): createUser retornou email_exists (Auth criado por ESTA execução, profile não) → recupera identidade via generateLink em vez de falhar para sempre", async () => {
@@ -556,20 +555,15 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.pendingOperatorRepository.create).toHaveBeenCalledTimes(1)
   })
 
-  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): incrementa o contador do manager ANTES de deletar o pendingOperator", async () => {
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): finaliza a criação do operador (increment + marca, atômico) ANTES de deletar o pendingOperator", async () => {
     const callOrder: string[] = []
     const repos = fakeRepos({
-      profileRepository: {
-        incrementOperatorCount: mock(async () => {
-          callOrder.push("increment")
-        }),
-      },
       pendingOperatorRepository: {
         deleteById: mock(async () => {
           callOrder.push("delete")
         }),
-        markOperatorCreated: mock(async () => {
-          callOrder.push("mark")
+        finalizeOperatorCreation: mock(async () => {
+          callOrder.push("finalize")
         }),
       },
     })
@@ -583,22 +577,41 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
-    expect(callOrder).toEqual(["increment", "mark", "delete"])
+    expect(callOrder).toEqual(["finalize", "delete"])
   })
 
-  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): retry após operatorId já marcado (delete anterior falhou) nunca incrementa de novo", async () => {
+  it("achado cursor[bot] (PR #1137, P1, round 12): increment do Profile e marcador do PendingOperator delegados a um único write atômico (finalizeOperatorCreation)", async () => {
+    const repos = fakeRepos()
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(true)
+    expect(repos.pendingOperatorRepository.finalizeOperatorCreation).toHaveBeenCalledTimes(1)
+    expect(repos.pendingOperatorRepository.finalizeOperatorCreation).toHaveBeenCalledWith(
+      "pending-op-1",
+      "operator-1",
+      manager.id
+    )
+  })
+
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): retry após operatorId já marcado (finalização anterior rodou, delete falhou) nunca finaliza de novo", async () => {
     // pendingOperator.operatorCreated=true + operatorId setado significa
-    // que uma tentativa anterior já incrementou o contador e marcou a
-    // linha ANTES de tentar o deleteById (que falhou, por isso o retry
-    // ainda encontra a linha). O guard do topo da função já trata isso
-    // como "Operador já foi criado" — um leftover inofensivo, nunca um
-    // segundo incremento.
-    const incrementOperatorCountMock = mock(async () => {})
+    // que uma tentativa anterior já rodou finalizeOperatorCreation
+    // (increment + marca, atômico) ANTES de tentar o deleteById (que
+    // falhou, por isso o retry ainda encontra a linha). O guard do topo
+    // da função já trata isso como "Operador já foi criado" — um
+    // leftover inofensivo, nunca uma segunda finalização.
+    const finalizeOperatorCreationMock = mock(async () => {})
     const repos = fakeRepos({
-      profileRepository: {
-        incrementOperatorCount: incrementOperatorCountMock,
-      },
       pendingOperatorRepository: {
+        finalizeOperatorCreation: finalizeOperatorCreationMock,
         findByPaymentIdWithManager: mock(async () => ({
           id: "pending-op-1",
           managerId: manager.id,
@@ -631,7 +644,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     expect(result.isValid).toBe(false)
     expect(result.errorMessages).toEqual(["Operador já foi criado"])
-    expect(incrementOperatorCountMock).not.toHaveBeenCalled()
+    expect(finalizeOperatorCreationMock).not.toHaveBeenCalled()
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

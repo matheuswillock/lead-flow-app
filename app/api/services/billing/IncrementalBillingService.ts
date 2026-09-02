@@ -493,7 +493,24 @@ export class IncrementalBillingService implements IIncrementalBillingService {
         : formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
 
     const cycle = normalizeAsaasCycle(master.subscriptionCycle);
-    const customerId = await this.ensureCustomer(master);
+    let customerId = await this.ensureCustomer(master);
+    if (master.asaasCustomerAccount === "legacy") {
+      // Achado cursor[bot] (PR #1137, P1, round 12): createAsaasSubscription
+      // (abaixo) roda sempre na conta primary (DA1/DA5, comentário na
+      // definição da função) — enviar o cus_ validado por ensureCustomer
+      // acima quebra com "invalid customer" quando ele vive na legacy
+      // (customer_id do Asaas é escopado por conta). Diferente do catch de
+      // ensureCustomer (DA1: nunca recria por um GET que falhou), aqui o
+      // cus_ legacy é válido — só não serve para esta chamada específica.
+      // Mesmo padrão já usado em createOperatorCheckout (DA6): resolve um
+      // par novo na primary via gateway antes do POST, sem tocar a legacy.
+      console.info(
+        `🔁 [ensureOrSyncRecurringSubscription] master ${master.id} tem customer legacy ` +
+          `(${customerId}) — criando par novo na conta primary via gateway.`
+      );
+      customerId = await createAsaasCustomer(master);
+      await billingRepository.updateAsaasCustomerId(master.id, customerId);
+    }
     const description = input.reason || "Assinatura Corretor Studio";
 
     if (defaultBillingType === "CREDIT_CARD" && master.asaasSubscriptionId) {
