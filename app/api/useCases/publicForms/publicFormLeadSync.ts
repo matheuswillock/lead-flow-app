@@ -18,6 +18,11 @@ import type { UpsertLeadOutcome } from "@/lib/public-forms/lead-upsert-outcome"
 import { mergeFormMappedLeadNotes } from "@/lib/public-forms/lead-notes"
 import { resolvePublicFormLeadAssignment } from "@/lib/public-forms/resolve-public-form-lead-assignment"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
+import {
+  LEAD_SYNC_CLAIM_RETRY_ATTEMPTS,
+  LEAD_SYNC_CLAIM_RETRY_DELAY_MS,
+  waitForLeadSyncClaimRetry,
+} from "@/lib/public-forms/lead-sync-claim"
 import { formatEmailCampaignLeadCreatedActivityBody } from "@/lib/public-forms/email-campaign-attribution"
 import { isEmailCampaignFormOrigin } from "@/lib/public-forms/origin"
 import type {
@@ -243,6 +248,37 @@ export async function upsertLeadFromFormAnswers(input: {
   if (createReason) return { outcome: "discarded", reason: createReason }
   if (!input.form.team.master.supabaseId) {
     throw new Error("Master do time sem identificação de autenticação")
+  }
+
+  // SPEC 40 — claim atômico por submissão (bug de duplicatas do `/progress`,
+  // ver `lib/public-forms/lead-sync-claim.ts`): dois POSTs concorrentes da
+  // mesma sessão passaram pelo `findMatchingLead` acima sem achar nada — sem
+  // isso, os dois cairiam aqui e os dois criariam. Sem `submissionId` (call
+  // sites legados que não o têm, e a primeiríssima requisição de uma sessão
+  // — a submissão ainda não existe para ser reivindicada) o comportamento é
+  // o de sempre: sem claim, sem retry, cria direto.
+  if (input.submissionId) {
+    const wonClaim = await publicFormsRepository.claimSubmissionForLeadSync(input.submissionId)
+    if (!wonClaim) {
+      for (let attempt = 0; attempt < LEAD_SYNC_CLAIM_RETRY_ATTEMPTS; attempt += 1) {
+        await waitForLeadSyncClaimRetry(LEAD_SYNC_CLAIM_RETRY_DELAY_MS)
+        const winner = await findMatchingLead(input.form.teamId, extracted)
+        if (winner) {
+          return attachToLiveLead(
+            { form: input.form, snapshot: input.snapshot },
+            winner,
+            extracted,
+          )
+        }
+      }
+      // O vencedor do claim nunca commitou (processo morto, erro não
+      // relacionado). Viés deliberado: duplicata rara é melhor que lead
+      // perdido quando o vencedor some no meio do caminho.
+      console.info(
+        "[publicFormLeadSync][upsertLeadFromFormAnswers] lead_sync_claim_fallback_create",
+        { submissionId: input.submissionId, teamId: input.form.teamId },
+      )
+    }
   }
 
   const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
