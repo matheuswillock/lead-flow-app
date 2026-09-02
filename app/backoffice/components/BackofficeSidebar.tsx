@@ -32,6 +32,7 @@ import {
   Activity,
   Clock,
   Gauge,
+  BarChart3,
 } from "lucide-react"
 import {
   Sidebar,
@@ -172,6 +173,7 @@ const navigationItems: NavItem[] = [
       },
     ],
   },
+  { title: "Analytics de Campanhas", url: "/backoffice/campanhas-analytics", icon: BarChart3 },
   { title: "Extração de Leads", url: "/backoffice/extracao-leads", icon: SearchCheck },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
