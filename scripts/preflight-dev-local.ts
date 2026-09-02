@@ -17,7 +17,15 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { LOCAL_DB_URL, probeLocalStack, startLocalStack, waitForLocalStack } from "./lib/local-stack";
+import {
+  applyAuthStubSchema,
+  applyPendingLocalMigrations,
+  countPendingLocalMigrations,
+  LOCAL_DB_URL,
+  probeLocalStack,
+  startLocalStack,
+  waitForLocalStack,
+} from "./lib/local-stack";
 import {
   countActiveBackofficeFeatures,
   EXPECTED_ACTIVE_BACKOFFICE_FEATURES,
@@ -129,12 +137,37 @@ async function main() {
     return;
   }
 
+  ensureLocalMigrations();
+
   step("Checking local catalog (seed, not clone)");
   if (!needsLocalSeed()) {
     info("✓ Catálogo local já populado — pulando seed.");
     return;
   }
   seedLocal();
+}
+
+/** Drift local vira P2022 em toda tela — o banco é descartável, aplica sozinho. */
+function ensureLocalMigrations() {
+  step("Checking local migrations");
+  const pending = countPendingLocalMigrations(LOCAL_DB_URL);
+  if (pending === null) {
+    info("⚠ Não foi possível checar migrations locais — seguindo sem aplicar.");
+    return;
+  }
+  if (pending === 0) {
+    info("✓ Migrations locais em dia");
+    return;
+  }
+
+  info(`⚠ ${pending} migration(s) pendente(s) no Postgres local — aplicando…`);
+  if (!applyAuthStubSchema()) {
+    fail("Stub de auth local falhou. Confira o Postgres :55322 e rode `bun run db:seed:local`.");
+  }
+  if (!applyPendingLocalMigrations()) {
+    fail("`db:migrate:apply:local` falhou. Veja o SQL acima.");
+  }
+  info("✓ Migrations locais aplicadas");
 }
 
 main().catch((err) => {
