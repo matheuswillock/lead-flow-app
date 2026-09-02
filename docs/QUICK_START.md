@@ -185,6 +185,7 @@ bun run local:up:hybrid            # Sobe Postgres + Realtime + Caddy
 bun run local:down                 # Derruba o stack local
 bun run db:seed:local              # Migrations + catálogo (sem Auth admin)
 bun run db:seed:local -- --local-user              # Usuário sintético de teste (LOCAL_DEV_USER_*)
+bun run db:seed:local -- --backoffice-user         # Usuário sintético do backoffice (LOCAL_DEV_BACKOFFICE_*)
 bun run db:seed:local -- --link-remote-user voce@email  # Conta real (dados clonados)
 bun run local:logs                 # Logs do stack local
 bun run prisma:studio              # Interface visual do banco

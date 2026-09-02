@@ -11,12 +11,18 @@
  * e o Profile + "Time Local" vitalício no Postgres local. É o caminho padrão
  * para dev sem dados reais — nenhuma conta real é usada.
  *
+ * `--backoffice-user` idem para o contexto do backoffice: conta sintética
+ * (LOCAL_DEV_BACKOFFICE_EMAIL / LOCAL_DEV_BACKOFFICE_PASSWORD, obrigatoriamente
+ * @corretorstudio.com.br) + Profile role=backoffice + BackofficeUser fullAccess
+ * no Postgres local.
+ *
  * `--link-remote-user` lê (só leitura) um usuário REAL do Auth remoto e cria o
  * Profile local dele — use após `--clone` ou quando for trabalhar com dados
- * remotos. Nenhum dos dois altera assinatura/dados de produção.
+ * remotos. Nenhum dos três altera assinatura/dados de produção.
  *
  *   bun run db:seed:local
  *   bun run db:seed:local -- --local-user
+ *   bun run db:seed:local -- --backoffice-user
  *   bun run db:seed:local -- --link-remote-user voce@email
  */
 
@@ -50,10 +56,15 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-function parseArgs(rawArgs: string[]): { linkEmail: string | null; createLocalUser: boolean } {
+function parseArgs(rawArgs: string[]): {
+  linkEmail: string | null;
+  createLocalUser: boolean;
+  createBackofficeUser: boolean;
+} {
   const args = rawArgs.filter((arg) => arg !== "--");
   let linkEmail: string | null = null;
   let createLocalUser = false;
+  let createBackofficeUser = false;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -70,14 +81,18 @@ function parseArgs(rawArgs: string[]): { linkEmail: string | null; createLocalUs
       createLocalUser = true;
       continue;
     }
+    if (arg === "--backoffice-user") {
+      createBackofficeUser = true;
+      continue;
+    }
     fail(`Flag desconhecida: ${arg}`);
   }
 
-  if (linkEmail && createLocalUser) {
-    fail("Use --local-user OU --link-remote-user, não os dois.");
+  if (linkEmail && (createLocalUser || createBackofficeUser)) {
+    fail("Use --local-user/--backoffice-user OU --link-remote-user, não os dois.");
   }
 
-  return { linkEmail, createLocalUser };
+  return { linkEmail, createLocalUser, createBackofficeUser };
 }
 
 function run(
@@ -329,7 +344,7 @@ function resolveLocalDevUserCredentials(): { email: string; password: string } {
  * modo db-only passa pelo GoTrue remoto — é a única escrita remota deste
  * script, e só nessa conta (nunca em usuários reais).
  */
-async function ensureRemoteAuthTestUser(email: string, password: string) {
+async function ensureRemoteAuthTestUser(email: string, password: string, fullName: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !serviceRole) {
@@ -370,7 +385,7 @@ async function ensureRemoteAuthTestUser(email: string, password: string) {
     password,
     email_confirm: true,
     user_metadata: {
-      full_name: "Usuário Local de Teste",
+      full_name: fullName,
       [LOCAL_DEV_TEST_USER_MARKER]: true,
     },
   });
@@ -385,7 +400,7 @@ async function createLocalDevUser() {
   const { email, password } = resolveLocalDevUserCredentials();
   step(`Ensuring local test user ${email} (synthetic account + local Profile)`);
 
-  const authUser = await ensureRemoteAuthTestUser(email, password);
+  const authUser = await ensureRemoteAuthTestUser(email, password, "Usuário Local de Teste");
   if (!authUser.email) {
     fail("Conta de teste sem e-mail no Auth remoto — estado inesperado.");
   }
@@ -401,15 +416,85 @@ async function createLocalDevUser() {
   );
 }
 
+function resolveLocalDevBackofficeCredentials(): { email: string; password: string } {
+  const email = process.env.LOCAL_DEV_BACKOFFICE_EMAIL?.trim().toLowerCase();
+  const password = process.env.LOCAL_DEV_BACKOFFICE_PASSWORD?.trim();
+  if (!email || !password) {
+    fail(
+      "Defina LOCAL_DEV_BACKOFFICE_EMAIL e LOCAL_DEV_BACKOFFICE_PASSWORD no `.env` para usar --backoffice-user.\n" +
+        "   Ex.: LOCAL_DEV_BACKOFFICE_EMAIL=flavio@corretorstudio.com.br / LOCAL_DEV_BACKOFFICE_PASSWORD=Backoffice@2025",
+    );
+  }
+  // O signin do backoffice (app/backoffice/sign-in/actions.ts) rejeita qualquer
+  // outro domínio — falhar aqui evita criar uma conta que nunca vai logar.
+  if (!email.endsWith("@corretorstudio.com.br")) {
+    fail(`LOCAL_DEV_BACKOFFICE_EMAIL precisa ser @corretorstudio.com.br (recebido: ${email}).`);
+  }
+  return { email, password };
+}
+
+/** Espelha prisma/seed-backoffice.ts, mas escrevendo SOMENTE no Postgres :55322. */
+async function createLocalBackofficeUser() {
+  const { email, password } = resolveLocalDevBackofficeCredentials();
+  step(`Ensuring local backoffice test user ${email} (synthetic account + local Profile)`);
+
+  const authUser = await ensureRemoteAuthTestUser(email, password, "Backoffice Local de Teste");
+  if (!authUser.email) {
+    fail("Conta de teste sem e-mail no Auth remoto — estado inesperado.");
+  }
+
+  const prisma = new PrismaClient({ datasourceUrl: LOCAL_DB_URL });
+  try {
+    const profile = await prisma.profile.upsert({
+      where: { email: authUser.email },
+      create: {
+        email: authUser.email,
+        role: "backoffice",
+        supabaseId: authUser.id,
+        fullName: "Backoffice Local de Teste",
+        isMaster: false,
+      },
+      update: {
+        role: "backoffice",
+        supabaseId: authUser.id,
+      },
+    });
+
+    await prisma.backofficeUser.upsert({
+      where: { profileId: profile.id },
+      create: {
+        id: profile.id,
+        profileId: profile.id,
+        email: authUser.email,
+        fullAccess: true,
+        isActive: true,
+      },
+      update: {
+        email: authUser.email,
+        fullAccess: true,
+        isActive: true,
+      },
+    });
+
+    info(`✓ BackofficeUser local pronto (profileId ${profile.id}, fullAccess).`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function main() {
-  const { linkEmail, createLocalUser } = parseArgs(process.argv.slice(2));
+  const { linkEmail, createLocalUser, createBackofficeUser } = parseArgs(process.argv.slice(2));
 
   applyLocalMigrations();
   seedBackofficeCatalog();
 
   if (createLocalUser) {
     await createLocalDevUser();
-  } else if (linkEmail) {
+  }
+  if (createBackofficeUser) {
+    await createLocalBackofficeUser();
+  }
+  if (linkEmail) {
     await linkRemoteUser(linkEmail);
   }
 }

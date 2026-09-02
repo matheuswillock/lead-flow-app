@@ -479,30 +479,59 @@ function ensureLocalMigrations(dbUrl: string) {
   info("✓ Migrations locais aplicadas");
 }
 
-function ensureLocalDevProfile(dbUrl: string) {
-  const count = countLocalProfiles(dbUrl);
-  if (count !== 0) return;
+function countLocalBackofficeUsers(dbUrl: string): number | null {
+  const result = run("psql", [
+    dbUrl,
+    "-t",
+    "-A",
+    "-c",
+    'SELECT count(*) FROM "public"."backoffice_users"',
+  ]);
+  if (result.status !== 0) return null;
+  const parsed = Number(result.stdout.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  const email = process.env.LOCAL_DEV_USER_EMAIL?.trim();
-  const password = process.env.LOCAL_DEV_USER_PASSWORD?.trim();
-  if (email && password) {
-    info(`⚠ Nenhum Profile local — criando usuário de teste ${email} (--local-user)…`);
-    const seed = run("bun", ["run", "db:seed:local", "--", "--local-user"], {
-      stdio: "inherit",
-      env: { DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
-    });
-    if (seed.status !== 0) {
-      info("⚠ Criação do usuário de teste falhou. Rode `bun run db:seed:local -- --local-user` manualmente.");
-      return;
+function ensureLocalDevProfile(dbUrl: string) {
+  const seedFlags: string[] = [];
+
+  const productEmail = process.env.LOCAL_DEV_USER_EMAIL?.trim();
+  const productPassword = process.env.LOCAL_DEV_USER_PASSWORD?.trim();
+  const backofficeEmail = process.env.LOCAL_DEV_BACKOFFICE_EMAIL?.trim();
+  const backofficePassword = process.env.LOCAL_DEV_BACKOFFICE_PASSWORD?.trim();
+
+  if (countLocalProfiles(dbUrl) === 0) {
+    if (productEmail && productPassword) {
+      seedFlags.push("--local-user");
+    } else {
+      info("⚠ Nenhum Profile local. Login no Auth remoto funciona, mas o app não acha o Profile.");
+      info("  Usuário de teste: defina LOCAL_DEV_USER_EMAIL e LOCAL_DEV_USER_PASSWORD no .env");
+      info("  e rode `bun run db:seed:local -- --local-user` (ou só reinicie `bun run dev`).");
+      info("  Conta real (para dados clonados): bun run db:seed:local -- --link-remote-user voce@email");
     }
-    info(`✓ Usuário de teste pronto — login: ${email} (senha do .env).`);
-    return;
   }
 
-  info("⚠ Nenhum Profile local. Login no Auth remoto funciona, mas o app não acha o Profile.");
-  info("  Usuário de teste: defina LOCAL_DEV_USER_EMAIL e LOCAL_DEV_USER_PASSWORD no .env");
-  info("  e rode `bun run db:seed:local -- --local-user` (ou só reinicie `bun run dev`).");
-  info("  Conta real (para dados clonados): bun run db:seed:local -- --link-remote-user voce@email");
+  if (backofficeEmail && backofficePassword && countLocalBackofficeUsers(dbUrl) === 0) {
+    seedFlags.push("--backoffice-user");
+  }
+
+  if (seedFlags.length === 0) return;
+
+  info(`⚠ Criando usuário(s) de teste local (${seedFlags.join(" ")})…`);
+  const seed = run("bun", ["run", "db:seed:local", "--", ...seedFlags], {
+    stdio: "inherit",
+    env: { DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
+  });
+  if (seed.status !== 0) {
+    info(`⚠ Criação falhou. Rode \`bun run db:seed:local -- ${seedFlags.join(" ")}\` manualmente.`);
+    return;
+  }
+  if (seedFlags.includes("--local-user")) {
+    info(`✓ Usuário de teste do app pronto — login: ${productEmail} (senha do .env).`);
+  }
+  if (seedFlags.includes("--backoffice-user")) {
+    info(`✓ Usuário de teste do backoffice pronto — login em /backoffice/sign-in: ${backofficeEmail}.`);
+  }
 }
 
 async function runPreflight() {
