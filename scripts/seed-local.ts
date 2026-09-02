@@ -33,6 +33,8 @@ import {
 
 const DEFAULT_TEAM_NAME = "Meu Time";
 const LOCAL_DEV_TEAM_NAME = "Time Local";
+/** Marcador em user_metadata que autoriza --local-user a gerenciar a conta. */
+const LOCAL_DEV_TEST_USER_MARKER = "local_dev_test_user";
 const MASTER_FUNCTIONS: UserFunction[] = ["SDR", "CLOSER"];
 
 function info(msg: string) {
@@ -342,6 +344,16 @@ async function ensureRemoteAuthTestUser(email: string, password: string) {
 
   const existing = await findRemoteUserByEmail(email);
   if (existing) {
+    // Sem o marcador, este e-mail pode ser de uma pessoa real (typo, endereço
+    // reutilizado) — resetar a senha dela com o service role seria account
+    // takeover. Só contas criadas por este script podem ser atualizadas.
+    if (existing.user_metadata?.[LOCAL_DEV_TEST_USER_MARKER] !== true) {
+      fail(
+        `O e-mail ${email} já existe no Auth remoto SEM o marcador de conta de teste ` +
+          `(user_metadata.${LOCAL_DEV_TEST_USER_MARKER}). Não vou sobrescrever a senha de uma ` +
+          "conta possivelmente real — troque LOCAL_DEV_USER_EMAIL por um e-mail dedicado a teste.",
+      );
+    }
     const { data, error } = await admin.auth.admin.updateUserById(existing.id, {
       password,
       email_confirm: true,
@@ -357,7 +369,10 @@ async function ensureRemoteAuthTestUser(email: string, password: string) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: "Usuário Local de Teste" },
+    user_metadata: {
+      full_name: "Usuário Local de Teste",
+      [LOCAL_DEV_TEST_USER_MARKER]: true,
+    },
   });
   if (error || !data.user) {
     fail(`Falha ao criar a conta de teste no Auth remoto: ${error?.message ?? "sem usuário retornado"}`);

@@ -119,6 +119,11 @@ export function parseDevLocalArgs(rawArgs: string[]): DevLocalOptions {
   if (remoteDb && clone) {
     errors.push("Cannot pass --remote-db and --clone at the same time.");
   }
+  if (remoteDb && requestedStacks.size > 0) {
+    // O modo remoto pula o preflight inteiro (único caminho que sobe stacks
+    // opcionais) — aceitar aqui seria ignorar o pedido silenciosamente.
+    errors.push("Cannot combine --remote-db with optional stacks (n8n/evolution/total).");
+  }
 
   const unknownStackLikeArgs = nextArgs.filter((arg) => {
     if (arg.startsWith("-")) return false;
