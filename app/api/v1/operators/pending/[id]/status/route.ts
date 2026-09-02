@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
-import { asaasApi, asaasFetch } from '@/lib/asaas';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { getPaymentByAccountWithFallback } from '@/lib/billing/get-payment-by-account';
 
 /**
  * GET /api/v1/operators/pending/[id]/status
@@ -49,23 +49,32 @@ export async function GET(
       });
     }
 
-    // Verificar status no Asaas (se tiver paymentId)
+    // Verificar status no Asaas (se tiver paymentId) — C24 de
+    // [[20 — Assinaturas — Backend]] E5: fallback de conta em vez do
+    // client global fixo em primary.
     let asaasStatus = null;
     if (pendingOperator.paymentId) {
       try {
-        const payment = await asaasFetch(
-          `${asaasApi.payments}/${pendingOperator.paymentId}`,
-          { method: 'GET' }
-        );
+        const lookup = await getPaymentByAccountWithFallback(pendingOperator.paymentId);
 
-        asaasStatus = {
-          id: payment.id,
-          status: payment.status,
-          value: payment.value,
-          billingType: payment.billingType,
-          externalReference: payment.externalReference,
-          confirmedDate: payment.confirmedDate,
-        };
+        if (lookup.found) {
+          const payment = lookup.payment as {
+            id: string;
+            status?: string;
+            value?: number;
+            billingType?: string;
+            externalReference?: string;
+            confirmedDate?: string;
+          };
+          asaasStatus = {
+            id: payment.id,
+            status: payment.status,
+            value: payment.value,
+            billingType: payment.billingType,
+            externalReference: payment.externalReference,
+            confirmedDate: payment.confirmedDate,
+          };
+        }
       } catch (error) {
     rethrowIfPrerenderInterrupted(error);
         console.error('Erro ao verificar status no Asaas:', error);

@@ -25,14 +25,20 @@ const asaasFetchMock = mock(async (_url: string, _init?: RequestInit) => ({
   cycle: "MONTHLY",
 }))
 
+const asaasApiMock = {
+  subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
+  customers: "https://sandbox.asaas.com/api/v3/customers",
+  payments: "https://sandbox.asaas.com/api/v3/payments",
+  pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
+}
+
 mock.module("@/lib/asaas", () => ({
-  asaasApi: {
-    subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
-    customers: "https://sandbox.asaas.com/api/v3/customers",
-    payments: "https://sandbox.asaas.com/api/v3/payments",
-    pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
-  },
+  asaasApi: asaasApiMock,
   asaasFetch: asaasFetchMock,
+  // mock.module parcial contamina outros arquivos no mesmo processo (bun run
+  // check:mock-module) — createAsaasClient precisa existir mesmo que este
+  // arquivo não o chame diretamente.
+  createAsaasClient: () => ({ endpoints: asaasApiMock, request: asaasFetchMock }),
 }))
 
 const { IncrementalBillingService } = await import("./IncrementalBillingService")

@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 function isAsaasSubscriptionNotFound(errorMessage: string): boolean {
   const normalized = errorMessage
@@ -40,6 +41,7 @@ export class GetSubscriptionBySupabaseIdUseCase {
           hasPermanentSubscription: true,
           asaasCustomerId: true,
           asaasSubscriptionId: true,
+          asaasSubscriptionAccount: true,
           subscriptionId: true,
           subscriptionStatus: true,
           subscriptionPlan: true,
@@ -90,9 +92,14 @@ export class GetSubscriptionBySupabaseIdUseCase {
         );
       }
 
+      // DA2 (20 — Assinaturas — Backend E4): roteia a leitura pela conta do
+      // ponteiro — nunca escreve `canceled` aqui (read-only), mas sem isso
+      // um `sub_` legado sempre bate 404 na primary durante a janela dual.
+      const subscriptionAccount: AsaasAccountId = profile.asaasSubscriptionAccount ?? "primary";
+
       try {
         const asaasSubscription =
-          await AsaasSubscriptionService.getSubscription(resolvedSubscriptionId);
+          await AsaasSubscriptionService.getSubscription(resolvedSubscriptionId, subscriptionAccount);
         const isActive = isActiveAsaasStatus(asaasSubscription.status);
 
         return new Output(true, ["Assinatura consultada com sucesso"], [], {

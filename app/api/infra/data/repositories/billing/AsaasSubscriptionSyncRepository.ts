@@ -1,9 +1,12 @@
-import type { SubscriptionStatus } from "@prisma/client";
+import type { AsaasAccount, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 
 export interface AsaasSubscriptionSyncSnapshot {
   asaasSubscriptionId: string | null;
   hasPermanentSubscription: boolean;
+  // DA2 (20 — Assinaturas — Backend E4): só existe em Profile — ProfileSubscription
+  // não tem coluna de conta própria.
+  asaasSubscriptionAccount: AsaasAccount;
 }
 
 export interface AsaasSubscriptionSyncData {
@@ -30,6 +33,7 @@ class PrismaAsaasSubscriptionSyncRepository {
         select: {
           asaasSubscriptionId: true,
           hasPermanentSubscription: true,
+          asaasSubscriptionAccount: true,
         },
       }),
     ]);
@@ -40,6 +44,7 @@ class PrismaAsaasSubscriptionSyncRepository {
       asaasSubscriptionId: profileSubscription?.asaasSubscriptionId ?? profile?.asaasSubscriptionId ?? null,
       hasPermanentSubscription:
         profileSubscription?.hasPermanentSubscription === true || profile?.hasPermanentSubscription === true,
+      asaasSubscriptionAccount: profile?.asaasSubscriptionAccount ?? "primary",
     };
   }
 

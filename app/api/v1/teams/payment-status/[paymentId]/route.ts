@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { Output } from "@/lib/output";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 
 /**
  * GET /api/v1/teams/payment-status/[paymentId]
@@ -22,9 +22,17 @@ export async function GET(
       );
     }
 
-    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-      method: "GET",
-    });
+    // C24 de [[20 — Assinaturas — Backend]] E5: fallback de conta.
+    const lookup = await getPaymentByAccountWithFallback(paymentId);
+
+    if (!lookup.found) {
+      return NextResponse.json(
+        new Output(false, [], ["Pagamento não encontrado"], null),
+        { status: 404 }
+      );
+    }
+
+    const payment = lookup.payment as { status?: string; externalReference?: string };
 
     return NextResponse.json(
       new Output(true, [], [], {

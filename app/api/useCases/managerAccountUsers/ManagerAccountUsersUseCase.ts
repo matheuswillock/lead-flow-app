@@ -7,7 +7,7 @@ import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { isManagerLikeRole } from "@/lib/roles";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { managerAccountUserRepository } from "@/app/api/infra/data/repositories/managerAccountUser/ManagerAccountUserRepository";
 import type {
@@ -207,10 +207,21 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       return null;
     }
 
+    // C24/DA5 de [[20 — Assinaturas — Backend]] E5: o catch antigo
+    // fabricava "PENDING" fixo para QUALQUER erro (404 real incluído) —
+    // indetectável na UI, ficava "pendente para sempre". PendingAction não
+    // tem coluna de conta (§9.2 do plano) — usa o helper com fallback
+    // primary→legacy (C24).
     try {
-      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-        method: "GET",
-      });
+      const result = await getPaymentByAccountWithFallback(paymentId);
+      if (!result.found) {
+        return {
+          paymentId,
+          paymentStatus: "NOT_FOUND",
+          paymentMethod: "UNDEFINED",
+        };
+      }
+      const payment = result.payment as { status?: string; billingType?: string };
       return {
         paymentId,
         paymentStatus: payment?.status || "PENDING",
@@ -221,7 +232,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       console.error("[ManagerUsersRoute] Erro ao consultar pagamento pendente:", error);
       return {
         paymentId,
-        paymentStatus: "PENDING",
+        paymentStatus: "UNKNOWN",
         paymentMethod: "UNDEFINED",
       };
     }

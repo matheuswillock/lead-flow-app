@@ -5,17 +5,23 @@ const fetchMock = mock(async (_url: string, _init?: RequestInit): Promise<Record
   notificationDisabled: true,
 }))
 
+const asaasApiMock = {
+  customers: "https://sandbox.asaas.com/api/v3/customers",
+  notifications: "https://sandbox.asaas.com/api/v3/notifications",
+  notificationsBatch: "https://sandbox.asaas.com/api/v3/notifications/batch",
+  customerNotifications: (customerId: string) =>
+    `https://sandbox.asaas.com/api/v3/customers/${customerId}/notifications`,
+  notificationById: (notificationId: string) =>
+    `https://sandbox.asaas.com/api/v3/notifications/${notificationId}`,
+}
+
 mock.module("@/lib/asaas", () => ({
-  asaasApi: {
-    customers: "https://sandbox.asaas.com/api/v3/customers",
-    notifications: "https://sandbox.asaas.com/api/v3/notifications",
-    notificationsBatch: "https://sandbox.asaas.com/api/v3/notifications/batch",
-    customerNotifications: (customerId: string) =>
-      `https://sandbox.asaas.com/api/v3/customers/${customerId}/notifications`,
-    notificationById: (notificationId: string) =>
-      `https://sandbox.asaas.com/api/v3/notifications/${notificationId}`,
-  },
+  asaasApi: asaasApiMock,
   asaasFetch: fetchMock,
+  // mock.module parcial contamina outros arquivos no mesmo processo (bun run
+  // check:mock-module) — createAsaasClient precisa existir mesmo que este
+  // arquivo não o chame diretamente.
+  createAsaasClient: () => ({ endpoints: asaasApiMock, request: fetchMock }),
   buildDisableCustomerFacingNotificationPatch: (notification: { id: string }) => ({
     id: notification.id,
     emailEnabledForCustomer: false,

@@ -1,9 +1,10 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasFetch, asaasApi } from "@/lib/asaas";
+import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
-import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
+import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
+import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 import { getEmailService } from "@/lib/services/EmailService";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from '@/lib/utils/app-url';
@@ -33,7 +34,27 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       nextDueDateStr: formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz),
     };
   }
-  
+
+  /**
+   * DA5 de [[20 — Assinaturas — Backend]] E3 (C15/C27): tolerância única para
+   * abortar upgrade quando o cancel da assinatura antiga falha — 404
+   * confirmando que ela já está INACTIVE/cancelada. Qualquer outro erro
+   * (timeout, 5xx, rate limit) NÃO é tolerado: a criação da nova assinatura
+   * é abortada, porque prosseguir sem confirmar o cancelamento é o caminho
+   * exato da dupla cobrança (risco 🔴 nº 1 da matriz do plano).
+   */
+  private isSubscriptionAlreadyGoneError(error: unknown): boolean {
+    const statusCode = (error as { statusCode?: number } | undefined)?.statusCode;
+    if (statusCode === 404) return true;
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    return (
+      message.includes("not found") ||
+      message.includes("não encontrada") ||
+      message.includes("nao encontrada") ||
+      message.includes("already") && message.includes("inactive")
+    );
+  }
+
   /**
    * Cria pagamento para adicionar novo operador
    */
@@ -107,51 +128,50 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       // Verificar se o customer existe no Asaas atual (pode ter mudado de sandbox para produção)
+      // `let` (não `const`): se o customer for recriado abaixo, a conta
+      // acompanha o novo customer (sempre primary), não a conta original do
+      // manager — senão o checkout tentaria a conta ERRADA (achado P1).
+      let operatorPaymentCustomerAccount: AsaasAccountId = manager.asaasCustomerAccount ?? 'primary';
       console.info('🔍 [createOperatorPayment] Verificando customer no Asaas:', asaasCustomerId);
       try {
-        await AsaasCustomerService.getCustomer(asaasCustomerId);
+        const client = createAsaasClient(operatorPaymentCustomerAccount);
+        await client.request(`${client.endpoints.customers}/${asaasCustomerId}`, { method: 'GET' });
         console.info('✅ [createOperatorPayment] Customer válido no ambiente atual');
       } catch (error: any) {
         console.warn('⚠️ [createOperatorPayment] Customer não encontrado no ambiente atual:', {
           asaasCustomerId,
+          account: operatorPaymentCustomerAccount,
           error: error.message
         });
-        
-        // Customer não existe neste ambiente - criar novo
-        console.info('🔄 [createOperatorPayment] Criando novo customer no ambiente atual...');
-        
-        // Construir dados do customer com campos opcionais
-        const customerData: any = {
+
+        // C25 (20 — Assinaturas — Backend E3): recriação de customer passa
+        // pelo gateway único (notificationDisabled: true sempre, nunca mais
+        // um 6º criador silencioso fora do censo do plano de migração).
+        console.info('🔄 [createOperatorPayment] Criando novo customer via gateway...');
+
+        const newCustomer = await asaasCustomerGateway.createCustomer({
           name: manager.fullName || manager.email,
           email: manager.email,
           cpfCnpj: manager.cpfCnpj || '00000000000', // CPF genérico se não tiver
-          externalReference: manager.id,
-        };
-        
-        if (manager.phone) customerData.phone = manager.phone;
-        if (manager.postalCode) customerData.postalCode = manager.postalCode;
-        if (manager.address) customerData.address = manager.address;
-        if (manager.addressNumber) customerData.addressNumber = manager.addressNumber;
-        if (manager.complement) customerData.complement = manager.complement;
-        
-        const newCustomer = await AsaasCustomerService.createCustomer(customerData);
-        
-        if (!newCustomer || !newCustomer.success || !newCustomer.customerId) {
-          console.error('❌ [createOperatorPayment] Falha ao criar customer');
-          await prisma.pendingOperator.delete({
-            where: { id: pendingOperator.id }
-          });
-          return new Output(false, [], ['Erro ao criar customer no gateway'], null);
-        }
-        
-        // Atualizar profile com novo customerId
+          phone: manager.phone ?? undefined,
+          postalCode: manager.postalCode ?? undefined,
+          address: manager.address ?? undefined,
+          addressNumber: manager.addressNumber ?? undefined,
+          complement: manager.complement ?? undefined,
+          profileId: manager.id,
+        });
+
+        // Atualizar profile com novo customerId — o gateway cria sempre na
+        // primary (não há parâmetro de conta), então o ponteiro de conta
+        // acompanha.
         await prisma.profile.update({
           where: { id: manager.id },
-          data: { asaasCustomerId: newCustomer.customerId }
+          data: { asaasCustomerId: newCustomer.id, asaasCustomerAccount: 'primary' }
         });
-        
-        asaasCustomerId = newCustomer.customerId;
-        console.info('✅ [createOperatorPayment] Novo customer criado:', asaasCustomerId);
+
+        asaasCustomerId = newCustomer.id;
+        operatorPaymentCustomerAccount = 'primary';
+        console.info('✅ [createOperatorPayment] Novo customer criado via gateway:', asaasCustomerId);
       }
 
       // Garantir que temos um customerId válido neste ponto
@@ -173,6 +193,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         managerTimezone: manager.timezone,
         operatorName: data.operatorData.name,
         operatorEmail: data.operatorData.email,
+        // DA2: mesma conta usada para validar/recriar o customer acima —
+        // achado P1 do Codex/Cursor (customer legacy, payment na primary).
+        accountId: operatorPaymentCustomerAccount,
       });
 
       if (!checkoutLink.success) {
@@ -345,7 +368,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🔍 [createOperatorFromPending] Verificando status no Asaas...');
       let paymentStatus;
       try {
-        paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
+        // DA2: mesma conta em que createAsaasCheckoutLink criou o payment
+        // (manager.asaasCustomerAccount) — evita a tentativa extra do
+        // fallback quando já sabemos a conta certa.
+        paymentStatus = await this.checkAsaasPaymentStatus(paymentId, pendingOperator.manager?.asaasCustomerAccount);
         console.info('📊 [createOperatorFromPending] Status Asaas:', paymentStatus);
       } catch (error) {
         console.error('❌ [createOperatorFromPending] Erro ao verificar status no Asaas:', error);
@@ -439,9 +465,15 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           );
         }
 
-        // Buscar assinatura atual no Asaas
+        // Buscar assinatura atual no Asaas (DA2 — achado P1 Cursor: sem
+        // conta, um manager legacy sempre resolvia contra a primary e
+        // quebrava aqui antes de qualquer coisa).
         console.info('🔍 [createOperatorFromPending] Buscando assinatura atual no Asaas...');
-        const currentSubscription = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const managerSubscriptionAccount: AsaasAccountId = manager.asaasSubscriptionAccount ?? 'primary';
+        const currentSubscription = await AsaasSubscriptionService.getSubscription(
+          manager.asaasSubscriptionId,
+          managerSubscriptionAccount,
+        );
         
         if (!currentSubscription) {
           console.error('❌ [createOperatorFromPending] Assinatura não encontrada no Asaas:', {
@@ -711,18 +743,28 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     managerTimezone?: string | null;
     operatorName: string;
     operatorEmail: string;
+    accountId?: AsaasAccountId;
   }): Promise<any> {
     try {
+      // DA2 (achado P1 do Codex/Cursor no PR #1138): o customer já foi
+      // validado/recriado na conta resolvida do manager (createOperatorPayment),
+      // mas o payment do checkout usava sempre o client global `asaasFetch`
+      // (primary). Um manager legacy gerava payment na conta ERRADA — o
+      // `cus_` legado não existe na primary, então o checkout falhava.
+      const account: AsaasAccountId = data.accountId ?? 'primary';
+      const client = createAsaasClient(account);
+
       console.info('[Asaas] Criando checkout link com dados:', {
         customer: data.customer,
         value: data.value,
         description: data.description,
+        account,
       });
 
       // Criar checkout HOSPEDADO (permite escolher forma de pagamento)
       const ownerTz = resolveTimezone(data.managerTimezone);
       const nextDueDate = addMonthsInTz(startOfDayInTz(new Date(), ownerTz), 1, ownerTz);
-      
+
       // Primeiro cria o payment como PIX (default)
       const paymentPayload = {
         customer: data.customer,
@@ -733,8 +775,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         externalReference: `pending-operator-${data.pendingOperatorId}`,
       };
 
-      // Criar payment no Asaas
-      const payment = await asaasFetch(asaasApi.payments, {
+      // Criar payment no Asaas — mesma conta do customer validado (DA2).
+      const payment = await client.request(client.endpoints.payments, {
         method: 'POST',
         body: JSON.stringify(paymentPayload),
       });
@@ -862,12 +904,24 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     }
   }
 
-  private async checkAsaasPaymentStatus(paymentId: string): Promise<any> {
+  /**
+   * DA2 (achado P1 Cursor round 2 no PR #1138): o checkout de operador cria
+   * o payment na conta resolvida do manager (createAsaasCheckoutLink), mas
+   * esta checagem consultava sempre a primary via `asaasFetch` global — um
+   * manager legacy pagava e nunca via o operador provisionado (404 aqui
+   * lido como "ainda não confirmado"). Usa o mesmo helper com fallback
+   * primary→legacy do E5 (`getPaymentByAccountWithFallback`); quando o
+   * caller já sabe a conta (manager.asaasCustomerAccount), passa direto e
+   * evita a tentativa extra.
+   */
+  private async checkAsaasPaymentStatus(paymentId: string, knownAccount?: AsaasAccountId | null): Promise<any> {
     try {
-      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-        method: 'GET',
-      });
+      const result = await getPaymentByAccountWithFallback(paymentId, knownAccount);
+      if (!result.found) {
+        return { success: false };
+      }
 
+      const payment = result.payment as any;
       return {
         success: true,
         status: payment.status,
@@ -1001,11 +1055,16 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
   }): Promise<void> {
     const { manager, currentSubscription, newValue, operatorName } = params;
 
+    // DA2 (achado P1 Cursor no PR #1138): esta assinatura pode estar na
+    // legacy — toda operação sobre ELA (não sobre o customer) MUST usar a
+    // conta do ponteiro de assinatura, nunca o default primary implícito.
+    const account: AsaasAccountId = manager.asaasSubscriptionAccount ?? 'primary';
+
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     const isCreditCard = currentSubscription.billingType === 'CREDIT_CARD';
     const verifyUpdatedValue = async () => {
       try {
-        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId, account);
         const latestValue = Number(latest?.value);
         if (!Number.isFinite(latestValue)) {
           return false;
@@ -1018,7 +1077,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     };
     const logLatestValue = async (context: string) => {
       try {
-        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId, account);
         console.warn('⚠️ [updateManagerSubscriptionValue] Valor atual da assinatura:', {
           context,
           subscriptionId: manager.asaasSubscriptionId,
@@ -1035,7 +1094,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       try {
         await AsaasSubscriptionService.updateSubscription(
           manager.asaasSubscriptionId,
-          { value: newValue }
+          { value: newValue },
+          account,
         );
         console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
         return;
@@ -1053,7 +1113,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       await AsaasSubscriptionService.updateSubscription(
         manager.asaasSubscriptionId,
-        { value: newValue }
+        { value: newValue },
+        account,
       );
       console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao');
       return;
@@ -1079,7 +1140,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             }
             await AsaasSubscriptionService.updateSubscription(
               manager.asaasSubscriptionId,
-              { value: newValue }
+              { value: newValue },
+              account,
             );
             console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao (re-tentativa)');
             return;
@@ -1122,6 +1184,16 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       throw new Error('Manager sem customer Asaas para recriar assinatura');
     }
 
+    // DA2 (achado P1 Cursor no PR #1138): a nova assinatura MUST nascer na
+    // mesma conta do customer (`payload.customer` só existe lá); a
+    // assinatura ANTIGA a cancelar MUST usar a conta do próprio ponteiro de
+    // assinatura — as duas podem divergir durante a janela dual (DA7). Sem
+    // isso, `createSubscription`/`cancelSubscription` resolviam sempre para
+    // primary e a tolerância de 404 (isSubscriptionAlreadyGoneError)
+    // classificava um 404 de CONTA ERRADA como "já cancelada".
+    const customerAccount: AsaasAccountId = manager.asaasCustomerAccount ?? 'primary';
+    const subscriptionAccount: AsaasAccountId = manager.asaasSubscriptionAccount ?? 'primary';
+
     const currentNextDueDate = manager.subscriptionNextDueDate
       ? new Date(manager.subscriptionNextDueDate)
       : (currentSubscription.nextDueDate ? new Date(currentSubscription.nextDueDate) : null);
@@ -1148,22 +1220,37 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
     }
 
-    const newSubscription = await AsaasSubscriptionService.createSubscription(payload);
+    const newSubscription = await AsaasSubscriptionService.createSubscription(payload, customerAccount);
 
     await prisma.profile.update({
       where: { id: manager.id },
       data: {
         asaasSubscriptionId: newSubscription.subscriptionId,
+        asaasSubscriptionAccount: customerAccount,
         subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
         subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
       }
     });
 
     try {
-      await AsaasSubscriptionService.cancelSubscription(currentSubscription.id);
+      await AsaasSubscriptionService.cancelSubscription(currentSubscription.id, subscriptionAccount);
       console.info('✅ [recreateCreditCardSubscription] Assinatura antiga cancelada');
     } catch (error) {
-      console.error('❌ [recreateCreditCardSubscription] Falha ao cancelar assinatura antiga:', error);
+      // DA5 (C15/DA5 de [[20 — Assinaturas — Backend]] E3): a nova
+      // assinatura já foi criada e o Profile já aponta para ela — não há
+      // "abortar" possível aqui. O que muda é que a falha deixa de ser
+      // engolida: propaga para o caller (updateManagerSubscriptionValue),
+      // que decide se reporta erro ao usuário mesmo com a assinatura nova
+      // funcionando, em vez de duas assinaturas ativas nunca aparecerem em
+      // lugar nenhum.
+      if (!this.isSubscriptionAlreadyGoneError(error)) {
+        console.error(
+          '[DA5][doubleBillingRisk] falha ao cancelar assinatura antiga após recriar no cartão — ambas podem estar ativas',
+          { managerId: manager.id, oldSubscriptionId: currentSubscription.id, newSubscriptionId: newSubscription.subscriptionId, error },
+        );
+        throw error;
+      }
+      console.info('✅ [recreateCreditCardSubscription] Assinatura antiga já estava inativa/cancelada (tolerância 404)');
     }
   }
 
@@ -1216,24 +1303,147 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         description
       });
 
-      // 4. Cancelar assinatura antiga
-      console.info('❌ [updateManagerSubscription] Cancelando assinatura antiga:', manager.asaasSubscriptionId);
-      
-      try {
-        await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId);
-        console.info('✅ [updateManagerSubscription] Assinatura antiga cancelada');
-      } catch (error) {
-        console.error('⚠️ [updateManagerSubscription] Erro ao cancelar assinatura antiga:', error);
-        // Continuar mesmo se falhar o cancelamento (pode já estar cancelada)
-      }
-
-      // 5. Criar nova assinatura com valor atualizado
-      // Mantém a mesma data de vencimento da assinatura anterior
       const { nextDueDate, nextDueDateStr } = this.resolveAsaasNextDueDate(
         manager.subscriptionNextDueDate,
         manager.timezone
       );
 
+      const subscriptionAccount: AsaasAccountId = manager.asaasSubscriptionAccount ?? 'primary';
+      const customerAccount: AsaasAccountId = manager.asaasCustomerAccount ?? 'primary';
+
+      // DA2 (20 — Assinaturas — Backend E3, C15/C27): upgrade de assinatura
+      // legada é o próprio gatilho da migração do perfil — NUNCA cria a
+      // assinatura nova com a legada ainda ativa. Ordem: customer na
+      // primary confirmado → assinatura nova na primary confirmada →
+      // só então PUT INACTIVE na legada via client legacy (DA4). Se a
+      // legada continuar ativa por falha nesse último passo, a duplicata
+      // vira registro observável — não some, mas também não bloqueia o
+      // cliente que já está na assinatura nova e correta.
+      if (subscriptionAccount === 'legacy') {
+        let primaryCustomerId = customerAccount === 'primary' ? manager.asaasCustomerId : null;
+        if (!primaryCustomerId) {
+          const createdCustomer = await asaasCustomerGateway.createCustomer({
+            name: manager.fullName || manager.email,
+            email: manager.email,
+            cpfCnpj: manager.cpfCnpj ?? undefined,
+            phone: manager.phone ?? undefined,
+            postalCode: manager.postalCode ?? undefined,
+            address: manager.address ?? undefined,
+            addressNumber: manager.addressNumber ?? undefined,
+            complement: manager.complement ?? undefined,
+            profileId: manager.id,
+          });
+          primaryCustomerId = createdCustomer.id;
+          await prisma.profile.update({
+            where: { id: manager.id },
+            data: { asaasCustomerId: primaryCustomerId, asaasCustomerAccount: 'primary' },
+          });
+          console.info('✅ [updateManagerSubscription] Customer criado na primary para migração de upgrade', {
+            managerId: manager.id,
+            asaasCustomerId: primaryCustomerId,
+          });
+        }
+
+        const newSubscription = await AsaasSubscriptionService.createSubscription(
+          {
+            customer: primaryCustomerId!,
+            billingType: 'CREDIT_CARD',
+            value,
+            cycle: 'MONTHLY',
+            nextDueDate: nextDueDateStr,
+            description,
+            externalReference: `manager-${manager.id}-${Date.now()}`,
+          },
+          'primary',
+        );
+
+        if (!newSubscription.success) {
+          return new Output(
+            false,
+            [],
+            ['Erro ao criar nova assinatura na conta primary: ' + (newSubscription.data || 'Erro desconhecido')],
+            null
+          );
+        }
+
+        console.info('✅ [updateManagerSubscription] Nova assinatura criada na primary (migração de upgrade)', {
+          subscriptionId: newSubscription.subscriptionId,
+        });
+
+        let legacyDeactivationFailed = false;
+        try {
+          await AsaasSubscriptionService.updateSubscription(
+            manager.asaasSubscriptionId,
+            { status: 'INACTIVE' },
+            'legacy',
+          );
+          console.info('✅ [updateManagerSubscription] Assinatura legada inativada após migração');
+        } catch (error) {
+          if (!this.isSubscriptionAlreadyGoneError(error)) {
+            legacyDeactivationFailed = true;
+            console.error(
+              '[DA5][doubleBillingRisk] falha ao inativar assinatura legada após criar a nova na primary — ambas podem estar ativas',
+              { managerId: manager.id, legacySubscriptionId: manager.asaasSubscriptionId, error },
+            );
+          }
+        }
+
+        await prisma.profile.update({
+          where: { id: manager.id },
+          data: {
+            asaasSubscriptionId: newSubscription.subscriptionId,
+            asaasSubscriptionAccount: 'primary',
+            subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+            operatorCount: manager.operators.length,
+          }
+        });
+
+        return new Output(
+          true,
+          [
+            legacyDeactivationFailed
+              ? 'Assinatura atualizada — a assinatura legada não pôde ser desativada automaticamente, acompanhamento manual necessário'
+              : 'Assinatura atualizada com sucesso (migrada para a conta primary)',
+          ],
+          [],
+          {
+            oldSubscriptionId: manager.asaasSubscriptionId,
+            newSubscriptionId: newSubscription.subscriptionId,
+            newValue: value,
+            operatorCount: manager.operators.length,
+            nextDueDate: newSubscription.data.nextDueDate,
+            legacyDeactivationFailed,
+          }
+        );
+      }
+
+      // Fluxo padrão (conta primary): cancela a antiga ANTES de criar a
+      // nova. DA5 (C15): falha no cancel ABORTA a criação — exceção única é
+      // 404 confirmando que a sub já estava inativa/cancelada.
+      console.info('❌ [updateManagerSubscription] Cancelando assinatura antiga:', manager.asaasSubscriptionId);
+
+      try {
+        await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId, subscriptionAccount);
+        console.info('✅ [updateManagerSubscription] Assinatura antiga cancelada');
+      } catch (error) {
+        if (!this.isSubscriptionAlreadyGoneError(error)) {
+          console.error('[DA5] cancel da assinatura antiga falhou — abortando upgrade para não criar duplicata', {
+            managerId: manager.id,
+            asaasSubscriptionId: manager.asaasSubscriptionId,
+            error,
+          });
+          return new Output(
+            false,
+            [],
+            ['Não foi possível cancelar a assinatura atual. A atualização foi cancelada para evitar duas assinaturas ativas — tente novamente.'],
+            null
+          );
+        }
+        console.info('✅ [updateManagerSubscription] Assinatura antiga já estava inativa/cancelada (tolerância 404)');
+      }
+
+      // Criar nova assinatura com valor atualizado
+      // Mantém a mesma data de vencimento da assinatura anterior
       console.info('📝 [updateManagerSubscription] Criando nova assinatura...', {
         originalNextDueDate: manager.subscriptionNextDueDate,
         newNextDueDate: nextDueDate
@@ -1249,7 +1459,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         externalReference: `manager-${manager.id}-${Date.now()}`
       };
 
-      const newSubscription = await AsaasSubscriptionService.createSubscription(newSubscriptionData);
+      const newSubscription = await AsaasSubscriptionService.createSubscription(newSubscriptionData, subscriptionAccount);
 
       if (!newSubscription.success) {
         return new Output(
@@ -1404,15 +1614,30 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         oldSubscriptionId: manager.asaasSubscriptionId
       });
 
-      // 2. Cancelar assinatura antiga se existir
+      // 2. Cancelar assinatura antiga se existir. DA5 (C15 de
+      // [[20 — Assinaturas — Backend]] E3): falha não tolerada aborta a
+      // reativação — criar a nova sem confirmar que a antiga saiu é o
+      // mesmo caminho de dupla cobrança do upgrade normal.
+      const reactivateSubscriptionAccount: AsaasAccountId = manager.asaasSubscriptionAccount ?? 'primary';
       if (manager.asaasSubscriptionId) {
         console.info('❌ [reactivateSubscription] Cancelando assinatura antiga:', manager.asaasSubscriptionId);
         try {
-          await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId);
+          await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId, reactivateSubscriptionAccount);
           console.info('✅ [reactivateSubscription] Assinatura antiga cancelada');
         } catch (error) {
-          console.error('⚠️ [reactivateSubscription] Erro ao cancelar assinatura antiga:', error);
-          // Continuar mesmo com erro no cancelamento
+          if (!this.isSubscriptionAlreadyGoneError(error)) {
+            console.error(
+              '[DA5] cancel da assinatura antiga falhou na reativação — abortando para não criar duplicata',
+              { managerId: manager.id, oldSubscriptionId: manager.asaasSubscriptionId, error },
+            );
+            return new Output(
+              false,
+              [],
+              ['Não foi possível cancelar a assinatura anterior. Tente novamente.'],
+              null
+            );
+          }
+          console.info('✅ [reactivateSubscription] Assinatura antiga já estava inativa/cancelada (tolerância 404)');
         }
       }
 
@@ -1445,7 +1670,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         subscriptionPayload.remoteIp = data.remoteIp;
       }
 
-      const newSubscription = await AsaasSubscriptionService.createSubscription(subscriptionPayload);
+      // Roteia pela conta do customer armazenado (DA2) — migração completa
+      // para primary na reativação de conta legada fica fora do escopo
+      // desta mudança (seria replicar o fluxo de customer-gateway já feito
+      // em updateManagerSubscription; ver Open questions da SPEC).
+      const newSubscription = await AsaasSubscriptionService.createSubscription(
+        subscriptionPayload,
+        reactivateSubscriptionAccount,
+      );
 
       if (!newSubscription || !newSubscription.data?.id) {
         return new Output(false, [], ['Erro ao criar nova assinatura no Asaas'], null);
@@ -1480,22 +1712,25 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         operatorCount: data.operatorCount
       };
 
-      // Se for PIX, buscar dados da primeira cobrança
+      // Se for PIX, buscar dados da primeira cobrança. DA2 (achado P1
+      // Cursor round 3): a assinatura nasceu em `reactivateSubscriptionAccount`
+      // — buscar o payment/QR na primary (client global) 404ava para quem
+      // reativou na legacy, e o catch abaixo engolia silenciosamente,
+      // devolvendo sucesso sem `pixQrCode`/`pixCopyPaste`.
       if (data.paymentMethod === 'PIX') {
         try {
-          // Buscar primeira cobrança da assinatura
-          const payments = await asaasFetch(`${asaasApi.subscriptions}/${newSubscription.data.id}/payments`, {
-            method: 'GET',
-          });
-          if (payments.data && payments.data.length > 0) {
-            const firstPayment = payments.data[0];
+          const payments = await AsaasSubscriptionService.getSubscriptionPayments(
+            newSubscription.data.id,
+            undefined,
+            reactivateSubscriptionAccount,
+          );
+          if (payments && payments.length > 0) {
+            const firstPayment = payments[0];
             resultData.paymentId = firstPayment.id;
-            
+
             // Se tiver QR code do PIX
             if (firstPayment.invoiceUrl) {
-              const pixData = await asaasFetch(asaasApi.pixQrCode(firstPayment.id), {
-                method: 'GET',
-              });
+              const pixData = await AsaasSubscriptionService.getPixQrCode(firstPayment.id, reactivateSubscriptionAccount);
               resultData.pixQrCode = pixData.encodedImage;
               resultData.pixCopyPaste = pixData.payload;
             }
