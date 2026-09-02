@@ -8,7 +8,9 @@ export type PendingOperatorWithManager = PendingOperator & {
     | "fullName"
     | "supabaseId"
     | "asaasSubscriptionId"
+    | "asaasSubscriptionAccount"
     | "asaasCustomerId"
+    | "asaasCustomerAccount"
     | "timezone"
   >
 }

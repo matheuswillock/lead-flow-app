@@ -1,5 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PlatformPurchase, Prisma } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   CreatePlatformPurchaseInput,
   IPlatformPurchaseRepository,
@@ -36,8 +37,11 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
     return prisma.platformPurchase.findUnique({ where: { externalReference } })
   }
 
-  async findByAsaasPaymentId(asaasPaymentId: string): Promise<PlatformPurchase | null> {
-    return prisma.platformPurchase.findUnique({ where: { asaasPaymentId } })
+  async findByAsaasPaymentId(
+    asaasPaymentId: string,
+    account: AsaasAccountId
+  ): Promise<PlatformPurchase | null> {
+    return prisma.platformPurchase.findFirst({ where: { asaasPaymentId, asaasAccount: account } })
   }
 
   async update(id: string, data: UpdatePlatformPurchaseInput): Promise<PlatformPurchase> {
@@ -70,6 +74,7 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
   async markPaidOnce(input: {
     id: string
     asaasPaymentId: string
+    account: AsaasAccountId
     paidAt?: Date
   }): Promise<PlatformPurchase | null> {
     const paidAt = input.paidAt ?? new Date()
@@ -81,6 +86,7 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
       data: {
         status: "paid",
         asaasPaymentId: input.asaasPaymentId,
+        asaasAccount: input.account,
         paidAt,
         appliedAt: paidAt,
       },

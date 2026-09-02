@@ -2960,7 +2960,15 @@ model PlatformPurchase {
   quantity          Int?
   description       String?                @db.Text
   metadata          Json?
-  asaasPaymentId    String?                @unique @map("asaas_payment_id") @db.Text
+  // Não é mais @unique isolado: o mesmo asaasPaymentId pode colidir entre
+  // as duas contas Asaas durante a janela dual (C33, "5º ponto" achado em
+  // 2026-08-30 na execução de [[10 — Fundações Multi-conta — Backend]] E4) —
+  // a unicidade real é o par (asaasPaymentId, asaasAccount) abaixo, mesmo
+  // padrão já aplicado em BackofficePayment/BackofficeAdhesion.
+  asaasPaymentId    String?                @map("asaas_payment_id") @db.Text
+  // Conta Asaas dona do asaasPaymentId acima — todo lookup por
+  // asaasPaymentId MUST filtrar por esta coluna também.
+  asaasAccount      AsaasAccount           @default(primary) @map("asaas_account")
   asaasCustomerId   String?                @map("asaas_customer_id") @db.Text
   externalReference String                 @unique @map("external_reference") @db.Text
   paidAt            DateTime?              @map("paid_at") @db.Timestamptz(6)
@@ -2971,6 +2979,7 @@ model PlatformPurchase {
   profile Profile @relation("PlatformPurchaseProfile", fields: [profileId], references: [id], onDelete: Cascade)
   team    Team?   @relation("PlatformPurchaseTeam", fields: [teamId], references: [id], onDelete: SetNull)
 
+  @@unique([asaasPaymentId, asaasAccount], map: "corretor_studio_platform_purchases_asaas_payment_account_key")
   @@index([profileId, status], map: "corretor_studio_platform_purchases_profile_status_idx")
   @@index([productSlug], map: "corretor_studio_platform_purchases_product_slug_idx")
   @@index([purchaseType], map: "corretor_studio_platform_purchases_purchase_type_idx")

@@ -12,7 +12,9 @@ const managerSelect = {
   fullName: true,
   supabaseId: true,
   asaasSubscriptionId: true,
+  asaasSubscriptionAccount: true,
   asaasCustomerId: true,
+  asaasCustomerAccount: true,
   timezone: true,
 } as const
 

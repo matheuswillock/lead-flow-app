@@ -172,7 +172,8 @@ export async function processAsaasWebhookEvent(
         );
         const operatorResult = await checkoutAsaasUseCase.processOperatorCheckoutPaid(
           checkoutSessionId!,
-          paymentId
+          paymentId,
+          account
         );
 
         if (!operatorResult.isValid) {
@@ -182,10 +183,25 @@ export async function processAsaasWebhookEvent(
             paymentId,
             externalReference,
           });
+
+          // E4 (C22): a falha genérica do catch interno de
+          // processOperatorCheckoutPaid é o modo "cliente pagou e nada foi
+          // entregue" — não pode ficar só no log. Propagar aqui faz o evento
+          // inteiro cair no outbox/retry que já existe em nível de evento
+          // (AsaasWebhookEvent + fila + cron de retry), em vez de um
+          // Output(false) descartado silenciosamente. Os demais motivos
+          // (já criado, não encontrado, sem assinatura vinculada) são
+          // no-ops legítimos e não retryáveis — não escalam.
+          if (operatorResult.errorMessages.includes("Erro ao processar pagamento do operador")) {
+            throw new Error(
+              `[processOperatorCheckoutPaid] falha não idempotente para checkoutSessionId=${checkoutSessionId} paymentId=${paymentId}`
+            );
+          }
         }
       } catch (error) {
         rethrowIfPrerenderInterrupted(error);
         console.error("[AsaasWebhookRoute][process] operator checkout error", { eventId, error });
+        throw error;
       }
     }
 
@@ -275,6 +291,7 @@ export async function processAsaasWebhookEvent(
         const purchaseResult = await platformCheckoutUseCase.applyPaidPurchase({
           externalReference,
           asaasPaymentId: paymentId,
+          account,
         });
 
         if (!purchaseResult.isValid) {
@@ -306,6 +323,7 @@ export async function processAsaasWebhookEvent(
               externalReference,
               checkoutId: details.checkoutId,
               productSlug: details.productSlug,
+              account,
             });
             console.info("[AsaasWebhookRoute][process][EmailCredits]", {
               eventId,

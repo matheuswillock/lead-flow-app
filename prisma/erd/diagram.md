@@ -2585,6 +2585,7 @@ completed completed
     String description "❓"
     Json metadata "❓"
     String asaas_payment_id "❓"
+    AsaasAccount asaas_account 
     String asaas_customer_id "❓"
     String external_reference 
     DateTime paid_at "❓"
@@ -4438,6 +4439,7 @@ completed completed
     "corretor_studio_profile_web_push_consents" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseType" : "enum:purchase_type"
     "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseStatus" : "enum:status"
+    "corretor_studio_platform_purchases" |o--|| "AsaasAccount" : "enum:asaas_account"
     "corretor_studio_platform_purchases" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_platform_purchases" }o--|o corretor_studio_teams : "team"
     "corretor_studio_asaas_notification_backfill" |o--|| "AsaasNotificationBackfillStatus" : "enum:status"

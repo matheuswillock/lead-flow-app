@@ -63,7 +63,11 @@ export interface ICheckoutAsaasUseCase {
   createSubscriptionCheckout(data: CreateCheckoutData): Promise<Output>;
   createOperatorCheckout(data: CreateOperatorCheckoutData): Promise<Output>;
   processCheckoutPaid(checkoutId: string, account: AsaasAccountId): Promise<Output>;
-  processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output>;
+  processOperatorCheckoutPaid(
+    checkoutSessionId: string,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<Output>;
 }
 
 /**
@@ -422,6 +426,33 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       pendingOperatorId = pendingOperator.id;
       console.info('💾 [createOperatorCheckout] PendingOperator criado:', pendingOperatorId);
 
+      // 3.1 E4 (C22/DA2): o checkout novo (POST /checkouts) só existe na
+      // conta primary. Enviar um asaasCustomerId legacy quebra com "invalid
+      // customer" — resolve um par novo na primary via gateway (DA6) e
+      // persiste no profile (mesmo padrão de createSubscriptionCheckout),
+      // em vez de tentar reusar o cus_ legado.
+      let operatorCheckoutCustomerId = manager.asaasCustomerId;
+      if (manager.asaasCustomerAccount === 'legacy') {
+        console.info(
+          `🔁 [createOperatorCheckout] manager ${manager.id} tem customer legacy ` +
+            `(${manager.asaasCustomerId}) — criando par novo na conta primary via gateway.`
+        );
+        const newCustomer = await this.asaasCustomerGateway.createCustomer({
+          profileId: manager.id,
+          name: manager.fullName || manager.email,
+          email: manager.email,
+          cpfCnpj: manager.cpfCnpj || undefined,
+          phone: manager.phone || undefined,
+          postalCode: manager.postalCode || undefined,
+          address: manager.address || undefined,
+          addressNumber: manager.addressNumber || undefined,
+          complement: manager.complement || undefined,
+          province: manager.neighborhood || undefined,
+        });
+        await this.profileRepository.updateAsaasCustomerId(manager.id, newCustomer.id);
+        operatorCheckoutCustomerId = newCustomer.id;
+      }
+
       // 4. Criar Asaas Checkout para licença adicional
       // Usar checkout hospedado do Asaas (permite escolher forma de pagamento)
       const ownerTz = resolveTimezone(manager.timezone);
@@ -437,7 +468,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       const checkoutData: any = {
-        customer: manager.asaasCustomerId,
+        customer: operatorCheckoutCustomerId,
         billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
         chargeTypes: ['RECURRENT'],
         subscription: {
@@ -524,12 +555,20 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
    * Incrementa assinatura do manager e cria operador
    * @param checkoutSessionId - ID da sessão de checkout (checkoutSession do payment)
    * @param paymentId - ID do pagamento confirmado
+   * @param account - conta Asaas do evento (E4/C22): a cobrança e a
+   * subscription novas criadas pelo checkout vivem nesta conta; a assinatura
+   * ANTIGA do manager pode viver em outra (asaasSubscriptionAccount).
    */
-  async processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output> {
+  async processOperatorCheckoutPaid(
+    checkoutSessionId: string,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<Output> {
     try {
       console.info('💰 [processOperatorCheckoutPaid] Processando pagamento:', {
         checkoutSessionId,
-        paymentId
+        paymentId,
+        account,
       });
 
       // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como paymentId)
@@ -547,9 +586,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         return new Output(false, [], ['Operador já foi criado'], null);
       }
 
-      // 2. Buscar payment no Asaas para obter subscription
-      const payment = await asaasFetch(
-        `${asaasApi.payments}/${paymentId}`,
+      // 2. Buscar payment no Asaas para obter subscription (nasceu no
+      // checkout, na conta do evento).
+      const eventClient = createAsaasClient(account);
+      const payment = await eventClient.request(
+        `${eventClient.endpoints.payments}/${paymentId}`,
         { method: 'GET' }
       );
 
@@ -579,9 +620,14 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         new: newSubscriptionId
       });
 
+      // E4 (C22/DA2): a assinatura ANTIGA do manager roteia pela conta onde
+      // ela de fato vive — pode ser diferente da conta do evento/checkout.
+      const oldSubscriptionAccount = manager.asaasSubscriptionAccount;
+      const oldSubscriptionClient = createAsaasClient(oldSubscriptionAccount);
+
       // Buscar valor atual da assinatura antiga
-      const oldSubscription = await asaasFetch(
-        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
+      const oldSubscription = await oldSubscriptionClient.request(
+        `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
         { method: 'GET' }
       );
 
@@ -593,8 +639,8 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       // Atualizar assinatura antiga com novo valor
-      await asaasFetch(
-        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
+      await oldSubscriptionClient.request(
+        `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
         {
           method: 'PUT',
           body: JSON.stringify({ value: newValue })
@@ -603,10 +649,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
 
-      // Cancelar nova subscription (usamos apenas para gerar o checkout)
+      // Cancelar nova subscription (usamos apenas para gerar o checkout —
+      // nasceu na conta do evento, mesmo client do payment acima).
       try {
-        await asaasFetch(
-          `${asaasApi.subscriptions}/${newSubscriptionId}`,
+        await eventClient.request(
+          `${eventClient.endpoints.subscriptions}/${newSubscriptionId}`,
           {
             method: 'DELETE'
           }
