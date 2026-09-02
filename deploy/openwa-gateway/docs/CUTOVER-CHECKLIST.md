@@ -4,8 +4,13 @@
 
 - Camada produto `evo/` e webhook `/api/webhooks/whatsapp/evolution/` removidos.
 - `WhatsAppEngineFactory` e `OpenWaWhatsAppProvider` são o caminho padrão do produto.
-- `docker-compose.vps.yml` inclui serviço `openwa` (sem Evolution do produto).
-- **Bethânia** ainda usa Evolution (`backofficeBot/evo`, `docker-compose.evolution.yml`) — Spec 02.
+- `docker-compose.vps.yml` tem só `openwa` e `studio-bot-ops` — n8n, n8n-postgres
+  e Evolution saíram da VPS, e as stacks locais (`docker-compose.n8n.yml`,
+  `docker-compose.evolution.yml`, `bun dev -- n8n|evolution|total`) foram removidas.
+- **Bethânia** continua com o código de Evolution/n8n intacto (`backofficeBot/evo`,
+  `StudioBotN8nDispatchService`), mas **sem destino em produção**: o dispatch
+  outbound e a verificação de canal ficam fora do ar até a Spec 02 reapontar
+  ambos para o OpenWA.
 
 ## Smoke (piloto 1 time)
 

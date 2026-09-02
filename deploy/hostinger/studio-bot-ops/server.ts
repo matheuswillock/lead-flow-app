@@ -35,68 +35,16 @@ const N8N_ALLOW = new Set([
 ]);
 
 const EVO_ALLOW = new Set(["AUTHENTICATION_API_KEY", "CONFIG_SESSION_PHONE_VERSION"]);
-const ACTIVE_BETHANIA_WORKFLOWS = new Set([
-  "bethania-router",
-  "bethania-push-outbound",
-  "bethania-error-notifier",
-]);
-const STUB_BETHANIA_WORKFLOWS = new Set([
-  "bethania-verification-channel",
-  "bethania-verification-web",
-  "bethania-menu-main",
-  "bethania-list-leads",
-  "bethania-agenda-today",
-  "bethania-list-tasks",
-  "bethania-add-note-confirm",
-]);
-/** Ordem estável — error-notifier primeiro; stubs no meio; router por último na lista de publish. */
-const WORKFLOW_IMPORT_ORDER = [
-  "bethania-error-notifier.json",
-  "bethania-verification-channel.json",
-  "bethania-verification-web.json",
-  "bethania-menu-main.json",
-  "bethania-list-leads.json",
-  "bethania-agenda-today.json",
-  "bethania-list-tasks.json",
-  "bethania-add-note-confirm.json",
-  "bethania-push-outbound.json",
-  "bethania-router.json",
-];
-const CONTAINER_TMP = "/tmp/lead-flow-n8n-workflows";
 
-function execErrorDetail(error) {
-  if (!error || typeof error !== "object") return String(error);
-  const stderr = typeof error.stderr === "string" ? error.stderr.trim() : "";
-  const stdout = typeof error.stdout === "string" ? error.stdout.trim() : "";
-  const message = error instanceof Error ? error.message : String(error);
-  return [message, stderr, stdout].filter(Boolean).join("\n").slice(0, 2000);
-}
-
-async function n8nExec(...args) {
-  return execFileAsync("docker", ["exec", "-u", "node", "n8n", "n8n", ...args], {
-    maxBuffer: 4 * 1024 * 1024,
-  });
-}
-const REQUIRED_N8N_ENV = [
-  "LEAD_FLOW_API_BASE_URL",
-  "N8N_WEBHOOK_BASE_URL",
-  "BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET",
-  "EVO_API_BASE_URL",
-  "EVO_API_KEY",
-  "EVO_BETHANIA_INSTANCE",
-  "BACKOFFICE_BETHANIA_WHATSAPP_NUMBER",
-  "N8N_BLOCK_ENV_ACCESS_IN_NODE",
-  "NODE_FUNCTION_ALLOW_BUILTIN",
-  "N8N_RUNNERS_ENABLED",
-  "BETHANIA_SLACK_WEBHOOK_URL",
+/**
+ * Serviços que restaram no docker-compose.vps.yml após a saída de n8n/Evolution.
+ * `studio-bot-ops` fixa container_name; `openwa` recebe o nome derivado do projeto compose.
+ */
+const MANAGED_SERVICES = [
+  { service: "openwa", matchesContainer: (name) => name.includes("openwa") },
+  { service: "studio-bot-ops", matchesContainer: (name) => name === "studio_bot_ops" },
 ];
-/** Flags com valor fixo documentado — presença sozinha nao basta. */
-const REQUIRED_N8N_ENV_VALUES = {
-  N8N_BLOCK_ENV_ACCESS_IN_NODE: "false",
-  NODE_FUNCTION_ALLOW_BUILTIN: "crypto",
-  N8N_RUNNERS_ENABLED: "false",
-};
-const REQUIRED_EVO_ENV = ["AUTHENTICATION_API_KEY"];
+const DEFAULT_SERVICE = "openwa";
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -275,151 +223,54 @@ async function listContainers() {
     });
 }
 
-function parseWorkflowListLines(stdout, active) {
-  return String(stdout || "")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      // n8n 2.28.5 list:workflow emite "<id>|<name>"; --active filtra, nao adiciona coluna.
-      const [id, name] = line.split("|").map((part) => part?.trim() || "");
-      return { id: id || "", name: name || line, active };
-    });
+/** `docker ps` reporta "Up 3 hours", "Up 2 minutes (healthy)" ou "Up 30 seconds (unhealthy)". */
+function isContainerUp(status) {
+  if (!status || !status.startsWith("Up")) return false;
+  return !status.includes("(unhealthy)") && !status.includes("(starting)");
 }
 
-async function listWorkflowsByActive(active) {
-  const { stdout } = await execFileAsync(
-    "docker",
-    ["exec", "n8n", "n8n", "list:workflow", `--active=${active ? "true" : "false"}`],
-    { maxBuffer: 2 * 1024 * 1024 }
-  );
-  return parseWorkflowListLines(stdout, active);
-}
+/** Cada serviço do compose da VPS está no ar? Substitui o antigo check de workflows do n8n. */
+function buildVpsStackCheck(containers) {
+  const services = MANAGED_SERVICES.map(({ service, matchesContainer }) => {
+    const container = containers.find((item) => matchesContainer(item.name));
+    return {
+      service,
+      container: container?.name ?? null,
+      image: container?.image ?? null,
+      status: container?.status ?? null,
+      ok: isContainerUp(container?.status),
+    };
+  });
 
-async function listWorkflows() {
-  try {
-    const [activeWorkflows, inactiveWorkflows] = await Promise.all([
-      listWorkflowsByActive(true),
-      listWorkflowsByActive(false),
-    ]);
-    const byId = new Map();
-    for (const workflow of [...activeWorkflows, ...inactiveWorkflows]) {
-      if (!workflow.id) continue;
-      byId.set(workflow.id, workflow);
-    }
-    return Array.from(byId.values());
-  } catch {
-    return [];
-  }
-}
-
-function isConfiguredSecret(value) {
-  const text = normalizeEnvValue(value);
-  if (!text) return false;
-  if (text.includes("...") || text.includes("XXXXXXXX") || text.includes("SUBSTITUA_")) return false;
-  return true;
-}
-
-function isConfiguredN8nEnv(key, value) {
-  const expected = REQUIRED_N8N_ENV_VALUES[key];
-  if (expected !== undefined) {
-    return normalizeEnvValue(value) === expected;
-  }
-  return isConfiguredSecret(value);
-}
-
-async function readEnvFromDeploy(filename) {
-  try {
-    return parseEnvFile(await fs.readFile(path.join(DEPLOY_DIR, filename), "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function buildBethaniaProductionCheck({ containers, workflows, n8nEnv, evoEnv }) {
-  const workflowByName = new Map(workflows.map((workflow) => [workflow.name, workflow]));
-  const env = {
-    n8n: REQUIRED_N8N_ENV.map((key) => ({
-      key,
-      configured: isConfiguredN8nEnv(key, n8nEnv[key]),
-    })),
-    evolution: REQUIRED_EVO_ENV.map((key) => ({
-      key,
-      configured: isConfiguredSecret(evoEnv[key]),
-    })),
-  };
-  const workflowState = [
-    ...Array.from(ACTIVE_BETHANIA_WORKFLOWS).map((name) => {
-      const workflow = workflowByName.get(name);
-      return {
-        name,
-        expected: "active",
-        actual: workflow?.active ?? "missing",
-        ok: workflow?.active === true,
-      };
-    }),
-    ...Array.from(STUB_BETHANIA_WORKFLOWS).map((name) => {
-      const workflow = workflowByName.get(name);
-      return {
-        name,
-        expected: "inactive",
-        actual: workflow?.active ?? "missing",
-        ok: workflow?.active === false,
-      };
-    }),
-  ];
-  const n8nContainer = containers.find((container) => container.name === "n8n");
-  const imagePinned = Boolean(n8nContainer?.image?.includes("n8nio/n8n:2.28.5"));
-  const envOk =
-    env.n8n.every((item) => item.configured) &&
-    env.evolution.every((item) => item.configured);
-  const workflowsOk = workflowState.every((item) => item.ok);
-
-  return {
-    ok: envOk && workflowsOk && imagePinned,
-    env,
-    workflows: workflowState,
-    containers: {
-      n8nImage: n8nContainer?.image ?? null,
-      imagePinned,
-    },
-    productionEvidenceRequired: [
-      "QR da instância bethania escaneado e status connected no backoffice/Evolution",
-      "Webhook Evolution da instância bethania apontando para http://n8n:5678/webhook/bethania-inbound",
-      "Teste Account -> Gerar código -> VINCULAR -> confirmação WhatsApp executado em produção",
-      "Falha forçada em workflow ativo gerando Slack e outbox failed",
-      "Overview do n8n sem falhas sistêmicas no caminho feliz por 24h após deploy",
-      "Templates HSM bethania_meeting_reminder e bethania_auth_code aprovados no WhatsApp Manager",
-    ],
-  };
+  return { ok: services.every((item) => item.ok), services };
 }
 
 async function handleHealth(_req, res) {
   const containers = await listContainers();
-  const workflows = await listWorkflows();
-  const n8nEnv = await readEnvFromDeploy(".env.n8n");
-  const evoEnv = await readEnvFromDeploy(".env.evolution");
   let hostVersion = null;
   try {
     hostVersion = (await fs.readFile(HOST_VERSION_FILE, "utf8")).trim();
   } catch {
     hostVersion = null;
   }
-  const bethaniaProductionCheck = buildBethaniaProductionCheck({
-    containers,
-    workflows,
-    n8nEnv,
-    evoEnv,
-  });
   return json(res, 200, {
     ok: true,
     containers,
-    workflows,
     hostVersion,
-    bethaniaProductionCheck,
+    vpsStackCheck: buildVpsStackCheck(containers),
   });
 }
 
+/**
+ * CONGELADO — não funciona desde a saída de n8n/Evolution da VPS.
+ *
+ * Escreve `.env.n8n`/`.env.evolution` e recria serviços que não existem mais no
+ * docker-compose.vps.yml, então o `compose up` no fim sempre falha. Mantido
+ * intacto de propósito: o modelo de env vive em colunas do banco
+ * (`BackofficeBotHostSettings.n8nEnvEncrypted` / `evolutionEnvEncrypted`) e
+ * reapontá-lo para o `.env.openwa` exige migration + decisão sobre expor a
+ * service key do Supabase no painel. Fica para a Spec 02 (Bethânia → OpenWA).
+ */
 async function handleApplyEnv(body, res) {
   const payload = JSON.parse(body || "{}");
   const n8nPath = path.join(DEPLOY_DIR, ".env.n8n");
@@ -439,153 +290,35 @@ async function handleApplyEnv(body, res) {
   });
 }
 
+function resolveManagedService(raw) {
+  return MANAGED_SERVICES.find(({ service }) => service === raw)?.service ?? null;
+}
+
+function managedServiceNames() {
+  return MANAGED_SERVICES.map(({ service }) => service).join(" ou ");
+}
+
 async function handleRestart(body, res) {
   const payload = JSON.parse(body || "{}");
-  const service = payload.service || "n8n";
-  if (service === "all") {
+  const requested = payload.service || DEFAULT_SERVICE;
+  if (requested === "all") {
     const result = await compose("restart");
     return json(res, 200, { ok: true, result });
   }
-  const map = { n8n: "n8n", api: "api" };
-  const target = map[service];
-  if (!target) return json(res, 400, { ok: false, error: "service inválido" });
+  const target = resolveManagedService(requested);
+  if (!target) {
+    return json(res, 400, { ok: false, error: `service deve ser ${managedServiceNames()} ou all` });
+  }
   const result = await compose("restart", target);
   return json(res, 200, { ok: true, result });
 }
 
-async function handleImportWorkflows(_body, res) {
-  const workflowsDir = path.join(DEPLOY_DIR, "n8n", "workflows");
-  let available = [];
-  try {
-    available = (await fs.readdir(workflowsDir)).filter((f) => f.endsWith(".json"));
-  } catch (error) {
-    return json(res, 500, {
-      ok: false,
-      error: `Diretório de workflows ausente: ${workflowsDir}`,
-      detail: execErrorDetail(error),
-    });
-  }
-
-  const availableSet = new Set(available);
-  const ordered = [
-    ...WORKFLOW_IMPORT_ORDER.filter((f) => availableSet.has(f)),
-    ...available.filter((f) => !WORKFLOW_IMPORT_ORDER.includes(f)).sort(),
-  ];
-
-  const imported = [];
-  const failed = [];
-  const skipped = [];
-
-  await execFileAsync("docker", ["exec", "-u", "node", "n8n", "mkdir", "-p", CONTAINER_TMP]);
-
-  for (const file of ordered) {
-    const local = path.join(workflowsDir, file);
-    const name = file.replace(/\.json$/i, "");
-    const isStub = STUB_BETHANIA_WORKFLOWS.has(name);
-    const isCritical = ACTIVE_BETHANIA_WORKFLOWS.has(name);
-
-    try {
-      await execFileAsync("docker", ["cp", local, `n8n:${CONTAINER_TMP}/${file}`]);
-      await n8nExec("import:workflow", `--input=${CONTAINER_TMP}/${file}`);
-      imported.push(file);
-    } catch (error) {
-      const detail = execErrorDetail(error);
-      failed.push({ file, stub: isStub, critical: isCritical, error: detail });
-      console.error("[studio-bot-ops][import] fail", file, detail);
-      if (isCritical) {
-        return json(res, 500, {
-          ok: false,
-          error: `Falha ao importar workflow crítico ${file}`,
-          imported,
-          failed,
-          detail,
-        });
-      }
-    }
-  }
-
-  let listStdout = "";
-  try {
-    const listed = await n8nExec("list:workflow");
-    listStdout = listed.stdout || "";
-  } catch (error) {
-    return json(res, 500, {
-      ok: false,
-      error: "Import parcial, mas falhou ao listar workflows",
-      imported,
-      failed,
-      detail: execErrorDetail(error),
-    });
-  }
-
-  for (const line of listStdout.trim().split("\n")) {
-    if (!line.includes("|")) continue;
-    const [id, name] = line.split("|").map((s) => s.trim());
-    if (!id || !name) continue;
-
-    if (ACTIVE_BETHANIA_WORKFLOWS.has(name)) {
-      try {
-        await n8nExec("publish:workflow", `--id=${id}`);
-      } catch {
-        // best effort — n8n 2.x
-      }
-      try {
-        await n8nExec("update:workflow", `--id=${id}`, "--active=true");
-      } catch {
-        // deprecated in 2.x — best effort
-      }
-    }
-
-    if (STUB_BETHANIA_WORKFLOWS.has(name)) {
-      try {
-        await n8nExec("unpublish:workflow", `--id=${id}`);
-      } catch {
-        try {
-          await n8nExec("update:workflow", `--id=${id}`, "--active=false");
-        } catch {
-          // best effort
-        }
-      }
-    }
-  }
-
-  const missingCritical = [...ACTIVE_BETHANIA_WORKFLOWS].filter(
-    (name) => !imported.includes(`${name}.json`) && !listStdout.includes(name)
-  );
-  for (const name of missingCritical) skipped.push(name);
-
-  await compose("restart", "n8n");
-
-  const criticalFailed = failed.filter((f) => f.critical);
-  if (criticalFailed.length > 0) {
-    return json(res, 500, {
-      ok: false,
-      error: `Falha em workflows críticos: ${criticalFailed.map((f) => f.file).join(", ")}`,
-      imported,
-      failed,
-      skipped,
-    });
-  }
-
-  return json(res, 200, {
-    ok: true,
-    imported,
-    failed,
-    skipped,
-    note:
-      failed.length > 0
-        ? "Import concluído com soft-fail em stubs; veja failed[].error para o detalhe do n8n."
-        : undefined,
-  });
-}
-
 async function handleLogs(req, res) {
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
-  const serviceRaw = (url.searchParams.get("service") || "n8n").trim();
-  const serviceMap = { n8n: "n8n", api: "api" };
-  const service = serviceMap[serviceRaw];
+  const requested = (url.searchParams.get("service") || DEFAULT_SERVICE).trim();
+  const service = resolveManagedService(requested);
   if (!service) {
-    return json(res, 400, { ok: false, error: "service deve ser n8n ou api" });
+    return json(res, 400, { ok: false, error: `service deve ser ${managedServiceNames()}` });
   }
 
   let tail = Number(url.searchParams.get("tail") || "200");
@@ -598,7 +331,7 @@ async function handleLogs(req, res) {
 
   return json(res, 200, {
     ok: true,
-    service: serviceRaw === "api" ? "api" : "n8n",
+    service,
     lines,
     fetchedAt: new Date().toISOString(),
   });
@@ -618,7 +351,7 @@ async function handleSyncHost(body, res) {
 
   const backupDir = path.join(DEPLOY_DIR, `.host-backup-${Date.now()}`);
   await fs.mkdir(backupDir, { recursive: true });
-  for (const rel of ["docker-compose.vps.yml", "n8n", "studio-bot-ops"]) {
+  for (const rel of ["docker-compose.vps.yml", "studio-bot-ops"]) {
     const src = path.join(DEPLOY_DIR, rel);
     try {
       await execFileAsync("cp", ["-a", src, path.join(backupDir, path.basename(rel))]);
@@ -674,9 +407,6 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/v1/services/restart") {
       return await handleRestart(body, res);
-    }
-    if (req.method === "POST" && url.pathname === "/v1/workflows/import") {
-      return await handleImportWorkflows(body, res);
     }
     if (req.method === "POST" && url.pathname === "/v1/host/sync") {
       return await handleSyncHost(body, res);

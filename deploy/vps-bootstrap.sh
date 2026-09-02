@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy/vps-bootstrap.sh — Bootstrap VPS Hostinger (Evolution + N8N + Caddy)
+# deploy/vps-bootstrap.sh — Bootstrap VPS Hostinger (OpenWA + agente Ops + Caddy)
 # =============================================================================
 #
 # Execute na VPS como root (primeira vez) ou como usuário com sudo:
@@ -8,8 +8,8 @@
 #
 # Pré-requisitos:
 #   - Ubuntu 24.04 com Docker (template Hostinger)
-#   - DNS: evo.corretorstudio.com e n8n.corretorstudio.com → IP desta VPS
-#   - Arquivos .env.evolution, .env.n8n e .env.ops preenchidos em DEPLOY_DIR
+#   - DNS: ops.corretorstudio.com → IP desta VPS
+#   - Arquivos .env.openwa e .env.ops preenchidos em DEPLOY_DIR
 #
 # =============================================================================
 
@@ -18,8 +18,7 @@ set -euo pipefail
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/lead-flow-bot}"
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
-EVO_DOMAIN="${EVO_DOMAIN:-evo.corretorstudio.com}"
-N8N_DOMAIN="${N8N_DOMAIN:-n8n.corretorstudio.com}"
+OPS_DOMAIN="${OPS_DOMAIN:-ops.corretorstudio.com}"
 SKIP_CADDY="${SKIP_CADDY:-0}"
 SKIP_HARDENING="${SKIP_HARDENING:-0}"
 
@@ -55,7 +54,7 @@ install_caddy() {
   cp "${caddy_src}" /etc/caddy/Caddyfile
   systemctl enable caddy
   systemctl reload caddy || systemctl restart caddy
-  log "Caddy configurado para ${EVO_DOMAIN} e ${N8N_DOMAIN}"
+  log "Caddy configurado para ${OPS_DOMAIN}"
 }
 
 setup_firewall() {
@@ -101,24 +100,15 @@ sync_deploy_dir() {
   log "Sincronizando arquivos para ${DEPLOY_DIR}..."
 
   cp "${REPO_DIR}/docker-compose.vps.yml" "${DEPLOY_DIR}/"
-  cp -a "${REPO_DIR}/n8n" "${DEPLOY_DIR}/"
-  cp -a "${REPO_DIR}/scripts/n8n-import-all-workflows.ts" "${DEPLOY_DIR}/scripts/" 2>/dev/null || mkdir -p "${DEPLOY_DIR}/scripts" && cp "${REPO_DIR}/scripts/n8n-import-all-workflows.ts" "${DEPLOY_DIR}/scripts/"
+  mkdir -p "${DEPLOY_DIR}/deploy"
+  cp -a "${REPO_DIR}/deploy/openwa-gateway" "${DEPLOY_DIR}/deploy/"
 
-  if [[ ! -f "${DEPLOY_DIR}/.env.evolution" ]]; then
-    if [[ -f "${REPO_DIR}/deploy/hostinger/.env.evolution.production.example" ]]; then
-      cp "${REPO_DIR}/deploy/hostinger/.env.evolution.production.example" "${DEPLOY_DIR}/.env.evolution"
-      log "Criado ${DEPLOY_DIR}/.env.evolution — PREENCHA antes de subir os containers"
+  if [[ ! -f "${DEPLOY_DIR}/.env.openwa" ]]; then
+    if [[ -f "${REPO_DIR}/.env.openwa.example" ]]; then
+      cp "${REPO_DIR}/.env.openwa.example" "${DEPLOY_DIR}/.env.openwa"
+      log "Criado ${DEPLOY_DIR}/.env.openwa — PREENCHA antes de subir os containers"
     else
-      die "Arquivo .env.evolution ausente em ${DEPLOY_DIR}"
-    fi
-  fi
-
-  if [[ ! -f "${DEPLOY_DIR}/.env.n8n" ]]; then
-    if [[ -f "${REPO_DIR}/deploy/hostinger/.env.n8n.production.example" ]]; then
-      cp "${REPO_DIR}/deploy/hostinger/.env.n8n.production.example" "${DEPLOY_DIR}/.env.n8n"
-      log "Criado ${DEPLOY_DIR}/.env.n8n — PREENCHA antes de subir os containers"
-    else
-      die "Arquivo .env.n8n ausente em ${DEPLOY_DIR}"
+      die "Arquivo .env.openwa ausente em ${DEPLOY_DIR}"
     fi
   fi
 
@@ -139,11 +129,11 @@ sync_deploy_dir() {
 }
 
 check_env_placeholders() {
-  if grep -q 'SUBSTITUA_\|\[PASSWORD\]' "${DEPLOY_DIR}/.env.evolution" 2>/dev/null; then
-    die "Edite ${DEPLOY_DIR}/.env.evolution — ainda há placeholders SUBSTITUA_ ou [PASSWORD]"
+  if grep -q 'change-me\|your-project\|SUBSTITUA_' "${DEPLOY_DIR}/.env.openwa" 2>/dev/null; then
+    die "Edite ${DEPLOY_DIR}/.env.openwa — ainda há placeholders change-me/your-project"
   fi
-  if grep -q 'SUBSTITUA_\|5511XXXXXXXXX' "${DEPLOY_DIR}/.env.n8n" 2>/dev/null; then
-    die "Edite ${DEPLOY_DIR}/.env.n8n — ainda há placeholders SUBSTITUA_ ou número de telefone"
+  if grep -qE '^OPS_AGENT_TOKEN=\s*$' "${DEPLOY_DIR}/.env.ops" 2>/dev/null; then
+    die "Preencha OPS_AGENT_TOKEN em ${DEPLOY_DIR}/.env.ops (gere no backoffice → Ops / Host)"
   fi
 }
 
@@ -151,13 +141,7 @@ start_stacks() {
   log "Subindo containers (docker-compose.vps.yml)..."
   cd "${DEPLOY_DIR}"
 
-  # N8N_POSTGRES_PASSWORD é lido pelo compose a partir do shell — exportar de .env.n8n
-  set -a
-  # shellcheck disable=SC1091
-  source .env.n8n
-  set +a
-
-  docker compose -f docker-compose.vps.yml --env-file .env.evolution --env-file .env.n8n up -d
+  docker compose -f docker-compose.vps.yml up -d --build
 
   log "Aguardando healthchecks..."
   sleep 15
@@ -166,8 +150,7 @@ start_stacks() {
 
 verify_endpoints() {
   log "Verificando endpoints..."
-  curl -sfI "https://${EVO_DOMAIN}" >/dev/null && log "OK: https://${EVO_DOMAIN}" || log "AVISO: https://${EVO_DOMAIN} ainda não responde (DNS/SSL?)"
-  curl -sfI "https://${N8N_DOMAIN}/healthz" >/dev/null && log "OK: https://${N8N_DOMAIN}/healthz" || log "AVISO: https://${N8N_DOMAIN} ainda não responde"
+  curl -sfI "https://${OPS_DOMAIN}/healthz" >/dev/null && log "OK: https://${OPS_DOMAIN}/healthz" || log "AVISO: https://${OPS_DOMAIN} ainda não responde (DNS/SSL?)"
 }
 
 print_next_steps() {
@@ -177,21 +160,17 @@ print_next_steps() {
 Bootstrap concluído. Próximos passos manuais:
 =============================================================================
 
-1. Evolution Manager: https://${EVO_DOMAIN}/manager
-   - Criar instância "bethania"
-   - Escanear QR Code WhatsApp
-   - Webhook da instância: http://n8n:5678/webhook/bethania-inbound
+1. Painel Ops: backoffice → Bethânia → Ops / Host
+   - agentBaseUrl = https://${OPS_DOMAIN}
+   - Salvar → Health (espera vpsStackCheck.ok=true)
 
-2. N8N UI: https://${N8N_DOMAIN}
-   - Criar usuário admin (primeiro acesso)
-   - Importar workflows: cd ${DEPLOY_DIR} && bun run n8n:import:all
-   - Ativar workflow "bethania-router"
+2. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
+   - BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN = mesmo OPS_AGENT_TOKEN da VPS
+   - OPENWA_API_URL=http://openwa:3333 e OPENWA_API_KEY = do .env.openwa
 
-3. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
+3. No Corretor Studio, reconecte o WhatsApp do time para criar a sessão OpenWA
 
 4. hPanel → Snapshots — ativar backup automático da VPS
-
-5. Guarde N8N_ENCRYPTION_KEY em local seguro (gerenciador de senhas)
 
 =============================================================================
 EOF
