@@ -17,17 +17,26 @@
  *   bun dev -- --hybrid
  *   bun dev -- --full-supabase
  *   bun dev -- --clone
+ *   bun dev -- --remote-db
  *
  * Flags:
  *   --db-only        Padrão: só Postgres local (explícito, idempotente).
  *   --hybrid         Postgres + Realtime + Caddy (exige `.env.local-stack`).
  *   --full-supabase  `supabase start` (Auth/Storage/Studio locais).
+ *   --remote-db      Sem Docker e sem overrides: o Next usa o DATABASE_URL do
+ *                    `.env` (BANCO REMOTO — leituras e escritas reais).
  *   --clone          Dump remoto no lugar do seed local.
- *   --skip-clone     Não auto-popular (nem seed nem clone).
+ *   --skip-clone     Não auto-popular nem tocar no banco (pula migrations,
+ *                    seed e usuário local automáticos).
  *   --no-start       Fail fast if the local stack is not running.
  *   --skip-evo       Legacy: keep Evolution API disabled.
  *   --skip-n8n       Legacy: keep N8N disabled.
  *   --turbo          Force Turbopack on Windows (default no Windows é Webpack por EPERM).
+ *
+ * Preflight (db-only/hybrid): aplica migrations pendentes no Postgres local e,
+ * se não houver Profile e LOCAL_DEV_USER_EMAIL/LOCAL_DEV_USER_PASSWORD
+ * estiverem no `.env`, cria o usuário sintético de teste
+ * (`db:seed:local -- --local-user`).
  *
  * Remaining args are forwarded to `next dev` (e.g. `--port 3001`).
  */
@@ -38,6 +47,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  applyAuthStubSchema,
+  applyPendingLocalMigrations,
+  countPendingLocalMigrations,
   LOCAL_DB_URL,
   LOCAL_PROXY_URL,
   type LocalStackMode,
@@ -70,6 +82,7 @@ const {
   noStart,
   forceTurbo,
   fullSupabase,
+  remoteDb,
   stackMode,
   startEvolution: shouldStartEvolution,
   startN8n: shouldStartN8n,
@@ -440,13 +453,56 @@ function seedLocalIfNeeded(dbUrl: string) {
   info("✓ Seed local concluído");
 }
 
-function remindLinkRemoteUser(dbUrl: string) {
-  const count = countLocalProfiles(dbUrl);
-  if (count === 0) {
-    info("⚠ Nenhum Profile local. Login no Auth remoto funciona, mas o app não acha o Profile.");
-    info("  Rode: bun run db:seed:local -- --link-remote-user voce@email");
-    info("  (concede vitalício só no Postgres local para o CRM abrir)");
+/**
+ * Drift de migrations no Postgres local vira P2022 em toda tela e parece bug
+ * de aplicação — o banco local é descartável, então o preflight aplica sozinho.
+ */
+function ensureLocalMigrations(dbUrl: string) {
+  step("Checking local migrations");
+  const pending = countPendingLocalMigrations(dbUrl);
+  if (pending === null) {
+    info("⚠ Não foi possível checar migrations locais — seguindo sem aplicar.");
+    return;
   }
+  if (pending === 0) {
+    info("✓ Migrations locais em dia");
+    return;
+  }
+
+  info(`⚠ ${pending} migration(s) pendente(s) no Postgres local — aplicando…`);
+  if (!applyAuthStubSchema()) {
+    fail("Stub de auth local falhou. Confira o Postgres :55322 e rode `bun run db:seed:local`.");
+  }
+  if (!applyPendingLocalMigrations()) {
+    fail("`db:migrate:apply:local` falhou — não vou subir o Next com o schema quebrado. Veja o SQL acima.");
+  }
+  info("✓ Migrations locais aplicadas");
+}
+
+function ensureLocalDevProfile(dbUrl: string) {
+  const count = countLocalProfiles(dbUrl);
+  if (count !== 0) return;
+
+  const email = process.env.LOCAL_DEV_USER_EMAIL?.trim();
+  const password = process.env.LOCAL_DEV_USER_PASSWORD?.trim();
+  if (email && password) {
+    info(`⚠ Nenhum Profile local — criando usuário de teste ${email} (--local-user)…`);
+    const seed = run("bun", ["run", "db:seed:local", "--", "--local-user"], {
+      stdio: "inherit",
+      env: { DATABASE_URL: dbUrl, DIRECT_URL: dbUrl },
+    });
+    if (seed.status !== 0) {
+      info("⚠ Criação do usuário de teste falhou. Rode `bun run db:seed:local -- --local-user` manualmente.");
+      return;
+    }
+    info(`✓ Usuário de teste pronto — login: ${email} (senha do .env).`);
+    return;
+  }
+
+  info("⚠ Nenhum Profile local. Login no Auth remoto funciona, mas o app não acha o Profile.");
+  info("  Usuário de teste: defina LOCAL_DEV_USER_EMAIL e LOCAL_DEV_USER_PASSWORD no .env");
+  info("  e rode `bun run db:seed:local -- --local-user` (ou só reinicie `bun run dev`).");
+  info("  Conta real (para dados clonados): bun run db:seed:local -- --link-remote-user voce@email");
 }
 
 async function runPreflight() {
@@ -455,8 +511,7 @@ async function runPreflight() {
 
   if (skipClone) {
     step("Skipping auto-populate (--skip-clone)");
-    info("⊘ Nem seed local nem clone remoto.");
-    remindLinkRemoteUser(dbUrl);
+    info("⊘ Nem migrations, nem seed local, nem clone remoto.");
     return;
   }
 
@@ -465,10 +520,11 @@ async function runPreflight() {
     if (fullSupabase) {
       info("⚠ `db:clone:remote` só popula o Postgres :55322 — pulando clone automático em --full-supabase.");
     } else {
+      // O clone faz o próprio `supabase db reset` — não precisa do auto-migrate.
       cloneRemote();
     }
     ensureBackofficeCatalogSynced(dbUrl);
-    remindLinkRemoteUser(dbUrl);
+    ensureLocalDevProfile(dbUrl);
     return;
   }
 
@@ -478,9 +534,10 @@ async function runPreflight() {
     return;
   }
 
+  ensureLocalMigrations(dbUrl);
   step("Checking local catalog (seed, not clone)");
   seedLocalIfNeeded(dbUrl);
-  remindLinkRemoteUser(dbUrl);
+  ensureLocalDevProfile(dbUrl);
 }
 
 function ensureBackofficeCatalogSynced(dbUrl: string) {
@@ -694,6 +751,28 @@ function getLocalN8nOverrides(): EnvOverrides {
   };
 }
 
+function maskedDbHost(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "(DATABASE_URL ilegível)";
+  }
+}
+
+function assertRemoteDbEnv(): void {
+  if (!process.env.DATABASE_URL || !process.env.DIRECT_URL) {
+    fail("--remote-db exige DATABASE_URL e DIRECT_URL no `.env` (apontando para o banco remoto).");
+  }
+}
+
+function printRemoteDbBanner(): void {
+  const host = maskedDbHost(process.env.DATABASE_URL ?? "");
+  console.error("\n⚠️⚠️⚠️  MODO REMOTO (--remote-db)  ⚠️⚠️⚠️");
+  console.error(`   Leituras E ESCRITAS vão para o banco REMOTO: ${host}`);
+  console.error("   Sem Docker, sem migrations, sem seed, sem usuário de teste.");
+  console.error("   Dados alterados aqui são dados REAIS.\n");
+}
+
 function buildNextDevArgs(): string[] {
   const args = ["dev"];
   if (process.platform === "win32" && !forceTurbo) {
@@ -704,14 +783,23 @@ function buildNextDevArgs(): string[] {
 }
 
 function startNextDev(): never {
-  const localOverrides = {
-    ...getLocalDatabaseOverrides(),
-    ...getLocalEvoOverrides(),
-    ...getLocalN8nOverrides(),
-  };
+  // --remote-db: nenhum override — o Next herda o `.env` como está (remoto).
+  const localOverrides: EnvOverrides = remoteDb
+    ? {}
+    : {
+        ...getLocalDatabaseOverrides(),
+        ...getLocalEvoOverrides(),
+        ...getLocalN8nOverrides(),
+      };
 
-  step("Starting Next.js with local database overrides");
-  info(`DATABASE_URL → ${localOverrides.DATABASE_URL ?? LOCAL_DB_URL}`);
+  if (remoteDb) {
+    printRemoteDbBanner();
+    step("Starting Next.js against the REMOTE database (.env as-is)");
+    info(`DATABASE_URL → ${maskedDbHost(process.env.DATABASE_URL ?? "")}`);
+  } else {
+    step("Starting Next.js with local database overrides");
+    info(`DATABASE_URL → ${localOverrides.DATABASE_URL ?? LOCAL_DB_URL}`);
+  }
   if (localOverrides.SUPABASE_LOCAL_DB_ONLY === "true") {
     info("Realtime desligado (db-only). Use `bun dev -- --hybrid` para tempo real.");
     info(`NEXT_PUBLIC_SUPABASE_URL → ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "(do .env)"}`);
@@ -760,7 +848,11 @@ async function main() {
     if (devOptions.errors.length > 0) {
       fail(devOptions.errors.join("\n"));
     }
-    await runPreflight();
+    if (remoteDb) {
+      assertRemoteDbEnv();
+    } else {
+      await runPreflight();
+    }
     await buildServiceWorker();
     startNextDev();
   } catch (err) {

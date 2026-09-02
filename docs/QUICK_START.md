@@ -68,22 +68,28 @@ e Storage continuam no seu projeto Supabase remoto (`.env`). Realtime fica
 desligado. Não precisa de `.env.local-stack`.
 
 ```bash
+# Usuário de teste local (conta sintética — nunca uma conta real) no .env:
+#   LOCAL_DEV_USER_EMAIL=joaocleber@gmail.com
+#   LOCAL_DEV_USER_PASSWORD=Senha@1234
+
 # Gerar cliente Prisma
 bun run prisma:generate
 
-# Subir o Postgres local, aplicar migrations e seedar o catálogo
+# Sobe o Postgres local, aplica migrations pendentes, seeda o catálogo e cria
+# o usuário de teste (Profile + "Time Local" + vitalício SÓ no Postgres local)
 bun run dev
-
-# Primeira sessão: ligar o usuário do Auth remoto ao Profile local
-# (concede vitalício só no Postgres local — não mexe na assinatura remota)
-bun run db:seed:local -- --link-remote-user voce@email
 ```
 
-| Modo | Comando | Containers | Auth | Realtime | Precisa `.env.local-stack` |
-|---|---|---|---|---|---|
-| db-only (padrão) | `bun run dev` | Postgres | `.env` remoto | off | não |
-| hybrid | `bun run dev -- --hybrid` | Postgres + Realtime + Caddy | proxy `:55321` | local | sim |
-| full | `bun run dev -- --full-supabase` | `supabase start` | local | local | não |
+O preflight reaplica migrations pendentes a cada boot — drift local nunca deve
+chegar ao app como P2022. Para usar uma conta real (dados clonados):
+`bun run db:seed:local -- --link-remote-user voce@email`.
+
+| Modo | Comando | Containers | Auth | Banco | Realtime | Precisa `.env.local-stack` |
+|---|---|---|---|---|---|---|
+| db-only (padrão) | `bun run dev` | Postgres | `.env` remoto | local `:55322` | off | não |
+| hybrid | `bun run dev -- --hybrid` | Postgres + Realtime + Caddy | proxy `:55321` | local `:55322` | local | sim |
+| full | `bun run dev -- --full-supabase` | `supabase start` | local | local | local | não |
+| remote-db | `bun run dev -- --remote-db` | nenhum | `.env` remoto | **remoto (escritas reais!)** | remoto | não |
 
 > ⚠️ **Auth/Storage não têm sandbox local nos modos db-only e hybrid**: eles
 > são o projeto Supabase remoto de verdade. Ações admin (deletar usuário,
@@ -178,8 +184,8 @@ bun run local:up                   # Sobe só o Postgres local (db-only)
 bun run local:up:hybrid            # Sobe Postgres + Realtime + Caddy
 bun run local:down                 # Derruba o stack local
 bun run db:seed:local              # Migrations + catálogo (sem Auth admin)
-bun run db:seed:local -- --link-remote-user voce@email
-bun run local:down                 # Derruba o stack local
+bun run db:seed:local -- --local-user              # Usuário sintético de teste (LOCAL_DEV_USER_*)
+bun run db:seed:local -- --link-remote-user voce@email  # Conta real (dados clonados)
 bun run local:logs                 # Logs do stack local
 bun run prisma:studio              # Interface visual do banco
 bun run db:migrate:from-prisma -- <name>  # Migration de schema (a partir do schema.prisma)
