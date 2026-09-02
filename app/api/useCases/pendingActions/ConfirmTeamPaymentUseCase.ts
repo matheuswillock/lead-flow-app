@@ -110,7 +110,15 @@ export class ConfirmTeamPaymentUseCase {
           const actionId = externalReference.replace("pending-action-", "");
           const found = await this.pendingActionRepository.findByIdSimple(actionId);
           if (found && found.masterId === billingOwnerId) {
-            action = found;
+            // Achado Codex (PR #1137, P1, round 9): found.asaasAccount é o
+            // default 'primary' da coluna — nunca a conta real, já que
+            // updatePaymentId (que grava os dois juntos) é exatamente o que
+            // falhou para chegarmos aqui. candidateAccount é a conta onde o
+            // GET realmente respondeu; persiste a correção para os próximos
+            // lookups e usa candidateAccount (não found.asaasAccount) daqui
+            // em diante.
+            await this.pendingActionRepository.updatePaymentId(found.id, paymentId, candidateAccount);
+            action = { ...found, asaasAccount: candidateAccount };
             break;
           }
         }

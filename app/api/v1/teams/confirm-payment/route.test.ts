@@ -61,11 +61,13 @@ const findByPaymentIdAndMasterIdMock = mock(
   })
 )
 const findByIdSimpleMock = mock(async (): Promise<PendingActionOwnershipLookup> => null)
+const updatePaymentIdMock = mock(async () => {})
 
 mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionRepository", () => ({
   pendingActionRepository: {
     findByPaymentIdAndMasterId: findByPaymentIdAndMasterIdMock,
     findByIdSimple: findByIdSimpleMock,
+    updatePaymentId: updatePaymentIdMock,
   },
 }))
 
@@ -142,6 +144,7 @@ describe("POST /api/v1/teams/confirm-payment — roteia pela conta da PendingAct
 
   it("achado Codex (PR #1137, P2, round 7): pagamento órfão (updatePaymentId falhou) na legacy — sonda as duas contas e recupera via externalReference", async () => {
     findByPaymentIdAndMasterIdMock.mockImplementation(async () => null)
+    updatePaymentIdMock.mockClear()
     requestImplByAccount.primary = async () => {
       throw new Error("404 na primary")
     }
@@ -149,16 +152,23 @@ describe("POST /api/v1/teams/confirm-payment — roteia pela conta da PendingAct
       status: "CONFIRMED",
       externalReference: "pending-action-pa-orphan-1",
     })
+    // achado Codex (PR #1137, P1, round 9): o registro no banco ainda tem o
+    // default 'primary' da coluna (updatePaymentId nunca chegou a gravar a
+    // conta real — é exatamente por isso que caímos na sondagem). A conta
+    // correta só é conhecida pela sondagem (legacy, onde o GET respondeu).
     findByIdSimpleMock.mockImplementation(async () => ({
       id: "pa-orphan-1",
       masterId,
       status: "pending" as const,
-      asaasAccount: "legacy" as const,
+      asaasAccount: "primary" as const,
     }))
 
     const response = await POST(makeRequest({ paymentId: "pay_orphan_1" }))
 
     expect(response.status).toBe(201)
+    // usa a conta onde o pagamento foi REALMENTE achado (legacy), não o
+    // default stale gravado na action (primary)
     expect(applyPendingActionByPaymentIdMock).toHaveBeenCalledWith("pay_orphan_1", "legacy")
+    expect(updatePaymentIdMock).toHaveBeenCalledWith("pa-orphan-1", "pay_orphan_1", "legacy")
   })
 })

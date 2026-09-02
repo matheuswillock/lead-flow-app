@@ -501,6 +501,31 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.pendingOperatorRepository.create).toHaveBeenCalledTimes(1)
   })
 
+  it("achado Codex (PR #1137, P1, round 9): violação do índice único parcial (race de criação concorrente) vira mensagem amigável, não 500", async () => {
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        create: mock(async () => {
+          throw new Error("DUPLICATE_ACTIVE_CHECKOUT")
+        }),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+    })
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Já existe um checkout pendente para este e-mail"])
+  })
+
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {
     const repos = fakeRepos()
     const useCase = new CheckoutAsaasUseCase(

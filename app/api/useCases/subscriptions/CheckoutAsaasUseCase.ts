@@ -16,6 +16,7 @@ import { teamMembersRepository as defaultTeamMembersRepository } from "@/app/api
 import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 import {
   pendingOperatorRepository as defaultPendingOperatorRepository,
+  DUPLICATE_ACTIVE_CHECKOUT_ERROR,
 } from "@/app/api/infra/data/repositories/pendingOperator/PendingOperatorRepository";
 import type { IPendingOperatorRepository } from "@/app/api/infra/data/repositories/pendingOperator/IPendingOperatorRepository";
 import {
@@ -438,18 +439,37 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
-      const pendingOperator = await this.pendingOperatorRepository.create({
-        managerId: manager.id,
-        teamId: resolvedTeamId ?? null,
-        name: data.operatorData.name,
-        email: data.operatorData.email,
-        role: data.operatorData.role,
-        functions: data.operatorData.functions ?? [],
-        paymentId: 'pending',
-        subscriptionId: manager.asaasSubscriptionId,
-        paymentStatus: 'PENDING',
-        paymentMethod: 'UNDEFINED',
-      });
+      let pendingOperator: { id: string };
+      try {
+        pendingOperator = await this.pendingOperatorRepository.create({
+          managerId: manager.id,
+          teamId: resolvedTeamId ?? null,
+          name: data.operatorData.name,
+          email: data.operatorData.email,
+          role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
+          paymentId: 'pending',
+          subscriptionId: manager.asaasSubscriptionId,
+          paymentStatus: 'PENDING',
+          paymentMethod: 'UNDEFINED',
+        });
+      } catch (error) {
+        // Achado Codex (PR #1137, P1, round 9): o preflight
+        // (findActiveByManagerAndEmail) sozinho não é atômico — duas
+        // requisições concorrentes podem as duas passar por ele antes de
+        // qualquer INSERT. O índice único parcial (migration
+        // 20260902151915) fecha a invariante no banco; aqui só traduz a
+        // violação de unicidade na mesma mensagem amigável do preflight.
+        if (error instanceof Error && error.message === DUPLICATE_ACTIVE_CHECKOUT_ERROR) {
+          return new Output(
+            false,
+            [],
+            ['Já existe um checkout pendente para este e-mail'],
+            null
+          );
+        }
+        throw error;
+      }
 
       pendingOperatorId = pendingOperator.id;
       console.info('💾 [createOperatorCheckout] PendingOperator criado:', pendingOperatorId);
