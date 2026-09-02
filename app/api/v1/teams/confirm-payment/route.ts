@@ -62,18 +62,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // E3 (C20/linha 72): o pagamento pertence à conta do billing owner —
-    // roteia pela conta dele em vez do transporte global primary-only.
-    const billingOwnerIdForAccount = profile.isMaster ? profile.id : profile.managerId;
-    const billingOwnerAccountProfile = billingOwnerIdForAccount
-      ? await prisma.profile.findUnique({
-          where: { id: billingOwnerIdForAccount },
-          select: { asaasCustomerAccount: true },
+    const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
+
+    // Achado cursor[bot] (PR #1137, P1, follow-up de 27ac1321): a conta do
+    // Asaas usada para o GET/preflight não pode vir do estado ATUAL do
+    // master (billingOwnerAccountProfile) — E4 (checkout de operador) pode
+    // flipar o master de legacy → primary entre o pagamento nascer e esta
+    // confirmação rodar. Resolve a PendingAction primeiro, por
+    // (paymentId, masterId) — masterId é estável, ao contrário da conta —
+    // e usa a conta PERSISTIDA nela (action.asaasAccount) para tudo depois.
+    let action = billingOwnerId
+      ? await prisma.pendingAction.findFirst({
+          where: { paymentId, masterId: billingOwnerId },
+          select: { id: true, masterId: true, status: true, asaasAccount: true },
         })
       : null;
-    const account = billingOwnerAccountProfile?.asaasCustomerAccount ?? "primary";
 
-    const client = createAsaasClient(account);
+    // Sem a action ainda (paymentId pode ter chegado via externalReference
+    // do Asaas, não via campo próprio) — a conta do master atual é o melhor
+    // palpite disponível só para ESTA tentativa de descoberta.
+    const lookupAccount = action?.asaasAccount ?? (
+      billingOwnerId
+        ? (
+            await prisma.profile.findUnique({
+              where: { id: billingOwnerId },
+              select: { asaasCustomerAccount: true },
+            })
+          )?.asaasCustomerAccount ?? "primary"
+        : "primary"
+    );
+
+    const client = createAsaasClient(lookupAccount);
     const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
       method: "GET",
     });
@@ -86,22 +105,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Achado Codex (PR #1137, P2): sem o filtro por conta, um paymentId
-    // colidindo com o de outro master (C33) fazia este preflight escolher
-    // a ação ERRADA e devolver 403 antes mesmo do use case (já
-    // collision-safe) rodar — bloqueando a confirmação legítima do dono
-    // real do pagamento.
-    let action = await prisma.pendingAction.findFirst({
-      where: { paymentId, asaasAccount: account },
-      select: { id: true, masterId: true, status: true },
-    });
-
     const externalReference = payment?.externalReference as string | undefined;
     if (!action && externalReference?.startsWith("pending-action-")) {
       const actionId = externalReference.replace("pending-action-", "");
       action = await prisma.pendingAction.findUnique({
         where: { id: actionId },
-        select: { id: true, masterId: true, status: true },
+        select: { id: true, masterId: true, status: true, asaasAccount: true },
       });
     }
 
@@ -111,8 +120,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
-    const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
 
     if (action.masterId !== billingOwnerId) {
       return NextResponse.json(new Output(false, [], ["Ação não pertence a este master"], null), {
@@ -126,7 +133,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId, account);
+    const result = await pendingActionUseCase.applyPendingActionByPaymentId(
+      paymentId,
+      action.asaasAccount
+    );
     return NextResponse.json(result, { status: result.isValid ? 201 : 400 });
   } catch (error: any) {
     console.error("[POST /api/v1/teams/confirm-payment] Erro:", error);
