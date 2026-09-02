@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import {
+  claimSubmissionForLeadSyncMock as claimSubmissionForLeadSync,
+  createLeadMock as createLead,
+  findDeletedLeadCandidatesMock as findDeletedLeadCandidates,
+  findLeadCandidatesMock as findLeadCandidates,
+  registerPublicFormLeadSyncModuleMocks,
+  updateLeadMock as updateLead,
+  waitForLeadSyncClaimRetryMock as waitForLeadSyncClaimRetry,
+} from "@/test/support/public-form-lead-sync-module-mocks"
 
 /**
  * SPEC 40 — claim atômico de lead-sync por submissão.
@@ -15,14 +24,13 @@ import type { PublicFormSnapshot } from "@/lib/public-forms/types"
  * (`claimSubmissionForLeadSync`, ver `lib/public-forms/lead-sync-claim.ts`).
  * Quem perde a corrida espera e re-resolve; se o vencedor nunca aparece,
  * cria mesmo assim.
+ *
+ * Os mocks de módulo vêm do helper compartilhado: `publicFormLeadSync` é um
+ * módulo com singleton, avaliado uma única vez sem `--isolate` — instâncias
+ * próprias por arquivo viram teste flaky por ordem de execução.
  */
 
-mock.module("server-only", () => ({}))
-mock.module("@/lib/env/server", () => ({}))
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {},
-  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-}))
+registerPublicFormLeadSyncModuleMocks()
 
 const FORM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const Q_NAME = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1"
@@ -86,67 +94,6 @@ const LIVE_LEAD = {
 }
 
 const SUBMISSION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-
-const findLeadCandidates = mock(async () => [] as unknown[])
-const findDeletedLeadCandidates = mock(async () => [] as unknown[])
-const updateLead = mock(async (id: string, data: Record<string, unknown>) => ({
-  ...LIVE_LEAD,
-  ...data,
-  id,
-}))
-const findCustomFieldDefinitionId = mock(async () => null)
-const upsertLeadCustomFieldValue = mock(async () => {})
-const claimSubmissionForLeadSync = mock(async () => true)
-
-type CreateLeadOutput = {
-  isValid: boolean
-  errorMessages: string[]
-  successMessages: string[]
-  result: unknown
-}
-
-const createLead = mock(
-  async (): Promise<CreateLeadOutput> => ({
-    isValid: true,
-    errorMessages: [],
-    successMessages: ["ok"],
-    result: LIVE_LEAD,
-  }),
-)
-
-const waitForLeadSyncClaimRetry = mock(async () => {})
-
-mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
-  publicFormsRepository: {
-    findLeadCandidates,
-    findDeletedLeadCandidates,
-    updateLead,
-    findCustomFieldDefinitionId,
-    upsertLeadCustomFieldValue,
-    claimSubmissionForLeadSync,
-  },
-}))
-mock.module("@/app/api/useCases/leads/LeadUseCase", () => ({
-  LeadUseCase: class {
-    createLead = createLead
-  },
-}))
-mock.module("@/app/api/infra/data/repositories/lead/LeadRepository", () => ({
-  LeadRepository: class {},
-}))
-mock.module("@/app/api/useCases/profiles/ProfileUseCase", () => ({
-  RegisterNewUserProfile: class {},
-}))
-mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
-  emailLogRepository: { findCampaignLogForAttribution: mock(async () => null) },
-}))
-// Mesmas constantes de produção (3×700ms) — só a espera vira no-op no teste,
-// sem depender de env var de máquina nem de aguardar 2.1s de verdade.
-mock.module("@/lib/public-forms/lead-sync-claim", () => ({
-  LEAD_SYNC_CLAIM_RETRY_ATTEMPTS: 3,
-  LEAD_SYNC_CLAIM_RETRY_DELAY_MS: 700,
-  waitForLeadSyncClaimRetry,
-}))
 
 const { upsertLeadFromFormAnswers } = await import("./publicFormLeadSync")
 const { leadFromUpsertOutcome } = await import("@/lib/public-forms/lead-upsert-outcome")

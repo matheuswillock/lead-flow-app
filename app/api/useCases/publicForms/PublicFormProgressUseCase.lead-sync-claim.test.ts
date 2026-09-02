@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import {
+  findFormSubmissionContextMock as findFormSubmissionContext,
+  findLatestSessionSubmissionOnFormMock as findLatestSessionSubmissionOnForm,
+  findPublicationByIdMock as findPublicationById,
+  findPublicationContainingQuestionsMock as findPublicationContainingQuestions,
+  listSubmissionAnswersMock as listSubmissionAnswers,
+  registerPublicFormLeadSyncModuleMocks,
+  upsertMetricEventMock as upsertMetricEvent,
+  upsertProgressSubmissionMock as upsertProgressSubmission,
+} from "@/test/support/public-form-lead-sync-module-mocks"
 
 /**
  * SPEC 40 — o claim atômico de `upsertLeadFromFormAnswers` só fecha a corrida
@@ -8,14 +18,14 @@ import type { PublicFormSnapshot } from "@/lib/public-forms/types"
  * submissão já resolvida da sessão (`resolved.sessionSubmission.id`) precisa
  * ser passada para `legacyLeadCreator.createOrUpdate`, senão o claim nunca
  * dispara para o caminho que efetivamente causa o bug em produção.
+ *
+ * O criador legado entra por injeção de dependência (construtor) — este
+ * arquivo NÃO mocka o módulo `publicFormLeadSync`: sem `--isolate` esse mock
+ * parcial substituiria o módulo real para os outros arquivos da execução
+ * (contaminação por ordem). Os módulos de infra vêm do helper compartilhado.
  */
 
-mock.module("server-only", () => ({}))
-mock.module("@/lib/env/server", () => ({}))
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {},
-  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-}))
+registerPublicFormLeadSyncModuleMocks()
 
 const FORM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const PUBLIC_ID = "11111111-1111-4111-8111-111111111111"
@@ -78,21 +88,7 @@ function makeSnapshot(): PublicFormSnapshot {
 
 const snapshot = makeSnapshot()
 
-const getPublic = mock(async () => ({ publicationId: PUBLICATION_ID, snapshot }))
-const findLatestSessionSubmissionOnForm = mock(
-  async () =>
-    null as {
-      id: string
-      publicationId: string
-      status: string
-      leadId: string | null
-    } | null,
-)
-const findPublicationById = mock(
-  async () => null as { publicationId: string; snapshot: PublicFormSnapshot } | null,
-)
-const findPublicationContainingQuestions = mock(async () => null)
-const findFormSubmissionContext = mock(async () => ({
+const FORM_CONTEXT = {
   id: FORM_ID,
   name: "Form",
   publicId: PUBLIC_ID,
@@ -101,38 +97,15 @@ const findFormSubmissionContext = mock(async () => ({
   emailCampaignTrackingEnabled: false,
   assignedSdr: null,
   team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
-}))
-const listSubmissionAnswers = mock(async () => [] as Array<{ questionId: string; value: unknown }>)
-const upsertProgressSubmission = mock(async () => ({ id: "sub-progress" }))
-const upsertMetricEvent = mock(async () => {})
+}
+
+const getPublic = mock(async () => ({ publicationId: PUBLICATION_ID, snapshot }))
+const recordMetric = mock(async () => true)
 const publishServerPublicFormMetricEvent = mock(async () => true)
 const legacyCreateOrUpdate = mock(async () => ({ outcome: "skipped" }) as const)
 
 mock.module("@/app/api/services/PublicForms/PublicFormsService", () => ({
-  publicFormsService: { getPublic, recordMetric: mock(async () => true) },
-}))
-mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
-  publicFormsRepository: {
-    findLatestSessionSubmissionOnForm,
-    findPublicationById,
-    findPublicationContainingQuestions,
-    findFormSubmissionContext,
-    listSubmissionAnswers,
-    upsertProgressSubmission,
-    upsertMetricEvent,
-  },
-}))
-mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
-  canCreateLeadFromExtracted: () => false,
-  canUpdateLeadFromExtracted: () => false,
-  extractLeadDataFromSnapshot: () => ({}),
-  hasCrmGateAC: () => false,
-  isBlankPublicFormAnswerValue: (value: unknown) =>
-    value === undefined || value === null || (typeof value === "string" && value.trim() === ""),
-  publicFormAnswerValueText: (value: unknown) =>
-    typeof value === "string" && value.trim() ? value : null,
-  findMatchingLead: mock(async () => null),
-  upsertLeadFromFormAnswers: mock(async () => ({ outcome: "skipped" })),
+  publicFormsService: { getPublic, recordMetric },
 }))
 mock.module("@/lib/queues/public-form-metric-events", () => ({
   buildPublicFormMetricQueuePayload: (publicId: string, input: Record<string, unknown>) => ({
@@ -153,18 +126,23 @@ describe("PublicFormProgressUseCase — threading do submissionId para o claim a
   )
 
   beforeEach(() => {
-    findLatestSessionSubmissionOnForm.mockClear()
-    findPublicationById.mockClear()
-    listSubmissionAnswers.mockClear()
-    upsertProgressSubmission.mockClear()
-    upsertMetricEvent.mockClear()
-    publishServerPublicFormMetricEvent.mockClear()
-    legacyCreateOrUpdate.mockClear()
+    findLatestSessionSubmissionOnForm.mockReset()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
+    findPublicationById.mockReset()
     findPublicationById.mockResolvedValue(null)
+    findPublicationContainingQuestions.mockReset()
+    findPublicationContainingQuestions.mockResolvedValue(null)
+    findFormSubmissionContext.mockReset()
+    findFormSubmissionContext.mockResolvedValue(FORM_CONTEXT)
+    listSubmissionAnswers.mockReset()
     listSubmissionAnswers.mockResolvedValue([])
+    upsertProgressSubmission.mockReset()
     upsertProgressSubmission.mockResolvedValue({ id: "sub-progress" })
+    upsertMetricEvent.mockReset()
+    upsertMetricEvent.mockResolvedValue(undefined)
+    publishServerPublicFormMetricEvent.mockClear()
     publishServerPublicFormMetricEvent.mockResolvedValue(true)
+    legacyCreateOrUpdate.mockClear()
     legacyCreateOrUpdate.mockResolvedValue({ outcome: "skipped" })
   })
 
@@ -175,7 +153,10 @@ describe("PublicFormProgressUseCase — threading do submissionId para o claim a
       status: "processing",
       leadId: null,
     })
-    findPublicationById.mockResolvedValueOnce({ publicationId: PUBLICATION_ID, snapshot })
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: PUBLICATION_ID,
+      snapshot: snapshot as unknown,
+    })
 
     await useCase.execute(PUBLIC_ID, {
       visitorSessionId: "session-1",

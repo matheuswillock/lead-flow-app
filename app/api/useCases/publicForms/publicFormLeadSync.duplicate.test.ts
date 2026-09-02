@@ -1,5 +1,12 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { beforeEach, describe, expect, it } from "bun:test"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import {
+  createLeadMock as createLead,
+  findDeletedLeadCandidatesMock as findDeletedLeadCandidates,
+  findLeadCandidatesMock as findLeadCandidates,
+  registerPublicFormLeadSyncModuleMocks,
+  updateLeadMock as updateLead,
+} from "@/test/support/public-form-lead-sync-module-mocks"
 
 /**
  * SPEC 40 — E5/DA3. Duplicata no caminho A anexa, nunca lança.
@@ -18,12 +25,11 @@ import type { PublicFormSnapshot } from "@/lib/public-forms/types"
  * nota, porque restaurar é gesto do usuário (DA3).
  */
 
-mock.module("server-only", () => ({}))
-mock.module("@/lib/env/server", () => ({}))
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {},
-  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-}))
+// Mocks de módulo COMPARTILHADOS (mesmo helper do claim.test): sem `--isolate`
+// o `publicFormLeadSync` real é avaliado uma única vez e liga o singleton às
+// instâncias do primeiro arquivo — instâncias próprias aqui deixariam os mocks
+// do outro arquivo inertes conforme a ordem do runner.
+registerPublicFormLeadSyncModuleMocks()
 
 const FORM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const Q_NAME = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1"
@@ -94,15 +100,6 @@ const DELETED_LEAD = {
   deletedAt: new Date("2026-08-01T00:00:00.000Z"),
 }
 
-const findLeadCandidates = mock(async () => [] as unknown[])
-const findDeletedLeadCandidates = mock(async () => [] as unknown[])
-const updateLead = mock(async (id: string, data: Record<string, unknown>) => ({
-  ...LIVE_LEAD,
-  ...data,
-  id,
-}))
-const findCustomFieldDefinitionId = mock(async () => null)
-const upsertLeadCustomFieldValue = mock(async () => {})
 type CreateLeadOutput = {
   isValid: boolean
   errorMessages: string[]
@@ -116,32 +113,6 @@ const DUPLICATE_OUTPUT: CreateLeadOutput = {
   successMessages: [],
   result: null,
 }
-
-const createLead = mock(async (): Promise<CreateLeadOutput> => DUPLICATE_OUTPUT)
-
-mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
-  publicFormsRepository: {
-    findLeadCandidates,
-    findDeletedLeadCandidates,
-    updateLead,
-    findCustomFieldDefinitionId,
-    upsertLeadCustomFieldValue,
-  },
-}))
-mock.module("@/app/api/useCases/leads/LeadUseCase", () => ({
-  LeadUseCase: class {
-    createLead = createLead
-  },
-}))
-mock.module("@/app/api/infra/data/repositories/lead/LeadRepository", () => ({
-  LeadRepository: class {},
-}))
-mock.module("@/app/api/useCases/profiles/ProfileUseCase", () => ({
-  RegisterNewUserProfile: class {},
-}))
-mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
-  emailLogRepository: { findCampaignLogForAttribution: mock(async () => null) },
-}))
 
 const { upsertLeadFromFormAnswers, DELETED_LEAD_ATTACH_NOTE } =
   await import("./publicFormLeadSync")
