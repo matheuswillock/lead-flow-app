@@ -1712,22 +1712,25 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         operatorCount: data.operatorCount
       };
 
-      // Se for PIX, buscar dados da primeira cobrança
+      // Se for PIX, buscar dados da primeira cobrança. DA2 (achado P1
+      // Cursor round 3): a assinatura nasceu em `reactivateSubscriptionAccount`
+      // — buscar o payment/QR na primary (client global) 404ava para quem
+      // reativou na legacy, e o catch abaixo engolia silenciosamente,
+      // devolvendo sucesso sem `pixQrCode`/`pixCopyPaste`.
       if (data.paymentMethod === 'PIX') {
         try {
-          // Buscar primeira cobrança da assinatura
-          const payments = await asaasFetch(`${asaasApi.subscriptions}/${newSubscription.data.id}/payments`, {
-            method: 'GET',
-          });
-          if (payments.data && payments.data.length > 0) {
-            const firstPayment = payments.data[0];
+          const payments = await AsaasSubscriptionService.getSubscriptionPayments(
+            newSubscription.data.id,
+            undefined,
+            reactivateSubscriptionAccount,
+          );
+          if (payments && payments.length > 0) {
+            const firstPayment = payments[0];
             resultData.paymentId = firstPayment.id;
-            
+
             // Se tiver QR code do PIX
             if (firstPayment.invoiceUrl) {
-              const pixData = await asaasFetch(asaasApi.pixQrCode(firstPayment.id), {
-                method: 'GET',
-              });
+              const pixData = await AsaasSubscriptionService.getPixQrCode(firstPayment.id, reactivateSubscriptionAccount);
               resultData.pixQrCode = pixData.encodedImage;
               resultData.pixCopyPaste = pixData.payload;
             }
