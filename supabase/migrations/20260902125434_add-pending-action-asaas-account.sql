@@ -1,4 +1,4 @@
-alter table "public"."corretor_studio_pending_actions" add column "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
+alter table "public"."corretor_studio_pending_actions" add column if not exists "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
 
 -- Achado Codex de terceira rodada (PR #1137, P1): "createdAt" é o instante em
 -- que a PendingAction NASCE (pending, sem paymentId ainda) — updatePaymentId

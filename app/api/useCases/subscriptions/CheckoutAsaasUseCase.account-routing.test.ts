@@ -120,6 +120,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
   }
   const pendingOperatorRepository = {
     create: mock(async () => ({ id: "pending-op-1" })),
+    findActiveByManagerAndEmail: mock(async () => null),
     findByPaymentIdWithManager: mock(async () => ({
       id: "pending-op-1",
       managerId: manager.id,
@@ -449,6 +450,55 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(result.isValid).toBe(false)
     expect(repos.profileRepository.createOperatorProfileFromPendingOperator).not.toHaveBeenCalled()
     expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
+  })
+
+  it("achado Codex (PR #1137, P1, round 8): já existe checkout ativo para o e-mail — bloqueia o segundo antes de qualquer pagamento", async () => {
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        findActiveByManagerAndEmail: mock(async () => ({ id: "pending-op-existing", createdAt: new Date() })),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+    })
+
+    expect(result.isValid).toBe(false)
+    expect(repos.pendingOperatorRepository.create).not.toHaveBeenCalled()
+  })
+
+  it("achado Codex (PR #1137, P1, round 8): checkout ativo mas expirado (>24h) não bloqueia um novo", async () => {
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        findActiveByManagerAndEmail: mock(async () => ({
+          id: "pending-op-expired",
+          createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        })),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+    })
+
+    expect(result.isValid).toBe(true)
+    expect(repos.pendingOperatorRepository.create).toHaveBeenCalledTimes(1)
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

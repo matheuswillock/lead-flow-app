@@ -37,6 +37,17 @@ export class PendingOperatorRepository implements IPendingOperatorRepository {
     })
   }
 
+  async findActiveByManagerAndEmail(
+    managerId: string,
+    email: string
+  ): Promise<{ id: string; createdAt: Date } | null> {
+    return prisma.pendingOperator.findFirst({
+      where: { managerId, email, operatorCreated: false },
+      select: { id: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    })
+  }
+
   async findByPaymentIdWithManager(
     paymentId: string,
     account: AsaasAccountId

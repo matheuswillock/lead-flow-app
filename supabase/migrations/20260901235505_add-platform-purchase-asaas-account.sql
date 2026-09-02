@@ -26,7 +26,7 @@
 -- reaplicado onde o trigger já existe.
 drop index if exists "public"."corretor_studio_platform_purchases_asaas_payment_id_key";
 
-alter table "public"."corretor_studio_platform_purchases" add column "asaas_account" public.asaas_account not null default 'primary'::public.asaas_account;
+alter table "public"."corretor_studio_platform_purchases" add column if not exists "asaas_account" public.asaas_account not null default 'primary'::public.asaas_account;
 
 do $$
 declare
@@ -39,4 +39,4 @@ begin
     and paid_at < cutover_at;
 end $$;
 
-CREATE UNIQUE INDEX corretor_studio_platform_purchases_asaas_payment_account_key ON public.corretor_studio_platform_purchases USING btree (asaas_payment_id, asaas_account);
+CREATE UNIQUE INDEX IF NOT EXISTS corretor_studio_platform_purchases_asaas_payment_account_key ON public.corretor_studio_platform_purchases USING btree (asaas_payment_id, asaas_account);

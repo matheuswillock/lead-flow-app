@@ -31,6 +31,17 @@ export interface CreatePendingOperatorInput {
 
 export interface IPendingOperatorRepository {
   create(data: CreatePendingOperatorInput): Promise<PendingOperator>
+  // Achado Codex (PR #1137, P1, round 8): duas checkouts pendentes para o
+  // mesmo e-mail sob o mesmo manager (race entre criação e confirmação de
+  // pagamento) faziam o resume-por-e-mail de processOperatorCheckoutPaid
+  // tratar a segunda cobrança como retomada da primeira — incrementando a
+  // assinatura de novo sem provisionar um segundo operador de verdade.
+  // Usado por createOperatorCheckout para bloquear a criação de um segundo
+  // checkout enquanto o primeiro ainda está em voo.
+  findActiveByManagerAndEmail(
+    managerId: string,
+    email: string
+  ): Promise<{ id: string; createdAt: Date } | null>
   // account: filtra pela conta PERSISTIDA no instante em que o
   // checkoutSessionId nasceu (achado Codex, PR #1137, P1, round 7) — um
   // checkoutSessionId histórico da legacy pode colidir com um novo da

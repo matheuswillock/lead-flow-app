@@ -23,6 +23,14 @@ import {
 } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
 
+// Mesmo TTL de AddOnCheckoutUseCase.ts (T-40.x) — checkout hospedado do
+// Asaas expira depois disso.
+const PENDING_OPERATOR_CHECKOUT_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isPendingOperatorCheckoutExpired(createdAt: Date): boolean {
+  return Date.now() - createdAt.getTime() > PENDING_OPERATOR_CHECKOUT_TTL_MS;
+}
+
 // Helper para detectar ambiente de produção
 function getIsProduction() {
   const asaasEnv = process.env.ASAAS_ENV;
@@ -396,6 +404,26 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       if (existingUser) {
         return new Output(false, [], ['Email já está em uso'], null);
+      }
+
+      // Achado Codex (PR #1137, P1, round 8): sem este bloqueio, dois
+      // checkouts para o mesmo e-mail sob o mesmo manager (criados antes de
+      // qualquer pagamento confirmar — a checagem acima ainda não achava
+      // ninguém) podiam os dois ser pagos; o segundo webhook resolveria o
+      // e-mail para o Profile criado pelo primeiro (mesmo managerId) e
+      // trataria como retomada, incrementando a assinatura de novo sem
+      // provisionar um segundo operador de verdade.
+      const activeCheckout = await this.pendingOperatorRepository.findActiveByManagerAndEmail(
+        manager.id,
+        data.operatorData.email
+      );
+      if (activeCheckout && !isPendingOperatorCheckoutExpired(activeCheckout.createdAt)) {
+        return new Output(
+          false,
+          [],
+          ['Já existe um checkout pendente para este e-mail'],
+          null
+        );
       }
 
       // 3. Criar pendingOperator no banco

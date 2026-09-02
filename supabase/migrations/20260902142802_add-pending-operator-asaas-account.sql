@@ -1,6 +1,6 @@
 drop index if exists "public"."corretor_studio_pending_operators_paymentId_key";
 
-alter table "public"."corretor_studio_pending_operators" add column "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
+alter table "public"."corretor_studio_pending_operators" add column if not exists "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
 
 -- Achado Codex (PR #1137, P1, round 7): checkoutSessionId é emitido pelo
 -- Asaas por conta — um id histórico da legacy pode colidir com um novo da
@@ -29,4 +29,4 @@ begin
     and "updatedAt" < cutover_at;
 end $$;
 
-CREATE UNIQUE INDEX corretor_studio_pending_operators_payment_account_key ON public.corretor_studio_pending_operators USING btree ("paymentId", "asaasAccount");
+CREATE UNIQUE INDEX IF NOT EXISTS corretor_studio_pending_operators_payment_account_key ON public.corretor_studio_pending_operators USING btree ("paymentId", "asaasAccount");

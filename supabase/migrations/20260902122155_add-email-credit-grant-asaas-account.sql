@@ -24,7 +24,7 @@
 -- sem IF NOT EXISTS falharia no replay se reaplicado onde já existe.
 drop index if exists "public"."corretor_studio_email_credit_payment_grants_paymentId_key";
 
-alter table "public"."corretor_studio_email_credit_payment_grants" add column "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
+alter table "public"."corretor_studio_email_credit_payment_grants" add column if not exists "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
 
 do $$
 declare
@@ -36,4 +36,4 @@ begin
     and "createdAt" < cutover_at;
 end $$;
 
-CREATE UNIQUE INDEX corretor_studio_email_credit_payment_grants_payment_account_key ON public.corretor_studio_email_credit_payment_grants USING btree ("paymentId", "asaasAccount");
+CREATE UNIQUE INDEX IF NOT EXISTS corretor_studio_email_credit_payment_grants_payment_account_key ON public.corretor_studio_email_credit_payment_grants USING btree ("paymentId", "asaasAccount");

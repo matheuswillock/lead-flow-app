@@ -19,9 +19,22 @@ import type { AsaasAccountId } from "@/lib/asaas";
 
 export class PendingActionRepository implements IPendingActionRepository {
   async findById(id: string) {
+    // Achado Codex (PR #1137, P1, round 8): select explícito em vez de
+    // include — fecha a exceção prismaIncludeAllowlist deste arquivo.
     return prisma.pendingAction.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        masterId: true,
+        teamId: true,
+        actionType: true,
+        status: true,
+        payload: true,
+        checkoutId: true,
+        paymentId: true,
+        asaasAccount: true,
+        createdAt: true,
+        updatedAt: true,
         master: {
           select: {
             id: true,

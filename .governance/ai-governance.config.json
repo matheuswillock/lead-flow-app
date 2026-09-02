@@ -80,7 +80,6 @@
       "app/api/infra/data/repositories/featureAccess/FeatureAccessRepository.ts",
       "app/api/infra/data/repositories/lead/LeadRepository.ts",
       "app/api/infra/data/repositories/payment/PaymentRepository.ts",
-      "app/api/infra/data/repositories/pendingAction/PendingActionRepository.ts",
       "app/api/infra/data/repositories/profile/ProfileRepository.ts",
       "app/api/infra/data/repositories/task/TaskRepository.ts",
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
