@@ -6,9 +6,15 @@ const asaasFetchMock = mock(
   })
 )
 
+const asaasApiMock = { customers: "https://sandbox.asaas.com/api/v3/customers" }
+
 mock.module("@/lib/asaas", () => ({
   asaasFetch: asaasFetchMock,
-  asaasApi: { customers: "https://sandbox.asaas.com/api/v3/customers" },
+  asaasApi: asaasApiMock,
+  // mock.module parcial contamina outros arquivos no mesmo processo (bun run
+  // check:mock-module) — createAsaasClient precisa existir mesmo que este
+  // arquivo não o chame diretamente.
+  createAsaasClient: () => ({ endpoints: asaasApiMock, request: asaasFetchMock }),
 }))
 
 const { AsaasCustomerGateway } = await import("./AsaasCustomerGateway")
