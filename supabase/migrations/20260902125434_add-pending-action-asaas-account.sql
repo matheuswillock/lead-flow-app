@@ -11,7 +11,7 @@ declare
   cutover_at constant timestamptz := '2026-08-31 23:25:11+00';
 begin
   -- Preferência 1: evidência real — o próprio evento de webhook do Asaas
-  -- para este paymentId, que já grava em qual conta ele chegou
+  -- para esta action, que já grava em qual conta ele chegou
   -- (asaas_webhook_events.account, resolvido pelo token que bateu na rota
   -- — mesma semântica documentada no model). Isso é o dado mais confiável
   -- disponível, mais preciso que qualquer timestamp em pending_actions.
@@ -20,15 +20,22 @@ begin
   -- (processAsaasWebhookEvent.ts) prioriza body.id — o event id REAL do
   -- Asaas (formato "evt_...") — e só cai no formato "{event}:payment:{id}"
   -- quando body.id vem ausente. Em produção a coluna "id" quase sempre é
-  -- "evt_...", então o LIKE por paymentId não casava quase nada. O paymentId
-  -- real está em payload->'payment'->>'id' (AsaasWebhookBody.payment.id),
-  -- que existe independente do formato do id do evento.
+  -- "evt_...", então o LIKE por paymentId não casava quase nada.
+  --
+  -- Achado Codex de quarta rodada (PR #1137, P1): casar só por
+  -- payload->'payment'->>'id' reabre o próprio C33 que esta migration
+  -- fecha — um paymentId colidindo entre contas faria um evento legacy
+  -- relabelar erroneamente uma action da primary. A âncora correta é
+  -- payload->'payment'->>'externalReference', que IncrementalBillingService
+  -- grava como 'pending-action-{id}' (app/api/services/billing/
+  -- IncrementalBillingService.ts:277) — único por action, nunca colide
+  -- entre contas.
   update "public"."corretor_studio_pending_actions" pa
   set "asaasAccount" = we.account
   from "public"."asaas_webhook_events" we
   where pa."asaasAccount" = 'primary'
     and pa."paymentId" is not null
-    and we.payload -> 'payment' ->> 'id' = pa."paymentId"
+    and we.payload -> 'payment' ->> 'externalReference' = 'pending-action-' || pa.id::text
     and we.account = 'legacy';
 
   -- Preferência 2 (fallback, sem evento de webhook casado — ex.: cobrança

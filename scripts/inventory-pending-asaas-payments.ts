@@ -37,7 +37,13 @@ async function collectPendingActions(): Promise<InventoryRow[]> {
       paymentId: true,
       status: true,
       createdAt: true,
-      master: { select: { email: true, asaasCustomerAccount: true } },
+      // Achado Codex (PR #1137, P2): a conta da cobrança é a persistida na
+      // própria action (gravada no instante em que o paymentId nasceu),
+      // nunca a do master.asaasCustomerAccount atual — que pode ter
+      // migrado desde então (E4/C33, mesmo achado já fechado em
+      // checkPaymentStatus e confirm-payment).
+      asaasAccount: true,
+      master: { select: { email: true } },
     },
   })
 
@@ -45,7 +51,7 @@ async function collectPendingActions(): Promise<InventoryRow[]> {
     source: "PendingAction" as const,
     id: row.id,
     asaasPaymentId: row.paymentId,
-    asaasAccount: row.master?.asaasCustomerAccount ?? "primary",
+    asaasAccount: row.asaasAccount,
     status: row.status,
     email: row.master?.email ?? null,
     amount: null,
