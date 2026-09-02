@@ -75,38 +75,54 @@ Copy-Item .env.example .env
 
 Edite o `.env` com as credenciais reais dos servicos (Supabase remoto, Asaas, Resend e chaves de criptografia).
 
-4. Suba o banco local (ver secao [Banco de dados local](#banco-de-dados-local)):
+4. Defina o usuario de teste local no `.env` (conta sintetica, nunca uma conta real):
 
 ```bash
-supabase start
+LOCAL_DEV_USER_EMAIL=joaocleber@gmail.com
+LOCAL_DEV_USER_PASSWORD=Senha@1234
 ```
 
-5. Configure o `.env.local` para apontar ao banco local (ver secao abaixo).
-
-6. Gere o cliente Prisma:
+5. Gere o cliente Prisma:
 
 ```bash
 bun run prisma:generate
 ```
 
-7. Inicie a aplicacao:
+6. Inicie a aplicacao:
 
 ```bash
 bun run dev
 ```
 
-Acesse `http://localhost:3000`.
+Acesse `http://localhost:3000` e entre com o e-mail/senha do passo 4.
 
-Por padrao, `bun dev` sobe apenas o App + Supabase local e clona a base remota
-se `auth.users` estiver vazio. Stacks pesadas sao opcionais no dev local:
+O `bun run dev` (modo **db-only**, padrao) faz o resto sozinho na primeira execucao:
+
+- sobe o Postgres local no Docker (`127.0.0.1:55322`, `docker-compose.local.yml`);
+- aplica as migrations pendentes de `supabase/migrations/` no banco local;
+- seeda o catalogo do backoffice;
+- cria o usuario de teste: a conta entra no Auth remoto (o login do db-only passa
+  por la), e o Profile + "Time Local" + assinatura vitalicia ficam **apenas** no
+  Postgres local. Nenhum dado de producao e lido ou alterado.
+
+O banco local comeca vazio (CRM sem leads). Para trabalhar com dados reais,
+tudo e opt-in por flag:
 
 ```bash
-bun dev -- n8n         # App + Supabase + N8N
-bun dev -- evolution   # App + Supabase + Evolution API
-bun dev -- total       # App + Supabase + N8N + Evolution API
+bun run dev -- --clone       # clona o banco remoto para o Postgres local
+bun run dev -- --remote-db   # SEM Docker: aponta direto para o banco remoto (escritas reais!)
 ```
 
-8. (Opcional) Para testar webhook local do Asaas:
+Stacks pesadas tambem sao opcionais no dev local:
+
+```bash
+bun dev -- n8n         # + N8N
+bun dev -- evolution   # + Evolution API
+bun dev -- total       # + N8N + Evolution API
+bun dev -- --hybrid    # + Realtime local (exige docker/local/.env.local-stack)
+```
+
+7. (Opcional) Para testar webhook local do Asaas:
 
 ```bash
 bun run ngrok
