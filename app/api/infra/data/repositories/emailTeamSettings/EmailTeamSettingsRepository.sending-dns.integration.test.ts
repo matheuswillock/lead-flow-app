@@ -42,7 +42,7 @@ describeIntegration("EmailTeamSettingsRepository — reset do DNS de envio", () 
 
   const createDefaults = {
     fromName: "Corretor Studio",
-    fromEmail: "contato@corretorstudio.com",
+    fromEmail: "contato@mail.corretorstudio.com",
   }
 
   async function readFlag(): Promise<boolean> {

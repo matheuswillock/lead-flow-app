@@ -39,6 +39,10 @@ import {
   publishBackofficeEmailCampaignDispatchWake,
   type BackofficeEmailCampaignDispatchWakePayload,
 } from "@/lib/queues/backoffice-email-campaign-dispatch"
+import {
+  PLATFORM_FROM_EMAIL,
+  PLATFORM_FROM_NAME,
+} from "@/lib/email/resolve-campaign-from"
 import type {
   ApplyBackofficeResendWebhookEventInput,
   BackofficeLeadForCampaignSubscription,
@@ -48,8 +52,8 @@ import type {
 import type { BackofficeEmailCampaignDispatch } from "@prisma/client"
 
 const DEFAULT_LIVE_CAMPAIGN_HOUR_UTC = 16 // 13:00 America/Sao_Paulo
-const DEFAULT_FROM_EMAIL = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_EMAIL ?? "contato@corretorstudio.com"
-const DEFAULT_FROM_NAME = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_NAME ?? "Corretor Studio"
+const DEFAULT_FROM_EMAIL = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_EMAIL ?? PLATFORM_FROM_EMAIL
+const DEFAULT_FROM_NAME = process.env.BACKOFFICE_EMAIL_CAMPAIGN_FROM_NAME ?? PLATFORM_FROM_NAME
 
 /**
  * Lote por invocação do consumer (fila `backoffice-email-campaign-dispatch`).
