@@ -250,6 +250,54 @@ export class RadarRepository {
   }
 
   /**
+   * E3c: o vínculo `RadarIdentity` do tipo `lead_id` não é FK — é um UUID
+   * solto (regra 1:N do PR #1114: um perfil pode ter várias identidades
+   * `lead_id`, uma por lead do CRM já vinculado). Quando `MergeLeadsUseCase`
+   * apaga `sourceLeadId` no merge de CRM, a identidade que apontava pra ele
+   * fica presa a um lead morto — a seção "Leads no CRM" do perfil aponta pra
+   * um registro que não existe mais.
+   *
+   * Chamado sempre, depois do merge de perfis Radar (se ele rodou):
+   * - Nenhuma identidade `lead_id = sourceLeadId`: no-op (nada a corrigir).
+   * - Existe, e ninguém tem `lead_id = targetLeadId` ainda: reaponta o
+   *   valor da identidade para `targetLeadId` (perfil não perde o vínculo).
+   * - Existe, e algum perfil já tem `lead_id = targetLeadId` — inclusive o
+   *   próprio, se o merge de perfis acima já uniu os dois: a identidade do
+   *   lead alvo já é o vínculo válido; apaga a de origem para não duplicar
+   *   `lead_id` no mesmo par perfil↔lead.
+   */
+  async reconcileLeadIdentityAfterMerge(
+    teamId: string,
+    sourceLeadId: string,
+    targetLeadId: string,
+  ): Promise<void> {
+    const sourceIdentity = await this.db.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type: "lead_id", normalizedValue: sourceLeadId },
+      },
+      select: { id: true },
+    })
+    if (!sourceIdentity) return
+
+    const targetIdentity = await this.db.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type: "lead_id", normalizedValue: targetLeadId },
+      },
+      select: { id: true },
+    })
+
+    if (targetIdentity) {
+      await this.db.radarIdentity.delete({ where: { id: sourceIdentity.id } })
+      return
+    }
+
+    await this.db.radarIdentity.update({
+      where: { id: sourceIdentity.id },
+      data: { normalizedValue: targetLeadId },
+    })
+  }
+
+  /**
    * E3: funde `losingProfileId` em `winningProfileId` e recalcula o engagement
    * score do vencedor. Abre transação própria — entrypoint público para call
    * sites externos (ex.: MergeLeadsUseCase / E3b). O auto-merge em

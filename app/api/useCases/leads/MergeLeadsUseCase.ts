@@ -36,6 +36,16 @@ export type RadarMergeDeps = {
     losingProfileId: string,
     winningProfileId: string
   ) => Promise<void>;
+  /**
+   * E3c: reaponta (ou remove, se duplicada) a identidade Radar `lead_id`
+   * presa ao lead de origem depois que o CRM o deletou — ver
+   * `RadarRepository.reconcileLeadIdentityAfterMerge`.
+   */
+  reconcileLeadIdentityAfterMerge: (
+    teamId: string,
+    sourceLeadId: string,
+    targetLeadId: string
+  ) => Promise<void>;
 };
 
 function isEmptyValue(value: unknown): boolean {
@@ -169,6 +179,15 @@ export class MergeLeadsUseCase implements IMergeLeadsUseCase {
           targetIdentity.profileId
         );
       }
+
+      // E3c: roda sempre (perfis já unificados acima, únicos, ou nem
+      // vinculados) — reaponta ou remove a identidade `lead_id` que ficou
+      // presa ao UUID do lead de origem, agora deletado.
+      await this.radar.reconcileLeadIdentityAfterMerge(
+        access.teamId,
+        sourceLead.id,
+        targetLead.id
+      );
     } catch (error) {
       console.error("[MergeLeadsUseCase][execute][radarMerge]", error);
     }
