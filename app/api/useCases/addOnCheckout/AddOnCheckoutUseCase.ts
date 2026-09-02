@@ -2,7 +2,7 @@ import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
-import { asaas } from "@/lib/asaas";
+import { asaas, createAsaasClient } from "@/lib/asaas";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -248,7 +248,10 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
   async checkPaymentStatus(pendingActionId: string): Promise<Output> {
     try {
-      const pendingAction = await pendingActionRepository.findByIdSimple(pendingActionId);
+      // E6 (C32/DA4): findApplicableById traz o master junto — precisamos
+      // da conta dele para rotear o GET e ter algo pra propagar ao aplicar
+      // a ação (findByIdSimple não carrega essa relação).
+      const pendingAction = await pendingActionRepository.findApplicableById(pendingActionId);
 
       if (!pendingAction) {
         return new Output(
@@ -273,7 +276,40 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         );
       }
 
-      const payment = await asaas(`/payments/${pendingAction.paymentId}`);
+      const account = pendingAction.master.asaasCustomerAccount;
+      let payment: { status?: string; value?: number; dueDate?: string } | null = null;
+
+      try {
+        const client = createAsaasClient(account);
+        payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
+          method: "GET",
+        });
+      } catch (error) {
+        // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
+        // pode virar "pendente para sempre" nem 500 — degrada para o
+        // status persistido pelo webhook (última verdade conhecida).
+        console.error(
+          "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
+          { pendingActionId, paymentId: pendingAction.paymentId, account, error }
+        );
+
+        const persistedStatus =
+          pendingAction.status === "applied"
+            ? "CONFIRMED"
+            : pendingAction.status === "canceled"
+              ? "CANCELED"
+              : "PENDING";
+
+        const degradedResponse: PaymentStatusResponse = {
+          paymentId: pendingAction.paymentId,
+          status: persistedStatus,
+          amount: null,
+          dueDate: null,
+          pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+        };
+
+        return new Output(true, [], [], degradedResponse);
+      }
 
       if (!payment) {
         return new Output(
@@ -292,18 +328,15 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        // Addon checkout é criação de entidade nova — nasce sempre na
-        // primary (categoria (a) do censo). Roteamento completo desta rota
-        // de polling por conta do master é escopo de E6.
-        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, "primary");
+        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, account);
         currentStatus = "applied";
       }
 
       const statusResponse: PaymentStatusResponse = {
         paymentId: pendingAction.paymentId,
-        status: payment.status,
-        amount: payment.value,
-        dueDate: payment.dueDate,
+        status: payment.status ?? "PENDING",
+        amount: payment.value ?? null,
+        dueDate: payment.dueDate ?? null,
         pendingActionStatus: currentStatus as "pending" | "applied" | "failed" | "canceled",
       };
 
