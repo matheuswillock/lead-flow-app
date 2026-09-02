@@ -16,6 +16,7 @@ import { AsaasSubscriptionService } from '@/app/api/services/AsaasSubscription/A
 import { billingEngineRepository } from '@/app/api/infra/data/repositories/billing/BillingEngineRepository';
 import { logSubscriptionChange } from '@/lib/billing/logSubscriptionChange';
 import { lifecycleEventFromSubscriptionStatus } from '@/lib/billing/lifecycleEventFromSubscriptionStatus';
+import { getPaymentByAccountWithFallback } from '@/lib/billing/get-payment-by-account';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -26,10 +27,21 @@ export class PaymentValidationService implements IPaymentValidationService {
         `[PaymentValidationService] Validando pagamento: ${paymentId}`
       );
 
-      // Buscar informações do pagamento no Asaas usando a lib
-      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-        method: 'GET',
-      });
+      // Buscar informações do pagamento no Asaas — fallback de conta (C24
+      // de [[20 — Assinaturas — Backend]] E5, sem contexto de perfil aqui).
+      const lookup = await getPaymentByAccountWithFallback(paymentId);
+      if (!lookup.found) {
+        return {
+          success: false,
+          isPaid: false,
+          message: 'Pagamento não encontrado',
+        };
+      }
+      const payment = lookup.payment as {
+        status: string;
+        customer: string;
+        subscription?: string;
+      };
       console.info(
         `[PaymentValidationService] Status do pagamento: ${payment.status}`
       );
