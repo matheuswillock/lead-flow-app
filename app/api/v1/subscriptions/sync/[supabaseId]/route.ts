@@ -3,6 +3,9 @@ import { Output } from '@/lib/output';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { AsaasSubscriptionService } from '@/app/api/services/AsaasSubscription/AsaasSubscriptionService';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import type { AsaasAccountId } from '@/lib/asaas';
+
+const TERMINAL_ASAAS_STATUSES = new Set(['EXPIRED', 'INACTIVE']);
 
 /**
  * POST /api/v1/subscriptions/sync/[supabaseId]
@@ -40,18 +43,82 @@ export async function POST(
       );
     }
 
-    // 3. Buscar assinaturas ativas no Asaas
-    console.info('📞 [SyncSubscription] Buscando assinaturas no Asaas para customer:', profile.asaasCustomerId);
-    
-    const subscriptions = await AsaasSubscriptionService.listSubscriptions(
-      profile.asaasCustomerId,
-      { status: 'ACTIVE', limit: 1 }
-    );
+    // 3. Buscar assinaturas no Asaas (DA2: roteia pela conta do ponteiro
+    // armazenado — cus_ pode pertencer à conta legacy durante a janela dual).
+    const customerAccount: AsaasAccountId = profile.asaasCustomerAccount ?? 'primary';
+    console.info('📞 [SyncSubscription] Buscando assinaturas no Asaas para customer:', {
+      asaasCustomerId: profile.asaasCustomerId,
+      account: customerAccount,
+    });
+
+    // Sem filtro de status: DA3 (C18/C29) exige evidência POSITIVA para
+    // downgrade — precisamos ver o status real, não só "existe ACTIVE?".
+    let subscriptions: Array<{ id: string; status?: string; value: number; cycle: string; nextDueDate?: string; dateCreated?: string }>;
+    try {
+      subscriptions = await AsaasSubscriptionService.listSubscriptions(
+        profile.asaasCustomerId,
+        { limit: 5 },
+        customerAccount,
+      );
+    } catch (listError) {
+      // DA3: erro de API NUNCA vira "sem assinaturas" — no-op, log,
+      // resposta de erro explícita. Grava `canceled` aqui seria o mesmo
+      // bug do C29 (downgrade por falha transitória de rede).
+      console.error('❌ [SyncSubscription] Falha ao consultar assinaturas no Asaas — nenhuma alteração local feita', {
+        supabaseId,
+        asaasCustomerId: profile.asaasCustomerId,
+        account: customerAccount,
+        error: listError,
+      });
+      return NextResponse.json(
+        new Output(false, [], ['Não foi possível consultar o Asaas. Nenhuma alteração foi feita.'], null),
+        { status: 502 }
+      );
+    }
 
     if (!subscriptions || subscriptions.length === 0) {
-      console.warn('⚠️ [SyncSubscription] Nenhuma assinatura ativa encontrada no Asaas');
-      
-      // Atualizar profile para status sem assinatura
+      // DA3: lista vazia NUNCA vira `canceled` — pode ser "nunca teve
+      // assinatura", "conta errada" ou um falso-negativo da API. Sem
+      // evidência positiva de status terminal, é no-op.
+      console.warn('⚠️ [SyncSubscription] Nenhuma assinatura encontrada no Asaas — sem alteração local (DA3)', {
+        supabaseId,
+        asaasCustomerId: profile.asaasCustomerId,
+        account: customerAccount,
+      });
+      return NextResponse.json(
+        new Output(
+          true,
+          ['Nenhuma assinatura encontrada no Asaas — nenhuma alteração foi feita'],
+          [],
+          null
+        ),
+        { status: 200 }
+      );
+    }
+
+    const activeSubscription = subscriptions.find((sub) => sub.status === 'ACTIVE');
+
+    if (!activeSubscription) {
+      const terminalSubscription = subscriptions.find(
+        (sub) => sub.status && TERMINAL_ASAAS_STATUSES.has(sub.status),
+      );
+
+      if (!terminalSubscription) {
+        // Existem assinaturas, mas nenhuma ACTIVE nem em status terminal
+        // reconhecido (ex.: PENDING de checkout) — evidência insuficiente
+        // para qualquer mudança de status local.
+        console.info('ℹ️ [SyncSubscription] Assinaturas encontradas sem status ACTIVE/terminal — sem alteração', {
+          supabaseId,
+          statuses: subscriptions.map((sub) => sub.status),
+        });
+        return NextResponse.json(
+          new Output(true, ['Nenhuma assinatura em status conclusivo — nenhuma alteração foi feita'], [], null),
+          { status: 200 }
+        );
+      }
+
+      // Evidência positiva de status terminal (DA3) — só agora o downgrade
+      // é seguro.
       const updatedProfile = await prisma.profile.update({
         where: { supabaseId },
         data: {
@@ -60,19 +127,17 @@ export async function POST(
         },
       });
 
+      console.info('✅ [SyncSubscription] Assinatura terminal confirmada no Asaas — profile marcado canceled', {
+        supabaseId,
+        asaasSubscriptionId: terminalSubscription.id,
+        asaasStatus: terminalSubscription.status,
+      });
+
       return NextResponse.json(
-        new Output(
-          true,
-          ['Nenhuma assinatura ativa encontrada'],
-          [],
-          updatedProfile
-        ),
+        new Output(true, ['Assinatura cancelada/expirada confirmada no Asaas'], [], updatedProfile),
         { status: 200 }
       );
     }
-
-    // 4. Pegar primeira assinatura ativa
-    const activeSubscription = subscriptions[0];
     console.info('✅ [SyncSubscription] Assinatura ativa encontrada:', {
       id: activeSubscription.id,
       status: activeSubscription.status,

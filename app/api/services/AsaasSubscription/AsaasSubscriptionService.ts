@@ -173,12 +173,12 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
   /**
    * Lista assinaturas de um cliente.
    *
-   * NOTA (C18/C29 — vira DA3 em [[20 — Assinaturas — Backend]] E4): o catch
-   * abaixo ainda converte erro de API em `[]`, o que faz o caller da rota
-   * sync gravar `canceled` tanto para "sem assinaturas" quanto para "a API
-   * falhou". Mantido AS-IS nesta mudança (E2) de propósito — a correção do
-   * catch é o próprio objeto de teste do E4 (T-20.13), que precisa do
-   * comportamento antigo intacto para o controle negativo.
+   * Erro de API propaga tipado (C18/C29, DA3 de [[20 — Assinaturas —
+   * Backend]] E4) — NUNCA mais vira `[]` silencioso. Antes disso, o caller
+   * da rota sync gravava `canceled` tanto para "sem assinaturas" quanto
+   * para "a API falhou", porque as duas situações chegavam idênticas
+   * (array vazio). Callers que tratavam `[]` como "sem assinaturas" MUST
+   * agora envolver a chamada em try/catch e distinguir explicitamente.
    */
   static async listSubscriptions(
     customerId: string,
@@ -189,26 +189,21 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
     },
     accountId: AsaasAccountId = 'primary',
   ) {
-    try {
-      const queryParams = new URLSearchParams({
-        customer: customerId,
-      });
+    const queryParams = new URLSearchParams({
+      customer: customerId,
+    });
 
-      if (params?.status) queryParams.append('status', params.status);
-      if (params?.offset) queryParams.append('offset', params.offset.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-      const client = createAsaasClient(accountId);
-      const result = await client.request(
-        `${client.endpoints.subscriptions}?${queryParams.toString()}`,
-        { method: 'GET' }
-      );
+    const client = createAsaasClient(accountId);
+    const result = await client.request(
+      `${client.endpoints.subscriptions}?${queryParams.toString()}`,
+      { method: 'GET' }
+    );
 
-      return result.data || [];
-    } catch (error: any) {
-      console.error('❌ Erro ao listar assinaturas:', error);
-      return [];
-    }
+    return result.data || [];
   }
 
   /**
