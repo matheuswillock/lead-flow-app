@@ -279,7 +279,7 @@ test.describe("app/backoffice/(app)/campanhas-analytics", () => {
     await expect(page.getByText("Template E2E Page", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Template E2E Page (falho)").first()).toBeVisible();
     await expect(page.getByText("Falhou").first()).toBeVisible();
-    await expect(page.getByText("Falha de envio simulada no E2E")).toBeVisible();
+    await expect(page.getByText("Falha de envio simulada no E2E").first()).toBeVisible();
   });
 
   test("T-11.9/T-11.10 — exportar CSV de templates dispara o download com o nome do backend", async ({ page }) => {

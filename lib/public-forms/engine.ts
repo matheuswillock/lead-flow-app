@@ -1,4 +1,5 @@
-import { parseCurrencyBR, phoneDigitCount } from "./masks"
+import { parseCurrencyBR } from "./masks"
+import { normalizeBrazilianPhoneDigits } from "@/lib/phone/normalize-brazilian-phone"
 import {
   isAnswered,
   isChoiceQuestionType,
@@ -425,7 +426,11 @@ export function validateAnswerIssue(
     if (nameIssue) return nameIssue
   }
   if (q.type === "phone") {
-    const digits = phoneDigitCount(s)
+    // A contagem é sobre o valor passado pela régua compartilhada do gate:
+    // "55 11 2422-2006" (12-13 dígitos com código do país) normaliza para
+    // 10-11 e passa; sem isso o engine devolvia invalid_phone ANTES de a
+    // criação de lead ter a chance de normalizar (achado do PR #1129).
+    const digits = normalizeBrazilianPhoneDigits(s).length
     if (digits < 10 || digits > 11)
       return { code: "invalid_phone", message: "Informe um telefone válido" }
   }
