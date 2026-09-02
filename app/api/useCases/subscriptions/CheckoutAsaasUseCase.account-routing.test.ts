@@ -141,6 +141,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
     })),
     updatePaymentId: mock(async () => {}),
     markSubscriptionUpdated: mock(async () => {}),
+    markOperatorCreated: mock(async () => {}),
     deleteById: mock(async () => {}),
     ...overrides.pendingOperatorRepository,
   }
@@ -524,6 +525,113 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     expect(result.isValid).toBe(false)
     expect(result.errorMessages).toEqual(["Já existe um checkout pendente para este e-mail"])
+  })
+
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): checkout ativo mas expirado é removido antes de liberar um novo (evita P2002 permanente)", async () => {
+    const deleteByIdMock = mock(async () => {})
+    const repos = fakeRepos({
+      pendingOperatorRepository: {
+        findActiveByManagerAndEmail: mock(async () => ({
+          id: "pending-op-expired",
+          createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        })),
+        deleteById: deleteByIdMock,
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+    })
+
+    expect(result.isValid).toBe(true)
+    expect(deleteByIdMock).toHaveBeenCalledWith("pending-op-expired")
+    expect(repos.pendingOperatorRepository.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): incrementa o contador do manager ANTES de deletar o pendingOperator", async () => {
+    const callOrder: string[] = []
+    const repos = fakeRepos({
+      profileRepository: {
+        incrementOperatorCount: mock(async () => {
+          callOrder.push("increment")
+        }),
+      },
+      pendingOperatorRepository: {
+        deleteById: mock(async () => {
+          callOrder.push("delete")
+        }),
+        markOperatorCreated: mock(async () => {
+          callOrder.push("mark")
+        }),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(callOrder).toEqual(["increment", "mark", "delete"])
+  })
+
+  it("achado Codex/cursor[bot] (PR #1137, P1, round 11): retry após operatorId já marcado (delete anterior falhou) nunca incrementa de novo", async () => {
+    // pendingOperator.operatorCreated=true + operatorId setado significa
+    // que uma tentativa anterior já incrementou o contador e marcou a
+    // linha ANTES de tentar o deleteById (que falhou, por isso o retry
+    // ainda encontra a linha). O guard do topo da função já trata isso
+    // como "Operador já foi criado" — um leftover inofensivo, nunca um
+    // segundo incremento.
+    const incrementOperatorCountMock = mock(async () => {})
+    const repos = fakeRepos({
+      profileRepository: {
+        incrementOperatorCount: incrementOperatorCountMock,
+      },
+      pendingOperatorRepository: {
+        findByPaymentIdWithManager: mock(async () => ({
+          id: "pending-op-1",
+          managerId: manager.id,
+          teamId: "team-1",
+          name: "Novo Operador",
+          email: "novo-operador@example.test",
+          role: "operator",
+          functions: [],
+          paymentId: "checkout_session_1",
+          subscriptionId: "sub_new_1",
+          paymentStatus: "SUBSCRIPTION_UPDATED",
+          paymentMethod: "UNDEFINED",
+          operatorCreated: true,
+          operatorId: "operator-already-counted",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          manager,
+        })),
+      },
+    })
+    const useCase = new CheckoutAsaasUseCase(
+      repos.profileRepository,
+      repos.teamRepository,
+      repos.teamMembersRepository,
+      repos.pendingOperatorRepository,
+      repos.asaasCustomerGateway
+    )
+
+    const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Operador já foi criado"])
+    expect(incrementOperatorCountMock).not.toHaveBeenCalled()
   })
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {

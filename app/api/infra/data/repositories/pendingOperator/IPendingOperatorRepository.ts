@@ -51,6 +51,12 @@ export interface IPendingOperatorRepository {
     account: AsaasAccountId
   ): Promise<PendingOperatorWithManager | null>
   updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void>
+  // Achado Codex/cursor[bot] (PR #1137, P1, round 11): marca o operador
+  // como criado ANTES de incrementar operatorCount/deletar a linha — sem
+  // isso, um retry após incrementOperatorCount falhar não tinha como saber
+  // que o operador já existia (deleteById já tinha rodado numa tentativa
+  // anterior, mas o incremento não).
+  markOperatorCreated(id: string, operatorId: string): Promise<void>
   // Marca que o incremento de +R$19,90 na assinatura antiga do manager já
   // foi aplicado (achado Codex no PR #1137, P1) — processOperatorCheckoutPaid
   // consulta este marcador antes de reaplicar o incremento numa retentativa

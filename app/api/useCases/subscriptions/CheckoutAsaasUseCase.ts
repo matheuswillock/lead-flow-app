@@ -418,13 +418,23 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         manager.id,
         data.operatorData.email
       );
-      if (activeCheckout && !isPendingOperatorCheckoutExpired(activeCheckout.createdAt)) {
-        return new Output(
-          false,
-          [],
-          ['Já existe um checkout pendente para este e-mail'],
-          null
-        );
+      if (activeCheckout) {
+        if (!isPendingOperatorCheckoutExpired(activeCheckout.createdAt)) {
+          return new Output(
+            false,
+            [],
+            ['Já existe um checkout pendente para este e-mail'],
+            null
+          );
+        }
+        // Achado Codex/cursor[bot] (PR #1137, P1, round 11): o índice único
+        // parcial (WHERE operatorCreated = false, migration 20260902151915)
+        // não tem noção de TTL — uma linha expirada continua bloqueando o
+        // par manager/e-mail para sempre (P2002 no INSERT abaixo) até
+        // alguém removê-la. Remove a linha abandonada agora, no mesmo
+        // instante em que a regra de expiração da aplicação já decidiu
+        // liberá-la.
+        await this.pendingOperatorRepository.deleteById(activeCheckout.id);
       }
 
       // 3. Criar pendingOperator no banco
@@ -900,15 +910,27 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
+      // Achado Codex/cursor[bot] (PR #1137, P1, round 11): incrementOperatorCount
+      // não é idempotente (increment: 1) e rodava DEPOIS do deleteById — se
+      // falhasse ali, o retry não achava mais o PendingOperator (já
+      // deletado), "Operador pendente não encontrado" (allowlist de
+      // no-op conhecido) engolia o evento, e o contador do manager ficava
+      // permanentemente defasado (operador provisionado, cobrança sem
+      // reflexo). Incrementa ANTES do delete, guardado por
+      // pendingOperator.operatorId (marcador persistido, nulo por padrão —
+      // nunca setado antes desta correção): se já setado (retry depois de
+      // um delete que falhou), pula o incremento de novo.
+      if (!pendingOperator.operatorId) {
+        await this.profileRepository.incrementOperatorCount(manager.id);
+        await this.pendingOperatorRepository.markOperatorCreated(pendingOperator.id, operator.id);
+
+        console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
+      }
+
       // 6. Deletar pendingOperator (já foi processado)
       await this.pendingOperatorRepository.deleteById(pendingOperator.id);
 
       console.info('✅ [processOperatorCheckoutPaid] PendingOperator removido da fila');
-
-      // 7. Incrementar contador de operadores no manager
-      await this.profileRepository.incrementOperatorCount(manager.id);
-
-      console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
 
       // 8. Enviar e-mail de convite para operador
       try {
