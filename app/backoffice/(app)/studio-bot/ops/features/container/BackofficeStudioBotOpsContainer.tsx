@@ -324,8 +324,7 @@ export function BackofficeStudioBotOpsContainer() {
             <CardHeader>
               <CardTitle className="text-base">Links de referência</CardTitle>
               <CardDescription>
-                Atalhos para N8N, Evolution e webhook. Hostnames Docker (ex.: n8n:5678) não abrem no
-                navegador — use só na configuração da Evolution.
+                Atalhos para os serviços que rodam na VPS hoje.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -337,13 +336,7 @@ export function BackofficeStudioBotOpsContainer() {
                     label={link.label}
                     href={link.href}
                     hint={link.hint}
-                    openInBrowser={link.id !== "bethania-inbound-internal"}
-                    className={
-                      link.id === "bethania-inbound-internal" ||
-                      link.id === "bethania-inbound-public"
-                        ? "md:col-span-2"
-                        : undefined
-                    }
+                    openInBrowser
                   />
                 ))}
               </FieldGroup>

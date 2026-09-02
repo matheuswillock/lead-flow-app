@@ -45,6 +45,8 @@ const MANAGED_SERVICES = [
   { service: "studio-bot-ops", matchesContainer: (name) => name === "studio_bot_ops" },
 ];
 const DEFAULT_SERVICE = "openwa";
+/** Este agente é um dos serviços do compose que ele opera. */
+const SELF_SERVICE = "studio-bot-ops";
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -298,18 +300,49 @@ function managedServiceNames() {
   return MANAGED_SERVICES.map(({ service }) => service).join(" ou ");
 }
 
+/**
+ * Reinicia um alvo que inclui este próprio container.
+ *
+ * `docker compose restart studio-bot-ops` mata o processo que está atendendo o
+ * request. Se esperarmos o comando terminar, o cliente recebe erro de rede e o
+ * job vai para `failed` mesmo quando o restart deu certo. Então respondemos
+ * antes e só depois disparamos o compose, sem await — este processo não estará
+ * vivo para relatar o resultado.
+ */
+function restartDetached(res, target) {
+  json(res, 202, {
+    ok: true,
+    detached: true,
+    target,
+    note: "Restart disparado. O agente reinicia junto, então não há resultado do compose para reportar — confirme com Health depois de alguns segundos.",
+  });
+
+  res.on("finish", () => {
+    const args = target === "all" ? ["restart"] : ["restart", target];
+    compose(...args).catch((error) => {
+      console.error("[studio-bot-ops][restart:detached]", target, error);
+    });
+  });
+}
+
+/** O agente roda dentro do compose que ele mesmo opera — ver restartDetached. */
+function targetIncludesSelf(target) {
+  return target === "all" || target === SELF_SERVICE;
+}
+
 async function handleRestart(body, res) {
   const payload = JSON.parse(body || "{}");
   const requested = payload.service || DEFAULT_SERVICE;
-  if (requested === "all") {
-    const result = await compose("restart");
-    return json(res, 200, { ok: true, result });
-  }
-  const target = resolveManagedService(requested);
-  if (!target) {
+
+  if (requested !== "all" && !resolveManagedService(requested)) {
     return json(res, 400, { ok: false, error: `service deve ser ${managedServiceNames()} ou all` });
   }
-  const result = await compose("restart", target);
+
+  if (targetIncludesSelf(requested)) {
+    return restartDetached(res, requested);
+  }
+
+  const result = await compose("restart", requested);
   return json(res, 200, { ok: true, result });
 }
 

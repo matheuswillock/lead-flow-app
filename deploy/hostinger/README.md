@@ -42,8 +42,18 @@ No painel DNS da Hostinger:
 
 Aguarde propagação (5–30 min). Teste: `ping ops.corretorstudio.com`
 
-O `openwa` **não** tem DNS nem bloco de Caddy: ele é alcançado por dentro da rede
-Docker (`OPENWA_API_URL=http://openwa:3333`).
+### Lacuna conhecida: o `openwa` não tem rota pública
+
+O serviço `openwa` tem só `expose: 3333` no compose (sem `ports`) e não tem bloco
+no Caddyfile — ou seja, hoje ele só é alcançável de dentro de `studio-bot-net`.
+
+O app roda na **Vercel**, fora dessa rede. `OPENWA_API_URL=http://openwa:3333`
+funciona para um cliente dentro do compose, mas **não** para a Vercel: o
+hostname não resolve e sessão, QR e envio de mensagem do produto falham.
+
+Antes de apontar a Vercel para o gateway é preciso escolher o caminho de acesso
+(bloco Caddy com autenticação, túnel privado, ou o que a Spec 01 definir) e
+implementá-lo. Ver [CUTOVER-CHECKLIST](../openwa-gateway/docs/CUTOVER-CHECKLIST.md).
 
 ## Fase 3 — Primeiro acesso SSH
 
@@ -251,7 +261,7 @@ sudo -u github-runner-2 ./config.sh remove --token "$(gh api -X POST repos/mathe
 |---------|------|
 | 502 no Caddy em `ops` | `docker ps` — o container `studio_bot_ops` está de pé? |
 | Painel Ops → Health falha | `curl -sS https://ops.corretorstudio.com/healthz`; depois `/v1/token/verify` com o Bearer |
-| App não fala com o OpenWA | `OPENWA_API_URL=http://openwa:3333` e `OPENWA_API_KEY` iguais aos do `.env.openwa` |
+| App na Vercel não fala com o OpenWA | Esperado enquanto o gateway não tiver rota pública — ver [lacuna conhecida](#lacuna-conhecida-o-openwa-não-tem-rota-pública). `http://openwa:3333` não resolve fora da rede Docker |
 | OpenWA sem sessão | `docker compose -f docker-compose.vps.yml logs -f openwa` e reconectar o WhatsApp pelo produto |
 | `Aplicar env` falha no painel | Esperado — a rota está congelada (ver acima) |
 | CI queued / runner Offline | `systemctl status 'actions.runner.*'` e reiniciar; conferir Idle no GitHub |

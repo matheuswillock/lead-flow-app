@@ -166,7 +166,10 @@ Bootstrap concluído. Próximos passos manuais:
 
 2. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
    - BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN = mesmo OPS_AGENT_TOKEN da VPS
-   - OPENWA_API_URL=http://openwa:3333 e OPENWA_API_KEY = do .env.openwa
+   - OPENWA_API_KEY / OPENWA_WEBHOOK_SECRET = os mesmos do .env.openwa
+   - OPENWA_API_URL: o gateway ainda NAO tem rota publica (so 'expose: 3333',
+     sem bloco no Caddyfile). 'http://openwa:3333' nao resolve na Vercel — veja
+     "Lacuna conhecida" em deploy/hostinger/README.md antes de preencher.
 
 3. No Corretor Studio, reconecte o WhatsApp do time para criar a sessão OpenWA
 

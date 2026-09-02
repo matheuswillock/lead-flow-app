@@ -2,8 +2,18 @@
 # Project → Settings → Environment Variables → Production
 
 # --- OpenWA Gateway (WhatsApp do produto) ---
-# O gateway não é exposto publicamente: o app fala com ele pela rede Docker.
-OPENWA_API_URL=http://openwa:3333
+# ATENÇÃO: o app roda na Vercel, fora da rede Docker da VPS. `http://openwa:3333`
+# só funciona para quem está dentro de `studio-bot-net` — na Vercel não resolve.
+#
+# Hoje o repo NÃO define rota pública para o gateway: no docker-compose.vps.yml o
+# serviço `openwa` tem só `expose: 3333` (sem `ports`), e o Caddyfile publica
+# apenas `ops.corretorstudio.com`. Antes de preencher a variável abaixo é preciso
+# escolher e implementar o caminho de acesso (bloco Caddy com auth, túnel privado,
+# ou o que a Spec 01 definir) — ver deploy/openwa-gateway/docs/CUTOVER-CHECKLIST.md.
+#
+# Preencha com a URL que a Vercel realmente alcança, sem barra final. Se ficar
+# vazia, OpenWaApiService lança "OPENWA_API_URL is not set" na primeira chamada.
+OPENWA_API_URL=<URL do gateway alcançável a partir da Vercel>
 OPENWA_API_KEY=<mesmo OPENWA_API_KEY de .env.openwa na VPS>
 OPENWA_WEBHOOK_SECRET=<mesmo OPENWA_WEBHOOK_SECRET de .env.openwa na VPS>
 
