@@ -620,8 +620,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
         </DndContext>
       </div>
       <div className="flex items-center justify-end px-2">
-        <div className="flex items-center space-x-6 lg:space-x-8">
-          <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2 lg:gap-x-8">
+          <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Linhas por página</p>
             <select
               aria-label="Linhas por página"
@@ -643,7 +643,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
             Página {table.getState().pagination.pageIndex + 1} de{" "}
             {table.getPageCount()}
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               className="size-8 max-lg:size-11 p-0"
