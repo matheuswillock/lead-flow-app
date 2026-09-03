@@ -1,5 +1,6 @@
 import { mock } from "bun:test"
 import * as actualLeadSyncClaim from "@/lib/public-forms/lead-sync-claim"
+import { registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 
 /**
  * Instâncias COMPARTILHADAS de mock para os módulos que o `publicFormLeadSync`
@@ -103,10 +104,10 @@ export const waitForLeadSyncClaimRetryMock = mock(async (_ms: number) => {})
 export function registerPublicFormLeadSyncModuleMocks(): void {
   mock.module("server-only", () => ({}))
   mock.module("@/lib/env/server", () => ({}))
-  mock.module("@/app/api/infra/data/prisma", () => ({
-    prisma: {},
-    withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-  }))
+  // Módulo do prisma SEMPRE pela fábrica compartilhada e completa — a versão
+  // parcial daqui (`{ prisma: {}, withPrismaRetry }`) congelava o namespace
+  // sem `getImportCronPrisma`/`getEmailCronPrisma` para os vizinhos.
+  registerPrismaModuleMock()
   mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
     // Fábrica completa: todos os exports de valor do módulo real, para não
     // derrubar outro arquivo que importe um export omitido (a armadilha das

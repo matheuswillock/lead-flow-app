@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
+import { registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 
 /**
  * Requisitos 4/5/8 do bug `2026-08-28-liber-leads-duplicados-origem-campanha-
@@ -6,9 +7,13 @@ import { describe, expect, it, mock } from "bun:test"
  * `publicFormLeadSync`): resposta atribuída por campanha que anexa num lead
  * `public_form` já existente promove a origem para `email_campaign`, com
  * MERGE dos metadados anteriores. Lead que já é `email_campaign` não muda.
+ *
+ * Mock do módulo do prisma pela fábrica compartilhada e COMPLETA — fábrica
+ * parcial aqui congela o namespace do módulo (primeiro registro vence sem
+ * `--isolate`) e derruba o vizinho que importa `withPrismaRetry`.
  */
 
-mock.module("@/app/api/infra/data/prisma", () => ({ prisma: {} }))
+registerPrismaModuleMock()
 
 const { RadarLeadGateUnitOfWork } = await import("./RadarLeadGateUnitOfWork")
 

@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
+import { prismaModuleMock, registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 
 /**
  * Adenda E6b (SPEC 10, decisão do owner 02/09) — caso real KKJ (perfil
@@ -60,17 +61,19 @@ function makeTx(profiles: Record<string, { displayName: string; normalizedName: 
   }
 }
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx(currentProfiles)),
-    radarEvent: { findMany: mock(async () => []) },
-    radarProfile: { updateMany: mock(async () => ({ count: 1 })) },
-    backofficeRadarEngagementWeight: { findMany: mock(async () => []) },
-    backofficeRadarEngagementConfig: { findFirst: mock(async () => null) },
-    backofficeFormEngagementScoreRule: { findMany: mock(async () => []) },
-  },
-  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-}))
+// Fábrica compartilhada e COMPLETA (nunca registrar fábrica própria para o
+// módulo do prisma): o comportamento entra por atribuição no objeto mutável
+// compartilhado, que é o MESMO objeto visto pelo `RadarRepository` importado
+// abaixo, mesmo quando outro arquivo registrou a fábrica primeiro.
+registerPrismaModuleMock()
+Object.assign(prismaModuleMock, {
+  $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx(currentProfiles)),
+  radarEvent: { findMany: mock(async () => []) },
+  radarProfile: { updateMany: mock(async () => ({ count: 1 })) },
+  backofficeRadarEngagementWeight: { findMany: mock(async () => []) },
+  backofficeRadarEngagementConfig: { findFirst: mock(async () => null) },
+  backofficeFormEngagementScoreRule: { findMany: mock(async () => []) },
+})
 
 const { RadarRepository } = await import(
   "@/app/api/infra/data/repositories/radar/RadarRepository"
