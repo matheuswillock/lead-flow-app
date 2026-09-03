@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output"
-import { radarService } from "@/app/api/services/radar/RadarService"
+import { radarService, type RadarService } from "@/app/api/services/radar/RadarService"
 import type { RadarTeamScope } from "@/app/api/infra/data/repositories/radar/RadarRepository"
 
 interface SyncFinalizedToRadarInput {
@@ -9,7 +9,9 @@ interface SyncFinalizedToRadarInput {
   leadIds?: string[]
 }
 
-class SyncFinalizedToRadarUseCase {
+export class SyncFinalizedToRadarUseCase {
+  constructor(private readonly service: RadarService = radarService) {}
+
   async execute(input: SyncFinalizedToRadarInput): Promise<Output> {
     try {
       const leadIds = input.leadIds?.filter((id) => Boolean(id)) ?? []
@@ -23,7 +25,7 @@ class SyncFinalizedToRadarUseCase {
         // para satisfazer o tipo RadarTeamScope.
         ctx: { profileId: "system", teamMember: { role: "system", functions: [] } },
       }
-      const result = await radarService.syncFromFinalized(scope, {
+      const result = await this.service.syncFromFinalized(scope, {
         ...(input.finalizedId ? { finalizedId: input.finalizedId } : {}),
         ...(input.leadId ? { leadId: input.leadId } : {}),
         ...(leadIds.length > 0 ? { leadIds } : {}),
