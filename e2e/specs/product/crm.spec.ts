@@ -172,7 +172,10 @@ test.describe("app/[supabaseId]/crm", () => {
 
     // Timeline é a dona do scroll vertical e recebe a altura sobrando.
     const timelineScroll = dialog.locator(".activity-scrollbar.overflow-y-auto").first();
-    await expect(timelineScroll).toBeVisible();
+    // 30s como o assert do composer acima: a timeline só monta depois do fetch
+    // de detalhes do lead, que sob a carga dos 4 workers da CI passa dos 5s
+    // do timeout default.
+    await expect(timelineScroll).toBeVisible({ timeout: 30_000 });
     const timelineHeight = await timelineScroll.evaluate((el) => el.clientHeight);
     expect(timelineHeight).toBeGreaterThanOrEqual(200);
 
