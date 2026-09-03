@@ -5,6 +5,9 @@ import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRe
 import { radarImportJobRepository } from "@/app/api/infra/data/repositories/radar/RadarImportJobRepository"
 import { teamRadarFieldDefinitionRepository } from "@/app/api/infra/data/repositories/radar/TeamRadarFieldDefinitionRepository"
 import { notificationService } from "@/app/api/services/notifications/NotificationService"
+// Import type-only (apagado na compilação): o carregamento do módulo em
+// runtime continua lazy, via dynamic import no finalize.
+import type { enqueueRadarProfileSync as enqueueRadarProfileSyncFn } from "@/app/api/useCases/radar/enqueueRadarProfileSync"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { generateRadarImportId } from "@/lib/radar/generate-import-id"
 import {
@@ -64,6 +67,7 @@ async function defaultPublishBatch(
 
 export type RadarBaseImportDeps = {
   publishBatch?: PublishRadarBulkImportBatch
+  enqueueProfileSync?: typeof enqueueRadarProfileSyncFn
 }
 const PREVIEW_ROW_LIMIT = 5
 
@@ -534,10 +538,10 @@ export class RadarBaseImportUseCase {
 
     await radarImportJobRepository.updateJob(job.id, { status })
 
-    const { enqueueRadarProfileSync } = await import(
-      "@/app/api/useCases/radar/enqueueRadarProfileSync"
-    )
-    await enqueueRadarProfileSync(
+    const enqueueProfileSync =
+      this.deps.enqueueProfileSync ??
+      (await import("@/app/api/useCases/radar/enqueueRadarProfileSync")).enqueueRadarProfileSync
+    await enqueueProfileSync(
       { source: "bulk_import_finalize", teamId: job.teamId },
       {
         fallback: async () => {

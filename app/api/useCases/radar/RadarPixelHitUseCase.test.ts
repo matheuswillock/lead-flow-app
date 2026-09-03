@@ -1,5 +1,9 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
 import type { RadarPixelEventPayload } from "@/lib/queues/radar-pixel-events"
+import {
+  radarRepositoryMock,
+  registerRadarRepositoryModuleMock,
+} from "@/test/support/radar-repository-module-mock"
 
 const findPixelConfigByPublicToken = mock(async () => ({
   teamId: "team-1",
@@ -13,24 +17,25 @@ const logPixelHit = mock(async () => ({}))
 const upsertSourceLink = mock(async () => ({}))
 const touchPixelLastUsed = mock(async () => ({}))
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    findPixelConfigByPublicToken,
-    appendEventIfNew,
-    resolveProfileForVisitorSession,
-    logPixelHit,
-    upsertSourceLink,
-    touchPixelLastUsed,
-  },
-  RadarRepository: class {},
-}))
+await registerRadarRepositoryModuleMock()
+Object.assign(radarRepositoryMock, {
+  findPixelConfigByPublicToken,
+  appendEventIfNew,
+  resolveProfileForVisitorSession,
+  logPixelHit,
+  upsertSourceLink,
+  touchPixelLastUsed,
+})
 
 mock.module("@/lib/radar/team-has-radar-feature", () => ({
   teamHasRadarFeature: mock(async () => true),
 }))
 
+// Fábrica completa: espelha todos os exports de valor do módulo real.
 mock.module("@/lib/radar/pixel-rate-limit", () => ({
   consumeRadarPixelRateLimit: mock(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+  radarPixelRequestFingerprint: () => "fp-test",
+  resetRadarPixelRateLimitsForTests: () => undefined,
 }))
 
 const { RadarPixelHitUseCase } = await import("@/app/api/useCases/radar/RadarPixelHitUseCase")

@@ -4,6 +4,7 @@ import {
   type RadarConsentReason,
   type RadarConsentStatus,
   type RadarIdentityType,
+  type RadarProfile,
   type RadarSourceType,
   type LeadStatus,
 } from "@prisma/client"
@@ -43,6 +44,11 @@ import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import { findManyByInChunks } from "@/lib/prisma/chunked-in-query"
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metric-to-radar-event"
 import { normalizeRadarName } from "@/lib/radar/normalization"
+import { isUsableRadarDisplayName } from "@/lib/radar/usable-radar-name"
+import {
+  decideEmailProfileMatch,
+  pickCompatibleEmailColumnCandidate,
+} from "@/lib/radar/email-profile-match"
 import { applyPublicFormAnswerRevision } from "@/lib/radar/public-form-materialization"
 import { projectPublicFormAnswerIdentity } from "@/lib/radar/public-form-identity-projection"
 import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
@@ -633,6 +639,17 @@ export class RadarRepository {
 
       if (existingByIdentity) {
         let resolvedProfileId = existingByIdentity.profileId
+        // Achado 2026-09-03 (caso PIMENTAS/KKJ): `false` só quando ninguém
+        // reivindicou o e-mail ainda — nesse caso este bloco precisa
+        // reivindicar a RadarIdentity abaixo (ver comentário na claim). Quando
+        // já existe dono (mesmo perfil, ou perfil diferente com/sem merge),
+        // a claim já está — ou permanece, no caso de conflito — correta e não
+        // deve ser tocada aqui.
+        let emailIdentityAlreadyOwned = false
+        // `false` somente quando a guarda de e-mail compartilhado recusou o
+        // merge: a claim ficou com o dono divergente e o chamador MUST NOT
+        // reivindicá-la por fora (mesmo contrato de resolveProfileForEmail).
+        let emailIdentityClaimed = true
         if (input.normalizedPrimaryEmail) {
           const emailOwner = await tx.radarIdentity.findUnique({
             where: {
@@ -645,15 +662,42 @@ export class RadarRepository {
             select: { profileId: true },
           })
 
-          if (emailOwner && emailOwner.profileId !== existingByIdentity.profileId) {
-            const mergeResult = await this.mergeProfilesWithTx(
-              tx,
-              input.teamId,
-              emailOwner.profileId,
-              existingByIdentity.profileId,
-            )
-            resolvedProfileId = mergeResult.winningProfileId
-            if (mergeResult.merged) mergedWinningProfileId = mergeResult.winningProfileId
+          if (emailOwner) {
+            emailIdentityAlreadyOwned = true
+            if (emailOwner.profileId !== existingByIdentity.profileId) {
+              // Guarda de e-mail compartilhado (achados cursor/codex no PR
+              // #1155): fundir sem olhar quem é o dono transformaria caixa
+              // postal compartilhada (contato@empresa) em fusão de pessoas
+              // diferentes. Só funde quando o dono do e-mail NÃO é uma pessoa
+              // estabelecida com nome divergente (mesma régua de
+              // `decideEmailProfileMatch`); caso contrário a claim continua
+              // com o dono e este perfil segue separado — a coluna registra o
+              // e-mail compartilhado, sem claim.
+              const emailOwnerProfile = await tx.radarProfile.findUnique({
+                where: { id: emailOwner.profileId },
+                select: { displayName: true, normalizedName: true, normalizedPhone: true },
+              })
+              const ownerDecision = decideEmailProfileMatch({
+                candidate: {
+                  displayName: emailOwnerProfile?.displayName ?? null,
+                  normalizedName: emailOwnerProfile?.normalizedName ?? null,
+                  normalizedPhone: emailOwnerProfile?.normalizedPhone ?? null,
+                },
+                incomingNormalizedName: input.normalizedName,
+              })
+              if (ownerDecision.action === "enrich") {
+                const mergeResult = await this.mergeProfilesWithTx(
+                  tx,
+                  input.teamId,
+                  emailOwner.profileId,
+                  existingByIdentity.profileId,
+                )
+                resolvedProfileId = mergeResult.winningProfileId
+                if (mergeResult.merged) mergedWinningProfileId = mergeResult.winningProfileId
+              } else {
+                emailIdentityClaimed = false
+              }
+            }
           }
         }
 
@@ -687,13 +731,54 @@ export class RadarRepository {
           },
         })
 
-        return { profile, wasExisting: true }
+        // Achado 2026-09-03 (caso PIMENTAS/KKJ): sem esta claim, um perfil
+        // resolvido por telefone ficava com `normalizedPrimaryEmail`
+        // preenchido só na COLUNA — `resolveProfileForEmail` só enxerga a
+        // `RadarIdentity` exclusiva, nunca a coluna, então um contato de
+        // e-mail chegando depois não encontrava o dono e criava um segundo
+        // perfil para a mesma pessoa (3.163 pares medidos em produção).
+        if (input.normalizedPrimaryEmail && !emailIdentityAlreadyOwned) {
+          await tx.radarIdentity.upsert({
+            where: {
+              teamId_type_normalizedValue: {
+                teamId: input.teamId,
+                type: "email",
+                normalizedValue: input.normalizedPrimaryEmail,
+              },
+            },
+            create: {
+              profileId: resolvedProfileId,
+              teamId: input.teamId,
+              type: "email",
+              value: input.primaryEmail ?? null,
+              normalizedValue: input.normalizedPrimaryEmail,
+              source: input.phoneSource,
+              isPrimary: false,
+            },
+            update: {
+              profileId: resolvedProfileId,
+              value: input.primaryEmail ?? undefined,
+              source: input.phoneSource,
+            },
+          })
+        }
+
+        return { profile, wasExisting: true, emailIdentityClaimed }
       }
 
       // D4: telefone chegando pela primeira vez para um e-mail que já tem
       // perfil email-only — promove o mesmo perfil (nunca cria uma segunda
       // linha via chave natural telefone+nome). "Promover" = a identidade
       // phone passa a apontar para o profileId que já existia por e-mail.
+      //
+      // Guarda de e-mail compartilhado (achados cursor/codex no PR #1155):
+      // se o dono do e-mail é uma pessoa ESTABELECIDA divergente (nome
+      // próprio usável diferente + telefone próprio), promover colaria o
+      // telefone do contato novo no perfil da outra pessoa. Nesse caso o
+      // contato novo segue para o upsert por telefone+nome abaixo e a claim
+      // de e-mail continua com o dono original (flag consumida na claim
+      // final).
+      let emailOwnedByDivergentProfile = false
       if (input.normalizedPrimaryEmail) {
         const existingByEmailIdentity = await tx.radarIdentity.findUnique({
           where: {
@@ -707,6 +792,24 @@ export class RadarRepository {
         })
 
         if (existingByEmailIdentity) {
+          const emailOwnerProfile = await tx.radarProfile.findUnique({
+            where: { id: existingByEmailIdentity.profileId },
+            select: { displayName: true, normalizedName: true, normalizedPhone: true },
+          })
+          const ownerDecision = decideEmailProfileMatch({
+            candidate: {
+              displayName: emailOwnerProfile?.displayName ?? null,
+              normalizedName: emailOwnerProfile?.normalizedName ?? null,
+              normalizedPhone: emailOwnerProfile?.normalizedPhone ?? null,
+            },
+            incomingNormalizedName: input.normalizedName,
+          })
+          if (ownerDecision.action === "create_separate") {
+            emailOwnedByDivergentProfile = true
+          }
+        }
+
+        if (existingByEmailIdentity && !emailOwnedByDivergentProfile) {
           const profile = await tx.radarProfile.update({
             where: { id: existingByEmailIdentity.profileId },
             data: {
@@ -741,7 +844,7 @@ export class RadarRepository {
             },
           })
 
-          return { profile, wasExisting: true }
+          return { profile, wasExisting: true, emailIdentityClaimed: true }
         }
       }
 
@@ -812,6 +915,43 @@ export class RadarRepository {
         },
       })
 
+      // Achado 2026-09-03 (caso PIMENTAS/KKJ): mesma claim que o bloco acima
+      // faz para telefone, agora para e-mail — sem isso este perfil nascia
+      // com `normalizedPrimaryEmail` só na coluna, sem `RadarIdentity`
+      // correspondente, e um contato de e-mail chegando depois criava um
+      // segundo perfil (`resolveProfileForEmail` só enxerga a identidade
+      // exclusiva). Seguro reivindicar aqui: se o e-mail já estivesse
+      // reivindicado por outro perfil, o bloco "D4" acima teria promovido
+      // aquele perfil e retornado — OU marcado
+      // `emailOwnedByDivergentProfile` (dono estabelecido divergente, caixa
+      // postal compartilhada), caso em que a claim continua com o dono e
+      // este perfil fica só com a coluna.
+      if (input.normalizedPrimaryEmail && !emailOwnedByDivergentProfile) {
+        await tx.radarIdentity.upsert({
+          where: {
+            teamId_type_normalizedValue: {
+              teamId: input.teamId,
+              type: "email",
+              normalizedValue: input.normalizedPrimaryEmail,
+            },
+          },
+          create: {
+            profileId: profile.id,
+            teamId: input.teamId,
+            type: "email",
+            value: input.primaryEmail ?? null,
+            normalizedValue: input.normalizedPrimaryEmail,
+            source: input.phoneSource,
+            isPrimary: false,
+          },
+          update: {
+            profileId: profile.id,
+            value: input.primaryEmail ?? undefined,
+            source: input.phoneSource,
+          },
+        })
+      }
+
       if (!existingByKey) {
         // D5: "primeiro contato" — profile.id é sempre novo neste ponto,
         // então uma segunda ocorrência para o mesmo perfil é estruturalmente
@@ -828,7 +968,13 @@ export class RadarRepository {
         })
       }
 
-      return { profile, wasExisting: Boolean(existingByKey) }
+      return {
+        profile,
+        wasExisting: Boolean(existingByKey),
+        // `false` = a claim ficou com o dono estabelecido divergente (guarda
+        // D4 acima); o chamador MUST NOT reivindicar por fora.
+        emailIdentityClaimed: !emailOwnedByDivergentProfile,
+      }
     })
 
     // E3a: score pós-commit — mergeProfilesWithTx não recalcula (client global
@@ -859,7 +1005,7 @@ export class RadarRepository {
     normalizedName: string | null
     emailSource: string
     lastSeenAt?: Date
-  }) {
+  }): Promise<{ profile: RadarProfile; wasExisting: boolean; emailIdentityClaimed: boolean }> {
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.teamId} || ':' || ${input.normalizedEmail}))`
 
@@ -875,53 +1021,108 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
-        // Achado codex PR #1148 (P2), par do E6b: sem isto, o nome
-        // recém-conhecido (ex.: destinatário da campanha) era descartado e
-        // perfis antigos com nome-placeholder nunca recebiam nome. Só entra
-        // quando o nome existente NÃO é usável (vazio, "Visitante Anônimo" ou
-        // placeholder com cara de e-mail) — identidade digitada real nunca é
-        // sobrescrita pela inferida.
-        let inheritedName: string | null = null
-        if (input.displayName?.trim()) {
-          const existingProfile = await tx.radarProfile.findUnique({
-            where: { id: existingByIdentity.profileId },
-            select: { displayName: true },
-          })
-          const existingName = existingProfile?.displayName?.trim() ?? ""
-          const existingNameUsable =
-            Boolean(existingName) &&
-            existingName !== "Visitante Anônimo" &&
-            !existingName.includes("@")
-          if (!existingNameUsable) inheritedName = input.displayName.trim()
-        }
-        const profile = await tx.radarProfile.update({
+        // Achado codex PR #1155 (P1): com `resolveProfileForPhone` agora
+        // reivindicando identidades de e-mail, o dono da claim pode ser uma
+        // pessoa estabelecida DIFERENTE usando a mesma caixa postal —
+        // enriquecer sem checar divergência anexaria contato/consentimento/
+        // gênero do contato novo ao perfil da outra pessoa. Mesma guarda do
+        // fallback por coluna.
+        const ownerProfile = await tx.radarProfile.findUnique({
           where: { id: existingByIdentity.profileId },
-          data: {
-            lastSeenAt: input.lastSeenAt ?? new Date(),
-            ...(inheritedName
-              ? {
-                  displayName: inheritedName,
-                  normalizedName: normalizeRadarName(inheritedName),
-                }
-              : {}),
-          },
+          select: { displayName: true, normalizedName: true, normalizedPhone: true },
         })
-        return { profile, wasExisting: true }
+        const ownerDecision = decideEmailProfileMatch({
+          candidate: {
+            displayName: ownerProfile?.displayName ?? null,
+            normalizedName: ownerProfile?.normalizedName ?? null,
+            normalizedPhone: ownerProfile?.normalizedPhone ?? null,
+          },
+          incomingNormalizedName: input.normalizedName,
+        })
+
+        if (ownerDecision.action === "enrich") {
+          const profile = await this.enrichEmailOnlyProfileWithTx(tx, existingByIdentity.profileId, input)
+          return { profile, wasExisting: true, emailIdentityClaimed: true }
+        }
+
+        // Dono estabelecido divergente: antes de criar mais um perfil,
+        // procura um "secundário" compatível da mesma caixa postal (pela
+        // coluna, excluindo o dono) — sem isso cada novo sync do mesmo
+        // contato secundário criaria outro perfil. A claim NUNCA sai do
+        // dono (`emailIdentityClaimed: false`).
+        const compatibleSecondary = await this.findCompatibleEmailColumnProfileWithTx(
+          tx,
+          input,
+          existingByIdentity.profileId,
+        )
+        if (compatibleSecondary) {
+          const profile = await this.enrichEmailOnlyProfileWithTx(tx, compatibleSecondary.id, input)
+          return { profile, wasExisting: true, emailIdentityClaimed: false }
+        }
+        const profile = await this.createEmailOnlyProfileWithTx(tx, input)
+        return { profile, wasExisting: false, emailIdentityClaimed: false }
       }
 
-      const profile = await tx.radarProfile.create({
-        data: {
-          teamId: input.teamId,
-          displayName: input.displayName || input.emailValue,
-          normalizedName: input.normalizedName || input.normalizedEmail,
-          normalizedPhone: null,
-          displayPhone: null,
-          primaryEmail: input.emailValue,
-          normalizedPrimaryEmail: input.normalizedEmail,
-          lastSeenAt: input.lastSeenAt ?? new Date(),
-        },
-      })
+      // Achado 2026-09-03 (caso PIMENTAS/KKJ): a `RadarIdentity` exclusiva
+      // pode não existir mesmo quando alguém já "dono" deste e-mail — perfis
+      // resolvidos por telefone (import de base, carteira) preenchiam a
+      // COLUNA `normalizedPrimaryEmail` sem reivindicar a identidade (lacuna
+      // fechada em `resolveProfileForPhone`, mas dados anteriores ao fix e
+      // qualquer outro caminho não coberto continuam órfãos). Sem este
+      // fallback, um contato de e-mail chegando depois nunca encontrava o
+      // dono e criava um segundo perfil para a mesma pessoa — 3.163 pares
+      // medidos em produção.
+      const columnCandidates = await this.findEmailColumnCandidatesWithTx(
+        tx,
+        input.teamId,
+        input.normalizedEmail,
+      )
 
+      if (columnCandidates.length > 0) {
+        // Achado codex PR #1155 (P2): com mais de um perfil legado para o
+        // mesmo e-mail, o mais antigo pode ser justamente o divergente —
+        // `findFirst` asc escolhia só ele e recriava um duplicado a cada
+        // sync. A seleção olha TODOS os candidatos: primeiro nome idêntico,
+        // depois o primeiro enriquecível pela guarda.
+        const compatible = pickCompatibleEmailColumnCandidate(columnCandidates, input.normalizedName)
+
+        if (compatible) {
+          const profile = await this.enrichEmailOnlyProfileWithTx(tx, compatible.id, input)
+          await tx.radarIdentity.upsert({
+            where: {
+              teamId_type_normalizedValue: {
+                teamId: input.teamId,
+                type: "email",
+                normalizedValue: input.normalizedEmail,
+              },
+            },
+            create: {
+              profileId: profile.id,
+              teamId: input.teamId,
+              type: "email",
+              value: input.emailValue,
+              normalizedValue: input.normalizedEmail,
+              source: input.emailSource,
+              isPrimary: true,
+            },
+            update: { profileId: profile.id, value: input.emailValue, source: input.emailSource },
+          })
+          return { profile, wasExisting: true, emailIdentityClaimed: true }
+        }
+
+        // Nenhum candidato compatível: e-mail compartilhado por pessoas
+        // diferentes (todos os perfis existentes têm nome E telefone
+        // próprios, divergentes do contato atual) — cria um perfil separado
+        // e NÃO reivindica a `RadarIdentity` de e-mail, que continua
+        // exclusiva do dono original (o schema não permite dois donos para o
+        // mesmo `[teamId, type, normalizedValue]`). O CALLER MUST respeitar
+        // `emailIdentityClaimed: false` e não chamar `upsertIdentity` por
+        // cima — senão rouba a claim do dono original sem passar por merge.
+        const profile = await this.createEmailOnlyProfileWithTx(tx, input)
+        return { profile, wasExisting: false, emailIdentityClaimed: false }
+      }
+
+      const profile = await this.createEmailOnlyProfileWithTx(tx, input)
       await tx.radarIdentity.create({
         data: {
           profileId: profile.id,
@@ -933,23 +1134,119 @@ export class RadarRepository {
           isPrimary: true,
         },
       })
-
-      // D5: "primeiro contato" — este branch só é alcançado quando é uma
-      // criação genuína (o branch existingByIdentity acima já retorna
-      // antes), então profile.id é sempre novo aqui.
-      await tx.radarEvent.create({
-        data: {
-          profileId: profile.id,
-          teamId: input.teamId,
-          eventType: "profile.first_contact",
-          sourceType: "profile",
-          sourceId: profile.id,
-          occurredAt: input.lastSeenAt ?? new Date(),
-        },
-      })
-
-      return { profile, wasExisting: false }
+      return { profile, wasExisting: false, emailIdentityClaimed: true }
     })
+  }
+
+  /**
+   * Achado codex PR #1148 (P2), par do E6b: sem isto, o nome recém-conhecido
+   * (ex.: destinatário da campanha) era descartado e perfis antigos com
+   * nome-placeholder nunca recebiam nome. Só entra quando o nome existente
+   * NÃO é usável (`isUsableRadarDisplayName`) — identidade digitada real
+   * nunca é sobrescrita pela inferida. Extraído para ser reusado pelo
+   * fallback por coluna (achado 2026-09-03, caso PIMENTAS/KKJ) sem duplicar a
+   * regra de herança de nome.
+   */
+  private async enrichEmailOnlyProfileWithTx(
+    tx: Prisma.TransactionClient,
+    profileId: string,
+    input: { displayName: string | null; lastSeenAt?: Date },
+  ) {
+    let inheritedName: string | null = null
+    if (input.displayName?.trim()) {
+      const existingProfile = await tx.radarProfile.findUnique({
+        where: { id: profileId },
+        select: { displayName: true },
+      })
+      if (!isUsableRadarDisplayName(existingProfile?.displayName)) {
+        inheritedName = input.displayName.trim()
+      }
+    }
+    return tx.radarProfile.update({
+      where: { id: profileId },
+      data: {
+        lastSeenAt: input.lastSeenAt ?? new Date(),
+        ...(inheritedName
+          ? { displayName: inheritedName, normalizedName: normalizeRadarName(inheritedName) }
+          : {}),
+      },
+    })
+  }
+
+  /**
+   * Candidatos legados da mesma caixa postal — perfis com o e-mail na COLUNA
+   * `normalizedPrimaryEmail` (com ou sem a `RadarIdentity` exclusiva; o
+   * chamador exclui o dono da claim quando ele existe). Ordem por
+   * `createdAt` asc para a seleção ser determinística.
+   */
+  private async findEmailColumnCandidatesWithTx(
+    tx: Prisma.TransactionClient,
+    teamId: string,
+    normalizedEmail: string,
+    excludeProfileId?: string,
+  ) {
+    return tx.radarProfile.findMany({
+      where: {
+        teamId,
+        normalizedPrimaryEmail: normalizedEmail,
+        ...(excludeProfileId ? { id: { not: excludeProfileId } } : {}),
+      },
+      select: { id: true, displayName: true, normalizedName: true, normalizedPhone: true },
+      orderBy: { createdAt: "asc" },
+    })
+  }
+
+  private async findCompatibleEmailColumnProfileWithTx(
+    tx: Prisma.TransactionClient,
+    input: { teamId: string; normalizedEmail: string; normalizedName: string | null },
+    excludeProfileId: string,
+  ) {
+    const candidates = await this.findEmailColumnCandidatesWithTx(
+      tx,
+      input.teamId,
+      input.normalizedEmail,
+      excludeProfileId,
+    )
+    return pickCompatibleEmailColumnCandidate(candidates, input.normalizedName)
+  }
+
+  /** D5: "primeiro contato" — sempre um perfil genuinamente novo. */
+  private async createEmailOnlyProfileWithTx(
+    tx: Prisma.TransactionClient,
+    input: {
+      teamId: string
+      normalizedEmail: string
+      emailValue: string
+      displayName: string | null
+      normalizedName: string | null
+      lastSeenAt?: Date
+    },
+  ) {
+    const profile = await tx.radarProfile.create({
+      data: {
+        teamId: input.teamId,
+        displayName: input.displayName || input.emailValue,
+        normalizedName: input.normalizedName || input.normalizedEmail,
+        normalizedPhone: null,
+        displayPhone: null,
+        primaryEmail: input.emailValue,
+        normalizedPrimaryEmail: input.normalizedEmail,
+        lastSeenAt: input.lastSeenAt ?? new Date(),
+      },
+    })
+
+    await tx.radarEvent.create({
+      data: {
+        profileId: profile.id,
+        teamId: input.teamId,
+        eventType: "profile.first_contact",
+        sourceType: "profile",
+        sourceId: profile.id,
+        occurredAt: input.lastSeenAt ?? new Date(),
+      },
+    })
+
+    return profile
   }
 
   /**
