@@ -30,16 +30,11 @@ const radarIdentityFindUniqueMock = mock(
   async (_args: IdentityFindUniqueArgs) => null as { profileId: string } | null
 )
 const radarIdentityUpsertMock = mock(async (args: IdentityUpsertArgs) => args)
+// Aceita `args` para os testes das guardas discriminarem QUAL perfil está
+// sendo lido (dono do e-mail vs. perfil do telefone vs. chave natural) — o
+// retorno é frouxo de propósito, cada leitura seleciona um subconjunto.
 const radarProfileFindUniqueMock = mock(
-  async () =>
-    null as {
-      primaryEmail: string | null
-      normalizedPrimaryEmail: string | null
-      primaryDocument: string | null
-      normalizedPrimaryDocument: string | null
-      displayName: string
-      normalizedName: string
-    } | null
+  async (_args: { where: Record<string, unknown> }) => null as Record<string, unknown> | null
 )
 const radarProfileUpdateMock = mock(async (args: { where: { id: string }; data: Record<string, unknown> }) => ({
   id: args.where.id,
@@ -196,6 +191,138 @@ describe("resolveProfileForPhone — reivindica a RadarIdentity de e-mail (fecha
     })
 
     // Já reivindicado pelo mesmo perfil — não precisa reclamar de novo.
+    expect(emailUpsertCalls()).toHaveLength(0)
+  })
+})
+
+describe("resolveProfileForPhone — guarda de e-mail compartilhado (achados cursor/codex PR #1155)", () => {
+  const donaDoEmail = {
+    displayName: "Maria Silva",
+    normalizedName: "maria silva",
+    normalizedPhone: "5511988887777",
+  }
+
+  it("telefone NUNCA visto + e-mail de dono ESTABELECIDO divergente → NÃO promove (não cola o telefone novo no perfil da outra pessoa) e NÃO rouba a claim", async () => {
+    resetMocks()
+    radarIdentityFindUniqueMock.mockImplementation(async (args: IdentityFindUniqueArgs) => {
+      if (args.where.teamId_type_normalizedValue.type === "email") {
+        return { profileId: "profile-dono-email" }
+      }
+      return null
+    })
+    radarProfileFindUniqueMock.mockImplementation(async (args) => {
+      if ((args.where as { id?: string }).id === "profile-dono-email") return donaDoEmail
+      return null
+    })
+
+    const result = await new RadarRepository().resolveProfileForPhone({
+      teamId: "team-1",
+      normalizedPhone: "5511977776666",
+      normalizedName: "joao pereira",
+      displayName: "João Pereira",
+      displayPhone: "(11) 97777-6666",
+      phoneValue: "11977776666",
+      phoneSource: "base_import",
+      primaryEmail: "contato@empresa.com.br",
+      normalizedPrimaryEmail: "contato@empresa.com.br",
+    })
+
+    // Cria o perfil do João pela chave natural — nunca via promoção do
+    // perfil da Maria.
+    expect(result.wasExisting).toBe(false)
+    expect(radarProfileUpsertMock).toHaveBeenCalledTimes(1)
+    // O perfil da Maria nunca é atualizado (o telefone dela fica intacto).
+    expect(radarProfileUpdateMock).not.toHaveBeenCalled()
+    // A claim de e-mail continua exclusiva da Maria.
+    expect(emailUpsertCalls()).toHaveLength(0)
+  })
+
+  it("telefone NUNCA visto + e-mail de dono NÃO estabelecido (perfil email-only com nome-placeholder) → promove normalmente (caso PIMENTAS intacto)", async () => {
+    resetMocks()
+    radarIdentityFindUniqueMock.mockImplementation(async (args: IdentityFindUniqueArgs) => {
+      if (args.where.teamId_type_normalizedValue.type === "email") {
+        return { profileId: "profile-email-only" }
+      }
+      return null
+    })
+    radarProfileFindUniqueMock.mockImplementation(async (args) => {
+      if ((args.where as { id?: string }).id === "profile-email-only") {
+        return {
+          displayName: "matriz@idgt.org.br",
+          normalizedName: "matriz@idgt.org.br",
+          normalizedPhone: null,
+        }
+      }
+      return null
+    })
+
+    const result = await new RadarRepository().resolveProfileForPhone({
+      teamId: "team-1",
+      normalizedPhone: "5512988821371",
+      normalizedName: "pimentas beta",
+      displayName: "PIMENTAS BETA",
+      displayPhone: "(12) 98882-1371",
+      phoneValue: "12988821371",
+      phoneSource: "base_import",
+      primaryEmail: "matriz@idgt.org.br",
+      normalizedPrimaryEmail: "matriz@idgt.org.br",
+    })
+
+    expect(result.wasExisting).toBe(true)
+    // Promove o perfil email-only existente: telefone entra nele.
+    expect(radarProfileUpdateMock).toHaveBeenCalledTimes(1)
+    expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "profile-email-only" },
+      data: { normalizedPhone: "5512988821371" },
+    })
+    expect(radarProfileUpsertMock).not.toHaveBeenCalled()
+  })
+
+  it("telefone JÁ existente + e-mail de dono ESTABELECIDO divergente → NÃO funde os dois perfis e NÃO mexe na claim", async () => {
+    resetMocks()
+    radarIdentityFindUniqueMock.mockImplementation(async (args: IdentityFindUniqueArgs) => {
+      if (args.where.teamId_type_normalizedValue.type === "phone") {
+        return { profileId: "profile-do-joao" }
+      }
+      return { profileId: "profile-dono-email" }
+    })
+    radarProfileFindUniqueMock.mockImplementation(async (args) => {
+      if ((args.where as { id?: string }).id === "profile-dono-email") return donaDoEmail
+      if ((args.where as { id?: string }).id === "profile-do-joao") {
+        return {
+          primaryEmail: null,
+          normalizedPrimaryEmail: null,
+          primaryDocument: null,
+          normalizedPrimaryDocument: null,
+          displayName: "João Pereira",
+          normalizedName: "joao pereira",
+        }
+      }
+      return null
+    })
+
+    // Se a guarda falhar, mergeProfilesWithTx roda e explode nos mocks
+    // ausentes (radarIdentity.findMany etc.) — o teste falharia por throw.
+    const result = await new RadarRepository().resolveProfileForPhone({
+      teamId: "team-1",
+      normalizedPhone: "5511977776666",
+      normalizedName: "joao pereira",
+      displayName: "João Pereira",
+      displayPhone: "(11) 97777-6666",
+      phoneValue: "11977776666",
+      phoneSource: "base_import",
+      primaryEmail: "contato@empresa.com.br",
+      normalizedPrimaryEmail: "contato@empresa.com.br",
+    })
+
+    expect(result.wasExisting).toBe(true)
+    // Atualiza o PRÓPRIO perfil do João (coluna registra o e-mail
+    // compartilhado), nunca o da Maria.
+    expect(radarProfileUpdateMock).toHaveBeenCalledTimes(1)
+    expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "profile-do-joao" },
+    })
+    // Claim intacta com a Maria.
     expect(emailUpsertCalls()).toHaveLength(0)
   })
 })

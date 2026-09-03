@@ -36,6 +36,38 @@ export type EmailProfileMatchDecision =
  * e-mail (que continua exclusiva do dono original — o schema não permite dois
  * donos para o mesmo `[teamId, type, normalizedValue]`).
  */
+/**
+ * Seleciona, entre TODOS os perfis legados da mesma caixa postal (match pela
+ * coluna `normalizedPrimaryEmail`), o candidato compatível com o contato
+ * atual — achado codex PR #1155 (P2): escolher só o mais antigo
+ * (`findFirst` asc) fazia o divergente estabelecido "bloquear" a fila e cada
+ * novo sync do mesmo contato secundário criar mais um perfil duplicado.
+ *
+ * Precedência: (1) candidato com `normalizedName` IDÊNTICO ao contato
+ * (mesma pessoa, mesmo estabelecida); (2) primeiro candidato enriquecível
+ * pela guarda `decideEmailProfileMatch` (sem nome usável ou sem telefone
+ * próprio). Se todos forem pessoas estabelecidas divergentes, retorna
+ * `null` — o chamador cria um perfil separado.
+ */
+export function pickCompatibleEmailColumnCandidate<T extends EmailProfileMatchCandidate>(
+  candidates: T[],
+  incomingNormalizedName: string | null
+): T | null {
+  if (incomingNormalizedName) {
+    const sameName = candidates.find(
+      (candidate) => candidate.normalizedName === incomingNormalizedName
+    )
+    if (sameName) return sameName
+  }
+
+  return (
+    candidates.find(
+      (candidate) =>
+        decideEmailProfileMatch({ candidate, incomingNormalizedName }).action === "enrich"
+    ) ?? null
+  )
+}
+
 export function decideEmailProfileMatch(input: {
   candidate: EmailProfileMatchCandidate
   incomingNormalizedName: string | null

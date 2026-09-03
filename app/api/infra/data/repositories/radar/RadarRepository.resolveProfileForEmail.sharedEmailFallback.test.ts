@@ -12,39 +12,49 @@ import { prismaModuleMock, registerPrismaModuleMock } from "@/test/support/prism
  * 17:22, perfil sem telefone para o MESMO e-mail criado às 17:31).
  *
  * Estes testes travam o fallback por coluna + a guarda de e-mail
- * compartilhado descrita em `lib/radar/email-profile-match.ts`.
+ * compartilhado descrita em `lib/radar/email-profile-match.ts`, incluindo os
+ * achados cursor/codex do PR #1155: (1) o fallback olha TODOS os candidatos
+ * da coluna, não só o mais antigo; (2) o caminho por identidade também passa
+ * pela guarda — dono estabelecido divergente nunca é enriquecido por um
+ * contato de outra pessoa.
  */
+
+type ProfileFixture = {
+  id: string
+  displayName: string | null
+  normalizedName: string | null
+  normalizedPhone: string | null
+}
 
 const executeRawMock = mock(async () => 0)
 const radarIdentityFindUniqueMock = mock(async () => null as { profileId: string } | null)
 const radarIdentityUpsertMock = mock(async (args: unknown) => args)
-const radarProfileFindFirstMock = mock(
-  async () =>
-    null as {
-      id: string
-      displayName: string
-      normalizedName: string
-      normalizedPhone: string | null
-    } | null
-)
+const radarIdentityCreateMock = mock(async () => ({}))
+
+let profileFixtures: Record<string, ProfileFixture> = {}
+let columnCandidates: ProfileFixture[] = []
+
+// `resolveProfileForEmail` lê perfis por id em dois pontos (dados do dono da
+// claim para a guarda; displayName atual em `enrichEmailOnlyProfileWithTx`) —
+// devolve o fixture inteiro, superset dos dois selects.
+const radarProfileFindUniqueMock = mock(async (args: { where: { id: string } }) => {
+  return profileFixtures[args.where.id] ?? null
+})
+// Fallback por coluna: TODOS os candidatos da mesma caixa postal, honrando o
+// `id: { not: ... }` usado para excluir o dono da claim.
+const radarProfileFindManyMock = mock(async (args: { where: { id?: { not: string } } }) => {
+  const excluded = args.where.id?.not
+  return columnCandidates.filter((candidate) => candidate.id !== excluded)
+})
 const radarProfileUpdateMock = mock(async (args: { where: { id: string }; data: Record<string, unknown> }) => ({
   id: args.where.id,
   ...args.data,
 }))
-// `enrichEmailOnlyProfileWithTx` lê o displayName atual antes de decidir se
-// herda o nome novo — devolve o mesmo `displayName` que o fallback por
-// coluna já enxergou, então os testes não precisam duplicar o fixture.
-const radarProfileFindUniqueMock = mock(async (args: { where: { id: string } }) => {
-  const found = lastColumnCandidate && lastColumnCandidate.id === args.where.id ? lastColumnCandidate : null
-  return found ? { displayName: found.displayName } : null
-})
-let lastColumnCandidate: { id: string; displayName: string } | null = null
 const radarProfileCreateMock = mock(async (args: { data: Record<string, unknown> }) => ({
   id: "profile-novo",
   ...args.data,
 }))
 const radarEventCreateMock = mock(async () => ({}))
-const radarIdentityCreateMock = mock(async () => ({}))
 
 const tx = {
   $executeRaw: executeRawMock,
@@ -54,7 +64,7 @@ const tx = {
     create: radarIdentityCreateMock,
   },
   radarProfile: {
-    findFirst: radarProfileFindFirstMock,
+    findMany: radarProfileFindManyMock,
     findUnique: radarProfileFindUniqueMock,
     update: radarProfileUpdateMock,
     create: radarProfileCreateMock,
@@ -82,40 +92,41 @@ function resolveWith(input: { displayName: string | null; normalizedName: string
   })
 }
 
-function setColumnCandidate(
-  candidate: {
-    id: string
-    displayName: string
-    normalizedName: string
-    normalizedPhone: string | null
-  } | null
-) {
-  lastColumnCandidate = candidate
-  radarProfileFindFirstMock.mockResolvedValue(candidate)
+function setColumnCandidates(candidates: ProfileFixture[]) {
+  columnCandidates = candidates
+  for (const candidate of candidates) profileFixtures[candidate.id] = candidate
+}
+
+function setIdentityOwner(owner: ProfileFixture) {
+  profileFixtures[owner.id] = owner
+  radarIdentityFindUniqueMock.mockResolvedValue({ profileId: owner.id })
 }
 
 function resetMocks() {
   radarIdentityFindUniqueMock.mockClear()
   radarIdentityFindUniqueMock.mockResolvedValue(null)
   radarIdentityUpsertMock.mockClear()
-  radarProfileFindFirstMock.mockClear()
+  radarProfileFindManyMock.mockClear()
   radarProfileFindUniqueMock.mockClear()
   radarProfileUpdateMock.mockClear()
   radarProfileCreateMock.mockClear()
   radarEventCreateMock.mockClear()
   radarIdentityCreateMock.mockClear()
-  setColumnCandidate(null)
+  profileFixtures = {}
+  columnCandidates = []
 }
 
 describe("resolveProfileForEmail — fallback por coluna quando não há RadarIdentity exclusiva", () => {
   it("candidato com nome IGUAL (caso PIMENTAS) → enriquece o perfil existente e finalmente reivindica a RadarIdentity", async () => {
     resetMocks()
-    setColumnCandidate({
-      id: "profile-729da282",
-      displayName: "PIMENTAS BETA",
-      normalizedName: "pimentas beta",
-      normalizedPhone: "5512988821371",
-    })
+    setColumnCandidates([
+      {
+        id: "profile-729da282",
+        displayName: "PIMENTAS BETA",
+        normalizedName: "pimentas beta",
+        normalizedPhone: "5512988821371",
+      },
+    ])
 
     const result = await resolveWith({ displayName: "PIMENTAS BETA", normalizedName: "pimentas beta" })
 
@@ -139,12 +150,14 @@ describe("resolveProfileForEmail — fallback por coluna quando não há RadarId
 
   it("candidato sem nome usável (placeholder = o próprio e-mail) → enriquece mesmo com nome novo divergente", async () => {
     resetMocks()
-    setColumnCandidate({
-      id: "profile-email-only",
-      displayName: "matriz@idgt.org.br",
-      normalizedName: "matriz@idgt.org.br",
-      normalizedPhone: null,
-    })
+    setColumnCandidates([
+      {
+        id: "profile-email-only",
+        displayName: "matriz@idgt.org.br",
+        normalizedName: "matriz@idgt.org.br",
+        normalizedPhone: null,
+      },
+    ])
 
     const result = await resolveWith({ displayName: "Alguém Novo", normalizedName: "alguem novo" })
 
@@ -159,12 +172,14 @@ describe("resolveProfileForEmail — fallback por coluna quando não há RadarId
 
   it("guarda de e-mail compartilhado: candidato com nome e telefone PRÓPRIOS divergentes → cria perfil separado e NÃO rouba a RadarIdentity", async () => {
     resetMocks()
-    setColumnCandidate({
-      id: "profile-dono-original",
-      displayName: "Maria Silva",
-      normalizedName: "maria silva",
-      normalizedPhone: "5511988887777",
-    })
+    setColumnCandidates([
+      {
+        id: "profile-dono-original",
+        displayName: "Maria Silva",
+        normalizedName: "maria silva",
+        normalizedPhone: "5511988887777",
+      },
+    ])
 
     const result = await resolveWith({ displayName: "João Pereira", normalizedName: "joao pereira" })
 
@@ -180,6 +195,34 @@ describe("resolveProfileForEmail — fallback por coluna quando não há RadarId
     expect(radarProfileCreateMock).toHaveBeenCalledTimes(1)
   })
 
+  it("achado codex #1155 (P2): candidato mais ANTIGO divergente não bloqueia — o compatível mais novo é enriquecido em vez de criar outro duplicado", async () => {
+    resetMocks()
+    setColumnCandidates([
+      {
+        id: "profile-antigo-divergente",
+        displayName: "Maria Silva",
+        normalizedName: "maria silva",
+        normalizedPhone: "5511988887777",
+      },
+      {
+        id: "profile-joao-secundario",
+        displayName: "João Pereira",
+        normalizedName: "joao pereira",
+        normalizedPhone: "5511977776666",
+      },
+    ])
+
+    const result = await resolveWith({ displayName: "João Pereira", normalizedName: "joao pereira" })
+
+    expect(result.wasExisting).toBe(true)
+    expect(result.emailIdentityClaimed).toBe(true)
+    // Enriquece o candidato COMPATÍVEL (nome idêntico), não o mais antigo.
+    expect(radarProfileCreateMock).not.toHaveBeenCalled()
+    expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "profile-joao-secundario" },
+    })
+  })
+
   it("nenhum candidato por identidade nem por coluna → cria normalmente e reivindica a RadarIdentity (comportamento original intacto)", async () => {
     resetMocks()
 
@@ -189,5 +232,88 @@ describe("resolveProfileForEmail — fallback por coluna quando não há RadarId
     expect(result.emailIdentityClaimed).toBe(true)
     expect(radarProfileCreateMock).toHaveBeenCalledTimes(1)
     expect(radarIdentityCreateMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("resolveProfileForEmail — guarda também no caminho por RadarIdentity (achado codex #1155 P1)", () => {
+  it("dono da claim compatível (mesmo nome) → enriquece o dono e mantém claimed:true (comportamento original)", async () => {
+    resetMocks()
+    setIdentityOwner({
+      id: "profile-dono",
+      displayName: "PIMENTAS BETA",
+      normalizedName: "pimentas beta",
+      normalizedPhone: "5512988821371",
+    })
+
+    const result = await resolveWith({ displayName: "PIMENTAS BETA", normalizedName: "pimentas beta" })
+
+    expect(result.wasExisting).toBe(true)
+    expect(result.emailIdentityClaimed).toBe(true)
+    expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({ where: { id: "profile-dono" } })
+    expect(radarProfileCreateMock).not.toHaveBeenCalled()
+  })
+
+  it("dono ESTABELECIDO divergente, sem secundário compatível → cria perfil separado SEM enriquecer o dono nem tocar a claim", async () => {
+    resetMocks()
+    setIdentityOwner({
+      id: "profile-dono",
+      displayName: "Maria Silva",
+      normalizedName: "maria silva",
+      normalizedPhone: "5511988887777",
+    })
+    setColumnCandidates([
+      {
+        id: "profile-dono",
+        displayName: "Maria Silva",
+        normalizedName: "maria silva",
+        normalizedPhone: "5511988887777",
+      },
+    ])
+
+    const result = await resolveWith({ displayName: "João Pereira", normalizedName: "joao pereira" })
+
+    expect(result.wasExisting).toBe(false)
+    expect(result.emailIdentityClaimed).toBe(false)
+    expect(result.profile.id).toBe("profile-novo")
+    // O perfil da Maria nunca é tocado; a claim continua com ela.
+    expect(radarProfileUpdateMock).not.toHaveBeenCalled()
+    expect(radarIdentityUpsertMock).not.toHaveBeenCalled()
+    expect(radarIdentityCreateMock).not.toHaveBeenCalled()
+  })
+
+  it("dono ESTABELECIDO divergente, mas existe secundário compatível pela coluna → enriquece o secundário (não cria terceiro perfil) e claim fica com o dono", async () => {
+    resetMocks()
+    setIdentityOwner({
+      id: "profile-dono",
+      displayName: "Maria Silva",
+      normalizedName: "maria silva",
+      normalizedPhone: "5511988887777",
+    })
+    setColumnCandidates([
+      {
+        id: "profile-dono",
+        displayName: "Maria Silva",
+        normalizedName: "maria silva",
+        normalizedPhone: "5511988887777",
+      },
+      {
+        id: "profile-joao-secundario",
+        displayName: "João Pereira",
+        normalizedName: "joao pereira",
+        normalizedPhone: "5511977776666",
+      },
+    ])
+
+    const result = await resolveWith({ displayName: "João Pereira", normalizedName: "joao pereira" })
+
+    expect(result.wasExisting).toBe(true)
+    expect(result.emailIdentityClaimed).toBe(false)
+    expect(radarProfileCreateMock).not.toHaveBeenCalled()
+    expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "profile-joao-secundario" },
+    })
+    // A claim NUNCA migra para o secundário.
+    expect(radarIdentityUpsertMock).not.toHaveBeenCalled()
+    expect(radarIdentityCreateMock).not.toHaveBeenCalled()
   })
 })

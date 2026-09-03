@@ -33,6 +33,7 @@ import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metri
 import { isUsableRadarDisplayName } from "@/lib/radar/usable-radar-name"
 import { normalizeRadarEmail, normalizeRadarName } from "@/lib/radar/normalization"
 import {
+  emailOwnerKey,
   planAnonymousCampaignRecipientInheritance,
   type AnonymousProfileEmailTrace,
   type EmailLogRecipient,
@@ -140,17 +141,22 @@ async function loadEmailLogsById(emailLogIds: string[]): Promise<Map<string, Ema
   return map
 }
 
-async function loadEmailOwnerByNormalizedEmail(
+async function loadEmailOwnerByTeamAndEmail(
   teamIds: string[],
   normalizedEmails: string[]
 ): Promise<Map<string, string>> {
+  // Chave por time+e-mail (emailOwnerKey) — achado codex PR #1155: chave só
+  // por e-mail fazia times diferentes se sobrescreverem quando o script roda
+  // sem --team-id, e o planner via o perfil de OUTRO time como dono.
   const map = new Map<string, string>()
   for (const ids of chunk(normalizedEmails, CHUNK_SIZE)) {
     const identities = await prisma.radarIdentity.findMany({
       where: { teamId: { in: teamIds }, type: "email", normalizedValue: { in: ids } },
-      select: { normalizedValue: true, profileId: true },
+      select: { teamId: true, normalizedValue: true, profileId: true },
     })
-    for (const identity of identities) map.set(identity.normalizedValue, identity.profileId)
+    for (const identity of identities) {
+      map.set(emailOwnerKey(identity.teamId, identity.normalizedValue), identity.profileId)
+    }
   }
   return map
 }
@@ -184,9 +190,9 @@ async function main() {
 
   const candidateNormalizedEmails = [...emailLogsById.values()].map((log) => normalizeRadarEmail(log.recipientEmail))
   const teamIds = [...new Set(traces.map((trace) => trace.teamId))]
-  const emailOwnerByNormalizedEmail = await loadEmailOwnerByNormalizedEmail(teamIds, candidateNormalizedEmails)
+  const emailOwnerByTeamAndEmail = await loadEmailOwnerByTeamAndEmail(teamIds, candidateNormalizedEmails)
 
-  const plan = planAnonymousCampaignRecipientInheritance(traces, emailLogsById, emailOwnerByNormalizedEmail)
+  const plan = planAnonymousCampaignRecipientInheritance(traces, emailLogsById, emailOwnerByTeamAndEmail)
 
   const porTime: Record<string, number> = {}
   for (const item of plan.items) porTime[item.teamId] = (porTime[item.teamId] ?? 0) + 1
@@ -217,6 +223,7 @@ async function main() {
   }
 
   let inherited = 0
+  let skippedRaced = 0
   let failed = 0
 
   for (const item of plan.items) {
@@ -226,7 +233,7 @@ async function main() {
       // exato instante, para as duas escritas nunca disputarem a mesma
       // RadarIdentity fora de ordem.
       const normalizedEmail = normalizeRadarEmail(item.recipientEmail)
-      await prisma.$transaction(async (tx) => {
+      const outcome = await prisma.$transaction(async (tx): Promise<"applied" | "skipped_raced"> => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${item.teamId} || ':' || ${normalizedEmail}))`
 
         const stillOwned = await tx.radarIdentity.findUnique({
@@ -235,8 +242,10 @@ async function main() {
         })
         if (stillOwned && stillOwned.profileId !== item.profileId) {
           // Corrida: um sync concorrente já reivindicou este e-mail para
-          // outro perfil entre o planejamento e esta escrita — não rouba.
-          return
+          // outro perfil entre o planejamento e esta escrita — não rouba, e
+          // conta como PULADO (achado codex PR #1155: contar como herdado
+          // faria um backfill incompleto parecer 100% aplicado).
+          return "skipped_raced"
         }
 
         const inheritedName = item.recipientName?.trim() || null
@@ -264,8 +273,10 @@ async function main() {
           },
           update: { profileId: item.profileId, value: item.recipientEmail, source: "campaign_recipient_backfill" },
         })
+        return "applied"
       })
-      inherited += 1
+      if (outcome === "applied") inherited += 1
+      else skippedRaced += 1
     } catch (error) {
       failed += 1
       console.error(`${LOG} Falha ao herdar identidade — segue retentável`, {
@@ -277,7 +288,7 @@ async function main() {
 
   if (failed > 0) process.exitCode = 1
 
-  console.info(`${LOG} Concluído`, { inherited, failed })
+  console.info(`${LOG} Concluído`, { inherited, skippedRaced, failed })
 }
 
 main()

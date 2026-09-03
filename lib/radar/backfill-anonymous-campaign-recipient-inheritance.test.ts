@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  emailOwnerKey,
   planAnonymousCampaignRecipientInheritance,
   type AnonymousProfileEmailTrace,
   type EmailLogRecipient,
@@ -88,12 +89,36 @@ describe("planAnonymousCampaignRecipientInheritance", () => {
     const plan = planAnonymousCampaignRecipientInheritance(
       [trace()],
       new Map([["log-1", log()]]),
-      new Map([["leonardo@example.com", "profile-outro-dono"]])
+      new Map([[emailOwnerKey("team-1", "leonardo@example.com"), "profile-outro-dono"]])
     )
 
     expect(plan.items).toEqual([])
     expect(plan.skipped).toEqual([
       { profileId: "profile-anonimo-1", reason: "email_ja_pertence_a_outro_perfil" },
+    ])
+  })
+
+  it("dono do e-mail em OUTRO time não bloqueia a herança (achado codex #1155: mapa de donos é por time+e-mail, nunca só por e-mail)", () => {
+    const plan = planAnonymousCampaignRecipientInheritance(
+      [trace()],
+      new Map([["log-1", log()]]),
+      new Map([[emailOwnerKey("team-OUTRO", "leonardo@example.com"), "profile-de-outro-time"]])
+    )
+
+    expect(plan.items).toHaveLength(1)
+    expect(plan.skipped).toEqual([])
+  })
+
+  it("rastro PARCIALMENTE resolvido (parte dos emailLogIds sem EmailLog) → pula, conta 'rastro_com_emaillog_nao_resolvido' (achado codex #1155: a evidência ausente pode ser de OUTRO destinatário)", () => {
+    const plan = planAnonymousCampaignRecipientInheritance(
+      [trace({ emailLogIds: ["log-1", "log-sumido"] })],
+      new Map([["log-1", log()]]),
+      new Map()
+    )
+
+    expect(plan.items).toEqual([])
+    expect(plan.skipped).toEqual([
+      { profileId: "profile-anonimo-1", reason: "rastro_com_emaillog_nao_resolvido" },
     ])
   })
 
@@ -123,7 +148,7 @@ describe("planAnonymousCampaignRecipientInheritance", () => {
     const plan = planAnonymousCampaignRecipientInheritance(
       [trace()],
       new Map([["log-1", log()]]),
-      new Map([["leonardo@example.com", "profile-anonimo-1"]])
+      new Map([[emailOwnerKey("team-1", "leonardo@example.com"), "profile-anonimo-1"]])
     )
 
     expect(plan.items).toHaveLength(1)

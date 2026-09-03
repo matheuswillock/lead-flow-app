@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import { decideEmailProfileMatch } from "@/lib/radar/email-profile-match"
+import {
+  decideEmailProfileMatch,
+  pickCompatibleEmailColumnCandidate,
+} from "@/lib/radar/email-profile-match"
 
 /**
  * Caso PIMENTAS/KKJ (bug 2026-09-03): `resolveProfileForEmail` só olhava a
@@ -67,5 +70,52 @@ describe("decideEmailProfileMatch", () => {
       incomingNormalizedName: "joao pereira",
     })
     expect(decision).toEqual({ action: "create_separate", reason: "shared_email_different_person" })
+  })
+})
+
+describe("pickCompatibleEmailColumnCandidate", () => {
+  const mariaDivergente = {
+    id: "profile-maria",
+    displayName: "Maria Silva",
+    normalizedName: "maria silva",
+    normalizedPhone: "5511988887777",
+  }
+  const joaoMesmoNome = {
+    id: "profile-joao",
+    displayName: "João Pereira",
+    normalizedName: "joao pereira",
+    normalizedPhone: "5511977776666",
+  }
+  const emailOnlyPlaceholder = {
+    id: "profile-placeholder",
+    displayName: "matriz@idgt.org.br",
+    normalizedName: "matriz@idgt.org.br",
+    normalizedPhone: null,
+  }
+
+  it("achado codex #1155 (P2): candidato mais antigo divergente NÃO bloqueia — devolve o de nome idêntico mais adiante na fila", () => {
+    expect(pickCompatibleEmailColumnCandidate([mariaDivergente, joaoMesmoNome], "joao pereira")).toBe(
+      joaoMesmoNome
+    )
+  })
+
+  it("sem nome idêntico, devolve o primeiro candidato ENRIQUECÍVEL pela guarda (placeholder/anônimo)", () => {
+    expect(
+      pickCompatibleEmailColumnCandidate([mariaDivergente, emailOnlyPlaceholder], "joao pereira")
+    ).toBe(emailOnlyPlaceholder)
+  })
+
+  it("todos os candidatos são pessoas estabelecidas divergentes → null (chamador cria separado)", () => {
+    expect(pickCompatibleEmailColumnCandidate([mariaDivergente], "joao pereira")).toBeNull()
+  })
+
+  it("nome idêntico vence mesmo quando um enriquecível vem antes na fila (identidade mais forte)", () => {
+    expect(
+      pickCompatibleEmailColumnCandidate([emailOnlyPlaceholder, joaoMesmoNome], "joao pereira")
+    ).toBe(joaoMesmoNome)
+  })
+
+  it("lista vazia → null", () => {
+    expect(pickCompatibleEmailColumnCandidate([], "joao pereira")).toBeNull()
   })
 })

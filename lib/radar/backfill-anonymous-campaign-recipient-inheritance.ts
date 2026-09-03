@@ -47,6 +47,7 @@ export type InheritancePlanItem = {
 
 export type InheritanceSkipReason =
   | "sem_emaillog_correspondente"
+  | "rastro_com_emaillog_nao_resolvido"
   | "multiplos_destinatarios_divergentes"
   | "email_ja_pertence_a_outro_perfil"
 
@@ -58,18 +59,29 @@ export type InheritancePlan = {
 }
 
 /**
+ * Chave do mapa de donos de e-mail — SEMPRE por time + e-mail normalizado.
+ * Achado codex PR #1155 (P2): chave só por e-mail fazia times diferentes se
+ * sobrescreverem no mapa quando o backfill roda sem `--team-id`, e o planner
+ * tratava o perfil de OUTRO time como dono (pulando herança válida).
+ */
+export function emailOwnerKey(teamId: string, normalizedEmail: string): string {
+  return `${teamId}:${normalizedEmail}`
+}
+
+/**
  * @param traces Um perfil "Visitante Anônimo" (ou sem nome usável) por
  *   entrada, com os `emailLogId`s distintos coletados dos seus eventos.
  * @param emailLogsById `EmailLog` resolvidos (id → destinatário) — só os que
  *   ainda existem/são de campanha entram no mapa; ids ausentes viram
  *   "sem_emaillog_correspondente".
- * @param emailOwnerByNormalizedEmail e-mail normalizado → profileId que já
- *   reivindica a `RadarIdentity` exclusiva desse e-mail hoje (quando existe).
+ * @param emailOwnerByTeamAndEmail `emailOwnerKey(teamId, normalizedEmail)` →
+ *   profileId que já reivindica a `RadarIdentity` exclusiva desse e-mail no
+ *   MESMO time (quando existe).
  */
 export function planAnonymousCampaignRecipientInheritance(
   traces: AnonymousProfileEmailTrace[],
   emailLogsById: Map<string, EmailLogRecipient>,
-  emailOwnerByNormalizedEmail: Map<string, string>
+  emailOwnerByTeamAndEmail: Map<string, string>
 ): InheritancePlan {
   const items: InheritancePlanItem[] = []
   const skipped: InheritanceSkip[] = []
@@ -81,6 +93,16 @@ export function planAnonymousCampaignRecipientInheritance(
 
     if (logs.length === 0) {
       skipped.push({ profileId: trace.profileId, reason: "sem_emaillog_correspondente" })
+      continue
+    }
+
+    // Achado codex PR #1155 (P1): rastro com evidência INCOMPLETA nunca
+    // herda. Se parte dos `emailLogId`s não resolve (log apagado / fora da
+    // categoria campaign), o destinatário ausente pode ser DIFERENTE do que
+    // sobrou — herdar só do que resolveu colaria a identidade errada com a
+    // confiança de um rastro íntegro.
+    if (logs.length < trace.emailLogIds.length) {
+      skipped.push({ profileId: trace.profileId, reason: "rastro_com_emaillog_nao_resolvido" })
       continue
     }
 
@@ -97,7 +119,7 @@ export function planAnonymousCampaignRecipientInheritance(
       continue
     }
 
-    const owner = emailOwnerByNormalizedEmail.get(normalizedEmail)
+    const owner = emailOwnerByTeamAndEmail.get(emailOwnerKey(trace.teamId, normalizedEmail))
     if (owner && owner !== trace.profileId) {
       skipped.push({ profileId: trace.profileId, reason: "email_ja_pertence_a_outro_perfil" })
       continue
