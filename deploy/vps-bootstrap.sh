@@ -132,6 +132,9 @@ check_env_placeholders() {
   if grep -q 'change-me\|your-project\.supabase\.co\|jwt-scoped-openwa_storage-role' "${DEPLOY_DIR}/.env.openwa" 2>/dev/null; then
     die "Edite ${DEPLOY_DIR}/.env.openwa — ainda há placeholders change-me / your-project"
   fi
+  if grep -qE '^OPS_AGENT_TOKEN=\s*$' "${DEPLOY_DIR}/.env.ops" 2>/dev/null; then
+    die "Preencha OPS_AGENT_TOKEN em ${DEPLOY_DIR}/.env.ops (gere no backoffice → Ops / Host)"
+  fi
 }
 
 start_stacks() {
@@ -140,7 +143,7 @@ start_stacks() {
 
   # --remove-orphans: derruba containers de serviços que saíram do compose
   # (n8n/Evolution em VPS provisionada antes da migração OpenWA).
-  docker compose -f docker-compose.vps.yml --env-file .env.openwa up -d --remove-orphans
+  docker compose -f docker-compose.vps.yml --env-file .env.openwa up -d --build --remove-orphans
 
   log "Aguardando healthchecks..."
   sleep 15
@@ -159,13 +162,21 @@ print_next_steps() {
 Bootstrap concluído. Próximos passos manuais:
 =============================================================================
 
-1. Agente Ops: https://${OPS_DOMAIN}/healthz
+1. Painel Ops: backoffice → Bethânia → Ops / Host
+   - agentBaseUrl = https://${OPS_DOMAIN}
+   - Salvar → Health (espera vpsStackCheck.ok=true)
    - Confirme OPS_AGENT_TOKEN preenchido em ${DEPLOY_DIR}/.env.ops
 
-2. OpenWA Gateway — sessão por time é criada pela aplicação
-   (POST /session/:instance com webhookUrl); não há UI para escanear QR aqui.
+2. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
+   - BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN = mesmo OPS_AGENT_TOKEN da VPS
+   - OPENWA_API_KEY / OPENWA_WEBHOOK_SECRET = os mesmos do .env.openwa
+   - OPENWA_API_URL: o gateway ainda NAO tem rota publica (so 'expose: 3333',
+     sem bloco no Caddyfile). 'http://openwa:3333' nao resolve na Vercel — veja
+     "Lacuna conhecida" em deploy/hostinger/README.md antes de preencher.
 
-3. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
+3. OpenWA Gateway — sessão por time é criada pela aplicação
+   (POST /session/:instance com webhookUrl); não há UI para escanear QR aqui.
+   No Corretor Studio, reconecte o WhatsApp do time para criar a sessão OpenWA.
 
 4. hPanel → Snapshots — ativar backup automático da VPS
 
