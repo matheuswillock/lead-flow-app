@@ -87,7 +87,15 @@ export const createLeadMock = mock(
 )
 
 export const findCampaignLogForAttributionMock = mock(
-  async () => null as { campaignName: string | null } | null,
+  async () =>
+    null as {
+      id: string
+      campaignId: string | null
+      dispatchId: string | null
+      recipientEmail: string
+      recipientName: string | null
+      campaignName: string | null
+    } | null,
 )
 
 export const waitForLeadSyncClaimRetryMock = mock(async (_ms: number) => {})

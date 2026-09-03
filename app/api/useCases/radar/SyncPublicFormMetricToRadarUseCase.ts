@@ -7,6 +7,11 @@ import type {
 import { evaluateEmailForAudience } from "@/lib/email/audience-prevalidation"
 import { normalizeRadarName, normalizeRadarPhone } from "@/lib/radar/normalization"
 import {
+  findLooseEmailInAnswers,
+  isLooseEmailDivergentFromRecipient,
+  isSubmissionConvergentWithCampaignRecipient,
+} from "@/lib/radar/campaign-recipient-identity"
+import {
   mapPublicFormMetricToRadarEventType,
   PUBLIC_FORM_RADAR_SOURCE_TYPE,
 } from "@/lib/radar/map-public-form-metric-to-radar-event"
@@ -305,6 +310,7 @@ export class SyncPublicFormMetricToRadarUseCase {
     const mappingKey = input.answerMappingKey?.trim() || null
     const answerValue = typeof input.answerValue === "string" ? input.answerValue.trim() : ""
     const recipientEmail = this.extractOriginString(input.origin, "recipientEmail")
+    const recipientName = this.extractOriginString(input.origin, "recipientName")
     const recipientEmailValidation = recipientEmail
       ? evaluateEmailForAudience(recipientEmail)
       : null
@@ -333,14 +339,31 @@ export class SyncPublicFormMetricToRadarUseCase {
     if (mappingKey === "phone" && answerValue) {
       const normalizedPhone = normalizeRadarPhone(answerValue)
       if (normalizedPhone) {
+        // Adenda E6b: só o telefone foi digitado nesta resposta — não há um
+        // segundo sinal typed (e-mail) nesta MESMA resposta para contradizer o
+        // destinatário, então a guarda composta do #1107
+        // (`isSubmissionConvergentWithCampaignRecipient`) nunca acusa
+        // divergência aqui por construção (ela exige telefone E e-mail
+        // digitados) — mesma limitação estrutural documentada em
+        // `campaign-recipient-identity.ts` e na Adenda E1b (lado do lead).
+        // Herdar o nome do destinatário é seguro neste caso.
+        const inheritedName =
+          recipientEmailValidation?.ok &&
+          recipientName &&
+          isSubmissionConvergentWithCampaignRecipient(
+            { name: null, phone: answerValue, email: null },
+            { recipientEmail: recipientEmailValidation.email, recipientName },
+          )
+            ? recipientName
+            : null
         const { profile } = await this.radarProfiles.resolveProfileForPhone({
           teamId: input.teamId,
           normalizedPhone,
           displayPhone: answerValue,
           phoneValue: answerValue,
           phoneSource: "public_form_answer",
-          displayName: "",
-          normalizedName: "",
+          displayName: inheritedName ?? "",
+          normalizedName: inheritedName ? normalizeRadarName(inheritedName) : "",
           primaryEmail: recipientEmailValidation?.ok ? recipientEmail : null,
           normalizedPrimaryEmail: recipientEmailValidation?.ok
             ? recipientEmailValidation.email
@@ -358,16 +381,33 @@ export class SyncPublicFormMetricToRadarUseCase {
     }
 
     if (recipientEmail && recipientEmailValidation?.ok) {
-      const { profile } = await this.radarProfiles.resolveProfileForEmail({
-        teamId: input.teamId,
-        normalizedEmail: recipientEmailValidation.email,
-        emailValue: recipientEmail,
-        displayName: null,
-        normalizedName: normalizeRadarName(recipientEmailValidation.email.split("@")[0]),
-        emailSource: "email_campaign_form",
-        lastSeenAt: input.occurredAt ?? new Date(),
+      // Adenda E6b (caso KKJ, perfil `86426c89`): esta resposta não mapeia
+      // nativamente para nome/telefone/e-mail — mas pode conter um e-mail
+      // digitado como texto solto numa pergunta sem mapping (o caso real:
+      // "primeira resposta da parcial", sem telefone ainda respondido). Sem
+      // telefone digitado para corroborar, a guarda composta do #1107 não se
+      // aplica (precisa dos dois sinais) — usa a comparação mais estreita
+      // e-mail×e-mail (`isLooseEmailDivergentFromRecipient`): um e-mail solto
+      // DIFERENTE do destinatário é sinal de encaminhamento e bloqueia a
+      // atribuição inteira (não só o nome), o perfil segue anônimo em vez de
+      // herdar a identidade errada.
+      const typedEmail = findLooseEmailInAnswers([{ value: input.answerValue }])
+      const divergent = isLooseEmailDivergentFromRecipient(typedEmail, {
+        recipientEmail: recipientEmailValidation.email,
+        recipientName,
       })
-      return profile.id
+      if (!divergent) {
+        const { profile } = await this.radarProfiles.resolveProfileForEmail({
+          teamId: input.teamId,
+          normalizedEmail: recipientEmailValidation.email,
+          emailValue: recipientEmail,
+          displayName: recipientName,
+          normalizedName: normalizeRadarName(recipientEmailValidation.email.split("@")[0]),
+          emailSource: "email_campaign_form",
+          lastSeenAt: input.occurredAt ?? new Date(),
+        })
+        return profile.id
+      }
     }
 
     const { profile } = await this.radarProfiles.resolveProfileForVisitorSession({

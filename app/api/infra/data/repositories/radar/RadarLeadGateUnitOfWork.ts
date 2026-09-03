@@ -17,6 +17,7 @@ import {
   PENDING_LEAD_IDENTITY_PREFIX,
   PENDING_LEAD_IDENTITY_STALE_MS,
 } from "@/lib/radar/lead-identity"
+import { buildEmailCampaignOriginPromotion } from "@/lib/public-forms/email-campaign-origin-promotion"
 
 class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   constructor(private readonly transaction: Prisma.TransactionClient) {}
@@ -251,6 +252,19 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     const fromEmailCampaign = Boolean(campaignId || emailLogId)
 
     if (input.existingLeadId) {
+      // Requisitos 4/5/8 do bug 2026-08-28 (Bruno Marcelino): resposta
+      // atribuída a campanha que anexa num lead `public_form` promove a
+      // origem, com MERGE dos metadados anteriores — senão o filtro "Origem =
+      // Campanha de e-mail" do CRM mente. Só busca o lead atual quando há
+      // atribuição a resolver.
+      const originPromotion = fromEmailCampaign
+        ? await this.resolveExistingLeadOriginPromotion({
+            leadId: input.existingLeadId,
+            campaignId,
+            emailLogId,
+          })
+        : null
+
       await this.transaction.lead.update({
         where: { id: input.existingLeadId },
         data: {
@@ -259,6 +273,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
           ...(email ? { email } : {}),
           assignedTo: form.assignedSdrId ?? undefined,
           updatedAt: new Date(),
+          ...(originPromotion ?? {}),
         },
       })
       return { leadId: input.existingLeadId, created: false }
@@ -323,6 +338,29 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       select: { id: true },
     })
     return { leadId: lead.id, created: true }
+  }
+
+  /**
+   * Merge dos metadados de origem do lead existente com a atribuição de
+   * campanha da resposta corrente — nunca sobrescrita cega (requisitos 4/5/8
+   * do bug 2026-08-28). `null` quando o lead já está promovido com os MESMOS
+   * ids, evitando um update redundante.
+   */
+  private async resolveExistingLeadOriginPromotion(input: {
+    leadId: string
+    campaignId: string | null
+    emailLogId: string | null
+  }): Promise<{ originChannel: "email_campaign"; originMetadata: Prisma.InputJsonValue } | null> {
+    const existing = await this.transaction.lead.findUnique({
+      where: { id: input.leadId },
+      select: { originChannel: true, originMetadata: true },
+    })
+    return buildEmailCampaignOriginPromotion({
+      currentChannel: existing?.originChannel ?? null,
+      currentMetadata: existing?.originMetadata,
+      campaignId: input.campaignId,
+      emailLogId: input.emailLogId,
+    })
   }
 
   /**

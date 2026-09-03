@@ -377,10 +377,19 @@ export class RadarRepository {
     const winnerHasUsableName =
       Boolean(winningProfile.displayName.trim()) &&
       winningProfile.displayName !== "Visitante Anônimo"
+    // Adenda E6b (02/09, caso KKJ/perfil 86426c89): o placeholder "Visitante
+    // Anônimo" do PERDEDOR não é um nome usável — sem este guard espelhado, o
+    // vencedor recém-identificado (telefone/e-mail conhecidos, `displayName`
+    // ainda vazio) herdava o rótulo literal de anônimo em vez de ficar sem
+    // nome (o que deixaria a herança do destinatário da campanha, adenda E1b
+    // do lado do perfil, decidir o nome de verdade).
+    const loserHasUsableName =
+      Boolean(losingProfile.displayName.trim()) &&
+      losingProfile.displayName !== "Visitante Anônimo"
     await tx.radarProfile.update({
       where: { id: winningProfileId },
       data: {
-        ...(!winnerHasUsableName && losingProfile.displayName.trim()
+        ...(!winnerHasUsableName && loserHasUsableName
           ? {
               displayName: losingProfile.displayName,
               normalizedName: losingProfile.normalizedName,

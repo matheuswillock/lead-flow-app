@@ -24,7 +24,12 @@ import {
   waitForLeadSyncClaimRetry,
 } from "@/lib/public-forms/lead-sync-claim"
 import { formatEmailCampaignLeadCreatedActivityBody } from "@/lib/public-forms/email-campaign-attribution"
+import { buildEmailCampaignOriginPromotion } from "@/lib/public-forms/email-campaign-origin-promotion"
 import { isEmailCampaignFormOrigin } from "@/lib/public-forms/origin"
+import {
+  findLooseEmailInAnswers,
+  isSubmissionConvergentWithCampaignRecipient,
+} from "@/lib/radar/campaign-recipient-identity"
 import type {
   PublicFormAnswerInput,
   PublicFormSnapshot,
@@ -98,9 +103,17 @@ export {
   type UpsertLeadOutcome,
 } from "@/lib/public-forms/lead-upsert-outcome"
 
+/** Ids da atribuição de campanha da submissão corrente — `null` quando a
+ * origem não é `cs_el`/campanha (ver `isEmailCampaignFormOrigin`). */
+type CampaignAttribution = {
+  emailLogId: string | null
+  campaignId: string | null
+} | null
+
 type LeadAttachContext = {
   form: PublicFormSubmissionContext
   snapshot: PublicFormSnapshot
+  campaignAttribution: CampaignAttribution
 }
 
 async function attachToLiveLead(
@@ -111,10 +124,22 @@ async function attachToLiveLead(
   const updateReason = resolveLeadDiscardReason(extracted, { hasMatchingLead: true })
   if (updateReason) return { outcome: "discarded", reason: updateReason }
   const notes = mergeFormMappedLeadNotes(match.notes, context.snapshot, extracted.notes)
+  // Requisitos 4/5/8 do bug 2026-08-28 (Bruno Marcelino): resposta atribuída a
+  // campanha que anexa num lead `public_form` promove a origem, com MERGE dos
+  // metadados anteriores — senão o filtro "Origem = Campanha de e-mail" mente.
+  const originPromotion = context.campaignAttribution
+    ? buildEmailCampaignOriginPromotion({
+        currentChannel: match.originChannel,
+        currentMetadata: match.originMetadata,
+        emailLogId: context.campaignAttribution.emailLogId,
+        campaignId: context.campaignAttribution.campaignId,
+      })
+    : null
   const lead = await publicFormsRepository.updateLead(match.id, {
     ...extracted.native,
     notes,
     updatedBy: context.form.team.master.id,
+    ...(originPromotion ?? {}),
   })
   for (const [key, value] of Object.entries(extracted.custom)) {
     const definitionId = await publicFormsRepository.findCustomFieldDefinitionId(
@@ -234,10 +259,19 @@ export async function upsertLeadFromFormAnswers(input: {
   // `processInBackground` lê para não emitir descarte (união E2 × E4).
   if (input.snapshot.leadCaptureDisabled) return { outcome: "skipped" }
 
+  const emailLogId = typeof input.origin.emailLogId === "string" ? input.origin.emailLogId : null
+  const campaignId = typeof input.origin.campaignId === "string" ? input.origin.campaignId : null
+  const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
+  const attachContext: LeadAttachContext = {
+    form: input.form,
+    snapshot: input.snapshot,
+    campaignAttribution: fromEmailCampaign ? { emailLogId, campaignId } : null,
+  }
+
   const match = await findMatchingLead(input.form.teamId, extracted)
 
   if (match) {
-    return attachToLiveLead({ form: input.form, snapshot: input.snapshot }, match, extracted)
+    return attachToLiveLead(attachContext, match, extracted)
   }
 
   // A ordem importa: `allowCreate:false` é decisão de arquitetura (modo radar),
@@ -264,11 +298,7 @@ export async function upsertLeadFromFormAnswers(input: {
         await waitForLeadSyncClaimRetry(LEAD_SYNC_CLAIM_RETRY_DELAY_MS)
         const winner = await findMatchingLead(input.form.teamId, extracted)
         if (winner) {
-          return attachToLiveLead(
-            { form: input.form, snapshot: input.snapshot },
-            winner,
-            extracted,
-          )
+          return attachToLiveLead(attachContext, winner, extracted)
         }
       }
       // O vencedor do claim nunca commitou (processo morto, erro não
@@ -281,18 +311,30 @@ export async function upsertLeadFromFormAnswers(input: {
     }
   }
 
-  const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
   let campaignName: string | null = null
-  if (fromEmailCampaign && typeof input.origin.emailLogId === "string") {
-    const log = await emailLogRepository.findCampaignLogForAttribution(
-      input.form.teamId,
-      input.origin.emailLogId,
-    )
+  let inheritedRecipientEmail: string | null = null
+  if (fromEmailCampaign && emailLogId) {
+    const log = await emailLogRepository.findCampaignLogForAttribution(input.form.teamId, emailLogId)
     campaignName = log?.campaignName ?? null
+    // Adenda E1b (SPEC 40, 02/09): formulário não coletou e-mail — herda o do
+    // destinatário conhecido pelo `cs_el`, salvo divergência (guarda do
+    // #1107). E-mail digitado (checado logo acima via `extracted.email`)
+    // sempre vence; esta herança só roda quando ele está vazio.
+    if (log?.recipientEmail && !extracted.email) {
+      const convergent = isSubmissionConvergentWithCampaignRecipient(
+        {
+          name: extracted.name || null,
+          phone: extracted.phone || null,
+          email: findLooseEmailInAnswers(input.answers),
+        },
+        { recipientEmail: log.recipientEmail, recipientName: log.recipientName },
+      )
+      if (convergent) inheritedRecipientEmail = log.recipientEmail
+    }
   }
   const createData: CreateLeadRequest = {
     name: extracted.name,
-    email: extracted.email || undefined,
+    email: extracted.email || inheritedRecipientEmail || undefined,
     phone: extracted.phone || undefined,
     cnpj: typeof extracted.native.cnpj === "string" ? extracted.native.cnpj : undefined,
     age: typeof extracted.native.age === "string" ? extracted.native.age : undefined,
@@ -331,12 +373,9 @@ export async function upsertLeadFromFormAnswers(input: {
       ...(fromEmailCampaign
         ? {
             attribution: "email_campaign",
-            ...(typeof input.origin.emailLogId === "string"
-              ? { emailLogId: input.origin.emailLogId }
-              : {}),
-            ...(typeof input.origin.campaignId === "string"
-              ? { campaignId: input.origin.campaignId }
-              : {}),
+            ...(emailLogId ? { emailLogId } : {}),
+            ...(campaignId ? { campaignId } : {}),
+            ...(inheritedRecipientEmail ? { emailSource: "campaign_recipient" } : {}),
           }
         : {}),
     },
@@ -380,10 +419,7 @@ export async function upsertLeadFromFormAnswers(input: {
   )
   if (!output.isValid) {
     const reconciled = isDuplicateLeadRejection(output.errorMessages)
-      ? await reconcileLeadAfterFailedCreate(
-          { form: input.form, snapshot: input.snapshot },
-          extracted,
-        )
+      ? await reconcileLeadAfterFailedCreate(attachContext, extracted)
       : null
     if (reconciled) return reconciled
     throw new Error(output.errorMessages.join("; "))

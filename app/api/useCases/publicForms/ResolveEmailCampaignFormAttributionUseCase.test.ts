@@ -216,9 +216,31 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       enrichedOrigin: expect.objectContaining({
         emailLogId: EMAIL_LOG_ID,
         recipientEmail: "destinatario@exemplo.com",
+        recipientName: "Destinatário",
         campaignId: "campaign-1",
       }),
     })
+  })
+
+  // Gap E6b (02/09): `recipientName` nunca chegava ao `origin` — só
+  // `recipientEmail` era enriquecido, deixando o perfil Radar sem como herdar
+  // o nome do destinatário (caso KKJ, perfil `86426c89`).
+  it("recipientName ausente no EmailLog → enrichedOrigin não tem a chave (nunca string vazia)", async () => {
+    findCampaignLogForAttribution.mockImplementation(async () => ({
+      id: EMAIL_LOG_ID,
+      campaignId: "campaign-1",
+      dispatchId: "dispatch-1",
+      recipientEmail: "destinatario@exemplo.com",
+      recipientName: null,
+    }))
+
+    const output = await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+    })
+
+    const result = output.result as { enrichedOrigin: Record<string, unknown> }
+    expect(result.enrichedOrigin.recipientName).toBeUndefined()
   })
 
   it("form_viewed atribuído → grava EmailEvent clicked (repõe a métrica sem redirecionador)", async () => {
