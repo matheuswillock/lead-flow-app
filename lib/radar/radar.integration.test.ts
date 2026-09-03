@@ -2528,6 +2528,257 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
 })
 
 /**
+ * T-SEG.8 — adenda 10-E4 (caso KKJ/Guarulhos, 02/09): o segmento virtual
+ * `campaign:{id}` de uma campanha MÃE particionada resolvia por um único
+ * `campaignId`, mas o cron `dispatch-scheduled` exclui quem tem
+ * sub-campanhas — a mãe nunca dispara, os eventos reais ficam só nas filhas
+ * (`parentCampaignId = motherId`). Resultado em produção: segmento da mãe
+ * "Nenhum perfil neste segmento" com 4.000 entregas reais nas partes.
+ *
+ * Cobre os três consumidores que resolvem `campaign:{id}` a partir do mesmo
+ * `RadarRepository.findProfileIdsByEmailCampaign` (agora expandido via
+ * `resolveCampaignIdsIncludingSubs`, o mesmo ponto usado por analytics/logs
+ * de e-mail): a listagem de perfis do segmento (`RadarUseCase.listSegmentProfiles`,
+ * consumida pela tela de detalhe do segmento) e a resolução de destinatários
+ * de e-mail (`listRadarSegmentEmailRecipients`, consumida por disparo de
+ * campanha e materialização de lista).
+ */
+describe.skipIf(!RUN_INTEGRATION)("T-SEG.8 — segmento campaign:{id} de campanha mãe expande para as filhas", () => {
+  let teamId = ""
+  let ctx: { profileId: string; teamMember: { role: string; functions: string[] } }
+  let motherCampaignId = ""
+  let childCampaignAId = ""
+  let childCampaignBId = ""
+  let standaloneCampaignId = ""
+  let profileMotherChildAId = ""
+  let profileMotherChildBId = ""
+  let profileStandaloneId = ""
+  let emailMotherChildA = ""
+  let emailMotherChildB = ""
+
+  beforeAll(async () => {
+    const suffix = randomUUID().slice(0, 8)
+    const owner = await prisma.profile.create({
+      data: {
+        id: randomUUID(),
+        email: `radar-seg-mae-${suffix}@example.com`,
+        supabaseId: randomUUID(),
+        fullName: "Radar Segmento Mae Tester",
+        isMaster: true,
+      },
+    })
+    const team = await prisma.team.create({
+      data: { id: randomUUID(), name: `Radar Segmento Mae ${suffix}`, masterId: owner.id },
+    })
+    await prisma.teamMember.create({
+      data: { id: randomUUID(), teamId: team.id, profileId: owner.id, role: "manager" },
+    })
+    teamId = team.id
+    ctx = { profileId: owner.id, teamMember: { role: "manager", functions: [] } }
+
+    const templateGroupId = randomUUID()
+    const template = await prisma.emailTemplate.create({
+      data: {
+        id: templateGroupId,
+        teamId: team.id,
+        createdBy: owner.id,
+        name: "Template Segmento Mae Test",
+        subject: "Assunto de teste",
+        html: "<p>Olá</p>",
+        editorMode: "html",
+        versionGroupId: templateGroupId,
+        versionNumber: 1,
+        status: "published",
+        isCurrentPublished: true,
+        approvalStatus: "approved",
+      },
+    })
+
+    const motherCampaign = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        createdBy: owner.id,
+        templateId: template.id,
+        name: `Campanha Mae ${suffix}`,
+        status: "sent",
+      },
+    })
+    motherCampaignId = motherCampaign.id
+
+    const childA = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        createdBy: owner.id,
+        templateId: template.id,
+        name: `Campanha Mae ${suffix} (parte 1/2)`,
+        parentCampaignId: motherCampaignId,
+        subCampaignIndex: 1,
+        status: "sent",
+      },
+    })
+    childCampaignAId = childA.id
+
+    const childB = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        createdBy: owner.id,
+        templateId: template.id,
+        name: `Campanha Mae ${suffix} (parte 2/2)`,
+        parentCampaignId: motherCampaignId,
+        subCampaignIndex: 2,
+        status: "sent",
+      },
+    })
+    childCampaignBId = childB.id
+
+    const standaloneCampaign = await prisma.emailCampaign.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        createdBy: owner.id,
+        templateId: template.id,
+        name: `Campanha Sem Filhas ${suffix}`,
+        status: "sent",
+      },
+    })
+    standaloneCampaignId = standaloneCampaign.id
+
+    const makeProfile = async (input: { name: string; email: string }) =>
+      prisma.radarProfile.create({
+        data: {
+          id: randomUUID(),
+          teamId: team.id,
+          displayName: input.name,
+          normalizedName: normalizeRadarName(input.name),
+          displayPhone: null,
+          normalizedPhone: null,
+          primaryEmail: input.email,
+          normalizedPrimaryEmail: normalizeRadarEmail(input.email),
+        },
+      })
+
+    emailMotherChildA = `seg-mae-a-${suffix}@example.com`
+    const profileA = await makeProfile({ name: "Perfil Filha A", email: emailMotherChildA })
+    profileMotherChildAId = profileA.id
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: profileA.id,
+        eventType: "email.opened",
+        sourceType: "email_campaign",
+        sourceId: `${childCampaignAId}:open`,
+        occurredAt: new Date(),
+        metadata: { campaignId: childCampaignAId },
+      },
+    })
+
+    emailMotherChildB = `seg-mae-b-${suffix}@example.com`
+    const profileB = await makeProfile({ name: "Perfil Filha B", email: emailMotherChildB })
+    profileMotherChildBId = profileB.id
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: profileB.id,
+        eventType: "email.clicked",
+        sourceType: "email_campaign",
+        sourceId: `${childCampaignBId}:click`,
+        occurredAt: new Date(),
+        metadata: { campaignId: childCampaignBId },
+      },
+    })
+
+    const profileStandalone = await makeProfile({
+      name: "Perfil Standalone",
+      email: `seg-mae-standalone-${suffix}@example.com`,
+    })
+    profileStandaloneId = profileStandalone.id
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: profileStandalone.id,
+        eventType: "email.opened",
+        sourceType: "email_campaign",
+        sourceId: `${standaloneCampaignId}:open`,
+        occurredAt: new Date(),
+        metadata: { campaignId: standaloneCampaignId },
+      },
+    })
+
+    // Ruído: evento de e-mail de uma campanha totalmente não relacionada — não
+    // pode aparecer em nenhuma das consultas acima.
+    const profileUnrelated = await makeProfile({
+      name: "Perfil Nao Relacionado",
+      email: `seg-mae-unrelated-${suffix}@example.com`,
+    })
+    await prisma.radarEvent.create({
+      data: {
+        id: randomUUID(),
+        teamId: team.id,
+        profileId: profileUnrelated.id,
+        eventType: "email.opened",
+        sourceType: "email_campaign",
+        sourceId: `${randomUUID()}:open`,
+        occurredAt: new Date(),
+        metadata: { campaignId: randomUUID() },
+      },
+    })
+  })
+
+  afterAll(async () => {
+    if (!teamId) return
+    await prisma.radarEvent.deleteMany({ where: { teamId } })
+    await prisma.radarProfile.deleteMany({ where: { teamId } })
+    await prisma.emailCampaign.deleteMany({ where: { teamId } })
+    await prisma.emailTemplate.deleteMany({ where: { teamId } })
+    await prisma.teamMember.deleteMany({ where: { teamId } })
+    await prisma.team.deleteMany({ where: { id: teamId } })
+  })
+
+  it("segmento campaign:{id} da mãe reúne os perfis das duas filhas", async () => {
+    const ids = await radarRepository.findProfileIdsByEmailCampaign(teamId, motherCampaignId)
+    expect(new Set(ids)).toEqual(new Set([profileMotherChildAId, profileMotherChildBId]))
+  })
+
+  it("filha consultada diretamente continua devolvendo só o próprio evento", async () => {
+    const ids = await radarRepository.findProfileIdsByEmailCampaign(teamId, childCampaignAId)
+    expect(ids).toEqual([profileMotherChildAId])
+  })
+
+  it("campanha sem filhas fica idêntica ao comportamento anterior", async () => {
+    const ids = await radarRepository.findProfileIdsByEmailCampaign(teamId, standaloneCampaignId)
+    expect(ids).toEqual([profileStandaloneId])
+  })
+
+  it("listSegmentProfiles (tela de detalhe do segmento) enxerga os perfis das filhas na mãe", async () => {
+    const result = await customerDataPlatformUseCase.listSegmentProfiles(
+      teamId,
+      ctx,
+      `campaign:${motherCampaignId}`,
+      1,
+      50
+    )
+    expect(result.isValid).toBe(true)
+    const payload = result.result as { total: number; items: Array<{ id: string }> }
+    expect(payload.total).toBe(2)
+    expect(new Set(payload.items.map((item) => item.id))).toEqual(
+      new Set([profileMotherChildAId, profileMotherChildBId])
+    )
+  })
+
+  it("listRadarSegmentEmailRecipients (disparo/materialização) inclui os e-mails das filhas", async () => {
+    const recipients = await listRadarSegmentEmailRecipients(teamId, `campaign:${motherCampaignId}`)
+    const emails = recipients.map((recipient) => recipient.email)
+    expect(new Set(emails)).toEqual(new Set([emailMotherChildA, emailMotherChildB]))
+  })
+})
+
+/**
  * T-R2.3 — o lote agregado precisa dar exatamente o mesmo número que o cálculo
  * por perfil. Trocar 2 queries/perfil por 2 queries/lote só vale se o resultado
  * for idêntico; senão o backfill "termina" gravando score errado na base toda.
