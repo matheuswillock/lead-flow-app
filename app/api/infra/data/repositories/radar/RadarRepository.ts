@@ -45,6 +45,7 @@ import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "@/lib/radar/map-public-form-metri
 import { normalizeRadarName } from "@/lib/radar/normalization"
 import { applyPublicFormAnswerRevision } from "@/lib/radar/public-form-materialization"
 import { projectPublicFormAnswerIdentity } from "@/lib/radar/public-form-identity-projection"
+import { resolveCampaignIdsIncludingSubs } from "@/lib/email/resolve-campaign-query-ids"
 import type {
   MaterializePublicFormAnswerInput,
   MaterializePublicFormAnswerResult,
@@ -2363,14 +2364,26 @@ export class RadarRepository {
 
   /**
    * Perfis com ≥1 `RadarEvent` `email.*` cujo `metadata.campaignId` coincide
-   * com a campanha (audiência virtual `campaign:{id}`).
+   * com a campanha (audiência virtual `campaign:{id}`) ou com uma de suas
+   * sub-campanhas.
+   *
+   * Campanha MÃE particionada nunca dispara sozinha (o cron `dispatch-scheduled`
+   * exclui quem tem sub-campanhas) — os eventos reais ficam nas FILHAS
+   * (`parentCampaignId = campaignId`). Sem a expansão, o segmento da mãe fica
+   * vazio por construção mesmo com milhares de entregas reais nas partes
+   * (adenda 10-E4, caso KKJ/Guarulhos, 02/09). `resolveCampaignIdsIncludingSubs`
+   * é o mesmo ponto único usado por analytics/logs de campanha (E-mail); uma
+   * campanha sem filhas devolve `[campaignId]`, comportamento idêntico ao
+   * anterior. Sub-campanhas não têm sub-campanhas (nível único), então não há
+   * recursão a fazer aqui.
    */
   async findProfileIdsByEmailCampaign(teamId: string, campaignId: string): Promise<string[]> {
+    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
     const rows = await this.db.radarEvent.findMany({
       where: {
         teamId,
         eventType: { startsWith: "email." },
-        metadata: { path: ["campaignId"], equals: campaignId },
+        OR: campaignIds.map((id) => ({ metadata: { path: ["campaignId"], equals: id } })),
       },
       distinct: ["profileId"],
       select: { profileId: true },
