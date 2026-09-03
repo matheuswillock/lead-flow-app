@@ -38,14 +38,26 @@ export interface ResponsiveCheckOptions {
   restoreViewport?: { width: number; height: number } | false;
 }
 
-/** Aguarda dois frames de layout após trocar o viewport. */
+/**
+ * Aguarda o layout assentar após trocar o viewport: dois frames + o fim das
+ * animações/transições CSS finitas. A troca de viewport dispara transições
+ * (ex.: `size-7` → `max-lg:size-11` com `transition-all` do shadcn) e medir
+ * durante a animação produzia alvos de 43.x px — flaky observado na CI do
+ * PR #1153 e em host local (computed height 43.48px com rem 16px). Animações
+ * infinitas (spinners) são ignoradas.
+ */
 async function waitForLayoutSettle(page: Page): Promise<void> {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }),
-  );
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
 }
 
 type Rgba = { r: number; g: number; b: number; a: number };
@@ -150,7 +162,9 @@ export async function assertTouchTargets(
         })
         .map((element) => {
           const rect = element.getBoundingClientRect();
-          return `${describe(element)} (${Math.round(rect.width)}×${Math.round(rect.height)})`;
+          const style = window.getComputedStyle(element);
+          const rootFontSize = window.getComputedStyle(document.documentElement).fontSize;
+          return `${describe(element)} (${rect.width.toFixed(2)}×${rect.height.toFixed(2)}; computed ${style.height}; rem ${rootFontSize})`;
         });
     },
     { selector, minSize },
