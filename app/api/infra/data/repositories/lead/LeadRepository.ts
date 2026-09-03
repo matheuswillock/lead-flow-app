@@ -24,6 +24,56 @@ const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
 // pode cair dentro da janela mesmo quando o status começou antes dela.
 const CALENDAR_LEAD_TIME_LOOKBACK_DAYS = 45;
 
+/**
+ * Nomes de model do Prisma (DMMF) que têm FK declarada para `Lead` e que
+ * `mergeLeadsInTransaction` MUST re-apontar do lead de origem pro lead alvo
+ * antes do `tx.lead.delete(source)` — senão a FK apaga em silêncio
+ * (`onDelete: Cascade`, a maioria) ou orfaniza (`onDelete: SetNull`:
+ * `PublicFormSubmission`, `WhatsAppConversation`, `WhatsAppMessage`) os dados
+ * do lado de origem. `Lead` aparece na própria lista por causa da
+ * auto-relação `referrerLeadId` (lead que indicou outro lead).
+ *
+ * Fonte de verdade comparada em
+ * `LeadRepository.mergeLeadRelationsGuard.test.ts`, que enumera via
+ * `Prisma.dmmf.datamodel.models` todo model com FK para `Lead` e falha se
+ * ele não estiver aqui (nem na allowlist de exclusão deliberada abaixo) —
+ * é o teste que impede o bug de voltar quando alguém criar a próxima FK.
+ *
+ * NÃO inclui `BackofficeLeadOffer` / `BackofficeAdhesion` /
+ * `BackofficeLeadSchedule` — o campo `leadId` desses três aponta para
+ * `BackofficeLead` (tabela do módulo Backoffice, isolada por
+ * `agents.md` § Backoffice Module Isolation), não para este `Lead`. Mesclar
+ * dois `Lead` do CRM não pode tocar nesses IDs — são espaços de UUID
+ * diferentes.
+ */
+export const MERGE_TRANSFERRED_LEAD_RELATIONS = [
+  "Lead",
+  "LeadActivity",
+  "Task",
+  "LeadsSchedule",
+  "LeadFinalized",
+  "LeadTransfer",
+  "LeadAttachment",
+  "LeadRequiredDocument",
+  "WhatsAppConversation",
+  "WhatsAppMessage",
+  "LeadPortfolio",
+  "LeadProposalReview",
+  "PublicFormSubmission",
+  "LeadCustomFieldValue",
+  "LeadTagAssignment",
+  "LeadDocumentRequest",
+] as const;
+
+/**
+ * FK para `Lead` deliberadamente NÃO transferida pelo merge — hoje vazia.
+ * Existe para o caso de, no futuro, alguém decidir que um novo relation
+ * (ex.: uma tabela de auditoria que deve preservar o UUID original mesmo
+ * morto) não deve ser migrado; a exclusão precisa ser explícita e
+ * justificada aqui, não silenciosa.
+ */
+export const MERGE_LEAD_RELATIONS_DELIBERATELY_EXCLUDED: readonly string[] = [];
+
 function buildCalendarWindowFilter(windowStart: Date, windowEnd: Date): Prisma.LeadWhereInput {
   const leadTimeLookbackStart = new Date(
     windowStart.getTime() - CALENDAR_LEAD_TIME_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -1310,6 +1360,94 @@ export class LeadRepository implements ILeadRepository {
         where: { leadId: sourceLead.id },
         data: { leadId: targetLead.id },
       });
+      // SetNull na FK: sem este updateMany, o delete do lead de origem zera
+      // leadId e a aba Formulários do lead sobrevivente nunca mais mostra a
+      // resposta (caso real: submissão 36a72372, ML SERVICOS 02/09).
+      await tx.publicFormSubmission.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      await tx.leadDocumentRequest.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+
+      // `@@unique([leadId, tagId])`: transferir a tag de origem para o alvo
+      // quebraria a constraint quando o alvo já tem a mesma tag. Regra: o
+      // alvo vence — só migra as tags exclusivas do lead de origem; as
+      // repetidas ficam no registro de origem e o CASCADE do
+      // `tx.lead.delete` abaixo cuida delas.
+      const targetTagIds = (
+        await tx.leadTagAssignment.findMany({
+          where: { leadId: targetLead.id },
+          select: { tagId: true },
+        })
+      ).map((assignment) => assignment.tagId);
+      await tx.leadTagAssignment.updateMany({
+        where: { leadId: sourceLead.id, tagId: { notIn: targetTagIds } },
+        data: { leadId: targetLead.id },
+      });
+
+      // Mesmo raciocínio para `@@unique([leadId, definitionId])`: o valor do
+      // alvo vence quando os dois leads têm o mesmo custom field preenchido;
+      // só o exclusivo do lead de origem é transferido.
+      const targetCustomFieldDefinitionIds = (
+        await tx.leadCustomFieldValue.findMany({
+          where: { leadId: targetLead.id },
+          select: { definitionId: true },
+        })
+      ).map((value) => value.definitionId);
+      await tx.leadCustomFieldValue.updateMany({
+        where: {
+          leadId: sourceLead.id,
+          definitionId: { notIn: targetCustomFieldDefinitionIds },
+        },
+        data: { leadId: targetLead.id },
+      });
+
+      // `TeamAutomationRunLog.leadId` não tem FK declarada para `Lead` (é uma
+      // referência solta usada só para dedupe de execução de automação) —
+      // por isso não entra em MERGE_TRANSFERRED_LEAD_RELATIONS nem no guard
+      // estrutural. Ainda assim precisa ser tratado aqui: sem FK, o delete do
+      // lead de origem NÃO limpa essas linhas sozinho, e elas ficariam
+      // apontando pra um UUID morto para sempre. `@@unique([ruleId, leadId,
+      // dedupeKey])`: quando o alvo já rodou a mesma regra com a mesma
+      // dedupeKey, a linha de origem é redundante (o alvo já é a fonte de
+      // verdade do dedupe) — apaga em vez de tentar reapontar e violar a
+      // constraint.
+      const targetRunLogKeys = new Set(
+        (
+          await tx.teamAutomationRunLog.findMany({
+            where: { leadId: targetLead.id },
+            select: { ruleId: true, dedupeKey: true },
+          })
+        ).map((log) => `${log.ruleId}::${log.dedupeKey}`)
+      );
+      const sourceRunLogs = await tx.teamAutomationRunLog.findMany({
+        where: { leadId: sourceLead.id },
+        select: { id: true, ruleId: true, dedupeKey: true },
+      });
+      const transferableRunLogIds: string[] = [];
+      const redundantRunLogIds: string[] = [];
+      for (const log of sourceRunLogs) {
+        if (targetRunLogKeys.has(`${log.ruleId}::${log.dedupeKey}`)) {
+          redundantRunLogIds.push(log.id);
+        } else {
+          transferableRunLogIds.push(log.id);
+        }
+      }
+      if (transferableRunLogIds.length > 0) {
+        await tx.teamAutomationRunLog.updateMany({
+          where: { id: { in: transferableRunLogIds } },
+          data: { leadId: targetLead.id },
+        });
+      }
+      if (redundantRunLogIds.length > 0) {
+        await tx.teamAutomationRunLog.deleteMany({
+          where: { id: { in: redundantRunLogIds } },
+        });
+      }
+
       await tx.lead.updateMany({
         where: { referrerLeadId: sourceLead.id },
         data: { referrerLeadId: targetLead.id },

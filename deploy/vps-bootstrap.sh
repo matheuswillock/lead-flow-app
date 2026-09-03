@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy/vps-bootstrap.sh — Bootstrap VPS Hostinger (OpenWA + agente Ops + Caddy)
+# deploy/vps-bootstrap.sh — Bootstrap VPS Hostinger (OpenWA + Caddy)
 # =============================================================================
 #
 # Execute na VPS como root (primeira vez) ou como usuário com sudo:
@@ -129,8 +129,8 @@ sync_deploy_dir() {
 }
 
 check_env_placeholders() {
-  if grep -q 'change-me\|your-project\|SUBSTITUA_' "${DEPLOY_DIR}/.env.openwa" 2>/dev/null; then
-    die "Edite ${DEPLOY_DIR}/.env.openwa — ainda há placeholders change-me/your-project"
+  if grep -q 'change-me\|your-project\.supabase\.co\|jwt-scoped-openwa_storage-role' "${DEPLOY_DIR}/.env.openwa" 2>/dev/null; then
+    die "Edite ${DEPLOY_DIR}/.env.openwa — ainda há placeholders change-me / your-project"
   fi
   if grep -qE '^OPS_AGENT_TOKEN=\s*$' "${DEPLOY_DIR}/.env.ops" 2>/dev/null; then
     die "Preencha OPS_AGENT_TOKEN em ${DEPLOY_DIR}/.env.ops (gere no backoffice → Ops / Host)"
@@ -141,7 +141,9 @@ start_stacks() {
   log "Subindo containers (docker-compose.vps.yml)..."
   cd "${DEPLOY_DIR}"
 
-  docker compose -f docker-compose.vps.yml up -d --build
+  # --remove-orphans: derruba containers de serviços que saíram do compose
+  # (n8n/Evolution em VPS provisionada antes da migração OpenWA).
+  docker compose -f docker-compose.vps.yml --env-file .env.openwa up -d --build --remove-orphans
 
   log "Aguardando healthchecks..."
   sleep 15
@@ -163,6 +165,7 @@ Bootstrap concluído. Próximos passos manuais:
 1. Painel Ops: backoffice → Bethânia → Ops / Host
    - agentBaseUrl = https://${OPS_DOMAIN}
    - Salvar → Health (espera vpsStackCheck.ok=true)
+   - Confirme OPS_AGENT_TOKEN preenchido em ${DEPLOY_DIR}/.env.ops
 
 2. Vercel — copie variáveis de deploy/hostinger/vercel-env.production.example
    - BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN = mesmo OPS_AGENT_TOKEN da VPS
@@ -171,9 +174,14 @@ Bootstrap concluído. Próximos passos manuais:
      sem bloco no Caddyfile). 'http://openwa:3333' nao resolve na Vercel — veja
      "Lacuna conhecida" em deploy/hostinger/README.md antes de preencher.
 
-3. No Corretor Studio, reconecte o WhatsApp do time para criar a sessão OpenWA
+3. OpenWA Gateway — sessão por time é criada pela aplicação
+   (POST /session/:instance com webhookUrl); não há UI para escanear QR aqui.
+   No Corretor Studio, reconecte o WhatsApp do time para criar a sessão OpenWA.
 
 4. hPanel → Snapshots — ativar backup automático da VPS
+
+5. Guarde OPENWA_API_KEY e OPENWA_WEBHOOK_SECRET em local seguro
+   (gerenciador de senhas) — o webhook secret precisa bater com o da Vercel
 
 =============================================================================
 EOF

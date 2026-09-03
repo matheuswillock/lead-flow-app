@@ -15,7 +15,7 @@ function CrmViewModeSwitch() {
   const isKanban = viewMode === "kanban";
 
   return (
-    <div className="flex h-9 items-center gap-2 rounded-md border border-border/60 px-3">
+    <div className="flex h-9 max-lg:h-12 items-center gap-2 rounded-md border border-border/60 px-3">
       <span
         className={cn(
           "text-xs font-medium",
@@ -28,6 +28,7 @@ function CrmViewModeSwitch() {
         checked={isKanban}
         onCheckedChange={(checked) => setViewMode(checked ? "kanban" : "pipeline")}
         aria-label="Alternar visualização do CRM"
+        className="max-lg:h-11 max-lg:w-[52px] max-lg:border-x-8 max-lg:border-y-[12px] max-lg:bg-clip-padding"
       />
       <span
         className={cn(

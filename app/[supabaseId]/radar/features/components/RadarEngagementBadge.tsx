@@ -11,7 +11,8 @@ const BAND_CONFIG: Record<
 > = {
   hot: {
     label: "Quente",
-    className: "border-destructive/40 bg-destructive/15 text-destructive",
+    className:
+      "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
     icon: Flame,
   },
   warm: {
@@ -27,7 +28,8 @@ const BAND_CONFIG: Record<
   },
   cold: {
     label: "Frio",
-    className: "border-border bg-muted text-muted-foreground",
+    className:
+      "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
     icon: Snowflake,
   },
 }
@@ -60,7 +62,7 @@ export function RadarEngagementBadge({
   const Icon = cfg.icon
 
   return (
-    <Badge className={cn("w-fit shrink-0 gap-1 text-xs", cfg.className, className)}>
+    <Badge variant="outline" className={cn("w-fit shrink-0 gap-1 text-xs", cfg.className, className)}>
       {showIcon ? <Icon data-icon="inline-start" /> : null}
       {cfg.label}
     </Badge>
