@@ -646,7 +646,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           <div className="flex items-center space-x-2">
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 max-lg:size-11 p-0"
               onClick={() => table.setPageIndex(0)}
               disabled={!table.getCanPreviousPage()}
             >
@@ -655,7 +655,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
             </Button>
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 max-lg:size-11 p-0"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
@@ -664,7 +664,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
             </Button>
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 max-lg:size-11 p-0"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
@@ -673,7 +673,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
             </Button>
             <Button
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 max-lg:size-11 p-0"
               onClick={() => table.setPageIndex(table.getPageCount() - 1)}
               disabled={!table.getCanNextPage()}
             >
