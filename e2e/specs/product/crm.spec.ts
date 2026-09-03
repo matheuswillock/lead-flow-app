@@ -121,12 +121,29 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
-    test.setTimeout(90_000);
+    // 150s: o poll de convergência do cache (até ~75s, ver abaixo) + as
+    // interações do dialog não cabem com folga nos 90s padrão.
+    test.setTimeout(150_000);
     await seedLayoutLead();
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    await page.getByText(LAYOUT_LEAD_NAME).first().click();
+    // A listagem de leads vem de "use cache" com SWR (stale 30 / revalidate 60,
+    // ver getCachedTeamLeads) e o seed direto via Prisma NÃO invalida a tag
+    // team-leads: quando os testes anteriores visitaram o CRM, a primeira
+    // navegação daqui recebe a lista vazia cacheada e o lead seedado nunca
+    // aparece (flaky que só o retry da CI salvava). O fetch em si dispara a
+    // revalidação em background — recarregar até o lead aparecer converge em
+    // poucos segundos.
+    const seededLeadCell = page.getByText(LAYOUT_LEAD_NAME).first();
+    await expect(async () => {
+      if ((await seededLeadCell.count()) === 0) {
+        await page.reload({ waitUntil: "domcontentloaded" });
+      }
+      await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
+    }).toPass({ timeout: 75_000 });
+
+    await seededLeadCell.click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("Editar Lead")).toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByText("Informações do lead")).toBeVisible();
