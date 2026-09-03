@@ -13,6 +13,13 @@ export type LegacyPublicFormProgressLeadInput = {
   publicationId: string
   origin: Record<string, unknown>
   allowCreate: boolean
+  /**
+   * SPEC 40 — claim atômico do create de lead (bug de duplicatas do
+   * `/progress`). Vem de `resolved.sessionSubmission.id`; ausente só na
+   * primeiríssima requisição de uma sessão, quando a linha da submissão
+   * ainda não existe para ser reivindicada.
+   */
+  submissionId?: string
 }
 
 export interface ILegacyPublicFormProgressLeadService {
