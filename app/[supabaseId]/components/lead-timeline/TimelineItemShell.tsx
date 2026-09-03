@@ -34,7 +34,7 @@ export function TimelineItemShell({
     <div
       ref={itemRef}
       className={cn(
-        "mr-auto w-77 max-w-full rounded-lg border border-border/60 bg-background/60 p-3 transition-colors",
+        "w-full rounded-lg border border-border/60 bg-muted/40 p-3 transition-colors",
         highlighted ? "bg-primary/5 ring-2 ring-primary/50" : ""
       )}
     >

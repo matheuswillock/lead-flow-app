@@ -7,7 +7,10 @@
  * 2. Ciclo TDD: escrever a spec ANTES do código (red) → implementar até verde.
  * 3. Arrange no banco, Act no Playwright, Assert na UI e no banco.
  * 4. Cobertura mínima: página carrega, heading visível, CTA principal,
- *    estado vazio/loading com Skeleton (não crash).
+ *    estado vazio/loading com Skeleton (não crash), e responsividade
+ *    (mobile-first): `runResponsiveChecks(page)` — sem overflow horizontal
+ *    em 360/375, touch targets ≥ 44×44, `prefers-reduced-motion` respeitado.
+ *    Obrigatório em toda spec de página (`governance:check-responsive`).
  * 5. Feature de cobrança: assertir produto, ciclo, valor e a ausência do
  *    termo CDP. Chamar `assertAsaasSandbox()` no `beforeAll` se a spec
  *    criar customer/cobrança/checkout/assinatura.
@@ -23,6 +26,7 @@ import { expect, test } from "@playwright/test";
 import { injectE2eAuthCookie } from "../fixtures/auth";
 import { disconnectPrisma, findE2eMasterProfile } from "../support/db";
 import { assertAsaasSandbox } from "../support/asaas";
+import { runResponsiveChecks } from "../support/responsive";
 
 test.describe("app/example-route", () => {
   test.beforeAll(() => {
@@ -49,5 +53,13 @@ test.describe("app/example-route", () => {
   test("carrega sem erro e mostra o heading", async ({ page }) => {
     await page.goto("/example-route");
     await expect(page.getByRole("heading").first()).toBeVisible();
+  });
+
+  test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({ page }) => {
+    await page.goto("/example-route");
+    await expect(page.getByRole("heading").first()).toBeVisible();
+    // Recarrega a página no passo de reduced-motion — asserts que dependem
+    // de estado da página devem vir antes desta chamada.
+    await runResponsiveChecks(page);
   });
 });
