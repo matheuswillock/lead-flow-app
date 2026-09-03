@@ -1,56 +1,49 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { beforeEach, describe, expect, it } from "bun:test"
 import { FORM_START_ACTIVITY_BODY } from "@/lib/public-forms/email-campaign-attribution"
+import {
+  applyWebhookEventMock as applyWebhookEvent,
+  createLeadActivityNoteMock as createLeadActivityNote,
+  createLeadMock as createLead,
+  findCampaignContactListIdsMock as findCampaignContactListIds,
+  findCampaignLogForAttributionMock as findCampaignLogForAttribution,
+  findCampaignWebhookRecordByIdMock as findCampaignWebhookRecordById,
+  findEmailContactCustomFieldsMock as findEmailContactCustomFields,
+  findFormSubmissionContextMock as findFormSubmissionContext,
+  findLeadActivityByEmailLogAttributionMock as findLeadActivityByEmailLogAttribution,
+  findLeadCandidatesMock as findLeadCandidates,
+  findRadarPhoneByEmailMock as findRadarPhoneByEmail,
+  registerPublicFormLeadSyncModuleMocks,
+  syncLeadToRadarExecuteMock as syncLeadExecute,
+  updateLeadMock as updateLead,
+} from "@/test/support/public-form-lead-sync-module-mocks"
+
+/**
+ * Mocks de módulo COMPARTILHADOS (helper do #1144). Antes, este arquivo
+ * registrava fábricas PRÓPRIAS e PARCIAIS para os mesmos módulos dos testes de
+ * `publicFormLeadSync` — inclusive `mock.module` de `publicFormLeadSync` com
+ * só `findMatchingLead`, que derrubava os vizinhos com
+ * "upsertLeadFromFormAnswers is not a function" conforme a ordem interna do
+ * runner (o Bun ignora a ordem da CLI). Agora o módulo `publicFormLeadSync` é
+ * REAL — o `findMatchingLead` é dirigido pelo `findLeadCandidatesMock`
+ * compartilhado, exercitando também o `pickBestLeadMatch` de produção.
+ */
+registerPublicFormLeadSyncModuleMocks()
 
 const EMAIL_LOG_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 const TEAM_ID = "team-1"
 const FORM_ID = "form-1"
 
-const findCampaignLogForAttribution = mock(
-  async (_teamId: string, _emailLogId: string) =>
-    ({
-      id: EMAIL_LOG_ID,
-      campaignId: "campaign-1",
-      dispatchId: "dispatch-1",
-      recipientEmail: "destinatario@exemplo.com",
-      recipientName: "Destinatário",
-    }) as {
-      id: string
-      campaignId: string | null
-      dispatchId: string | null
-      recipientEmail: string
-      recipientName: string | null
-    } | null
-)
-
-const findFormSubmissionContext = mock(async (_formId: string) => ({
-  id: FORM_ID,
-  assignedSdrId: null as string | null,
-  team: {
-    master: { id: "master-1", supabaseId: "supabase-1" },
-  },
-}))
-
-const findCampaignContactListIds = mock(async () => [] as string[])
-const findEmailContactCustomFields = mock(async () => null)
-const findRadarPhoneByEmail = mock(async () => null as string | null)
-const updateLead = mock(async (id: string, _data: unknown) => ({ id, email: "destinatario@exemplo.com" }))
-const findLeadActivityByEmailLogAttribution = mock(async () => null)
-const createLeadActivityNote = mock(async () => ({ id: "activity-1" }))
-
-const findMatchingLead = mock(
-  async (_teamId: string, _data: unknown): Promise<{ id: string; email: string | null; phone: string | null } | null> =>
-    null
-)
-
-const createLead = mock(
-  async (..._args: unknown[]) => ({
-    isValid: true,
-    result: { id: "lead-created-1", email: "destinatario@exemplo.com" },
-    errorMessages: [] as string[],
-  })
-)
-
-const syncLeadExecute = mock(async () => ({ isValid: true }))
+/** Lead retornável pelo `findLeadCandidatesMock` que casa por e-mail no `pickBestLeadMatch` real. */
+function makeCandidateLead(id: string) {
+  return {
+    id,
+    name: "Destinatário",
+    email: "destinatario@exemplo.com",
+    phone: null,
+    notes: null,
+    deletedAt: null,
+  }
+}
 
 type WebhookRecord = {
   id: string
@@ -85,57 +78,8 @@ function makeWebhookRecord(overrides: Partial<WebhookRecord> = {}): WebhookRecor
   }
 }
 
-const findCampaignWebhookRecordById = mock(
-  async (_teamId: string, _emailLogId: string): Promise<WebhookRecord | null> => makeWebhookRecord()
-)
-const applyWebhookEvent = mock(async (_input: unknown) => undefined)
-
 /** Deixa o fire-and-forget do clique first-party resolver antes das asserções. */
 const flushPendingClick = () => new Promise((resolve) => setTimeout(resolve, 0))
-
-mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
-  emailLogRepository: {
-    findCampaignLogForAttribution,
-    findCampaignWebhookRecordById,
-    applyWebhookEvent,
-  },
-}))
-
-mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
-  publicFormsRepository: {
-    findFormSubmissionContext,
-    findCampaignContactListIds,
-    findEmailContactCustomFields,
-    findRadarPhoneByEmail,
-    updateLead,
-    findLeadActivityByEmailLogAttribution,
-    createLeadActivityNote,
-  },
-}))
-
-mock.module("@/app/api/useCases/publicForms/publicFormLeadSync", () => ({
-  findMatchingLead,
-}))
-
-mock.module("@/app/api/useCases/leads/LeadUseCase", () => ({
-  LeadUseCase: class {
-    createLead = createLead
-  },
-}))
-
-mock.module("@/app/api/infra/data/repositories/lead/LeadRepository", () => ({
-  LeadRepository: class {},
-}))
-
-mock.module("@/app/api/useCases/profiles/ProfileUseCase", () => ({
-  RegisterNewUserProfile: class {},
-}))
-
-mock.module("@/app/api/useCases/radar/SyncLeadToRadarUseCase", () => ({
-  syncLeadToRadarUseCase: {
-    execute: syncLeadExecute,
-  },
-}))
 
 const { resolveEmailCampaignFormAttributionUseCase } = await import(
   "@/app/api/useCases/publicForms/ResolveEmailCampaignFormAttributionUseCase"
@@ -156,7 +100,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
   beforeEach(() => {
     findCampaignLogForAttribution.mockReset()
     findFormSubmissionContext.mockReset()
-    findMatchingLead.mockReset()
+    findLeadCandidates.mockReset()
     createLead.mockReset()
     updateLead.mockReset()
     createLeadActivityNote.mockReset()
@@ -176,15 +120,18 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       dispatchId: "dispatch-1",
       recipientEmail: "destinatario@exemplo.com",
       recipientName: "Destinatário",
+      campaignName: null,
     }))
     findFormSubmissionContext.mockImplementation(async () => ({
       id: FORM_ID,
       assignedSdrId: null,
       team: { master: { id: "master-1", supabaseId: "supabase-1" } },
     }))
-    findMatchingLead.mockImplementation(async () => null)
+    // `findMatchingLead` é o REAL — sem candidato, sem match.
+    findLeadCandidates.mockImplementation(async () => [])
     createLead.mockImplementation(async () => ({
       isValid: true,
+      successMessages: [],
       result: { id: "lead-created-1", email: "destinatario@exemplo.com" },
       errorMessages: [],
     }))
@@ -207,7 +154,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
     })
 
     expect(output.isValid).toBe(true)
-    expect(findMatchingLead).toHaveBeenCalledTimes(1)
+    expect(findLeadCandidates).toHaveBeenCalledTimes(1)
     expect(createLead).not.toHaveBeenCalled()
     expect(output.result).toMatchObject({
       leadId: null,
@@ -216,9 +163,32 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       enrichedOrigin: expect.objectContaining({
         emailLogId: EMAIL_LOG_ID,
         recipientEmail: "destinatario@exemplo.com",
+        recipientName: "Destinatário",
         campaignId: "campaign-1",
       }),
     })
+  })
+
+  // Gap E6b (02/09): `recipientName` nunca chegava ao `origin` — só
+  // `recipientEmail` era enriquecido, deixando o perfil Radar sem como herdar
+  // o nome do destinatário (caso KKJ, perfil `86426c89`).
+  it("recipientName ausente no EmailLog → enrichedOrigin não tem a chave (nunca string vazia)", async () => {
+    findCampaignLogForAttribution.mockImplementation(async () => ({
+      id: EMAIL_LOG_ID,
+      campaignId: "campaign-1",
+      dispatchId: "dispatch-1",
+      recipientEmail: "destinatario@exemplo.com",
+      recipientName: null,
+      campaignName: null,
+    }))
+
+    const output = await resolveEmailCampaignFormAttributionUseCase.execute({
+      ...baseInput,
+      eventType: "form_viewed",
+    })
+
+    const result = output.result as { enrichedOrigin: Record<string, unknown> }
+    expect(result.enrichedOrigin.recipientName).toBeUndefined()
   })
 
   it("form_viewed atribuído → grava EmailEvent clicked (repõe a métrica sem redirecionador)", async () => {
@@ -333,6 +303,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
       dispatchId: "dispatch-1",
       recipientEmail: "x@exemplo.com",
       recipientName: " ",
+      campaignName: null,
     }))
 
     const output = await resolveEmailCampaignFormAttributionUseCase.execute({
@@ -347,11 +318,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
   })
 
   it("form_viewed quando já existe lead real (mesmo e-mail) → encontra/atualiza, não cria", async () => {
-    findMatchingLead.mockImplementation(async () => ({
-      id: "lead-existing-1",
-      email: "destinatario@exemplo.com",
-      phone: null,
-    }))
+    findLeadCandidates.mockImplementation(async () => [makeCandidateLead("lead-existing-1")])
 
     const output = await resolveEmailCampaignFormAttributionUseCase.execute({
       ...baseInput,
@@ -359,7 +326,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
     })
 
     expect(output.isValid).toBe(true)
-    expect(findMatchingLead).toHaveBeenCalledTimes(1)
+    expect(findLeadCandidates).toHaveBeenCalledTimes(1)
     expect(createLead).not.toHaveBeenCalled()
     expect(output.result).toMatchObject({
       leadId: "lead-existing-1",
@@ -370,11 +337,7 @@ describe("ResolveEmailCampaignFormAttributionUseCase (E1)", () => {
   })
 
   it("form_started com lead existente → anexa atividade de início; sem criar Lead", async () => {
-    findMatchingLead.mockImplementation(async () => ({
-      id: "lead-existing-2",
-      email: "destinatario@exemplo.com",
-      phone: null,
-    }))
+    findLeadCandidates.mockImplementation(async () => [makeCandidateLead("lead-existing-2")])
 
     const output = await resolveEmailCampaignFormAttributionUseCase.execute({
       ...baseInput,
