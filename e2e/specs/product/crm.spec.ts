@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
-import { injectE2eAuthCookie } from "../../fixtures/auth";
-import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
+import { expect, test, type APIRequestContext } from "@playwright/test";
+import { injectE2eAuthCookie, signE2eSessionToken } from "../../fixtures/auth";
+import { E2E_COOKIE_NAME, E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
 import { runResponsiveChecks } from "../../support/responsive";
@@ -9,7 +9,7 @@ const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
 const LAYOUT_LEAD_NAME = "Lead Layout Dialog E2E";
 
-async function seedLayoutLead() {
+async function seedLayoutLead(request: APIRequestContext) {
   const prisma = getPrisma();
   const profile = await findE2eMasterProfile();
   if (!profile) throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`");
@@ -39,6 +39,40 @@ async function seedLayoutLead() {
     })),
   });
 
+  // A listagem do CRM vem de `getCachedTeamLeads` ("use cache", revalidate 60s):
+  // o teste anterior deste worker já aqueceu o cache com a lista SEM este lead,
+  // e a escrita direta via Prisma não passa por `invalidateLeadCache`. O PUT
+  // no-op roda o caminho real de invalidação (teamLeads + leadDetails); sem
+  // ele, o board serve a lista vazia cacheada e o clique no lead estoura
+  // timeout — flake que só aparece com os testes em sequência no mesmo worker.
+  const invalidation = await request.put(`/api/v1/leads/${LAYOUT_LEAD_ID}`, {
+    data: { name: LAYOUT_LEAD_NAME },
+  });
+  expect(invalidation.ok(), "PUT de invalidação de cache do lead seedado").toBe(true);
+
+  // `revalidateTag(tag, "max")` é stale-while-revalidate: o PRIMEIRO GET após a
+  // invalidação ainda serve a entrada velha e só dispara a revalidação em
+  // background. O poll consome esse serve stale e garante que, quando a página
+  // fizer o próprio fetch, a lista cacheada já contenha o lead.
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(
+          `/api/v1/leads?role=manager&teamId=${teamId}`,
+        );
+        if (!response.ok()) return false;
+        const body = (await response.json()) as {
+          result?: { leads?: Array<{ id: string }> };
+        };
+        return (body.result?.leads ?? []).some((lead) => lead.id === LAYOUT_LEAD_ID);
+      },
+      {
+        message: "lista de leads do time reflete o lead seedado após invalidação",
+        timeout: 15_000,
+      },
+    )
+    .toBe(true);
+
   return { profile, teamId };
 }
 
@@ -57,7 +91,40 @@ test.describe("app/[supabaseId]/crm", () => {
     );
   });
 
-  test.afterAll(async () => {
+  test.afterAll(async ({ request }) => {
+    // DELETE pela API (não Prisma direto): roda `invalidateLeadFullCache`.
+    // Sem isso a lista "use cache" do time segue com o lead-fantasma por até
+    // 60s e contamina a PRÓXIMA rodada do spec — o board renderia linhas no
+    // teste de responsividade. O hook não tem o cookie do contexto do browser,
+    // então assina o próprio token.
+    const cookie = `${E2E_COOKIE_NAME}=${signE2eSessionToken()}`;
+    await request.delete(`/api/v1/leads/${LAYOUT_LEAD_ID}`, {
+      headers: { cookie },
+    });
+    // Consome o serve stale do revalidateTag (SWR) para a próxima rodada já
+    // encontrar a lista sem o lead.
+    await expect
+      .poll(
+        async () => {
+          const profile = await findE2eMasterProfile();
+          if (!profile?.activeTeamId) return true;
+          const response = await request.get(
+            `/api/v1/leads?role=manager&teamId=${profile.activeTeamId}`,
+            { headers: { cookie } },
+          );
+          if (!response.ok()) return false;
+          const body = (await response.json()) as {
+            result?: { leads?: Array<{ id: string }> };
+          };
+          return (body.result?.leads ?? []).every((lead) => lead.id !== LAYOUT_LEAD_ID);
+        },
+        {
+          message: "lista de leads do time sem o lead de layout após cleanup",
+          timeout: 15_000,
+        },
+      )
+      .toBe(true);
+    // Idempotente: garante o banco limpo mesmo se o DELETE via API falhar.
     await getPrisma().lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
     await disconnectPrisma();
   });
@@ -84,7 +151,7 @@ test.describe("app/[supabaseId]/crm", () => {
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
     test.setTimeout(90_000);
-    await seedLayoutLead();
+    await seedLayoutLead(page.request);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
