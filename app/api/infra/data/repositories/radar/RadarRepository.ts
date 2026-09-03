@@ -645,6 +645,10 @@ export class RadarRepository {
         // a claim já está — ou permanece, no caso de conflito — correta e não
         // deve ser tocada aqui.
         let emailIdentityAlreadyOwned = false
+        // `false` somente quando a guarda de e-mail compartilhado recusou o
+        // merge: a claim ficou com o dono divergente e o chamador MUST NOT
+        // reivindicá-la por fora (mesmo contrato de resolveProfileForEmail).
+        let emailIdentityClaimed = true
         if (input.normalizedPrimaryEmail) {
           const emailOwner = await tx.radarIdentity.findUnique({
             where: {
@@ -689,6 +693,8 @@ export class RadarRepository {
                 )
                 resolvedProfileId = mergeResult.winningProfileId
                 if (mergeResult.merged) mergedWinningProfileId = mergeResult.winningProfileId
+              } else {
+                emailIdentityClaimed = false
               }
             }
           }
@@ -756,7 +762,7 @@ export class RadarRepository {
           })
         }
 
-        return { profile, wasExisting: true }
+        return { profile, wasExisting: true, emailIdentityClaimed }
       }
 
       // D4: telefone chegando pela primeira vez para um e-mail que já tem
@@ -837,7 +843,7 @@ export class RadarRepository {
             },
           })
 
-          return { profile, wasExisting: true }
+          return { profile, wasExisting: true, emailIdentityClaimed: true }
         }
       }
 
@@ -961,7 +967,13 @@ export class RadarRepository {
         })
       }
 
-      return { profile, wasExisting: Boolean(existingByKey) }
+      return {
+        profile,
+        wasExisting: Boolean(existingByKey),
+        // `false` = a claim ficou com o dono estabelecido divergente (guarda
+        // D4 acima); o chamador MUST NOT reivindicar por fora.
+        emailIdentityClaimed: !emailOwnedByDivergentProfile,
+      }
     })
 
     // E3a: score pós-commit — mergeProfilesWithTx não recalcula (client global

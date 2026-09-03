@@ -27,7 +27,7 @@ function buildRepo(overrides: Record<string, unknown> = {}): RadarRepository {
   return {
     findLeadPhoneByEmail: mock(async () => null),
     resolveProfileForEmail: mock(async () => ({ profile, wasExisting: false, emailIdentityClaimed: true })),
-    resolveProfileForPhone: mock(async () => ({ profile, wasExisting: false })),
+    resolveProfileForPhone: mock(async () => ({ profile, wasExisting: false, emailIdentityClaimed: true })),
     upsertIdentity: mock(async (_args: UpsertIdentityArgs) => ({})),
     upsertSourceLink: mock(async () => ({})),
     upsertConsent: mock(async () => ({})),
@@ -104,7 +104,7 @@ describe("RadarService.processEmailContactForRadar — respeita emailIdentityCla
     expect(emailIdentityCalls).toHaveLength(1)
   })
 
-  it("resolveProfileForPhone (sem o campo emailIdentityClaimed) → comportamento intacto, continua chamando upsertIdentity para o e-mail", async () => {
+  it("resolveProfileForPhone com emailIdentityClaimed=true (caso comum) → continua chamando upsertIdentity para o e-mail", async () => {
     const upsertIdentity = mock(async (_args: UpsertIdentityArgs) => ({}))
     const repo = buildRepo({
       upsertIdentity,
@@ -112,6 +112,7 @@ describe("RadarService.processEmailContactForRadar — respeita emailIdentityCla
       resolveProfileForPhone: mock(async () => ({
         profile: { id: profileId, teamId, gender: null, genderSource: null },
         wasExisting: false,
+        emailIdentityClaimed: true,
       })),
     })
 
@@ -125,5 +126,34 @@ describe("RadarService.processEmailContactForRadar — respeita emailIdentityCla
       (call) => (call[0] as { type: string }).type === "email"
     )
     expect(emailIdentityCalls).toHaveLength(1)
+  })
+
+  it("achado cursor #1155: resolveProfileForPhone com emailIdentityClaimed=false (dono divergente) → NÃO reivindica o e-mail por fora", async () => {
+    const upsertIdentity = mock(async (_args: UpsertIdentityArgs) => ({}))
+    const repo = buildRepo({
+      upsertIdentity,
+      findLeadPhoneByEmail: mock(async () => ({ phone: "5511977776666" })),
+      resolveProfileForPhone: mock(async () => ({
+        profile: { id: "profile-separado", teamId, gender: null, genderSource: null },
+        wasExisting: false,
+        emailIdentityClaimed: false,
+      })),
+    })
+
+    const service = new RadarService(repo)
+    await service.syncFromEmail(
+      { teamId, ctx: { profileId: "p", teamMember: { role: "manager", functions: [] } } },
+      { emailContactId: contactId }
+    )
+
+    const emailIdentityCalls = upsertIdentity.mock.calls.filter(
+      (call) => (call[0] as { type: string }).type === "email"
+    )
+    expect(emailIdentityCalls).toHaveLength(0)
+    // As demais identidades continuam registradas normalmente.
+    const contactIdentityCalls = upsertIdentity.mock.calls.filter(
+      (call) => (call[0] as { type: string }).type === "email_contact_id"
+    )
+    expect(contactIdentityCalls).toHaveLength(1)
   })
 })

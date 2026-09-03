@@ -103,6 +103,7 @@ describe("resolveProfileForPhone — reivindica a RadarIdentity de e-mail (fecha
     })
 
     expect(result.wasExisting).toBe(false)
+    expect(result.emailIdentityClaimed).toBe(true)
     const calls = emailUpsertCalls()
     expect(calls).toHaveLength(1)
     expect(calls[0]?.create.profileId).toBe("profile-novo")
@@ -230,6 +231,9 @@ describe("resolveProfileForPhone — guarda de e-mail compartilhado (achados cur
     // Cria o perfil do João pela chave natural — nunca via promoção do
     // perfil da Maria.
     expect(result.wasExisting).toBe(false)
+    // Contrato para os chamadores (achado cursor #1155): claim ficou com a
+    // dona — quem consome MUST NOT reivindicar por fora.
+    expect(result.emailIdentityClaimed).toBe(false)
     expect(radarProfileUpsertMock).toHaveBeenCalledTimes(1)
     // O perfil da Maria nunca é atualizado (o telefone dela fica intacto).
     expect(radarProfileUpdateMock).not.toHaveBeenCalled()
@@ -269,6 +273,7 @@ describe("resolveProfileForPhone — guarda de e-mail compartilhado (achados cur
     })
 
     expect(result.wasExisting).toBe(true)
+    expect(result.emailIdentityClaimed).toBe(true)
     // Promove o perfil email-only existente: telefone entra nele.
     expect(radarProfileUpdateMock).toHaveBeenCalledTimes(1)
     expect(radarProfileUpdateMock.mock.calls[0]?.[0]).toMatchObject({
@@ -316,6 +321,7 @@ describe("resolveProfileForPhone — guarda de e-mail compartilhado (achados cur
     })
 
     expect(result.wasExisting).toBe(true)
+    expect(result.emailIdentityClaimed).toBe(false)
     // Atualiza o PRÓPRIO perfil do João (coluna registra o e-mail
     // compartilhado), nunca o da Maria.
     expect(radarProfileUpdateMock).toHaveBeenCalledTimes(1)
