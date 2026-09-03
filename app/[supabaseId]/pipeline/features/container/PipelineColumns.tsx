@@ -56,7 +56,7 @@ function DragHandle({ id }: { id: string }) {
         {...listeners}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 p-0 cursor-grab active:cursor-grabbing"
+        className="size-8 max-lg:size-11 p-0 cursor-grab active:cursor-grabbing"
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
         <span className="sr-only">Arrastar para reordenar</span>
@@ -238,7 +238,7 @@ export const createColumns = ({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="text-green-600 hover:text-green-700 flex-shrink-0"
+              className="flex shrink-0 items-center justify-center max-lg:size-11 text-green-600 hover:text-green-700"
               aria-label="Abrir no WhatsApp"
             >
               <MessageCircle className="h-3.5 w-3.5" />
@@ -574,7 +574,7 @@ export const createColumns = ({
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" className="h-8 w-8 p-0">
+            <Button variant="ghost" className="size-8 max-lg:size-11 p-0">
               <span className="sr-only">Abrir menu</span>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
