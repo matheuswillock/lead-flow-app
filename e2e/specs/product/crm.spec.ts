@@ -3,7 +3,7 @@ import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
-import { runResponsiveChecks } from "../../support/responsive";
+import { assertNoHorizontalOverflow, runResponsiveChecks } from "../../support/responsive";
 
 const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
@@ -80,6 +80,44 @@ test.describe("app/[supabaseId]/crm", () => {
     });
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
+  });
+
+  test("paginação da tabela cabe no viewport de 360px", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm?view=pipeline`);
+
+    // Espera a tabela REAL (não o skeleton de loading) — a paginação só conta
+    // quando renderizada de verdade.
+    await expect(page.getByText("Linhas por página")).toBeVisible({ timeout: 30_000 });
+
+    // Overflow de página medido com a tabela renderizada (helper compartilhado).
+    await assertNoHorizontalOverflow(page, [360]);
+
+    // A linha de paginação usa justify-end: quando o conteúdo excede a largura,
+    // ele vaza pela ESQUERDA — o que não aumenta scrollWidth e passa batido no
+    // assert de página. Medir o bounding box de cada controle pega esse caso.
+    const controls = [
+      page.getByLabel("Linhas por página"),
+      page.getByText(/Página \d+ de \d+/),
+      page.getByRole("button", { name: "Ir para primeira página" }),
+      page.getByRole("button", { name: "Página anterior" }),
+      page.getByRole("button", { name: "Próxima página" }),
+      page.getByRole("button", { name: "Ir para última página" }),
+    ];
+    const viewportWidth = 360;
+    for (const control of controls) {
+      const box = await control.boundingBox();
+      expect(box, "controle de paginação sem bounding box").not.toBeNull();
+      expect(
+        box!.x,
+        `controle vazando pela esquerda em ${viewportWidth}px (x=${Math.round(box!.x)})`
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        box!.x + box!.width,
+        `controle vazando pela direita em ${viewportWidth}px`
+      ).toBeLessThanOrEqual(viewportWidth + 1);
+    }
   });
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
