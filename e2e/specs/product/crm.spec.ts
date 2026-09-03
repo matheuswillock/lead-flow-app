@@ -3,7 +3,7 @@ import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
-import { runResponsiveChecks } from "../../support/responsive";
+import { assertNoHorizontalOverflow, runResponsiveChecks } from "../../support/responsive";
 
 const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
@@ -82,13 +82,97 @@ test.describe("app/[supabaseId]/crm", () => {
     await runResponsiveChecks(page);
   });
 
-  test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
+  test("paginação da tabela cabe no viewport de 360px", async ({ page }) => {
     test.setTimeout(90_000);
-    await seedLayoutLead();
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm?view=pipeline`);
+
+    // Espera a tabela REAL (não o skeleton de loading) — a paginação só conta
+    // quando renderizada de verdade.
+    await expect(page.getByText("Linhas por página")).toBeVisible({ timeout: 30_000 });
+
+    // Overflow de página medido com a tabela renderizada (helper compartilhado).
+    await assertNoHorizontalOverflow(page, [360]);
+
+    // A linha de paginação usa justify-end: quando o conteúdo excede a largura,
+    // ele vaza pela ESQUERDA — o que não aumenta scrollWidth e passa batido no
+    // assert de página. Medir o bounding box de cada controle pega esse caso.
+    const controls = [
+      page.getByLabel("Linhas por página"),
+      page.getByText(/Página \d+ de \d+/),
+      page.getByRole("button", { name: "Ir para primeira página" }),
+      page.getByRole("button", { name: "Página anterior" }),
+      page.getByRole("button", { name: "Próxima página" }),
+      page.getByRole("button", { name: "Ir para última página" }),
+    ];
+    const viewportWidth = 360;
+    for (const control of controls) {
+      const box = await control.boundingBox();
+      expect(box, "controle de paginação sem bounding box").not.toBeNull();
+      expect(
+        box!.x,
+        `controle vazando pela esquerda em ${viewportWidth}px (x=${Math.round(box!.x)})`
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        box!.x + box!.width,
+        `controle vazando pela direita em ${viewportWidth}px`
+      ).toBeLessThanOrEqual(viewportWidth + 1);
+    }
+  });
+
+  test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
+    test.setTimeout(150_000);
+    const { teamId } = await seedLayoutLead();
+
+    // O seed via Prisma NÃO invalida a tag team-leads do "use cache" da
+    // listagem (getCachedTeamLeads, stale 30 / revalidate 60): quando os
+    // testes anteriores já visitaram o CRM, a entrada vazia cacheada é nova
+    // demais para revalidar e o lead seedado fica invisível por mais de 75s —
+    // era o flaky da CI no PR #1153. Um PUT idempotente pela API invalida a
+    // tag exatamente como uma mutação real do app (invalidateLeadCache).
+    const invalidateResponse = await page.request.put(`/api/v1/leads/${LAYOUT_LEAD_ID}`, {
+      headers: {
+        "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+        "x-team-id": teamId,
+      },
+      data: { name: LAYOUT_LEAD_NAME },
+    });
+    expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+
+    // Aquece o "use cache" de /details (o mesmo que o hover na tabela faz via
+    // prefetchLeadDetails): na CI, computar essa entrada sob a carga dos 4
+    // workers passava de 30s e o dialog ficava em "Carregando lead..." até o
+    // assert da timeline estourar — o retry só passava porque herdava o cache
+    // aquecido pela 1ª tentativa.
+    const warmDetailsResponse = await page.request.get(
+      `/api/v1/leads/${LAYOUT_LEAD_ID}/details`,
+      {
+        headers: {
+          "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+          "x-team-id": teamId,
+        },
+      }
+    );
+    expect(warmDetailsResponse.ok(), "pré-aquecimento de /details falhou").toBe(true);
+
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    await page.getByText(LAYOUT_LEAD_NAME).first().click();
+    // A CI roda a suíte com 4 workers no mesmo servidor/banco: outras specs
+    // seedam leads mais novos no mesmo time e, com orderBy createdAt desc e
+    // pageSize 10, o lead deste teste cai para fora da página 1. O filtro por
+    // nome isola o lead independentemente do que os outros workers criem.
+    const nameFilter = page.getByPlaceholder("Filtrar por nome...");
+    const seededLeadCell = page.getByText(LAYOUT_LEAD_NAME).first();
+    await expect(async () => {
+      if ((await seededLeadCell.count()) === 0) {
+        await page.reload({ waitUntil: "domcontentloaded" });
+      }
+      await nameFilter.fill(LAYOUT_LEAD_NAME);
+      await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
+    }).toPass({ timeout: 60_000 });
+
+    await seededLeadCell.click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("Editar Lead")).toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByText("Informações do lead")).toBeVisible();
@@ -104,7 +188,10 @@ test.describe("app/[supabaseId]/crm", () => {
 
     // Timeline é a dona do scroll vertical e recebe a altura sobrando.
     const timelineScroll = dialog.locator(".activity-scrollbar.overflow-y-auto").first();
-    await expect(timelineScroll).toBeVisible();
+    // 30s como o assert do composer acima: a timeline só monta depois do fetch
+    // de detalhes do lead, que sob a carga dos 4 workers da CI passa dos 5s
+    // do timeout default.
+    await expect(timelineScroll).toBeVisible({ timeout: 30_000 });
     const timelineHeight = await timelineScroll.evaluate((el) => el.clientHeight);
     expect(timelineHeight).toBeGreaterThanOrEqual(200);
 
