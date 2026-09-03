@@ -1,4 +1,5 @@
 import type { Output } from "@/lib/output";
+import type { HostAgentService } from "@/lib/studio-bot/host-services";
 
 export interface IBackofficeBotHostUseCase {
   getSettings(): Promise<Output>;
@@ -16,15 +17,14 @@ export interface IBackofficeBotHostUseCase {
   listJobs(): Promise<Output>;
   health(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
   fetchLogs(
-    input: { service: "n8n" | "api"; tail?: number },
+    input: { service: HostAgentService; tail?: number },
     access: { profileId: string; fullAccess: boolean }
   ): Promise<Output>;
   applyEnv(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
   restart(
-    service: "n8n" | "api" | "all",
+    service: HostAgentService | "all",
     access: { profileId: string; fullAccess: boolean }
   ): Promise<Output>;
-  importWorkflows(access: { profileId: string; fullAccess: boolean }): Promise<Output>;
   resyncBethaniaWebhook(
     input: { confirm: boolean },
     access: { profileId: string; fullAccess: boolean }

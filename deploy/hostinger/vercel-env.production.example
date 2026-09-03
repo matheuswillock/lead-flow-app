@@ -1,18 +1,46 @@
 # Variáveis Vercel — produção (Lead Flow / Corretor Studio)
 # Project → Settings → Environment Variables → Production
 
-EVO_API_BASE_URL=https://evo.corretorstudio.com
-EVO_API_KEY=<mesmo AUTHENTICATION_API_KEY de .env.evolution na VPS>
+# --- OpenWA Gateway (WhatsApp do produto) ---
+# ATENÇÃO: o app roda na Vercel, fora da rede Docker da VPS. `http://openwa:3333`
+# só funciona para quem está dentro de `studio-bot-net` — na Vercel não resolve.
+#
+# Hoje o repo NÃO define rota pública para o gateway: no docker-compose.vps.yml o
+# serviço `openwa` tem só `expose: 3333` (sem `ports`), e o Caddyfile publica
+# apenas `ops.corretorstudio.com`. Antes de preencher a variável abaixo é preciso
+# escolher e implementar o caminho de acesso (bloco Caddy com auth, túnel privado,
+# ou o que a Spec 01 definir) — ver deploy/openwa-gateway/docs/CUTOVER-CHECKLIST.md.
+#
+# Preencha com a URL que a Vercel realmente alcança, sem barra final. Se ficar
+# vazia, OpenWaApiService lança "OPENWA_API_URL is not set" na primeira chamada.
+OPENWA_API_URL=<URL do gateway alcançável a partir da Vercel>
+OPENWA_API_KEY=<mesmo OPENWA_API_KEY de .env.openwa na VPS>
+OPENWA_WEBHOOK_SECRET=<mesmo OPENWA_WEBHOOK_SECRET de .env.openwa na VPS>
+
 # Gere um valor aleatório de no mínimo 32 caracteres. Configure este valor e
 # faça redeploy antes de alterar WHATSAPP_WEBHOOK_HEADER_ENFORCE para true.
 WHATSAPP_WEBHOOK_HEADER_SECRET=<segredo-aleatorio-com-no-minimo-32-caracteres>
 WHATSAPP_WEBHOOK_HEADER_ENFORCE=false
 
-BACKOFFICE_N8N_OUTBOUND_URL=https://n8n.corretorstudio.com/webhook/bethania-outbound
-BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<mesmo valor de .env.n8n na VPS>
+# --- Agente Ops (VPS) ---
 # Token do agente Ops (após rotate no backoffice → /studio-bot/ops)
 BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo OPS_AGENT_TOKEN da VPS>
 
+# --- Bethânia: SEM DESTINO até a Spec 02 ---
+# n8n e Evolution saíram da VPS, então n8n.corretorstudio.com e
+# evo.corretorstudio.com não existem mais. As variáveis abaixo continuam sendo
+# lidas pelo código (dispatch outbound e verificação de canal), mas apontam para
+# hosts mortos: o cron studio-bot-outbox vai falhar a cada 5 min enquanto
+# BACKOFFICE_N8N_OUTBOUND_URL estiver preenchida.
+#
+# Recomendado: deixar as três VAZIAS na Vercel até a Spec 02 reapontar a
+# Bethânia para o OpenWA. Com BACKOFFICE_N8N_OUTBOUND_URL vazia o dispatch
+# devolve {ok:false, status:0} sem tentar a request.
+# BACKOFFICE_N8N_OUTBOUND_URL=
+# EVO_API_BASE_URL=
+# EVO_API_KEY=
+
+BACKOFFICE_STUDIO_BOT_WEBHOOK_SECRET=<segredo HMAC do canal Bethânia>
 EVO_BETHANIA_INSTANCE=bethania
 BACKOFFICE_BETHANIA_WHATSAPP_NUMBER=5511XXXXXXXXX
 NEXT_PUBLIC_BETHANIA_WHATSAPP_NUMBER=5511XXXXXXXXX

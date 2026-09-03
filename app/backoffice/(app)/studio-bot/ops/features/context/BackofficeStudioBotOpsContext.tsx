@@ -10,6 +10,7 @@ import type {
   BethaniaWebhookResyncResult,
   HostHealth,
   HostLogsResult,
+  HostService,
 } from "./BackofficeStudioBotOpsTypes"
 
 type BackofficeStudioBotOpsContextValue = {
@@ -38,10 +39,9 @@ type BackofficeStudioBotOpsContextValue = {
   } | null>
   rotateToken: () => Promise<string | null>
   runHealth: () => Promise<void>
-  runFetchLogs: (input: { service: "n8n" | "api"; tail?: number }) => Promise<void>
+  runFetchLogs: (input: { service: HostService; tail?: number }) => Promise<void>
   runApplyEnv: () => Promise<void>
-  runRestart: (service: "n8n" | "api" | "all") => Promise<void>
-  runImportWorkflows: () => Promise<void>
+  runRestart: (service: HostService | "all") => Promise<void>
   previewResyncBethaniaWebhook: () => Promise<void>
   confirmResyncBethaniaWebhook: () => Promise<void>
   runSyncHost: (input: {
@@ -179,7 +179,7 @@ export function BackofficeStudioBotOpsProvider({
   }, [loadAll, service, withLock])
 
   const runFetchLogs = useCallback(
-    async (input: { service: "n8n" | "api"; tail?: number }) => {
+    async (input: { service: HostService; tail?: number }) => {
       await withLock(`logs-${input.service}`, async () => {
         setIsLoadingLogs(true)
         try {
@@ -211,7 +211,7 @@ export function BackofficeStudioBotOpsProvider({
   }, [loadAll, service, withLock])
 
   const runRestart = useCallback(
-    async (svc: "n8n" | "api" | "all") => {
+    async (svc: HostService | "all") => {
       await withLock(`restart-${svc}`, async () => {
         const output = await service.restart(svc)
         if (!output.isValid) {
@@ -224,18 +224,6 @@ export function BackofficeStudioBotOpsProvider({
     },
     [loadAll, service, withLock]
   )
-
-  const runImportWorkflows = useCallback(async () => {
-    await withLock("import", async () => {
-      const output = await service.importWorkflows()
-      if (!output.isValid) {
-        toast.error(output.errorMessages[0] ?? "Import falhou")
-        return
-      }
-      toast.success(output.successMessages[0] ?? "Workflows importados")
-      await loadAll()
-    })
-  }, [loadAll, service, withLock])
 
   const previewResyncBethaniaWebhook = useCallback(async () => {
     await withLock("preview-bethania-webhook", async () => {
@@ -295,7 +283,6 @@ export function BackofficeStudioBotOpsProvider({
       runFetchLogs,
       runApplyEnv,
       runRestart,
-      runImportWorkflows,
       previewResyncBethaniaWebhook,
       confirmResyncBethaniaWebhook,
       runSyncHost,
@@ -317,7 +304,6 @@ export function BackofficeStudioBotOpsProvider({
       runFetchLogs,
       runApplyEnv,
       runRestart,
-      runImportWorkflows,
       previewResyncBethaniaWebhook,
       confirmResyncBethaniaWebhook,
       runSyncHost,

@@ -20,6 +20,11 @@ import {
   studioBotHostAgentClient,
   type IStudioBotHostAgentClient,
 } from "@/app/api/services/backofficeBot/StudioBotHostAgentClient";
+import {
+  HOST_AGENT_SERVICES,
+  isHostAgentService,
+  type HostAgentService,
+} from "@/lib/studio-bot/host-services";
 import { backofficeEvoApiService } from "@/app/api/services/backofficeBot/evo/BackofficeEvoApiService";
 import type { IBackofficeBotHostUseCase } from "./IBackofficeBotHostUseCase";
 
@@ -231,14 +236,14 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
   }
 
   async fetchLogs(
-    input: { service: "n8n" | "api"; tail?: number },
+    input: { service: HostAgentService; tail?: number },
     access: { profileId: string; fullAccess: boolean }
   ) {
     const denied = requireMaster(access.fullAccess);
     if (denied) return denied;
 
-    if (input.service !== "n8n" && input.service !== "api") {
-      return new Output(false, [], ["service deve ser n8n ou api"], null);
+    if (!isHostAgentService(input.service)) {
+      return new Output(false, [], [`service deve ser ${HOST_AGENT_SERVICES.join(" ou ")}`], null);
     }
 
     const auth = await this.resolveAgentAuth();
@@ -320,7 +325,7 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
   }
 
   async restart(
-    service: "n8n" | "api" | "all",
+    service: HostAgentService | "all",
     access: { profileId: string; fullAccess: boolean }
   ) {
     const denied = requireMaster(access.fullAccess);
@@ -352,34 +357,6 @@ class BackofficeBotHostUseCase implements IBackofficeBotHostUseCase {
     );
   }
 
-  async importWorkflows(access: { profileId: string; fullAccess: boolean }) {
-    const denied = requireMaster(access.fullAccess);
-    if (denied) return denied;
-
-    const auth = await this.resolveAgentAuth();
-    if (!auth.ok) return auth.output;
-
-    const job = await this.repo.createJob({
-      type: "IMPORT_WORKFLOWS",
-      requestedByProfileId: access.profileId,
-    });
-    await this.repo.updateJob(job.id, { status: "running", startedAt: new Date() });
-
-    const result = await this.agent.importWorkflows(auth.baseUrl, auth.token);
-    await this.repo.updateJob(job.id, {
-      status: result.ok ? "succeeded" : "failed",
-      result: result.detail as object | undefined,
-      errorMessage: result.error ?? null,
-      finishedAt: new Date(),
-    });
-
-    return new Output(
-      result.ok,
-      result.ok ? ["Workflows importados"] : [],
-      result.ok ? [] : [result.error ?? "Falha ao importar workflows"],
-      { jobId: job.id, detail: result.detail }
-    );
-  }
 
   async resyncBethaniaWebhook(
     input: { confirm: boolean },

@@ -20,36 +20,23 @@ export const EVOLUTION_HOST_ENV_KEYS = [
 /** Agent card fields persisted in BackofficeBotHostSettings (not .env.n8n). */
 export const AGENT_HOST_SETTING_KEYS = ["agentBaseUrl", "desiredHostVersion"] as const;
 
-/** Production Docker-network webhook used by Evolution → N8N. */
+/**
+ * Webhook Evolution → N8N na rede Docker.
+ *
+ * CONGELADO — n8n e Evolution saíram da VPS, então este host não resolve mais.
+ * Mantido porque o fluxo de resync de webhook da Bethânia ainda o usa como
+ * fallback; sai junto com a Spec 02 (Bethânia → OpenWA).
+ */
 export const BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL =
   "http://n8n:5678/webhook/bethania-inbound" as const;
 
-/** Public URLs for Ops quick-copy (browser / manager). */
+/**
+ * Atalhos do painel Ops. Só entram aqui hosts que existem de fato — link que
+ * não resolve é pior que link nenhum, porque manda o operador diagnosticar a
+ * rede em vez de olhar o serviço certo. Os atalhos de `n8n.corretorstudio.com`
+ * e `evo.corretorstudio.com` saíram quando os serviços saíram da VPS.
+ */
 export const OPS_HOST_REFERENCE_LINKS = [
-  {
-    id: "bethania-inbound-internal",
-    label: "Webhook Evolution → N8N (rede Docker)",
-    href: BETHANIA_INBOUND_WEBHOOK_INTERNAL_URL,
-    hint: "Cole na instância bethania no manager Evolution. Não abre no navegador.",
-  },
-  {
-    id: "bethania-inbound-public",
-    label: "Webhook público (teste no browser)",
-    href: "https://n8n.corretorstudio.com/webhook/bethania-inbound",
-    hint: "Mesmo path, host público. GET pode falhar; o fluxo real é POST da Evolution.",
-  },
-  {
-    id: "evolution-manager",
-    label: "Evolution manager",
-    href: "https://evo.corretorstudio.com/manager/",
-    hint: "Abra a instância bethania → engrenagem → Webhook.",
-  },
-  {
-    id: "n8n-editor",
-    label: "Editor N8N",
-    href: "https://n8n.corretorstudio.com",
-    hint: "Workflows bethania-router / push-outbound / error-notifier.",
-  },
   {
     id: "ops-agent",
     label: "Agente Ops (healthz)",
