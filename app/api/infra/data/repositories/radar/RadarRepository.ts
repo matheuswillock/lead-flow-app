@@ -2378,7 +2378,7 @@ export class RadarRepository {
    * recursão a fazer aqui.
    */
   async findProfileIdsByEmailCampaign(teamId: string, campaignId: string): Promise<string[]> {
-    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId)
+    const campaignIds = await resolveCampaignIdsIncludingSubs(teamId, campaignId, this.db)
     const rows = await this.db.radarEvent.findMany({
       where: {
         teamId,
