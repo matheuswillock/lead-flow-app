@@ -139,6 +139,22 @@ test.describe("app/[supabaseId]/crm", () => {
     });
     expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
 
+    // Aquece o "use cache" de /details (o mesmo que o hover na tabela faz via
+    // prefetchLeadDetails): na CI, computar essa entrada sob a carga dos 4
+    // workers passava de 30s e o dialog ficava em "Carregando lead..." até o
+    // assert da timeline estourar — o retry só passava porque herdava o cache
+    // aquecido pela 1ª tentativa.
+    const warmDetailsResponse = await page.request.get(
+      `/api/v1/leads/${LAYOUT_LEAD_ID}/details`,
+      {
+        headers: {
+          "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+          "x-team-id": teamId,
+        },
+      }
+    );
+    expect(warmDetailsResponse.ok(), "pré-aquecimento de /details falhou").toBe(true);
+
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
