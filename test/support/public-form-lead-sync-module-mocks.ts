@@ -1,5 +1,6 @@
 import { mock } from "bun:test"
 import * as actualLeadSyncClaim from "@/lib/public-forms/lead-sync-claim"
+import { registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 
 /**
  * Instâncias COMPARTILHADAS de mock para os módulos que o `publicFormLeadSync`
@@ -59,6 +60,14 @@ export const listSubmissionAnswersMock = mock(
 )
 export const upsertProgressSubmissionMock = mock(async () => ({ id: "sub-progress" }))
 export const upsertMetricEventMock = mock(async () => {})
+// ---- Atribuição de campanha (ResolveEmailCampaignFormAttributionUseCase) ----
+export const findCampaignContactListIdsMock = mock(async () => [] as string[])
+export const findEmailContactCustomFieldsMock = mock(async () => null as unknown)
+export const findRadarPhoneByEmailMock = mock(async () => null as string | null)
+export const findLeadActivityByEmailLogAttributionMock = mock(
+  async () => null as { id: string } | null,
+)
+export const createLeadActivityNoteMock = mock(async () => ({ id: "activity-1" }))
 
 export const sharedPublicFormsRepositoryMock = {
   findLeadCandidates: findLeadCandidatesMock,
@@ -74,6 +83,11 @@ export const sharedPublicFormsRepositoryMock = {
   listSubmissionAnswers: listSubmissionAnswersMock,
   upsertProgressSubmission: upsertProgressSubmissionMock,
   upsertMetricEvent: upsertMetricEventMock,
+  findCampaignContactListIds: findCampaignContactListIdsMock,
+  findEmailContactCustomFields: findEmailContactCustomFieldsMock,
+  findRadarPhoneByEmail: findRadarPhoneByEmailMock,
+  findLeadActivityByEmailLogAttribution: findLeadActivityByEmailLogAttributionMock,
+  createLeadActivityNote: createLeadActivityNoteMock,
 }
 
 // ---- LeadUseCase / EmailLog / lead-sync-claim ----
@@ -87,18 +101,29 @@ export const createLeadMock = mock(
 )
 
 export const findCampaignLogForAttributionMock = mock(
-  async () => null as { campaignName: string | null } | null,
+  async () =>
+    null as {
+      id: string
+      campaignId: string | null
+      dispatchId: string | null
+      recipientEmail: string
+      recipientName: string | null
+      campaignName: string | null
+    } | null,
 )
+export const findCampaignWebhookRecordByIdMock = mock(async () => null as unknown)
+export const applyWebhookEventMock = mock(async (_input: unknown) => undefined)
+export const syncLeadToRadarExecuteMock = mock(async () => ({ isValid: true }) as unknown)
 
 export const waitForLeadSyncClaimRetryMock = mock(async (_ms: number) => {})
 
 export function registerPublicFormLeadSyncModuleMocks(): void {
   mock.module("server-only", () => ({}))
   mock.module("@/lib/env/server", () => ({}))
-  mock.module("@/app/api/infra/data/prisma", () => ({
-    prisma: {},
-    withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
-  }))
+  // Módulo do prisma SEMPRE pela fábrica compartilhada e completa — a versão
+  // parcial daqui (`{ prisma: {}, withPrismaRetry }`) congelava o namespace
+  // sem `getImportCronPrisma`/`getEmailCronPrisma` para os vizinhos.
+  registerPrismaModuleMock()
   mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
     // Fábrica completa: todos os exports de valor do módulo real, para não
     // derrubar outro arquivo que importe um export omitido (a armadilha das
@@ -124,7 +149,14 @@ export function registerPublicFormLeadSyncModuleMocks(): void {
   }))
   mock.module("@/app/api/infra/data/repositories/emailLog/EmailLogRepository", () => ({
     EmailLogRepository: class {},
-    emailLogRepository: { findCampaignLogForAttribution: findCampaignLogForAttributionMock },
+    emailLogRepository: {
+      findCampaignLogForAttribution: findCampaignLogForAttributionMock,
+      findCampaignWebhookRecordById: findCampaignWebhookRecordByIdMock,
+      applyWebhookEvent: applyWebhookEventMock,
+    },
+  }))
+  mock.module("@/app/api/useCases/radar/SyncLeadToRadarUseCase", () => ({
+    syncLeadToRadarUseCase: { execute: syncLeadToRadarExecuteMock },
   }))
   // Espalha o módulo real: as constantes de produção (3×700ms) continuam
   // sendo as testadas; só a espera vira no-op controlável.

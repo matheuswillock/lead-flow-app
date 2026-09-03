@@ -78,6 +78,13 @@ class ResolveEmailCampaignFormAttributionUseCase {
 
       enrichedOrigin.emailLogId = log.id
       enrichedOrigin.recipientEmail = log.recipientEmail
+      // Adenda E6b (02/09): sem isto, o perfil Radar nunca tinha como herdar o
+      // nome do destinatário (caso KKJ, perfil `86426c89`) — só o e-mail
+      // chegava ao `origin`. Nome CRU (nunca o fallback derivado do e-mail
+      // local-part de `resolveAttributionDisplayName`, usado só na busca de
+      // lead abaixo) — herdar um nome inventado marcaria como "identidade
+      // conhecida" algo que não é.
+      if (log.recipientName?.trim()) enrichedOrigin.recipientName = log.recipientName.trim()
       if (log.campaignId) enrichedOrigin.campaignId = log.campaignId
       if (log.dispatchId) enrichedOrigin.dispatchId = log.dispatchId
 
