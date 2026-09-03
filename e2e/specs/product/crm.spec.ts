@@ -121,27 +121,40 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
-    // 150s: o poll de convergência do cache (até ~75s, ver abaixo) + as
-    // interações do dialog não cabem com folga nos 90s padrão.
     test.setTimeout(150_000);
-    await seedLayoutLead();
+    const { teamId } = await seedLayoutLead();
+
+    // O seed via Prisma NÃO invalida a tag team-leads do "use cache" da
+    // listagem (getCachedTeamLeads, stale 30 / revalidate 60): quando os
+    // testes anteriores já visitaram o CRM, a entrada vazia cacheada é nova
+    // demais para revalidar e o lead seedado fica invisível por mais de 75s —
+    // era o flaky da CI no PR #1153. Um PUT idempotente pela API invalida a
+    // tag exatamente como uma mutação real do app (invalidateLeadCache).
+    const invalidateResponse = await page.request.put(`/api/v1/leads/${LAYOUT_LEAD_ID}`, {
+      headers: {
+        "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+        "x-team-id": teamId,
+      },
+      data: { name: LAYOUT_LEAD_NAME },
+    });
+    expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    // A listagem de leads vem de "use cache" com SWR (stale 30 / revalidate 60,
-    // ver getCachedTeamLeads) e o seed direto via Prisma NÃO invalida a tag
-    // team-leads: quando os testes anteriores visitaram o CRM, a primeira
-    // navegação daqui recebe a lista vazia cacheada e o lead seedado nunca
-    // aparece (flaky que só o retry da CI salvava). O fetch em si dispara a
-    // revalidação em background — recarregar até o lead aparecer converge em
-    // poucos segundos.
+    // A CI roda a suíte com 4 workers no mesmo servidor/banco: outras specs
+    // seedam leads mais novos no mesmo time e, com orderBy createdAt desc e
+    // pageSize 10, o lead deste teste cai para fora da página 1. O filtro por
+    // nome isola o lead independentemente do que os outros workers criem.
+    const nameFilter = page.getByPlaceholder("Filtrar por nome...");
     const seededLeadCell = page.getByText(LAYOUT_LEAD_NAME).first();
     await expect(async () => {
       if ((await seededLeadCell.count()) === 0) {
         await page.reload({ waitUntil: "domcontentloaded" });
       }
+      await nameFilter.fill(LAYOUT_LEAD_NAME);
       await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
-    }).toPass({ timeout: 75_000 });
+    }).toPass({ timeout: 60_000 });
 
     await seededLeadCell.click();
     const dialog = page.getByRole("dialog");
