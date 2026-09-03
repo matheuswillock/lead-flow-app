@@ -250,6 +250,60 @@ export class RadarRepository {
   }
 
   /**
+   * E3c: o vínculo `RadarIdentity` do tipo `lead_id` não é FK — é um UUID
+   * solto (regra 1:N do PR #1114: um perfil pode ter várias identidades
+   * `lead_id`, uma por lead do CRM já vinculado). Quando `MergeLeadsUseCase`
+   * apaga `sourceLeadId` no merge de CRM, a identidade que apontava pra ele
+   * fica presa a um lead morto — a seção "Leads no CRM" do perfil aponta pra
+   * um registro que não existe mais.
+   *
+   * Chamado sempre, depois do merge de perfis Radar (se ele rodou):
+   * - Nenhuma identidade `lead_id = sourceLeadId`: no-op (nada a corrigir).
+   * - Existe, e ninguém tem `lead_id = targetLeadId` ainda: reaponta o
+   *   valor da identidade para `targetLeadId` (perfil não perde o vínculo).
+   * - Existe, e algum perfil já tem `lead_id = targetLeadId` — inclusive o
+   *   próprio, se o merge de perfis acima já uniu os dois: a identidade do
+   *   lead alvo já é o vínculo válido; apaga a de origem para não duplicar
+   *   `lead_id` no mesmo par perfil↔lead.
+   */
+  async reconcileLeadIdentityAfterMerge(
+    teamId: string,
+    sourceLeadId: string,
+    targetLeadId: string,
+  ): Promise<void> {
+    const sourceIdentity = await this.db.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type: "lead_id", normalizedValue: sourceLeadId },
+      },
+      select: { id: true },
+    })
+    if (!sourceIdentity) return
+
+    const targetIdentity = await this.db.radarIdentity.findUnique({
+      where: {
+        teamId_type_normalizedValue: { teamId, type: "lead_id", normalizedValue: targetLeadId },
+      },
+      select: { id: true },
+    })
+
+    if (targetIdentity) {
+      await this.db.radarIdentity.delete({ where: { id: sourceIdentity.id } })
+      return
+    }
+
+    // `value` e `normalizedValue` sempre andam juntos nos writes de `lead_id`
+    // (ver `RadarLeadGateUnitOfWork.linkLeadIdentity`), e o gate resolve o
+    // lead com preferência pelo `value` (`getProfile`: `value ??
+    // normalizedValue`). Atualizar só o normalizado deixaria o `value` preso
+    // ao UUID do lead deletado — exatamente o vínculo morto que este método
+    // existe para corrigir.
+    await this.db.radarIdentity.update({
+      where: { id: sourceIdentity.id },
+      data: { value: targetLeadId, normalizedValue: targetLeadId },
+    })
+  }
+
+  /**
    * E3: funde `losingProfileId` em `winningProfileId` e recalcula o engagement
    * score do vencedor. Abre transação própria — entrypoint público para call
    * sites externos (ex.: MergeLeadsUseCase / E3b). O auto-merge em
@@ -377,10 +431,19 @@ export class RadarRepository {
     const winnerHasUsableName =
       Boolean(winningProfile.displayName.trim()) &&
       winningProfile.displayName !== "Visitante Anônimo"
+    // Adenda E6b (02/09, caso KKJ/perfil 86426c89): o placeholder "Visitante
+    // Anônimo" do PERDEDOR não é um nome usável — sem este guard espelhado, o
+    // vencedor recém-identificado (telefone/e-mail conhecidos, `displayName`
+    // ainda vazio) herdava o rótulo literal de anônimo em vez de ficar sem
+    // nome (o que deixaria a herança do destinatário da campanha, adenda E1b
+    // do lado do perfil, decidir o nome de verdade).
+    const loserHasUsableName =
+      Boolean(losingProfile.displayName.trim()) &&
+      losingProfile.displayName !== "Visitante Anônimo"
     await tx.radarProfile.update({
       where: { id: winningProfileId },
       data: {
-        ...(!winnerHasUsableName && losingProfile.displayName.trim()
+        ...(!winnerHasUsableName && loserHasUsableName
           ? {
               displayName: losingProfile.displayName,
               normalizedName: losingProfile.normalizedName,
@@ -811,9 +874,36 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
+        // Achado codex PR #1148 (P2), par do E6b: sem isto, o nome
+        // recém-conhecido (ex.: destinatário da campanha) era descartado e
+        // perfis antigos com nome-placeholder nunca recebiam nome. Só entra
+        // quando o nome existente NÃO é usável (vazio, "Visitante Anônimo" ou
+        // placeholder com cara de e-mail) — identidade digitada real nunca é
+        // sobrescrita pela inferida.
+        let inheritedName: string | null = null
+        if (input.displayName?.trim()) {
+          const existingProfile = await tx.radarProfile.findUnique({
+            where: { id: existingByIdentity.profileId },
+            select: { displayName: true },
+          })
+          const existingName = existingProfile?.displayName?.trim() ?? ""
+          const existingNameUsable =
+            Boolean(existingName) &&
+            existingName !== "Visitante Anônimo" &&
+            !existingName.includes("@")
+          if (!existingNameUsable) inheritedName = input.displayName.trim()
+        }
         const profile = await tx.radarProfile.update({
           where: { id: existingByIdentity.profileId },
-          data: { lastSeenAt: input.lastSeenAt ?? new Date() },
+          data: {
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+            ...(inheritedName
+              ? {
+                  displayName: inheritedName,
+                  normalizedName: normalizeRadarName(inheritedName),
+                }
+              : {}),
+          },
         })
         return { profile, wasExisting: true }
       }

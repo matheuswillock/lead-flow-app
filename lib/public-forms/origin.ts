@@ -10,6 +10,7 @@ const ORIGIN_TOKEN_KEYS = [
   "campaignId",
   "dispatchId",
   "recipientEmail",
+  "recipientName",
 ] as const
 
 const UUID_RE =
@@ -87,6 +88,15 @@ export function sanitizePublicFormOrigin(origin: Record<string, unknown>) {
       const email = value.trim().toLowerCase()
       if (!EMAIL_RE.test(email)) continue
       result.recipientEmail = email.slice(0, 160)
+      continue
+    }
+    // E6b: nome do destinatário (o par do e-mail acima) — mesma blindagem
+    // genérica (rejeita cara de e-mail/telefone), só sem lowercase (nome
+    // próprio) e com trim, já que este campo é exibido, não comparado.
+    if (key === "recipientName") {
+      const name = value.trim()
+      if (!name || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(name) || /\d{8,}/.test(name)) continue
+      result.recipientName = name
       continue
     }
     if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(value) || /\d{8,}/.test(value)) continue

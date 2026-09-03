@@ -16,7 +16,7 @@ export const FilterPresetsTriggerButton = React.forwardRef<
   <Button
     ref={ref}
     variant="outline"
-    className={cn("h-8 px-2 lg:px-3", isActive && "border-primary/70 text-primary", className)}
+    className={cn("h-8 max-lg:h-11 px-2 lg:px-3", isActive && "border-primary/70 text-primary", className)}
     {...props}
   >
     <Heart className={cn("mr-2 size-4", isActive && "fill-primary text-primary")} />
