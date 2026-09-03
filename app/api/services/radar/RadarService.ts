@@ -705,7 +705,19 @@ export class RadarService {
       if (resolved.wasExisting) counters.enriched += 1
       else counters.created += 1
 
-      if (sendableEmail) {
+      // Achado 2026-09-03 (caso PIMENTAS/KKJ): `resolveProfileForEmail` pode
+      // devolver `emailIdentityClaimed: false` quando decide que este e-mail
+      // é compartilhado por uma pessoa DIFERENTE do dono atual (guarda em
+      // `lib/radar/email-profile-match.ts`) — nesse caso o perfil retornado é
+      // separado e NÃO deve receber a `RadarIdentity` exclusiva do e-mail.
+      // Chamar `upsertIdentity` incondicionalmente aqui reatribuiria
+      // (`update.profileId`) a claim do dono original para este perfil novo,
+      // roubando a identidade sem passar por merge. `resolveProfileForPhone`
+      // não expõe esse campo porque sempre reivindica a claim ele mesmo
+      // (dentro da mesma transação) — `?? true` preserva o comportamento
+      // original para esse caminho.
+      const emailIdentityClaimed = (resolved as { emailIdentityClaimed?: boolean }).emailIdentityClaimed ?? true
+      if (sendableEmail && emailIdentityClaimed) {
         await this.repo.upsertIdentity({
           profileId: profile.id,
           teamId: scope.teamId,
