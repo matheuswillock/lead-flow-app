@@ -24,7 +24,7 @@ import { maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 import { formatIntimezone } from "@/lib/dates"
 
-const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
+const headerButtonClass = "h-8 max-lg:h-11 px-2 hover:bg-accent w-full justify-center";
 const formatCurrency = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "-";
   const numeric = Number(value);
@@ -187,7 +187,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className="h-8 max-lg:h-11 px-2 hover:bg-accent"
         >
           Email
           <span className="ml-2">
