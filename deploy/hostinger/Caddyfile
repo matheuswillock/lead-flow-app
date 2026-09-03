@@ -2,17 +2,10 @@
 # Caddy obtém certificados Let's Encrypt automaticamente para os subdomínios.
 #
 # Pré-requisitos DNS (registros A → IP da VPS):
-#   evo.corretorstudio.com
-#   n8n.corretorstudio.com
 #   ops.corretorstudio.com
-
-evo.corretorstudio.com {
-	reverse_proxy 127.0.0.1:8080
-}
-
-n8n.corretorstudio.com {
-	reverse_proxy 127.0.0.1:5678
-}
+#
+# evo.corretorstudio.com e n8n.corretorstudio.com removidos — Evolution/N8N
+# não rodam mais nesta VPS (ver docker-compose.vps.yml).
 
 ops.corretorstudio.com {
 	reverse_proxy 127.0.0.1:9090
