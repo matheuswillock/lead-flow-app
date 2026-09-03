@@ -13,6 +13,8 @@ export const PREFILL_FIELD_INDICATOR_MESSAGE =
  * Indicador do item A (registro 03/09): campo preenchido pelo prefill de
  * `cs_el` ganha um ícone com aviso. Trigger é um `<button>` real — foco por
  * teclado e toque abrem o tooltip do mesmo jeito que o hover no desktop.
+ * `p-3.5 -m-3.5` dá 44×44 de área de toque (ícone de 16px + 14px por lado)
+ * sem alterar o footprint visual no layout.
  */
 export function PrefillFieldIndicator() {
   return (
@@ -22,7 +24,7 @@ export function PrefillFieldIndicator() {
           <button
             type="button"
             aria-label={PREFILL_FIELD_INDICATOR_MESSAGE}
-            className="inline-flex shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-m-3.5 inline-flex shrink-0 items-center justify-center rounded-full p-3.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Sparkles className="size-4" aria-hidden="true" />
           </button>

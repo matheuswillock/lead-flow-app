@@ -63,3 +63,19 @@ export function withoutPrefilledField(
   next.delete(editedQuestionId)
   return next
 }
+
+/**
+ * A lógica condicional do renderer poda respostas de perguntas escondidas.
+ * Uma pergunta prefillada que sumiu e voltou renasce vazia — manter o
+ * indicador ali afirmaria "preenchido automaticamente" sobre um campo em
+ * branco. Retém no conjunto só quem ainda tem resposta viva; devolve o
+ * mesmo Set (referência) quando nada mudou, para não re-renderizar à toa.
+ */
+export function retainPrefilledFieldsWithAnswers<T>(
+  prefilledFieldIds: Set<string>,
+  currentAnswers: Record<string, T>,
+): Set<string> {
+  const retained = [...prefilledFieldIds].filter((questionId) => questionId in currentAnswers)
+  if (retained.length === prefilledFieldIds.size) return prefilledFieldIds
+  return new Set(retained)
+}

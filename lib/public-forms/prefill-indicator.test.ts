@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { resolvePrefilledFieldIds, withoutPrefilledField } from "./prefill-indicator"
+import {
+  resolvePrefilledFieldIds,
+  retainPrefilledFieldsWithAnswers,
+  withoutPrefilledField,
+} from "./prefill-indicator"
 
 describe("resolvePrefilledFieldIds", () => {
   it("marca a pergunta de nome quando o prefill a preenche e ela ainda está vazia", () => {
@@ -81,5 +85,35 @@ describe("withoutPrefilledField", () => {
 
     expect(original.has("q-name")).toBe(true)
     expect(next.has("q-name")).toBe(false)
+  })
+})
+
+describe("retainPrefilledFieldsWithAnswers", () => {
+  it("remove do conjunto a pergunta cuja resposta foi podada pela lógica condicional", () => {
+    const next = retainPrefilledFieldsWithAnswers(new Set(["q-name", "q-email"]), {
+      "q-email": "contato@ed-energy.com",
+    })
+
+    expect([...next]).toEqual(["q-email"])
+  })
+
+  it("mantém o conjunto intacto (mesma referência) quando todas as respostas seguem presentes", () => {
+    const original = new Set(["q-name"])
+    const next = retainPrefilledFieldsWithAnswers(original, { "q-name": "ED-ENERGY" })
+
+    expect(next).toBe(original)
+  })
+
+  it("esvazia o conjunto quando todas as respostas prefilladas foram podadas", () => {
+    const next = retainPrefilledFieldsWithAnswers(new Set(["q-name", "q-email"]), {})
+
+    expect(next.size).toBe(0)
+  })
+
+  it("não muta o conjunto original ao podar", () => {
+    const original = new Set(["q-name", "q-email"])
+    retainPrefilledFieldsWithAnswers(original, { "q-email": "contato@ed-energy.com" })
+
+    expect([...original].sort()).toEqual(["q-email", "q-name"])
   })
 })

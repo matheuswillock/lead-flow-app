@@ -38,7 +38,11 @@ import {
   shouldBlockFirstPhoneSubmitAttempt,
 } from "@/lib/public-forms/phone-field"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
-import { resolvePrefilledFieldIds, withoutPrefilledField } from "@/lib/public-forms/prefill-indicator"
+import {
+  resolvePrefilledFieldIds,
+  retainPrefilledFieldsWithAnswers,
+  withoutPrefilledField,
+} from "@/lib/public-forms/prefill-indicator"
 import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldIndicator"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
@@ -450,6 +454,16 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     })
     setIndex((current) => Math.min(current, Math.max(0, pages.length - 1)))
   }, [started, track, visibleIds, visibleIdsKey, pages.length])
+
+  /**
+   * A poda de respostas acima (lógica condicional) precisa arrastar o
+   * indicador junto: pergunta prefillada que sumiu e voltou renasce vazia, e
+   * o Sparkles ali mentiria. O helper devolve o mesmo Set quando nada mudou,
+   * então este efeito não re-renderiza no caminho comum.
+   */
+  useEffect(() => {
+    setPrefilledFieldIds((current) => retainPrefilledFieldsWithAnswers(current, answers))
+  }, [answers])
 
   useEffect(() => {
     if (!started || phase !== "form") return
@@ -962,13 +976,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               <FieldGroup className="gap-8">
                 {pageQuestions.map((item) => (
                   <Field key={item.id}>
-                    <FieldLabel className="items-center text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-                      <span>
+                    {/* O indicador fica FORA do <label>: um <button> dentro
+                        de label sem `for` vira o primeiro descendente
+                        rotulável, e clicar no título ativaria o tooltip em
+                        vez de não fazer nada. */}
+                    <div className="flex items-center gap-2">
+                      <FieldLabel className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
                         {item.title}
                         {item.required ? <span aria-hidden="true"> *</span> : null}
-                      </span>
+                      </FieldLabel>
                       {prefilledFieldIds.has(item.id) ? <PrefillFieldIndicator /> : null}
-                    </FieldLabel>
+                    </div>
                     {item.description ? (
                       <FieldDescription className="text-pretty text-sm">
                         {item.description}
