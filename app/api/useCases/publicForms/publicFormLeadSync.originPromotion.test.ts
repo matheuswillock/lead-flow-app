@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
 import {
+  findCampaignLogForAttributionMock as findCampaignLogForAttribution,
   findDeletedLeadCandidatesMock as findDeletedLeadCandidates,
   findLeadCandidatesMock as findLeadCandidates,
   registerPublicFormLeadSyncModuleMocks,
@@ -13,6 +14,10 @@ import {
  * uma resposta atribuída por campanha (`cs_el`/`emailLogId`) ANEXA num lead
  * `public_form` existente, a origem é promovida para `email_campaign`, com
  * MERGE dos metadados anteriores. Lead que já é `email_campaign` não muda.
+ *
+ * Achado codex PR #1148 (P2): `emailLogId` vem da URL (`cs_el`) e é só um
+ * UUID bem formado — a promoção exige o `EmailLog` verificado no time
+ * (`findCampaignLogForAttribution`); token forjado não promove nada.
  */
 registerPublicFormLeadSyncModuleMocks()
 
@@ -115,6 +120,16 @@ describe("upsertLeadFromFormAnswers — promoção de origem no anexo (item 3)",
     findDeletedLeadCandidates.mockResolvedValue([])
     updateLead.mockReset()
     updateLead.mockImplementation(async (id, data) => ({ ...PUBLIC_FORM_LEAD, ...data, id }))
+    findCampaignLogForAttribution.mockReset()
+    // EmailLog verificado no time — pré-condição da promoção.
+    findCampaignLogForAttribution.mockResolvedValue({
+      id: "emaillog-1",
+      campaignId: "campaign-1",
+      dispatchId: "dispatch-1",
+      recipientEmail: "bruno@example.com",
+      recipientName: "Bruno Marcelino",
+      campaignName: "Campanha X",
+    })
   })
 
   it("anexo com atribuição de campanha promove originChannel preservando metadados anteriores", async () => {
@@ -159,6 +174,23 @@ describe("upsertLeadFromFormAnswers — promoção de origem no anexo (item 3)",
 
   it("controle: anexo SEM atribuição de campanha não toca a origem", async () => {
     const result = await callUpsert({})
+
+    expect(result.outcome).toBe("updated")
+    const [, data] = updateLead.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    expect(data.originChannel).toBeUndefined()
+    expect(data.originMetadata).toBeUndefined()
+  })
+
+  // Achado codex PR #1148 (P2): UUID forjado na URL passa no formato do
+  // sanitizador, mas não existe EmailLog do time — sem log verificado a
+  // origem do lead existente não pode ser reescrita.
+  it("emailLogId forjado (EmailLog inexistente no time) → anexa sem promover a origem", async () => {
+    findCampaignLogForAttribution.mockResolvedValue(null)
+
+    const result = await callUpsert({
+      emailLogId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      campaignId: "campaign-forjado",
+    })
 
     expect(result.outcome).toBe("updated")
     const [, data] = updateLead.mock.calls[0] as unknown as [string, Record<string, unknown>]

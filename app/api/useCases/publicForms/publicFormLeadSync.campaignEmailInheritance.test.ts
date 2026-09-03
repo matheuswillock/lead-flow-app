@@ -6,6 +6,7 @@ import {
   findDeletedLeadCandidatesMock as findDeletedLeadCandidates,
   findLeadCandidatesMock as findLeadCandidates,
   registerPublicFormLeadSyncModuleMocks,
+  updateLeadMock as updateLead,
 } from "@/test/support/public-form-lead-sync-module-mocks"
 
 /**
@@ -104,6 +105,7 @@ const FORM_CONTEXT = {
 >[0]["form"]
 
 const { upsertLeadFromFormAnswers } = await import("./publicFormLeadSync")
+const { leadFromUpsertOutcome } = await import("@/lib/public-forms/lead-upsert-outcome")
 
 function callUpsert(input: {
   answers: Array<{ questionId: string; value: unknown }>
@@ -136,6 +138,8 @@ describe("upsertLeadFromFormAnswers — herança de e-mail do destinatário (E1b
     })
     findCampaignLogForAttribution.mockReset()
     findCampaignLogForAttribution.mockResolvedValue(RECIPIENT_LOG)
+    updateLead.mockReset()
+    updateLead.mockImplementation(async (id, data) => ({ ...(data as object), id }) as never)
   })
 
   // T-F1.8
@@ -214,6 +218,44 @@ describe("upsertLeadFromFormAnswers — herança de e-mail do destinatário (E1b
     expect(createData.email).toBe("proprio@example.com")
     const originMetadata = createData.originMetadata as Record<string, unknown>
     expect(originMetadata.emailSource).toBeUndefined()
+  })
+
+  // Achado codex PR #1148 (P1): o destinatário JÁ tem lead com o e-mail
+  // herdado, mas o form não coletou e-mail e o telefone digitado é novo — o
+  // match inicial (sem e-mail) não o enxerga, o create herda o recipientEmail
+  // e bate na unique [teamId, email]. A reconciliação precisa buscar com o
+  // e-mail HERDADO, senão vira throw (poison na fila).
+  it("unique do e-mail herdado no create → reconcilia com o e-mail do destinatário e anexa, sem lançar", async () => {
+    const recipientLead = {
+      id: "lead-destinatario",
+      name: "Mariana Lombardi",
+      email: RECIPIENT_LOG.recipientEmail,
+      phone: "11911112222",
+      notes: null,
+      deletedAt: null,
+    }
+    createLead.mockResolvedValue({
+      isValid: false,
+      errorMessages: ["Ja existe um lead com este e-mail"],
+      successMessages: [],
+      result: null,
+    })
+    // O lead conflitante só é encontrável pelo e-mail herdado — o telefone
+    // digitado é outro e o form não coletou e-mail.
+    findLeadCandidates.mockImplementation(async (...args: unknown[]) =>
+      args[1] === RECIPIENT_LOG.recipientEmail ? [recipientLead] : [],
+    )
+
+    const result = await callUpsert({
+      answers: [
+        { questionId: Q_NAME, value: "Mariana Lombardi" },
+        { questionId: Q_PHONE, value: "11964326587" },
+      ],
+      origin: { emailLogId: RECIPIENT_LOG.id, campaignId: RECIPIENT_LOG.campaignId },
+    })
+
+    expect(result.outcome).toBe("updated")
+    expect(leadFromUpsertOutcome(result)?.id).toBe("lead-destinatario")
   })
 
   it("sem emailLogId no origin (não é campanha) → não herda nem chama findCampaignLogForAttribution", async () => {

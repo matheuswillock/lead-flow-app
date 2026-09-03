@@ -113,6 +113,10 @@ describe("SyncPublicFormMetricToRadarUseCase — herança de identidade do desti
       expect.objectContaining({
         normalizedEmail: "marianalombardi@uol.com.br",
         displayName: "Mariana Lombardi",
+        // Achado codex PR #1148 (P2): displayName e normalizedName precisam
+        // vir da MESMA fonte — nome do destinatário com normalizedName do
+        // local-part do e-mail quebra o matching por nome.
+        normalizedName: "mariana lombardi",
       }),
     )
     expect(resolveProfileForVisitorSession).not.toHaveBeenCalled()

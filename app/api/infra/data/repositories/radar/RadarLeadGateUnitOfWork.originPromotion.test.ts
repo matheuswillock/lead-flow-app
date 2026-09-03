@@ -33,9 +33,17 @@ const profile = {
   leadId: EXISTING_LEAD_ID,
 }
 
-function makeUnitOfWork(existingLead: { originChannel: string | null; originMetadata: unknown }) {
+function makeUnitOfWork(
+  existingLead: { originChannel: string | null; originMetadata: unknown },
+  options?: { emailLogExists?: boolean },
+) {
   const leadUpdate = mock(async () => ({}))
   const leadFindUnique = mock(async () => existingLead)
+  // Achado codex PR #1148 (P2): a promoção exige o EmailLog verificado no
+  // time — `emailLogExists: false` simula o UUID forjado na URL.
+  const emailLogFindFirst = mock(async () =>
+    (options?.emailLogExists ?? true) ? { id: "emaillog-1", campaignId: "campaign-1" } : null,
+  )
   const transaction = {
     $executeRaw: mock(async () => 1),
     publicForm: {
@@ -43,6 +51,7 @@ function makeUnitOfWork(existingLead: { originChannel: string | null; originMeta
     },
     team: { findUnique: mock(async () => ({ masterId: "master-1" })) },
     lead: { create: mock(async () => ({ id: "lead-novo" })), update: leadUpdate, findUnique: leadFindUnique },
+    emailLog: { findFirst: emailLogFindFirst },
   }
   const database = {
     $transaction: async (work: (tx: unknown) => Promise<unknown>) => work(transaction),
@@ -51,6 +60,7 @@ function makeUnitOfWork(existingLead: { originChannel: string | null; originMeta
     unitOfWork: new RadarLeadGateUnitOfWork(database as never),
     leadUpdate,
     leadFindUnique,
+    emailLogFindFirst,
   }
 }
 
@@ -128,5 +138,55 @@ describe("createOrUpdateFromRadarProfile — promoção de origem no anexo (exis
     expect(data.originChannel).toBeUndefined()
     expect(data.originMetadata).toBeUndefined()
     expect(leadFindUnique).not.toHaveBeenCalled()
+  })
+
+  // Achado codex PR #1148 (P2): para `question_answered` o origin não passa
+  // pelo resolver de atribuição — pode carregar um UUID forjado que o
+  // sanitizador aceita pelo formato. Sem EmailLog do time, não promove.
+  it("emailLogId forjado (EmailLog inexistente no time) → atualiza o lead sem promover a origem", async () => {
+    const { unitOfWork, leadUpdate, emailLogFindFirst } = makeUnitOfWork(
+      { originChannel: "public_form", originMetadata: { source: "Form X" } },
+      { emailLogExists: false },
+    )
+
+    await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
+      transaction.createOrUpdateFromRadarProfile({
+        teamId: "team-1",
+        formId: FORM_ID,
+        profile,
+        existingLeadId: EXISTING_LEAD_ID,
+        origin: { emailLogId: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
+      }),
+    )
+
+    expect(emailLogFindFirst).toHaveBeenCalledTimes(1)
+    const data = updateData(leadUpdate)
+    expect(data.originChannel).toBeUndefined()
+    expect(data.originMetadata).toBeUndefined()
+  })
+
+  // Sem emailLogId (só campaignId no origin) não há o que verificar — a
+  // promoção exige o rastro `cs_el`→EmailLog; origin só com campaignId não
+  // promove nem consulta o log.
+  it("origin só com campaignId (sem emailLogId) → não promove nem consulta o EmailLog", async () => {
+    const { unitOfWork, leadUpdate, emailLogFindFirst } = makeUnitOfWork({
+      originChannel: "public_form",
+      originMetadata: { source: "Form X" },
+    })
+
+    await unitOfWork.execute({ teamId: "team-1", radarProfileId: PROFILE_ID }, (transaction) =>
+      transaction.createOrUpdateFromRadarProfile({
+        teamId: "team-1",
+        formId: FORM_ID,
+        profile,
+        existingLeadId: EXISTING_LEAD_ID,
+        origin: { campaignId: "campaign-1" },
+      }),
+    )
+
+    expect(emailLogFindFirst).not.toHaveBeenCalled()
+    const data = updateData(leadUpdate)
+    expect(data.originChannel).toBeUndefined()
+    expect(data.originMetadata).toBeUndefined()
   })
 })

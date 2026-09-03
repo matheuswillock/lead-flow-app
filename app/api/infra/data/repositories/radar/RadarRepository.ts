@@ -874,9 +874,36 @@ export class RadarRepository {
       })
 
       if (existingByIdentity) {
+        // Achado codex PR #1148 (P2), par do E6b: sem isto, o nome
+        // recém-conhecido (ex.: destinatário da campanha) era descartado e
+        // perfis antigos com nome-placeholder nunca recebiam nome. Só entra
+        // quando o nome existente NÃO é usável (vazio, "Visitante Anônimo" ou
+        // placeholder com cara de e-mail) — identidade digitada real nunca é
+        // sobrescrita pela inferida.
+        let inheritedName: string | null = null
+        if (input.displayName?.trim()) {
+          const existingProfile = await tx.radarProfile.findUnique({
+            where: { id: existingByIdentity.profileId },
+            select: { displayName: true },
+          })
+          const existingName = existingProfile?.displayName?.trim() ?? ""
+          const existingNameUsable =
+            Boolean(existingName) &&
+            existingName !== "Visitante Anônimo" &&
+            !existingName.includes("@")
+          if (!existingNameUsable) inheritedName = input.displayName.trim()
+        }
         const profile = await tx.radarProfile.update({
           where: { id: existingByIdentity.profileId },
-          data: { lastSeenAt: input.lastSeenAt ?? new Date() },
+          data: {
+            lastSeenAt: input.lastSeenAt ?? new Date(),
+            ...(inheritedName
+              ? {
+                  displayName: inheritedName,
+                  normalizedName: normalizeRadarName(inheritedName),
+                }
+              : {}),
+          },
         })
         return { profile, wasExisting: true }
       }

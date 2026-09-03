@@ -262,10 +262,21 @@ export async function upsertLeadFromFormAnswers(input: {
   const emailLogId = typeof input.origin.emailLogId === "string" ? input.origin.emailLogId : null
   const campaignId = typeof input.origin.campaignId === "string" ? input.origin.campaignId : null
   const fromEmailCampaign = isEmailCampaignFormOrigin(input.origin)
+  // Achado codex PR #1148 (P2): `emailLogId` vem da URL (`cs_el`) e o
+  // sanitizador só valida o FORMATO do UUID — um token forjado não pode
+  // reescrever a origem de um lead existente. A promoção no anexo e a herança
+  // E1b só acontecem com o `EmailLog` verificado no time; os ids promovidos
+  // vêm do log (fonte autoritativa), não do origin do cliente.
+  const campaignLog =
+    fromEmailCampaign && emailLogId
+      ? await emailLogRepository.findCampaignLogForAttribution(input.form.teamId, emailLogId)
+      : null
   const attachContext: LeadAttachContext = {
     form: input.form,
     snapshot: input.snapshot,
-    campaignAttribution: fromEmailCampaign ? { emailLogId, campaignId } : null,
+    campaignAttribution: campaignLog
+      ? { emailLogId: campaignLog.id, campaignId: campaignLog.campaignId }
+      : null,
   }
 
   const match = await findMatchingLead(input.form.teamId, extracted)
@@ -311,26 +322,22 @@ export async function upsertLeadFromFormAnswers(input: {
     }
   }
 
-  let campaignName: string | null = null
+  const campaignName = campaignLog?.campaignName ?? null
   let inheritedRecipientEmail: string | null = null
-  if (fromEmailCampaign && emailLogId) {
-    const log = await emailLogRepository.findCampaignLogForAttribution(input.form.teamId, emailLogId)
-    campaignName = log?.campaignName ?? null
-    // Adenda E1b (SPEC 40, 02/09): formulário não coletou e-mail — herda o do
-    // destinatário conhecido pelo `cs_el`, salvo divergência (guarda do
-    // #1107). E-mail digitado (checado logo acima via `extracted.email`)
-    // sempre vence; esta herança só roda quando ele está vazio.
-    if (log?.recipientEmail && !extracted.email) {
-      const convergent = isSubmissionConvergentWithCampaignRecipient(
-        {
-          name: extracted.name || null,
-          phone: extracted.phone || null,
-          email: findLooseEmailInAnswers(input.answers),
-        },
-        { recipientEmail: log.recipientEmail, recipientName: log.recipientName },
-      )
-      if (convergent) inheritedRecipientEmail = log.recipientEmail
-    }
+  // Adenda E1b (SPEC 40, 02/09): formulário não coletou e-mail — herda o do
+  // destinatário conhecido pelo `cs_el`, salvo divergência (guarda do
+  // #1107). E-mail digitado (checado via `extracted.email`) sempre vence;
+  // esta herança só roda quando ele está vazio.
+  if (campaignLog?.recipientEmail && !extracted.email) {
+    const convergent = isSubmissionConvergentWithCampaignRecipient(
+      {
+        name: extracted.name || null,
+        phone: extracted.phone || null,
+        email: findLooseEmailInAnswers(input.answers),
+      },
+      { recipientEmail: campaignLog.recipientEmail, recipientName: campaignLog.recipientName },
+    )
+    if (convergent) inheritedRecipientEmail = campaignLog.recipientEmail.trim().toLowerCase()
   }
   const createData: CreateLeadRequest = {
     name: extracted.name,
@@ -418,8 +425,15 @@ export async function upsertLeadFromFormAnswers(input: {
     { autoScheduleMeeting: false },
   )
   if (!output.isValid) {
+    // Achado codex PR #1148 (P1): quando o create usou o e-mail HERDADO do
+    // destinatário e a unique [teamId, email] recusou, o lead conflitante só
+    // é encontrável por esse e-mail — reconciliar com o `extracted` sem
+    // e-mail deixaria o throw de volta (poison na fila, o F9 de novo).
+    const reconcileData = inheritedRecipientEmail
+      ? { ...extracted, email: inheritedRecipientEmail }
+      : extracted
     const reconciled = isDuplicateLeadRejection(output.errorMessages)
-      ? await reconcileLeadAfterFailedCreate(attachContext, extracted)
+      ? await reconcileLeadAfterFailedCreate(attachContext, reconcileData)
       : null
     if (reconciled) return reconciled
     throw new Error(output.errorMessages.join("; "))

@@ -402,7 +402,13 @@ export class SyncPublicFormMetricToRadarUseCase {
           normalizedEmail: recipientEmailValidation.email,
           emailValue: recipientEmail,
           displayName: recipientName,
-          normalizedName: normalizeRadarName(recipientEmailValidation.email.split("@")[0]),
+          // Achado codex PR #1148 (P2): displayName e normalizedName da MESMA
+          // fonte — nome do destinatário com normalizedName do local-part do
+          // e-mail quebraria o matching por nome; o local-part fica só de
+          // fallback quando não há nome.
+          normalizedName: recipientName
+            ? normalizeRadarName(recipientName)
+            : normalizeRadarName(recipientEmailValidation.email.split("@")[0]),
           emailSource: "email_campaign_form",
           lastSeenAt: input.occurredAt ?? new Date(),
         })

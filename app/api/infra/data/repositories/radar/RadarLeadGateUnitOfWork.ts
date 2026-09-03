@@ -255,12 +255,16 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       // Requisitos 4/5/8 do bug 2026-08-28 (Bruno Marcelino): resposta
       // atribuída a campanha que anexa num lead `public_form` promove a
       // origem, com MERGE dos metadados anteriores — senão o filtro "Origem =
-      // Campanha de e-mail" do CRM mente. Só busca o lead atual quando há
-      // atribuição a resolver.
-      const originPromotion = fromEmailCampaign
+      // Campanha de e-mail" do CRM mente. Exige `emailLogId` (o rastro
+      // `cs_el`→EmailLog) porque a promoção é verificada contra o log do
+      // próprio time dentro do resolver: para `question_answered` o origin
+      // não passa pelo resolver de atribuição e pode carregar UUID forjado
+      // que o sanitizador aceita pelo formato (achado codex PR #1148). Só
+      // busca o lead atual quando há atribuição verificável.
+      const originPromotion = emailLogId
         ? await this.resolveExistingLeadOriginPromotion({
+            teamId: input.teamId,
             leadId: input.existingLeadId,
-            campaignId,
             emailLogId,
           })
         : null
@@ -343,14 +347,21 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   /**
    * Merge dos metadados de origem do lead existente com a atribuição de
    * campanha da resposta corrente — nunca sobrescrita cega (requisitos 4/5/8
-   * do bug 2026-08-28). `null` quando o lead já está promovido com os MESMOS
-   * ids, evitando um update redundante.
+   * do bug 2026-08-28). `null` quando o EmailLog não existe no time (UUID
+   * forjado — achado codex PR #1148) ou quando o lead já está promovido com
+   * os MESMOS ids. Os ids promovidos vêm do log verificado, não do origin.
    */
   private async resolveExistingLeadOriginPromotion(input: {
+    teamId: string
     leadId: string
-    campaignId: string | null
-    emailLogId: string | null
+    emailLogId: string
   }): Promise<{ originChannel: "email_campaign"; originMetadata: Prisma.InputJsonValue } | null> {
+    const verifiedLog = await this.transaction.emailLog.findFirst({
+      where: { id: input.emailLogId, teamId: input.teamId, category: "campaign" },
+      select: { id: true, campaignId: true },
+    })
+    if (!verifiedLog) return null
+
     const existing = await this.transaction.lead.findUnique({
       where: { id: input.leadId },
       select: { originChannel: true, originMetadata: true },
@@ -358,8 +369,8 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     return buildEmailCampaignOriginPromotion({
       currentChannel: existing?.originChannel ?? null,
       currentMetadata: existing?.originMetadata,
-      campaignId: input.campaignId,
-      emailLogId: input.emailLogId,
+      campaignId: verifiedLog.campaignId,
+      emailLogId: verifiedLog.id,
     })
   }
 
