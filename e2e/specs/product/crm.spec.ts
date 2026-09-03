@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
@@ -9,37 +9,96 @@ const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
 const LAYOUT_LEAD_NAME = "Lead Layout Dialog E2E";
 
-async function seedLayoutLead() {
+// Lead dedicado ao teste de responsividade: os alvos de toque das linhas
+// (drag handle, menu de ações, link do WhatsApp) só renderizam com um lead no
+// board. ID próprio para não disputar seed/cleanup com o teste do dialog.
+const TOUCH_LEAD_ID = "e2e20000-0000-4000-8000-000000000302";
+const TOUCH_LEAD_CODE = "E2ELEADTOUCH0001";
+const TOUCH_LEAD_NAME = "Lead Touch Target E2E";
+const TOUCH_LEAD_PHONE = "11999990302";
+
+interface SeedCrmLeadOptions {
+  id: string;
+  leadCode: string;
+  name: string;
+  phone?: string;
+  activityCount?: number;
+}
+
+async function seedCrmLead({ id, leadCode, name, phone, activityCount = 0 }: SeedCrmLeadOptions) {
   const prisma = getPrisma();
   const profile = await findE2eMasterProfile();
   if (!profile) throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`");
   if (!profile.activeTeamId) throw new Error("Team E2E não encontrado");
   const teamId = profile.activeTeamId;
 
-  await prisma.lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
+  await prisma.lead.deleteMany({ where: { id } });
   await prisma.lead.create({
     data: {
-      id: LAYOUT_LEAD_ID,
-      leadCode: LAYOUT_LEAD_CODE,
+      id,
+      leadCode,
       managerId: profile.id,
       teamId,
       status: "new_opportunity",
-      name: LAYOUT_LEAD_NAME,
+      name,
+      phone,
       createdBy: profile.id,
       updatedBy: profile.id,
     },
   });
-  await prisma.leadActivity.createMany({
-    data: Array.from({ length: 6 }, (_, index) => ({
-      leadId: LAYOUT_LEAD_ID,
-      type: "note" as const,
-      body: `Atividade de layout ${index + 1}`,
-      createdBy: profile.id,
-      createdAt: new Date(Date.now() - index * 60_000),
-    })),
-  });
+  if (activityCount > 0) {
+    await prisma.leadActivity.createMany({
+      data: Array.from({ length: activityCount }, (_, index) => ({
+        leadId: id,
+        type: "note" as const,
+        body: `Atividade de layout ${index + 1}`,
+        createdBy: profile.id,
+        createdAt: new Date(Date.now() - index * 60_000),
+      })),
+    });
+  }
 
   return { profile, teamId };
+}
+
+/**
+ * O seed via Prisma NÃO invalida a tag team-leads do "use cache" da listagem
+ * (getCachedTeamLeads, stale 30 / revalidate 60): quando testes anteriores já
+ * visitaram o CRM, a entrada vazia cacheada é nova demais para revalidar e o
+ * lead seedado fica invisível por mais de 75s — era o flaky da CI no PR #1153.
+ * Um PUT idempotente pela API invalida a tag exatamente como uma mutação real
+ * do app (invalidateLeadCache).
+ */
+async function invalidateTeamLeadsCache(
+  page: Page,
+  { leadId, teamId, name }: { leadId: string; teamId: string; name: string },
+) {
+  const invalidateResponse = await page.request.put(`/api/v1/leads/${leadId}`, {
+    headers: {
+      "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+      "x-team-id": teamId,
+    },
+    data: { name },
+  });
+  expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+}
+
+/**
+ * Garante o lead seedado visível no board: recarrega enquanto a listagem
+ * cacheada ainda não o traz e filtra por nome para isolar o lead do que os
+ * outros workers da CI criam no mesmo time (orderBy createdAt desc, página 1).
+ */
+async function waitForSeededLeadOnBoard(page: Page, name: string) {
+  const nameFilter = page.getByPlaceholder("Filtrar por nome...");
+  const seededLeadCell = page.getByText(name).first();
+  await expect(async () => {
+    if ((await seededLeadCell.count()) === 0) {
+      await page.reload({ waitUntil: "domcontentloaded" });
+    }
+    await nameFilter.fill(name);
+    await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
+  }).toPass({ timeout: 60_000 });
+  return seededLeadCell;
 }
 
 test.describe("app/[supabaseId]/crm", () => {
@@ -58,7 +117,9 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test.afterAll(async () => {
-    await getPrisma().lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
+    await getPrisma().lead.deleteMany({
+      where: { id: { in: [LAYOUT_LEAD_ID, TOUCH_LEAD_ID] } },
+    });
     await disconnectPrisma();
   });
 
@@ -73,11 +134,29 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test("responsividade mobile-first do CRM", async ({ page }) => {
-    test.setTimeout(90_000);
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
+    test.setTimeout(150_000);
+    // Board VAZIO não renderiza os alvos de toque das linhas (drag handle,
+    // menu de ações, link do WhatsApp) — foi assim que os botões de 32×32
+    // passaram batidos no assertTouchTargets. O lead seedado (com telefone)
+    // garante que a medição cubra os controles de linha.
+    const { teamId } = await seedCrmLead({
+      id: TOUCH_LEAD_ID,
+      leadCode: TOUCH_LEAD_CODE,
+      name: TOUCH_LEAD_NAME,
+      phone: TOUCH_LEAD_PHONE,
+    });
+    await invalidateTeamLeadsCache(page, {
+      leadId: TOUCH_LEAD_ID,
+      teamId,
+      name: TOUCH_LEAD_NAME,
+    });
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm?view=pipeline`);
     await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
       timeout: 30_000,
     });
+    await waitForSeededLeadOnBoard(page, TOUCH_LEAD_NAME);
+
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
   });
@@ -122,22 +201,17 @@ test.describe("app/[supabaseId]/crm", () => {
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
     test.setTimeout(150_000);
-    const { teamId } = await seedLayoutLead();
-
-    // O seed via Prisma NÃO invalida a tag team-leads do "use cache" da
-    // listagem (getCachedTeamLeads, stale 30 / revalidate 60): quando os
-    // testes anteriores já visitaram o CRM, a entrada vazia cacheada é nova
-    // demais para revalidar e o lead seedado fica invisível por mais de 75s —
-    // era o flaky da CI no PR #1153. Um PUT idempotente pela API invalida a
-    // tag exatamente como uma mutação real do app (invalidateLeadCache).
-    const invalidateResponse = await page.request.put(`/api/v1/leads/${LAYOUT_LEAD_ID}`, {
-      headers: {
-        "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
-        "x-team-id": teamId,
-      },
-      data: { name: LAYOUT_LEAD_NAME },
+    const { teamId } = await seedCrmLead({
+      id: LAYOUT_LEAD_ID,
+      leadCode: LAYOUT_LEAD_CODE,
+      name: LAYOUT_LEAD_NAME,
+      activityCount: 6,
     });
-    expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+    await invalidateTeamLeadsCache(page, {
+      leadId: LAYOUT_LEAD_ID,
+      teamId,
+      name: LAYOUT_LEAD_NAME,
+    });
 
     // Aquece o "use cache" de /details (o mesmo que o hover na tabela faz via
     // prefetchLeadDetails): na CI, computar essa entrada sob a carga dos 4
@@ -158,19 +232,7 @@ test.describe("app/[supabaseId]/crm", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    // A CI roda a suíte com 4 workers no mesmo servidor/banco: outras specs
-    // seedam leads mais novos no mesmo time e, com orderBy createdAt desc e
-    // pageSize 10, o lead deste teste cai para fora da página 1. O filtro por
-    // nome isola o lead independentemente do que os outros workers criem.
-    const nameFilter = page.getByPlaceholder("Filtrar por nome...");
-    const seededLeadCell = page.getByText(LAYOUT_LEAD_NAME).first();
-    await expect(async () => {
-      if ((await seededLeadCell.count()) === 0) {
-        await page.reload({ waitUntil: "domcontentloaded" });
-      }
-      await nameFilter.fill(LAYOUT_LEAD_NAME);
-      await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
-    }).toPass({ timeout: 60_000 });
+    const seededLeadCell = await waitForSeededLeadOnBoard(page, LAYOUT_LEAD_NAME);
 
     await seededLeadCell.click();
     const dialog = page.getByRole("dialog");
