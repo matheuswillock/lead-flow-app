@@ -10035,6 +10035,31 @@
           ]
         },
         {
+          "name": "GET Backoffice Subscriptions Panel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "subscriptions"
+              ]
+            },
+            "description": "Painel de assinaturas do backoffice (E4, SPEC 50 §7.8): MRR normalizado por ciclo, vencimentos 30/60/90, permanentes à parte, divergência local (C4) e enriquecimento Asaas best-effort com flag `partial` quando indisponível. Somente leitura."
+          }
+        },
+        {
           "name": "Backoffice Platform Users",
           "item": [
             {

@@ -180,6 +180,15 @@ export interface BackofficeAdhesionInvoiceSource {
   installmentLedger: unknown
   paidAt: Date | null
   createdAt: Date
+  /**
+   * Customer/conta desta adesão (E3 de [[50 — Backoffice de Cobrança — Backend]],
+   * C19) — ao contrário de `Profile.asaasCustomerId` (sobrescrito no cutover),
+   * a adesão preserva o `cus_` histórico da conta em que nasceu. É a fonte
+   * real usada para descobrir a conta legada de um master, sem depender de
+   * um ledger de migração que ainda não existe.
+   */
+  asaasCustomerId: string | null
+  asaasAccount: AsaasAccountId
 }
 
 export interface IBackofficeAdhesionRepository {

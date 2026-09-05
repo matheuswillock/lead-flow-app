@@ -4764,6 +4764,19 @@ model WhatsAppSendRateLimitWindow {
   @@map("whatsapp_send_rate_limit_windows")
 }
 
+/// Rate limit atômico de billing (S2, lib/billing/billing-rate-limit.ts) —
+/// chave livre (IP, profileId, backofficeUserId), sem FK.
+model BillingRateLimitWindow {
+  key         String   @db.Text
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([key, windowStart])
+  @@map("billing_rate_limit_windows")
+}
+
 model WhatsAppAutoResponseRule {
   id               String                        @id @default(uuid()) @db.Uuid
   configId         String                        @db.Uuid

@@ -204,6 +204,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         installmentLedger: true,
         paidAt: true,
         createdAt: true,
+        asaasCustomerId: true,
+        asaasAccount: true,
         product: {
           select: {
             name: true,
@@ -219,6 +221,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       installmentLedger: adhesion.installmentLedger,
       paidAt: adhesion.paidAt,
       createdAt: adhesion.createdAt,
+      asaasCustomerId: adhesion.asaasCustomerId,
+      asaasAccount: adhesion.asaasAccount,
     }))
   }
 

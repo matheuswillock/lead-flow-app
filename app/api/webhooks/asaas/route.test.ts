@@ -69,6 +69,17 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   publishAsaasWebhookEvent: publishAsaasWebhookEventMock,
 }))
 
+const consumeBillingRateLimitMock = mock(async () => ({ allowed: true, retryAfterSeconds: 1 }))
+
+mock.module("@/lib/billing/billing-rate-limit", () => ({
+  consumeBillingRateLimit: consumeBillingRateLimitMock,
+  BILLING_RATE_LIMIT_DEFAULTS: {
+    webhookInvalidToken: { limit: 30, windowMs: 5 * 60_000 },
+    checkoutCreate: { limit: 10, windowMs: 60_000 },
+    backofficePricing: { limit: 20, windowMs: 60_000 },
+  },
+}))
+
 process.env.ASAAS_ENV = "sandbox"
 process.env.ASAAS_WEBHOOK_TOKEN = "test-token"
 
@@ -104,6 +115,8 @@ function resetMocks() {
   publishAsaasWebhookEventMock.mockReset()
   publishAsaasWebhookEventMock.mockResolvedValue({ messageId: "mid-test" })
   captureMessageMock.mockClear()
+  consumeBillingRateLimitMock.mockReset()
+  consumeBillingRateLimitMock.mockResolvedValue({ allowed: true, retryAfterSeconds: 1 })
 }
 
 describe("Asaas webhook route", () => {
@@ -266,5 +279,29 @@ describe("Asaas webhook route", () => {
       "queue down",
       "queue_publish_failed"
     )
+  })
+
+  describe("T-50.4 (S2/DA3): rate limit de tokens inválidos", () => {
+    it("rajada de tokens inválidos acima do teto → 429, não 401", async () => {
+      resetMocks()
+      consumeBillingRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 })
+
+      const response = await POST(
+        makeRequest(VALID_BODY, { "asaas-access-token": "wrong-token" })
+      )
+
+      expect(response.status).toBe(429)
+      expect(claimForProcessingMock).not.toHaveBeenCalled()
+    })
+
+    it("token válido SEMPRE passa, mesmo com o limiter estourado para o mesmo IP (anti-C36)", async () => {
+      resetMocks()
+      consumeBillingRateLimitMock.mockResolvedValue({ allowed: false, retryAfterSeconds: 42 })
+
+      const response = await POST(makeRequest(VALID_BODY))
+
+      expect(response.status).toBe(200)
+      expect(consumeBillingRateLimitMock).not.toHaveBeenCalled()
+    })
   })
 })
