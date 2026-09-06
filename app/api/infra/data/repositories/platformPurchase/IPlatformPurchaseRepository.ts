@@ -4,6 +4,7 @@ import type {
   PlatformPurchaseType,
   Prisma,
 } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export type CreatePlatformPurchaseInput = {
   id: string
@@ -36,11 +37,15 @@ export interface IPlatformPurchaseRepository {
   create(data: CreatePlatformPurchaseInput): Promise<PlatformPurchase>
   findById(id: string): Promise<PlatformPurchase | null>
   findByExternalReference(externalReference: string): Promise<PlatformPurchase | null>
-  findByAsaasPaymentId(asaasPaymentId: string): Promise<PlatformPurchase | null>
+  // account: E4 (C33 "5º ponto") — o mesmo asaasPaymentId pode existir nas
+  // duas contas Asaas; o lookup MUST filtrar por conta para não aplicar a
+  // compra errada numa colisão.
+  findByAsaasPaymentId(asaasPaymentId: string, account: AsaasAccountId): Promise<PlatformPurchase | null>
   update(id: string, data: UpdatePlatformPurchaseInput): Promise<PlatformPurchase>
   markPaidOnce(input: {
     id: string
     asaasPaymentId: string
+    account: AsaasAccountId
     paidAt?: Date
   }): Promise<PlatformPurchase | null>
 }

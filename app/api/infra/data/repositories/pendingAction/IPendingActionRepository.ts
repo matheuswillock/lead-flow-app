@@ -1,5 +1,6 @@
 import { PendingAction } from "@prisma/client";
 import type { Prisma, UserFunction, UserRole } from "@prisma/client";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 /**
  * Shape lido pelo fluxo de aplicação de ação pendente. Lista os 10 escalares de
@@ -15,6 +16,10 @@ export const applicablePendingActionSelect = {
   payload: true,
   checkoutId: true,
   paymentId: true,
+  // Achado Codex (PR #1137, P1): conta persistida no instante em que o
+  // paymentId nasceu — master.asaasCustomerAccount pode migrar depois
+  // (E4, checkout de operador). Ver comentário no schema.
+  asaasAccount: true,
   createdAt: true,
   updatedAt: true,
   master: {
@@ -31,7 +36,9 @@ export const applicablePendingActionSelect = {
       neighborhood: true,
       complement: true,
       asaasCustomerId: true,
+      asaasCustomerAccount: true,
       asaasSubscriptionId: true,
+      asaasSubscriptionAccount: true,
       subscriptionStatus: true,
       subscriptionNextDueDate: true,
       subscriptionCycle: true,
@@ -96,6 +103,13 @@ export type BillingPendingActionRecord = {
   payload: unknown;
 };
 
+export type PendingActionOwnershipLookup = {
+  id: string;
+  masterId: string;
+  status: string;
+  asaasAccount: AsaasAccountId;
+};
+
 export interface IPendingActionRepository {
   findById(id: string): Promise<(PendingAction & { master: any }) | null>;
   findByIdSimple(id: string): Promise<PendingAction | null>;
@@ -107,7 +121,11 @@ export interface IPendingActionRepository {
     status: string;
     payload: Record<string, unknown>;
   }): Promise<{ id: string }>;
-  updatePaymentId(id: string, paymentId: string): Promise<void>;
+  // account: conta Asaas onde o paymentId realmente vive, gravada junto com
+  // ele — achado Codex (PR #1137, P1): master.asaasCustomerAccount muda
+  // depois da cobrança nascer (E4), então nunca é seguro derivar em
+  // consultas futuras.
+  updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void>;
   clearPaymentId(id: string): Promise<void>;
   updateStatus(id: string, status: string): Promise<void>;
   updatePayload(id: string, payload: Record<string, unknown>): Promise<void>;
@@ -115,9 +133,21 @@ export interface IPendingActionRepository {
 
   // --- Aplicação de ação pendente (checkout pago / dispensa de cobrança) ---
 
-  findApplicableByCheckoutId(checkoutId: string): Promise<ApplicablePendingAction | null>;
+  // account: checkoutId colide entre contas igual paymentId (C33, achado
+  // cursor[bot] PR #1137 round 10) — nunca deve ser lido sem esse filtro.
+  findApplicableByCheckoutId(
+    checkoutId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null>;
   findApplicableById(id: string): Promise<ApplicablePendingAction | null>;
-  findApplicableByPaymentId(paymentId: string): Promise<ApplicablePendingAction | null>;
+  // account: filtra pela conta PERSISTIDA no instante em que o paymentId
+  // nasceu (achado Codex, PR #1137, P1) — nunca deriva do master atual, que
+  // pode ter migrado de conta depois (E4).
+  findApplicableByPaymentId(paymentId: string, account: AsaasAccountId): Promise<ApplicablePendingAction | null>;
+  // masterId é estável (ao contrário da conta Asaas do master, que pode
+  // migrar — E4) — usado pelo preflight de confirm-payment para achar a
+  // action ANTES de decidir qual conta consultar no Asaas (C33).
+  findByPaymentIdAndMasterId(paymentId: string, masterId: string): Promise<PendingActionOwnershipLookup | null>;
   markFailed(params: MarkPendingActionFailedParams): Promise<void>;
   findProfileContact(profileId: string): Promise<PendingActionProfileContact | null>;
   linkProfileSupabaseIdentity(profileId: string, supabaseId: string): Promise<void>;

@@ -9,11 +9,12 @@ const findUniqueMock = mock(async () => ({
   currentPeriodEnd: new Date("2026-12-31"),
   usages: [{ creditsUsed: 100, overageCount: 0, overageCharged: 0 }],
 }))
-const grantFindUniqueMock = mock(async (): Promise<{ id: string } | null> => null)
+const grantFindFirstMock = mock(async (): Promise<{ id: string } | null> => null)
+const grantCreateMock = mock(async () => ({ id: "grant-1" }))
 const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
   const tx = {
     emailCreditPaymentGrant: {
-      create: mock(async () => ({ id: "grant-1" })),
+      create: grantCreateMock,
     },
     emailCreditSubscription: {
       findUnique: mock(async () => null),
@@ -40,7 +41,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       findUnique: findUniqueMock,
     },
     emailCreditPaymentGrant: {
-      findUnique: grantFindUniqueMock,
+      findFirst: grantFindFirstMock,
     },
     $executeRaw: executeRawMock,
     $transaction: transactionMock,
@@ -56,9 +57,10 @@ describe("EmailCreditService", () => {
     service = new EmailCreditService()
     executeRawMock.mockClear()
     findUniqueMock.mockClear()
-    grantFindUniqueMock.mockClear()
+    grantFindFirstMock.mockClear()
+    grantCreateMock.mockClear()
     transactionMock.mockClear()
-    grantFindUniqueMock.mockImplementation(async () => null)
+    grantFindFirstMock.mockImplementation(async () => null)
     findUniqueMock.mockImplementation(async () => ({
       status: "active",
       plan: EmailCreditPlan.starter,
@@ -132,7 +134,7 @@ describe("EmailCreditService", () => {
   })
 
   it("T02 — applyPaidPlan é idempotente por paymentId", async () => {
-    grantFindUniqueMock.mockImplementation(async () => ({ id: "grant-existing" }))
+    grantFindFirstMock.mockImplementation(async () => ({ id: "grant-existing" }))
     const result = await service.applyPaidPlan({
       teamId: "team-1",
       plan: EmailCreditPlan.starter,
@@ -141,6 +143,23 @@ describe("EmailCreditService", () => {
     expect(result.applied).toBe(false)
     expect(result.alreadyApplied).toBe(true)
     expect(transactionMock).not.toHaveBeenCalled()
+  })
+
+  it("achado Codex (PR #1137): idempotência filtra por (paymentId, account) — não só paymentId", async () => {
+    const result = await service.applyPaidPlan({
+      teamId: "team-2",
+      plan: EmailCreditPlan.starter,
+      paymentId: "pay_colidindo",
+      account: "legacy",
+    })
+
+    expect(result.applied).toBe(true)
+    expect(grantFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paymentId: "pay_colidindo", asaasAccount: "legacy" } })
+    )
+    expect(grantCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ asaasAccount: "legacy" }) })
+    )
   })
 
   it("precificação canônica: Upgrade 25k e Business 50k", () => {

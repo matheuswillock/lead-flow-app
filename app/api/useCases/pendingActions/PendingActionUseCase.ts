@@ -5,7 +5,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getEmailService } from "@/lib/services/EmailService";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
@@ -45,7 +45,9 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
   neighborhood: action.master.neighborhood,
   complement: action.master.complement,
   asaasCustomerId: action.master.asaasCustomerId,
+  asaasCustomerAccount: action.master.asaasCustomerAccount,
   asaasSubscriptionId: action.master.asaasSubscriptionId,
+  asaasSubscriptionAccount: action.master.asaasSubscriptionAccount,
   subscriptionStatus: action.master.subscriptionStatus,
   subscriptionNextDueDate: action.master.subscriptionNextDueDate,
   subscriptionCycle: action.master.subscriptionCycle,
@@ -55,8 +57,15 @@ const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfi
 });
 
 export class PendingActionUseCase {
-  async applyPendingActionByCheckout(checkoutId: string, paymentId?: string): Promise<Output> {
-    const action = await pendingActionRepository.findApplicableByCheckoutId(checkoutId);
+  // account: conta Asaas do evento (achado cursor[bot], PR #1137, round 10)
+  // — checkoutSessionId colide entre contas igual paymentId (C33); sem
+  // filtrar aqui, uma colisão aplicaria a action da conta ERRADA.
+  async applyPendingActionByCheckout(
+    checkoutId: string,
+    account: AsaasAccountId,
+    paymentId?: string
+  ): Promise<Output> {
+    const action = await pendingActionRepository.findApplicableByCheckoutId(checkoutId, account);
     if (!action) {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }
@@ -64,12 +73,23 @@ export class PendingActionUseCase {
     return this.applyResolvedPendingAction(action, paymentId);
   }
 
-  async applyPendingActionByPaymentId(paymentId: string): Promise<Output> {
-    let action = await pendingActionRepository.findApplicableByPaymentId(paymentId);
+  // account: conta Asaas de onde o evento se origina (E3 de
+  // [[40 — Checkout, Adesões e Add-ons — Backend]]) — propagada pelo chamador
+  // (webhook, rota de confirmação), nunca lida do transporte global.
+  async applyPendingActionByPaymentId(paymentId: string, account: AsaasAccountId): Promise<Output> {
+    // Achado Codex (PR #1137, P1): filtrado por conta na própria query — um
+    // paymentId colidindo entre as duas contas Asaas (C33) nunca chega a
+    // ser lido aqui. account é a conta PERSISTIDA no instante em que o
+    // paymentId nasceu (asaasAccount da linha), não o master atual (que
+    // pode ter migrado de conta depois, E4).
+    let action = await pendingActionRepository.findApplicableByPaymentId(paymentId, account);
 
     if (!action) {
       try {
-        const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "GET" });
+        const client = createAsaasClient(account);
+        const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
+          method: "GET",
+        });
         const externalReference = payment?.externalReference as string | undefined;
 
         if (externalReference?.startsWith("pending-action-")) {
@@ -77,8 +97,12 @@ export class PendingActionUseCase {
           action = await pendingActionRepository.findApplicableById(actionId);
 
           if (action && !action.paymentId) {
-            await pendingActionRepository.updatePaymentId(action.id, paymentId);
-            action = { ...action, paymentId };
+            // Achado Codex (PR #1137, P1): persiste a conta do EVENTO (onde
+            // acabamos de confirmar que este paymentId existe de fato) —
+            // não deriva de action.master.asaasCustomerAccount depois, que
+            // pode ter migrado (E4).
+            await pendingActionRepository.updatePaymentId(action.id, paymentId, account);
+            action = { ...action, paymentId, asaasAccount: account };
           }
         }
       } catch (error) {
@@ -136,10 +160,47 @@ export class PendingActionUseCase {
     }
 
     if (action.paymentId) {
+      // Achado Codex (PR #1137, P1): action.asaasAccount é a conta
+      // PERSISTIDA no instante em que a cobrança nasceu — nunca
+      // action.master.asaasCustomerAccount, que pode ter migrado desde
+      // então (E4, checkout de operador muda a conta do master). Deduzir
+      // pela conta atual do master arriscava, numa colisão C33, tratar o
+      // GET de um pay_ de OUTRA conta como se fosse este. Com a conta
+      // persistida não há mais "primeira tentativa, tenta a outra se
+      // errar" — só ficou a exceção legítima: 404 na conta certa (payment
+      // pode ter sido cancelado/expirado do lado do Asaas) trata como já
+      // cancelado (fail-open), não tenta adivinhar em outra conta.
+      const account: AsaasAccountId = action.asaasAccount;
+
+      let payment: { status?: string } | null = null;
+
       try {
-        const payment = await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, {
+        const client = createAsaasClient(account);
+        payment = await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
           method: "GET",
         });
+      } catch (error) {
+        const statusCode = (error as { statusCode?: number } | null)?.statusCode;
+        if (statusCode !== 404) {
+          console.error(
+            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge][GET][${account}] paymentId=${action.paymentId}:`,
+            error
+          );
+          return new Output(
+            false,
+            [],
+            ["Não foi possível verificar a cobrança Asaas aberta antes de dispensar"],
+            null
+          );
+        }
+        // 404 na conta correta: trata como já cancelada e segue a dispensa
+        // (fail-open) em vez de travar a ação para sempre.
+        console.error(
+          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas ${action.paymentId} não encontrada na conta ${account} — tratando como já cancelada`
+        );
+      }
+
+      if (payment) {
         const paymentStatus = String(payment?.status ?? "PENDING");
         const paidStatuses = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
         if (paidStatuses.has(paymentStatus)) {
@@ -155,22 +216,27 @@ export class PendingActionUseCase {
 
         const cancelableStatuses = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"]);
         if (cancelableStatuses.has(paymentStatus)) {
-          await asaasFetch(`${asaasApi.payments}/${action.paymentId}`, { method: "DELETE" });
-          console.info(
-            `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus}`
-          );
+          try {
+            const client = createAsaasClient(account);
+            await client.request(`${client.endpoints.payments}/${action.paymentId}`, {
+              method: "DELETE",
+            });
+            console.info(
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Cobrança Asaas cancelada paymentId=${action.paymentId} status=${paymentStatus} account=${account}`
+            );
+          } catch (error) {
+            console.error(
+              `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
+              error
+            );
+            return new Output(
+              false,
+              [],
+              ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
+              null
+            );
+          }
         }
-      } catch (error) {
-        console.error(
-          `[PendingActionUseCase][forceApplyPendingActionWithoutCharge] Falha ao cancelar cobrança Asaas ${action.paymentId}:`,
-          error
-        );
-        return new Output(
-          false,
-          [],
-          ["Não foi possível cancelar a cobrança Asaas aberta antes de dispensar"],
-          null
-        );
       }
 
       await pendingActionRepository.clearPaymentId(action.id);

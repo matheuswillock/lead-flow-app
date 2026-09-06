@@ -1001,6 +1001,7 @@ class PrismaProfileRepository implements IProfileRepository {
                 neighborhood: true,
                 complement: true,
                 asaasCustomerId: true,
+                asaasCustomerAccount: true,
             },
         });
     }
@@ -1115,13 +1116,6 @@ class PrismaProfileRepository implements IProfileRepository {
         subscriptionStatus: "active",
         subscriptionPlan: null,
       },
-    });
-  }
-
-  async incrementOperatorCount(profileId: string): Promise<void> {
-    await prisma.profile.update({
-      where: { id: profileId },
-      data: { operatorCount: { increment: 1 } },
     });
   }
 

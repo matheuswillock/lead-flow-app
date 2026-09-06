@@ -33,6 +33,21 @@ export type AsaasWebhookBody = {
   };
 };
 
+// Achado cursor[bot] no PR #1137 (P1): o gate anterior só escalava a
+// string genérica exata ("Erro ao processar pagamento do operador"), então
+// falhas posteriores ao incremento da assinatura (auth do Supabase, criação
+// de usuário) caíam num Output(false) com OUTRA mensagem e nunca eram
+// retentadas — cliente cobrado, operador nunca entregue, sem sinal. A lista
+// abaixo é o allowlist do que é *legitimamente* não-retryável (ocorre antes
+// de qualquer efeito colateral de cobrança): tudo que não bater aqui escala
+// para o outbox/retry por padrão (fail-safe, não fail-silent).
+const NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES = [
+  "Operador pendente não encontrado",
+  "Operador já foi criado",
+  "Pagamento não vinculado a assinatura",
+  "Manager não possui assinatura anterior",
+];
+
 export function resolveAsaasWebhookEventId(body: AsaasWebhookBody): string {
   const explicitId = typeof body.id === "string" ? body.id.trim() : "";
   if (explicitId) return explicitId;
@@ -145,14 +160,25 @@ export async function processAsaasWebhookEvent(
     if (checkoutSessionId) {
       try {
         const { prisma } = await import("@/app/api/infra/data/prisma");
+        // Achado cursor[bot] (PR #1137, round 10): checkoutSessionId
+        // colide entre contas (C33) igual paymentId — sem o filtro por
+        // account aqui, o gate podia marcar isOperatorPayment=true com a
+        // linha da OUTRA conta; processOperatorCheckoutPaid (que já filtra
+        // por account desde o round 7) então não achava nada,
+        // "Operador pendente não encontrado" era engolido como no-op
+        // conhecido (allowlist), e o fallback por externalReference nunca
+        // rodava porque isOperatorPayment já estava true — cliente pagou,
+        // não recebeu, sem retry.
         const pendingOperator = await prisma.pendingOperator.findFirst({
-          where: { paymentId: checkoutSessionId },
+          where: { paymentId: checkoutSessionId, asaasAccount: account },
         });
 
         isOperatorPayment = !!pendingOperator;
 
+        // Mesmo achado para PendingAction — filtra por account antes de
+        // suprimir o fallback por externalReference.
         const pendingAction = await prisma.pendingAction.findFirst({
-          where: { checkoutId: checkoutSessionId, status: "pending" },
+          where: { checkoutId: checkoutSessionId, status: "pending", asaasAccount: account },
         });
 
         isPendingActionPayment = !!pendingAction;
@@ -172,7 +198,8 @@ export async function processAsaasWebhookEvent(
         );
         const operatorResult = await checkoutAsaasUseCase.processOperatorCheckoutPaid(
           checkoutSessionId!,
-          paymentId
+          paymentId,
+          account
         );
 
         if (!operatorResult.isValid) {
@@ -182,10 +209,27 @@ export async function processAsaasWebhookEvent(
             paymentId,
             externalReference,
           });
+
+          // E4 (C22) + achado cursor[bot]: qualquer falha que não seja um
+          // no-op legítimo conhecido é o modo "cliente pagou e nada foi
+          // entregue" — não pode ficar só no log. Propagar aqui faz o evento
+          // inteiro cair no outbox/retry que já existe em nível de evento
+          // (AsaasWebhookEvent + fila + cron de retry), em vez de um
+          // Output(false) descartado silenciosamente.
+          const isKnownNoOp = operatorResult.errorMessages.some((message) =>
+            NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES.some((noOp) => message.includes(noOp))
+          );
+          if (!isKnownNoOp) {
+            throw new Error(
+              `[processOperatorCheckoutPaid] falha não idempotente para checkoutSessionId=${checkoutSessionId} ` +
+                `paymentId=${paymentId}: ${operatorResult.errorMessages.join("; ")}`
+            );
+          }
         }
       } catch (error) {
         rethrowIfPrerenderInterrupted(error);
         console.error("[AsaasWebhookRoute][process] operator checkout error", { eventId, error });
+        throw error;
       }
     }
 
@@ -196,6 +240,7 @@ export async function processAsaasWebhookEvent(
         );
         const actionResult = await pendingActionUseCase.applyPendingActionByCheckout(
           checkoutSessionId!,
+          account,
           paymentId
         );
 
@@ -221,7 +266,7 @@ export async function processAsaasWebhookEvent(
         const { pendingActionUseCase } = await import(
           "@/app/api/useCases/pendingActions/PendingActionUseCase"
         );
-        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
+        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId, account);
 
         if (!actionResult.isValid) {
           console.error("[AsaasWebhookRoute][process] pending action payment failed", {
@@ -275,6 +320,7 @@ export async function processAsaasWebhookEvent(
         const purchaseResult = await platformCheckoutUseCase.applyPaidPurchase({
           externalReference,
           asaasPaymentId: paymentId,
+          account,
         });
 
         if (!purchaseResult.isValid) {
@@ -306,6 +352,7 @@ export async function processAsaasWebhookEvent(
               externalReference,
               checkoutId: details.checkoutId,
               productSlug: details.productSlug,
+              account,
             });
             console.info("[AsaasWebhookRoute][process][EmailCredits]", {
               eventId,

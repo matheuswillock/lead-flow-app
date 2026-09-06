@@ -25,14 +25,20 @@ const asaasFetchMock = mock(async (_url: string, _init?: RequestInit) => ({
   cycle: "MONTHLY",
 }))
 
+const endpoints = {
+  subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
+  customers: "https://sandbox.asaas.com/api/v3/customers",
+  payments: "https://sandbox.asaas.com/api/v3/payments",
+  pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
+}
+
 mock.module("@/lib/asaas", () => ({
-  asaasApi: {
-    subscriptions: "https://sandbox.asaas.com/api/v3/subscriptions",
-    customers: "https://sandbox.asaas.com/api/v3/customers",
-    payments: "https://sandbox.asaas.com/api/v3/payments",
-    pixQrCode: (id: string) => `https://sandbox.asaas.com/api/v3/payments/${id}/pixQrCode`,
-  },
+  asaasApi: endpoints,
   asaasFetch: asaasFetchMock,
+  createAsaasClient: (_accountId: string) => ({
+    endpoints,
+    request: asaasFetchMock,
+  }),
 }))
 
 const { IncrementalBillingService } = await import("./IncrementalBillingService")
@@ -49,7 +55,9 @@ const baseMaster = {
   neighborhood: null,
   complement: null,
   asaasCustomerId: null,
+  asaasCustomerAccount: "primary" as const,
   asaasSubscriptionId: null,
+  asaasSubscriptionAccount: "primary" as const,
   subscriptionStatus: null,
   subscriptionNextDueDate: null,
   subscriptionCycle: null,
@@ -93,5 +101,37 @@ describe("IncrementalBillingService — criação de customer via gateway (E5)",
       asaasFetchMock.mock.calls as unknown as Array<[string, RequestInit?]>
     ).filter(([url]) => url.includes("/customers"))
     expect(customerPostCalls).toHaveLength(0)
+  })
+
+  it("achado cursor[bot] (PR #1137, P1, round 12): master com customer legacy válido não envia o cus_ antigo para createAsaasSubscription (primary-only) — resolve par novo via gateway", async () => {
+    const legacyMaster = {
+      ...baseMaster,
+      asaasCustomerId: "cus_legacy_1",
+      asaasCustomerAccount: "legacy" as const,
+    }
+    const service = new IncrementalBillingService()
+
+    await service.ensureOrSyncRecurringSubscription({
+      master: legacyMaster,
+      targetRecurringTotal: 100,
+      reason: "teste round 12",
+      defaultBillingType: "PIX",
+    })
+
+    // ensureCustomer valida o cus_ legacy (GET via createAsaasClient) —
+    // válido, mas não serve para uma criação que só existe na primary.
+    expect(createCustomerMock).toHaveBeenCalledTimes(1)
+    expect(createCustomerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: "profile-master-1" })
+    )
+    expect(updateAsaasCustomerIdMock).toHaveBeenCalledWith("profile-master-1", "cus_gateway")
+
+    const subscriptionPostBody = JSON.parse(
+      (asaasFetchMock.mock.calls.find(
+        ([url, init]) => url.includes("/subscriptions") && (init as RequestInit)?.method === "POST"
+      )?.[1] as RequestInit).body as string
+    )
+    expect(subscriptionPostBody.customer).toBe("cus_gateway")
+    expect(subscriptionPostBody.customer).not.toBe("cus_legacy_1")
   })
 })

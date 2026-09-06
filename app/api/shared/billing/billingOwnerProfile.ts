@@ -1,3 +1,5 @@
+import type { AsaasAccountId } from "@/lib/asaas";
+
 export interface BillingOwnerProfile {
   id: string;
   fullName: string | null;
@@ -10,7 +12,9 @@ export interface BillingOwnerProfile {
   neighborhood: string | null;
   complement: string | null;
   asaasCustomerId: string | null;
+  asaasCustomerAccount: AsaasAccountId;
   asaasSubscriptionId: string | null;
+  asaasSubscriptionAccount: AsaasAccountId;
   subscriptionStatus: string | null;
   subscriptionNextDueDate: Date | null;
   subscriptionCycle: string | null;

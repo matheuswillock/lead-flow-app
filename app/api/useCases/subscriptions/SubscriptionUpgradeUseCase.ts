@@ -647,7 +647,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       console.info('[checkOperatorPaymentStatus] Verificando status para paymentId:', paymentId);
 
-      const pendingOperator = await prisma.pendingOperator.findUnique({
+      // paymentId deixou de ser @unique isolado (PendingOperator.asaasAccount,
+      // PR #1137, round 7) — findFirst preserva o comportamento anterior
+      // (fora de escopo desta SPEC plumbar account por esta rota legada).
+      const pendingOperator = await prisma.pendingOperator.findFirst({
         where: { paymentId }
       });
 

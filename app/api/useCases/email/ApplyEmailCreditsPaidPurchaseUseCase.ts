@@ -8,6 +8,7 @@ import { parsePlatformPurchaseExternalReference } from "@/lib/billing/platform-p
 import { parseEmailCreditsPlanFromProductSlug } from "@/lib/email/email-credit-plans"
 import type { EmailCreditPlan, PlatformPurchase } from "@prisma/client"
 import { Output } from "@/lib/output"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export type ApplyEmailCreditsPaidPurchaseInput = {
   paymentId: string
@@ -17,6 +18,12 @@ export type ApplyEmailCreditsPaidPurchaseInput = {
   checkoutId?: string
   productSlug?: string | null
   timezone?: string | null
+  // E4 (C33 "5º ponto"): fallback por paymentId (findByAsaasPaymentId) MUST
+  // filtrar por conta — o checkoutId/externalReference já são seguros (IDs
+  // nossos, não do Asaas), mas o fallback lê um pay_ que pode colidir entre
+  // as duas contas. Default primary preserva o comportamento pré-E4 quando
+  // o chamador não propaga a conta do evento.
+  account?: AsaasAccountId
 }
 
 export type ApplyEmailCreditsPaidPurchaseResult = {
@@ -94,7 +101,7 @@ export class ApplyEmailCreditsPaidPurchaseUseCase {
     }
 
     if (!purchase) {
-      purchase = await this.purchaseRepository.findByAsaasPaymentId(paymentId)
+      purchase = await this.purchaseRepository.findByAsaasPaymentId(paymentId, input.account ?? "primary")
     }
 
     if (!purchase) {
@@ -105,6 +112,7 @@ export class ApplyEmailCreditsPaidPurchaseUseCase {
           paymentId,
           checkoutId: input.checkoutId,
           timezone: input.timezone,
+          account: input.account,
         })
         return {
           handled: true,
@@ -143,6 +151,7 @@ export class ApplyEmailCreditsPaidPurchaseUseCase {
       paymentId,
       checkoutId: purchase.id,
       timezone: input.timezone,
+      account: input.account,
     })
 
     console.info("[ApplyEmailCreditsPaidPurchaseUseCase]", {

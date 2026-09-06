@@ -130,6 +130,17 @@ export const envSchema = z.object({
   // lança em runtime com mensagem clara se forem pedidas sem estarem configuradas.
   ASAAS_LEGACY_API_KEY: optionalWhenBlank(asaasApiKeySchema).describe('Asaas API key da conta legacy (antiga) — opcional pré-cutover'),
   ASAAS_LEGACY_WEBHOOK_TOKEN: optionalWhenBlank(nonEmptyString).describe('Token de webhook da conta legacy — opcional pré-cutover'),
+
+  // Checkouts hospedados Asaas (/c/...) de créditos de e-mail — DA3/E1 de
+  // [[40 — Checkout, Adesões e Add-ons — Backend]]: ID pertence à conta onde
+  // foi criado, nunca literal de código. ValidarEmailCreditosUseCase não tem
+  // fallback quando ausente — troca de conta = troca de env, no mesmo deploy.
+  ASAAS_CREDIT_CHECKOUT_ID_25K: optionalWhenBlank(nonEmptyString).describe(
+    'ID do checkout hospedado Asaas (/c/...) do plano de créditos 25k'
+  ),
+  ASAAS_CREDIT_CHECKOUT_ID_50K: optionalWhenBlank(nonEmptyString).describe(
+    'ID do checkout hospedado Asaas (/c/...) do plano de créditos 50k'
+  ),
   // ASAAS_LEGACY_SANDBOX_API_KEY (par de ASAAS_SANDBOX_API_KEY) não entra
   // neste schema — a chave sandbox atual também não entra; ambas são lidas
   // direto de process.env só pela guarda E2E (e2e/support/asaas.ts), fora

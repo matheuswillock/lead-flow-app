@@ -37,8 +37,10 @@ export interface CheckoutDetailsResponse {
 export interface PaymentStatusResponse {
   paymentId: string;
   status: string;
-  amount: number;
-  dueDate: string;
+  // E6 (C32/DA4): null quando o Asaas está indisponível e a resposta
+  // degrada para o status persistido pelo webhook (sem esses dois campos).
+  amount: number | null;
+  dueDate: string | null;
   pendingActionStatus: "pending" | "applied" | "failed" | "canceled";
 }
 
