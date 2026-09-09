@@ -234,7 +234,7 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 30
     # Aqui a distinção é a mais crítica dos três: o upload do relatório roda
     # DEPOIS do teste. Um upload que falha deixa o job vermelho com o E2E tendo
@@ -244,6 +244,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # SONDAGEM TEMPORÁRIA — remover antes do commit final. Levanta o
+      # retrato do runner self-hosted (docker/sudo/RAM/disco) para desenhar
+      # a migração do E2E sem SSH direto na VPS.
+      - name: Sondagem do ambiente self-hosted
+        run: |
+          set -uo pipefail
+          echo "== identidade =="
+          hostname; whoami; pwd
+          echo "== binarios =="
+          which docker psql bun node
+          docker --version 2>&1 || echo "docker: N/A"
+          psql --version 2>&1 || echo "psql: N/A"
+          echo "== docker info (daemon acessivel sem sudo?) =="
+          docker info 2>&1 | head -30
+          echo "== sudo sem senha =="
+          sudo -n true && echo SUDO_OK || echo SEM_SUDO
+          echo "== cpu/mem =="
+          nproc
+          free -h
+          echo "== disco =="
+          df -h /
+          echo "== containers docker existentes =="
+          docker ps -a 2>&1 || true
+          echo "== portas 55322 em uso =="
+          (ss -ltnp 2>&1 || netstat -ltnp 2>&1) | grep 55322 || echo "porta livre"
+          echo "== cache playwright existente =="
+          ls -la ~/.cache/ms-playwright 2>&1 || echo "sem cache"
+          echo "== bibliotecas de sistema comuns do playwright (chromium deps) =="
+          for lib in libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 libgtk-3-0 libgbm1 libasound2; do
+            dpkg -s "$lib" >/dev/null 2>&1 && echo "$lib: OK" || echo "$lib: FALTANDO"
+          done
 
       - name: Setup Node
         uses: actions/setup-node@v4
