@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
@@ -823,86 +823,6 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     }
   }
 
-  /**
-   * Cria assinatura recorrente no Asaas
-   * Substituindo pagamento único por assinatura mensal
-   */
-  private async createAsaasSubscription(data: any): Promise<any> {
-    try {
-      console.info('[Asaas] Criando assinatura com dados:', {
-        customer: data.customer,
-        billingType: data.billingType,
-        value: data.value,
-        cycle: data.cycle,
-        nextDueDate: data.nextDueDate,
-        hasCreditCard: !!data.creditCard,
-        hasCreditCardHolderInfo: !!data.creditCardHolderInfo,
-      });
-
-      // Conforme doc Asaas: POST /v3/subscriptions
-      const subscription = await asaasFetch(asaasApi.subscriptions, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-
-      console.info('[Asaas] Assinatura criada com sucesso:', { 
-        id: subscription.id, 
-        status: subscription.status,
-        nextDueDate: subscription.nextDueDate,
-        cycle: subscription.cycle,
-        billingType: subscription.billingType
-      });
-
-      // Para cartão de crédito: cartão é validado na criação
-      // Mas cobrança só ocorrerá no nextDueDate
-      if (data.billingType === 'CREDIT_CARD') {
-        console.info('[Asaas] Assinatura com cartão criada e validada:', {
-          status: subscription.status,
-          nextDueDate: subscription.nextDueDate,
-          creditCardBrand: subscription.creditCard?.creditCardBrand,
-          creditCardNumber: subscription.creditCard?.creditCardNumber
-        });
-
-        return {
-          success: true,
-          subscriptionId: subscription.id,
-          nextDueDate: subscription.nextDueDate,
-          status: subscription.status,
-          creditCardToken: subscription.creditCard?.creditCardToken, // Para futuras transações
-        };
-      }
-
-      // Para PIX/BOLETO: assinatura criada, cobranças serão geradas automaticamente
-      return {
-        success: true,
-        subscriptionId: subscription.id,
-        nextDueDate: subscription.nextDueDate,
-        status: subscription.status,
-      };
-    } catch (error: any) {
-      console.error('[Asaas] Erro ao criar assinatura:', {
-        message: error.message,
-        response: error.response,
-        status: error.status
-      });
-      
-      // Extrair mensagem de erro mais específica se disponível
-      let errorMessage = 'Erro ao comunicar com gateway de pagamento';
-      
-      if (error.response?.errors && Array.isArray(error.response.errors)) {
-        errorMessage = error.response.errors
-          .map((e: any) => e.description || e.message)
-          .join(', ');
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      return { 
-        success: false, 
-        error: errorMessage
-      };
-    }
-  }
 
   /**
    * DA2 (achado P1 Cursor round 2 no PR #1138): o checkout de operador cria
