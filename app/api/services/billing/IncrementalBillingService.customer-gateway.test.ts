@@ -35,6 +35,9 @@ const endpoints = {
 mock.module("@/lib/asaas", () => ({
   asaasApi: endpoints,
   asaasFetch: asaasFetchMock,
+  // mock.module parcial contamina outros arquivos no mesmo processo (bun run
+  // check:mock-module) — createAsaasClient precisa existir mesmo que este
+  // arquivo não o chame diretamente.
   createAsaasClient: (_accountId: string) => ({
     endpoints,
     request: asaasFetchMock,
