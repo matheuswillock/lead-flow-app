@@ -30,6 +30,34 @@ do $$
 declare
   cutover_at constant timestamptz := '2026-08-31 23:25:11+00';
 begin
+  -- Achado Codex de rodada posterior (PR #1137, P1): um checkout legacy que
+  -- LIQUIDA depois do cutover (janela dual — PENDING/OVERDUE legadas seguem
+  -- liquidando na conta antiga) gera grant com createdAt > cutover_at, e o
+  -- corte por createdAt sozinho deixaria essa linha rotulada 'primary'.
+  -- Preferência 1: evidência real de webhook — o grant nasce de uma
+  -- PlatformPurchase (applyPaidPlan via ApplyEmailCreditsPaidPurchaseUseCase);
+  -- a purchase tem external_reference único ('platform-purchase-{id}') que o
+  -- Asaas devolve no payload do evento. asaas_webhook_events.account é a
+  -- conta cujo token validou o evento — mesmo padrão da migration
+  -- 20260902125434 (pending actions), que já rejeitou o join por paymentId
+  -- cru por reabrir o C33.
+  update "public"."corretor_studio_email_credit_payment_grants" g
+  set "asaasAccount" = 'legacy'
+  from "public"."corretor_studio_platform_purchases" pp
+  where g."asaasAccount" = 'primary'
+    and pp."asaas_payment_id" = g."paymentId"
+    and exists (
+      select 1
+      from "public"."asaas_webhook_events" we
+      where we.payload -> 'payment' ->> 'externalReference' = pp."external_reference"
+        and we.account = 'legacy'
+    );
+
+  -- Preferência 2 (fallback, sem evento casado): o grant só é criado com o
+  -- pagamento já confirmado (applyPaidPlan) — createdAt É o instante do
+  -- vínculo com a conta. Cobre o estoque pré-cutover; o residual (grant
+  -- pós-cutover de pagamento legacy SEM evento de webhook persistido) não
+  -- tem fonte de evidência melhor disponível no schema.
   update "public"."corretor_studio_email_credit_payment_grants"
   set "asaasAccount" = 'legacy'
   where "asaasAccount" = 'primary'
