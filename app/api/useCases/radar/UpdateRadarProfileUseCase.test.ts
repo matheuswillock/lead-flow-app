@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { UserRole } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import {
+  radarRepositoryMock,
+  registerRadarRepositoryModuleMock,
+} from "@/test/support/radar-repository-module-mock"
 
 const updateProfileGenderWithCtx = mock(async () => ({ updated: true }))
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    updateProfileGenderWithCtx,
-  },
-}))
+await registerRadarRepositoryModuleMock()
+Object.assign(radarRepositoryMock, {
+  updateProfileGenderWithCtx,
+})
 
 const { updateRadarProfileUseCase } = await import("./UpdateRadarProfileUseCase")
 

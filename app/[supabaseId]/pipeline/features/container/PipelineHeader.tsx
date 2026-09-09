@@ -125,9 +125,9 @@ export default function PipelineHeader({
             onChange={(value) => setOriginFilter(parseLeadOriginFilter(value))}
           />
 
-          <Button 
+          <Button
             onClick={openNewLeadDialog}
-            className="ml-2 cursor-pointer"
+            className="ml-2 cursor-pointer max-lg:h-11"
           >
             <Plus className="mr-2 size-4" />
             Adicionar novo lead

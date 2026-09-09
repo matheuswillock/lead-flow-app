@@ -17,6 +17,7 @@ const findProfileByIdentityMock = mock(
     null
 );
 const mergeProfilesMock = mock(async () => undefined);
+const reconcileLeadIdentityAfterMergeMock = mock(async () => undefined);
 
 const { MergeLeadsUseCase } = await import("./MergeLeadsUseCase");
 
@@ -74,6 +75,7 @@ function makeUseCase() {
     {
       findProfileByIdentity: findProfileByIdentityMock,
       mergeProfiles: mergeProfilesMock,
+      reconcileLeadIdentityAfterMerge: reconcileLeadIdentityAfterMergeMock,
     }
   );
 }
@@ -85,6 +87,7 @@ describe("MergeLeadsUseCase", () => {
     mergeLeadsInTransactionMock.mockReset();
     findProfileByIdentityMock.mockReset();
     mergeProfilesMock.mockReset();
+    reconcileLeadIdentityAfterMergeMock.mockReset();
     getMergeRelationSnapshotMock.mockResolvedValue({
       targetPortfolio: false,
       sourcePortfolio: false,
@@ -171,6 +174,63 @@ describe("MergeLeadsUseCase", () => {
 
     expect(output.isValid).toBe(true);
     expect(mergeProfilesMock).toHaveBeenCalled();
+  });
+
+  it("E3c: reaponta a identidade lead_id do Radar após o merge do CRM", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(reconcileLeadIdentityAfterMergeMock).toHaveBeenCalledWith(
+      "team-1",
+      "source-1",
+      "target-1"
+    );
+  });
+
+  it("E3c: reconciliação roda mesmo quando mergeProfiles lança (try/catch independente)", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+
+    findProfileByIdentityMock
+      .mockResolvedValueOnce({ profileId: "radar-target" })
+      .mockResolvedValueOnce({ profileId: "radar-source" });
+    mergeProfilesMock.mockRejectedValueOnce(new Error("radar down"));
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(mergeProfilesMock).toHaveBeenCalled();
+    expect(reconcileLeadIdentityAfterMergeMock).toHaveBeenCalledWith(
+      "team-1",
+      "source-1",
+      "target-1"
+    );
+  });
+
+  it("E3c: falha ao reconciliar a identidade Radar não invalida a mesclagem", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({ ...baseLead, id: "target-1" })
+      .mockResolvedValueOnce({ ...baseLead, id: "source-1", leadCode: "LF-SOURCE" });
+    reconcileLeadIdentityAfterMergeMock.mockRejectedValueOnce(new Error("radar down"));
+
+    const output = await makeUseCase().execute(makeAccess(), {
+      targetLeadId: "target-1",
+      sourceLeadId: "source-1",
+    });
+
+    expect(output.isValid).toBe(true);
+    expect(reconcileLeadIdentityAfterMergeMock).toHaveBeenCalled();
   });
 
   it("aborta quando ambos possuem carteira", async () => {

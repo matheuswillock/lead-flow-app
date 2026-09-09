@@ -19,7 +19,7 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)} className="cursor-pointer">
+      <Button variant="outline" onClick={() => setOpen(true)} className="cursor-pointer max-lg:h-11">
         <Upload className="mr-2 size-4" />
         Importar leads
       </Button>
