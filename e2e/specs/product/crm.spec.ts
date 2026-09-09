@@ -123,6 +123,15 @@ async function invalidateTeamLeadsCache(
  * Garante o lead seedado visível no board: recarrega enquanto a listagem
  * cacheada ainda não o traz e filtra por nome para isolar o lead do que os
  * outros workers da CI criam no mesmo time (orderBy createdAt desc, página 1).
+ *
+ * Janela de 120s, não 60s — medido nos traces da CI (run 34385997396): mesmo
+ * com o PUT de invalidação e o poll da API drenados, os fetches da PÁGINA
+ * receberam por 50s+ um snapshot da lista ANTERIOR ao seed, que só revalida
+ * ao cruzar a fronteira de `revalidate: 60` do `use cache`
+ * (getCachedTeamLeads). Com 60s de toPass, a espera estourava um fetch antes
+ * da fronteira (último stale aos 62s de idade da entrada); 120s garante
+ * atravessá-la para QUALQUER entrada presa, por mais nova que fosse no
+ * momento do seed.
  */
 async function waitForSeededLeadOnBoard(page: Page, name: string) {
   const nameFilter = page.getByPlaceholder("Filtrar por nome...");
@@ -133,7 +142,7 @@ async function waitForSeededLeadOnBoard(page: Page, name: string) {
     }
     await nameFilter.fill(name);
     await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
-  }).toPass({ timeout: 60_000 });
+  }).toPass({ timeout: 120_000 });
   return seededLeadCell;
 }
 
@@ -218,7 +227,9 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test("responsividade mobile-first do CRM", async ({ page }) => {
-    test.setTimeout(150_000);
+    // 210s: a espera do board pode consumir até 120s (fronteira do
+    // revalidate:60 — ver waitForSeededLeadOnBoard) + responsive checks.
+    test.setTimeout(210_000);
     // Board VAZIO não renderiza os alvos de toque das linhas (drag handle,
     // menu de ações, link do WhatsApp) — foi assim que os botões de 32×32
     // passaram batidos no assertTouchTargets. O lead seedado (com telefone)
@@ -284,7 +295,9 @@ test.describe("app/[supabaseId]/crm", () => {
   });
 
   test("dialog do lead mantém timeline, chips e composer visíveis em 1280×800", async ({ page }) => {
-    test.setTimeout(150_000);
+    // 210s: a espera do board pode consumir até 120s (fronteira do
+    // revalidate:60 — ver waitForSeededLeadOnBoard) + dialog + asserts.
+    test.setTimeout(210_000);
     const { teamId } = await seedCrmLead({
       id: LAYOUT_LEAD_ID,
       leadCode: LAYOUT_LEAD_CODE,
