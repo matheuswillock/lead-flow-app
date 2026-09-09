@@ -4,6 +4,22 @@ import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackoffice
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit"
+
+async function rejectIfPricingRateLimited(
+  backofficeUserId: string | null,
+  profileId: string
+): Promise<NextResponse | null> {
+  const result = await consumeBillingRateLimit(
+    `pricing:${backofficeUserId ?? profileId}`,
+    BILLING_RATE_LIMIT_DEFAULTS.backofficePricing
+  )
+  if (result.allowed) return null
+  return NextResponse.json(
+    new Output(false, [], ["Muitas tentativas. Tente novamente em instantes."], null),
+    { status: 429, headers: { "Retry-After": String(result.retryAfterSeconds) } }
+  )
+}
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -13,6 +29,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     const denied = requireManagerAccess(result.access)
     if (denied) return denied
+
+    const limited = await rejectIfPricingRateLimited(result.access.backofficeUserId, result.access.profileId)
+    if (limited) return limited
 
     const { id } = await params
     const body = await request.json()
@@ -36,6 +55,9 @@ export async function DELETE(
     }
     const denied = requireManagerAccess(result.access)
     if (denied) return denied
+
+    const limited = await rejectIfPricingRateLimited(result.access.backofficeUserId, result.access.profileId)
+    if (limited) return limited
 
     const { id } = await params
     const output = await backofficeProductUseCase.delete(id)

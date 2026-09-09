@@ -3501,6 +3501,15 @@ completed completed
     }
   
 
+  "billing_rate_limit_windows" {
+    String key "🗝️"
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "whatsapp_auto_response_rules" {
     String id "🗝️"
     WhatsAppAutoResponseRuleType type 

@@ -53,7 +53,7 @@ export async function resolvePrice(input: ResolvePriceInput): Promise<number | n
   return null;
 }
 
-function toBillingCycle(cycle: string): BackofficeAdhesionBillingCycle | null {
+export function toBillingCycle(cycle: string): BackofficeAdhesionBillingCycle | null {
   const c = cycle.toUpperCase();
   if (c === "MONTHLY" || c === "MONTH") return "monthly";
   if (c === "QUARTERLY" || c === "QUARTER") return "quarterly";

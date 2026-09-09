@@ -3,16 +3,92 @@ import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { subscriptionCreditRepository } from "@/app/api/infra/data/repositories/billing/SubscriptionCreditRepository"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
+import { toBillingCycle } from "@/lib/billing/resolvePrice"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
   MasterPlatformUserRecord,
   MasterPlatformUserDetailsRecord,
+  MasterPlatformUserPlanSubscriptionRecord,
   MasterUserForDeletionRecord,
   PlatformUsersFilters,
   RepositoryPaginatedResult,
   RepositoryPaginationParams,
 } from "./IBackofficePlatformUsersRepository"
+
+const PLAN_SUBSCRIPTION_SELECT = {
+  subscriptionCycle: true,
+  product: {
+    select: {
+      name: true,
+      priceMonthly: true,
+      priceQuarterly: true,
+      priceQuadrimester: true,
+      priceSemiannual: true,
+      priceAnnual: true,
+    },
+  },
+  adhesion: {
+    select: {
+      cycle: true,
+      totalAmount: true,
+      negotiatedTotalAmount: true,
+    },
+  },
+} satisfies Prisma.ProfileSubscriptionSelect
+
+type PlanSubscriptionQueryResult = Prisma.ProfileSubscriptionGetPayload<{
+  select: typeof PLAN_SUBSCRIPTION_SELECT
+}>
+
+function decimalToNumber(value: { toString(): string } | null | undefined): number | null {
+  if (value === null || value === undefined) return null
+  return Number(value.toString())
+}
+
+function getProductListAmountForCycle(
+  product: PlanSubscriptionQueryResult["product"],
+  cycle: string | null
+): number | null {
+  if (!product || !cycle) return null
+  switch (cycle) {
+    case "monthly":
+      return decimalToNumber(product.priceMonthly)
+    case "quarterly":
+      return decimalToNumber(product.priceQuarterly)
+    case "quadrimester":
+      return decimalToNumber(product.priceQuadrimester)
+    case "semiannual":
+      return decimalToNumber(product.priceSemiannual)
+    case "annual":
+      return decimalToNumber(product.priceAnnual)
+    default:
+      return null
+  }
+}
+
+/**
+ * E5 (§7.7): dado real do plano — nunca preço hardcoded por enum. Ciclo
+ * preferencial vem da adesão (fonte da venda); `subscriptionCycle` legado
+ * só cobre o caso sem adesão vinculada.
+ */
+export function mapPlanSubscription(
+  subscription: PlanSubscriptionQueryResult | null
+): MasterPlatformUserPlanSubscriptionRecord | null {
+  if (!subscription) return null
+
+  const cycle =
+    subscription.adhesion?.cycle ?? toBillingCycle(subscription.subscriptionCycle ?? "") ?? null
+  const chargedAmount = subscription.adhesion
+    ? decimalToNumber(subscription.adhesion.negotiatedTotalAmount ?? subscription.adhesion.totalAmount)
+    : null
+  const productName = subscription.product?.name ?? null
+  const listAmount = getProductListAmountForCycle(subscription.product, cycle)
+
+  if (!productName && chargedAmount === null) return null
+
+  return { productName, cycle, chargedAmount, listAmount }
+}
 
 function mapMasterUserType(
   assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null
@@ -162,6 +238,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           hasUnlimitedUsers: true,
           multiskillEnabled: true,
           subscriptionPlan: true,
+          subscription: { select: PLAN_SUBSCRIPTION_SELECT },
           operatorCount: true,
           googleConnection: {
             select: {
@@ -238,6 +315,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasUnlimitedUsers: master.hasUnlimitedUsers,
       multiskillEnabled: master.multiskillEnabled,
       subscriptionPlan: master.subscriptionPlan,
+      planSubscription: mapPlanSubscription(master.subscription),
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: membersByMaster.get(master.id)?.size ?? 0,
@@ -293,6 +371,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         subscriptionPlan: true,
         subscriptionStatus: true,
         subscriptionId: true,
+        subscription: { select: PLAN_SUBSCRIPTION_SELECT },
         operatorCount: true,
         googleConnection: {
           select: {
@@ -461,6 +540,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       subscriptionPlan: master.subscriptionPlan,
       subscriptionStatus: master.subscriptionStatus,
       subscriptionId: master.subscriptionId,
+      planSubscription: mapPlanSubscription(master.subscription),
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
@@ -523,6 +603,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         neighborhood: true,
         complement: true,
         asaasCustomerId: true,
+        asaasCustomerAccount: true,
         asaasSubscriptionId: true,
         subscriptionStatus: true,
         subscriptionNextDueDate: true,
