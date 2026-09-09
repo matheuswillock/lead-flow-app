@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Wrapper para docker compose da stack VPS — exporta .env.n8n para interpolação
- * de N8N_POSTGRES_PASSWORD no compose.
+ * Wrapper para docker compose da stack VPS.
  * Uso: bun scripts/vps-compose.ts up -d
  */
 
@@ -10,7 +9,6 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const ROOT = resolve(import.meta.dir, "..");
-const N8N_ENV = resolve(ROOT, ".env.n8n");
 const OPENWA_ENV = resolve(ROOT, ".env.openwa");
 const COMPOSE_FILE = resolve(ROOT, "docker-compose.vps.yml");
 
@@ -40,26 +38,12 @@ function main(): void {
     console.error(`Arquivo ausente: ${OPENWA_ENV}`);
     process.exit(1);
   }
-  if (!existsSync(N8N_ENV)) {
-    console.error(`Arquivo ausente: ${N8N_ENV}`);
-    process.exit(1);
-  }
 
-  loadEnvFile(N8N_ENV);
   loadEnvFile(OPENWA_ENV);
 
   const result = spawnSync(
     "docker",
-    [
-      "compose",
-      "-f",
-      COMPOSE_FILE,
-      "--env-file",
-      N8N_ENV,
-      "--env-file",
-      OPENWA_ENV,
-      ...args,
-    ],
+    ["compose", "-f", COMPOSE_FILE, "--env-file", OPENWA_ENV, ...args],
     { stdio: "inherit", env: process.env, shell: false },
   );
 

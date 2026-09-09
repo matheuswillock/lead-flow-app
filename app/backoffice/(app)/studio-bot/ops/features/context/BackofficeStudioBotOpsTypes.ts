@@ -1,3 +1,8 @@
+import type { HostAgentService } from "@/lib/studio-bot/host-services"
+
+/** Alias local — a lista canônica vive em `lib/studio-bot/host-services.ts`. */
+export type HostService = HostAgentService
+
 export type MaskedEnvField = {
   key: string
   isSet: boolean
@@ -33,31 +38,27 @@ export type BackofficeBotHostJob = {
   updatedAt: string
 }
 
+export type HostServiceState = {
+  service: HostService
+  container: string | null
+  image: string | null
+  status: string | null
+  ok: boolean
+}
+
 export type HostHealth = {
   ok: boolean
   containers?: Array<{ name: string; status: string; image?: string }>
-  workflows?: Array<{ id: string; name: string; active: boolean | null }>
   hostVersion?: string | null
-  bethaniaProductionCheck?: {
+  vpsStackCheck?: {
     ok: boolean
-    env: {
-      n8n: Array<{ key: string; configured: boolean }>
-      evolution: Array<{ key: string; configured: boolean }>
-    }
-    workflows: Array<{
-      name: string
-      expected: "active" | "inactive"
-      actual: boolean | "missing" | null
-      ok: boolean
-    }>
-    containers: { n8nImage: string | null; imagePinned: boolean }
-    productionEvidenceRequired: string[]
+    services: HostServiceState[]
   }
   error?: string
 }
 
 export type HostLogsResult = {
-  service: "n8n" | "api"
+  service: HostService
   lines: string[]
   fetchedAt: string
 }

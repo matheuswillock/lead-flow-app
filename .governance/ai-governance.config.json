@@ -10,7 +10,9 @@
       "canonical `features/` layout",
       "window.alert",
       "E2E Tests",
-      "governance:check-e2e-pages"
+      "governance:check-e2e-pages",
+      "governance:check-responsive",
+      "mobile-first"
     ]
   },
   "warnings": {
@@ -415,6 +417,19 @@
       "app/recursos/page.tsx",
       "app/set-password/page.tsx",
       "app/terms/page.tsx"
+    ],
+    "responsiveSpecAllowlist": [
+      "e2e/specs/backoffice/campanhas-analytics.spec.ts",
+      "e2e/specs/backoffice/clients/adhesions.spec.ts",
+      "e2e/specs/backoffice/clients/member-team-permissions.spec.ts",
+      "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "e2e/specs/backoffice/pricing.spec.ts",
+      "e2e/specs/product/email-campanhas.spec.ts",
+      "e2e/specs/product/email-configuracoes.spec.ts",
+      "e2e/specs/product/radar.spec.ts",
+      "e2e/specs/public/adquirir/creditos.spec.ts",
+      "e2e/specs/public/home.spec.ts",
+      "e2e/specs/public/public-form.spec.ts"
     ]
   },
   "e2ePageCoverage": {

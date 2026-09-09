@@ -93,6 +93,19 @@ runs:
       shell: bash
       run: bun run governance:check-e2e-pages
 
+    - name: Responsive Spec Coverage
+      id: responsive-specs-check
+      if: inputs.strict-governance != 'true'
+      continue-on-error: true
+      shell: bash
+      run: bun run governance:check-responsive
+
+    - name: Responsive Spec Coverage
+      id: responsive-specs-check-strict
+      if: inputs.strict-governance == 'true'
+      shell: bash
+      run: bun run governance:check-responsive
+
     - name: Governance Allowlist Warnings
       if: inputs.strict-governance != 'true'
       continue-on-error: true
