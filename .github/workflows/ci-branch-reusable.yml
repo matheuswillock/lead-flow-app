@@ -266,7 +266,8 @@ jobs:
           docker --version 2>&1 || echo "docker --version: falhou"
           psql --version 2>&1 || echo "psql --version: falhou"
           echo "== docker info (daemon acessivel sem sudo?) =="
-          docker info > /tmp/docker-info.txt 2>&1; head -30 /tmp/docker-info.txt || true
+          docker info > /tmp/docker-info.txt 2>&1 || true
+          head -30 /tmp/docker-info.txt || true
           echo "== sudo sem senha =="
           if sudo -n true 2>/dev/null; then echo SUDO_OK; else echo SEM_SUDO; fi
           echo "== cpu/mem =="
