@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 
 const resolveProfileForDocument = mock(
   async (_input: {
@@ -18,19 +19,24 @@ const deleteSourceLinkById = mock(async () => undefined)
 const removeObsoleteContractIdentity = mock(async () => ({ removed: 0 }))
 const deleteOrphanRadarProfileIfEmpty = mock(async () => ({ deleted: false }))
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    resolveProfileForDocument,
-    upsertIdentity,
-    upsertSourceLink,
-    appendEventIfNew,
-    findFinalizedForRadarSync,
-    findSourceLinkBySource,
-    deleteSourceLinkById,
-    removeObsoleteContractIdentity,
-    deleteOrphanRadarProfileIfEmpty,
-  },
-}))
+// Repositório fake entra por injeção de dependência (construtor do
+// RadarService e do UseCase), não por `mock.module` do módulo RadarRepository:
+// os singletons `radarService`/`syncFinalizedToRadarUseCase` podem já ter sido
+// materializados por outro arquivo do processo com o repositório REAL — mock
+// de módulo registrado depois não alcança dependência capturada em construtor.
+registerPrismaModuleMock()
+
+const repositoryFake = {
+  resolveProfileForDocument,
+  upsertIdentity,
+  upsertSourceLink,
+  appendEventIfNew,
+  findFinalizedForRadarSync,
+  findSourceLinkBySource,
+  deleteSourceLinkById,
+  removeObsoleteContractIdentity,
+  deleteOrphanRadarProfileIfEmpty,
+}
 
 mock.module("@/app/api/infra/data/repositories/whatsapp/WhatsAppRepository", () => ({
   whatsAppRepository: {},
@@ -40,10 +46,15 @@ mock.module("@/lib/radar/team-has-radar-feature", () => ({
   teamHasRadarFeature: mock(async () => true),
 }))
 
-const { radarService } = await import("@/app/api/services/radar/RadarService")
-const { syncFinalizedToRadarUseCase } = await import(
+const { RadarService } = await import("@/app/api/services/radar/RadarService")
+const { SyncFinalizedToRadarUseCase } = await import(
   "@/app/api/useCases/radar/SyncFinalizedToRadarUseCase"
 )
+
+const radarService = new RadarService(
+  repositoryFake as unknown as ConstructorParameters<typeof RadarService>[0]
+)
+const syncFinalizedToRadarUseCase = new SyncFinalizedToRadarUseCase(radarService)
 
 const scope = {
   teamId: "team-1",
