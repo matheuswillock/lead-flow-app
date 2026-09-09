@@ -1,7 +1,7 @@
 import type { SubscriptionPlan } from "@prisma/client"
 import { createSupabaseAdmin as createGuardedSupabaseAdmin } from "@/lib/supabase/server"
 import { Output } from "@/lib/output"
-import { asaasApi, asaasFetch } from "@/lib/asaas"
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
 import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
@@ -16,7 +16,10 @@ import {
   parseDateKeyToUtc,
   resolveTimezone,
 } from "@/lib/dates"
-import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
+import {
+  IBackofficePlatformUsersRepository,
+  type MasterPlatformUserPlanSubscriptionRecord,
+} from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
@@ -25,6 +28,7 @@ import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncremental
 import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
+import type { BackofficeAdhesionInvoiceSource } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 import {
   buildExternalInvoiceRowsFromAdhesion,
   parseAdhesionExternalInvoiceId,
@@ -118,10 +122,21 @@ function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): 
   `
 }
 
-interface PlanInfo {
+export interface PlanInfo {
   label: string
+  /** Valor cobrado hoje (o que o cliente paga) — nunca preço hardcoded por enum (E5/§7.7). */
   amount: number | null
+  /** Valor de tabela do produto para o mesmo ciclo, quando disponível — divergência com `amount` é informação, não erro a esconder. */
+  listAmount: number | null
   kind: "lifetime" | "monthly" | "trial" | "none"
+}
+
+const BILLING_CYCLE_LABEL_PT: Record<string, string> = {
+  monthly: "Mensal",
+  quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
+  semiannual: "Semestral",
+  annual: "Anual",
 }
 
 interface AsaasPaymentItem {
@@ -150,6 +165,8 @@ interface AsaasPaymentItem {
   pixTransaction?: {
     transactionReceiptUrl?: string
   }
+  /** Anotado por nós (não vem do Asaas) — conta de origem no fan-out dual (E3/C19). */
+  account?: AsaasAccountId
 }
 
 type UnifiedInvoiceRow = {
@@ -172,6 +189,8 @@ type UnifiedInvoiceRow = {
   checkoutUrl: string | null
   pendingActionId: string | null
   sortDate: number
+  /** Conta de origem (E3/C19) — só preenchido para `source: "asaas"`. */
+  account: AsaasAccountId | null
 }
 
 function readPayloadCharge(payload: Record<string, unknown>): number {
@@ -270,10 +289,12 @@ const OVERDUE_STATUSES = new Set(["OVERDUE"])
 const CANCELABLE_ASAAS_STATUSES = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", "OVERDUE"])
 
 async function cancelOpenAsaasPayment(
-  paymentId: string
+  paymentId: string,
+  account: AsaasAccountId = "primary"
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const payment = (await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+    const client = createAsaasClient(account)
+    const payment = (await client.request(`${client.endpoints.payments}/${paymentId}`, {
       method: "GET",
     })) as AsaasPaymentItem
 
@@ -294,7 +315,7 @@ async function cancelOpenAsaasPayment(
     }
 
     if (CANCELABLE_ASAAS_STATUSES.has(paymentStatus)) {
-      await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "DELETE" })
+      await client.request(`${client.endpoints.payments}/${paymentId}`, { method: "DELETE" })
     }
 
     return { ok: true }
@@ -308,6 +329,151 @@ async function cancelOpenAsaasPayment(
       error: "Não foi possível cancelar a cobrança no Asaas",
     }
   }
+}
+
+type AsaasClientLike = {
+  endpoints: { payments: string }
+  request(endpoint: string, options?: RequestInit): Promise<any>
+}
+
+/**
+ * E3 (C19, DA4): descobre as contas Asaas conhecidas de um master —
+ * `Profile.asaasCustomerId`/`asaasCustomerAccount` (a atual, sobrescrita no
+ * cutover) + o `asaasCustomerId`/`asaasAccount` de cada adesão histórica
+ * (preservado, nunca sobrescrito). Sem ledger de migração dedicado (SPEC 30
+ * ainda não rodou), esta é a fonte real disponível hoje para o fan-out.
+ * Primary sempre primeiro (ordem de tentativa em GET/PUT/DELETE).
+ */
+export function resolveKnownAsaasAccounts(
+  profile: { asaasCustomerId: string | null; asaasCustomerAccount: AsaasAccountId },
+  adhesions: BackofficeAdhesionInvoiceSource[]
+): Array<{ account: AsaasAccountId; customerId: string }> {
+  const seen = new Set<string>()
+  const result: Array<{ account: AsaasAccountId; customerId: string }> = []
+
+  function add(account: AsaasAccountId, customerId: string | null) {
+    if (!customerId) return
+    const key = `${account}:${customerId}`
+    if (seen.has(key)) return
+    seen.add(key)
+    result.push({ account, customerId })
+  }
+
+  add(profile.asaasCustomerAccount, profile.asaasCustomerId)
+  for (const adhesion of adhesions) {
+    add(adhesion.asaasAccount, adhesion.asaasCustomerId)
+  }
+
+  return result
+}
+
+async function fetchPaymentsForSingleAccount(
+  entry: { account: AsaasAccountId; customerId: string },
+  clientFactory: (account: AsaasAccountId) => AsaasClientLike
+): Promise<AsaasPaymentItem[]> {
+  const client = clientFactory(entry.account)
+  const limit = 100
+  let offset = 0
+  let totalCount: number | null = null
+  const items: AsaasPaymentItem[] = []
+
+  for (let iteration = 0; iteration < 30; iteration += 1) {
+    const params = new URLSearchParams({
+      customer: entry.customerId,
+      offset: String(offset),
+      limit: String(limit),
+    })
+
+    const response = await client.request(`${client.endpoints.payments}?${params.toString()}`, {
+      method: "GET",
+    })
+
+    const chunk = Array.isArray(response?.data) ? (response.data as AsaasPaymentItem[]) : []
+
+    if (totalCount === null && Number.isFinite(Number(response?.totalCount))) {
+      totalCount = Number(response.totalCount)
+    }
+
+    if (chunk.length === 0) break
+
+    items.push(...chunk.map((item) => ({ ...item, account: entry.account })))
+    offset += chunk.length
+
+    if (chunk.length < limit) break
+    if (totalCount !== null && offset >= totalCount) break
+  }
+
+  return items
+}
+
+/**
+ * Fan-out de leitura (T-50.6): consulta cada conta conhecida em paralelo e
+ * mescla, cada payment anotado com `account`. `clientFactory` é injetável
+ * para teste; em produção usa `createAsaasClient` de verdade.
+ */
+export async function fetchPaymentsAcrossAccounts(
+  accounts: Array<{ account: AsaasAccountId; customerId: string }>,
+  clientFactory: (account: AsaasAccountId) => AsaasClientLike = (account) => createAsaasClient(account)
+): Promise<AsaasPaymentItem[]> {
+  const perAccount = await Promise.all(
+    accounts.map((entry) => fetchPaymentsForSingleAccount(entry, clientFactory))
+  )
+  return perAccount.flat().sort((a, b) => getSortableInvoiceDate(a) - getSortableInvoiceDate(b))
+}
+
+/**
+ * GET de fatura em fan-out (T-50.7): tenta cada conta na ordem de
+ * `accounts` (primary primeiro), pula 404 e mismatch de ownership, para no
+ * primeiro achado. `null` quando nenhuma conta tem o payment.
+ */
+export async function findPaymentAcrossAccounts(
+  paymentId: string,
+  accounts: Array<{ account: AsaasAccountId; customerId: string }>,
+  clientFactory: (account: AsaasAccountId) => AsaasClientLike = (account) => createAsaasClient(account)
+): Promise<{ account: AsaasAccountId; payment: AsaasPaymentItem } | null> {
+  for (const entry of accounts) {
+    const client = clientFactory(entry.account)
+    try {
+      const payment = (await client.request(`${client.endpoints.payments}/${paymentId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) continue
+      if (payment.customer && payment.customer !== entry.customerId) continue
+
+      return { account: entry.account, payment: { ...payment, account: entry.account } }
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number })?.statusCode
+      if (statusCode === 404) continue
+      throw error
+    }
+  }
+
+  return null
+}
+
+/**
+ * Gate de escrita da E3 (DA4/C31): o plano de migração declara a conta
+ * legada SOMENTE LEITURA — PUT/DELETE em payment `legacy` nasce bloqueado
+ * por padrão. Só libera com `BACKOFFICE_LEGACY_INVOICE_WRITES_ENABLED=true`
+ * (exceção C31 documentada em [[30 — Migração de Conta (execução) — Backend]]).
+ */
+export function guardLegacyInvoiceWrite(
+  account: AsaasAccountId,
+  legacyWritesEnabled: boolean
+): Output | null {
+  if (account === "primary") return null
+  if (legacyWritesEnabled) return null
+  return new Output(
+    false,
+    [],
+    ["Fatura da conta legada — edição pendente da exceção C31"],
+    null
+  )
+}
+
+function isLegacyInvoiceWritesEnabled(): boolean {
+  return process.env.BACKOFFICE_LEGACY_INVOICE_WRITES_ENABLED === "true"
 }
 
 function canSoftCancelPendingAction(action: {
@@ -470,21 +636,22 @@ function formatInvoiceCurrency(value?: number): string {
   }).format(normalizeAsaasValue(value))
 }
 
-function getMonthlyPlanAmount(plan: SubscriptionPlan | null, operatorCount: number): number | null {
-  if (plan === "manager_base") return 59.9
-  if (plan === "with_operators") return 59.9 + Math.max(operatorCount, 0) * 19.9
-  return null
-}
-
-function getPlanInfo(
+/**
+ * E5 (§7.7): rótulo e valor derivam da cadeia real (assinatura → adesão →
+ * produto) — nunca de preço fixo por enum. `getMonthlyPlanAmount` (que
+ * fixava 59,90/19,90 para qualquer `manager_base`/`with_operators`,
+ * independente do que foi vendido) foi removida.
+ */
+export function getPlanInfo(
   hasPermanentSubscription: boolean,
   subscriptionPlan: SubscriptionPlan | null,
-  operatorCount: number
+  planSubscription: MasterPlatformUserPlanSubscriptionRecord | null
 ): PlanInfo {
   if (hasPermanentSubscription) {
     return {
       label: "Vitalício",
       amount: null,
+      listAmount: null,
       kind: "lifetime",
     }
   }
@@ -493,15 +660,36 @@ function getPlanInfo(
     return {
       label: "Trial",
       amount: null,
+      listAmount: null,
       kind: "trial",
     }
   }
 
-  const amount = getMonthlyPlanAmount(subscriptionPlan, operatorCount)
-  if (amount !== null) {
+  if (planSubscription && (planSubscription.productName || planSubscription.chargedAmount !== null)) {
+    const cycleLabel = planSubscription.cycle
+      ? BILLING_CYCLE_LABEL_PT[planSubscription.cycle] ?? planSubscription.cycle
+      : null
+    const productLabel = planSubscription.productName ?? "Plano"
+    const label = cycleLabel ? `${productLabel} — ${cycleLabel}` : productLabel
+
     return {
-      label: "Mensal",
-      amount,
+      label,
+      amount: planSubscription.chargedAmount,
+      listAmount: planSubscription.listAmount,
+      kind: "monthly",
+    }
+  }
+
+  // Achado codex[bot] no PR #1134: master com o enum legado
+  // (manager_base/with_operators) mas sem ProfileSubscription vinculada não
+  // pode virar "Sem plano ativo" — isso apaga o sinal de que existe (ou
+  // existiu) uma cobrança, sem inventar preço (DA5). Rótulo neutro,
+  // amount/listAmount continuam null.
+  if (subscriptionPlan === "manager_base" || subscriptionPlan === "with_operators") {
+    return {
+      label: "Plano legado (sem detalhamento)",
+      amount: null,
+      listAmount: null,
       kind: "monthly",
     }
   }
@@ -509,6 +697,7 @@ function getPlanInfo(
   return {
     label: "Sem plano ativo",
     amount: null,
+    listAmount: null,
     kind: "none",
   }
 }
@@ -518,50 +707,6 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     private readonly platformUsersRepository: IBackofficePlatformUsersRepository,
     private readonly adhesionRepository: BackofficeAdhesionRepository = new BackofficeAdhesionRepository()
   ) {}
-
-  private async fetchAllCustomerPayments(customerId: string): Promise<AsaasPaymentItem[]> {
-    const limit = 100
-    let offset = 0
-    let totalCount: number | null = null
-    const items: AsaasPaymentItem[] = []
-
-    for (let iteration = 0; iteration < 30; iteration += 1) {
-      const params = new URLSearchParams({
-        customer: customerId,
-        offset: String(offset),
-        limit: String(limit),
-      })
-
-      const asaasResponse = await asaasFetch(`${asaasApi.payments}?${params.toString()}`, {
-        method: "GET",
-      })
-
-      const chunk = Array.isArray(asaasResponse?.data)
-        ? (asaasResponse.data as AsaasPaymentItem[])
-        : []
-
-      if (totalCount === null && Number.isFinite(Number(asaasResponse?.totalCount))) {
-        totalCount = Number(asaasResponse.totalCount)
-      }
-
-      if (chunk.length === 0) {
-        break
-      }
-
-      items.push(...chunk)
-      offset += chunk.length
-
-      if (chunk.length < limit) {
-        break
-      }
-
-      if (totalCount !== null && offset >= totalCount) {
-        break
-      }
-    }
-
-    return items
-  }
 
   async listMasterUsers(
     filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
@@ -580,7 +725,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         const plan = getPlanInfo(
           master.hasPermanentSubscription,
           master.subscriptionPlan,
-          master.operatorCount
+          master.planSubscription
         )
 
         return {
@@ -639,7 +784,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const plan = getPlanInfo(
         master.hasPermanentSubscription,
         master.subscriptionPlan,
-        master.operatorCount
+        master.planSubscription
       )
 
       const hasAccess =
@@ -792,9 +937,10 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
 
       const now = new Date()
-      const asaasPayments = master.asaasCustomerId
-        ? await this.fetchAllCustomerPayments(master.asaasCustomerId)
-        : []
+      const adhesions = await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      const knownAccounts = resolveKnownAsaasAccounts(master, adhesions)
+      const asaasPayments =
+        knownAccounts.length > 0 ? await fetchPaymentsAcrossAccounts(knownAccounts) : []
 
       const coveredPendingIds = new Set<string>()
       const coveredPaymentIds = new Set<string>()
@@ -833,6 +979,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           checkoutUrl: null,
           pendingActionId: null,
           sortDate: getSortableInvoiceDate(payment),
+          account: payment.account ?? null,
         }
       })
 
@@ -881,10 +1028,10 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
           pendingActionId: action.id,
           sortDate: action.createdAt.getTime(),
+          account: null,
         })
       }
 
-      const adhesions = await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
       const externalRows = adhesions.flatMap((adhesion) =>
         buildExternalInvoiceRowsFromAdhesion(adhesion)
       )
@@ -1149,22 +1296,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         })
       }
 
-      if (!master.asaasCustomerId) {
+      const knownAccounts = resolveKnownAsaasAccounts(
+        master,
+        await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      )
+      if (knownAccounts.length === 0) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
 
-      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
-        method: "GET",
-      })) as AsaasPaymentItem
-
-      if (!payment?.id) {
+      const found = await findPaymentAcrossAccounts(invoiceId, knownAccounts)
+      if (!found) {
         return new Output(false, [], ["Fatura não encontrada"], null)
       }
 
-      if (payment.customer && payment.customer !== master.asaasCustomerId) {
-        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
-      }
-
+      const { payment, account } = found
       const classification = classifyAsaasPaymentInvoice({
         subscription: payment.subscription,
         externalReference: payment.externalReference,
@@ -1177,6 +1322,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         invoiceName: classification.invoiceName,
         invoiceKind: classification.invoiceKind,
         source: "asaas",
+        account,
         customerName: master.fullName ?? master.email,
         status: payment.status ?? "PENDING",
         statusGroup: getStatusGroup(payment.status),
@@ -1235,21 +1381,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      if (!master.asaasCustomerId) {
+      const knownAccounts = resolveKnownAsaasAccounts(
+        master,
+        await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      )
+      if (knownAccounts.length === 0) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
 
-      const currentPayment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
-        method: "GET",
-      })) as AsaasPaymentItem
-
-      if (!currentPayment?.id) {
+      const found = await findPaymentAcrossAccounts(invoiceId, knownAccounts)
+      if (!found) {
         return new Output(false, [], ["Fatura não encontrada"], null)
       }
 
-      if (currentPayment.customer && currentPayment.customer !== master.asaasCustomerId) {
-        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
-      }
+      const { payment: currentPayment, account } = found
 
       if (currentPayment.deleted) {
         return new Output(false, [], ["Não é possível editar uma cobrança removida"], null)
@@ -1265,7 +1410,11 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         )
       }
 
-      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+      const legacyGate = guardLegacyInvoiceWrite(account, isLegacyInvoiceWritesEnabled())
+      if (legacyGate) return legacyGate
+
+      const client = createAsaasClient(account)
+      const payment = (await client.request(`${client.endpoints.payments}/${invoiceId}`, {
         method: "PUT",
         body: JSON.stringify({
           value: data.value,
@@ -1279,6 +1428,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
       return new Output(true, ["Cobrança atualizada com sucesso"], [], {
         id: payment.id,
+        account,
         customerName: master.fullName ?? master.email,
         status: payment.status ?? "PENDING",
         statusGroup: getStatusGroup(payment.status),
@@ -1414,21 +1564,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         )
       }
 
-      if (!master.asaasCustomerId) {
+      const knownAccounts = resolveKnownAsaasAccounts(
+        master,
+        await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      )
+      if (knownAccounts.length === 0) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
 
-      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
-        method: "GET",
-      })) as AsaasPaymentItem
-
-      if (!payment?.id) {
+      const found = await findPaymentAcrossAccounts(invoiceId, knownAccounts)
+      if (!found) {
         return new Output(false, [], ["Fatura não encontrada"], null)
       }
 
-      if (payment.customer && payment.customer !== master.asaasCustomerId) {
-        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
-      }
+      const { payment, account } = found
 
       const linkedPendingAction = await resolvePendingActionLinkedToAsaasPayment(
         masterProfileId,
@@ -1485,8 +1634,11 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         )
       }
 
+      const legacyGate = guardLegacyInvoiceWrite(account, isLegacyInvoiceWritesEnabled())
+      if (legacyGate) return legacyGate
+
       const previousStatus = payment.status ?? null
-      const cancelResult = await cancelOpenAsaasPayment(payment.id)
+      const cancelResult = await cancelOpenAsaasPayment(payment.id, account)
       if (!cancelResult.ok) {
         return new Output(false, [], [cancelResult.error], null)
       }
@@ -1557,21 +1709,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      if (!master.asaasCustomerId) {
+      const knownAccounts = resolveKnownAsaasAccounts(
+        master,
+        await this.adhesionRepository.findByCreatedProfileId(masterProfileId)
+      )
+      if (knownAccounts.length === 0) {
         return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
       }
 
-      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
-        method: "GET",
-      })) as AsaasPaymentItem
-
-      if (!payment?.id) {
+      const found = await findPaymentAcrossAccounts(invoiceId, knownAccounts)
+      if (!found) {
         return new Output(false, [], ["Fatura não encontrada"], null)
       }
 
-      if (payment.customer && payment.customer !== master.asaasCustomerId) {
-        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
-      }
+      const { payment } = found
 
       const statusGroup = getStatusGroup(payment.status)
       if (statusGroup !== "upcoming" && statusGroup !== "overdue") {
