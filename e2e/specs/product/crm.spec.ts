@@ -9,6 +9,12 @@ const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
 const LAYOUT_LEAD_NAME = "Lead Layout Dialog E2E";
 
+/** Mesma resolução de `playwright.config.ts` — o afterAll cria o próprio
+ * `APIRequestContext` (a fixture `request` é por-teste e não existe em
+ * hooks de worker) e precisa do baseURL explícito. */
+const E2E_API_BASE_URL =
+  process.env.E2E_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000";
+
 async function seedLayoutLead() {
   const prisma = getPrisma();
   const profile = await findE2eMasterProfile();
@@ -57,9 +63,55 @@ test.describe("app/[supabaseId]/crm", () => {
     );
   });
 
-  test.afterAll(async () => {
-    await getPrisma().lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
-    await disconnectPrisma();
+  test.afterAll(async ({ playwright }) => {
+    // DELETE pela API (não só Prisma direto): roda `invalidateLeadFullCache`.
+    // Sem isso a lista "use cache" do time segue com o lead-fantasma por até
+    // 60s e contamina a PRÓXIMA rodada do spec — o board renderia linhas nos
+    // testes de responsividade. A fixture `request` é por-teste e não existe
+    // em afterAll (achado codex no PR #1158): o contexto é criado e
+    // descartado aqui mesmo, com o mesmo header-auth de modo E2E dos testes.
+    const profile = await findE2eMasterProfile();
+    const api = await playwright.request.newContext({ baseURL: E2E_API_BASE_URL });
+    try {
+      if (profile?.activeTeamId) {
+        const headers = {
+          "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+          "x-team-id": profile.activeTeamId,
+        };
+        // Sem assert de .ok(): o DELETE é idempotente por design — numa rodada
+        // que falhou antes do seed, o lead pode nem existir (404 legítimo). O
+        // invariante real é o poll abaixo: a lista cacheada SEM o lead.
+        await api.delete(`/api/v1/leads/${LAYOUT_LEAD_ID}`, { headers });
+        // Consome o serve stale do revalidateTag (SWR) para a próxima rodada
+        // já encontrar a lista sem o lead.
+        await expect
+          .poll(
+            async () => {
+              const response = await api.get(
+                `/api/v1/leads?role=manager&teamId=${profile.activeTeamId}`,
+                { headers },
+              );
+              if (!response.ok()) return false;
+              const body = (await response.json()) as {
+                result?: { leads?: Array<{ id: string }> };
+              };
+              return (body.result?.leads ?? []).every((lead) => lead.id !== LAYOUT_LEAD_ID);
+            },
+            {
+              message: "lista de leads do time sem o lead de layout após cleanup",
+              timeout: 15_000,
+            },
+          )
+          .toBe(true);
+      }
+    } finally {
+      // Fallback SEMPRE roda (achados cursor/codex no PR #1158): mesmo se o
+      // DELETE via API falhar ou o poll estourar, o banco fica limpo e a
+      // conexão fecha — a falha do cache ainda propaga depois do finally.
+      await api.dispose();
+      await getPrisma().lead.deleteMany({ where: { id: LAYOUT_LEAD_ID } });
+      await disconnectPrisma();
+    }
   });
 
   test("carrega o CRM autenticado sem assinatura inativa", async ({ page }) => {
@@ -138,6 +190,38 @@ test.describe("app/[supabaseId]/crm", () => {
       data: { name: LAYOUT_LEAD_NAME },
     });
     expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+
+    // `revalidateTag(tag, "max")` é stale-while-revalidate: o PRIMEIRO GET
+    // após a invalidação ainda serve a entrada velha e só dispara a
+    // revalidação em background. O poll consome esse serve stale ANTES de
+    // navegar — sem ele o goto abaixo podia renderizar o board da lista
+    // vazia cacheada e o teste só passava no retry (que herdava o cache
+    // revalidado pela 1ª tentativa) — o flake serial observado nas runs de
+    // 09/09 (develop 15:01Z e release v0.299.6).
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(
+            `/api/v1/leads?role=manager&teamId=${teamId}`,
+            {
+              headers: {
+                "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+                "x-team-id": teamId,
+              },
+            },
+          );
+          if (!response.ok()) return false;
+          const body = (await response.json()) as {
+            result?: { leads?: Array<{ id: string }> };
+          };
+          return (body.result?.leads ?? []).some((lead) => lead.id === LAYOUT_LEAD_ID);
+        },
+        {
+          message: "lista de leads do time reflete o lead seedado após invalidação",
+          timeout: 15_000,
+        },
+      )
+      .toBe(true);
 
     // Aquece o "use cache" de /details (o mesmo que o hover na tabela faz via
     // prefetchLeadDetails): na CI, computar essa entrada sob a carga dos 4
