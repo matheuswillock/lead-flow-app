@@ -290,8 +290,11 @@ export async function processAsaasWebhookEvent(
         const { subscriptionUpgradeUseCase } = await import(
           "@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase"
         );
+        // Achado cursor[bot] (PR #1137): a conta do evento acompanha o
+        // paymentId — sem ela, uma colisão C33 podia selecionar o
+        // PendingOperator da outra conta e provisionar o manager errado.
         const operatorResult =
-          await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+          await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId, account);
 
         if (!operatorResult.isValid) {
           console.error("[AsaasWebhookRoute][process] operator externalRef failed", {
