@@ -39,21 +39,26 @@ export interface ResponsiveCheckOptions {
 }
 
 /**
- * Aguarda as webfonts e dois frames de layout após trocar o viewport.
- * Medir com a fonte fallback ainda aplicada dá alturas/larguras diferentes
- * das finais (ex.: botões a 43.9px reprovando o assert de 44px) — flake que
- * só aparece quando a página carrega rápido (navegação quente).
+ * Aguarda o layout assentar após trocar o viewport: webfonts prontas, dois
+ * frames e o fim das animações/transições CSS finitas. Medir com a fonte
+ * fallback ainda aplicada (botões a 43.9px em navegação quente) ou durante
+ * uma transição (`size-7` → `max-lg:size-11` com `transition-all` do shadcn;
+ * computed height 43.48px na CI do PR #1153) reprovava o assert de 44px.
+ * Animações infinitas (spinners) são ignoradas.
  */
 async function waitForLayoutSettle(page: Page): Promise<void> {
-  await page.evaluate(
-    () =>
-      document.fonts.ready.then(
-        () =>
-          new Promise<void>((resolve) => {
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-          }),
-      ),
-  );
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
 }
 
 type Rgba = { r: number; g: number; b: number; a: number };
@@ -159,7 +164,9 @@ export async function assertTouchTargets(
           })
           .map((element) => {
             const rect = element.getBoundingClientRect();
-            return `${describe(element)} (${Math.round(rect.width)}×${Math.round(rect.height)})`;
+            const style = window.getComputedStyle(element);
+            const rootFontSize = window.getComputedStyle(document.documentElement).fontSize;
+            return `${describe(element)} (${rect.width.toFixed(2)}×${rect.height.toFixed(2)}; computed ${style.height}; rem ${rootFontSize})`;
           });
       },
       { selector, minSize },
@@ -168,7 +175,8 @@ export async function assertTouchTargets(
   // Mede até estabilizar: numa navegação quente o assert corre contra
   // animação de entrada/hidratação e vê os alvos ~2% menores (43.9px) por
   // alguns frames. Violação real é steady-state e continua reprovando no
-  // assert final, que preserva o diagnóstico completo.
+  // assert final, que preserva o diagnóstico completo (medidas exatas,
+  // computed height e rem — padrão do PR #1149).
   const deadline = Date.now() + 5_000;
   let undersized = await measureUndersizedTargets();
   while (undersized.length > 0 && Date.now() < deadline) {

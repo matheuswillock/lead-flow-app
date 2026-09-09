@@ -102,6 +102,8 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
 import { LeadRadarTemperatureCard } from "@/app/[supabaseId]/components/LeadRadarTemperatureCard";
+import { shouldRenderLeadRadarTemperatureCard } from "@/lib/leads/lead-radar-temperature-card-visibility";
+import { resolveLeadFormSubmissionCardNotice } from "@/lib/leads/lead-form-submission-card-notice";
 import { LeadActivityTimeline } from "@/app/[supabaseId]/components/lead-timeline/LeadActivityTimeline";
 import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDuplicateWarningDialog";
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
@@ -164,7 +166,11 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
   if (!items.length) return <div className="mt-4 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">Este lead ainda não respondeu formulários públicos.</div>;
   return (
     <div className="activity-scrollbar mt-4 flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
-      {items.map((submission) => (
+      {items.map((submission) => {
+        // SPEC 41-E3 (adendo 24/08, V5461O) + registro 03/09: errorMessage é
+        // diagnóstico interno do sync, nunca aparece cru nesta superfície.
+        const notice = resolveLeadFormSubmissionCardNotice(submission);
+        return (
         <div className="rounded-lg border border-border/60 bg-muted/40 p-3" key={submission.id}>
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -185,9 +191,9 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
               ) : null}
             </div>
           </div>
-          {submission.errorMessage ? (
-            <Alert variant="destructive" className="mt-3">
-              <AlertDescription>{submission.errorMessage}</AlertDescription>
+          {notice.kind === "neutral" ? (
+            <Alert className="mt-3 bg-muted/40 text-muted-foreground">
+              <AlertDescription>{notice.message}</AlertDescription>
             </Alert>
           ) : null}
           <div className="mt-3 space-y-2">
@@ -209,7 +215,8 @@ function LeadPublicFormResponses({ leadId, teamId, supabaseId }: { leadId: strin
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -3003,7 +3010,10 @@ export default function LeadDialog({
               {sidePanelTab === "forms" ? (
                 currentLead && activeTeamId ? (
                   <div className="flex min-h-0 flex-1 flex-col">
-                    {hasAccess(FEATURE_SLUGS.RADAR) && (
+                    {shouldRenderLeadRadarTemperatureCard({
+                      hasRadarAccess: hasAccess(FEATURE_SLUGS.RADAR),
+                      hasLeadContext: Boolean(currentLead && activeTeamId),
+                    }) && (
                       <div className="shrink-0">
                         <LeadRadarTemperatureCard
                           leadId={currentLead.id}
