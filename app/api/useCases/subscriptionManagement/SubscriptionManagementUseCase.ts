@@ -6,7 +6,7 @@ import { subscriptionCreditService } from "@/app/api/services/billing/Subscripti
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { getFullUrl } from "@/lib/utils/app-url";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import type { 
   ISubscriptionManagementUseCase, 
@@ -151,11 +151,15 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
     }
   }
 
-  private async fetchAllCustomerPayments(customerId: string): Promise<AsaasPaymentItem[]> {
+  private async fetchAllCustomerPayments(
+    customerId: string,
+    accountId: AsaasAccountId = "primary",
+  ): Promise<AsaasPaymentItem[]> {
     const limit = 100;
     let offset = 0;
     let totalCount: number | null = null;
     const items: AsaasPaymentItem[] = [];
+    const client = createAsaasClient(accountId);
 
     for (let iteration = 0; iteration < 30; iteration += 1) {
       const params = new URLSearchParams({
@@ -164,7 +168,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         limit: String(limit),
       });
 
-      const response = await asaasFetch(`${asaasApi.payments}?${params.toString()}`, {
+      const response = await client.request(`${client.endpoints.payments}?${params.toString()}`, {
         method: "GET",
       });
 
@@ -525,7 +529,9 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           isMaster: true,
           managerId: true,
           asaasCustomerId: true,
+          asaasCustomerAccount: true,
           asaasSubscriptionId: true,
+          asaasSubscriptionAccount: true,
         }
       });
 
@@ -548,7 +554,9 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
                 fullName: true,
                 email: true,
                 asaasCustomerId: true,
+                asaasCustomerAccount: true,
                 asaasSubscriptionId: true,
+                asaasSubscriptionAccount: true,
               },
             })
           : profile;
@@ -557,6 +565,18 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         return new Output(false, [], ['Master responsável pela assinatura não encontrado'], null);
       }
 
+      // DA2 (20 — Assinaturas — Backend E2, C16): resolve o client Asaas pela
+      // conta armazenada no ponteiro usado — customer/subscription podem
+      // pertencer a contas diferentes durante a janela dual. Fan-out real nas
+      // duas contas (mutação #2 da SPEC) depende do ledger da migração
+      // ([[30 — Migração de Conta (execução) — Backend]], ainda não
+      // implementado nesta base) para saber o customerId da conta antiga
+      // após o cutover — sem isso, roteamos para a conta correta do ponteiro
+      // atual, o que já resolve C16 (cancel/faturas/retry quebrando 404 na
+      // conta errada pós-cutover).
+      const customerAccount: AsaasAccountId = billingOwner.asaasCustomerAccount ?? "primary";
+      const subscriptionAccount: AsaasAccountId = billingOwner.asaasSubscriptionAccount ?? "primary";
+
       const profileSubscription = await this.getProfileSubscription(billingOwner.id);
       let customerId = billingOwner.asaasCustomerId;
       const asaasSubscriptionId = profileSubscription?.asaasSubscriptionId ?? billingOwner.asaasSubscriptionId;
@@ -564,8 +584,9 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       // Fallback para cenários legados onde o customer não foi persistido no profile
       if (!customerId && asaasSubscriptionId) {
         try {
-          const subscription = await asaasFetch(
-            `${asaasApi.subscriptions}/${asaasSubscriptionId}`,
+          const client = createAsaasClient(subscriptionAccount);
+          const subscription = await client.request(
+            `${client.endpoints.subscriptions}/${asaasSubscriptionId}`,
             { method: "GET" }
           ) as { customer?: string };
 
@@ -586,7 +607,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      const allPayments = await this.fetchAllCustomerPayments(customerId);
+      const allPayments = await this.fetchAllCustomerPayments(customerId, customerAccount);
 
       const invoices = allPayments
         .filter((item) => item.customer === customerId)
@@ -639,6 +660,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           id: true,
           subscriptionId: true,
           asaasSubscriptionId: true,
+          asaasSubscriptionAccount: true,
           subscription: {
             select: { asaasSubscriptionId: true },
           },
@@ -659,9 +681,24 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // DA2/DA4 (20 — Assinaturas — Backend E2, C16): resolve o client pela
+      // conta do ponteiro. Para "legacy" a escrita é a exceção documentada
+      // (cancelar assinatura legada enquanto ela drena é legítimo) — prefere
+      // PUT status INACTIVE ao DELETE, alinhado ao invariante do plano de
+      // migração (M5.6 usa o mesmo verbo).
+      const subscriptionAccount: AsaasAccountId = profile.asaasSubscriptionAccount ?? "primary";
+
       // Fail-closed: Asaas primeiro; só então marca local (Estágio 2 / C2)
       try {
-        await AsaasSubscriptionService.cancelSubscription(asaasSubscriptionId);
+        if (subscriptionAccount === "legacy") {
+          await AsaasSubscriptionService.updateSubscription(
+            asaasSubscriptionId,
+            { status: "INACTIVE" },
+            "legacy",
+          );
+        } else {
+          await AsaasSubscriptionService.cancelSubscription(asaasSubscriptionId, subscriptionAccount);
+        }
       } catch (asaasError) {
         console.error('[SubscriptionManagementUseCase][cancelSubscription] Asaas falhou', {
           supabaseId,
@@ -815,8 +852,10 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         select: {
           id: true,
           asaasCustomerId: true,
+          asaasCustomerAccount: true,
           subscriptionId: true,
           asaasSubscriptionId: true,
+          asaasSubscriptionAccount: true,
           subscription: { select: { asaasSubscriptionId: true } },
         },
       });
@@ -835,6 +874,12 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // DA2 (20 — Assinaturas — Backend E2, C16): pay_ do retry pertence à
+      // conta da assinatura que o originou — cartão tokenizado legado só
+      // funciona na conta legada (limitação do provedor).
+      const subscriptionAccount: AsaasAccountId = profile.asaasSubscriptionAccount ?? "primary";
+      const asaasClient = createAsaasClient(subscriptionAccount);
+
       // Ownership: fatura deve pertencer ao customer/subscription do caller.
       let payment: {
         id?: string;
@@ -842,7 +887,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         subscription?: string;
       };
       try {
-        payment = await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        payment = await asaasClient.request(`${asaasClient.endpoints.payments}/${invoiceId}`, {
           method: 'GET',
         });
       } catch (lookupError) {
@@ -875,7 +920,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       try {
-        await asaasFetch(`${asaasApi.payments}/${invoiceId}/payWithCreditCard`, {
+        await asaasClient.request(`${asaasClient.endpoints.payments}/${invoiceId}/payWithCreditCard`, {
           method: 'POST',
           body: JSON.stringify({}),
         });

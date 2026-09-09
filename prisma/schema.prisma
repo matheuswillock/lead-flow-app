@@ -597,6 +597,27 @@ enum SubscriptionPlan {
   @@map("subscription_plan")
 }
 
+// Timeline semântica de SubscriptionChangeLog.eventType — 20 — Assinaturas —
+// Backend E1 (C12). `contracted` = primeira contratação (webhook/adesão nova);
+// `renewed` = renovação recorrente; `restored` = reativação pós-suspensão —
+// nunca usado como default de PAYMENT_CONFIRMED, ao contrário do estado
+// anterior (`lifecycleEventFromSubscriptionStatus` mapeava active→"restored"
+// para todo caso).
+enum SubscriptionLifecycleEvent {
+  contracted
+  renewed
+  plan_changed
+  addon_purchased
+  overdue
+  reduced
+  cut
+  restored
+  free_access_granted
+  level_transition
+
+  @@map("subscription_lifecycle_event")
+}
+
 enum PendingActionType {
   create_team
   add_member
@@ -3656,22 +3677,22 @@ model QueueProcessingFailure {
 // -----------------------------
 
 model BackofficeProduct {
-  id              String                       @id @default(uuid()) @db.Uuid
-  name            String                       @db.Text
-  featureSlugs    String[]                     @default([]) @map("featureSlugs")
-  description     String?                      @db.Text
-  type            BackofficeProductType
-  billingMode     BackofficeProductBillingMode @default(RECURRING)
-  priceMonthly      Decimal?                   @db.Decimal(10, 2)
-  priceQuarterly    Decimal?                   @db.Decimal(10, 2)
-  priceQuadrimester Decimal?                   @db.Decimal(10, 2)
-  priceSemiannual   Decimal?                   @db.Decimal(10, 2)
-  priceAnnual     Decimal?                     @db.Decimal(10, 2)
-  priceLifetime   Decimal?                     @db.Decimal(10, 2)
-  isDefault       Boolean                      @default(false)
-  isActive        Boolean                      @default(true)
-  createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
+  id                String                       @id @default(uuid()) @db.Uuid
+  name              String                       @db.Text
+  featureSlugs      String[]                     @default([]) @map("featureSlugs")
+  description       String?                      @db.Text
+  type              BackofficeProductType
+  billingMode       BackofficeProductBillingMode @default(RECURRING)
+  priceMonthly      Decimal?                     @db.Decimal(10, 2)
+  priceQuarterly    Decimal?                     @db.Decimal(10, 2)
+  priceQuadrimester Decimal?                     @db.Decimal(10, 2)
+  priceSemiannual   Decimal?                     @db.Decimal(10, 2)
+  priceAnnual       Decimal?                     @db.Decimal(10, 2)
+  priceLifetime     Decimal?                     @db.Decimal(10, 2)
+  isDefault         Boolean                      @default(false)
+  isActive          Boolean                      @default(true)
+  createdAt         DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                     @updatedAt @db.Timestamptz(6)
 
   paymentRules         BackofficeProductPaymentRule[]
   userSubscriptions    BackofficeUserSubscription[]
@@ -3986,22 +4007,47 @@ model ProfileSubscription {
 }
 
 model SubscriptionChangeLog {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileId      String   @db.Uuid
-  source         String   @db.Text
-  actorProfileId String?  @db.Uuid
-  changeType     String   @db.Text
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId      String                      @db.Uuid
+  source         String                      @db.Text
+  actorProfileId String?                     @db.Uuid
+  changeType     String                      @db.Text
+  eventType      SubscriptionLifecycleEvent?
   before         Json?
   after          Json?
   metadata       Json?
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(6)
 
   profile Profile  @relation("SubscriptionChangeLogProfile", fields: [profileId], references: [id], onDelete: Cascade)
   actor   Profile? @relation("SubscriptionChangeLogActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
 
   @@index([profileId], map: "subscription_change_logs_profile_id_idx")
   @@index([createdAt], map: "subscription_change_logs_created_at_idx")
+  @@index([eventType], map: "subscription_change_logs_event_type_idx")
   @@map("corretor_studio_subscription_change_logs")
+}
+
+// Snapshot append-only do estado de assinatura — 20 — Assinaturas — Backend
+// E1 (porte do PR #902, C8/C13). `profileId` é intencionalmente SEM relation
+// FK (DA1): o PR original usava `onDelete: Restrict`, o que forçava cleanup
+// manual em todo call-site de `profile.delete` (10 sites hoje, C9/C10) — e o
+// pior, o cleanup apagava o próprio backup no evento destrutivo que ele
+// deveria auditar. Sem FK, o snapshot sobrevive à deleção do profile por
+// design; é um registro append-only autocontido (ver payload em
+// lib/billing/subscription-state-snapshot.ts), não uma entidade relacional.
+// Ressalva: snapshot órfão é PII sem política de retenção definida (S5,
+// Open question 7 de [[20 — Assinaturas — Backend]]) — TTL/expurgo fica para
+// decisão do owner, não implementado aqui.
+model SubscriptionStateSnapshot {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId     String   @db.Uuid
+  capturedAt    DateTime @default(now()) @db.Timestamptz(6)
+  schemaVersion String   @db.Text
+  payload       Json
+
+  @@index([profileId], map: "subscription_state_snapshots_profile_id_idx")
+  @@index([capturedAt], map: "subscription_state_snapshots_captured_at_idx")
+  @@map("corretor_studio_subscription_state_snapshots")
 }
 
 model ProfileSubscriptionCapacity {

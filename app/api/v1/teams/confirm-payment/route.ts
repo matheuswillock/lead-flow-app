@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
+import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 
 /**
  * POST /api/v1/teams/confirm-payment
@@ -62,9 +62,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-      method: "GET",
-    });
+    // C24 de [[20 — Assinaturas — Backend]] E5: PendingAction não tem
+    // coluna de conta — fallback primary→legacy.
+    const lookup = await getPaymentByAccountWithFallback(paymentId);
+    if (!lookup.found) {
+      return NextResponse.json(
+        new Output(false, [], ["Pagamento não encontrado"], null),
+        { status: 404 }
+      );
+    }
+    const payment = lookup.payment as { status?: string; externalReference?: string };
 
     const status = payment?.status as string | undefined;
     if (status !== "CONFIRMED" && status !== "RECEIVED") {
