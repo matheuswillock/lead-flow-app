@@ -1443,6 +1443,21 @@ export class PublicFormsRepository implements IPublicFormsRepository {
    * formulário público ser gravada por cima do lead errado — ou empata o
    * `byName` em 2 e perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
    */
+  /**
+   * SPEC 40 — claim atômico por submissão. `updateMany` guardado por
+   * `leadSyncClaimedAt: null` é atômico no banco por si só — não precisa de
+   * advisory lock de sessão nem de transação longa envolvendo o create
+   * inteiro (o pool em modo transação do pgbouncer não sustenta nenhum dos
+   * dois). `count === 1` só é possível para quem chega primeiro.
+   */
+  async claimSubmissionForLeadSync(submissionId: string): Promise<boolean> {
+    const { count } = await prisma.publicFormSubmission.updateMany({
+      where: { id: submissionId, leadSyncClaimedAt: null },
+      data: { leadSyncClaimedAt: new Date() },
+    })
+    return count === 1
+  }
+
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {

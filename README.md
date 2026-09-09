@@ -113,12 +113,9 @@ bun run dev -- --clone       # clona o banco remoto para o Postgres local
 bun run dev -- --remote-db   # SEM Docker: aponta direto para o banco remoto (escritas reais!)
 ```
 
-Stacks pesadas tambem sao opcionais no dev local:
+Realtime local tambem e opt-in:
 
 ```bash
-bun dev -- n8n         # + N8N
-bun dev -- evolution   # + Evolution API
-bun dev -- total       # + N8N + Evolution API
 bun dev -- --hybrid    # + Realtime local (exige docker/local/.env.local-stack)
 ```
 
@@ -227,9 +224,7 @@ Conexao: `postgresql://postgres:postgres@localhost:5433/leadflow_dev`
 ```bash
 # Desenvolvimento
 bun run dev
-bun dev -- n8n
-bun dev -- evolution
-bun dev -- total
+bun dev -- --hybrid
 bun run build
 bun run start
 

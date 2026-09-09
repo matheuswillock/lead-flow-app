@@ -434,6 +434,14 @@ export interface IPublicFormsRepository {
       revokedAt: Date | null
     } | null
   } | null>
+  /**
+   * Claim atômico do create de lead por submissão (SPEC 40 — corrida do
+   * `/progress`, ver `lib/public-forms/lead-sync-claim.ts`). `true` quando
+   * este processamento reivindicou a submissão (nenhum outro havia
+   * reivindicado ainda); `false` quando outro processamento concorrente já
+   * reivindicou primeiro.
+   */
+  claimSubmissionForLeadSync(submissionId: string): Promise<boolean>
   /** Só leads vivos — casar com a lixeira vaza conversão (SPEC 40 E5/DA3). */
   findLeadCandidates(
     teamId: string,

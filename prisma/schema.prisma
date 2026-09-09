@@ -5984,6 +5984,11 @@ model PublicFormSubmission {
   /// do enqueue. O cron de re-despacho só reivindica submissão com este carimbo —
   /// casca criada pelo `/progress` nunca entra no despacho.
   submitRequestedAt        DateTime?                  @db.Timestamptz(6)
+  /// SPEC 40 — claim atômico do create de lead (bug de duplicatas do
+  /// `/progress`). `/progress` e o accept compartilham esta linha; o executor
+  /// reivindica com `UPDATE ... WHERE "leadSyncClaimedAt" IS NULL` antes de
+  /// criar lead. Ver `lib/public-forms/lead-sync-claim.ts`.
+  leadSyncClaimedAt        DateTime?                  @db.Timestamptz(6)
   dispatchAcceptedAt       DateTime?                  @db.Timestamptz(6)
   dispatchAttemptCount     Int                        @default(0)
   nextDispatchAt           DateTime?                  @db.Timestamptz(6)

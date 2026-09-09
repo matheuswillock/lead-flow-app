@@ -10,11 +10,25 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { API_CLIENT_BASE } from "@/lib/route-map"
+import { cn } from "@/lib/utils"
+import type { EngagementBand } from "@/lib/radar/engagement-score"
 import type {
   FormSubmissionScoreBreakdown,
   LeadRadarEngagement,
 } from "@/app/[supabaseId]/radar/features/context/RadarTypes"
 import { RadarEngagementBadge } from "@/app/[supabaseId]/radar/features/components/RadarEngagementBadge"
+
+const BAND_CARD_TINT: Record<EngagementBand, string> = {
+  hot: "border-semantic-danger-border bg-semantic-danger-surface",
+  warm: "border-semantic-warning-border bg-semantic-warning-surface",
+  lukewarm: "border-border/60 bg-muted/40",
+  cold: "border-semantic-info-border bg-semantic-info-surface",
+}
+
+function bandCardTint(band: string | null | undefined): string {
+  if (!band || !(band in BAND_CARD_TINT)) return "border-border/60 bg-muted/40"
+  return BAND_CARD_TINT[band as EngagementBand]
+}
 
 type LeadRadarTemperatureCardProps = {
   leadId: string
@@ -108,6 +122,7 @@ function FormScoreBreakdownSection({
   return (
     <div className="mt-2 flex flex-col gap-2">
       <p className="text-xs font-medium text-muted-foreground">Score de formulários</p>
+      <div className="activity-scrollbar flex max-h-56 flex-col gap-2 overflow-y-auto">
       {submissions.map((submission) => (
         <Collapsible key={submission.submissionId} className="rounded-md border border-border/60">
           <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-2 text-left text-sm">
@@ -152,6 +167,7 @@ function FormScoreBreakdownSection({
           </CollapsibleContent>
         </Collapsible>
       ))}
+      </div>
     </div>
   )
 }
@@ -172,7 +188,7 @@ export function LeadRadarTemperatureCard({
   if (!enabled) return null
   if (isLoading) {
     return (
-      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/40 p-3">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-6 w-24" />
       </div>
@@ -188,7 +204,12 @@ export function LeadRadarTemperatureCard({
       : ["Sem eventos recentes na janela de engajamento."]
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+    <div
+      className={cn(
+        "mt-3 flex flex-col gap-2 rounded-lg border p-3 transition-colors",
+        bandCardTint(engagement?.band)
+      )}
+    >
       <p className="text-xs font-medium text-muted-foreground">Temperatura Radar</p>
       {engagement ? (
         <>

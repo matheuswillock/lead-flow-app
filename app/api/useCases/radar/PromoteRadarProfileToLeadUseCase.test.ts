@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { UserRole, type RadarIdentityType } from "@prisma/client"
 import { Output } from "@/lib/output"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import {
+  radarRepositoryMock,
+  registerRadarRepositoryModuleMock,
+} from "@/test/support/radar-repository-module-mock"
 
 const getProfileForPromotionWithCtx = mock(async () => null as Awaited<
   ReturnType<
@@ -20,15 +24,14 @@ const findProfileByIdentity = mock(
 const createLead = mock(async () => new Output(true, [], [], { id: "lead-new-1" }))
 const syncLeadExecute = mock(async () => new Output(true, [], [], null))
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    getProfileForPromotionWithCtx,
-    claimProvisionalLeadIdentity,
-    finalizeLeadIdentityClaim,
-    releaseLeadIdentityClaim,
-    findProfileByIdentity,
-  },
-}))
+await registerRadarRepositoryModuleMock()
+Object.assign(radarRepositoryMock, {
+  getProfileForPromotionWithCtx,
+  claimProvisionalLeadIdentity,
+  finalizeLeadIdentityClaim,
+  releaseLeadIdentityClaim,
+  findProfileByIdentity,
+})
 
 mock.module("@/app/api/useCases/leads/leadUseCaseFactory", () => ({
   leadUseCase: {

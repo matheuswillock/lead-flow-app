@@ -124,7 +124,7 @@ export function LeadsCustomFieldFilter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 border-dashed">
+        <Button variant="outline" size="sm" className="h-8 max-lg:h-11 border-dashed">
           <SlidersHorizontal className="mr-2 h-4 w-4" />
           Campos personalizados
           {(values.length > 0 || sort) && (

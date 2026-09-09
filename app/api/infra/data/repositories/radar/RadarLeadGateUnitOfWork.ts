@@ -17,6 +17,7 @@ import {
   PENDING_LEAD_IDENTITY_PREFIX,
   PENDING_LEAD_IDENTITY_STALE_MS,
 } from "@/lib/radar/lead-identity"
+import { buildEmailCampaignOriginPromotion } from "@/lib/public-forms/email-campaign-origin-promotion"
 
 class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
   constructor(private readonly transaction: Prisma.TransactionClient) {}
@@ -251,6 +252,23 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
     const fromEmailCampaign = Boolean(campaignId || emailLogId)
 
     if (input.existingLeadId) {
+      // Requisitos 4/5/8 do bug 2026-08-28 (Bruno Marcelino): resposta
+      // atribuída a campanha que anexa num lead `public_form` promove a
+      // origem, com MERGE dos metadados anteriores — senão o filtro "Origem =
+      // Campanha de e-mail" do CRM mente. Exige `emailLogId` (o rastro
+      // `cs_el`→EmailLog) porque a promoção é verificada contra o log do
+      // próprio time dentro do resolver: para `question_answered` o origin
+      // não passa pelo resolver de atribuição e pode carregar UUID forjado
+      // que o sanitizador aceita pelo formato (achado codex PR #1148). Só
+      // busca o lead atual quando há atribuição verificável.
+      const originPromotion = emailLogId
+        ? await this.resolveExistingLeadOriginPromotion({
+            teamId: input.teamId,
+            leadId: input.existingLeadId,
+            emailLogId,
+          })
+        : null
+
       await this.transaction.lead.update({
         where: { id: input.existingLeadId },
         data: {
@@ -259,6 +277,7 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
           ...(email ? { email } : {}),
           assignedTo: form.assignedSdrId ?? undefined,
           updatedAt: new Date(),
+          ...(originPromotion ?? {}),
         },
       })
       return { leadId: input.existingLeadId, created: false }
@@ -323,6 +342,36 @@ class PrismaRadarLeadGateTransaction implements RadarLeadGateTransaction {
       select: { id: true },
     })
     return { leadId: lead.id, created: true }
+  }
+
+  /**
+   * Merge dos metadados de origem do lead existente com a atribuição de
+   * campanha da resposta corrente — nunca sobrescrita cega (requisitos 4/5/8
+   * do bug 2026-08-28). `null` quando o EmailLog não existe no time (UUID
+   * forjado — achado codex PR #1148) ou quando o lead já está promovido com
+   * os MESMOS ids. Os ids promovidos vêm do log verificado, não do origin.
+   */
+  private async resolveExistingLeadOriginPromotion(input: {
+    teamId: string
+    leadId: string
+    emailLogId: string
+  }): Promise<{ originChannel: "email_campaign"; originMetadata: Prisma.InputJsonValue } | null> {
+    const verifiedLog = await this.transaction.emailLog.findFirst({
+      where: { id: input.emailLogId, teamId: input.teamId, category: "campaign" },
+      select: { id: true, campaignId: true },
+    })
+    if (!verifiedLog) return null
+
+    const existing = await this.transaction.lead.findUnique({
+      where: { id: input.leadId },
+      select: { originChannel: true, originMetadata: true },
+    })
+    return buildEmailCampaignOriginPromotion({
+      currentChannel: existing?.originChannel ?? null,
+      currentMetadata: existing?.originMetadata,
+      campaignId: verifiedLog.campaignId,
+      emailLogId: verifiedLog.id,
+    })
   }
 
   /**

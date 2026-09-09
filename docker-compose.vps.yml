@@ -1,71 +1,21 @@
 # =============================================================================
-# docker-compose.vps.yml — OpenWA Gateway + N8N (produção Hostinger)
+# docker-compose.vps.yml — OpenWA Gateway (produção Hostinger)
 # =============================================================================
 #
-# Stack unificada com rede compartilhada (OpenWA → N8N via http://n8n:5678).
-# Banco N8N: Postgres local no container n8n-postgres (.env.n8n).
+# N8N/Evolution removidos (Bethânia não depende mais deles).
 #
 # Pré-requisitos na VPS:
-#   - Caddy (ou outro proxy) em 443 → OpenWA e :5678
+#   - Caddy (ou outro proxy) em 443 → OpenWA
 #   - deploy/hostinger/Caddyfile instalado em /etc/caddy/Caddyfile
 #
 # Uso:
 #   cp .env.openwa.example .env.openwa   # preencher produção
-#   cp .env.n8n.example .env.n8n           # preencher produção
 #   bun run vps:up
 #   bun run vps:logs
 #
 # =============================================================================
 
 services:
-  n8n:
-    container_name: n8n
-    image: docker.io/n8nio/n8n:2.28.5
-    restart: unless-stopped
-    depends_on:
-      n8n-postgres:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:5678:5678"
-    volumes:
-      - n8n_data:/home/node/.n8n
-    networks:
-      - studio-bot-net
-    env_file:
-      - .env.n8n
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5678/healthz || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
-
-  n8n-postgres:
-    container_name: n8n_postgres
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: n8n
-      POSTGRES_USER: n8n
-      POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-n8n}
-    command:
-      - postgres
-      - -c
-      - max_connections=100
-      - -c
-      - listen_addresses=*
-    volumes:
-      - n8n_postgres:/var/lib/postgresql/data
-    networks:
-      - studio-bot-net
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   studio-bot-ops:
     container_name: studio_bot_ops
     build:
@@ -124,8 +74,6 @@ services:
       retries: 3
 
 volumes:
-  n8n_data:
-  n8n_postgres:
   openwa_sessions_tmp:
 
 networks:
