@@ -3,12 +3,14 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { validateE2ePageCoverage } from "./check-e2e-pages";
+import { validateResponsiveSpecCoverage } from "./check-responsive-specs";
 
 type AdapterKind = "copilot" | "github" | "cursor" | "claude" | "codex";
 type Command =
   | "check"
   | "check-api-masking"
   | "check-e2e-pages"
+  | "check-responsive"
   | "sync-adapters"
   | "warn-allowlist";
 
@@ -41,6 +43,8 @@ interface LegacyExceptionsConfig {
   nonRepositoryDatabaseAccessAllowlist?: string[];
   prismaIncludeAllowlist?: string[];
   e2ePageCoverageAllowlist?: string[];
+  /** Specs E2E legadas ainda sem `runResponsiveChecks` (e2e/support/responsive.ts). */
+  responsiveSpecAllowlist?: string[];
   /** Client-side files still hardcoding `/api/v1/` instead of `API_CLIENT_BASE`. */
   clientApiPathMaskingAllowlist?: string[];
 }
@@ -1660,6 +1664,7 @@ async function checkGovernance(
   await validateBunGlobalUsage(issues);
   await validatePrismaModelTableMigrations(issues);
   await validateE2ePageCoverage(issues, warnings);
+  await validateResponsiveSpecCoverage(issues, warnings);
 
   if (warnings.length > 0) {
     console.warn("\n[governance:check] WARNINGS");
@@ -1729,11 +1734,36 @@ async function checkE2ePagesOnly(): Promise<void> {
   console.info("[governance:check-e2e-pages] OK");
 }
 
+async function checkResponsiveSpecsOnly(): Promise<void> {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+
+  await validateResponsiveSpecCoverage(issues, warnings);
+
+  if (warnings.length > 0) {
+    console.warn("\n[governance:check-responsive] WARNINGS");
+    for (const warning of warnings) {
+      console.warn(`  - ${warning}`);
+    }
+  }
+
+  if (issues.length > 0) {
+    console.error("\n[governance:check-responsive] FAILED");
+    for (const issue of issues) {
+      console.error(`  - ${issue}`);
+    }
+    process.exit(1);
+  }
+
+  console.info("[governance:check-responsive] OK");
+}
+
 async function main(): Promise<void> {
   const validCommands = new Set<Command>([
     "check",
     "check-api-masking",
     "check-e2e-pages",
+    "check-responsive",
     "sync-adapters",
     "warn-allowlist",
   ]);
@@ -1742,7 +1772,7 @@ async function main(): Promise<void> {
   if (!validCommands.has(maybeCommand)) {
     console.error("Unknown command:", maybeCommand);
     console.error(
-      "Usage: bun scripts/ai-governance.ts [check|check-api-masking|check-e2e-pages|sync-adapters|warn-allowlist]",
+      "Usage: bun scripts/ai-governance.ts [check|check-api-masking|check-e2e-pages|check-responsive|sync-adapters|warn-allowlist]",
     );
     process.exit(1);
   }
@@ -1771,6 +1801,11 @@ async function main(): Promise<void> {
 
   if (maybeCommand === "check-e2e-pages") {
     await checkE2ePagesOnly();
+    return;
+  }
+
+  if (maybeCommand === "check-responsive") {
+    await checkResponsiveSpecsOnly();
     return;
   }
 

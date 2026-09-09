@@ -4067,6 +4067,7 @@ completed completed
     String errorMessage "❓"
     DateTime submittedAt "❓"
     DateTime submitRequestedAt "❓"
+    DateTime leadSyncClaimedAt "❓"
     DateTime dispatchAcceptedAt "❓"
     Int dispatchAttemptCount 
     DateTime nextDispatchAt "❓"

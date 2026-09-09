@@ -67,6 +67,11 @@ import {
 import { HostCopyableLink } from "../components/HostCopyableLink"
 import { HostEnvField } from "../components/HostEnvField"
 import { useBackofficeStudioBotOps } from "../context/BackofficeStudioBotOpsHook"
+import {
+  HOST_AGENT_SERVICE_LABELS,
+  HOST_AGENT_SERVICES,
+  type HostAgentService,
+} from "@/lib/studio-bot/host-services"
 
 function emptyEnvRecord(keys: readonly string[]): Record<string, string> {
   return Object.fromEntries(keys.map((key) => [key, ""]))
@@ -98,7 +103,6 @@ export function BackofficeStudioBotOpsContainer() {
     runFetchLogs,
     runApplyEnv,
     runRestart,
-    runImportWorkflows,
     previewResyncBethaniaWebhook,
     confirmResyncBethaniaWebhook,
     runSyncHost,
@@ -115,7 +119,7 @@ export function BackofficeStudioBotOpsContainer() {
   const [packVersion, setPackVersion] = useState("")
   const [packSha256, setPackSha256] = useState("")
   const [packBase64, setPackBase64] = useState("")
-  const [logService, setLogService] = useState<"n8n" | "api">("n8n")
+  const [logService, setLogService] = useState<HostAgentService>("openwa")
   const [logTail, setLogTail] = useState("200")
   const envFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -320,8 +324,7 @@ export function BackofficeStudioBotOpsContainer() {
             <CardHeader>
               <CardTitle className="text-base">Links de referência</CardTitle>
               <CardDescription>
-                Atalhos para N8N, Evolution e webhook. Hostnames Docker (ex.: n8n:5678) não abrem no
-                navegador — use só na configuração da Evolution.
+                Atalhos para os serviços que rodam na VPS hoje.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -333,13 +336,7 @@ export function BackofficeStudioBotOpsContainer() {
                     label={link.label}
                     href={link.href}
                     hint={link.hint}
-                    openInBrowser={link.id !== "bethania-inbound-internal"}
-                    className={
-                      link.id === "bethania-inbound-internal" ||
-                      link.id === "bethania-inbound-public"
-                        ? "md:col-span-2"
-                        : undefined
-                    }
+                    openInBrowser
                   />
                 ))}
               </FieldGroup>
@@ -502,7 +499,7 @@ export function BackofficeStudioBotOpsContainer() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Ações do host</CardTitle>
-                <CardDescription>Health, apply env, restart e import de workflows.</CardDescription>
+                <CardDescription>Health, apply env e restart dos serviços da VPS.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <div className="flex flex-wrap gap-2">
@@ -512,74 +509,44 @@ export function BackofficeStudioBotOpsContainer() {
                   <Button type="button" variant="outline" disabled={locked} onClick={() => void runApplyEnv()}>
                     Aplicar env
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={locked}
-                    onClick={() => void runRestart("n8n")}
-                  >
-                    Restart N8N
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={locked}
-                    onClick={() => void runRestart("api")}
-                  >
-                    Restart Evolution
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={locked}
-                    onClick={() => void runImportWorkflows()}
-                  >
-                    Reimportar workflows
-                  </Button>
+                  {HOST_AGENT_SERVICES.map((hostService) => (
+                    <Button
+                      key={hostService}
+                      type="button"
+                      variant="outline"
+                      disabled={locked}
+                      onClick={() => void runRestart(hostService)}
+                    >
+                      Restart {HOST_AGENT_SERVICE_LABELS[hostService]}
+                    </Button>
+                  ))}
                 </div>
                 {health ? (
                   <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
                     <p className="font-medium">Health: {health.ok ? "ok" : "falha"}</p>
                     {health.hostVersion ? <p>Versão: {health.hostVersion}</p> : null}
                     {health.error ? <p className="text-destructive">{health.error}</p> : null}
-                    {health.bethaniaProductionCheck ? (
-                      <div className="mt-3 space-y-2">
+                    {health.vpsStackCheck ? (
+                      <div className="mt-3 flex flex-col gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">Bethânia produção</span>
-                          <Badge
-                            variant={health.bethaniaProductionCheck.ok ? "default" : "destructive"}
-                          >
-                            {health.bethaniaProductionCheck.ok ? "ok" : "pendente"}
+                          <span className="font-medium">Stack da VPS</span>
+                          <Badge variant={health.vpsStackCheck.ok ? "default" : "destructive"}>
+                            {health.vpsStackCheck.ok ? "ok" : "pendente"}
                           </Badge>
                         </div>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground">Env N8N</p>
-                            <ul className="mt-1 space-y-1">
-                              {health.bethaniaProductionCheck.env.n8n.map((item) => (
-                                <li key={item.key} className="flex items-center justify-between gap-3">
-                                  <span className="font-mono text-xs">{item.key}</span>
-                                  <Badge variant={item.configured ? "outline" : "destructive"}>
-                                    {item.configured ? "set" : "missing"}
-                                  </Badge>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <p className="text-xs font-medium text-muted-foreground">Workflows</p>
-                            <ul className="mt-1 space-y-1">
-                              {health.bethaniaProductionCheck.workflows.map((item) => (
-                                <li key={item.name} className="flex items-center justify-between gap-3">
-                                  <span className="font-mono text-xs">{item.name}</span>
-                                  <Badge variant={item.ok ? "outline" : "destructive"}>
-                                    {item.ok ? item.expected : String(item.actual)}
-                                  </Badge>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
+                        <ul className="flex flex-col gap-1">
+                          {health.vpsStackCheck.services.map((item) => (
+                            <li
+                              key={item.service}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span className="font-mono text-xs">{item.service}</span>
+                              <Badge variant={item.ok ? "outline" : "destructive"}>
+                                {item.status ?? "ausente"}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ) : null}
                     {health.containers?.length ? (
@@ -835,10 +802,10 @@ export function BackofficeStudioBotOpsContainer() {
         <TabsContent value="logs" className="flex min-h-0 flex-1 flex-col gap-4">
           <Card className="flex min-h-0 flex-1 flex-col">
             <CardHeader>
-              <CardTitle className="text-base">Logs Evolution / N8N</CardTitle>
+              <CardTitle className="text-base">Logs da VPS</CardTitle>
               <CardDescription>
-                Últimas linhas dos containers na VPS via agente. Envie uma mensagem no WhatsApp e
-                atualize para diagnosticar o fluxo Evolution → N8N.
+                Últimas linhas dos containers na VPS via agente. Use o OpenWA para diagnosticar o
+                fluxo de WhatsApp e o Agente Ops para falhas do próprio agente.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
@@ -847,15 +814,18 @@ export function BackofficeStudioBotOpsContainer() {
                   <FieldLabel>Serviço</FieldLabel>
                   <Select
                     value={logService}
-                    onValueChange={(value) => setLogService(value as "n8n" | "api")}
+                    onValueChange={(value) => setLogService(value as HostAgentService)}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value="n8n">N8N</SelectItem>
-                        <SelectItem value="api">Evolution</SelectItem>
+                        {HOST_AGENT_SERVICES.map((hostService) => (
+                          <SelectItem key={hostService} value={hostService}>
+                            {HOST_AGENT_SERVICE_LABELS[hostService]}
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -894,7 +864,7 @@ export function BackofficeStudioBotOpsContainer() {
               {logs ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
                   <p className="text-xs text-muted-foreground">
-                    {logs.service === "n8n" ? "N8N" : "Evolution"} ·{" "}
+                    {HOST_AGENT_SERVICE_LABELS[logs.service]} ·{" "}
                     {logs.lines.length} linhas ·{" "}
                     {new Date(logs.fetchedAt).toLocaleString("pt-BR")}
                   </p>

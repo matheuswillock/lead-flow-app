@@ -1,4 +1,17 @@
 {
+  "responsiveSpecAllowlist": [
+    "e2e/specs/backoffice/campanhas-analytics.spec.ts",
+    "e2e/specs/backoffice/clients/adhesions.spec.ts",
+    "e2e/specs/backoffice/clients/member-team-permissions.spec.ts",
+    "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+    "e2e/specs/backoffice/pricing.spec.ts",
+    "e2e/specs/product/email-campanhas.spec.ts",
+    "e2e/specs/product/email-configuracoes.spec.ts",
+    "e2e/specs/product/radar.spec.ts",
+    "e2e/specs/public/adquirir/creditos.spec.ts",
+    "e2e/specs/public/home.spec.ts",
+    "e2e/specs/public/public-form.spec.ts"
+  ],
   "prismaIncludeAllowlist": [
     "app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository.ts",
     "app/api/infra/data/repositories/backoffice/backofficeFeature/BackofficeFeatureRepository.ts",
