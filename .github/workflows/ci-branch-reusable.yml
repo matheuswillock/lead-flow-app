@@ -249,33 +249,43 @@ jobs:
       # retrato do runner self-hosted (docker/sudo/RAM/disco) para desenhar
       # a migração do E2E sem SSH direto na VPS.
       - name: Sondagem do ambiente self-hosted
+        # `shell: bash` do Actions já roda com `-e` implícito — qualquer
+        # comando aqui que retorne != 0 (ex.: `which` de um binário ausente)
+        # aborta o passo antes do restante do relatório. Cada comando
+        # potencialmente ausente MUST ter fallback explícito, e o passo
+        # termina com `exit 0` para não travar o resto do job.
         run: |
-          set -uo pipefail
           echo "== identidade =="
-          hostname; whoami; pwd
+          hostname || true
+          whoami || true
+          pwd || true
           echo "== binarios =="
-          which docker psql bun node
-          docker --version 2>&1 || echo "docker: N/A"
-          psql --version 2>&1 || echo "psql: N/A"
+          for bin in docker psql bun node sudo; do
+            path=$(command -v "$bin" 2>/dev/null) && echo "$bin: $path" || echo "$bin: FALTANDO"
+          done
+          docker --version 2>&1 || echo "docker --version: falhou"
+          psql --version 2>&1 || echo "psql --version: falhou"
           echo "== docker info (daemon acessivel sem sudo?) =="
-          docker info 2>&1 | head -30
+          docker info > /tmp/docker-info.txt 2>&1; head -30 /tmp/docker-info.txt || true
           echo "== sudo sem senha =="
-          sudo -n true && echo SUDO_OK || echo SEM_SUDO
+          if sudo -n true 2>/dev/null; then echo SUDO_OK; else echo SEM_SUDO; fi
           echo "== cpu/mem =="
-          nproc
-          free -h
+          nproc || true
+          free -h || true
           echo "== disco =="
-          df -h /
+          df -h / || true
           echo "== containers docker existentes =="
           docker ps -a 2>&1 || true
           echo "== portas 55322 em uso =="
-          (ss -ltnp 2>&1 || netstat -ltnp 2>&1) | grep 55322 || echo "porta livre"
+          { ss -ltnp 2>&1 || netstat -ltnp 2>&1 || true; } > /tmp/ports.txt
+          grep 55322 /tmp/ports.txt || echo "porta livre"
           echo "== cache playwright existente =="
           ls -la ~/.cache/ms-playwright 2>&1 || echo "sem cache"
           echo "== bibliotecas de sistema comuns do playwright (chromium deps) =="
           for lib in libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 libgtk-3-0 libgbm1 libasound2; do
             dpkg -s "$lib" >/dev/null 2>&1 && echo "$lib: OK" || echo "$lib: FALTANDO"
           done
+          exit 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
