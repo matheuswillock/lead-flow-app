@@ -235,5 +235,66 @@ describe("POST /api/v1/subscriptions/sync/[supabaseId] — sem falso cancelament
       expect(body.isValid).toBe(true)
       expect(getSubscriptionMock).toHaveBeenCalledWith("sub_9_legacy", "legacy")
     })
+
+    // Achado cursor[bot] (PR #1138): o write do ponteiro asaasSubscriptionId
+    // MUST gravar asaasSubscriptionAccount na MESMA operação — sem isso, uma
+    // assinatura da conta legada fica rotulada com a conta errada e todo
+    // roteamento multi-conta subsequente (DA2/DA7) erra o alvo.
+    it("lookup direto ACTIVE em legacy → write grava ponteiro E asaasSubscriptionAccount=legacy juntos", async () => {
+      findUniqueMock.mockImplementationOnce(async () => ({
+        supabaseId: "sb-10",
+        asaasCustomerId: "cus_10_primary",
+        asaasCustomerAccount: "primary",
+        asaasSubscriptionId: "sub_10_legacy",
+        asaasSubscriptionAccount: "legacy",
+      }))
+      getSubscriptionMock.mockImplementationOnce(async () => ({
+        id: "sub_10_legacy",
+        status: "ACTIVE",
+        value: 59.9,
+        cycle: "MONTHLY",
+        nextDueDate: "2026-10-01",
+        dateCreated: "2026-01-01",
+      }))
+
+      const response = await POST(buildRequest(), { params: Promise.resolve({ supabaseId: "sb-10" }) })
+      const body = await response.json()
+
+      expect(body.isValid).toBe(true)
+      expect(profileUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            asaasSubscriptionId: "sub_10_legacy",
+            asaasSubscriptionAccount: "legacy",
+          }),
+        }),
+      )
+    })
+
+    it("fallback por lista (conta do customer legacy) → ACTIVE aplicado grava asaasSubscriptionAccount=legacy", async () => {
+      findUniqueMock.mockImplementationOnce(async () => ({
+        supabaseId: "sb-11",
+        asaasCustomerId: "cus_11_legacy",
+        asaasCustomerAccount: "legacy",
+        asaasSubscriptionId: null,
+      }))
+      listSubscriptionsMock.mockImplementationOnce(async () => [
+        { id: "sub_11_new", status: "ACTIVE", value: 59.9, cycle: "MONTHLY" },
+      ])
+
+      const response = await POST(buildRequest(), { params: Promise.resolve({ supabaseId: "sb-11" }) })
+      const body = await response.json()
+
+      expect(body.isValid).toBe(true)
+      expect(listSubscriptionsMock).toHaveBeenCalledWith("cus_11_legacy", { limit: 20 }, "legacy")
+      expect(profileUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            asaasSubscriptionId: "sub_11_new",
+            asaasSubscriptionAccount: "legacy",
+          }),
+        }),
+      )
+    })
   })
 })

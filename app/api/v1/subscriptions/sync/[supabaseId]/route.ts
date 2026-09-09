@@ -21,13 +21,25 @@ type SyncedSubscription = {
  * profile local. Compartilhado entre o lookup direto pelo ponteiro
  * conhecido (3a) e o achado ACTIVE da varredura de lista (fallback), para
  * não duplicar a lógica de escrita/log em dois lugares.
+ *
+ * `account` é a conta Asaas onde a assinatura foi de fato encontrada —
+ * achado cursor[bot] (PR #1138): gravar o ponteiro `asaasSubscriptionId`
+ * sem gravar `asaasSubscriptionAccount` junto deixa uma assinatura da
+ * conta legada rotulada com a conta errada, e todo roteamento multi-conta
+ * subsequente (DA2/DA7) erra o alvo. Ponteiro e conta são escritos SEMPRE
+ * na mesma operação.
  */
-async function applyActiveSubscription(supabaseId: string, activeSubscription: SyncedSubscription) {
+async function applyActiveSubscription(
+  supabaseId: string,
+  activeSubscription: SyncedSubscription,
+  account: AsaasAccountId,
+) {
   console.info('✅ [SyncSubscription] Assinatura ativa encontrada:', {
     id: activeSubscription.id,
     status: activeSubscription.status,
     value: activeSubscription.value,
     nextDueDate: activeSubscription.nextDueDate,
+    account,
   });
 
   const subscriptionPlan: 'manager_base' | 'with_operators' | 'free_trial' =
@@ -38,6 +50,7 @@ async function applyActiveSubscription(supabaseId: string, activeSubscription: S
     data: {
       subscriptionId: activeSubscription.id,
       asaasSubscriptionId: activeSubscription.id,
+      asaasSubscriptionAccount: account,
       subscriptionStatus: 'active', // Asaas retornou ACTIVE
       subscriptionPlan: subscriptionPlan,
       subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
@@ -135,7 +148,10 @@ export async function POST(
         const current = await AsaasSubscriptionService.getSubscription(knownSubscriptionId, subscriptionAccount);
 
         if (current.status === 'ACTIVE') {
-          return NextResponse.json(await applyActiveSubscription(supabaseId, current), { status: 200 });
+          return NextResponse.json(
+            await applyActiveSubscription(supabaseId, current, subscriptionAccount),
+            { status: 200 },
+          );
         }
         if (TERMINAL_ASAAS_STATUSES.has(current.status)) {
           return NextResponse.json(await applyTerminalSubscription(supabaseId, current), { status: 200 });
@@ -244,7 +260,12 @@ export async function POST(
       return NextResponse.json(await applyTerminalSubscription(supabaseId, terminalSubscription), { status: 200 });
     }
 
-    return NextResponse.json(await applyActiveSubscription(supabaseId, activeSubscription), { status: 200 });
+    // A varredura consultou a lista da conta do CUSTOMER — a assinatura
+    // ACTIVE encontrada pertence a essa conta, não à do ponteiro antigo.
+    return NextResponse.json(
+      await applyActiveSubscription(supabaseId, activeSubscription, customerAccount),
+      { status: 200 },
+    );
 
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
