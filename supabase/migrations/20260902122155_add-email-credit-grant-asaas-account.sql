@@ -39,18 +39,35 @@ begin
   -- a purchase tem external_reference único ('platform-purchase-{id}') que o
   -- Asaas devolve no payload do evento. asaas_webhook_events.account é a
   -- conta cujo token validou o evento — mesmo padrão da migration
-  -- 20260902125434 (pending actions), que já rejeitou o join por paymentId
-  -- cru por reabrir o C33.
+  -- 20260902125434 (pending actions).
+  --
+  -- Achado cursor[bot] (rodada seguinte): o grant não guarda o id da
+  -- purchase — o vínculo grant↔purchase por paymentId cru reabriria o C33
+  -- (numa colisão, a purchase da OUTRA conta com o mesmo paymentId podia
+  -- relabelar o grant errado). Dois guards fecham isso: (a) o vínculo exige
+  -- também o MESMO time (o grant nasce com o teamId da purchase); (b) o
+  -- relabel só acontece quando a evidência é INAMBÍGUA — se existir
+  -- QUALQUER evidência primary para o mesmo paymentId (o caso colisão),
+  -- nada é tocado e a linha fica para o fallback/fail-open documentado.
   update "public"."corretor_studio_email_credit_payment_grants" g
   set "asaasAccount" = 'legacy'
   from "public"."corretor_studio_platform_purchases" pp
   where g."asaasAccount" = 'primary'
     and pp."asaas_payment_id" = g."paymentId"
+    and (pp."team_id" is null or pp."team_id" = g."teamId")
     and exists (
       select 1
       from "public"."asaas_webhook_events" we
       where we.payload -> 'payment' ->> 'externalReference' = pp."external_reference"
         and we.account = 'legacy'
+    )
+    and not exists (
+      select 1
+      from "public"."corretor_studio_platform_purchases" pp2
+      join "public"."asaas_webhook_events" we2
+        on we2.payload -> 'payment' ->> 'externalReference' = pp2."external_reference"
+      where pp2."asaas_payment_id" = g."paymentId"
+        and we2.account = 'primary'
     );
 
   -- Preferência 2 (fallback, sem evento casado): o grant só é criado com o
