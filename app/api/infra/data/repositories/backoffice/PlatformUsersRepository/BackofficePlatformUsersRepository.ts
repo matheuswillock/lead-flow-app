@@ -605,6 +605,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         asaasCustomerId: true,
         asaasCustomerAccount: true,
         asaasSubscriptionId: true,
+        asaasSubscriptionAccount: true,
         subscriptionStatus: true,
         subscriptionNextDueDate: true,
         subscriptionEndDate: true,

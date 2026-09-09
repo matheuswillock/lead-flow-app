@@ -1,4 +1,5 @@
 import type { AsaasAccount, SubscriptionPlan, SubscriptionStatus } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface TeamSummaryRecord {
   id: string
@@ -121,6 +122,8 @@ export interface MasterPlatformUserBillingRecord {
   /** E3 (C19) — conta dona do `asaasCustomerId` acima; ver `resolveKnownAsaasAccounts`. */
   asaasCustomerAccount: AsaasAccount
   asaasSubscriptionId: string | null
+  /** Conta dona do `asaasSubscriptionId` (PR #1137) — mesmo domínio de valores de `AsaasAccount`. */
+  asaasSubscriptionAccount: AsaasAccountId
   subscriptionStatus: SubscriptionStatus | null
   subscriptionNextDueDate: Date | null
   subscriptionEndDate: Date | null

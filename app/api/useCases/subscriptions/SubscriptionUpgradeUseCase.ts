@@ -229,14 +229,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    * Confirma pagamento e cria operador (busca por paymentId)
    * Método legado para compatibilidade com payments únicos
    */
-  async confirmPaymentAndCreateOperator(paymentId: string): Promise<Output> {
+  async confirmPaymentAndCreateOperator(paymentId: string, account?: AsaasAccountId | null): Promise<Output> {
     try {
       console.info('🔄 [confirmPaymentAndCreateOperator] ============================================');
-      console.info('🔄 [confirmPaymentAndCreateOperator] Iniciando processamento para paymentId:', paymentId);
+      console.info('🔄 [confirmPaymentAndCreateOperator] Iniciando processamento para paymentId:', paymentId, 'account:', account ?? 'desconhecida');
 
-      // 1. Buscar operador pendente por paymentId (usando findFirst pois não é unique)
+      // 1. Buscar operador pendente por paymentId. Achado cursor[bot]
+      // (PR #1137): paymentId deixou de ser único isolado — quando o caller
+      // conhece a conta (webhook passa a conta do evento), o filtro por
+      // (paymentId, asaasAccount) evita selecionar a linha da OUTRA conta
+      // numa colisão C33 e provisionar operador para o manager errado.
       let pendingOperator = await prisma.pendingOperator.findFirst({
-        where: { paymentId },
+        where: account ? { paymentId, asaasAccount: account } : { paymentId },
         include: {
           manager: true
         }
@@ -251,29 +255,31 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 2. Se não encontrou por paymentId, buscar pelo externalReference do Asaas
       if (!pendingOperator) {
         console.info('ℹ️ [confirmPaymentAndCreateOperator] Não encontrado por paymentId, verificando no Asaas...');
-        
-        const paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
-        
+
+        const paymentStatus = await this.checkAsaasPaymentStatus(paymentId, account);
+
         if (paymentStatus.success && paymentStatus.externalReference) {
           const externalRef = paymentStatus.externalReference;
           console.info('🔍 [confirmPaymentAndCreateOperator] ExternalReference encontrado:', externalRef);
-          
+
           // Extrair ID do externalReference (formato: pending-operator-{uuid})
           if (externalRef.startsWith('pending-operator-')) {
             const pendingOperatorId = externalRef.replace('pending-operator-', '');
             console.info('🆔 [confirmPaymentAndCreateOperator] Buscando por ID:', pendingOperatorId);
-            
+
             pendingOperator = await prisma.pendingOperator.findUnique({
               where: { id: pendingOperatorId },
               include: { manager: true }
             });
-            
-            // Atualizar paymentId no PendingOperator
+
+            // Atualizar paymentId no PendingOperator — persistindo JUNTO a
+            // conta onde o payment foi de fato encontrado (C33: paymentId e
+            // conta são um par, nunca gravados separados).
             if (pendingOperator) {
               console.info('✅ [confirmPaymentAndCreateOperator] PendingOperator encontrado por externalReference');
               await prisma.pendingOperator.update({
                 where: { id: pendingOperatorId },
-                data: { paymentId }
+                data: { paymentId, asaasAccount: paymentStatus.account ?? account ?? 'primary' }
               });
             }
           }
@@ -679,7 +685,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       console.info('[checkOperatorPaymentStatus] Verificando status para paymentId:', paymentId);
 
-      const pendingOperator = await prisma.pendingOperator.findUnique({
+      // paymentId deixou de ser @unique isolado (PendingOperator.asaasAccount,
+      // PR #1137, round 7) — findFirst preserva o comportamento anterior
+      // (rota legada sem consumidor real — D15; plumbar account pela rota
+      // aguarda a decisão do owner).
+      const pendingOperator = await prisma.pendingOperator.findFirst({
         where: { paymentId }
       });
 
@@ -694,8 +704,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         operatorId: pendingOperator.operatorId
       });
 
-      // Verificar status no Asaas
-      const asaasStatus = await this.checkAsaasPaymentStatus(paymentId);
+      // Verificar status no Asaas — SEMPRE na conta persistida da PRÓPRIA
+      // linha escolhida (achado cursor[bot]: ler a outra conta e gravar o
+      // status aqui cruzava contas numa colisão C33; leitura e escrita agora
+      // são sempre auto-consistentes com a linha).
+      const asaasStatus = await this.checkAsaasPaymentStatus(paymentId, pendingOperator.asaasAccount);
       console.info('[checkOperatorPaymentStatus] Status do Asaas:', asaasStatus);
 
       if (asaasStatus.success) {
@@ -848,6 +861,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         externalReference: payment.externalReference,
         value: payment.value,
         billingType: payment.billingType,
+        // Conta onde o payment foi de fato encontrado — quem persiste
+        // paymentId a partir deste resultado grava a conta JUNTO (C33).
+        account: result.account,
       };
     } catch (error: any) {
       console.error('[Asaas] Erro ao verificar status:', error);
