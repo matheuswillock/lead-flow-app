@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 import type { Prisma } from "@prisma/client"
 import type { RadarSegmentRules } from "@/lib/radar/segment-dsl"
+import {
+  radarRepositoryMock,
+  registerRadarRepositoryModuleMock,
+} from "@/test/support/radar-repository-module-mock"
 
 const countProfilesByEmailContactListIds = mock(async (_teamId: string, _listIds: string[]) => 0)
 const listProfileIdsByEmailContactListIds = mock(
@@ -56,20 +60,19 @@ const listProfileIdsByWhereWithAnyFilters = mock(
   ) => [] as string[]
 )
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    countProfilesByEmailContactListIds,
-    listProfileIdsByEmailContactListIds,
-    countProfilesByEmailContactListIntersection,
-    listProfileIdsByEmailContactListIntersection,
-    countProfilesByWhere,
-    listProfileIdsByWhere,
-    findProfileIdsByEmailContactListIds,
-    findEmailContactIdsByCustomField,
-    countProfilesByWhereWithAnyFilters,
-    listProfileIdsByWhereWithAnyFilters,
-  },
-}))
+await registerRadarRepositoryModuleMock()
+Object.assign(radarRepositoryMock, {
+  countProfilesByEmailContactListIds,
+  listProfileIdsByEmailContactListIds,
+  countProfilesByEmailContactListIntersection,
+  listProfileIdsByEmailContactListIntersection,
+  countProfilesByWhere,
+  listProfileIdsByWhere,
+  findProfileIdsByEmailContactListIds,
+  findEmailContactIdsByCustomField,
+  countProfilesByWhereWithAnyFilters,
+  listProfileIdsByWhereWithAnyFilters,
+})
 
 const { radarSegmentQueryService } = await import("./RadarSegmentQueryService")
 

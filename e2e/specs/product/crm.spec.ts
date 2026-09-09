@@ -17,6 +17,14 @@ const TOUCH_LEAD_CODE = "E2ELEADTOUCH0001";
 const TOUCH_LEAD_NAME = "Lead Touch Target E2E";
 const TOUCH_LEAD_PHONE = "11999990302";
 
+const CRM_E2E_LEAD_IDS = [LAYOUT_LEAD_ID, TOUCH_LEAD_ID];
+
+/** Mesma resolução de `playwright.config.ts` — o afterAll cria o próprio
+ * `APIRequestContext` (a fixture `request` é por-teste e não existe em
+ * hooks de worker) e precisa do baseURL explícito. */
+const E2E_API_BASE_URL =
+  process.env.E2E_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000";
+
 interface SeedCrmLeadOptions {
   id: string;
   leadCode: string;
@@ -68,19 +76,47 @@ async function seedCrmLead({ id, leadCode, name, phone, activityCount = 0 }: See
  * lead seedado fica invisível por mais de 75s — era o flaky da CI no PR #1153.
  * Um PUT idempotente pela API invalida a tag exatamente como uma mutação real
  * do app (invalidateLeadCache).
+ *
+ * E `revalidateTag(tag, "max")` é stale-while-revalidate: o PRIMEIRO GET após
+ * a invalidação ainda serve a entrada velha e só dispara a revalidação em
+ * background. O poll final consome esse serve stale ANTES de o teste navegar
+ * — sem ele o goto seguinte podia renderizar o board da lista vazia cacheada
+ * e o teste só passava no retry (flake serial das runs de 09/09, develop
+ * 15:01Z e release v0.299.6 — fix do PR #1158).
  */
 async function invalidateTeamLeadsCache(
   page: Page,
   { leadId, teamId, name }: { leadId: string; teamId: string; name: string },
 ) {
+  const headers = {
+    "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+    "x-team-id": teamId,
+  };
   const invalidateResponse = await page.request.put(`/api/v1/leads/${leadId}`, {
-    headers: {
-      "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
-      "x-team-id": teamId,
-    },
+    headers,
     data: { name },
   });
   expect(invalidateResponse.ok(), "PUT de invalidação do cache falhou").toBe(true);
+
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(
+          `/api/v1/leads?role=manager&teamId=${teamId}`,
+          { headers },
+        );
+        if (!response.ok()) return false;
+        const body = (await response.json()) as {
+          result?: { leads?: Array<{ id: string }> };
+        };
+        return (body.result?.leads ?? []).some((lead) => lead.id === leadId);
+      },
+      {
+        message: "lista de leads do time reflete o lead seedado após invalidação",
+        timeout: 15_000,
+      },
+    )
+    .toBe(true);
 }
 
 /**
@@ -116,11 +152,59 @@ test.describe("app/[supabaseId]/crm", () => {
     );
   });
 
-  test.afterAll(async () => {
-    await getPrisma().lead.deleteMany({
-      where: { id: { in: [LAYOUT_LEAD_ID, TOUCH_LEAD_ID] } },
-    });
-    await disconnectPrisma();
+  test.afterAll(async ({ playwright }) => {
+    // DELETE pela API (não só Prisma direto): roda `invalidateLeadFullCache`
+    // para CADA lead seedado — achado codex no PR #1160: deletar só via
+    // Prisma deixava a lista "use cache" do time com leads-fantasma por até
+    // 60s, contaminando a próxima rodada do spec. A fixture `request` é
+    // por-teste e não existe em afterAll: o contexto é criado e descartado
+    // aqui mesmo, com o mesmo header-auth de modo E2E dos testes.
+    const profile = await findE2eMasterProfile();
+    const api = await playwright.request.newContext({ baseURL: E2E_API_BASE_URL });
+    try {
+      if (profile?.activeTeamId) {
+        const headers = {
+          "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+          "x-team-id": profile.activeTeamId,
+        };
+        // Sem assert de .ok(): o DELETE é idempotente por design — numa rodada
+        // que falhou antes do seed, o lead pode nem existir (404 legítimo). O
+        // invariante real é o poll abaixo: a lista cacheada SEM os leads.
+        for (const leadId of CRM_E2E_LEAD_IDS) {
+          await api.delete(`/api/v1/leads/${leadId}`, { headers });
+        }
+        // Consome o serve stale do revalidateTag (SWR) para a próxima rodada
+        // já encontrar a lista sem os leads deste spec.
+        await expect
+          .poll(
+            async () => {
+              const response = await api.get(
+                `/api/v1/leads?role=manager&teamId=${profile.activeTeamId}`,
+                { headers },
+              );
+              if (!response.ok()) return false;
+              const body = (await response.json()) as {
+                result?: { leads?: Array<{ id: string }> };
+              };
+              return (body.result?.leads ?? []).every(
+                (lead) => !CRM_E2E_LEAD_IDS.includes(lead.id),
+              );
+            },
+            {
+              message: "lista de leads do time sem os leads seedados após cleanup",
+              timeout: 15_000,
+            },
+          )
+          .toBe(true);
+      }
+    } finally {
+      // Fallback SEMPRE roda (achados cursor/codex no PR #1158): mesmo se o
+      // DELETE via API falhar ou o poll estourar, o banco fica limpo e a
+      // conexão fecha — a falha do cache ainda propaga depois do finally.
+      await api.dispose();
+      await getPrisma().lead.deleteMany({ where: { id: { in: CRM_E2E_LEAD_IDS } } });
+      await disconnectPrisma();
+    }
   });
 
   test("carrega o CRM autenticado sem assinatura inativa", async ({ page }) => {
