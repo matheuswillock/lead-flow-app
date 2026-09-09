@@ -20,6 +20,13 @@ runs:
       # update pode ficar pendurado até o job inteiro bater no timeout de 30min.
       run: |
         set -euo pipefail
+        # O runner ubuntu-latest traz o repo apt do Chrome da Google, que este
+        # job NÃO usa (o Chromium vem do cache do Playwright) — e as
+        # republicações da Google produzem "Hash Sum mismatch" que derruba o
+        # apt-get update inteiro com exit 100 (3 runs seguidas em 09/09/2026).
+        # Remover o source de terceiro antes do update imuniza o job.
+        sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+          /etc/apt/sources.list.d/google-chrome.sources
         sudo apt-get update -y \
           -o Acquire::Retries=3 \
           -o Acquire::http::Timeout=15 \

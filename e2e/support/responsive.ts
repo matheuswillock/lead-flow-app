@@ -38,14 +38,27 @@ export interface ResponsiveCheckOptions {
   restoreViewport?: { width: number; height: number } | false;
 }
 
-/** Aguarda dois frames de layout após trocar o viewport. */
+/**
+ * Aguarda o layout assentar após trocar o viewport: webfonts prontas, dois
+ * frames e o fim das animações/transições CSS finitas. Medir com a fonte
+ * fallback ainda aplicada (botões a 43.9px em navegação quente) ou durante
+ * uma transição (`size-7` → `max-lg:size-11` com `transition-all` do shadcn;
+ * computed height 43.48px na CI do PR #1153) reprovava o assert de 44px.
+ * Animações infinitas (spinners) são ignoradas.
+ */
 async function waitForLayoutSettle(page: Page): Promise<void> {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }),
-  );
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
 }
 
 type Rgba = { r: number; g: number; b: number; a: number };
@@ -133,28 +146,43 @@ export async function assertTouchTargets(
   await page.setViewportSize({ width: RESPONSIVE_WIDTHS[0], height: 800 });
   await waitForLayoutSettle(page);
 
-  const undersized = await page.evaluate(
-    ({ selector: targetSelector, minSize: minTargetSize }) => {
-      const describe = (element: Element) => {
-        const id = element.id ? `#${element.id}` : "";
-        const text = (element.textContent ?? "").trim().slice(0, 40);
-        return `${element.tagName.toLowerCase()}${id}${text ? ` "${text}"` : ""}`;
-      };
-      return Array.from(document.querySelectorAll(targetSelector))
-        .filter((element) => {
-          const style = window.getComputedStyle(element);
-          if (style.display === "inline" || style.visibility === "hidden") return false;
-          const rect = element.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return false;
-          return rect.width < minTargetSize || rect.height < minTargetSize;
-        })
-        .map((element) => {
-          const rect = element.getBoundingClientRect();
-          return `${describe(element)} (${Math.round(rect.width)}×${Math.round(rect.height)})`;
-        });
-    },
-    { selector, minSize },
-  );
+  const measureUndersizedTargets = () =>
+    page.evaluate(
+      ({ selector: targetSelector, minSize: minTargetSize }) => {
+        const describe = (element: Element) => {
+          const id = element.id ? `#${element.id}` : "";
+          const text = (element.textContent ?? "").trim().slice(0, 40);
+          return `${element.tagName.toLowerCase()}${id}${text ? ` "${text}"` : ""}`;
+        };
+        return Array.from(document.querySelectorAll(targetSelector))
+          .filter((element) => {
+            const style = window.getComputedStyle(element);
+            if (style.display === "inline" || style.visibility === "hidden") return false;
+            const rect = element.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return false;
+            return rect.width < minTargetSize || rect.height < minTargetSize;
+          })
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            const rootFontSize = window.getComputedStyle(document.documentElement).fontSize;
+            return `${describe(element)} (${rect.width.toFixed(2)}×${rect.height.toFixed(2)}; computed ${style.height}; rem ${rootFontSize})`;
+          });
+      },
+      { selector, minSize },
+    );
+
+  // Mede até estabilizar: numa navegação quente o assert corre contra
+  // animação de entrada/hidratação e vê os alvos ~2% menores (43.9px) por
+  // alguns frames. Violação real é steady-state e continua reprovando no
+  // assert final, que preserva o diagnóstico completo (medidas exatas,
+  // computed height e rem — padrão do PR #1149).
+  const deadline = Date.now() + 5_000;
+  let undersized = await measureUndersizedTargets();
+  while (undersized.length > 0 && Date.now() < deadline) {
+    await page.waitForTimeout(250);
+    undersized = await measureUndersizedTargets();
+  }
 
   expect(
     undersized,
