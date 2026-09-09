@@ -60,6 +60,23 @@ describeIntegration("consumeBillingRateLimit — integração Postgres real (T-5
     expect(allowedCount).toBe(limit)
   })
 
+  it("consumo remove janelas além da retenção (limpeza oportunista)", async () => {
+    const staleKey = `test:stale-${randomUUID()}`
+    const staleWindowStart = new Date(Date.now() - 2 * 60 * 60_000) // 2h atrás > retenção de 1h
+
+    await prisma.$executeRaw`
+      insert into billing_rate_limit_windows (key, "windowStart", count, "createdAt", "updatedAt")
+      values (${staleKey}, ${staleWindowStart}, 3, now(), now())
+    `
+
+    await consumeBillingRateLimit(`test:${randomUUID()}`, { limit: 5, windowMs: 60_000 })
+
+    const remaining = await prisma.$queryRaw<Array<{ count: number }>>`
+      select count from billing_rate_limit_windows where key = ${staleKey}
+    `
+    expect(remaining.length).toBe(0)
+  })
+
   it("janela expirada reseta o orçamento", async () => {
     const key = `test:${randomUUID()}`
     const limit = 2

@@ -4774,6 +4774,7 @@ model BillingRateLimitWindow {
   updatedAt   DateTime @updatedAt @db.Timestamptz(6)
 
   @@id([key, windowStart])
+  @@index([windowStart])
   @@map("billing_rate_limit_windows")
 }
 

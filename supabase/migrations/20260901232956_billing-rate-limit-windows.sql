@@ -18,3 +18,10 @@ REVOKE ALL ON TABLE "public"."billing_rate_limit_windows" FROM anon;
 REVOKE ALL ON TABLE "public"."billing_rate_limit_windows" FROM authenticated;
 GRANT ALL ON TABLE "public"."billing_rate_limit_windows" TO service_role;
 -- Rate limits: RLS on, no policies — only service-role / server Prisma path.
+
+-- Achado codex no PR #1134 (P2): sem retenção, a tabela cresce sem limite
+-- (chave inclui IP influenciado por atacante). O limiter faz limpeza
+-- oportunista de janelas expiradas a cada consumo (lib/billing/
+-- billing-rate-limit.ts); este índice suporta o DELETE por expiração.
+CREATE INDEX IF NOT EXISTS "billing_rate_limit_windows_windowStart_idx"
+  ON "public"."billing_rate_limit_windows" USING btree ("windowStart");
