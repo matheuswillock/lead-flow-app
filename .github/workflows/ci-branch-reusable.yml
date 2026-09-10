@@ -235,7 +235,16 @@ jobs:
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 30
+    # A VPS tem 2 vCPU / 7,8 Gi e 2+ runners na mesma máquina — o E2E completo
+    # (Postgres :55322 + build Next com heap de 5 Gi + Chromium) não comporta
+    # duas execuções simultâneas nem porta/nome compartilhados. Este grupo
+    # serializa TODO E2E na VPS (mesmo grupo em ci-develop/ci-main).
+    # `cancel-in-progress: false`: execução em andamento nunca é derrubada.
+    concurrency:
+      group: e2e-postgres-vps
+      cancel-in-progress: false
+    # 45min (era 30 no ubuntu-latest de 4 vCPU): build + suíte em 2 vCPU.
+    timeout-minutes: 45
     # Aqui a distinção é a mais crítica dos três: o upload do relatório roda
     # DEPOIS do teste. Um upload que falha deixa o job vermelho com o E2E tendo
     # passado, e ler só `needs.e2e.result` reportaria "E2E reprovou".
@@ -245,48 +254,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # SONDAGEM TEMPORÁRIA — remover antes do commit final. Levanta o
-      # retrato do runner self-hosted (docker/sudo/RAM/disco) para desenhar
-      # a migração do E2E sem SSH direto na VPS.
-      - name: Sondagem do ambiente self-hosted
-        # `shell: bash` do Actions já roda com `-e` implícito — qualquer
-        # comando aqui que retorne != 0 (ex.: `which` de um binário ausente)
-        # aborta o passo antes do restante do relatório. Cada comando
-        # potencialmente ausente MUST ter fallback explícito, e o passo
-        # termina com `exit 0` para não travar o resto do job.
-        run: |
-          echo "== identidade =="
-          hostname || true
-          whoami || true
-          pwd || true
-          echo "== binarios =="
-          for bin in docker psql bun node sudo; do
-            path=$(command -v "$bin" 2>/dev/null) && echo "$bin: $path" || echo "$bin: FALTANDO"
-          done
-          docker --version 2>&1 || echo "docker --version: falhou"
-          psql --version 2>&1 || echo "psql --version: falhou"
-          echo "== docker info (daemon acessivel sem sudo?) =="
-          docker info > /tmp/docker-info.txt 2>&1 || true
-          head -30 /tmp/docker-info.txt || true
-          echo "== sudo sem senha =="
-          if sudo -n true 2>/dev/null; then echo SUDO_OK; else echo SEM_SUDO; fi
-          echo "== cpu/mem =="
-          nproc || true
-          free -h || true
-          echo "== disco =="
-          df -h / || true
-          echo "== containers docker existentes =="
-          docker ps -a 2>&1 || true
-          echo "== portas 55322 em uso =="
-          { ss -ltnp 2>&1 || netstat -ltnp 2>&1 || true; } > /tmp/ports.txt
-          grep 55322 /tmp/ports.txt || echo "porta livre"
-          echo "== cache playwright existente =="
-          ls -la ~/.cache/ms-playwright 2>&1 || echo "sem cache"
-          echo "== bibliotecas de sistema comuns do playwright (chromium deps) =="
-          for lib in libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 libgtk-3-0 libgbm1 libasound2; do
-            dpkg -s "$lib" >/dev/null 2>&1 && echo "$lib: OK" || echo "$lib: FALTANDO"
-          done
-          exit 0
+      - name: Contexto do runner
+        run: echo "runner=$(hostname)/$(whoami) nproc=$(nproc) $(free -h | awk '/^Mem:/{print "mem_disp=" $7}') $(df -h / | awk 'NR==2 {print "disco_livre=" $4}')"
 
       - name: Setup Node
         uses: actions/setup-node@v4

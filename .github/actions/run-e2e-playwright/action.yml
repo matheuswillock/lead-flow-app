@@ -13,13 +13,21 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install PostgreSQL client
+    # Runner self-hosted (VPS) é persistente: psql e as libs do Chromium são
+    # pré-instaladas pelo owner uma única vez, e o apt aqui seria repetição
+    # (além de exigir sudo passwordless, que a VPS não tem). O apt só roda no
+    # caminho ubuntu-latest (VM descartável), onde psql nunca existe.
+    - name: Install PostgreSQL client (somente quando ausente)
       shell: bash
       # Acquire::Retries/Timeout evita travar indefinidamente quando um mirror
       # (ex. azure.archive.ubuntu.com) fica sem responder — sem isso, apt-get
-      # update pode ficar pendurado até o job inteiro bater no timeout de 30min.
+      # update pode ficar pendurado até o job inteiro bater no timeout.
       run: |
         set -euo pipefail
+        if command -v psql >/dev/null 2>&1; then
+          echo "psql já disponível: $(psql --version)"
+          exit 0
+        fi
         # O runner ubuntu-latest traz o repo apt do Chrome da Google, que este
         # job NÃO usa (o Chromium vem do cache do Playwright) — e as
         # republicações da Google produzem "Hash Sum mismatch" que derruba o
@@ -35,10 +43,27 @@ runs:
 
     - name: Start supabase/postgres
       shell: bash
+      # Nome de container ÚNICO por run: na VPS há 2+ runners na mesma máquina
+      # e um nome fixo colidiria entre execuções (docker run falha e/ou o
+      # cleanup de um job mata o Postgres do outro). A porta host segue fixa
+      # em 55322 porque scripts/seed-e2e.ts, scripts/lib/local-stack.ts e
+      # .env.test.example fixam essa porta por design — a serialização fica a
+      # cargo do concurrency group `e2e-postgres-vps` no job chamador.
       run: |
         set -euo pipefail
-        docker rm -f e2e-postgres >/dev/null 2>&1 || true
-        docker run -d --name e2e-postgres \
+        E2E_PG_CONTAINER="e2e-postgres-${{ github.run_id }}-${{ github.run_attempt }}"
+        echo "E2E_PG_CONTAINER=${E2E_PG_CONTAINER}" >> "$GITHUB_ENV"
+
+        # Varredura de órfãos: remove QUALQUER container e2e-postgres* (nome
+        # legado fixo incluído). Serializado pelo concurrency group, todo
+        # container pré-existente desse prefixo é lixo de um run que morreu
+        # sem cleanup — e seguraria a porta 55322 para sempre.
+        for c in $(docker ps -aq --filter "name=e2e-postgres" 2>/dev/null); do
+          echo "Removendo container e2e-postgres órfão: $(docker inspect --format '{{.Name}} (criado {{.Created}})' "$c")"
+          docker rm -f "$c" >/dev/null 2>&1 || true
+        done
+
+        docker run -d --name "${E2E_PG_CONTAINER}" \
           -e POSTGRES_PASSWORD=postgres \
           -e POSTGRES_DB=postgres \
           -p 55322:5432 \
@@ -71,7 +96,7 @@ runs:
           sleep 2
         done
         echo "::error::Postgres E2E não ficou pronto em 120s."
-        docker logs e2e-postgres || true
+        docker logs "${E2E_PG_CONTAINER}" || true
         exit 1
 
     - name: Export .env.test.example
@@ -113,7 +138,18 @@ runs:
 
     - name: Install Chromium
       shell: bash
-      run: bunx --bun playwright install --with-deps chromium
+      # `--with-deps` roda `apt-get` via sudo — só funciona onde há sudo
+      # passwordless (ubuntu-latest). Na VPS as libs de sistema do Chromium
+      # foram instaladas pelo owner (`npx playwright install-deps chromium`)
+      # e o download do browser sozinho não precisa de sudo. Em runner
+      # persistente, ~/.cache/ms-playwright também sobrevive entre runs.
+      run: |
+        set -euo pipefail
+        if sudo -n true 2>/dev/null; then
+          bunx --bun playwright install --with-deps chromium
+        else
+          bunx --bun playwright install chromium
+        fi
 
     - name: Seed E2E database
       shell: bash
@@ -130,4 +166,5 @@ runs:
     - name: Stop postgres
       if: always()
       shell: bash
-      run: docker rm -f e2e-postgres >/dev/null 2>&1 || true
+      run: |
+        docker rm -f "${E2E_PG_CONTAINER:-e2e-postgres-inexistente}" >/dev/null 2>&1 || true
