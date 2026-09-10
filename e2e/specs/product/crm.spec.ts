@@ -166,7 +166,6 @@ async function waitForSeededLeadOnBoard(
       { teamId, leadId },
     );
     if (!freshInBrowser) {
-      await page.waitForTimeout(1_000);
       throw new Error("lista vista pelo browser ainda não contém o lead seedado");
     }
 
@@ -175,7 +174,7 @@ async function waitForSeededLeadOnBoard(
     }
     await nameFilter.fill(name);
     await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
-  }).toPass({ timeout: 120_000 });
+  }).toPass({ timeout: 120_000, intervals: [1_000] });
   return seededLeadCell;
 }
 
