@@ -991,6 +991,23 @@ failed failed
     
 
 
+        backoffice_subscription_change_order_status {
+            draft draft
+awaiting_payment awaiting_payment
+applied applied
+canceled canceled
+        }
+    
+
+
+        backoffice_subscription_change_order_override_status {
+            not_required not_required
+pending pending
+approved approved
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -2972,6 +2989,26 @@ completed completed
     }
   
 
+  "backoffice_subscription_change_orders" {
+    String id "🗝️"
+    BackofficeSubscriptionChangeOrderStatus status 
+    BackofficeAdhesionBillingCycle currentCycle "❓"
+    Decimal currentChargedAmount "❓"
+    DateTime currentPeriodEnd "❓"
+    BackofficeAdhesionBillingCycle targetCycle 
+    Decimal listAmount 
+    Decimal proratedAmount 
+    Decimal overrideAmount "❓"
+    BackofficeSubscriptionChangeOrderOverrideStatus overrideStatus 
+    DateTime overrideApprovedAt "❓"
+    Decimal chargeAmount 
+    DateTime canceledAt "❓"
+    DateTime appliedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_features" {
     String id "🗝️"
     String slug 
@@ -4556,6 +4593,15 @@ completed completed
     "corretor_studio_queue_processing_failures" |o--|| "QueueProcessingFailureStatus" : "enum:status"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_subscription_change_orders" |o--|| "BackofficeSubscriptionChangeOrderStatus" : "enum:status"
+    "backoffice_subscription_change_orders" |o--|o "BackofficeAdhesionBillingCycle" : "enum:currentCycle"
+    "backoffice_subscription_change_orders" |o--|| "BackofficeAdhesionBillingCycle" : "enum:targetCycle"
+    "backoffice_subscription_change_orders" |o--|| "BackofficeSubscriptionChangeOrderOverrideStatus" : "enum:overrideStatus"
+    "backoffice_subscription_change_orders" }o--|| corretor_studio_profiles : "masterProfile"
+    "backoffice_subscription_change_orders" }o--|o backoffice_products : "currentProduct"
+    "backoffice_subscription_change_orders" }o--|| backoffice_products : "targetProduct"
+    "backoffice_subscription_change_orders" }o--|o corretor_studio_profiles : "overrideApprovedBy"
+    "backoffice_subscription_change_orders" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
     "backoffice_features" |o--|o backoffice_features : "parent"
