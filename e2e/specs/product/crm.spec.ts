@@ -174,7 +174,10 @@ async function waitForSeededLeadOnBoard(
     }
     await nameFilter.fill(name);
     await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
-  }).toPass({ timeout: 120_000, intervals: [1_000] });
+    // 2s de cadência, não 1s: cada leitura stale re-dispara a revalidação em
+    // background do use cache; poll mais frequente dobra o churn e sustenta a
+    // inanição em runner saturado (2 runs vermelhas com 1s vs. verde com ~2s).
+  }).toPass({ timeout: 120_000, intervals: [2_000] });
   return seededLeadCell;
 }
 
