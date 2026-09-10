@@ -8,6 +8,7 @@ import {
   parsePlatformPurchaseExternalReference,
 } from "@/lib/billing/platform-purchase-external-reference"
 import { getFullUrl } from "@/lib/utils/app-url"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export type CreatePlatformCheckoutInput = {
   productSlug: string
@@ -142,16 +143,22 @@ export class PlatformCheckoutUseCase {
     }
   }
 
+  // account: E4 (C33 "5º ponto") — o mesmo asaasPaymentId pode existir nas
+  // duas contas Asaas; sem o filtro, uma colisão aplicaria a compra errada.
   async applyPaidPurchase(input: {
     externalReference?: string | null
     asaasPaymentId: string
+    account: AsaasAccountId
   }): Promise<Output> {
     try {
       if (!input.asaasPaymentId?.trim()) {
         return new Output(false, [], ["asaasPaymentId é obrigatório"], null)
       }
 
-      const byPayment = await this.purchaseRepo.findByAsaasPaymentId(input.asaasPaymentId)
+      const byPayment = await this.purchaseRepo.findByAsaasPaymentId(
+        input.asaasPaymentId,
+        input.account
+      )
       if (byPayment?.status === "paid") {
         return new Output(true, ["Compra já aplicada"], [], toDetails(byPayment))
       }
@@ -174,6 +181,7 @@ export class PlatformCheckoutUseCase {
       const marked = await this.purchaseRepo.markPaidOnce({
         id: existing.id,
         asaasPaymentId: input.asaasPaymentId,
+        account: input.account,
       })
 
       if (!marked) {

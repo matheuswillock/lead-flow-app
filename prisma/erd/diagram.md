@@ -593,6 +593,21 @@ with_operators with_operators
     
 
 
+        subscription_lifecycle_event {
+            contracted contracted
+renewed renewed
+plan_changed plan_changed
+addon_purchased addon_purchased
+overdue overdue
+reduced reduced
+cut cut
+restored restored
+free_access_granted free_access_granted
+level_transition level_transition
+        }
+    
+
+
         pending_action_type {
             create_team create_team
 add_member add_member
@@ -2329,6 +2344,7 @@ completed completed
     String role 
     UserFunction functions 
     String paymentId "❓"
+    AsaasAccount asaasAccount 
     String subscriptionId "❓"
     String paymentStatus 
     String paymentMethod 
@@ -2585,6 +2601,7 @@ completed completed
     String description "❓"
     Json metadata "❓"
     String asaas_payment_id "❓"
+    AsaasAccount asaas_account 
     String asaas_customer_id "❓"
     String external_reference 
     DateTime paid_at "❓"
@@ -2611,6 +2628,7 @@ completed completed
     Json payload 
     String checkoutId "❓"
     String paymentId "❓"
+    AsaasAccount asaasAccount 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2665,6 +2683,7 @@ completed completed
     String teamId 
     EmailCreditPlan plan 
     String paymentId 
+    AsaasAccount asaasAccount 
     String checkoutId "❓"
     Int monthlyCredits 
     DateTime createdAt 
@@ -3149,10 +3168,20 @@ completed completed
     String id "🗝️"
     String source 
     String changeType 
+    SubscriptionLifecycleEvent eventType "❓"
     Json before "❓"
     Json after "❓"
     Json metadata "❓"
     DateTime createdAt 
+    }
+  
+
+  "corretor_studio_subscription_state_snapshots" {
+    String id "🗝️"
+    String profileId 
+    DateTime capturedAt 
+    String schemaVersion 
+    Json payload 
     }
   
 
@@ -3494,6 +3523,15 @@ completed completed
   
 
   "whatsapp_send_rate_limit_windows" {
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "billing_rate_limit_windows" {
+    String key "🗝️"
     DateTime windowStart "🗝️"
     Int count 
     DateTime createdAt 
@@ -4379,6 +4417,7 @@ completed completed
     "corretor_studio_lead_required_documents" }o--|o corretor_studio_lead_attachments : "attachment"
     "corretor_studio_lead_required_documents" }o--|o corretor_studio_profiles : "reviewedBy"
     "corretor_studio_pending_operators" |o--}o "UserFunction" : "enum:functions"
+    "corretor_studio_pending_operators" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"
@@ -4439,11 +4478,13 @@ completed completed
     "corretor_studio_profile_web_push_consents" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseType" : "enum:purchase_type"
     "corretor_studio_platform_purchases" |o--|| "PlatformPurchaseStatus" : "enum:status"
+    "corretor_studio_platform_purchases" |o--|| "AsaasAccount" : "enum:asaas_account"
     "corretor_studio_platform_purchases" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_platform_purchases" }o--|o corretor_studio_teams : "team"
     "corretor_studio_asaas_notification_backfill" |o--|| "AsaasNotificationBackfillStatus" : "enum:status"
     "corretor_studio_pending_actions" |o--|| "PendingActionType" : "enum:actionType"
     "corretor_studio_pending_actions" |o--|| "PendingActionStatus" : "enum:status"
+    "corretor_studio_pending_actions" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_pending_actions" }o--|| corretor_studio_profiles : "master"
     "corretor_studio_pending_actions" }o--|o corretor_studio_teams : "team"
     "corretor_studio_team_members" |o--|| "UserRole" : "enum:role"
@@ -4462,6 +4503,7 @@ completed completed
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_payment_grants" |o--|| "EmailCreditPlan" : "enum:plan"
+    "corretor_studio_email_credit_payment_grants" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_team_email_campaign_limit_grants" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
@@ -4555,6 +4597,7 @@ completed completed
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"

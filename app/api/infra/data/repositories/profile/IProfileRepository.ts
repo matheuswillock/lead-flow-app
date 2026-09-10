@@ -120,6 +120,7 @@ export interface IProfileRepository {
     neighborhood: string | null;
     complement: string | null;
     asaasCustomerId: string | null;
+    asaasCustomerAccount: AsaasAccountId;
   } | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
   /** Dados minimos de contato, para notificacao e rotulo em atividade. */
@@ -158,7 +159,6 @@ export interface IProfileRepository {
     functions: ("SDR" | "CLOSER")[];
     managerId: string;
   }): Promise<Profile>;
-  incrementOperatorCount(profileId: string): Promise<void>;
   /**
    * Filtra por conta (E4/E5 de [[10 — Fundações Multi-conta — Backend]],
    * C33) — o mesmo asaasSubscriptionId pode existir nas duas contas durante

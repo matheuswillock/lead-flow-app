@@ -1,4 +1,5 @@
-import type { SubscriptionPlan, SubscriptionStatus } from "@prisma/client"
+import type { AsaasAccount, SubscriptionPlan, SubscriptionStatus } from "@prisma/client"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface TeamSummaryRecord {
   id: string
@@ -26,6 +27,21 @@ export interface TeamMemberRecord {
   canViewAllTeams: boolean
 }
 
+/**
+ * Dado real do plano (E5, §7.7): produto/ciclo/valor vindos da assinatura ↔
+ * adesão local — nunca preço hardcoded por enum. `chargedAmount` é o que o
+ * cliente paga hoje (negotiatedTotalAmount ?? totalAmount da adesão);
+ * `listAmount` é o preço de tabela do produto para o mesmo ciclo, quando
+ * disponível — a divergência entre os dois é a informação que a coluna
+ * antiga escondia.
+ */
+export interface MasterPlatformUserPlanSubscriptionRecord {
+  productName: string | null
+  cycle: string | null
+  chargedAmount: number | null
+  listAmount: number | null
+}
+
 export interface MasterPlatformUserRecord {
   id: string
   fullName: string | null
@@ -37,6 +53,7 @@ export interface MasterPlatformUserRecord {
   hasUnlimitedUsers: boolean
   multiskillEnabled: boolean
   subscriptionPlan: SubscriptionPlan | null
+  planSubscription: MasterPlatformUserPlanSubscriptionRecord | null
   operatorCount: number
   googleCalendarConnected: boolean
   linkedUsersCount: number
@@ -73,6 +90,7 @@ export interface MasterPlatformUserDetailsRecord {
   subscriptionPlan: SubscriptionPlan | null
   subscriptionStatus: SubscriptionStatus | null
   subscriptionId: string | null
+  planSubscription: MasterPlatformUserPlanSubscriptionRecord | null
   operatorCount: number
   googleCalendarConnected: boolean
   linkedUsersCount: number
@@ -101,7 +119,11 @@ export interface MasterPlatformUserBillingRecord {
   neighborhood: string | null
   complement: string | null
   asaasCustomerId: string | null
+  /** E3 (C19) — conta dona do `asaasCustomerId` acima; ver `resolveKnownAsaasAccounts`. */
+  asaasCustomerAccount: AsaasAccount
   asaasSubscriptionId: string | null
+  /** Conta dona do `asaasSubscriptionId` (PR #1137) — mesmo domínio de valores de `AsaasAccount`. */
+  asaasSubscriptionAccount: AsaasAccountId
   subscriptionStatus: SubscriptionStatus | null
   subscriptionNextDueDate: Date | null
   subscriptionEndDate: Date | null
