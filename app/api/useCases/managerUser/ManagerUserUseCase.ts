@@ -516,27 +516,52 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
 
             console.info(`👑 [deleteOperatorWithSubscriptionUpdate] Master encontrado: ${masterUser.fullName}`);
 
-            // 3. Atualizar assinatura do master (remover R$ 19,90)
+            // 3. Atualizar assinatura do master (remover R$ 19,90). DA2/DA5 de
+            // [[20 — Assinaturas — Backend]] E6 (C23): roteia pela conta do
+            // master e a falha deixa de ser engolida — vira registro
+            // observável (console.error estruturado + flag no resultado).
+            // A remoção do operador prossegue (decisão de produto
+            // preservada: o acesso já foi revogado), mas o Output nunca mais
+            // afirma "assinatura atualizada" quando ela não foi.
+            let subscriptionUpdateFailed = false;
             if (masterUser.asaasSubscriptionId) {
                 try {
                     const { AsaasSubscriptionService } = await import('../../services/AsaasSubscription/AsaasSubscriptionService');
-                    
+                    const subscriptionAccount = masterUser.asaasSubscriptionAccount ?? 'primary';
+
                     // Buscar assinatura atual
-                    const currentSubscription = await AsaasSubscriptionService.getSubscription(masterUser.asaasSubscriptionId);
-                    
+                    const currentSubscription = await AsaasSubscriptionService.getSubscription(
+                        masterUser.asaasSubscriptionId,
+                        subscriptionAccount,
+                    );
+
                     const newValue = Math.max(59.90, currentSubscription.value - 19.90);
-                    
+
                     console.info(`💰 [deleteOperatorWithSubscriptionUpdate] Atualizando assinatura de R$ ${currentSubscription.value} para R$ ${newValue}`);
-                    
+
                     await AsaasSubscriptionService.updateSubscription(
                         masterUser.asaasSubscriptionId,
-                        { value: newValue }
+                        { value: newValue },
+                        subscriptionAccount,
                     );
 
                     console.info(`✅ [deleteOperatorWithSubscriptionUpdate] Assinatura atualizada com sucesso`);
                 } catch (subscriptionError) {
-                    console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao atualizar assinatura:`, subscriptionError);
-                    // Não falhar a operação se a atualização da assinatura falhar
+                    subscriptionUpdateFailed = true;
+                    console.error(
+                        `[C23][doubleBillingRisk][observable] deleteOperatorWithSubscriptionUpdate: falha ao reduzir recorrência do master`,
+                        {
+                            masterId: masterUser.id,
+                            operatorId,
+                            asaasSubscriptionId: masterUser.asaasSubscriptionId,
+                            expectedReduction: 19.90,
+                            error: subscriptionError,
+                        },
+                    );
+                    // Não falha a operação — o operador já teve o acesso
+                    // revogado e isso não deve ser desfeito por um erro de
+                    // billing — mas a pendência fica visível (flag no
+                    // Output) em vez de sumir num console.error perdido.
                 }
             } else {
                 console.warn(`⚠️ [deleteOperatorWithSubscriptionUpdate] Master não possui assinatura Asaas`);
@@ -591,12 +616,14 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 true,
                 [
                     `Operador removido com sucesso.`,
-                    `Assinatura atualizada (R$ 19,90 removidos).`,
+                    subscriptionUpdateFailed
+                        ? `Não foi possível reduzir a assinatura automaticamente — acompanhamento necessário.`
+                        : `Assinatura atualizada (R$ 19,90 removidos).`,
                     `${leadsTransferred} lead(s) transferido(s) para o master.`,
                     `Email de notificação enviado para ${userToDelete.email}.`
                 ],
                 [],
-                null
+                { subscriptionUpdateFailed }
             );
         } catch (error) {
             console.error("❌ [deleteOperatorWithSubscriptionUpdate] Erro geral:", error);

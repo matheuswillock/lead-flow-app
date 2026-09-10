@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
-import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
+import {
+  confirmTeamPaymentUseCase,
+  type ConfirmTeamPaymentFailureReason,
+} from "@/app/api/useCases/pendingActions/ConfirmTeamPaymentUseCase";
+
+const STATUS_BY_FAILURE_REASON: Record<ConfirmTeamPaymentFailureReason, number> = {
+  profile_not_found: 404,
+  forbidden: 403,
+  payment_not_confirmed: 400,
+  action_not_found: 404,
+  action_not_owned: 403,
+  action_canceled: 400,
+};
 
 /**
  * POST /api/v1/teams/confirm-payment
@@ -28,89 +38,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true, isMaster: true, managerId: true, activeTeamId: true },
-    });
+    const result = await confirmTeamPaymentUseCase.confirmTeamPayment({ supabaseId, paymentId });
 
-    if (!profile) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), {
-        status: 404,
-      });
+    if (!result.isValid) {
+      const reason = (result.result as { reason?: ConfirmTeamPaymentFailureReason } | null)?.reason;
+      const status = reason ? STATUS_BY_FAILURE_REASON[reason] : 400;
+      return NextResponse.json(result, { status });
     }
 
-    const activeMembership = profile.activeTeamId
-      ? await prisma.teamMember.findUnique({
-          where: {
-            teamId_profileId: {
-              teamId: profile.activeTeamId,
-              profileId: profile.id,
-            },
-          },
-          select: { role: true, canManageAccountTeams: true },
-        })
-      : null;
-
-    const canConfirmTeamPayment =
-      profile.isMaster ||
-      (activeMembership?.role === "manager" && activeMembership.canManageAccountTeams === true);
-
-    if (!canConfirmTeamPayment) {
-      return NextResponse.json(
-        new Output(false, [], ["Apenas o master ou um manager delegado pode confirmar pagamento de time"], null),
-        { status: 403 }
-      );
-    }
-
-    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
-      method: "GET",
-    });
-
-    const status = payment?.status as string | undefined;
-    if (status !== "CONFIRMED" && status !== "RECEIVED") {
-      return NextResponse.json(
-        new Output(false, [], ["Pagamento ainda não foi confirmado"], null),
-        { status: 400 }
-      );
-    }
-
-    let action = await prisma.pendingAction.findFirst({
-      where: { paymentId },
-      select: { id: true, masterId: true, status: true },
-    });
-
-    const externalReference = payment?.externalReference as string | undefined;
-    if (!action && externalReference?.startsWith("pending-action-")) {
-      const actionId = externalReference.replace("pending-action-", "");
-      action = await prisma.pendingAction.findUnique({
-        where: { id: actionId },
-        select: { id: true, masterId: true, status: true },
-      });
-    }
-
-    if (!action) {
-      return NextResponse.json(
-        new Output(false, [], ["Ação pendente não encontrada"], null),
-        { status: 404 }
-      );
-    }
-
-    const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
-
-    if (action.masterId !== billingOwnerId) {
-      return NextResponse.json(new Output(false, [], ["Ação não pertence a este master"], null), {
-        status: 403,
-      });
-    }
-
-    if (action.status === "canceled") {
-      return NextResponse.json(new Output(false, [], ["Ação cancelada"], null), {
-        status: 400,
-      });
-    }
-
-    const result = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
-    return NextResponse.json(result, { status: result.isValid ? 201 : 400 });
+    return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
     console.error("[POST /api/v1/teams/confirm-payment] Erro:", error);
     return NextResponse.json(
@@ -119,4 +55,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

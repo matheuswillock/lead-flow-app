@@ -1,6 +1,6 @@
 // app/api/v1/payments/[id]/status/route.ts
 import { NextRequest, NextResponse, connection } from "next/server";
-import { asaasFetch, asaasApi } from '@/lib/asaas';
+import { getPaymentByAccountWithFallback } from '@/lib/billing/get-payment-by-account';
 
 /**
  * GET /api/v1/payments/[id]/status
@@ -28,8 +28,27 @@ export async function GET(
 
     console.info('🔍 [PaymentStatus] Verificando status do pagamento:', id);
 
-    // Busca o status do pagamento no Asaas
-    const payment = await asaasFetch(`${asaasApi.payments}/${id}`);
+    // Busca o status do pagamento no Asaas — roteado com fallback de conta
+    // (C24 de [[20 — Assinaturas — Backend]] E5).
+    const lookup = await getPaymentByAccountWithFallback(id);
+
+    if (!lookup.found) {
+      return NextResponse.json(
+        { isValid: false, errorMessages: ['Pagamento não encontrado'], result: null },
+        { status: 404 }
+      );
+    }
+
+    const payment = lookup.payment as {
+      id: string;
+      status?: string;
+      value?: number;
+      netValue?: number;
+      billingType?: string;
+      confirmedDate?: string;
+      paymentDate?: string;
+      clientPaymentDate?: string;
+    };
 
     console.info('✅ [PaymentStatus] Status:', payment.status);
 

@@ -99,4 +99,35 @@ describe("BackofficeAdhesionService — writers de cobrança usam a conta da ade
       expect((call[1] as RequestInit).method).toBe("DELETE")
     }
   })
+
+  // T-40.17 (E5/C21): DELETE não pode mais engolir todo erro — 404 segue
+  // (já cancelada), erro real propaga (senão a cobrança legada fica viva
+  // sem cancelamento registrado, o modo exato de dupla cobrança).
+  it("T-40.17: 404 na conta correta → segue sem lançar (já cancelada)", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async () => {
+      const error = new Error("not found")
+      ;(error as { statusCode?: number }).statusCode = 404
+      throw error
+    })
+
+    await expect(
+      (service as any).cancelAsaasPayments(["pay_ja_cancelado"], "legacy")
+    ).resolves.toBeUndefined()
+  })
+
+  it("T-40.17: erro != 404 propaga (não engole)", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async () => {
+      const error = new Error("Internal error")
+      ;(error as { statusCode?: number }).statusCode = 500
+      throw error
+    })
+
+    await expect(
+      (service as any).cancelAsaasPayments(["pay_com_erro_real"], "legacy")
+    ).rejects.toThrow(/Falha ao cancelar/)
+  })
 })
