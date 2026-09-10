@@ -151,17 +151,24 @@ runs:
           bunx --bun playwright install chromium
         fi
 
+    # `nice -n 19` nos passos pesados: na VPS o job divide 2 vCPU com o outro
+    # runner (CI Light de qualquer branch). Sem rebaixar prioridade, o build e
+    # o Chromium matam de fome os unit tests vizinhos — medido em 10/09/2026:
+    # run 34501366334 (CI Light da develop) reprovou 2 testes por timeout de
+    # CPU enquanto este E2E rodava ao lado. Em runner dedicado (ubuntu-latest)
+    # o nice é inócuo: sem competição, prioridade não muda nada.
     - name: Seed E2E database
       shell: bash
-      run: bun run db:seed:e2e
+      run: nice -n 19 bun run db:seed:e2e
 
     - name: Build
       shell: bash
-      run: bun run build
+      run: nice -n 19 bun run build
 
     - name: Run Playwright
       shell: bash
-      run: bun run test:e2e
+      # O `next start` (webServer) e o Chromium herdam o nice do processo pai.
+      run: nice -n 19 bun run test:e2e
 
     - name: Stop postgres
       if: always()
