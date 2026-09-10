@@ -91,6 +91,24 @@ function makeRepository(overrides: Partial<Record<string, unknown>> = {}) {
       createdAt: new Date(),
     })),
     approveOverride: mock(async () => null),
+    applyChangeOrder: mock(async (id: string) => ({
+      id,
+      masterProfileId: MASTER_ID,
+      status: "applied",
+      targetProductId: PRODUCT_ID,
+      targetProductName: "CRM",
+      targetCycle: "monthly",
+      listAmount: 100,
+      proratedAmount: 100,
+      overrideAmount: null,
+      overrideStatus: "not_required",
+      overrideApprovedByProfileId: null,
+      chargeAmount: 100,
+      asaasPaymentId: "pay_new_1",
+      asaasAccount: "primary",
+      paymentInvoiceUrl: "https://asaas.test/i/pay_new_1",
+      createdAt: new Date(),
+    })),
     ...overrides,
   }
 }
@@ -505,5 +523,152 @@ describe("BackofficeSubscriptionChangeOrderUseCase.generatePayment — G2", () =
     const output = await useCase.generatePayment("missing")
 
     expect(output.isValid).toBe(false)
+  })
+})
+
+describe("BackofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder — G3", () => {
+  function makeAwaitingPaymentOrder(overrides: Partial<Record<string, unknown>> = {}) {
+    return makeDraftOrder({
+      status: "awaiting_payment",
+      asaasPaymentId: "pay_new_1",
+      asaasAccount: "primary",
+      paymentInvoiceUrl: "https://asaas.test/i/pay_new_1",
+      ...overrides,
+    })
+  }
+
+  it("T-50.16: evento de pagamento confirmado → aplica exatamente uma vez", async () => {
+    const repository = makeRepository({ findById: mock(async () => makeAwaitingPaymentOrder()) })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(repository.applyChangeOrder).toHaveBeenCalledWith("order-1")
+  })
+
+  it("idempotência: ordem já applied → sucesso silencioso, não reaplica", async () => {
+    const repository = makeRepository({
+      findById: mock(async () => makeAwaitingPaymentOrder({ status: "applied" })),
+    })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(repository.applyChangeOrder).not.toHaveBeenCalled()
+  })
+
+  it("idempotência sob corrida: repository.applyChangeOrder devolve null (outra instância já aplicou) → sucesso, não é erro", async () => {
+    const repository = makeRepository({
+      findById: mock(async () => makeAwaitingPaymentOrder()),
+      applyChangeOrder: mock(async () => null),
+    })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(true)
+  })
+
+  it("ordem ainda em draft (sem cobrança gerada) → rejeitado, nunca aplica", async () => {
+    const repository = makeRepository({
+      findById: mock(async () => makeDraftOrder()),
+    })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(false)
+    expect(repository.applyChangeOrder).not.toHaveBeenCalled()
+  })
+
+  it("ownership: paymentId do evento não bate com o da ordem → rejeitado, nunca aplica", async () => {
+    const repository = makeRepository({ findById: mock(async () => makeAwaitingPaymentOrder()) })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_OUTRO_PAGAMENTO",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(false)
+    expect(repository.applyChangeOrder).not.toHaveBeenCalled()
+  })
+
+  it("ownership: conta do evento não bate com a da ordem → rejeitado, nunca aplica", async () => {
+    const repository = makeRepository({ findById: mock(async () => makeAwaitingPaymentOrder()) })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "legacy",
+    })
+
+    expect(output.isValid).toBe(false)
+    expect(repository.applyChangeOrder).not.toHaveBeenCalled()
+  })
+
+  it("externalReference que não é de uma ordem de alteração → rejeitado", async () => {
+    const repository = makeRepository()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "pending-action-xyz",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(false)
+    expect(repository.findById).not.toHaveBeenCalled()
+  })
+
+  it("ordem não encontrada → rejeitado", async () => {
+    const repository = makeRepository({ findById: mock(async () => null) })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    const output = await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-missing",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(output.isValid).toBe(false)
+  })
+})
+
+describe("BackofficeSubscriptionChangeOrderUseCase.create — G3 invariante (nenhum entitlement antes do pagamento)", () => {
+  it("create() nunca chama applyChangeOrder — nenhum entitlement muda antes da confirmação de pagamento", async () => {
+    const repository = makeRepository()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    await useCase.create({
+      masterProfileId: MASTER_ID,
+      targetProductId: PRODUCT_ID,
+      targetCycle: "monthly",
+      overrideAmount: null,
+      actorProfileId: ACTOR_PROFILE_ID,
+      backofficeUserId: BACKOFFICE_USER_ID,
+    })
+
+    expect(repository.applyChangeOrder).not.toHaveBeenCalled()
   })
 })

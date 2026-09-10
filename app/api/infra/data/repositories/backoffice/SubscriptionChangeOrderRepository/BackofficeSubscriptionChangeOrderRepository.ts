@@ -38,6 +38,19 @@ function decimalToNumber(value: { toString(): string } | null | undefined): numb
   return Number(value.toString())
 }
 
+/**
+ * Reverso de `toBillingCycle` (lib/billing/resolvePrice.ts) — o texto
+ * canônico gravado em `ProfileSubscription.subscriptionCycle` pelo resto do
+ * sistema (sync de webhook, etc.) é maiúsculo no vocabulário do Asaas.
+ */
+const LEGACY_CYCLE_LABEL: Record<string, string> = {
+  monthly: "MONTHLY",
+  quarterly: "QUARTERLY",
+  quadrimester: "QUADRIMESTER",
+  semiannual: "SEMIANNUALLY",
+  annual: "YEARLY",
+}
+
 function mapRecord(order: ChangeOrderQueryResult): BackofficeSubscriptionChangeOrderRecord {
   return {
     id: order.id,
@@ -226,6 +239,59 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
     })
 
     return mapRecord(updated)
+  }
+
+  /**
+   * G3: `updateMany` com `WHERE status = 'awaiting_payment'` é a trava de
+   * concorrência real — se duas entregas do mesmo webhook chegarem juntas
+   * (retry do Asaas), só uma tem `count === 1` e aplica o entitlement; a
+   * outra vê `count === 0` e devolve `null` sem tocar em nada (idempotência
+   * de fato, não por convenção de app).
+   */
+  async applyChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
+    return prisma.$transaction(async (tx) => {
+      const claim = await tx.backofficeSubscriptionChangeOrder.updateMany({
+        where: { id, status: "awaiting_payment" },
+        data: { status: "applied", appliedAt: new Date() },
+      })
+
+      if (claim.count === 0) {
+        return null
+      }
+
+      const order = await tx.backofficeSubscriptionChangeOrder.findUniqueOrThrow({
+        where: { id },
+        select: CHANGE_ORDER_SELECT,
+      })
+
+      const legacyCycle = LEGACY_CYCLE_LABEL[order.targetCycle] ?? order.targetCycle
+
+      // adhesionId: null — a assinatura passa a ser governada por esta
+      // ordem, não pela adesão histórica (que teria produto/ciclo velhos e
+      // sobrescreveria o que acabamos de aplicar na leitura de E5/§7.7).
+      // Trade-off aceito: chargedAmount de E5 (que só lê de `adhesion`)
+      // fica null após uma alteração via backoffice até uma iteração
+      // futura ensinar `mapPlanSubscription` a também ler
+      // `BackofficeSubscriptionChangeOrder.chargeAmount` — documentado
+      // como gap conhecido, não regressão silenciosa.
+      await tx.profileSubscription.upsert({
+        where: { profileId: order.masterProfileId },
+        update: {
+          productId: order.targetProductId,
+          subscriptionCycle: legacyCycle,
+          subscriptionStatus: "active",
+          adhesionId: null,
+        },
+        create: {
+          profileId: order.masterProfileId,
+          productId: order.targetProductId,
+          subscriptionCycle: legacyCycle,
+          subscriptionStatus: "active",
+        },
+      })
+
+      return mapRecord(order)
+    })
   }
 }
 

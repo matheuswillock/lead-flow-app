@@ -37,6 +37,19 @@ const BILLING_CYCLE_LABEL_PT: Record<string, string> = {
   annual: "Anual",
 }
 
+/** G2/G3: âncora do webhook (idempotente por externalReference = id da ordem). */
+const CHANGE_ORDER_EXTERNAL_REFERENCE_PREFIX = "subscription-change-order-"
+
+export function buildChangeOrderExternalReference(orderId: string): string {
+  return `${CHANGE_ORDER_EXTERNAL_REFERENCE_PREFIX}${orderId}`
+}
+
+export function parseChangeOrderExternalReference(externalReference: string): string | null {
+  if (!externalReference.startsWith(CHANGE_ORDER_EXTERNAL_REFERENCE_PREFIX)) return null
+  const id = externalReference.slice(CHANGE_ORDER_EXTERNAL_REFERENCE_PREFIX.length)
+  return id || null
+}
+
 /**
  * Teto do preço avulso auto-aprovável (S7/DA6) — [[90 — Decisões em
  * aberto (owner)]] D13 ainda não decidida. Default seguro: 0 (nenhum
@@ -275,7 +288,7 @@ export class BackofficeSubscriptionChangeOrderUseCase {
           value: order.chargeAmount,
           dueDate: dueDate.toISOString().slice(0, 10),
           description: `Alteração de assinatura — ${order.targetProductName} (${cycleLabel})`,
-          externalReference: `subscription-change-order-${order.id}`,
+          externalReference: buildChangeOrderExternalReference(order.id),
         }),
       })
 
@@ -355,6 +368,84 @@ export class BackofficeSubscriptionChangeOrderUseCase {
 
     await this.repository.updateMasterAsaasCustomer(billingProfile.id, created.id)
     return created.id
+  }
+
+  /**
+   * G3: chamado pelo webhook (`processAsaasWebhookEvent.ts`) quando um
+   * payment com `externalReference = subscription-change-order-{id}`
+   * liquida. Nenhum entitlement muda no `draft`/`awaiting_payment` — só
+   * aqui, e só depois de confirmar ownership (payment/conta do evento
+   * batem com os da ordem — mesmo princípio anti-colisão de C33).
+   */
+  async applyPaidChangeOrder(input: {
+    externalReference: string
+    asaasPaymentId: string
+    account: AsaasAccountId
+  }): Promise<Output> {
+    try {
+      const orderId = parseChangeOrderExternalReference(input.externalReference)
+      if (!orderId) {
+        return new Output(
+          false,
+          [],
+          ["externalReference não é de uma ordem de alteração de assinatura"],
+          null
+        )
+      }
+
+      const order = await this.repository.findById(orderId)
+      if (!order) {
+        return new Output(false, [], ["Ordem não encontrada"], null)
+      }
+
+      // Idempotência (T-50.16): evento reprocessado de uma ordem já
+      // aplicada é sucesso silencioso — nunca reaplica.
+      if (order.status === "applied") {
+        return new Output(true, ["Ordem já estava aplicada"], [], order)
+      }
+
+      if (order.status !== "awaiting_payment") {
+        return new Output(
+          false,
+          [],
+          [`Ordem em status inesperado para aplicar entitlement: ${order.status}`],
+          null
+        )
+      }
+
+      if (order.asaasPaymentId !== input.asaasPaymentId || order.asaasAccount !== input.account) {
+        return new Output(
+          false,
+          [],
+          ["Evento de pagamento não corresponde à cobrança desta ordem"],
+          null
+        )
+      }
+
+      const applied = await this.repository.applyChangeOrder(order.id)
+      if (!applied) {
+        // Corrida: outra entrega do mesmo webhook já aplicou entre o
+        // findById acima e o UPDATE condicional do repository.
+        return new Output(true, ["Ordem já estava aplicada"], [], null)
+      }
+
+      await logSubscriptionChange({
+        profileId: applied.masterProfileId,
+        source: "backoffice_subscription_change_order",
+        changeType: "subscription_change_order_applied",
+        after: {
+          id: applied.id,
+          targetProductId: applied.targetProductId,
+          targetCycle: applied.targetCycle,
+          asaasPaymentId: applied.asaasPaymentId,
+        },
+      })
+
+      return new Output(true, ["Ordem aplicada com sucesso"], [], applied)
+    } catch (error) {
+      console.error("[BackofficeSubscriptionChangeOrderUseCase][applyPaidChangeOrder]", error)
+      return new Output(false, [], ["Erro ao aplicar ordem de alteração de assinatura"], null)
+    }
   }
 }
 

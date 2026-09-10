@@ -99,4 +99,11 @@ export interface IBackofficeSubscriptionChangeOrderRepository {
     id: string,
     data: AttachSubscriptionChangeOrderPaymentData
   ): Promise<BackofficeSubscriptionChangeOrderRecord>
+  /**
+   * G3: transição atômica `awaiting_payment` → `applied` + entitlement real
+   * (ProfileSubscription). `null` quando a ordem não estava em
+   * `awaiting_payment` no momento do UPDATE (idempotência sob corrida —
+   * outra entrega do mesmo webhook já aplicou, ou a ordem foi cancelada).
+   */
+  applyChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null>
 }
