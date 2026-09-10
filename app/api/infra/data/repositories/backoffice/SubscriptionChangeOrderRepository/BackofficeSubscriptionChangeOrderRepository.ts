@@ -1,7 +1,8 @@
 import { prisma } from "@/app/api/infra/data/prisma"
-import type { BackofficeAdhesionBillingCycle } from "@prisma/client"
+import type { AsaasAccount, Prisma } from "@prisma/client"
 import { toBillingCycle } from "@/lib/billing/resolvePrice"
 import type {
+  AttachSubscriptionChangeOrderPaymentData,
   BackofficeSubscriptionChangeOrderRecord,
   ChangeOrderMasterContext,
   ChangeOrderTargetProduct,
@@ -9,30 +10,41 @@ import type {
   IBackofficeSubscriptionChangeOrderRepository,
 } from "./IBackofficeSubscriptionChangeOrderRepository"
 
+const CHANGE_ORDER_SELECT = {
+  id: true,
+  masterProfileId: true,
+  status: true,
+  targetProductId: true,
+  targetProduct: { select: { name: true } },
+  targetCycle: true,
+  listAmount: true,
+  proratedAmount: true,
+  overrideAmount: true,
+  overrideStatus: true,
+  overrideApprovedByProfileId: true,
+  chargeAmount: true,
+  asaasPaymentId: true,
+  asaasAccount: true,
+  paymentInvoiceUrl: true,
+  createdAt: true,
+} satisfies Prisma.BackofficeSubscriptionChangeOrderSelect
+
+type ChangeOrderQueryResult = Prisma.BackofficeSubscriptionChangeOrderGetPayload<{
+  select: typeof CHANGE_ORDER_SELECT
+}>
+
 function decimalToNumber(value: { toString(): string } | null | undefined): number | null {
   if (value === null || value === undefined) return null
   return Number(value.toString())
 }
 
-function mapRecord(order: {
-  id: string
-  masterProfileId: string
-  status: string
-  targetProductId: string
-  targetCycle: BackofficeAdhesionBillingCycle
-  listAmount: { toString(): string }
-  proratedAmount: { toString(): string }
-  overrideAmount: { toString(): string } | null
-  overrideStatus: string
-  overrideApprovedByProfileId: string | null
-  chargeAmount: { toString(): string }
-  createdAt: Date
-}): BackofficeSubscriptionChangeOrderRecord {
+function mapRecord(order: ChangeOrderQueryResult): BackofficeSubscriptionChangeOrderRecord {
   return {
     id: order.id,
     masterProfileId: order.masterProfileId,
     status: order.status as BackofficeSubscriptionChangeOrderRecord["status"],
     targetProductId: order.targetProductId,
+    targetProductName: order.targetProduct.name,
     targetCycle: order.targetCycle,
     listAmount: Number(order.listAmount.toString()),
     proratedAmount: Number(order.proratedAmount.toString()),
@@ -40,6 +52,9 @@ function mapRecord(order: {
     overrideStatus: order.overrideStatus as BackofficeSubscriptionChangeOrderRecord["overrideStatus"],
     overrideApprovedByProfileId: order.overrideApprovedByProfileId,
     chargeAmount: Number(order.chargeAmount.toString()),
+    asaasPaymentId: order.asaasPaymentId,
+    asaasAccount: order.asaasAccount,
+    paymentInvoiceUrl: order.paymentInvoiceUrl,
     createdAt: order.createdAt,
   }
 }
@@ -49,6 +64,18 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
     const master = await prisma.profile.findFirst({
       where: { id: masterProfileId, isMaster: true, role: "manager" },
       select: {
+        id: true,
+        fullName: true,
+        email: true,
+        cpfCnpj: true,
+        phone: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        neighborhood: true,
+        complement: true,
+        asaasCustomerId: true,
+        asaasCustomerAccount: true,
         hasPermanentSubscription: true,
         subscription: {
           select: {
@@ -76,6 +103,20 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
       currentCycle,
       currentChargedAmount,
       currentPeriodEnd: subscription?.subscriptionNextDueDate ?? null,
+      billingProfile: {
+        id: master.id,
+        fullName: master.fullName,
+        email: master.email,
+        cpfCnpj: master.cpfCnpj,
+        phone: master.phone,
+        postalCode: master.postalCode,
+        address: master.address,
+        addressNumber: master.addressNumber,
+        neighborhood: master.neighborhood,
+        complement: master.complement,
+        asaasCustomerId: master.asaasCustomerId,
+        asaasCustomerAccount: master.asaasCustomerAccount,
+      },
     }
   }
 
@@ -130,20 +171,7 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
         chargeAmount: data.chargeAmount,
         createdByBackofficeUserId: data.createdByBackofficeUserId,
       },
-      select: {
-        id: true,
-        masterProfileId: true,
-        status: true,
-        targetProductId: true,
-        targetCycle: true,
-        listAmount: true,
-        proratedAmount: true,
-        overrideAmount: true,
-        overrideStatus: true,
-        overrideApprovedByProfileId: true,
-        chargeAmount: true,
-        createdAt: true,
-      },
+      select: CHANGE_ORDER_SELECT,
     })
 
     return mapRecord(created)
@@ -152,20 +180,7 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
   async findById(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
     const order = await prisma.backofficeSubscriptionChangeOrder.findUnique({
       where: { id },
-      select: {
-        id: true,
-        masterProfileId: true,
-        status: true,
-        targetProductId: true,
-        targetCycle: true,
-        listAmount: true,
-        proratedAmount: true,
-        overrideAmount: true,
-        overrideStatus: true,
-        overrideApprovedByProfileId: true,
-        chargeAmount: true,
-        createdAt: true,
-      },
+      select: CHANGE_ORDER_SELECT,
     })
 
     return order ? mapRecord(order) : null
@@ -182,20 +197,32 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
         overrideApprovedByProfileId: approverProfileId,
         overrideApprovedAt: new Date(),
       },
-      select: {
-        id: true,
-        masterProfileId: true,
-        status: true,
-        targetProductId: true,
-        targetCycle: true,
-        listAmount: true,
-        proratedAmount: true,
-        overrideAmount: true,
-        overrideStatus: true,
-        overrideApprovedByProfileId: true,
-        chargeAmount: true,
-        createdAt: true,
+      select: CHANGE_ORDER_SELECT,
+    })
+
+    return mapRecord(updated)
+  }
+
+  async updateMasterAsaasCustomer(masterProfileId: string, customerId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: masterProfileId },
+      data: { asaasCustomerId: customerId, asaasCustomerAccount: "primary" satisfies AsaasAccount },
+    })
+  }
+
+  async attachPayment(
+    id: string,
+    data: AttachSubscriptionChangeOrderPaymentData
+  ): Promise<BackofficeSubscriptionChangeOrderRecord> {
+    const updated = await prisma.backofficeSubscriptionChangeOrder.update({
+      where: { id },
+      data: {
+        status: "awaiting_payment",
+        asaasPaymentId: data.asaasPaymentId,
+        asaasAccount: data.asaasAccount,
+        paymentInvoiceUrl: data.paymentInvoiceUrl,
       },
+      select: CHANGE_ORDER_SELECT,
     })
 
     return mapRecord(updated)

@@ -3785,6 +3785,11 @@ model BackofficeSubscriptionChangeOrder {
   overrideApprovedAt      DateTime?                                       @db.Timestamptz(6)
   chargeAmount            Decimal                                         @db.Decimal(12, 2)
   createdByBackofficeUserId String?                                       @db.Uuid
+  // G2 — cobrança da alteração (nasce sempre na conta nova, DA6/§3.2 da
+  // auditoria). Default primary pelo mesmo motivo de Profile.asaasCustomerAccount.
+  asaasPaymentId          String?                                         @db.Text
+  asaasAccount            AsaasAccount                                    @default(primary)
+  paymentInvoiceUrl       String?                                         @db.Text
   canceledAt              DateTime?                                       @db.Timestamptz(6)
   appliedAt               DateTime?                                       @db.Timestamptz(6)
   createdAt               DateTime                                        @default(now()) @db.Timestamptz(6)

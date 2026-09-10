@@ -3002,6 +3002,9 @@ completed completed
     BackofficeSubscriptionChangeOrderOverrideStatus overrideStatus 
     DateTime overrideApprovedAt "❓"
     Decimal chargeAmount 
+    String asaasPaymentId "❓"
+    AsaasAccount asaasAccount 
+    String paymentInvoiceUrl "❓"
     DateTime canceledAt "❓"
     DateTime appliedAt "❓"
     DateTime createdAt 
@@ -4597,6 +4600,7 @@ completed completed
     "backoffice_subscription_change_orders" |o--|o "BackofficeAdhesionBillingCycle" : "enum:currentCycle"
     "backoffice_subscription_change_orders" |o--|| "BackofficeAdhesionBillingCycle" : "enum:targetCycle"
     "backoffice_subscription_change_orders" |o--|| "BackofficeSubscriptionChangeOrderOverrideStatus" : "enum:overrideStatus"
+    "backoffice_subscription_change_orders" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_subscription_change_orders" }o--|| corretor_studio_profiles : "masterProfile"
     "backoffice_subscription_change_orders" }o--|o backoffice_products : "currentProduct"
     "backoffice_subscription_change_orders" }o--|| backoffice_products : "targetProduct"

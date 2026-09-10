@@ -10097,6 +10097,22 @@
                 },
                 "description": "E6/G1 (SPEC 50, trava S7/DA6): aprova preço avulso `pending`. Exige manager (`requireManagerAccess`)."
               }
+            },
+            {
+              "name": "POST Generate Subscription Change Order Payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/generate-payment",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "generate-payment"],
+                  "variable": [{ "key": "id", "value": "" }]
+                },
+                "description": "E6/G2 (SPEC 50): gera a cobrança da diferença sempre na conta Asaas nova (DA6) e envia e-mail nosso (Resend) com o link de pagamento — nunca notificação do Asaas. Exige ordem em `draft` com preço avulso resolvido (não `pending`). Exige manager (`requireManagerAccess`)."
+              }
             }
           ]
         },
