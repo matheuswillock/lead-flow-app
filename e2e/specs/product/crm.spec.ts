@@ -132,11 +132,44 @@ async function invalidateTeamLeadsCache(
  * da fronteira (último stale aos 62s de idade da entrada); 120s garante
  * atravessá-la para QUALQUER entrada presa, por mais nova que fosse no
  * momento do seed.
+ *
+ * Variante browser×Node, não só fronteira de tempo — runs 34498042469,
+ * 34390722437 e 34385997396 mostram o MESMO endpoint devolvendo fresco para
+ * `page.request` (processo Node) enquanto os fetches do BROWSER seguem presos
+ * num snapshot anterior ao seed por 2+ minutos, mesmo dentro da janela de
+ * 120s. A investigação local de 09/09 só testou leituras de FORA do browser
+ * (page.request, API context) e não reproduziu — a hipótese sobrevivente é
+ * cache por processo/runtime divergente entre o fetch do Node e o fetch da
+ * página renderizada. Por isso o poll abaixo roda DENTRO do browser
+ * (`page.evaluate` + `fetch(..., { cache: "reload" })`), exercitando a mesma
+ * variante presa e forçando a revalidação pelo caminho real da página antes
+ * de decidir se vale recarregar.
  */
-async function waitForSeededLeadOnBoard(page: Page, name: string) {
+async function waitForSeededLeadOnBoard(
+  page: Page,
+  { name, teamId, leadId }: { name: string; teamId: string; leadId: string },
+) {
   const nameFilter = page.getByPlaceholder("Filtrar por nome...");
   const seededLeadCell = page.getByText(name).first();
   await expect(async () => {
+    const freshInBrowser = await page.evaluate(
+      async ({ teamId: tid, leadId: lid }) => {
+        const response = await fetch(`/api/q/leads?role=manager&teamId=${tid}`, {
+          cache: "reload",
+        });
+        if (!response.ok) return false;
+        const body = (await response.json()) as {
+          result?: { leads?: Array<{ id: string }> };
+        };
+        return (body.result?.leads ?? []).some((lead) => lead.id === lid);
+      },
+      { teamId, leadId },
+    );
+    if (!freshInBrowser) {
+      await page.waitForTimeout(1_000);
+      throw new Error("lista vista pelo browser ainda não contém o lead seedado");
+    }
+
     if ((await seededLeadCell.count()) === 0) {
       await page.reload({ waitUntil: "domcontentloaded" });
     }
@@ -250,7 +283,7 @@ test.describe("app/[supabaseId]/crm", () => {
     await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
       timeout: 30_000,
     });
-    await waitForSeededLeadOnBoard(page, TOUCH_LEAD_NAME);
+    await waitForSeededLeadOnBoard(page, { name: TOUCH_LEAD_NAME, teamId, leadId: TOUCH_LEAD_ID });
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
@@ -329,7 +362,11 @@ test.describe("app/[supabaseId]/crm", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm`);
 
-    const seededLeadCell = await waitForSeededLeadOnBoard(page, LAYOUT_LEAD_NAME);
+    const seededLeadCell = await waitForSeededLeadOnBoard(page, {
+      name: LAYOUT_LEAD_NAME,
+      teamId,
+      leadId: LAYOUT_LEAD_ID,
+    });
 
     await seededLeadCell.click();
     const dialog = page.getByRole("dialog");
