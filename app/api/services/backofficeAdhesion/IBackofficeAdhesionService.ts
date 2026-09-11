@@ -3,6 +3,7 @@ import type {
   BackofficeAdhesionStatus,
 } from "@prisma/client"
 import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-adhesions/adhesion-token-validation"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface BackofficeAdhesionAdditionalUser {
   name: string
@@ -293,6 +294,7 @@ export interface IBackofficeAdhesionService {
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
+    account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }>
 }

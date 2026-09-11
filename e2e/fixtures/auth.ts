@@ -110,10 +110,20 @@ export function buildE2eAddCookiesPayload(
 
 export async function injectE2eAuthCookie(
   context: CookieInjectableContext,
-  options?: { token?: string; baseUrl?: string },
+  options?: {
+    token?: string;
+    baseUrl?: string;
+    /** Assina o JWT para outro usuário (ex.: backoffice). Default: master seedado. */
+    supabaseId?: string;
+    email?: string;
+  },
 ): Promise<void> {
   const baseUrl = options?.baseUrl ?? resolveE2eBaseUrl();
-  const token = options?.token ?? signE2eSessionToken();
+  const token =
+    options?.token ??
+    (options?.supabaseId || options?.email
+      ? signE2eJwt({ supabaseId: options.supabaseId, email: options.email })
+      : signE2eSessionToken());
   await context.addCookies([buildE2eAddCookiesPayload(token, baseUrl)]);
 }
 

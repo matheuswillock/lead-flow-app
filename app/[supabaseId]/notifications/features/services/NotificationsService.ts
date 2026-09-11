@@ -16,11 +16,30 @@ type ListParams = RequestContext & {
 export class NotificationsService {
   private baseUrl = `${API_CLIENT_BASE}/notifications`;
 
+  /**
+   * Sem `.catch(() => null)` de propósito diferente (não é design defensivo):
+   * um corpo não-JSON (502/504 de proxy/CDN) rejeita aqui com `SyntaxError`
+   * ANTES de chegar em `throwFromResponse` — nunca vira `ApiRequestError`, e
+   * `toUserToastMessage` já mascara `SyntaxError` (ver
+   * `to-user-toast-message.test.ts`). Funciona, mas por acidente de forma —
+   * documentado para o próximo review não reintroduzir um `.catch(() => null)`
+   * aqui sem revisar `throwFromResponse` junto (isso mudaria `output` para
+   * `undefined`/`null` e o `?.` faria cair no `fallback` de qualquer forma).
+   */
   private async parseOutput(response: Response): Promise<Output> {
     const data = await response.json();
     return data as Output;
   }
 
+  /**
+   * Auditoria de review (PR #1085, Entregável 3): `fallback` aqui é sempre
+   * uma constante PT-BR escrita à mão por cada chamador (ex.: "Erro ao
+   * carregar notificações") — nunca interpola `response.status` nem uma
+   * mensagem de exceção. Etiquetar como `ApiRequestError` incondicionalmente
+   * é seguro pelo mesmo motivo de `TemplateEditorService.parseResponse`: o
+   * texto que chega ao toast nunca é detalhe técnico/interno, mesmo no ramo
+   * sem `errorMessages` do backend.
+   */
   private throwFromResponse(response: Response, output: Output, fallback: string): never {
     throw new ApiRequestError(
       output.errorMessages?.join(", ") || fallback,

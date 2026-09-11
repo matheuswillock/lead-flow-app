@@ -8,6 +8,10 @@ import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-i
 
 const bodySchema = z.object({
   mode: z.enum(["invite", "reset_password"]),
+  accountMasterId: z.string().uuid(),
+  // Entregável 3 (botão "Copiar link do convite"): gera o link novo sem
+  // disparar e-mail. Só vale para mode: "invite" — validado abaixo.
+  deliver: z.enum(["email", "link"]).optional().default("email"),
 })
 
 export async function POST(
@@ -31,10 +35,31 @@ export async function POST(
     }
 
     const { memberId } = await params
-    const output = await backofficeMemberAccessEmailUseCase.sendAccessEmail(
-      memberId,
-      body.data.mode
-    )
+
+    if (body.data.deliver === "link") {
+      if (body.data.mode !== "invite") {
+        return NextResponse.json(
+          new Output(false, [], ["Copiar link disponível apenas para convite"], null),
+          { status: 400 }
+        )
+      }
+      const output = await backofficeMemberAccessEmailUseCase.generateInviteLink({
+        profileId: memberId,
+        accountMasterId: body.data.accountMasterId,
+      })
+      const status = output.isValid
+        ? 200
+        : output.errorMessages.includes("Membro não encontrado")
+          ? 404
+          : 400
+      return NextResponse.json(output, { status })
+    }
+
+    const output = await backofficeMemberAccessEmailUseCase.sendAccessEmail({
+      profileId: memberId,
+      accountMasterId: body.data.accountMasterId,
+      mode: body.data.mode,
+    })
 
     const status = output.isValid
       ? 200

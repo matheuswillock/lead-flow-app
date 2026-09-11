@@ -261,7 +261,7 @@ export class RadarService {
         const normalizedEmail = lead.email ? normalizeRadarEmail(lead.email) : null
         const normalizedDocument = lead.cnpj ? normalizeRadarDocument(lead.cnpj) : null
 
-        const { profile, wasExisting } = await this.repo.resolveProfileForPhone({
+        const { profile, wasExisting, emailIdentityClaimed } = await this.repo.resolveProfileForPhone({
           teamId: scope.teamId,
           displayName: lead.name.trim(),
           normalizedName,
@@ -279,7 +279,10 @@ export class RadarService {
         if (wasExisting) counters.enriched += 1
         else counters.created += 1
 
-        if (normalizedEmail) {
+        // `emailIdentityClaimed: false` = a claim ficou com um dono
+        // estabelecido divergente (guarda de e-mail compartilhado) —
+        // reivindicar aqui roubaria a identidade sem passar por merge.
+        if (normalizedEmail && emailIdentityClaimed) {
           await this.repo.upsertIdentity({
             profileId: profile.id,
             teamId: scope.teamId,
@@ -705,7 +708,17 @@ export class RadarService {
       if (resolved.wasExisting) counters.enriched += 1
       else counters.created += 1
 
-      if (sendableEmail) {
+      // Achado 2026-09-03 (caso PIMENTAS/KKJ): os DOIS caminhos de resolução
+      // devolvem `emailIdentityClaimed: false` quando a guarda de e-mail
+      // compartilhado (`lib/radar/email-profile-match.ts`) decide que o
+      // e-mail pertence a uma pessoa DIFERENTE — nesse caso o perfil
+      // retornado NÃO deve receber a `RadarIdentity` exclusiva do e-mail.
+      // Chamar `upsertIdentity` incondicionalmente aqui reatribuiria
+      // (`update.profileId`) a claim do dono original para este perfil,
+      // roubando a identidade sem passar por merge e desfazendo a guarda que
+      // o repositório acabou de aplicar (achado cursor no PR #1155 — o
+      // `?? true` antigo fazia exatamente isso no caminho por telefone).
+      if (sendableEmail && resolved.emailIdentityClaimed) {
         await this.repo.upsertIdentity({
           profileId: profile.id,
           teamId: scope.teamId,

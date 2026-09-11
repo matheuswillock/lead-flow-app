@@ -10,7 +10,9 @@
       "canonical `features/` layout",
       "window.alert",
       "E2E Tests",
-      "governance:check-e2e-pages"
+      "governance:check-e2e-pages",
+      "governance:check-responsive",
+      "mobile-first"
     ]
   },
   "warnings": {
@@ -61,8 +63,6 @@
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts",
       "app/api/v1/teams/active/route.ts",
-      "app/api/v1/teams/confirm-payment/route.ts",
-      "app/api/v1/teams/payments/create/route.ts",
       "app/api/v1/teams/pending-actions/[id]/route.ts",
       "app/api/v1/teams/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
@@ -81,7 +81,6 @@
       "app/api/infra/data/repositories/featureAccess/FeatureAccessRepository.ts",
       "app/api/infra/data/repositories/lead/LeadRepository.ts",
       "app/api/infra/data/repositories/payment/PaymentRepository.ts",
-      "app/api/infra/data/repositories/pendingAction/PendingActionRepository.ts",
       "app/api/infra/data/repositories/profile/ProfileRepository.ts",
       "app/api/infra/data/repositories/task/TaskRepository.ts",
       "app/api/services/AsaasOperator/AsaasOperatorService.ts",
@@ -92,7 +91,6 @@
       "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
@@ -121,7 +119,6 @@
       "app/api/useCases/leads/LeadTagUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
@@ -227,7 +224,6 @@
       "app/api/v1/subscriptions/check/route.ts",
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/teams/route.ts",
-      "app/api/v1/teams/payments/create/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
@@ -284,7 +280,6 @@
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
-      "app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
       "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
@@ -363,7 +358,6 @@
       "app/backoffice/(app)/clients/[masterId]/forms/[formId]/page.tsx",
       "app/backoffice/(app)/clients/[masterId]/forms/new/page.tsx",
       "app/backoffice/(app)/clients/[masterId]/invoices/[invoiceId]/page.tsx",
-      "app/backoffice/(app)/clients/[masterId]/page.tsx",
       "app/backoffice/(app)/clients/adhesions/page.tsx",
       "app/backoffice/(app)/clients/all-users/page.tsx",
       "app/backoffice/(app)/clients/authorized-sponsors/page.tsx",
@@ -388,7 +382,6 @@
       "app/backoffice/(app)/lead-quick-entry/page.tsx",
       "app/backoffice/(app)/page.tsx",
       "app/backoffice/(app)/payments/page.tsx",
-      "app/backoffice/(app)/pricing/page.tsx",
       "app/backoffice/(app)/radar/engajamento/page.tsx",
       "app/backoffice/(app)/radar/outbox/page.tsx",
       "app/backoffice/(app)/regras-transicao/page.tsx",
@@ -420,11 +413,26 @@
       "app/recursos/page.tsx",
       "app/set-password/page.tsx",
       "app/terms/page.tsx"
+    ],
+    "responsiveSpecAllowlist": [
+      "e2e/specs/backoffice/campanhas-analytics.spec.ts",
+      "e2e/specs/backoffice/clients/adhesions.spec.ts",
+      "e2e/specs/backoffice/clients/member-team-permissions.spec.ts",
+      "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "e2e/specs/backoffice/pricing.spec.ts",
+      "e2e/specs/product/email-campanhas.spec.ts",
+      "e2e/specs/product/email-configuracoes.spec.ts",
+      "e2e/specs/product/radar.spec.ts",
+      "e2e/specs/public/adquirir/creditos.spec.ts",
+      "e2e/specs/public/home.spec.ts",
+      "e2e/specs/public/public-form.spec.ts"
     ]
   },
   "e2ePageCoverage": {
     "coveredBy": {
-      "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts"
+      "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
+      "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
     }
   }
 }

@@ -2,11 +2,11 @@ import { createHmac } from "node:crypto";
 import {
   E2E_MASTER_EMAIL,
   E2E_MASTER_SUPABASE_ID,
-} from "@/lib/e2e/constants";
-import type { E2eJwtClaims } from "@/lib/e2e/e2e-jwt-verify";
+} from "./constants";
+import type { E2eJwtClaims } from "./e2e-jwt-verify";
 
-export type { E2eJwtClaims } from "@/lib/e2e/e2e-jwt-verify";
-export { verifyE2eJwt } from "@/lib/e2e/e2e-jwt-verify";
+export type { E2eJwtClaims } from "./e2e-jwt-verify";
+export { verifyE2eJwt } from "./e2e-jwt-verify";
 
 const JWT_HEADER = { alg: "HS256", typ: "JWT" } as const;
 const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -14,6 +14,8 @@ const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
 export type SignE2eJwtOptions = {
   nowMs?: number;
   expiresInMs?: number;
+  supabaseId?: string;
+  email?: string;
 };
 
 function readE2eJwtSecret(): string | null {
@@ -39,8 +41,8 @@ export function signE2eJwt(options: SignE2eJwtOptions = {}): string {
   const expiresInMs = options.expiresInMs ?? DEFAULT_TTL_MS;
   const iat = Math.floor(nowMs / 1000);
   const payload: E2eJwtClaims = {
-    sub: E2E_MASTER_SUPABASE_ID,
-    email: E2E_MASTER_EMAIL,
+    sub: options.supabaseId ?? E2E_MASTER_SUPABASE_ID,
+    email: options.email ?? E2E_MASTER_EMAIL,
     iat,
     exp: iat + Math.floor(expiresInMs / 1000),
   };

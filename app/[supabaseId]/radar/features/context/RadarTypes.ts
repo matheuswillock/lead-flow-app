@@ -203,6 +203,26 @@ export type RadarMetrics = {
   engaged: number | null
 }
 
+/** Lead já existente que o backend apontou como possível duplicata na promoção. */
+export type RadarDuplicateLeadCandidate = {
+  id: string
+  name: string | null
+  phone?: string | null
+  email?: string | null
+  createdAt?: string
+}
+
+export type RadarPromoteToLeadResult = {
+  leadId: string
+  radarProfileId: string
+  /**
+   * `false` quando o Lead foi criado mas o vínculo com o perfil não pôde ser
+   * confirmado. O Lead existe — não repetir a promoção, sob risco de criar um
+   * segundo; o próximo sync do CRM refaz o vínculo.
+   */
+  identityLinked?: boolean
+}
+
 export type RadarProfileAssignee = {
   leadId: string
   leadCode: string
@@ -266,6 +286,24 @@ export type RadarTouchpointChannel = {
 export type RadarProfileTouchpoints = {
   total: number
   breakdown: RadarTouchpointChannel[]
+}
+
+/**
+ * Seção "Leads no CRM" do perfil unificado (regra 3, adenda 31/08 pós-#1107):
+ * todos os leads vinculados ao perfil ao longo da vida da negociação —
+ * histórico (regra 2), não mais um único lead. Mais recente primeiro.
+ */
+export type RadarRelatedLead = {
+  id: string
+  leadCode: string
+  name: string
+  /** `Lead.status` é opcional — `null` = lead ainda em rascunho. */
+  status: string | null
+  createdAt: string
+}
+
+export type RadarProfileRelatedLeads = {
+  items: RadarRelatedLead[]
 }
 
 export type RadarContractHolder = {

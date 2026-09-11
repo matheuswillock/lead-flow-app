@@ -1,5 +1,9 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
 import { NextRequest, NextResponse } from "next/server"
+import {
+  radarRepositoryMock,
+  registerRadarRepositoryModuleMock,
+} from "@/test/support/radar-repository-module-mock"
 
 mock.module("next/server", () => ({
   NextRequest,
@@ -17,12 +21,11 @@ mock.module("@/app/api/v1/radar/utils/getRadarAccess", () => ({
   teamContextFromRadarAccess: mock(() => ({ profileId: "profile-1", teamMember: { id: "tm-1" } })),
 }))
 
-mock.module("@/app/api/infra/data/repositories/radar/RadarRepository", () => ({
-  radarRepository: {
-    profileExistsInScope,
-    listProfileTouchpointEventMarkers,
-  },
-}))
+await registerRadarRepositoryModuleMock()
+Object.assign(radarRepositoryMock, {
+  profileExistsInScope,
+  listProfileTouchpointEventMarkers,
+})
 
 const { getRadarAccess } = await import("@/app/api/v1/radar/utils/getRadarAccess")
 const { GET } = await import("./route")

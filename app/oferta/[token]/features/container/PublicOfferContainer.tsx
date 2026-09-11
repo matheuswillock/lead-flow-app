@@ -33,6 +33,7 @@ function OfferItemCard({ item }: { item: PublicOfferItem }) {
   const prices = [
     { label: "Mensal", value: formatPrice(item.priceMonthly) },
     { label: "Trimestral", value: formatPrice(item.priceQuarterly) },
+    { label: "Quadrimestral", value: formatPrice(item.priceQuadrimester) },
     { label: "Semestral", value: formatPrice(item.priceSemiannual) },
     { label: "Anual", value: formatPrice(item.priceAnnual) },
     { label: "Vitalício", value: formatPrice(item.priceLifetime) },

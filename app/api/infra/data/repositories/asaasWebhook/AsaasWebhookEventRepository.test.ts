@@ -4,7 +4,8 @@ import { ASAAS_WEBHOOK_EVENT_MAX_ATTEMPTS } from "@/lib/webhooks/asaas-webhook-e
 const findManyMock = mock(async () => [] as Array<Record<string, unknown>>)
 const updateManyMock = mock(async () => ({ count: 1 }))
 const updateMock = mock(async () => ({}))
-const findUniqueMock = mock(async () => null)
+const findUniqueMock = mock(async () => null as { status: string } | null)
+const createMock = mock(async () => ({}))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -13,6 +14,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
       updateMany: updateManyMock,
       update: updateMock,
       findUnique: findUniqueMock,
+      create: createMock,
     },
   },
 }))
@@ -40,8 +42,48 @@ describe("AsaasWebhookEventRepository", () => {
     updateManyMock.mockClear()
     updateMock.mockClear()
     findUniqueMock.mockClear()
+    createMock.mockClear()
     findManyMock.mockImplementation(async () => [])
     updateManyMock.mockImplementation(async () => ({ count: 1 }))
+    findUniqueMock.mockImplementation(async () => null)
+  })
+
+  it("claimForProcessing persiste account no create de evento novo (E4/T-10.9)", async () => {
+    const repo = new AsaasWebhookEventRepository()
+
+    const result = await repo.claimForProcessing({
+      id: "evt-new",
+      eventType: "PAYMENT_RECEIVED",
+      payload: { id: "evt-new" },
+      account: "legacy",
+    })
+
+    expect(result).toBe("process")
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ id: "evt-new", account: "legacy" }),
+      })
+    )
+  })
+
+  it("claimForProcessing persiste account no update de evento pending/failed reenfileirado", async () => {
+    findUniqueMock.mockImplementation(async () => ({ status: "failed" }))
+
+    const repo = new AsaasWebhookEventRepository()
+    const result = await repo.claimForProcessing({
+      id: "evt-retry",
+      eventType: "PAYMENT_RECEIVED",
+      payload: { id: "evt-retry" },
+      account: "primary",
+    })
+
+    expect(result).toBe("process")
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "evt-retry" }),
+        data: expect.objectContaining({ account: "primary" }),
+      })
+    )
   })
 
   it("claimDue recupera linhas processing abandonadas antes de reivindicar pending/failed", async () => {
@@ -104,6 +146,7 @@ describe("AsaasWebhookEventRepository", () => {
       eventType: "PAYMENT_RECEIVED",
       payload: { id: "evt-1" },
       attemptCount: 2,
+      account: "primary" as const,
     }
 
     findManyMock.mockImplementation(async (args?: FindManyArgs) => {

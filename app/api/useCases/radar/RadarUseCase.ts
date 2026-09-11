@@ -2,6 +2,7 @@ import { Output } from "@/lib/output"
 import { cacheLife, cacheTag } from "next/cache"
 import { cacheTags } from "@/lib/cache/cacheTags"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { resolvePageOffset } from "@/lib/http/parse-pagination"
 import { DEFAULT_TZ } from "@/lib/dates/DEFAULT_TZ"
 import { formatLocalDateValue } from "@/lib/dates/parse"
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository"
@@ -529,6 +530,30 @@ export class RadarUseCase {
     return new Output(true, [], [], { portfolios, finalized })
   }
 
+  /**
+   * Regra 3 (adenda 31/08, pós-#1107): seção "Leads no CRM" do perfil
+   * unificado — todos os leads vinculados ao perfil ao longo da vida da
+   * negociação (histórico, ver regra 2), mais recente primeiro.
+   */
+  async getProfileRelatedLeads(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const leads = await radarRepository.findRelatedLeadsForProfile(scope, profileId)
+    const items = leads.map((lead) => ({
+      id: lead.id,
+      leadCode: lead.leadCode,
+      name: lead.name,
+      status: lead.status,
+      createdAt: lead.createdAt.toISOString(),
+    }))
+
+    return new Output(true, [], [], { items })
+  }
+
   async listProfileEvents(
     teamId: string,
     ctx: TeamContext,
@@ -536,7 +561,11 @@ export class RadarUseCase {
     page: number,
     pageSize: number
   ) {
-    const skip = (page - 1) * pageSize
+    const skip = resolvePageOffset(page, pageSize)
+    if (skip === null) {
+      return new Output(false, [], ["Página fora do intervalo"], null)
+    }
+
     const result = await radarRepository.listProfileEventsWithCtx(
       this.scope(teamId, ctx),
       profileId,
@@ -589,7 +618,11 @@ export class RadarUseCase {
     pageSize: number
   ) {
     const scope = this.scope(teamId, ctx)
-    const skip = (page - 1) * pageSize
+    const skip = resolvePageOffset(page, pageSize)
+    if (skip === null) {
+      return new Output(false, [], ["Página fora do intervalo"], null)
+    }
+
     const resolved = await this.resolveSegmentProfileIdsPage(scope, segment, {
       skip,
       take: pageSize,
@@ -822,7 +855,11 @@ export class RadarUseCase {
         return new Output(false, [], ["Segmento não encontrado"], null)
       }
       const rules = parseRadarSegmentRules(segment.rulesJson)
-      const skip = (page - 1) * pageSize
+      const skip = resolvePageOffset(page, pageSize)
+      if (skip === null) {
+        return new Output(false, [], ["Página fora do intervalo"], null)
+      }
+
       const [total, pageIds] = await Promise.all([
         this.segmentQueryService.countProfiles(scope, rules),
         this.segmentQueryService.listProfileIds(scope, rules, { skip, take: pageSize }),

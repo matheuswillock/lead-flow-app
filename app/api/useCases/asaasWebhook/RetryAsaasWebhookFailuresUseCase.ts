@@ -80,7 +80,7 @@ export class RetryAsaasWebhookFailuresUseCase {
       const body = this.parsePayload(row.payload);
       const publishResult = await publishWithRetry(() =>
         publishAsaasWebhookEvent(
-          { eventId: row.id, body },
+          { eventId: row.id, body, account: row.account },
           { idempotencyKey: this.retryIdempotencyKey(row) },
         )
       );

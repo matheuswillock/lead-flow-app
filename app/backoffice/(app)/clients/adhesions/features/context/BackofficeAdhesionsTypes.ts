@@ -16,7 +16,7 @@ export type BackofficeAdhesionStatusKey =
   | "expired"
   | "canceled"
 
-export type BackofficeAdhesionBillingCycleKey = "monthly" | "quarterly" | "semiannual" | "annual"
+export type BackofficeAdhesionBillingCycleKey = "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
 
 export interface BackofficeAdhesionItem {
   id: string
@@ -189,6 +189,7 @@ export const BACKOFFICE_ADHESION_CYCLE_LABELS: Record<
 > = {
   monthly: "Mensal",
   quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
   semiannual: "Semestral",
   annual: "Anual",
 }

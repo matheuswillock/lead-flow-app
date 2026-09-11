@@ -51,7 +51,7 @@ type QueueMessageMetadata = {
 
 const { processAsaasWebhookEventMessage } = await import("./route")
 
-const process = mock(async (_body: AsaasWebhookBody) => {})
+const process = mock(async (_body: AsaasWebhookBody, _account?: "primary" | "legacy") => {})
 const markProcessed = mock(async (_id: string) => {})
 const markFailed = mock(async (_id: string, _errorMessage: string) => {})
 
@@ -69,6 +69,7 @@ const baseBody = (): AsaasWebhookBody => ({
 const baseMessage = (): AsaasWebhookEventPayload => ({
   eventId: "evt-1",
   body: baseBody(),
+  account: "primary",
 })
 
 const metadata = {
@@ -93,7 +94,7 @@ describe("processAsaasWebhookEventMessage", () => {
     await processAsaasWebhookEventMessage(message, metadata, deps)
 
     expect(process).toHaveBeenCalledTimes(1)
-    expect(process).toHaveBeenCalledWith(message.body)
+    expect(process).toHaveBeenCalledWith(message.body, message.account)
     expect(markProcessed).toHaveBeenCalledTimes(1)
     expect(markProcessed).toHaveBeenCalledWith("evt-1")
     expect(markFailed).not.toHaveBeenCalled()
@@ -144,7 +145,24 @@ describe("processAsaasWebhookEventMessage", () => {
       expect.objectContaining({
         topic: "asaas-webhook-events",
         idempotencyKey: "evt-1",
-        lastError: "campos obrigatórios ausentes: body",
+        lastError: "campos obrigatórios ausentes: body, account",
+      }),
+    )
+  })
+
+  it("T-Q3.2 — payload sem account: dead-letter TERMINAL nomeando account", async () => {
+    recordTerminalFailure.mockClear()
+
+    await processAsaasWebhookEventMessage(
+      { eventId: "evt-1", body: baseBody() } as AsaasWebhookEventPayload,
+      metadata,
+      deps,
+    )
+
+    expect(process).not.toHaveBeenCalled()
+    expect(recordTerminalFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lastError: "campos obrigatórios ausentes: account",
       }),
     )
   })

@@ -6,7 +6,7 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
-const WHATS_NEW_VERSION = "v1"
+export const WHATS_NEW_VERSION = "v1"
 
 type TeamRole = "manager" | "backoffice" | "operator"
 

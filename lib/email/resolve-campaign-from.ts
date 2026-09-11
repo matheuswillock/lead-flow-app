@@ -155,7 +155,10 @@ export function isEmailAllowedForTeamDomain(
   const at = normalizedEmail.lastIndexOf("@")
   if (at < 0) return false
   const host = normalizedEmail.slice(at + 1)
-  return host === domain || host.endsWith(`.${domain}`)
+
+  const comparableHost = host.startsWith("mail.") ? host.slice(5) : host
+  const comparableDomain = domain.startsWith("mail.") ? domain.slice(5) : domain
+  return comparableHost === comparableDomain
 }
 
 export function resolveCampaignFrom(input: ResolveCampaignFromInput): ResolvedCampaignFrom {

@@ -78,6 +78,7 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
   const paymentRules = {
     monthly: ruleEntry("monthly", "1"),
     quarterly: ruleEntry("quarterly", "3"),
+    quadrimester: ruleEntry("quadrimester", "4"),
     semiannual: ruleEntry("semiannual", "6"),
     annual: ruleEntry("annual", "12"),
   }
@@ -97,6 +98,7 @@ function productToFormData(product: BackofficeProductItem): BackofficeProductFor
     billingMode: product.billingMode,
     priceMonthly: product.priceMonthly != null ? String(product.priceMonthly) : "",
     priceQuarterly: product.priceQuarterly != null ? String(product.priceQuarterly) : "",
+    priceQuadrimester: product.priceQuadrimester != null ? String(product.priceQuadrimester) : "",
     priceSemiannual: product.priceSemiannual != null ? String(product.priceSemiannual) : "",
     priceAnnual: product.priceAnnual != null ? String(product.priceAnnual) : "",
     priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",

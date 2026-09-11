@@ -12,44 +12,9 @@ import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
   CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
 } from "@/lib/email/campaign-dispatch-copy"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
-
-async function grantEmailCampaignsBeta(profileId: string) {
-  const prisma = getPrisma()
-  for (const slug of [FEATURE_SLUGS.EMAIL, FEATURE_SLUGS.EMAIL_CAMPAIGNS]) {
-    const feature = await prisma.backofficeFeature.findUnique({
-      where: { slug },
-      select: { id: true },
-    })
-    if (!feature) {
-      throw new Error(`Feature ${slug} ausente no catálogo — rode \`bun run db:seed:e2e\``)
-    }
-
-    await prisma.backofficeFeatureGrant.upsert({
-      where: {
-        featureId_profileId_grantType: {
-          featureId: feature.id,
-          profileId,
-          grantType: "BETA",
-        },
-      },
-      create: {
-        featureId: feature.id,
-        profileId,
-        grantType: "BETA",
-        isActive: true,
-        betaTeamScope: "ALL_TEAMS",
-      },
-      update: {
-        isActive: true,
-        betaTeamScope: "ALL_TEAMS",
-      },
-    })
-  }
-}
 
 test.describe("app/[supabaseId]/email/campanhas", () => {
   test.setTimeout(60_000)
@@ -57,7 +22,6 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
   test.beforeEach(async ({ context }) => {
     const profile = await findE2eMasterProfile()
     expect(profile, "Seed E2E ausente — rode `bun run db:seed:e2e`").not.toBeNull()
-    await grantEmailCampaignsBeta(profile!.id)
     await injectE2eAuthCookie(context)
     await context.addInitScript((supabaseId: string) => {
       window.localStorage.setItem(`whats-new:seen:v1:${supabaseId}`, "true")
@@ -234,8 +198,34 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     }
 
     test("aba oculta não dispara polling", async ({ page }) => {
+      // CampaignDispatchRealtimeContext.tsx faz UM fetch de montagem (linhas
+      // 276-278) assim que o TeamContext resolve `activeTeamId`/`user.id` —
+      // esse disparo é incondicional de visibilidade por desenho (só o
+      // setInterval recorrente, linhas 280-319, é gated por
+      // document.visibilityState; em /board sem campanha "sending" o
+      // intervalo armado é o ocioso de 60s, fora do alcance desta janela).
+      // Um `waitForTimeout` fixo presumia quanto tempo o TeamContext leva
+      // para resolver sob carga de CI; em vez disso esperamos a CONDIÇÃO
+      // real — a própria requisição de montagem começar — antes de forçar a
+      // aba oculta. O listener precisa ser registrado ANTES do goto para não
+      // perder uma resolução rápida (ex.: bootstrap cache já hidratado).
+      const initialMountFetchStarted = page
+        .waitForRequest((request) => request.url().includes("/email/campaigns"), {
+          timeout: 20_000,
+        })
+        .catch(() => null)
+
       await page.goto(`/${E2E_MASTER_SUPABASE_ID}/board`, { waitUntil: "domcontentloaded" })
-      await page.waitForTimeout(2_000)
+
+      // /board é PPR (Partial Prerendering): o shell estático responde e
+      // dispara "domcontentloaded" ANTES do redirect() server-side (para
+      // /crm) terminar de se resolver via navegação client-side pós-
+      // hidratação. Sem esperar a URL final assentar, o page.evaluate abaixo
+      // corre risco real de cair no meio dessa troca de página e estourar
+      // "Execution context was destroyed" — visto na prática ao rodar com
+      // --repeat-each.
+      await page.waitForURL((url) => url.pathname.includes("/crm"), { timeout: 20_000 })
+      await initialMountFetchStarted
 
       await page.evaluate(() => {
         Object.defineProperty(document, "visibilityState", {
@@ -245,6 +235,11 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
         document.dispatchEvent(new Event("visibilitychange"))
       })
 
+      // Drena antes de abrir a janela estrita: visibilitychange não cancela
+      // um fetch já em voo, então a resposta daquela requisição de montagem
+      // ainda pode aterrissar alguns instantes depois do evento.
+      await countCampaignPolls(page, 4_000)
+
       const hits = await countCampaignPolls(page, 10_000)
       expect(hits, "aba oculta não deve consultar campanhas").toBe(0)
     })
@@ -252,6 +247,13 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     test("fora do módulo de e-mail e sem disparo, a cadência é baixa", async ({ page }) => {
       // /board não tem relação com e-mail; antes desta mudança o intervalo de 4s
       // rodava aqui do mesmo jeito, gerando ~15 requisições por minuto.
+      //
+      // Este teste já tolera <=1 hit — exatamente o fetch único de montagem
+      // descrito no teste acima — então não sofre da mesma corrida: sem
+      // campanha "sending", o intervalo recorrente que se arma aqui é o
+      // ocioso de 60s, que não cabe dentro dos 12s desta janela. Avaliado e
+      // mantido sem alteração ao investigar o flake de "aba oculta não
+      // dispara polling".
       await page.goto(`/${E2E_MASTER_SUPABASE_ID}/board`, { waitUntil: "domcontentloaded" })
       await page.waitForTimeout(3_000)
 

@@ -8,10 +8,17 @@ import type {
   IEmailTeamSettingsRepository,
 } from "@/app/api/infra/data/repositories/emailTeamSettings/IEmailTeamSettingsRepository"
 import { assertResend } from "@/lib/email"
+import { RESEND_TRACKING_POLICY } from "@/lib/email/resend-domain-reconcile"
 import {
-  isTrackingSubdomainAlreadyExists,
+  isSelfInflictedTrackingConflict,
+  isTrackingSubdomainConflict,
   mapResendDomainError,
 } from "@/lib/email/map-resend-domain-error"
+import { normalizeSendingDomainName } from "@/lib/email/normalize-sending-domain-name"
+import {
+  checkSendingDomainExistence,
+  type SendingDomainExistence,
+} from "@/lib/email/sending-domain-existence"
 import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
@@ -22,6 +29,7 @@ import {
 } from "@/lib/email/resolve-campaign-from"
 import {
   emailTeamDomainEventRepository,
+  type IEmailTeamDomainEventRepository,
 } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
 import {
   getResendDomainDispatchWarnings,
@@ -156,13 +164,38 @@ function normalizeSenderPayload(input: UpsertEmailSenderInput) {
   }
 }
 
+export type EmailTeamSettingsDependencies = {
+  settingsRepo?: IEmailTeamSettingsRepository
+  resendFactory?: () => ReturnType<typeof assertResend>
+  domainEvents?: IEmailTeamDomainEventRepository
+  /** Costura de teste como o `resendFactory`: o default consulta DNS/RDAP reais. */
+  domainExistence?: (name: string) => Promise<SendingDomainExistence>
+}
+
 export class EmailTeamSettingsUseCase {
   // Default singleton: existem 10 call sites fazendo `new EmailTeamSettingsUseCase()`
   // (8 rotas de produto, o UseCase de backoffice em field initializer e o teste).
   // Parâmetro obrigatório quebraria todos sem ganho nenhum.
-  constructor(
-    private readonly settingsRepo: IEmailTeamSettingsRepository = emailTeamSettingsRepository
-  ) {}
+  private readonly settingsRepo: IEmailTeamSettingsRepository
+  private readonly resendFactory: () => ReturnType<typeof assertResend>
+  private readonly domainEvents: IEmailTeamDomainEventRepository
+  private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
+
+  /**
+   * Dependências por objeto nomeado, não por posição: quem só quer injetar o
+   * `resendFactory` não precisa repetir o repositório antes dele.
+   *
+   * `resendFactory` é costura de teste, não indireção decorativa: sem ela o
+   * único jeito de exercitar `connectDomain` seria `mock.module` no
+   * `@/lib/email`, que vaza para todos os arquivos da mesma execução de
+   * `bun test`.
+   */
+  constructor(dependencies: EmailTeamSettingsDependencies = {}) {
+    this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
+    this.resendFactory = dependencies.resendFactory ?? assertResend
+    this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
+    this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
+  }
 
   private composeResult(
     settings: EmailTeamSettingsRecord | null,
@@ -217,7 +250,7 @@ export class EmailTeamSettingsUseCase {
 
   async get(ctx: TeamContext): Promise<Output> {
     try {
-      const rawEvents = await emailTeamDomainEventRepository.listEvents(ctx.teamId)
+      const rawEvents = await this.domainEvents.listEvents(ctx.teamId)
       const domainEvents = rawEvents.map((event) => ({
         id: event.id,
         type: event.type,
@@ -394,7 +427,11 @@ export class EmailTeamSettingsUseCase {
 
   async connectDomain(domainName: string, ctx: TeamContext): Promise<Output> {
     try {
-      if (!domainName.trim() || domainName.length < 3) {
+      // Colar a URL da barra de endereço (`http://dominio.com.br/`) é o caminho
+      // natural de quem está na tela, e o provedor responde 422 a isso. Sanear
+      // antes de validar mantém a tentativa viva em vez de culpar o operador.
+      const sanitizedDomainName = normalizeSendingDomainName(domainName)
+      if (sanitizedDomainName.length < 3) {
         return new Output(false, [], ["Nome de domínio inválido"], null)
       }
 
@@ -408,13 +445,29 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const resend = assertResend()
+      // Domínio digitado errado ou nunca registrado falha AQUI, no submit —
+      // não dias depois como "Falhou" na verificação assíncrona de DNS
+      // (incidente Gorrilhas, 01/09). `unknown` (resolver/RDAP fora do ar)
+      // segue em frente: indisponibilidade de rede não bloqueia domínio real.
+      const existence = await this.domainExistence(sanitizedDomainName)
+      if (existence === "not_registered") {
+        return new Output(
+          false,
+          [],
+          [
+            `O domínio "${sanitizedDomainName}" não existe ou ainda não foi registrado. Confira a grafia — o domínio precisa estar registrado antes de ser conectado.`,
+          ],
+          null
+        )
+      }
+
+      const resend = this.resendFactory()
       const { data, error } = await resend.domains.create({
-        name: domainName.trim(),
+        name: sanitizedDomainName,
         region: DEFAULT_DOMAIN_REGION,
         customReturnPath: "bounce",
-        openTracking: true,
-        clickTracking: false,
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
       if (error || !data) {
@@ -422,7 +475,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(
           false,
           [],
-          [mapResendDomainError(error?.message, "connect", domainName.trim())],
+          [mapResendDomainError(error?.message, "connect", sanitizedDomainName)],
           null
         )
       }
@@ -438,17 +491,52 @@ export class EmailTeamSettingsUseCase {
       // que o redirecionador exista. Este update é reforço, e o erro dele é
       // verificado: sem isso, uma falha aqui deixaria o provedor divergente do
       // que gravamos no banco e a operação ainda reportaria sucesso.
+      //
+      // O `trackingSubdomain` NÃO vai neste payload: o `create` acabou de
+      // configurá-lo, e repetir o mesmo valor faz o provedor responder 409
+      // ("already exists for this domain"). Foi assim que uma criação bem
+      // sucedida virava falha destrutiva em 27/08 — o tratamento de erro
+      // apagava o domínio recém-criado.
       const { error: trackingError } = await resend.domains.update({
         id: data.id,
-        openTracking: true,
-        clickTracking: false,
-        trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
       })
-      if (trackingError) {
+
+      // Conflito causado pelo próprio `create` é sucesso idempotente: o estado
+      // desejado já está no provedor. Seguir o fluxo é o certo — apagar o
+      // domínio aqui destruiria exatamente o que acabou de dar certo.
+      const selfInflictedTrackingConflict = isSelfInflictedTrackingConflict(
+        trackingError,
+        DEFAULT_TRACKING_SUBDOMAIN
+      )
+
+      if (trackingError && selfInflictedTrackingConflict) {
+        console.info(
+          "[EmailTeamSettingsUseCase][connectDomain] Tracking já configurado pelo create; seguindo sem reaplicar",
+          { domainId: data.id, domainName: data.name, trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN }
+        )
+      }
+
+      if (trackingError && !selfInflictedTrackingConflict) {
         console.error(
           "[EmailTeamSettingsUseCase][connectDomain] Resend tracking error",
           trackingError
         )
+        if (isTrackingSubdomainConflict(trackingError)) {
+          // Conflito de tracking que não é nosso: o subdomínio citado diverge do
+          // que este fluxo configura. Logar os dois lados é o que permite
+          // diagnosticar sem reabrir o log do provedor.
+          console.error(
+            "[EmailTeamSettingsUseCase][connectDomain] Conflito de tracking não pertence a este fluxo",
+            {
+              domainId: data.id,
+              domainName: data.name,
+              expectedTrackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
+              providerMessage: trackingError.message,
+            }
+          )
+        }
         // Remove o domínio recém-criado antes de devolver o erro. Sem isso o
         // `create` acima deixa um domínio órfão no Resend que nós nunca
         // persistimos: a retentativa tenta criar o mesmo nome e trava para
@@ -467,7 +555,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(
           false,
           [],
-          [mapResendDomainError(trackingError.message, "connect", domainName.trim())],
+          [mapResendDomainError(trackingError.message, "tracking", sanitizedDomainName)],
           null
         )
       }
@@ -486,8 +574,8 @@ export class EmailTeamSettingsUseCase {
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
         connectedAt,
-        openTracking: true,
-        clickTracking: false,
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
         // Só assume o endereço de entrega do domínio quando o time ainda não
         // escolheu nenhum remetente — caso contrário sobrescreveria a escolha dele.
         deliveryFrom:
@@ -497,7 +585,7 @@ export class EmailTeamSettingsUseCase {
         createDefaults: { fromName: DEFAULTS.fromName, fromEmail: DEFAULTS.fromEmail },
       })
 
-      await emailTeamDomainEventRepository.recordEventIfMissing(ctx.teamId, "domain_added", connectedAt, {
+      await this.domainEvents.recordEventIfMissing(ctx.teamId, "domain_added", connectedAt, {
         domainId: data.id,
         domainName: data.name,
       })
@@ -508,8 +596,12 @@ export class EmailTeamSettingsUseCase {
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
         connectedAt: connectedAt.toISOString(),
-        openTracking: true,
-        clickTracking: true,
+        // Mesma fonte que `saveConnectedDomain` logo acima — a resposta não tem
+        // como divergir do que foi gravado. Antes eram dois literais soltos, e
+        // o da resposta dizia `clickTracking: true`: mentira para o cliente da
+        // API, que montaria relatório em cima de um clique que nunca chegaria.
+        openTracking: RESEND_TRACKING_POLICY.openTracking,
+        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
         records: data.records ?? [],
       })
@@ -550,7 +642,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nenhum domínio conectado para configurar tracking"], null)
       }
 
-      const resend = assertResend()
+      const resend = this.resendFactory()
       const { data: currentDomain, error: currentError } = await resend.domains.get(
         settings.resendDomainId
       )
@@ -593,9 +685,7 @@ export class EmailTeamSettingsUseCase {
 
       const { error } = await resend.domains.update(updatePayload)
 
-      const maybeTrackingConflict =
-        Boolean(error) &&
-        (error?.statusCode === 409 || isTrackingSubdomainAlreadyExists(error?.message))
+      const maybeTrackingConflict = isTrackingSubdomainConflict(error)
 
       if (error && !maybeTrackingConflict) {
         console.error("[EmailTeamSettingsUseCase][configureDomainTracking] Resend error", error)
@@ -670,7 +760,7 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+      const synced = await this.domainEvents.syncFromResendDomain(
         ctx.teamId,
         domainData,
         new Date()
@@ -703,7 +793,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
       }
 
-      const resend = assertResend()
+      const resend = this.resendFactory()
       const { error } = await resend.domains.remove(settings.resendDomainId)
       if (error) {
         console.error("[EmailTeamSettingsUseCase][disconnectDomain] Resend error", error)
@@ -722,7 +812,7 @@ export class EmailTeamSettingsUseCase {
       }
 
       const deletedAt = new Date()
-      await emailTeamDomainEventRepository.recordEventIfMissing(ctx.teamId, "domain_deleted", deletedAt, {
+      await this.domainEvents.recordEventIfMissing(ctx.teamId, "domain_deleted", deletedAt, {
         domainId: settings.resendDomainId,
         domainName: settings.resendDomainName,
       })
@@ -760,7 +850,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nenhum domínio conectado para verificar"], null)
       }
 
-      const resend = assertResend()
+      const resend = this.resendFactory()
       const { error } = await resend.domains.verify(settings.resendDomainId)
       if (error) {
         console.error("[EmailTeamSettingsUseCase][verifyDomain] Resend error", error)
@@ -772,7 +862,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Domínio não encontrado no Resend"], null)
       }
 
-      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+      const synced = await this.domainEvents.syncFromResendDomain(
         ctx.teamId,
         domainData,
         new Date()
@@ -798,7 +888,7 @@ export class EmailTeamSettingsUseCase {
         return new Output(false, [], ["Nenhum domínio conectado"], null)
       }
 
-      const resend = assertResend()
+      const resend = this.resendFactory()
       const { data, error } = await resend.domains.get(settings.resendDomainId)
       if (error || !data) {
         console.error("[EmailTeamSettingsUseCase][getDomainRecords] Resend error", error)
@@ -816,13 +906,13 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const synced = await emailTeamDomainEventRepository.syncFromResendDomain(
+      const synced = await this.domainEvents.syncFromResendDomain(
         ctx.teamId,
         data,
         new Date()
       )
 
-      const domainEvents = await emailTeamDomainEventRepository.listEvents(ctx.teamId)
+      const domainEvents = await this.domainEvents.listEvents(ctx.teamId)
 
       return new Output(true, [], [], {
         domainId: data.id,

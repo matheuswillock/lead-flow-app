@@ -63,6 +63,7 @@ export async function processAsaasWebhookEventMessage(
   const missingFields = listMissingRequiredFields({
     eventId: message?.eventId,
     body: message?.body,
+    account: message?.account,
   })
   if (missingFields.length > 0) {
     console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
@@ -82,7 +83,7 @@ export async function processAsaasWebhookEventMessage(
   }
 
   try {
-    await deps.process(message.body)
+    await deps.process(message.body, message.account)
     await deps.markProcessed(message.eventId)
     console.info("[AsaasWebhookEventsQueueRoute][POST] event processed", {
       messageId: metadata.messageId,

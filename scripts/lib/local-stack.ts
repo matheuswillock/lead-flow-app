@@ -14,7 +14,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export type LocalStackMode = "db-only" | "hybrid";
@@ -191,6 +191,72 @@ export function startLocalStack(mode: LocalStackMode = "db-only"): RunResult {
 
 export function stopLocalStack(mode: LocalStackMode = "db-only"): RunResult {
   return runLocalStackCompose(["down"], { stdio: "inherit", mode });
+}
+
+const AUTH_STUB_SCHEMA_FILE = join(
+  process.cwd(),
+  "docker",
+  "local",
+  "zz-init-auth-stub-schema.sql",
+);
+const SUPABASE_MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
+
+/**
+ * Reaplica o stub de auth.users/auth.identities no Postgres local. Idempotente;
+ * precisa do superuser (LOCAL_DB_ADMIN_URL) porque altera `auth.*`.
+ */
+export function applyAuthStubSchema(): boolean {
+  const result = run("psql", [LOCAL_DB_ADMIN_URL, "-v", "ON_ERROR_STOP=1", "-f", AUTH_STUB_SCHEMA_FILE], {
+    stdio: "inherit",
+  });
+  return result.status === 0;
+}
+
+/** Aplica as migrations pendentes de supabase/migrations no Postgres :55322. */
+export function applyPendingLocalMigrations(): boolean {
+  const result = run("bun", ["run", "db:migrate:apply:local"], { stdio: "inherit" });
+  return result.status === 0;
+}
+
+function listLocalMigrationVersions(): string[] {
+  if (!existsSync(SUPABASE_MIGRATIONS_DIR)) return [];
+  return readdirSync(SUPABASE_MIGRATIONS_DIR)
+    .filter((file) => file.endsWith(".sql"))
+    .map((file) => file.split("_")[0])
+    .filter((version) => /^\d+$/.test(version));
+}
+
+/**
+ * Quantos arquivos de supabase/migrations ainda não constam em
+ * supabase_migrations.schema_migrations do banco informado.
+ * Tabela inexistente ⇒ todas pendentes. Falha de conexão ⇒ null (não decide).
+ */
+export function countPendingLocalMigrations(dbUrl: string): number | null {
+  const fileVersions = listLocalMigrationVersions();
+  if (fileVersions.length === 0) return 0;
+
+  const tableProbe = run(
+    "psql",
+    [dbUrl, "-t", "-A", "-c", "SELECT to_regclass('supabase_migrations.schema_migrations') IS NOT NULL"],
+    { env: { PGCONNECT_TIMEOUT: "2" } },
+  );
+  if (tableProbe.status !== 0) return null;
+  if (tableProbe.stdout.trim() !== "t") return fileVersions.length;
+
+  const appliedResult = run(
+    "psql",
+    [dbUrl, "-t", "-A", "-c", "SELECT version FROM supabase_migrations.schema_migrations"],
+    { env: { PGCONNECT_TIMEOUT: "2" } },
+  );
+  if (appliedResult.status !== 0) return null;
+
+  const appliedVersions = new Set(
+    appliedResult.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  return fileVersions.filter((version) => !appliedVersions.has(version)).length;
 }
 
 function sleep(ms: number): Promise<void> {

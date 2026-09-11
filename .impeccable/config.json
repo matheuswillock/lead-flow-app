@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "lib/services/EmailService.ts"
+        ],
+        "createdAt": "2026-08-26T11:16:31.701Z",
+        "reason": "HTML de e-mail transacional com estilo inline, nao UI de produto"
+      }
+    ]
+  }
+}

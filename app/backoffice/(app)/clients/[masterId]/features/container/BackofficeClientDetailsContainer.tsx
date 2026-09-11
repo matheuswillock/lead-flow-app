@@ -498,7 +498,7 @@ export function BackofficeClientDetailsContainer() {
     member: BackofficeClientTeamMember,
     mode: "invite" | "reset_password"
   ) {
-    if (memberAccessActionId) return
+    if (!details || memberAccessActionId) return
 
     setMemberAccessActionId(`${member.id}:${mode}`)
     const toastId = toast.loading(
@@ -506,7 +506,11 @@ export function BackofficeClientDetailsContainer() {
     )
 
     try {
-      const result = await service.sendAccessEmail(member.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: member.id,
+        accountMasterId: details.id,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite reenviado para ${result.email}.`
@@ -530,7 +534,11 @@ export function BackofficeClientDetailsContainer() {
     )
 
     try {
-      const result = await service.sendAccessEmail(details.id, mode)
+      const result = await service.sendAccessEmail({
+        memberId: details.id,
+        accountMasterId: details.id,
+        mode,
+      })
       toast.success(
         mode === "invite"
           ? `Convite enviado para ${result.email}.`
@@ -800,7 +808,9 @@ export function BackofficeClientDetailsContainer() {
                 ) : (
                   <Accordion type="single" collapsible className="w-full">
                     {teams.map((team) => {
-                      const masterMissing = !team.members.some((member) => member.isMaster)
+                      // Dono desta conta, não `isMaster` global: um time só com
+                      // o master de outra conta continua sem dono.
+                      const masterMissing = !team.members.some((member) => member.isAccountMaster)
 
                       return (
                       <AccordionItem key={team.id} value={team.id} className="border-b last:border-b-0">
@@ -957,7 +967,7 @@ export function BackofficeClientDetailsContainer() {
                                               Enviar reset de senha
                                             </DropdownMenuItem>
                                           ) : null}
-                                          {canManage && !member.isMaster ? (
+                                          {canManage && !member.isAccountMaster ? (
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                               onClick={() => {
@@ -1599,12 +1609,15 @@ export function BackofficeClientDetailsContainer() {
         </>
       )}
 
-      <BackofficeMemberProfileSheet
-        open={memberSheetOpen}
-        onOpenChange={setMemberSheetOpen}
-        member={selectedMember}
-        service={service}
-      />
+      {details ? (
+        <BackofficeMemberProfileSheet
+          open={memberSheetOpen}
+          onOpenChange={setMemberSheetOpen}
+          member={selectedMember}
+          accountMasterId={details.id}
+          service={service}
+        />
+      ) : null}
 
       <BackofficeMemberEditDialog
         open={memberEditOpen}
