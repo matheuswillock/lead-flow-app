@@ -433,6 +433,14 @@ export class BackofficeSubscriptionChangeOrderUseCase {
         profileId: applied.masterProfileId,
         source: "backoffice_subscription_change_order",
         changeType: "subscription_change_order_applied",
+        // G4 (SPEC 20 E1/C12): a ÚNICA das 4 transições desta entidade que é
+        // de fato um evento de lifecycle da assinatura — produto/ciclo
+        // mudaram de verdade neste instante. "created"/"override_approved"/
+        // "payment_generated" são passos administrativos da ordem, não
+        // lifecycle da assinatura — nenhum valor do enum fecha com eles,
+        // então ficam sem eventType (mesmo tratamento do changeType
+        // "level_transition" pré-existente).
+        eventType: "plan_changed",
         after: {
           id: applied.id,
           targetProductId: applied.targetProductId,

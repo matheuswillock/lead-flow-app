@@ -5,8 +5,9 @@ import {
 } from "./BackofficeSubscriptionChangeOrderUseCase"
 
 mock.module("server-only", () => ({}))
+const logSubscriptionChangeMock = mock(async () => {})
 mock.module("@/lib/billing/logSubscriptionChange", () => ({
-  logSubscriptionChange: mock(async () => {}),
+  logSubscriptionChange: logSubscriptionChangeMock,
 }))
 
 const MASTER_ID = "11111111-1111-4111-8111-111111111111"
@@ -115,6 +116,7 @@ function makeRepository(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   delete process.env.BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT
+  logSubscriptionChangeMock.mockClear()
 })
 
 describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
@@ -140,6 +142,26 @@ describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
     expect(result.chargeAmount).toBe(100)
     expect(result.proratedAmount).toBe(100)
     expect(result.overrideStatus).toBe("not_required")
+  })
+
+  it("G4: create() é um passo administrativo, não lifecycle — nunca grava eventType tipado", async () => {
+    const repository = makeRepository()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    await useCase.create({
+      masterProfileId: MASTER_ID,
+      targetProductId: PRODUCT_ID,
+      targetCycle: "monthly",
+      overrideAmount: null,
+      actorProfileId: ACTOR_PROFILE_ID,
+      backofficeUserId: BACKOFFICE_USER_ID,
+    })
+
+    expect(logSubscriptionChangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ changeType: "subscription_change_order_created" })
+    )
+    const calls = logSubscriptionChangeMock.mock.calls as unknown as Array<[{ eventType?: unknown }]>
+    expect(calls[0]?.[0]?.eventType).toBeUndefined()
   })
 
   it("T-50.15: preço avulso acima do teto (0) → ordem nasce pending de aprovação", async () => {
@@ -549,6 +571,24 @@ describe("BackofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder — G3",
 
     expect(output.isValid).toBe(true)
     expect(repository.applyChangeOrder).toHaveBeenCalledWith("order-1")
+  })
+
+  it("G4: a aplicação grava eventType 'plan_changed' na timeline tipada de SPEC 20 — a única das 4 transições que é lifecycle de verdade", async () => {
+    const repository = makeRepository({ findById: mock(async () => makeAwaitingPaymentOrder()) })
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+    await useCase.applyPaidChangeOrder({
+      externalReference: "subscription-change-order-order-1",
+      asaasPaymentId: "pay_new_1",
+      account: "primary",
+    })
+
+    expect(logSubscriptionChangeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changeType: "subscription_change_order_applied",
+        eventType: "plan_changed",
+      })
+    )
   })
 
   it("idempotência: ordem já applied → sucesso silencioso, não reaplica", async () => {
