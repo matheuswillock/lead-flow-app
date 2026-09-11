@@ -4,6 +4,7 @@ import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackoffice
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
 import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit"
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -31,6 +32,18 @@ export async function POST(request: NextRequest) {
     }
     const denied = requireManagerAccess(result.access)
     if (denied) return denied
+
+    // S2/DA2: override de preço no backoffice — por backofficeUserId.
+    const rateLimitResult = await consumeBillingRateLimit(
+      `pricing:${result.access.backofficeUserId ?? result.access.profileId}`,
+      BILLING_RATE_LIMIT_DEFAULTS.backofficePricing
+    )
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        new Output(false, [], ["Muitas tentativas. Tente novamente em instantes."], null),
+        { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) } }
+      )
+    }
 
     const body = await request.json()
     const output = await backofficeProductUseCase.create(body)

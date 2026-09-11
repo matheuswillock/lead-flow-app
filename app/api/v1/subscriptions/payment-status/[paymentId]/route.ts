@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
-import { asaasFetch } from '@/lib/asaas';
 import { Output } from '@/lib/output';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { getPaymentByAccountWithFallback } from '@/lib/billing/get-payment-by-account';
 
 export async function GET(
   request: NextRequest,
@@ -17,13 +17,27 @@ export async function GET(
       return NextResponse.json(error, { status: 400 });
     }
 
-    // Buscar status do pagamento no Asaas
-    const payment = await asaasFetch(`/payments/${paymentId}`);
+    // Buscar status do pagamento no Asaas — C24/m9 de
+    // [[20 — Assinaturas — Backend]] E5: a URL relativa antiga
+    // (`asaasFetch('/payments/...')`) sempre falhava em Node (sem origem
+    // implícita) — todo poll dessa rota (usada por
+    // ReactivateSubscriptionDialog.tsx) 500ava. Sem contexto de perfil aqui
+    // (só paymentId), usa o helper com fallback primary→legacy (C24).
+    const result_ = await getPaymentByAccountWithFallback(paymentId);
 
-    if (!payment || !payment.id) {
+    if (!result_.found) {
       const error = new Output(false, [], ['Pagamento não encontrado'], null);
       return NextResponse.json(error, { status: 404 });
     }
+
+    const payment = result_.payment as {
+      id: string;
+      status?: string;
+      value?: number;
+      dueDate?: string;
+      paymentDate?: string;
+      billingType?: string;
+    };
 
     const result = new Output(
       true,

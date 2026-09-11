@@ -8,18 +8,33 @@ import type {
   IPendingActionRepository,
   MarkPendingActionAppliedParams,
   MarkPendingActionFailedParams,
+  PendingActionOwnershipLookup,
   PendingActionProfileContact,
   TeamMemberAccessParams,
   TeamMembershipKey,
 } from "./IPendingActionRepository";
 import { PendingAction, Prisma } from "@prisma/client";
 import type { UserFunction, UserRole } from "@prisma/client";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 export class PendingActionRepository implements IPendingActionRepository {
   async findById(id: string) {
+    // Achado Codex (PR #1137, P1, round 8): select explícito em vez de
+    // include — fecha a exceção prismaIncludeAllowlist deste arquivo.
     return prisma.pendingAction.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        masterId: true,
+        teamId: true,
+        actionType: true,
+        status: true,
+        payload: true,
+        checkoutId: true,
+        paymentId: true,
+        asaasAccount: true,
+        createdAt: true,
+        updatedAt: true,
         master: {
           select: {
             id: true,
@@ -35,7 +50,9 @@ export class PendingActionRepository implements IPendingActionRepository {
             city: true,
             state: true,
             asaasCustomerId: true,
+            asaasCustomerAccount: true,
             asaasSubscriptionId: true,
+            asaasSubscriptionAccount: true,
             subscriptionStatus: true,
             subscriptionNextDueDate: true,
             subscriptionCycle: true,
@@ -80,10 +97,10 @@ export class PendingActionRepository implements IPendingActionRepository {
     return pendingAction;
   }
 
-  async updatePaymentId(id: string, paymentId: string): Promise<void> {
+  async updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void> {
     await prisma.pendingAction.update({
       where: { id },
-      data: { paymentId },
+      data: { paymentId, asaasAccount: account },
     });
   }
 
@@ -142,9 +159,12 @@ export class PendingActionRepository implements IPendingActionRepository {
 
   // --- Aplicação de ação pendente (checkout pago / dispensa de cobrança) ---
 
-  async findApplicableByCheckoutId(checkoutId: string): Promise<ApplicablePendingAction | null> {
+  async findApplicableByCheckoutId(
+    checkoutId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null> {
     return prisma.pendingAction.findFirst({
-      where: { checkoutId },
+      where: { checkoutId, asaasAccount: account },
       select: applicablePendingActionSelect,
     });
   }
@@ -156,10 +176,23 @@ export class PendingActionRepository implements IPendingActionRepository {
     });
   }
 
-  async findApplicableByPaymentId(paymentId: string): Promise<ApplicablePendingAction | null> {
+  async findApplicableByPaymentId(
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<ApplicablePendingAction | null> {
     return prisma.pendingAction.findFirst({
-      where: { paymentId },
+      where: { paymentId, asaasAccount: account },
       select: applicablePendingActionSelect,
+    });
+  }
+
+  async findByPaymentIdAndMasterId(
+    paymentId: string,
+    masterId: string
+  ): Promise<PendingActionOwnershipLookup | null> {
+    return prisma.pendingAction.findFirst({
+      where: { paymentId, masterId },
+      select: { id: true, masterId: true, status: true, asaasAccount: true },
     });
   }
 

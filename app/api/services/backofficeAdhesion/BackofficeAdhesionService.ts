@@ -25,6 +25,8 @@ import {
   type AdhesionInstallmentLedgerEntry,
 } from "@/lib/backoffice-adhesions/installment-ledger"
 import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
+import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
+import { validateAdhesionSubscriptionWrite } from "@/lib/billing/adhesion-guards"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -1887,6 +1889,25 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
       const subscriptionEndDate = addMonthsInTz(subscriptionStartDate, cycleMonths, DEFAULT_TZ)
 
+      // Guard na origem (20 — Assinaturas — Backend E7, C4/DA6): due ≤ fim e
+      // valor total coerente com o ciclo — mata na gravação o elo 1 da
+      // cadeia do §4 da 01 (adesão errada → customer barulhento → Asaas
+      // notifica o cliente com o valor errado). Roda ANTES de qualquer
+      // escrita (createPaidManagerProfile ainda não chamado) — rejeição não
+      // deixa persistência parcial.
+      const subscriptionWriteGuard = validateAdhesionSubscriptionWrite({
+        cycle: adhesion.cycle,
+        subscriptionEndDate,
+        subscriptionNextDueDate: subscriptionEndDate,
+        monthlyTotalAmount: adhesion.monthlyTotalAmount,
+        totalAmount: adhesion.totalAmount,
+      })
+      if (!subscriptionWriteGuard.valid) {
+        throw new Error(
+          `Adesão ${adhesion.id} rejeitada pelo guard de assinatura: ${subscriptionWriteGuard.errors.join(" | ")}`,
+        )
+      }
+
       const isGuest = adhesion.requestedUserTypeSlug === "guest"
       let resolvedSponsorMasterId = adhesion.sponsorMasterId ?? null
 
@@ -1985,6 +2006,22 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionStartDate,
         subscriptionEndDate,
         subscriptionNextDueDate: subscriptionEndDate,
+      })
+
+      // Timeline (20 — Assinaturas — Backend E1, C12): primeira assinatura de
+      // um profile recém-criado por adesão paga — sempre "contracted", nunca
+      // ambíguo com renovação/reativação (o profile não existia antes).
+      await logSubscriptionChange({
+        profileId: createdProfile.profileId,
+        source: "BackofficeAdhesionService.ensureAccountForPaidAdhesion",
+        changeType: "contracted",
+        eventType: "contracted",
+        after: {
+          subscriptionStatus: "active",
+          subscriptionCycle: adhesion.cycle,
+          subscriptionEndDate,
+        },
+        metadata: { adhesionId: adhesion.id, productId: crmProduct.id },
       })
 
       provisionedProfileId = createdProfile.profileId
@@ -2224,17 +2261,38 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return [...ids]
   }
 
+  // E5 (C21): 404 na conta certa = já cancelada (segue, só loga); qualquer
+  // outro erro MUST propagar — engolir aqui é o modo exato de dupla
+  // cobrança (cobrança legada viva sem cancelamento registrado).
   private async cancelAsaasPayments(paymentIds: string[], account: AsaasAccountId): Promise<void> {
     // C33: cancela na conta em que as cobranças foram criadas.
     const asaasClient = createAsaasClient(account)
+    const realErrors: Array<{ paymentId: string; error: unknown }> = []
+
     for (const paymentId of [...new Set(paymentIds)]) {
       try {
         await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
           method: "DELETE",
         })
       } catch (error) {
+        const statusCode = (error as { statusCode?: number } | null)?.statusCode
+        if (statusCode === 404) {
+          console.info(
+            "[BackofficeAdhesionService][cancelAsaasPayments] já cancelada (404)",
+            { paymentId, account }
+          )
+          continue
+        }
         console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
+        realErrors.push({ paymentId, error })
       }
+    }
+
+    if (realErrors.length > 0) {
+      throw new Error(
+        `Falha ao cancelar ${realErrors.length} cobrança(s) Asaas (conta ${account}): ` +
+          realErrors.map((entry) => entry.paymentId).join(", ")
+      )
     }
   }
 

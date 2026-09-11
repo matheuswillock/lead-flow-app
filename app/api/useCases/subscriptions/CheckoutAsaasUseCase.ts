@@ -16,12 +16,21 @@ import { teamMembersRepository as defaultTeamMembersRepository } from "@/app/api
 import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 import {
   pendingOperatorRepository as defaultPendingOperatorRepository,
+  DUPLICATE_ACTIVE_CHECKOUT_ERROR,
 } from "@/app/api/infra/data/repositories/pendingOperator/PendingOperatorRepository";
 import type { IPendingOperatorRepository } from "@/app/api/infra/data/repositories/pendingOperator/IPendingOperatorRepository";
 import {
   asaasCustomerGateway as defaultAsaasCustomerGateway,
 } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
+
+// Mesmo TTL de AddOnCheckoutUseCase.ts (T-40.x) — checkout hospedado do
+// Asaas expira depois disso.
+const PENDING_OPERATOR_CHECKOUT_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isPendingOperatorCheckoutExpired(createdAt: Date): boolean {
+  return Date.now() - createdAt.getTime() > PENDING_OPERATOR_CHECKOUT_TTL_MS;
+}
 
 // Helper para detectar ambiente de produção
 function getIsProduction() {
@@ -63,7 +72,11 @@ export interface ICheckoutAsaasUseCase {
   createSubscriptionCheckout(data: CreateCheckoutData): Promise<Output>;
   createOperatorCheckout(data: CreateOperatorCheckoutData): Promise<Output>;
   processCheckoutPaid(checkoutId: string, account: AsaasAccountId): Promise<Output>;
-  processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output>;
+  processOperatorCheckoutPaid(
+    checkoutSessionId: string,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<Output>;
 }
 
 /**
@@ -394,6 +407,36 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         return new Output(false, [], ['Email já está em uso'], null);
       }
 
+      // Achado Codex (PR #1137, P1, round 8): sem este bloqueio, dois
+      // checkouts para o mesmo e-mail sob o mesmo manager (criados antes de
+      // qualquer pagamento confirmar — a checagem acima ainda não achava
+      // ninguém) podiam os dois ser pagos; o segundo webhook resolveria o
+      // e-mail para o Profile criado pelo primeiro (mesmo managerId) e
+      // trataria como retomada, incrementando a assinatura de novo sem
+      // provisionar um segundo operador de verdade.
+      const activeCheckout = await this.pendingOperatorRepository.findActiveByManagerAndEmail(
+        manager.id,
+        data.operatorData.email
+      );
+      if (activeCheckout) {
+        if (!isPendingOperatorCheckoutExpired(activeCheckout.createdAt)) {
+          return new Output(
+            false,
+            [],
+            ['Já existe um checkout pendente para este e-mail'],
+            null
+          );
+        }
+        // Achado Codex/cursor[bot] (PR #1137, P1, round 11): o índice único
+        // parcial (WHERE operatorCreated = false, migration 20260902151915)
+        // não tem noção de TTL — uma linha expirada continua bloqueando o
+        // par manager/e-mail para sempre (P2002 no INSERT abaixo) até
+        // alguém removê-la. Remove a linha abandonada agora, no mesmo
+        // instante em que a regra de expiração da aplicação já decidiu
+        // liberá-la.
+        await this.pendingOperatorRepository.deleteById(activeCheckout.id);
+      }
+
       // 3. Criar pendingOperator no banco
       const resolvedTeamId = data.teamId;
       if (resolvedTeamId) {
@@ -406,21 +449,67 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
-      const pendingOperator = await this.pendingOperatorRepository.create({
-        managerId: manager.id,
-        teamId: resolvedTeamId ?? null,
-        name: data.operatorData.name,
-        email: data.operatorData.email,
-        role: data.operatorData.role,
-        functions: data.operatorData.functions ?? [],
-        paymentId: 'pending',
-        subscriptionId: manager.asaasSubscriptionId,
-        paymentStatus: 'PENDING',
-        paymentMethod: 'UNDEFINED',
-      });
+      let pendingOperator: { id: string };
+      try {
+        pendingOperator = await this.pendingOperatorRepository.create({
+          managerId: manager.id,
+          teamId: resolvedTeamId ?? null,
+          name: data.operatorData.name,
+          email: data.operatorData.email,
+          role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
+          paymentId: 'pending',
+          subscriptionId: manager.asaasSubscriptionId,
+          paymentStatus: 'PENDING',
+          paymentMethod: 'UNDEFINED',
+        });
+      } catch (error) {
+        // Achado Codex (PR #1137, P1, round 9): o preflight
+        // (findActiveByManagerAndEmail) sozinho não é atômico — duas
+        // requisições concorrentes podem as duas passar por ele antes de
+        // qualquer INSERT. O índice único parcial (migration
+        // 20260902151915) fecha a invariante no banco; aqui só traduz a
+        // violação de unicidade na mesma mensagem amigável do preflight.
+        if (error instanceof Error && error.message === DUPLICATE_ACTIVE_CHECKOUT_ERROR) {
+          return new Output(
+            false,
+            [],
+            ['Já existe um checkout pendente para este e-mail'],
+            null
+          );
+        }
+        throw error;
+      }
 
       pendingOperatorId = pendingOperator.id;
       console.info('💾 [createOperatorCheckout] PendingOperator criado:', pendingOperatorId);
+
+      // 3.1 E4 (C22/DA2): o checkout novo (POST /checkouts) só existe na
+      // conta primary. Enviar um asaasCustomerId legacy quebra com "invalid
+      // customer" — resolve um par novo na primary via gateway (DA6) e
+      // persiste no profile (mesmo padrão de createSubscriptionCheckout),
+      // em vez de tentar reusar o cus_ legado.
+      let operatorCheckoutCustomerId = manager.asaasCustomerId;
+      if (manager.asaasCustomerAccount === 'legacy') {
+        console.info(
+          `🔁 [createOperatorCheckout] manager ${manager.id} tem customer legacy ` +
+            `(${manager.asaasCustomerId}) — criando par novo na conta primary via gateway.`
+        );
+        const newCustomer = await this.asaasCustomerGateway.createCustomer({
+          profileId: manager.id,
+          name: manager.fullName || manager.email,
+          email: manager.email,
+          cpfCnpj: manager.cpfCnpj || undefined,
+          phone: manager.phone || undefined,
+          postalCode: manager.postalCode || undefined,
+          address: manager.address || undefined,
+          addressNumber: manager.addressNumber || undefined,
+          complement: manager.complement || undefined,
+          province: manager.neighborhood || undefined,
+        });
+        await this.profileRepository.updateAsaasCustomerId(manager.id, newCustomer.id);
+        operatorCheckoutCustomerId = newCustomer.id;
+      }
 
       // 4. Criar Asaas Checkout para licença adicional
       // Usar checkout hospedado do Asaas (permite escolher forma de pagamento)
@@ -437,7 +526,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       const checkoutData: any = {
-        customer: manager.asaasCustomerId,
+        customer: operatorCheckoutCustomerId,
         billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
         chargeTypes: ['RECURRENT'],
         subscription: {
@@ -469,8 +558,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       console.info('✅ [createOperatorCheckout] Checkout criado:', checkout.id);
 
-      // 5. Atualizar pendingOperator com checkoutId
-      await this.pendingOperatorRepository.updatePaymentId(pendingOperatorId, checkout.id);
+      // 5. Atualizar pendingOperator com checkoutId — asaasFetch (M4.5) só
+      // cria checkout na conta primary, nunca legacy.
+      await this.pendingOperatorRepository.updatePaymentId(pendingOperatorId, checkout.id, 'primary');
 
       // 6. Construir URL do checkout
       const checkoutUrl = `https://${getIsProduction() ? 'www' : 'sandbox'}.asaas.com/checkoutSession/show?id=${checkout.id}`;
@@ -524,17 +614,30 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
    * Incrementa assinatura do manager e cria operador
    * @param checkoutSessionId - ID da sessão de checkout (checkoutSession do payment)
    * @param paymentId - ID do pagamento confirmado
+   * @param account - conta Asaas do evento (E4/C22): a cobrança e a
+   * subscription novas criadas pelo checkout vivem nesta conta; a assinatura
+   * ANTIGA do manager pode viver em outra (asaasSubscriptionAccount).
    */
-  async processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output> {
+  async processOperatorCheckoutPaid(
+    checkoutSessionId: string,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<Output> {
     try {
       console.info('💰 [processOperatorCheckoutPaid] Processando pagamento:', {
         checkoutSessionId,
-        paymentId
+        paymentId,
+        account,
       });
 
-      // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como paymentId)
+      // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como
+      // paymentId) — achado Codex (PR #1137, P1, round 7): filtra pela
+      // conta do evento (account) além do checkoutSessionId, porque um
+      // checkoutSessionId histórico da legacy pode colidir com um novo da
+      // primary (C33).
       const pendingOperator = await this.pendingOperatorRepository.findByPaymentIdWithManager(
-        checkoutSessionId
+        checkoutSessionId,
+        account
       );
 
       if (!pendingOperator) {
@@ -547,9 +650,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         return new Output(false, [], ['Operador já foi criado'], null);
       }
 
-      // 2. Buscar payment no Asaas para obter subscription
-      const payment = await asaasFetch(
-        `${asaasApi.payments}/${paymentId}`,
+      // 2. Buscar payment no Asaas para obter subscription (nasceu no
+      // checkout, na conta do evento).
+      const eventClient = createAsaasClient(account);
+      const payment = await eventClient.request(
+        `${eventClient.endpoints.payments}/${paymentId}`,
         { method: 'GET' }
       );
 
@@ -579,34 +684,73 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         new: newSubscriptionId
       });
 
-      // Buscar valor atual da assinatura antiga
-      const oldSubscription = await asaasFetch(
-        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
-        { method: 'GET' }
-      );
+      // Achado Codex (PR #1137, P1) + achado cursor[bot] no mesmo PR: o
+      // rethrow do E4 (webhook outbox) torna este método retryable — sem
+      // barreira, uma retentativa após o PUT (mas antes do deleteById) leria
+      // o valor JÁ incrementado e somaria +R$19,90 de novo. cursor[bot]
+      // apontou que marcar o incremento SÓ DEPOIS do PUT ainda deixa uma
+      // janela (queda entre o PUT e o markSubscriptionUpdated): o marcador
+      // agora é gravado ANTES do PUT — reduz a janela insegura para "gravou
+      // a marca mas nem chegou a chamar o PUT" (bem mais estreita que "PUT
+      // respondeu 200 mas a escrita no nosso banco falhou"). Efeito colateral
+      // aceito conscientemente: se o PUT falhar DEPOIS de marcado, a
+      // assinatura fica temporariamente abaixo do valor correto até
+      // reconciliação manual — pior cenário é sub-cobrança, nunca dupla
+      // cobrança (a assimetria certa: nunca cobrar duas vezes).
+      if (pendingOperator.paymentStatus !== 'SUBSCRIPTION_UPDATED') {
+        await this.pendingOperatorRepository.markSubscriptionUpdated(pendingOperator.id);
 
-      const newValue = oldSubscription.value + 19.90;
-      console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
-        oldValue: oldSubscription.value,
-        newValue,
-        increment: 19.90
-      });
+        // E4 (C22/DA2): a assinatura ANTIGA do manager roteia pela conta onde
+        // ela de fato vive — pode ser diferente da conta do evento/checkout.
+        const oldSubscriptionAccount = manager.asaasSubscriptionAccount;
+        const oldSubscriptionClient = createAsaasClient(oldSubscriptionAccount);
 
-      // Atualizar assinatura antiga com novo valor
-      await asaasFetch(
-        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({ value: newValue })
+        // Buscar valor atual da assinatura antiga
+        const oldSubscription = await oldSubscriptionClient.request(
+          `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
+          { method: 'GET' }
+        );
+
+        const newValue = oldSubscription.value + 19.90;
+        console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
+          oldValue: oldSubscription.value,
+          newValue,
+          increment: 19.90
+        });
+
+        try {
+          // Atualizar assinatura antiga com novo valor
+          await oldSubscriptionClient.request(
+            `${oldSubscriptionClient.endpoints.subscriptions}/${oldSubscriptionId}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify({ value: newValue })
+            }
+          );
+          console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+        } catch (incrementError) {
+          // Marcador já gravado (para nunca dobrar a cobrança numa
+          // retentativa) mas o incremento pode não ter sido aplicado de
+          // fato — precisa de reconciliação manual, log distinto e
+          // greppável para não passar despercebido.
+          console.error(
+            '🚨 [processOperatorCheckoutPaid] PUT de incremento falhou APÓS marcar SUBSCRIPTION_UPDATED — ' +
+              'assinatura pode estar sub-cobrada, requer reconciliação manual',
+            { managerId: manager.id, oldSubscriptionId, pendingOperatorId: pendingOperator.id, incrementError }
+          );
+          throw incrementError;
         }
-      );
+      } else {
+        console.info(
+          '↩️ [processOperatorCheckoutPaid] Assinatura já incrementada em tentativa anterior — pulando PUT'
+        );
+      }
 
-      console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
-
-      // Cancelar nova subscription (usamos apenas para gerar o checkout)
+      // Cancelar nova subscription (usamos apenas para gerar o checkout —
+      // nasceu na conta do evento, mesmo client do payment acima).
       try {
-        await asaasFetch(
-          `${asaasApi.subscriptions}/${newSubscriptionId}`,
+        await eventClient.request(
+          `${eventClient.endpoints.subscriptions}/${newSubscriptionId}`,
           {
             method: 'DELETE'
           }
@@ -617,46 +761,132 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         // Não bloqueia o fluxo
       }
 
-      // 4. Criar usuário no Supabase Auth
-      console.info('👤 [processOperatorCheckoutPaid] Criando usuário no Supabase...');
+      // 4. Criar usuário no Supabase Auth + perfil (achado Codex/cursor[bot]
+      // no PR #1137, P1: idempotente por e-mail — se uma tentativa anterior
+      // já criou o usuário/perfil e caiu antes do deleteById, o
+      // pendingOperator ainda existe e esta função é alcançada de novo pelo
+      // retry; sem este resume, o createUser falharia com "e-mail já
+      // registrado" para sempre. A janela em que isto é seguro é exatamente
+      // "perfil já existe, mas o pendingOperator ainda não foi deletado" —
+      // depois do deleteById este registro nunca mais é encontrado por
+      // findByPaymentIdWithManager, então incrementOperatorCount abaixo
+      // ainda roda exatamente uma vez por operador, com ou sem resume.
+      const existingOperatorProfile = await this.profileRepository.findByEmail(pendingOperator.email);
+      let operator: { id: string; email: string };
 
-      const supabaseAdmin = createSupabaseAdminClient();
-      if (!supabaseAdmin) {
-        return new Output(false, [], ['Erro ao conectar com autenticação'], null);
+      // Achado Codex/cursor[bot] (PR #1137, P1, round 6): um Profile com
+      // este e-mail pode existir SEM ter sido criado por esta tentativa —
+      // um cadastro paralelo pode correr entre o convite e a confirmação
+      // do pagamento (race). Resumir sem checar a origem concederia
+      // membership no time do manager pagante a uma identidade não
+      // correlacionada (entitlement indevido). managerId é o correlator:
+      // só createOperatorProfileFromPendingOperator desta mesma execução
+      // (abaixo) grava managerId = manager.id.
+      if (existingOperatorProfile && existingOperatorProfile.managerId !== manager.id) {
+        console.error(
+          '❌ [processOperatorCheckoutPaid] E-mail já pertence a um perfil não correlacionado a este checkout',
+          { email: pendingOperator.email, existingProfileId: existingOperatorProfile.id }
+        );
+        return new Output(
+          false,
+          [],
+          ['E-mail já está em uso por um cadastro não relacionado a este checkout'],
+          null
+        );
       }
 
-      // Gerar senha temporária
-      const tempPassword = Math.random().toString(36).slice(-12);
+      if (existingOperatorProfile) {
+        console.info(
+          '↩️ [processOperatorCheckoutPaid] Perfil já existe para este e-mail — retomando provisionamento',
+          { profileId: existingOperatorProfile.id }
+        );
+        operator = existingOperatorProfile;
+      } else {
+        console.info('👤 [processOperatorCheckoutPaid] Criando usuário no Supabase...');
 
-      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: pendingOperator.email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: {
-          full_name: pendingOperator.name,
-          role: pendingOperator.role,
-          manager_id: manager.supabaseId,
+        const supabaseAdmin = createSupabaseAdminClient();
+        if (!supabaseAdmin) {
+          return new Output(false, [], ['Erro ao conectar com autenticação'], null);
         }
-      });
 
-      if (authError || !authUser?.user) {
-        console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
-        return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+        // Gerar senha temporária
+        const tempPassword = Math.random().toString(36).slice(-12);
+
+        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email: pendingOperator.email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: pendingOperator.name,
+            role: pendingOperator.role,
+            manager_id: manager.supabaseId,
+          }
+        });
+
+        let authUserId: string;
+
+        if (authError?.code === 'email_exists') {
+          // Achado Codex (PR #1137, P1, follow-up de 27ac1321): createUser
+          // sucedeu numa tentativa anterior, mas createOperatorProfileFromPendingOperator
+          // falhou depois (profile ainda não existe — o resume acima não
+          // achou nada). Sem isto, o retry cai aqui de novo e falha para
+          // sempre com "e-mail já registrado". generateLink com
+          // type "recovery" só resolve para um usuário JÁ existente (nunca
+          // cria um novo), então serve como lookup por e-mail.
+          console.info(
+            '↩️ [processOperatorCheckoutPaid] E-mail já existe no Supabase Auth — recuperando identidade existente'
+          );
+          const { data: recovery, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'recovery',
+            email: pendingOperator.email,
+          });
+          if (recoveryError || !recovery?.user?.id) {
+            console.error(
+              '❌ [processOperatorCheckoutPaid] Erro ao recuperar usuário existente:',
+              recoveryError
+            );
+            return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+          }
+          // Achado Codex/cursor[bot] (PR #1137, P1, round 6): generateLink
+          // resolve QUALQUER usuário existente com este e-mail — pode ser
+          // uma identidade pré-existente sem relação nenhuma com este
+          // checkout. Só reaproveita se o user_metadata.manager_id bater
+          // com o manager pagante — o mesmo valor gravado no createUser
+          // acima numa tentativa anterior desta execução.
+          if (recovery.user.user_metadata?.manager_id !== manager.supabaseId) {
+            console.error(
+              '❌ [processOperatorCheckoutPaid] Identidade recuperada no Auth não corresponde a este checkout',
+              { email: pendingOperator.email, recoveredUserId: recovery.user.id }
+            );
+            return new Output(
+              false,
+              [],
+              ['E-mail já está em uso por um cadastro não relacionado a este checkout'],
+              null
+            );
+          }
+          authUserId = recovery.user.id;
+        } else if (authError || !authUser?.user) {
+          console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
+          return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+        } else {
+          authUserId = authUser.user.id;
+          console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUserId);
+        }
+
+        // 5. Criar perfil do operador no banco
+        const created = await this.profileRepository.createOperatorProfileFromPendingOperator({
+          supabaseId: authUserId,
+          fullName: pendingOperator.name,
+          email: pendingOperator.email,
+          role: pendingOperator.role as UserRole,
+          functions: (pendingOperator.functions ?? []) as ("SDR" | "CLOSER")[],
+          managerId: manager.id,
+        });
+        operator = created;
+
+        console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
       }
-
-      console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUser.user.id);
-
-      // 5. Criar perfil do operador no banco
-      const operator = await this.profileRepository.createOperatorProfileFromPendingOperator({
-        supabaseId: authUser.user.id,
-        fullName: pendingOperator.name,
-        email: pendingOperator.email,
-        role: pendingOperator.role as UserRole,
-        functions: (pendingOperator.functions ?? []) as ("SDR" | "CLOSER")[],
-        managerId: manager.id,
-      });
-
-      console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
 
       // 5.1 Vincular operador ao time (TeamMember)
       let targetTeamId = pendingOperator.teamId;
@@ -680,15 +910,31 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
+      // Achado Codex/cursor[bot] (PR #1137, P1, round 11 e 12): incrementar
+      // operatorCount precisa rodar ANTES do deleteById — se falhasse depois
+      // do delete, um retry não achava mais o PendingOperator ("Operador
+      // pendente não encontrado", allowlist de no-op conhecido) e o
+      // contador do manager ficava permanentemente defasado. Guardado por
+      // pendingOperator.operatorId (nulo por padrão): se já setado (retry
+      // depois de uma finalização anterior), pula tudo de novo. round 12:
+      // o increment e o marcador precisam ser atômicos entre si — dois
+      // writes sequenciais permitiam um retry duplo-incrementar se o
+      // primeiro write tivesse sucesso e o segundo falhasse antes de
+      // persistir. finalizeOperatorCreation roda os dois numa transação.
+      if (!pendingOperator.operatorId) {
+        await this.pendingOperatorRepository.finalizeOperatorCreation(
+          pendingOperator.id,
+          operator.id,
+          manager.id
+        );
+
+        console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
+      }
+
       // 6. Deletar pendingOperator (já foi processado)
       await this.pendingOperatorRepository.deleteById(pendingOperator.id);
 
       console.info('✅ [processOperatorCheckoutPaid] PendingOperator removido da fila');
-
-      // 7. Incrementar contador de operadores no manager
-      await this.profileRepository.incrementOperatorCount(manager.id);
-
-      console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
 
       // 8. Enviar e-mail de convite para operador
       try {
