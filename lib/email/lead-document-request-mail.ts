@@ -1,9 +1,10 @@
 import { render } from "@react-email/render";
 import { LeadDocumentRequestEmail } from "@/emails/LeadDocumentRequestEmail";
 import { LeadDocumentUploadedEmail } from "@/emails/LeadDocumentUploadedEmail";
+import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
 import { getEmailService } from "@/lib/services/EmailService";
 
-const FROM = "Corretor Studio <no-reply@corretorstudio.com>";
+const FROM = PLATFORM_FROM_HEADER;
 
 export type LeadDocumentRequestEmailInput = {
   teamId: string;

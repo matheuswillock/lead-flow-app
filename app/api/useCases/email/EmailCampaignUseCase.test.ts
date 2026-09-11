@@ -425,7 +425,7 @@ function makeDefaultDispatchInput(
     from: "Test <test@sender.com>",
     replyTo: null as string | null,
     resolvedFrom:
-      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "contato@corretorstudio.com" },
+      resolvedFrom ?? { fromName: "Corretor Studio", fromEmail: "contato@mail.corretorstudio.com" },
   }
 }
 
