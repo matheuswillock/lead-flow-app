@@ -163,8 +163,22 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # `ci-light` no needs: CI Light e E2E disputam os 2 vCPU da VPS; o needs
+    # serializa intra-run sem o risco de cancelamento de pendentes que um
+    # concurrency group compartilhado teria ("any existing pending job or
+    # workflow in the same concurrency group will be canceled" — docs GitHub).
+    # `!cancelled()`: CI Light reprovar não pode virar E2E "skipped".
+    needs: ci-light
+    if: ${{ !cancelled() }}
+    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    # Serializa TODO E2E na VPS (mesmo grupo em ci-branch-reusable/ci-develop):
+    # 2 vCPU / 7,8 Gi não comportam dois E2E simultâneos, e a porta 55322 do
+    # Postgres é fixa (scripts/seed-e2e.ts + .env.test.example).
+    concurrency:
+      group: e2e-postgres-vps
+      cancel-in-progress: false
+    # 45min (era 30 no ubuntu-latest de 4 vCPU): build + suíte em 2 vCPU.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
