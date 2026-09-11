@@ -151,24 +151,48 @@ runs:
           bunx --bun playwright install chromium
         fi
 
-    # `nice -n 19` nos passos pesados: na VPS o job divide 2 vCPU com o outro
-    # runner (CI Light de qualquer branch). Sem rebaixar prioridade, o build e
-    # o Chromium matam de fome os unit tests vizinhos — medido em 10/09/2026:
-    # run 34501366334 (CI Light da develop) reprovou 2 testes por timeout de
-    # CPU enquanto este E2E rodava ao lado. Em runner dedicado (ubuntu-latest)
-    # o nice é inócuo: sem competição, prioridade não muda nada.
+    # `ionice -c3 nice -n 19` nos passos pesados: na VPS o job divide 2 vCPU e
+    # o disco com o outro runner (CI Light de qualquer branch). `nice` sozinho
+    # NÃO bastou — medido 2×: run 34501366334 (10/09, 2 testes por timeout) e
+    # run 34594117712 (11/09, JÁ com nice -n 19, AsaasCustomerGateway.escape
+    # .test.ts estourou 5s — é uma varredura readFileSync de app/+lib/,
+    # I/O-bound; nice rebaixa só CPU). `ionice -c3` (classe idle) cede o disco
+    # sempre que o vizinho precisar. A serialização intra-run vem do `needs:
+    # ci-light` no job chamador; o ionice cobre o cruzamento ENTRE runs (E2E
+    # do run A × CI Light do run B). Guard `command -v`: ionice vem do
+    # util-linux (padrão no Ubuntu), mas a ausência não pode derrubar o job.
+    # Em runner dedicado (ubuntu-latest) ambos são inócuos: sem competição,
+    # prioridade não muda nada.
     - name: Seed E2E database
       shell: bash
-      run: nice -n 19 bun run db:seed:e2e
+      run: |
+        set -euo pipefail
+        if command -v ionice >/dev/null 2>&1; then
+          ionice -c3 nice -n 19 bun run db:seed:e2e
+        else
+          nice -n 19 bun run db:seed:e2e
+        fi
 
     - name: Build
       shell: bash
-      run: nice -n 19 bun run build
+      run: |
+        set -euo pipefail
+        if command -v ionice >/dev/null 2>&1; then
+          ionice -c3 nice -n 19 bun run build
+        else
+          nice -n 19 bun run build
+        fi
 
     - name: Run Playwright
       shell: bash
-      # O `next start` (webServer) e o Chromium herdam o nice do processo pai.
-      run: nice -n 19 bun run test:e2e
+      # O `next start` (webServer) e o Chromium herdam ionice/nice do pai.
+      run: |
+        set -euo pipefail
+        if command -v ionice >/dev/null 2>&1; then
+          ionice -c3 nice -n 19 bun run test:e2e
+        else
+          nice -n 19 bun run test:e2e
+        fi
 
     - name: Stop postgres
       if: always()

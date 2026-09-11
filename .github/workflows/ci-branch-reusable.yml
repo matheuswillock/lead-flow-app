@@ -228,9 +228,20 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    needs: validate-branch
+    # `ci-light` no needs: CI Light e E2E disputam os 2 vCPU da VPS (cada um em
+    # um runner da MESMA máquina) — medido em 10-11/09/2026, unit test do CI
+    # Light estourou timeout de 5s com E2E ao lado, mesmo sob `nice -n 19`
+    # (runs 34501366334 e 34594117712). O needs serializa intra-run SEM o
+    # risco de um concurrency group compartilhado: por padrão, "any existing
+    # pending job or workflow in the same concurrency group will be canceled"
+    # (docs.github.com/en/actions/using-jobs/using-concurrency) — um group
+    # CI-Light+E2E cancelaria o CI Light pendente de um PR alheio.
+    # O `!cancelled()` preserva o desenho do Quality Gate: CI Light REPROVAR
+    # não pode virar E2E "skipped" — cada check dá o próprio veredito.
+    needs: [validate-branch, ci-light]
     if: >-
       ${{
+        !cancelled() &&
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
