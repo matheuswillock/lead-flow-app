@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { emailService } from "@/lib/services/EmailService"
+import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from"
 import { Output } from "@/lib/output"
 
 interface EmailRequest {
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // Usar EmailService para respeitar EMAIL_TEST_MODE
     const result = await emailService.sendEmailUntracked({
-      from: body.from || "Corretor Studio <no-reply@corretorstudio.com>",
+      from: body.from || PLATFORM_FROM_HEADER,
       to: body.to,
       subject: body.subject,
       html: body.html,
