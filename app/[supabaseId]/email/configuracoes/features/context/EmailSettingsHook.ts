@@ -20,6 +20,10 @@ import type {
   ResendDomainStatus,
 } from "./EmailSettingsTypes"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
+import {
+  buildDnsInstructionsAgentPrompt,
+  buildDnsInstructionsText,
+} from "@/lib/email/custom-domain-dns-instructions"
 
 const defaultService = new EmailSettingsService()
 const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
@@ -96,6 +100,11 @@ export type EmailSettingsHookReturn = {
   handleVerifyDomain: () => Promise<void>
   handleLoadDomainRecords: () => Promise<void>
   handleConfigureDomainTracking: (data: ConfigureDomainTrackingData) => Promise<boolean>
+  sendingDnsInstructions: boolean
+  canSendDnsInstructions: boolean
+  handleCopyDnsInstructions: () => Promise<void>
+  handleCopyDnsInstructionsPrompt: () => Promise<void>
+  handleSendDnsInstructions: (recipientEmail: string) => Promise<boolean>
 
   globalVariables: EmailGlobalVariable[]
   creatingVariable: boolean
@@ -163,6 +172,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [loadingRecords, setLoadingRecords] = useState(false)
   const [disconnectingDomain, setDisconnectingDomain] = useState(false)
   const [configuringDomainTracking, setConfiguringDomainTracking] = useState(false)
+  const [sendingDnsInstructions, setSendingDnsInstructions] = useState(false)
 
   const fetchingRef = useRef(false)
   const lastSettingsKeyRef = useRef("")
@@ -505,6 +515,69 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     }
   }, [handleLoadDomainRecords, reloadSettings])
 
+  /**
+   * As instruções são montadas dos registros já carregados na tela — os mesmos
+   * que a tabela renderiza. Sem registros não há o que copiar, então o guard
+   * orienta a carregar em vez de copiar um texto vazio.
+   */
+  const copyDnsArtifactToClipboard = useCallback(
+    async (buildArtifact: typeof buildDnsInstructionsText, successMessage: string) => {
+      if (!domainName || domainRecords.length === 0) {
+        toast.error("Carregue os registros DNS antes de copiar as instruções")
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(
+          buildArtifact({ domainName, records: domainRecords })
+        )
+        toast.success(successMessage)
+      } catch (err) {
+        console.error("[useEmailSettings] copyDnsArtifactToClipboard error", err)
+        toast.error("Não foi possível copiar")
+      }
+    },
+    [domainName, domainRecords]
+  )
+
+  const handleCopyDnsInstructions = useCallback(
+    () => copyDnsArtifactToClipboard(buildDnsInstructionsText, "Instruções copiadas"),
+    [copyDnsArtifactToClipboard]
+  )
+
+  const handleCopyDnsInstructionsPrompt = useCallback(
+    () => copyDnsArtifactToClipboard(buildDnsInstructionsAgentPrompt, "Prompt copiado"),
+    [copyDnsArtifactToClipboard]
+  )
+
+  /**
+   * O host do backoffice ainda não expõe o envio de instruções — o card usa
+   * esta flag para esconder a ação em vez de falhar no clique.
+   */
+  const canSendDnsInstructions = typeof service.sendDomainDnsInstructions === "function"
+
+  const handleSendDnsInstructions = useCallback(
+    async (recipientEmail: string) => {
+      if (sendingDnsInstructions) return false
+      if (!service.sendDomainDnsInstructions) {
+        toast.error("Envio de instruções não disponível nesta tela")
+        return false
+      }
+      setSendingDnsInstructions(true)
+      try {
+        await service.sendDomainDnsInstructions(recipientEmail)
+        toast.success(`Instruções enviadas para ${recipientEmail}`)
+        return true
+      } catch (err) {
+        console.error("[useEmailSettings] handleSendDnsInstructions error", err)
+        toastUserError(err)
+        return false
+      } finally {
+        setSendingDnsInstructions(false)
+      }
+    },
+    [sendingDnsInstructions]
+  )
+
   const handleConfigureDomainTracking = useCallback(
     async (data: ConfigureDomainTrackingData) => {
       if (configuringDomainTracking) return false
@@ -589,6 +662,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     handleVerifyDomain,
     handleLoadDomainRecords,
     handleConfigureDomainTracking,
+    sendingDnsInstructions,
+    canSendDnsInstructions,
+    handleCopyDnsInstructions,
+    handleCopyDnsInstructionsPrompt,
+    handleSendDnsInstructions,
     globalVariables,
     creatingVariable,
     updatingVariableId,
