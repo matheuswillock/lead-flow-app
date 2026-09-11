@@ -136,6 +136,15 @@ async function openDomainActionsMenu(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Ações do domínio" }).click()
 }
 
+/**
+ * Serial de propósito (achado codex PR #1173): todos os testes deste arquivo
+ * mutam a MESMA linha `emailTeamSettings` do master E2E — a settings é única
+ * por time, então não há isolamento possível por dado. Com `fullyParallel` +
+ * 2 workers, seed/clear concorrentes flakaram a primeira run do CI do #1173.
+ * Trade-off conhecido do serial: um retry reroda o grupo inteiro.
+ */
+test.describe.configure({ mode: "serial" })
+
 test.describe("app/[supabaseId]/email/configuracoes", () => {
   test.setTimeout(90_000)
 

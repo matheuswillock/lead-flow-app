@@ -3,6 +3,10 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { SendCustomDomainDnsInstructionsUseCase } from "@/app/api/useCases/email/SendCustomDomainDnsInstructionsUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import {
+  consumeDnsInstructionsSendRateLimit,
+  DNS_INSTRUCTIONS_SEND_RATE_LIMIT_MESSAGE,
+} from "@/lib/email/dns-instructions-rate-limit"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export async function POST(request: NextRequest) {
@@ -16,6 +20,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         new Output(false, [], ["Apenas managers podem enviar instruções de DNS"], null),
         { status: 403 }
+      )
+    }
+
+    // Achado codex PR #1173: sem teto, um manager autenticado vira spam relay
+    // com o remetente da plataforma. Limite por time, antes do use case.
+    const rateLimit = await consumeDnsInstructionsSendRateLimit(teamAccess.access.teamId)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        new Output(false, [], [DNS_INSTRUCTIONS_SEND_RATE_LIMIT_MESSAGE], null),
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
       )
     }
 
