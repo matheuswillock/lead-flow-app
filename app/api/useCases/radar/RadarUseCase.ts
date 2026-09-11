@@ -530,6 +530,30 @@ export class RadarUseCase {
     return new Output(true, [], [], { portfolios, finalized })
   }
 
+  /**
+   * Regra 3 (adenda 31/08, pós-#1107): seção "Leads no CRM" do perfil
+   * unificado — todos os leads vinculados ao perfil ao longo da vida da
+   * negociação (histórico, ver regra 2), mais recente primeiro.
+   */
+  async getProfileRelatedLeads(teamId: string, ctx: TeamContext, profileId: string) {
+    const scope = this.scope(teamId, ctx)
+    const exists = await radarRepository.profileExistsInScope(scope, profileId)
+    if (!exists) {
+      return new Output(false, [], ["Perfil não encontrado"], null)
+    }
+
+    const leads = await radarRepository.findRelatedLeadsForProfile(scope, profileId)
+    const items = leads.map((lead) => ({
+      id: lead.id,
+      leadCode: lead.leadCode,
+      name: lead.name,
+      status: lead.status,
+      createdAt: lead.createdAt.toISOString(),
+    }))
+
+    return new Output(true, [], [], { items })
+  }
+
   async listProfileEvents(
     teamId: string,
     ctx: TeamContext,

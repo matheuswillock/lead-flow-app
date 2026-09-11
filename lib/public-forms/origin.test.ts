@@ -38,6 +38,27 @@ describe("sanitizePublicFormOrigin", () => {
     expect(sanitizePublicFormOrigin({ recipientEmail: "nao-e-email" })).toEqual({})
   })
 
+  // Adenda E6b (02/09): sem isto, `enrichedOrigin.recipientName` (gravado por
+  // `ResolveEmailCampaignFormAttributionUseCase`) era descartado no
+  // re-sanitize de `PublicFormsService`, e o perfil Radar nunca via o nome do
+  // destinatário.
+  it("preserva recipientName válido (E6b — perfil herda nome do destinatário)", () => {
+    expect(
+      sanitizePublicFormOrigin({
+        emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        recipientName: "  Mariana Lombardi  ",
+      }),
+    ).toEqual({
+      emailLogId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      recipientName: "Mariana Lombardi",
+    })
+  })
+
+  it("rejeita recipientName com cara de e-mail ou telefone (mesma blindagem genérica dos outros tokens)", () => {
+    expect(sanitizePublicFormOrigin({ recipientName: "pessoa@example.com" })).toEqual({})
+    expect(sanitizePublicFormOrigin({ recipientName: "11999999999" })).toEqual({})
+  })
+
   it("ignora URLs inválidas", () => {
     expect(sanitizePublicFormOrigin({ landingUrl: "não é url" })).toEqual({})
   })

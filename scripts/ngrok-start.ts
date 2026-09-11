@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Inicia um túnel ngrok (lead-flow ou n8n), encerrando instâncias anteriores.
- * Uso: bun scripts/ngrok-start.ts lead-flow | n8n
+ * Inicia o túnel ngrok do app, encerrando instâncias anteriores.
+ * Uso: bun scripts/ngrok-start.ts lead-flow
  *
  * No plano ngrok free há um único domínio reservado — só um túnel por vez.
  */
@@ -13,8 +13,8 @@ import { spawnSync } from "node:child_process";
 const ROOT = resolve(import.meta.dirname, "..");
 const tunnel = process.argv[2];
 
-if (tunnel !== "lead-flow" && tunnel !== "n8n") {
-  console.error("Uso: bun scripts/ngrok-start.ts <lead-flow|n8n>");
+if (tunnel !== "lead-flow") {
+  console.error("Uso: bun scripts/ngrok-start.ts lead-flow");
   process.exit(1);
 }
 
@@ -59,11 +59,6 @@ function startTunnel(): void {
 
 stopExistingNgrok();
 console.info(`[ngrok] Encerrando túneis anteriores e iniciando: ${tunnel}`);
-if (tunnel === "n8n") {
-  console.info("[ngrok] Domínio: https://nonzero-rodrick-mentholated.ngrok-free.dev → :5678");
-  console.info("[ngrok] BACKOFFICE_N8N_OUTBOUND_URL=/webhook/bethania-outbound");
-} else {
-  console.info("[ngrok] Domínio: https://nonzero-rodrick-mentholated.ngrok-free.dev → :3000");
-}
+console.info("[ngrok] Domínio: https://nonzero-rodrick-mentholated.ngrok-free.dev → :3000");
 
 startTunnel();

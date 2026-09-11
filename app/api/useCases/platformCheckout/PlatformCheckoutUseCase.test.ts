@@ -23,6 +23,7 @@ function makePurchase(
     description: "Créditos de e-mail",
     metadata: null,
     asaasPaymentId: null,
+    asaasAccount: "primary",
     asaasCustomerId: null,
     paidAt: null,
     appliedAt: null,
@@ -67,8 +68,12 @@ class FakePlatformPurchaseRepository implements IPlatformPurchaseRepository {
     return [...this.items.values()].find((item) => item.externalReference === externalReference) ?? null
   }
 
-  async findByAsaasPaymentId(asaasPaymentId: string) {
-    return [...this.items.values()].find((item) => item.asaasPaymentId === asaasPaymentId) ?? null
+  async findByAsaasPaymentId(asaasPaymentId: string, account: string) {
+    return (
+      [...this.items.values()].find(
+        (item) => item.asaasPaymentId === asaasPaymentId && item.asaasAccount === account
+      ) ?? null
+    )
   }
 
   async update(id: string, data: UpdatePlatformPurchaseInput) {
@@ -79,7 +84,7 @@ class FakePlatformPurchaseRepository implements IPlatformPurchaseRepository {
     return next
   }
 
-  async markPaidOnce(input: { id: string; asaasPaymentId: string; paidAt?: Date }) {
+  async markPaidOnce(input: { id: string; asaasPaymentId: string; account: string; paidAt?: Date }) {
     this.markPaidCalls += 1
     const current = this.items.get(input.id)
     if (!current || current.status === "paid") return null
@@ -87,6 +92,7 @@ class FakePlatformPurchaseRepository implements IPlatformPurchaseRepository {
       ...current,
       status: "paid",
       asaasPaymentId: input.asaasPaymentId,
+      asaasAccount: input.account as PlatformPurchase["asaasAccount"],
       paidAt: input.paidAt ?? new Date(),
       appliedAt: input.paidAt ?? new Date(),
     })
@@ -156,10 +162,12 @@ describe("PlatformCheckoutUseCase", () => {
     const first = await useCase.applyPaidPurchase({
       externalReference: details.externalReference,
       asaasPaymentId: "pay_123",
+      account: "primary",
     })
     const second = await useCase.applyPaidPurchase({
       externalReference: details.externalReference,
       asaasPaymentId: "pay_123",
+      account: "primary",
     })
 
     expect(first.isValid).toBe(true)
@@ -168,5 +176,48 @@ describe("PlatformCheckoutUseCase", () => {
     expect(second.successMessages.join(" ")).toMatch(/já aplicada/i)
     expect(repo.markPaidCalls).toBe(1)
     expect(repo.items.get(details.checkoutId)?.status).toBe("paid")
+  })
+
+  it("T-40.E4d: asaasPaymentId colidindo entre contas não aplica a compra da conta errada (C33)", async () => {
+    const repo = new FakePlatformPurchaseRepository()
+    const useCase = new PlatformCheckoutUseCase(repo)
+
+    const legacyPurchase = await useCase.createCheckout({
+      productSlug: "email",
+      purchaseType: "email_credits",
+      profileId: "profile-legacy",
+      billingType: "PIX",
+      amount: 49.9,
+    })
+    const legacyDetails = legacyPurchase.result as { checkoutId: string; externalReference: string }
+    // Simula um pagamento legacy já vinculado a este pay_ (fora do fluxo de
+    // criação, como um dado migrado ou uma colisão real).
+    repo.items.set(legacyDetails.checkoutId, {
+      ...repo.items.get(legacyDetails.checkoutId)!,
+      asaasPaymentId: "pay_colidindo",
+      asaasAccount: "legacy",
+    })
+
+    const primaryPurchase = await useCase.createCheckout({
+      productSlug: "email",
+      purchaseType: "email_credits",
+      profileId: "profile-primary",
+      billingType: "PIX",
+      amount: 49.9,
+    })
+    const primaryDetails = primaryPurchase.result as { checkoutId: string; externalReference: string }
+
+    // O evento é da conta primary, com o MESMO asaasPaymentId da legacy —
+    // só a compra da primary (via externalReference) pode ser marcada paga.
+    const result = await useCase.applyPaidPurchase({
+      externalReference: primaryDetails.externalReference,
+      asaasPaymentId: "pay_colidindo",
+      account: "primary",
+    })
+
+    expect(result.isValid).toBe(true)
+    expect(repo.items.get(primaryDetails.checkoutId)?.status).toBe("paid")
+    // a compra legacy MUST permanecer intocada
+    expect(repo.items.get(legacyDetails.checkoutId)?.status).toBe("pending")
   })
 })

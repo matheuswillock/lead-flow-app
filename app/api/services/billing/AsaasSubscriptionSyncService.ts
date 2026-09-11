@@ -1,5 +1,5 @@
 import { asaasSubscriptionSyncRepository } from "@/app/api/infra/data/repositories/billing/AsaasSubscriptionSyncRepository";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { createAsaasClient } from "@/lib/asaas";
 import type { SubscriptionStatus } from "@prisma/client";
 
 type AsaasSubscriptionResponse = {
@@ -42,7 +42,10 @@ export class AsaasSubscriptionSyncService {
       return null;
     }
 
-    const subscription = (await asaasFetch(`${asaasApi.subscriptions}/${syncSnapshot.asaasSubscriptionId}`, {
+    // DA2 (20 — Assinaturas — Backend E4): roteia pela conta do ponteiro —
+    // sub_ legado bate 404 na primary durante a janela dual.
+    const client = createAsaasClient(syncSnapshot.asaasSubscriptionAccount);
+    const subscription = (await client.request(`${client.endpoints.subscriptions}/${syncSnapshot.asaasSubscriptionId}`, {
       method: "GET",
     })) as AsaasSubscriptionResponse;
 

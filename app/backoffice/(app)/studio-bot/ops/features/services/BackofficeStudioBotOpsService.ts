@@ -5,6 +5,7 @@ import type {
   BethaniaWebhookResyncResult,
   HostHealth,
   HostLogsResult,
+  HostService,
 } from "../context/BackofficeStudioBotOpsTypes"
 import type { IBackofficeStudioBotOpsService } from "./IBackofficeStudioBotOpsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -83,7 +84,7 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
     return this.parseResponse<{ jobId: string; health: HostHealth }>(res)
   }
 
-  async fetchLogs(input: { service: "n8n" | "api"; tail?: number }) {
+  async fetchLogs(input: { service: HostService; tail?: number }) {
     const qs = new URLSearchParams({
       service: input.service,
       ...(input.tail != null ? { tail: String(input.tail) } : {}),
@@ -99,17 +100,12 @@ export class BackofficeStudioBotOpsService implements IBackofficeStudioBotOpsSer
     return this.parseResponse<{ jobId: string }>(res)
   }
 
-  async restart(service: "n8n" | "api" | "all") {
+  async restart(service: HostService | "all") {
     const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/restart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ service }),
     })
-    return this.parseResponse<{ jobId: string }>(res)
-  }
-
-  async importWorkflows() {
-    const res = await fetch(`${API_CLIENT_BASE}/backoffice/bot/host/workflows/import`, { method: "POST" })
     return this.parseResponse<{ jobId: string }>(res)
   }
 

@@ -1,7 +1,7 @@
 export type BackofficeProductType = "PLAN" | "ADDON"
 export type BackofficeProductBillingMode = "RECURRING" | "LIFETIME"
 export type BackofficePaymentMethodKey = "PIX" | "CREDIT_CARD"
-export type BackofficeAdhesionBillingCycleKey = "monthly" | "quarterly" | "semiannual" | "annual"
+export type BackofficeAdhesionBillingCycleKey = "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
 export type InstallmentSplitMode = "EQUAL" | "CUSTOM"
 
 export interface InstallmentGroup {
@@ -36,6 +36,7 @@ export interface BackofficeProductItem {
   billingMode: BackofficeProductBillingMode
   priceMonthly: number | null
   priceQuarterly: number | null
+  priceQuadrimester: number | null
   priceSemiannual: number | null
   priceAnnual: number | null
   priceLifetime: number | null
@@ -54,6 +55,7 @@ export const BILLING_CYCLE_META: {
 }[] = [
   { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
   { key: "quarterly", label: "Trimestral", months: 3, defaultMax: 3 },
+  { key: "quadrimester", label: "Quadrimestral", months: 4, defaultMax: 4 },
   { key: "semiannual", label: "Semestral", months: 6, defaultMax: 6 },
   { key: "annual", label: "Anual", months: 12, defaultMax: 12 },
 ]
@@ -61,6 +63,7 @@ export const BILLING_CYCLE_META: {
 export const BILLING_CYCLE_LABELS: Record<BackofficeAdhesionBillingCycleKey, string> = {
   monthly: "Mensal",
   quarterly: "Trimestral",
+  quadrimester: "Quadrimestral",
   semiannual: "Semestral",
   annual: "Anual",
 }
@@ -73,6 +76,7 @@ export interface BackofficeProductFormData {
   billingMode: BackofficeProductBillingMode
   priceMonthly: string
   priceQuarterly: string
+  priceQuadrimester: string
   priceSemiannual: string
   priceAnnual: string
   priceLifetime: string
@@ -83,6 +87,7 @@ export interface BackofficeProductFormData {
   paymentRules: {
     monthly: BackofficeProductPaymentRuleFormEntry
     quarterly: BackofficeProductPaymentRuleFormEntry
+    quadrimester: BackofficeProductPaymentRuleFormEntry
     semiannual: BackofficeProductPaymentRuleFormEntry
     annual: BackofficeProductPaymentRuleFormEntry
   }
@@ -104,6 +109,7 @@ export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   billingMode: "RECURRING",
   priceMonthly: "",
   priceQuarterly: "",
+  priceQuadrimester: "",
   priceSemiannual: "",
   priceAnnual: "",
   priceLifetime: "",
@@ -113,6 +119,7 @@ export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   paymentRules: {
     monthly: { ...EMPTY_RULE_ENTRY, maxInstallments: "1" },
     quarterly: { ...EMPTY_RULE_ENTRY, maxInstallments: "3" },
+    quadrimester: { ...EMPTY_RULE_ENTRY, maxInstallments: "4" },
     semiannual: { ...EMPTY_RULE_ENTRY, maxInstallments: "6" },
     annual: { ...EMPTY_RULE_ENTRY, maxInstallments: "12" },
   },

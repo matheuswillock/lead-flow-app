@@ -1,5 +1,6 @@
 import type { AsaasWebhookEventStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import type { AsaasAccountId } from "@/lib/asaas"
 import {
   ASAAS_WEBHOOK_EVENT_MAX_ATTEMPTS,
   computeAsaasWebhookEventNextAttemptAt,
@@ -16,6 +17,7 @@ export type AsaasWebhookEventClaimRow = {
   eventType: string | null
   payload: Prisma.JsonValue
   attemptCount: number
+  account: AsaasAccountId
 }
 
 /** Rows stuck in `processing` longer than this are treated as abandoned leases. */
@@ -26,6 +28,7 @@ export interface IAsaasWebhookEventRepository {
     id: string
     eventType: string | null
     payload: Prisma.InputJsonValue
+    account: AsaasAccountId
   }): Promise<AsaasWebhookEventClaimResult>
   markProcessed(id: string): Promise<void>
   markFailed(
@@ -47,6 +50,7 @@ export class AsaasWebhookEventRepository implements IAsaasWebhookEventRepository
     id: string
     eventType: string | null
     payload: Prisma.InputJsonValue
+    account: AsaasAccountId
   }): Promise<AsaasWebhookEventClaimResult> {
     const existing = await prisma.asaasWebhookEvent.findUnique({
       where: { id: input.id },
@@ -68,6 +72,7 @@ export class AsaasWebhookEventRepository implements IAsaasWebhookEventRepository
           eventType: input.eventType,
           payload: input.payload,
           status: "processing",
+          account: input.account,
         },
       })
       return "process"
@@ -84,6 +89,7 @@ export class AsaasWebhookEventRepository implements IAsaasWebhookEventRepository
         processedAt: null,
         payload: input.payload,
         eventType: input.eventType,
+        account: input.account,
       },
     })
 
@@ -173,6 +179,7 @@ export class AsaasWebhookEventRepository implements IAsaasWebhookEventRepository
         eventType: true,
         payload: true,
         attemptCount: true,
+        account: true,
       },
     })
 

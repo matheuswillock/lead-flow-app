@@ -164,6 +164,7 @@ export class BackofficeLeadOfferUseCase {
       type: product.type,
       priceMonthly: decimalToNumber(product.priceMonthly),
       priceQuarterly: decimalToNumber(product.priceQuarterly),
+      priceQuadrimester: decimalToNumber(product.priceQuadrimester),
       priceSemiannual: decimalToNumber(product.priceSemiannual),
       priceAnnual: decimalToNumber(product.priceAnnual),
       priceLifetime: decimalToNumber(product.priceLifetime),

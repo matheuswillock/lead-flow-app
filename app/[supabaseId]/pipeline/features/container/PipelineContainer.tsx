@@ -184,7 +184,7 @@ export function PipelineContainer({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer max-lg:h-11">
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
@@ -197,7 +197,7 @@ export function PipelineContainer({
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-9 w-9 max-lg:size-11"
                       aria-label="Configuração das colunas da tabela"
                     >
                       <Settings className="h-4 w-4" />

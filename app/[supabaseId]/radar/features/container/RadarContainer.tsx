@@ -104,6 +104,8 @@ export function RadarContainer() {
     isLoadingContracts,
     profileForms,
     isLoadingProfileForms,
+    relatedLeads,
+    isLoadingRelatedLeads,
     reload,
   } = useRadarContext()
 
@@ -411,6 +413,8 @@ export function RadarContainer() {
           isLoadingContracts={isLoadingContracts}
           profileForms={profileForms}
           isLoadingProfileForms={isLoadingProfileForms}
+          relatedLeads={relatedLeads}
+          isLoadingRelatedLeads={isLoadingRelatedLeads}
           onPromoteToLead={
             selectedProfile
               ? () => promoteProfileToLead(selectedProfile.id)

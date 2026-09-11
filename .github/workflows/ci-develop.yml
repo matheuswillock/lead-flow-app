@@ -433,7 +433,15 @@ jobs:
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ always() && github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    # `needs.quality-gate.result == 'success'` é a trava: sem ela (o `always()`
+    # antigo era incondicional), um push na develop com E2E/typecheck/build
+    # vermelhos ainda recriava a release/develop-to-main e atualizava o PR para
+    # main — o trem de release avançava carregando exatamente a falha que o
+    # gate reprovou. `always()` continua necessário porque migration-check/
+    # migration-dry-run/version-bump podem terminar `skipped` legitimamente
+    # (sem migration pendente, sem mudança de código) e o default sem `always()`
+    # pularia este job junto.
+    if: ${{ always() && needs.quality-gate.result == 'success' && github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 15
     needs:

@@ -13,6 +13,7 @@ import type {
   IBackofficeAdhesionService,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import type { IBackofficeAdhesionUseCase } from "./IBackofficeAdhesionUseCase"
+import type { AsaasAccountId } from "@/lib/asaas"
 import {
   backofficeSponsorAuthorizationService,
 } from "@/app/api/services/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationService"
@@ -312,10 +313,11 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   async processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
+    account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<Output> {
     try {
-      const result = await this.service.processPaymentWebhook(event, payment, options)
+      const result = await this.service.processPaymentWebhook(event, payment, account, options)
       return new Output(true, [], [], result)
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][processPaymentWebhook]", error)

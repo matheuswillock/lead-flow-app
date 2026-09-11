@@ -808,7 +808,9 @@ export function BackofficeClientDetailsContainer() {
                 ) : (
                   <Accordion type="single" collapsible className="w-full">
                     {teams.map((team) => {
-                      const masterMissing = !team.members.some((member) => member.isMaster)
+                      // Dono desta conta, não `isMaster` global: um time só com
+                      // o master de outra conta continua sem dono.
+                      const masterMissing = !team.members.some((member) => member.isAccountMaster)
 
                       return (
                       <AccordionItem key={team.id} value={team.id} className="border-b last:border-b-0">
@@ -965,7 +967,7 @@ export function BackofficeClientDetailsContainer() {
                                               Enviar reset de senha
                                             </DropdownMenuItem>
                                           ) : null}
-                                          {canManage && !member.isMaster ? (
+                                          {canManage && !member.isAccountMaster ? (
                                             <DropdownMenuItem
                                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                               onClick={() => {

@@ -36,12 +36,15 @@ import type {
   RadarProfileContracts,
   RadarProfileDetail,
   RadarProfileTouchpoints,
+  RadarRelatedLead,
 } from "../context/RadarTypes"
 import type { RadarProfileFormItem } from "@/lib/radar/profile-forms"
 import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBuilderUtils"
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
 import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
+import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status"
+import { cn } from "@/lib/utils"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
 import { RadarProfileFormsTab } from "./RadarProfileFormsTab"
 import {
@@ -108,6 +111,35 @@ function formatCurrency(value: number | null | undefined): string {
 function formatDate(value: string | null | undefined): string {
   if (!value) return "—"
   return format(new Date(value), "dd/MM/yyyy", { locale: ptBR })
+}
+
+function RelatedLeadCard({ lead, supabaseId }: { lead: RadarRelatedLead; supabaseId: string }) {
+  return (
+    <Link
+      href={buildLeadCrmHref(supabaseId, lead.leadCode)}
+      className="flex flex-col gap-1 rounded-md border p-3 text-sm transition-colors hover:bg-muted/40"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">{lead.name || "Sem nome"}</span>
+        {lead.status ? (
+          <Badge variant="outline" className={cn("font-normal", getLeadStatusBadgeClass(lead.status))}>
+            {getLeadStatusLabel(lead.status)}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="font-normal text-muted-foreground">
+            Rascunho
+          </Badge>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          Lead {lead.leadCode}
+          <ExternalLink className="size-3.5" />
+        </span>
+        <span>{formatDate(lead.createdAt)}</span>
+      </div>
+    </Link>
+  )
 }
 
 function FinalizedContractCard({ item }: { item: RadarFinalizedContract }) {
@@ -185,6 +217,8 @@ type RadarProfileSheetProps = {
   isLoadingContracts: boolean
   profileForms: RadarProfileFormItem[] | null
   isLoadingProfileForms: boolean
+  relatedLeads: RadarRelatedLead[] | null
+  isLoadingRelatedLeads: boolean
   onPromoteToLead?: () => Promise<boolean>
   onUpdateGender?: (gender: RadarGender) => Promise<boolean>
 }
@@ -204,6 +238,8 @@ export function RadarProfileSheet({
   isLoadingContracts,
   profileForms,
   isLoadingProfileForms,
+  relatedLeads,
+  isLoadingRelatedLeads,
   onPromoteToLead,
   onUpdateGender,
 }: RadarProfileSheetProps) {
@@ -430,6 +466,7 @@ export function RadarProfileSheet({
               <Tabs defaultValue="resumo">
                 <TabsList className="flex h-auto flex-wrap gap-1">
                   <TabsTrigger value="resumo">Resumo</TabsTrigger>
+                  <TabsTrigger value="leads-crm">Leads no CRM</TabsTrigger>
                   <TabsTrigger value="contatos">Contatos</TabsTrigger>
                   <TabsTrigger value="formularios">Formulários</TabsTrigger>
                   <TabsTrigger value="contratos">Contratos</TabsTrigger>
@@ -489,6 +526,24 @@ export function RadarProfileSheet({
                         </div>
                       )
                     })
+                  )}
+                </TabsContent>
+
+                <TabsContent value="leads-crm" className="flex flex-col gap-2">
+                  {isLoadingRelatedLeads ? (
+                    <div className="flex flex-col gap-2">
+                      <Skeleton className="h-5 w-40" />
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                    </div>
+                  ) : !relatedLeads || relatedLeads.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum lead vinculado a este perfil.
+                    </p>
+                  ) : (
+                    relatedLeads.map((lead) => (
+                      <RelatedLeadCard key={lead.id} lead={lead} supabaseId={supabaseId} />
+                    ))
                   )}
                 </TabsContent>
 

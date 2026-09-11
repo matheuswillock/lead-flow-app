@@ -16,6 +16,12 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 import { PUBLIC_FORM_RADAR_SOURCE_TYPE } from "../../../lib/radar/map-public-form-metric-to-radar-event"
 
 const E2E_RADAR_PROFILE_ID = "e2e20000-0000-4000-8000-000000000201"
+const RELATED_LEADS_PROFILE_ID = "e2e20000-0000-4000-8000-000000000231"
+const RELATED_LEAD_OPEN_ID = "e2e20000-0000-4000-8000-000000000232"
+const RELATED_LEAD_LOST_ID = "e2e20000-0000-4000-8000-000000000233"
+const RELATED_LEAD_OPEN_CODE = "E2ERELATEDOPEN01"
+const RELATED_LEAD_LOST_CODE = "E2ERELATEDLOST01"
+const RELATED_LEADS_PROFILE_DISPLAY_NAME = "Vladicea Leads Relacionados E2E"
 const FORM_COMPLETE_ID = "e2e20000-0000-4000-8000-000000000211"
 const FORM_INCOMPLETE_ID = "e2e20000-0000-4000-8000-000000000212"
 const FORM_STARTED_ID = "e2e20000-0000-4000-8000-000000000213"
@@ -198,6 +204,106 @@ async function arrangeRadarFormsProfile() {
   return { profile, teamId }
 }
 
+/**
+ * Regra 2/3 (adenda 31/08, pós-#1107): um perfil pode ter N leads vinculados
+ * (histórico) — a seção "Leads no CRM" do perfil unificado precisa listar
+ * todos. Dois leads reais no banco, dois vínculos `radarIdentity` (type
+ * `lead_id`) para o MESMO perfil — cenário que só é possível porque
+ * `linkLeadIdentity` deixou de recusar o segundo vínculo.
+ */
+async function arrangeRelatedLeadsProfile() {
+  const prisma = getPrisma()
+  const profile = await findE2eMasterProfile()
+  if (!profile) throw new Error("Seed E2E ausente — rode `bun run db:seed:e2e`")
+  if (!profile.activeTeamId) throw new Error("Team E2E não encontrado")
+  const teamId = profile.activeTeamId
+
+  await grantRadarBeta(profile.id)
+
+  await prisma.radarIdentity.deleteMany({ where: { profileId: RELATED_LEADS_PROFILE_ID } })
+  await prisma.lead.deleteMany({
+    where: { id: { in: [RELATED_LEAD_OPEN_ID, RELATED_LEAD_LOST_ID] } },
+  })
+  await prisma.radarEvent.deleteMany({ where: { profileId: RELATED_LEADS_PROFILE_ID } })
+  await prisma.radarChannelConsent.deleteMany({ where: { profileId: RELATED_LEADS_PROFILE_ID } })
+  await prisma.radarSourceLink.deleteMany({ where: { profileId: RELATED_LEADS_PROFILE_ID } })
+
+  await prisma.radarProfile.upsert({
+    where: { id: RELATED_LEADS_PROFILE_ID },
+    create: {
+      id: RELATED_LEADS_PROFILE_ID,
+      teamId,
+      displayName: RELATED_LEADS_PROFILE_DISPLAY_NAME,
+      normalizedName: "vladicea leads relacionados e2e",
+      displayPhone: "11977776666",
+      normalizedPhone: "5511977776666",
+      primaryEmail: "vladicea.relacionados.e2e@example.com",
+      normalizedPrimaryEmail: "vladicea.relacionados.e2e@example.com",
+      lastSeenAt: new Date(),
+      engagementScore: 80,
+      engagementBand: "warm",
+    },
+    update: {
+      displayName: RELATED_LEADS_PROFILE_DISPLAY_NAME,
+      lastSeenAt: new Date(),
+    },
+  })
+
+  await prisma.lead.create({
+    data: {
+      id: RELATED_LEAD_LOST_ID,
+      leadCode: RELATED_LEAD_LOST_CODE,
+      managerId: profile.id,
+      teamId,
+      status: "opportunityLost",
+      name: "vladicea (perdido)",
+      createdBy: profile.id,
+      updatedBy: profile.id,
+    },
+  })
+  await prisma.lead.create({
+    data: {
+      id: RELATED_LEAD_OPEN_ID,
+      leadCode: RELATED_LEAD_OPEN_CODE,
+      managerId: profile.id,
+      teamId,
+      status: "new_opportunity",
+      name: "vladicea (reaberto)",
+      createdBy: profile.id,
+      updatedBy: profile.id,
+    },
+  })
+
+  // Vínculo do lead perdido nasce PRIMEIRO — vínculo mais recente (regra 2)
+  // é o do lead reaberto, então a UI precisa mostrar os dois, não só o topo.
+  await prisma.radarIdentity.create({
+    data: {
+      teamId,
+      profileId: RELATED_LEADS_PROFILE_ID,
+      type: "lead_id",
+      value: RELATED_LEAD_LOST_ID,
+      normalizedValue: RELATED_LEAD_LOST_ID,
+      source: "public_form_radar_gate",
+      isPrimary: false,
+      createdAt: new Date("2026-08-11T10:00:00.000Z"),
+    },
+  })
+  await prisma.radarIdentity.create({
+    data: {
+      teamId,
+      profileId: RELATED_LEADS_PROFILE_ID,
+      type: "lead_id",
+      value: RELATED_LEAD_OPEN_ID,
+      normalizedValue: RELATED_LEAD_OPEN_ID,
+      source: "public_form_radar_gate",
+      isPrimary: false,
+      createdAt: new Date("2026-08-31T14:00:00.000Z"),
+    },
+  })
+
+  return { profile, teamId }
+}
+
 test.describe("app/[supabaseId]/radar", () => {
   test.describe.configure({ mode: "serial" })
   test.setTimeout(90_000)
@@ -260,6 +366,37 @@ test.describe("app/[supabaseId]/radar", () => {
     await expect(completeCard.getByText("Completo", { exact: true })).toBeVisible()
     await expect(incompleteCard.getByText("Incompleto", { exact: true })).toBeVisible()
     await expect(startedCard.getByText("Iniciou sem nenhuma resposta", { exact: true })).toBeVisible()
+  })
+
+  /**
+   * Adenda do owner (31/08, pós-#1107) — regra 2/3: o vínculo perfil↔lead virou
+   * histórico. Um perfil com 2 leads vinculados (um `new_opportunity`, um
+   * `opportunityLost` — o mesmo par do caso real "vladicea" da nota do vault)
+   * precisa mostrar os DOIS na seção "Leads no CRM", não só o mais recente.
+   */
+  test("mostra os dois leads vinculados na seção Leads no CRM do perfil unificado", async ({
+    page,
+  }) => {
+    await arrangeRelatedLeadsProfile()
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar?perfil=${RELATED_LEADS_PROFILE_ID}`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    await expect(page.getByRole("heading", { name: "Detalhe do perfil" })).toBeVisible({
+      timeout: 30_000,
+    })
+
+    await page.getByRole("tab", { name: "Leads no CRM" }).click()
+    const leadsTab = page.getByRole("tabpanel", { name: "Leads no CRM" })
+
+    const openCard = leadsTab.locator("a").filter({ hasText: RELATED_LEAD_OPEN_CODE })
+    const lostCard = leadsTab.locator("a").filter({ hasText: RELATED_LEAD_LOST_CODE })
+
+    await expect(openCard).toBeVisible({ timeout: 15_000 })
+    await expect(openCard.getByText("Nova oportunidade", { exact: true })).toBeVisible()
+    await expect(lostCard).toBeVisible()
+    await expect(lostCard.getByText("Perdido", { exact: true })).toBeVisible()
   })
 
   /**

@@ -1,8 +1,0 @@
-# Supabase CLI — projeto dedicado à Evolution API
-.branches
-.temp
-
-# dotenvx
-.env.keys
-.env.local
-.env.*.local

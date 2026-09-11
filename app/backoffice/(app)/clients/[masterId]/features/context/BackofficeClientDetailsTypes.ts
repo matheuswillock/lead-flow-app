@@ -9,7 +9,10 @@ export interface BackofficeClientTeamMember {
   googleCalendarConnected: boolean
   googleEmail: string | null
   functions: string[]
+  /** Flag global do perfil — true também para o master de outra conta. */
   isMaster: boolean
+  /** Dono desta conta. É este que trava o papel e a remoção do time. */
+  isAccountMaster: boolean
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
   canTransferAccountLeads: boolean

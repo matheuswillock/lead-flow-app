@@ -15,6 +15,7 @@ function parsePrice(value: string): number | null {
 const BILLING_CYCLES: BackofficeAdhesionBillingCycleKey[] = [
   "monthly",
   "quarterly",
+  "quadrimester",
   "semiannual",
   "annual",
 ]
@@ -96,12 +97,14 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
     payload.paymentRules = rules
     payload.priceMonthly = parsePrice(data.paymentRules.monthly?.pixPrice ?? "")
     payload.priceQuarterly = parsePrice(data.paymentRules.quarterly?.pixPrice ?? "")
+    payload.priceQuadrimester = parsePrice(data.paymentRules.quadrimester?.pixPrice ?? "")
     payload.priceSemiannual = parsePrice(data.paymentRules.semiannual?.pixPrice ?? "")
     payload.priceAnnual = parsePrice(data.paymentRules.annual?.pixPrice ?? "")
     for (const cycle of BILLING_CYCLES) {
       if (!activeCycles.includes(cycle)) {
         if (cycle === "monthly") payload.priceMonthly = null
         if (cycle === "quarterly") payload.priceQuarterly = null
+        if (cycle === "quadrimester") payload.priceQuadrimester = null
         if (cycle === "semiannual") payload.priceSemiannual = null
         if (cycle === "annual") payload.priceAnnual = null
       }
@@ -109,6 +112,7 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   } else if (data.billingMode === "LIFETIME") {
     if ("priceMonthly" in data) payload.priceMonthly = null
     if ("priceQuarterly" in data) payload.priceQuarterly = null
+    if ("priceQuadrimester" in data) payload.priceQuadrimester = null
     if ("priceSemiannual" in data) payload.priceSemiannual = null
     if ("priceAnnual" in data) payload.priceAnnual = null
   }

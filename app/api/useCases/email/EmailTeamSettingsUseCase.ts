@@ -16,6 +16,10 @@ import {
 } from "@/lib/email/map-resend-domain-error"
 import { normalizeSendingDomainName } from "@/lib/email/normalize-sending-domain-name"
 import {
+  checkSendingDomainExistence,
+  type SendingDomainExistence,
+} from "@/lib/email/sending-domain-existence"
+import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
   isPlatformDefaultFromEmail,
@@ -164,6 +168,8 @@ export type EmailTeamSettingsDependencies = {
   settingsRepo?: IEmailTeamSettingsRepository
   resendFactory?: () => ReturnType<typeof assertResend>
   domainEvents?: IEmailTeamDomainEventRepository
+  /** Costura de teste como o `resendFactory`: o default consulta DNS/RDAP reais. */
+  domainExistence?: (name: string) => Promise<SendingDomainExistence>
 }
 
 export class EmailTeamSettingsUseCase {
@@ -173,6 +179,7 @@ export class EmailTeamSettingsUseCase {
   private readonly settingsRepo: IEmailTeamSettingsRepository
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly domainEvents: IEmailTeamDomainEventRepository
+  private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -187,6 +194,7 @@ export class EmailTeamSettingsUseCase {
     this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
+    this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
   }
 
   private composeResult(
@@ -433,6 +441,22 @@ export class EmailTeamSettingsUseCase {
           false,
           [],
           ["Já existe um domínio conectado. Remova o domínio atual antes de conectar outro."],
+          null
+        )
+      }
+
+      // Domínio digitado errado ou nunca registrado falha AQUI, no submit —
+      // não dias depois como "Falhou" na verificação assíncrona de DNS
+      // (incidente Gorrilhas, 01/09). `unknown` (resolver/RDAP fora do ar)
+      // segue em frente: indisponibilidade de rede não bloqueia domínio real.
+      const existence = await this.domainExistence(sanitizedDomainName)
+      if (existence === "not_registered") {
+        return new Output(
+          false,
+          [],
+          [
+            `O domínio "${sanitizedDomainName}" não existe ou ainda não foi registrado. Confira a grafia — o domínio precisa estar registrado antes de ser conectado.`,
+          ],
           null
         )
       }

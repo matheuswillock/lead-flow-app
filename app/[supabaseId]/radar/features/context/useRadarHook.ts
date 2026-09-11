@@ -20,6 +20,7 @@ import type {
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarRelatedLead,
   RadarSegment,
   RadarSegmentRules,
 } from "./RadarTypes"
@@ -58,6 +59,8 @@ export function useRadarHookFn() {
   const [isLoadingContracts, setIsLoadingContracts] = useState(false)
   const [profileForms, setProfileForms] = useState<RadarProfileFormItem[] | null>(null)
   const [isLoadingProfileForms, setIsLoadingProfileForms] = useState(false)
+  const [relatedLeads, setRelatedLeads] = useState<RadarRelatedLead[] | null>(null)
+  const [isLoadingRelatedLeads, setIsLoadingRelatedLeads] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
@@ -92,6 +95,7 @@ export function useRadarHookFn() {
   const touchpointsProfileIdRef = useRef<string | null>(null)
   const contractsProfileIdRef = useRef<string | null>(null)
   const formsProfileIdRef = useRef<string | null>(null)
+  const relatedLeadsProfileIdRef = useRef<string | null>(null)
   const deepLinkSegmentRef = useRef<string | null>(null)
   const [campaignDeepLinkSegment, setCampaignDeepLinkSegment] = useState<RadarSegment | null>(null)
 
@@ -193,6 +197,7 @@ export function useRadarHookFn() {
       setTouchpoints(null)
       setContracts(null)
       setProfileForms(null)
+      setRelatedLeads(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -220,9 +225,11 @@ export function useRadarHookFn() {
       touchpointsProfileIdRef.current = profileId
       contractsProfileIdRef.current = profileId
       formsProfileIdRef.current = profileId
+      relatedLeadsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
       setIsLoadingContracts(true)
       setIsLoadingProfileForms(true)
+      setIsLoadingRelatedLeads(true)
       void (async () => {
         try {
           const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
@@ -256,6 +263,21 @@ export function useRadarHookFn() {
           if (formsProfileIdRef.current === profileId) setIsLoadingProfileForms(false)
         }
       })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileRelatedLeads(
+            supabaseId,
+            activeTeamId,
+            profileId
+          )
+          if (relatedLeadsProfileIdRef.current !== profileId) return
+          setRelatedLeads(result.items)
+        } catch (relatedLeadsError) {
+          console.error("[useRadarHookFn][loadRelatedLeads]", relatedLeadsError)
+        } finally {
+          if (relatedLeadsProfileIdRef.current === profileId) setIsLoadingRelatedLeads(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -271,6 +293,8 @@ export function useRadarHookFn() {
     contractsProfileIdRef.current = null
     setProfileForms(null)
     formsProfileIdRef.current = null
+    setRelatedLeads(null)
+    relatedLeadsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -881,6 +905,8 @@ export function useRadarHookFn() {
     isLoadingContracts,
     profileForms,
     isLoadingProfileForms,
+    relatedLeads,
+    isLoadingRelatedLeads,
     previewSegmentContactList,
     materializeSegmentToContactList,
     promoteProfileToLead,

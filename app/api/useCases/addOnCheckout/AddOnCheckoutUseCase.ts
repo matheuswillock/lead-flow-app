@@ -2,7 +2,7 @@ import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
-import { asaas } from "@/lib/asaas";
+import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -130,7 +130,14 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       }
 
       if (pendingAction.paymentId) {
-        const existingPayment = await asaas(`/payments/${pendingAction.paymentId}`);
+        // Achado Codex (PR #1137, P2): pendingAction.asaasAccount é a conta
+        // PERSISTIDA no instante em que este paymentId nasceu — nunca o
+        // helper asaas() legado (sempre primary), que devolvia 404 para
+        // uma cobrança já criada na legacy (C33/E6).
+        const existingPaymentClient = createAsaasClient(pendingAction.asaasAccount);
+        const existingPayment = await existingPaymentClient.request(
+          `${existingPaymentClient.endpoints.payments}/${pendingAction.paymentId}`
+        );
         if (!existingPayment) {
           return new Output(false, [], ["Erro ao recuperar pagamento existente"], null);
         }
@@ -142,7 +149,9 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
           dueDate: existingPayment.dueDate,
         };
         if (existingPayment.billingType === "PIX") {
-          const pixData = await asaas(`/payments/${pendingAction.paymentId}/pixQrCode`);
+          const pixData = await existingPaymentClient.request(
+            `${existingPaymentClient.endpoints.payments}/${pendingAction.paymentId}/pixQrCode`
+          );
           if (pixData) {
             existingResponse.pix = {
               encodedImage: pixData.encodedImage,
@@ -206,7 +215,14 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       const paymentId = chargeResult.paymentId;
 
-      await pendingActionRepository.updatePaymentId(pendingActionId, paymentId);
+      // Achado Codex (PR #1137, P1): persiste a conta ONDE a cobrança
+      // nasceu de fato (a do master neste instante) — não deriva depois,
+      // porque o master pode migrar de conta (E4, checkout de operador).
+      await pendingActionRepository.updatePaymentId(
+        pendingActionId,
+        paymentId,
+        (pendingAction.master as { asaasCustomerAccount: AsaasAccountId }).asaasCustomerAccount
+      );
 
       const response: Record<string, unknown> = {
         paymentId: chargeResult.paymentId,
@@ -248,7 +264,10 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
   async checkPaymentStatus(pendingActionId: string): Promise<Output> {
     try {
-      const pendingAction = await pendingActionRepository.findByIdSimple(pendingActionId);
+      // E6 (C32/DA4): findApplicableById traz o master junto — precisamos
+      // da conta dele para rotear o GET e ter algo pra propagar ao aplicar
+      // a ação (findByIdSimple não carrega essa relação).
+      const pendingAction = await pendingActionRepository.findApplicableById(pendingActionId);
 
       if (!pendingAction) {
         return new Output(
@@ -273,7 +292,44 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         );
       }
 
-      const payment = await asaas(`/payments/${pendingAction.paymentId}`);
+      // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
+      // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
+      // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
+      // desde então (E4, checkout de operador migra o master de conta).
+      const account = pendingAction.asaasAccount;
+      let payment: { status?: string; value?: number; dueDate?: string } | null = null;
+
+      try {
+        const client = createAsaasClient(account);
+        payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
+          method: "GET",
+        });
+      } catch (error) {
+        // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
+        // pode virar "pendente para sempre" nem 500 — degrada para o
+        // status persistido pelo webhook (última verdade conhecida).
+        console.error(
+          "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
+          { pendingActionId, paymentId: pendingAction.paymentId, account, error }
+        );
+
+        const persistedStatus =
+          pendingAction.status === "applied"
+            ? "CONFIRMED"
+            : pendingAction.status === "canceled"
+              ? "CANCELED"
+              : "PENDING";
+
+        const degradedResponse: PaymentStatusResponse = {
+          paymentId: pendingAction.paymentId,
+          status: persistedStatus,
+          amount: null,
+          dueDate: null,
+          pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+        };
+
+        return new Output(true, [], [], degradedResponse);
+      }
 
       if (!payment) {
         return new Output(
@@ -292,15 +348,15 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId);
+        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, account);
         currentStatus = "applied";
       }
 
       const statusResponse: PaymentStatusResponse = {
         paymentId: pendingAction.paymentId,
-        status: payment.status,
-        amount: payment.value,
-        dueDate: payment.dueDate,
+        status: payment.status ?? "PENDING",
+        amount: payment.value ?? null,
+        dueDate: payment.dueDate ?? null,
         pendingActionStatus: currentStatus as "pending" | "applied" | "failed" | "canceled",
       };
 
@@ -347,10 +403,19 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       }
 
       if (pendingAction.paymentId) {
-        const payment = await asaas(`/payments/${pendingAction.paymentId}`);
+        // Mesmo achado Codex (PR #1137, P2) de createPayment: a conta
+        // persistida em pendingAction.asaasAccount, não o helper asaas()
+        // legado (sempre primary).
+        const billingTypeClient = createAsaasClient(pendingAction.asaasAccount);
+        const payment = await billingTypeClient.request(
+          `${billingTypeClient.endpoints.payments}/${pendingAction.paymentId}`
+        );
         const paymentStatus = String(payment?.status ?? "PENDING");
         if (paymentStatus === "PENDING") {
-          await asaas(`/payments/${pendingAction.paymentId}`, { method: "DELETE" });
+          await billingTypeClient.request(
+            `${billingTypeClient.endpoints.payments}/${pendingAction.paymentId}`,
+            { method: "DELETE" }
+          );
         }
       }
 
