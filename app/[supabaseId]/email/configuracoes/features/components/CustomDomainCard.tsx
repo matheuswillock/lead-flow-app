@@ -782,7 +782,7 @@ export function CustomDomainCard() {
                       checked={openTrackingDraft}
                       onCheckedChange={setOpenTrackingDraft}
                       disabled={configuringDomainTracking}
-                      className="max-lg:box-content max-lg:h-4 max-lg:w-8 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
+                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
                     />
                   </Field>
 
