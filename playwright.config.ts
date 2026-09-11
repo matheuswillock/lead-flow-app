@@ -27,7 +27,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 4 : 1,
+  // A CI roda na VPS self-hosted (2 vCPU): 4 workers ali disputam CPU com o
+  // `next start` e estouram os timeouts do dialog do CRM (crm.spec.ts) —
+  // medido em 10/09/2026, o spec falhou em 2 de 3 execuções com 4 workers.
+  // E2E_WORKERS permite ajustar sem editar este arquivo.
+  workers: process.env.E2E_WORKERS
+    ? Number(process.env.E2E_WORKERS)
+    : process.env.CI
+      ? 2
+      : 1,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   ...(includeSlow ? {} : { grepInvert: /@slow/ }),
   use: {
