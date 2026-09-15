@@ -402,6 +402,14 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     test("Revisão lista o motivo quando o agendamento vence durante o wizard", async ({ page }) => {
       const fixtures = await seedScheduleFixtures()
       try {
+        // Relógio fixo às 10:00 de hoje ANTES do primeiro goto: garante folga
+        // até a virada do dia para agendar à frente e depois vencer. Sem isso,
+        // uma execução às 23:58 faria "piso + 2 min" virar o dia e nascer no
+        // passado — exatamente o que o teste quer provocar só mais tarde.
+        const frozenNow = new Date()
+        frozenNow.setHours(10, 0, 0, 0)
+        await page.clock.setFixedTime(frozenNow)
+
         const dialog = await openWizardAtScheduleTab(page, fixtures, "E2E Piso Revisao")
         await selectTemplate(page, fixtures)
 
@@ -423,8 +431,9 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
         await expect(confirmButton).toBeEnabled()
         await expect(dialog.getByText("Pendências para confirmar")).toHaveCount(0)
 
-        // O relógio avança e o agendamento vence com o wizard aberto.
-        await page.clock.setFixedTime(new Date(Date.now() + 10 * 60 * 1000))
+        // O relógio avança e o agendamento vence com o wizard aberto. O salto é
+        // relativo ao tempo congelado, não ao relógio real do processo de teste.
+        await page.clock.setFixedTime(new Date(frozenNow.getTime() + 10 * 60 * 1000))
         // Volta e avança de aba para forçar o re-render agora, em vez de
         // esperar o tick do piso — o assert é sobre o conteúdo, não a cadência.
         await dialog.getByRole("tab", { name: "Sub-campanhas" }).click()
