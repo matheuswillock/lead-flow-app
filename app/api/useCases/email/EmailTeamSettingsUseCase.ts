@@ -19,8 +19,8 @@ import {
   checkSendingDomainExistence,
   type SendingDomainExistence,
 } from "@/lib/email/sending-domain-existence"
-import { resolveDomainDnsProviderSafely } from "@/lib/email/cached-domain-dns-provider"
-import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
+import { DnsProviderLookupService } from "@/app/api/services/email/DnsProviderLookupService"
+import type { IDnsProviderLookupService } from "@/app/api/services/email/IDnsProviderLookupService"
 import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
@@ -173,7 +173,7 @@ export type EmailTeamSettingsDependencies = {
   /** Costura de teste como o `resendFactory`: o default consulta DNS/RDAP reais. */
   domainExistence?: (name: string) => Promise<SendingDomainExistence>
   /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
-  dnsProviderLookup?: (domainName: string) => Promise<DnsProviderMatch | null>
+  dnsProviderLookupService?: IDnsProviderLookupService
 }
 
 export class EmailTeamSettingsUseCase {
@@ -184,7 +184,7 @@ export class EmailTeamSettingsUseCase {
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
-  private readonly dnsProviderLookup: (domainName: string) => Promise<DnsProviderMatch | null>
+  private readonly dnsProviderLookupService: IDnsProviderLookupService
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -200,7 +200,8 @@ export class EmailTeamSettingsUseCase {
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
-    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? resolveDomainDnsProviderSafely
+    this.dnsProviderLookupService =
+      dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
   }
 
   private composeResult(
@@ -602,7 +603,7 @@ export class EmailTeamSettingsUseCase {
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
         // Momento em que o operador mais precisa saber qual painel abrir.
-        dnsProvider: await this.dnsProviderLookup(data.name),
+        dnsProvider: await this.dnsProviderLookupService.lookupDnsProvider(data.name),
         connectedAt: connectedAt.toISOString(),
         // Mesma fonte que `saveConnectedDomain` logo acima — a resposta não tem
         // como divergir do que foi gravado. Antes eram dois literais soltos, e
@@ -922,7 +923,7 @@ export class EmailTeamSettingsUseCase {
 
       const [domainEvents, dnsProvider] = await Promise.all([
         this.domainEvents.listEvents(ctx.teamId),
-        this.dnsProviderLookup(data.name),
+        this.dnsProviderLookupService.lookupDnsProvider(data.name),
       ])
 
       return new Output(true, [], [], {

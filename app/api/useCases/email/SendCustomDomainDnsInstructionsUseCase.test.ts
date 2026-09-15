@@ -9,6 +9,7 @@ import type {
   SendDnsInstructionsEmailInput,
 } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import type { assertResend } from "@/lib/email"
+import type { IDnsProviderLookupService } from "@/app/api/services/email/IDnsProviderLookupService"
 import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import { SendCustomDomainDnsInstructionsUseCase } from "./SendCustomDomainDnsInstructionsUseCase"
 
@@ -64,12 +65,16 @@ const dnsProviderLookupMock = mock(
   async (_domainName: string): Promise<DnsProviderMatch | null> => null
 )
 
+function buildDnsProviderLookupService(): IDnsProviderLookupService {
+  return { lookupDnsProvider: dnsProviderLookupMock }
+}
+
 function buildUseCase(settings: EmailTeamSettingsRecord | null = CONNECTED_SETTINGS) {
   return new SendCustomDomainDnsInstructionsUseCase({
     settingsRepo: buildSettingsRepository(settings),
     resendFactory: buildResend,
     mailService: buildMailService(),
-    dnsProviderLookup: dnsProviderLookupMock,
+    dnsProviderLookupService: buildDnsProviderLookupService(),
   })
 }
 
