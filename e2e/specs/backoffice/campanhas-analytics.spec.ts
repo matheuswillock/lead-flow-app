@@ -353,6 +353,82 @@ test.describe("app/backoffice/(app)/campanhas-analytics", () => {
     }
   });
 
+  test("Exportar tudo — primeira opção do menu, baixa um XLSX completo com filename campanhas_completo_<from>_<to>", async ({
+    page,
+  }) => {
+    await page.goto("/backoffice/campanhas-analytics");
+    await expect(page.getByRole("button", { name: "Atualizar" })).toBeEnabled({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Exportar/ }).click();
+    const items = await page.getByRole("menuitem").all();
+    expect(await items[0]?.textContent()).toContain("Exportar tudo");
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: /Exportar tudo/ }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/^campanhas_completo_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
+  });
+
+  test("Exportar tudo — bloqueia com mensagem clara quando o período aplicado excede 30 dias (teto de 92 continua liberado)", async ({
+    page,
+  }) => {
+    await page.goto("/backoffice/campanhas-analytics");
+    await expect(page.getByRole("button", { name: "Atualizar" })).toBeEnabled({ timeout: 30_000 });
+
+    // Amplia o período para >30 dias (acima do teto do export completo, dentro
+    // do teto geral de 92 da tela) clicando dois botões de dia reais do
+    // calendário — lidos do DOM em vez de calculados offline, para não
+    // depender de qual(is) mês(es) o Calendar abre por padrão nem do dia real
+    // em que o teste roda. Seletor `button[data-day]`, não `[data-day]`: o
+    // `<td role="gridcell">` que react-day-picker usa como wrapper também tem
+    // seu próprio `data-day` (formato ISO), diferente do `data-day` que
+    // `CalendarDayButton` põe no `<button>` real via `toLocaleDateString()` —
+    // um seletor genérico casa os dois e um clique no `<td>` não aciona nada.
+    await page.getByRole("button", { name: /Período/ }).click();
+    // A view padrão mostra o mês de "hoje" + o seguinte (futuro, todo
+    // desabilitado) — sobra só ~2 semanas de dias habilitados, não o
+    // suficiente para >30 dias. Voltar 1 mês traz um mês inteiro no passado
+    // (todo habilitado) + a metade já decorrida do mês de "hoje".
+    await page.locator(".rdp-button_previous").click();
+    const enabledDayButtons = page.locator("button[data-day]:not([disabled])");
+    await expect(enabledDayButtons.first()).toBeVisible({ timeout: 10_000 });
+
+    const sortedDays = (
+      await enabledDayButtons.evaluateAll((elements) =>
+        elements.map((element) => {
+          const attr = element.getAttribute("data-day") ?? "";
+          return { attr, time: new Date(attr).getTime() };
+        })
+      )
+    ).sort((a, b) => a.time - b.time);
+
+    const start = sortedDays[0];
+    const end = sortedDays.find((day) => {
+      const diffDays = (day.time - start.time) / 86_400_000;
+      return diffDays >= 31 && diffDays <= 92;
+    });
+    expect(end, "calendário visível não cobre um span entre 31 e 92 dias a partir do primeiro dia habilitado").toBeTruthy();
+
+    await page.locator(`button[data-day="${start.attr}"]`).click();
+    await page.locator(`button[data-day="${end!.attr}"]`).click();
+    await page.keyboard.press("Escape");
+
+    const summaryResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/backoffice/campanhas-analytics/summary") && response.request().method() === "GET"
+    );
+    await page.getByRole("button", { name: "Atualizar" }).click();
+    await summaryResponse;
+
+    await page.getByRole("button", { name: /Exportar/ }).click();
+    await expect(
+      page.getByText("O export completo não pode ultrapassar 30 dias — selecione um intervalo menor.")
+    ).toBeVisible();
+
+    const exportAllItem = page.getByRole("menuitem", { name: /Exportar tudo/ });
+    await expect(exportAllItem).toHaveAttribute("aria-disabled", "true");
+  });
+
   test("T-11.13 — fluxo completo: filtrar time+período, Atualizar, KPIs mudam, exportar CSV", async ({ page }) => {
     await page.goto("/backoffice/campanhas-analytics");
     await expect(page.getByRole("button", { name: "Atualizar" })).toBeEnabled({ timeout: 30_000 });
