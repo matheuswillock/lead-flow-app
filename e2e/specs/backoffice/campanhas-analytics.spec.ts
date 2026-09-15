@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
+import * as XLSX from "xlsx";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { disconnectPrisma, getPrisma } from "../../support/db";
 
@@ -367,6 +368,17 @@ test.describe("app/backoffice/(app)/campanhas-analytics", () => {
     await page.getByRole("menuitem", { name: /Exportar tudo/ }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^campanhas_completo_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
+
+    // Não basta o filename: o corpo tem que ser um XLSX válido de verdade —
+    // um `NextResponse` que serializasse `XLSX.write(...)` errado (ex.: como
+    // texto em vez de bytes) passaria no assert de filename acima e ainda
+    // assim entregaria um arquivo corrompido que o Excel não abre.
+    const downloadedPath = await download.path();
+    const workbook = XLSX.readFile(downloadedPath!);
+    expect(workbook.SheetNames).toEqual(["Resumo", "Disparos", "Templates", "Formulários", "Série diária"]);
+    const resumo = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Resumo, { header: 1 });
+    expect(resumo[0]).toEqual(["Métrica", "Valor"]);
+    expect(resumo.some((row) => row[0] === "Disparos")).toBe(true);
   });
 
   test("Exportar tudo — bloqueia com mensagem clara quando o período aplicado excede 30 dias (teto de 92 continua liberado)", async ({
