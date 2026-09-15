@@ -276,6 +276,18 @@
 }
 /* TOKENS:DARK:END */
 
+/* Botão primary com contraste garantido, fora de --primary/--primary-foreground
+   (esses dois não devem mudar — ver histórico do CTA da landing). Usado pelo
+   variant "default" de components/ui/button.tsx em todo o app. */
+:root {
+  --btn-primary-bg: #df4204;
+  --btn-primary-foreground: #ffffff;
+}
+.dark {
+  --btn-primary-bg: #df4204;
+  --btn-primary-foreground: #ffffff;
+}
+
 /* Basic base styles */
 *, *::before, *::after { box-sizing: border-box; }
 body { 
@@ -352,6 +364,15 @@ h1, h2, h3, h4, h5, h6 {
 
 
 @layer components {
+  .btn-primary-accessible {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-foreground);
+  }
+
+  .btn-primary-accessible:hover {
+    filter: brightness(0.92);
+  }
+
   .tiptap .lead-flow-email-node {
     border: 1px solid color-mix(in oklab, var(--primary) 34%, var(--border));
     border-radius: 8px;
@@ -457,9 +478,9 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .landing-primary-cta {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--primary) 60%, transparent);
+    background: var(--landing-cta-bg);
+    color: var(--landing-cta-foreground);
+    box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--landing-cta-bg) 60%, transparent);
   }
 
   .landing-secondary-cta {
@@ -534,6 +555,8 @@ h1, h2, h3, h4, h5, h6 {
   --border: color-mix(in oklab, #141118 9%, transparent);
   --input: color-mix(in oklab, #141118 14%, transparent);
   --ring: #fb5c1e;
+  --landing-cta-bg: #df4204;
+  --landing-cta-foreground: #fefefe;
   --semantic-warning: #ff8a3d;
   --semantic-danger: #e24e0c;
   --semantic-success: #0b9e88;
@@ -1248,6 +1271,10 @@ h1, h2, h3, h4, h5, h6 {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
   }
 }
 
