@@ -39,6 +39,7 @@ export class CustomDomainDnsInstructionsMailService
     const content = buildDnsInstructionsEmailContent({
       domainName: input.domainName,
       records: input.records,
+      providerName: input.providerName,
     })
 
     const result = await this.dispatchTrackedEmail({
