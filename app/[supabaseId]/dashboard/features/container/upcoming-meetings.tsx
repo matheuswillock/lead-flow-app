@@ -34,8 +34,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { useDashboardContext } from "../context/DashboardContext"
-import type { DashboardTeamScope } from "../context/DashboardTypes"
 import { cn } from "@/lib/utils"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
@@ -65,12 +63,19 @@ const SCHEDULES_CACHE_TTL_MS = 60 * 1000
 const schedulesCacheByKey = new Map<string, { data: ScheduleData[]; timestamp: number }>()
 const schedulesInFlightByKey = new Map<string, Promise<ScheduleData[]>>()
 
+/**
+ * O widget mostra a agenda de TODOS os times em que o usuário é membro —
+ * inclusive de masters diferentes, o que o escopo "all" do dashboard (times do
+ * master do time ativo) não alcança. Independe do seletor de escopo das
+ * métricas: ao entrar, o usuário vê a agenda inteira dele.
+ */
+const SCHEDULES_TEAM_SCOPE = "member-all"
+
 async function getSchedulesWithDedupe(
   supabaseId: string,
   teamId: string,
-  teamScope: DashboardTeamScope,
 ): Promise<ScheduleData[]> {
-  const requestKey = `${supabaseId}:${teamId}:${teamScope}`
+  const requestKey = `${supabaseId}:${teamId}:${SCHEDULES_TEAM_SCOPE}`
   const now = Date.now()
   const cached = schedulesCacheByKey.get(requestKey)
 
@@ -84,10 +89,7 @@ async function getSchedulesWithDedupe(
   }
 
   const requestPromise = (async (): Promise<ScheduleData[]> => {
-    const params = new URLSearchParams()
-    if (teamScope === "all") {
-      params.set("teamScope", "all")
-    }
+    const params = new URLSearchParams({ teamScope: SCHEDULES_TEAM_SCOPE })
 
     const response = await fetch(`${API_CLIENT_BASE}/dashboard/schedules?${params.toString()}`, {
       headers: {
@@ -126,12 +128,16 @@ async function getSchedulesWithDedupe(
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
   const { tz } = useTimezone()
   const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
-  const { teamScope } = useDashboardContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
-  const showTeamColumn = teamScope === "all"
+  // Com a agenda multi-time, a coluna de time vem do próprio resultado: ela só
+  // informa algo quando há reunião de mais de um time no dia.
+  const showTeamColumn = React.useMemo(
+    () => new Set(schedules.map((schedule) => schedule.teamId)).size > 1,
+    [schedules],
+  )
 
   React.useEffect(() => {
     let isCancelled = false
@@ -153,7 +159,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       try {
         setIsLoading(true)
         setError(null)
-        const nextSchedules = await getSchedulesWithDedupe(supabaseId, activeTeamId, teamScope)
+        const nextSchedules = await getSchedulesWithDedupe(supabaseId, activeTeamId)
         if (isCancelled) return
         setSchedules(nextSchedules)
         setError(null)
@@ -173,7 +179,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
     return () => {
       isCancelled = true
     }
-  }, [supabaseId, activeTeamId, isTeamLoading, teamScope])
+  }, [supabaseId, activeTeamId, isTeamLoading])
 
   const getInitials = (name: string) => {
     const names = name.split(' ')
