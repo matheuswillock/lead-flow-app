@@ -23,6 +23,12 @@ export function formatCsvRate(value: number | null): string {
   return `${(value * 100).toFixed(1).replace(".", ",")}%`
 }
 
+/** `finalScore` = leads por 1.000 enviados — não é fração 0–1, nunca formata como "%". `null` vira célula vazia. */
+export function formatCsvScore(value: number | null): string {
+  if (value === null) return ""
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 export function formatCsvDateTime(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`

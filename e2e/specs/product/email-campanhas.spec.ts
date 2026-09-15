@@ -12,9 +12,11 @@ import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
   CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
 } from "@/lib/email/campaign-dispatch-copy"
+import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
+import { runResponsiveChecks } from "../../support/responsive"
 
 test.describe("app/[supabaseId]/email/campanhas", () => {
   test.setTimeout(60_000)
@@ -23,9 +25,12 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     const profile = await findE2eMasterProfile()
     expect(profile, "Seed E2E ausente — rode `bun run db:seed:e2e`").not.toBeNull()
     await injectE2eAuthCookie(context)
-    await context.addInitScript((supabaseId: string) => {
-      window.localStorage.setItem(`whats-new:seen:v1:${supabaseId}`, "true")
-    }, E2E_MASTER_SUPABASE_ID)
+    await context.addInitScript(
+      ({ supabaseId, version }: { supabaseId: string; version: string }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true")
+      },
+      { supabaseId: E2E_MASTER_SUPABASE_ID, version: WHATS_NEW_VERSION }
+    )
   })
 
   test.afterAll(async () => {
@@ -41,6 +46,8 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     })
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
     await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeVisible()
+
+    await runResponsiveChecks(page)
   })
 
   test("AlertDialog de cancelar envio avisa que não enviados não saem", async ({ page }) => {
@@ -371,6 +378,272 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       } finally {
         await prisma.emailCampaign.deleteMany({ where: { id: { in: [subId, parentId] } } })
         await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+      }
+    })
+  })
+
+  /**
+   * Piso "agora" no agendamento do wizard.
+   *
+   * Bug 2026-09-15: o `DateTimePicker` aceitava data/hora no passado sem
+   * resistência (o default "10:00" nascia vencido quando o wizard abria depois
+   * das 10h) e a invalidação só aparecia no submit — botão desabilitado, sem
+   * motivo visível em lugar nenhum. Os asserts abaixo medem o DOM
+   * (`data-disabled`, `min`, `value`), não a aparência.
+   */
+  test.describe("agendamento não aceita passado", () => {
+    /**
+     * Nomes únicos por execução: o time E2E é compartilhado entre workers, e
+     * sobra de uma execução anterior derrubava o seletor por strict mode.
+     */
+    type ScheduleFixtures = {
+      templateId: string
+      listId: string
+      listName: string
+      templateName: string
+    }
+
+    async function seedScheduleFixtures(): Promise<ScheduleFixtures> {
+      const profile = await findE2eMasterProfile()
+      if (!profile?.activeTeamId) throw new Error("Seed E2E sem time ativo")
+
+      const prisma = getPrisma()
+      const templateId = randomUUID()
+      const listId = randomUUID()
+      const suffix = templateId.slice(0, 8)
+      const listName = `E2E Lista Piso ${suffix}`
+      const templateName = `E2E Template Piso ${suffix}`
+
+      await prisma.emailTemplate.create({
+        data: {
+          id: templateId,
+          versionGroupId: templateId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: templateName,
+          subject: "Assunto E2E piso",
+          html: "<p>Olá</p>",
+          status: "published",
+          isCurrentPublished: true,
+          approvalStatus: "approved",
+          publishedAt: new Date(),
+          versionNumber: 1,
+        },
+      })
+      await prisma.emailContactList.create({
+        data: {
+          id: listId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: listName,
+          totalContacts: 2,
+        },
+      })
+      await prisma.emailContact.createMany({
+        data: [
+          { listId, email: "piso-a@e2e.agenda.test", name: "Piso A" },
+          { listId, email: "piso-b@e2e.agenda.test", name: "Piso B" },
+        ],
+      })
+
+      return { templateId, listId, listName, templateName }
+    }
+
+    async function cleanupScheduleFixtures({ templateId, listId }: ScheduleFixtures) {
+      const prisma = getPrisma()
+      await prisma.emailContact.deleteMany({ where: { listId } }).catch(() => {})
+      await prisma.emailContactList.delete({ where: { id: listId } }).catch(() => {})
+      await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+    }
+
+    /** Leva o wizard até a aba Sub-campanhas, onde vive o picker de agendamento. */
+    async function openWizardAtScheduleTab(
+      page: Page,
+      fixtures: ScheduleFixtures,
+      campaignName: string
+    ) {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeVisible({
+        timeout: 30_000,
+      })
+      const dialog = page.getByRole("dialog")
+      // O botão renderiza antes da hidratação: um clique que chega cedo demais
+      // não tem handler e se perde em silêncio. Repete até o wizard montar, em
+      // vez de esperar um tempo fixo e torcer.
+      await expect(async () => {
+        await page.getByRole("button", { name: /Nova Campanha/i }).click()
+        await expect(dialog).toBeVisible({ timeout: 3_000 })
+      }).toPass({ timeout: 45_000 })
+
+      await page.getByLabel("Nome da campanha *").fill(campaignName)
+      await page.getByRole("button", { name: "Próxima" }).click()
+
+      const listOption = page.getByText(fixtures.listName, { exact: false })
+      await expect(listOption).toBeVisible({ timeout: 30_000 })
+      await listOption.click()
+      await page.getByRole("button", { name: "Próxima" }).click()
+
+      await expect(dialog.locator("#date-picker")).toBeVisible({ timeout: 30_000 })
+      return dialog
+    }
+
+    async function selectTemplate(page: Page, fixtures: ScheduleFixtures) {
+      await page.getByRole("combobox").first().click()
+      await page.getByRole("option", { name: fixtures.templateName }).click()
+    }
+
+    /** Dia de hoje no calendário, em ISO — o `td` expõe `data-day`/`data-today`. */
+    async function readTodayDateKey(page: Page): Promise<string> {
+      const key = await page
+        .locator('td[data-day][data-today="true"]')
+        .first()
+        .getAttribute("data-day")
+      expect(key, "calendário deve marcar o dia de hoje").toBeTruthy()
+      return key as string
+    }
+
+    function shiftDateKey(dateKey: string, days: number): string {
+      const [year, month, day] = dateKey.split("-").map(Number)
+      const shifted = new Date(Date.UTC(year, month - 1, day + days))
+      return shifted.toISOString().slice(0, 10)
+    }
+
+    function subtractOneMinute(time: string): string {
+      const [hours, minutes] = time.split(":").map(Number)
+      const total = hours * 60 + minutes - 1
+      const normalized = (total + 24 * 60) % (24 * 60)
+      return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(
+        normalized % 60
+      ).padStart(2, "0")}`
+    }
+
+    test("calendário desabilita dias passados e o horário default nunca nasce vencido", async ({
+      page,
+    }) => {
+      const fixtures = await seedScheduleFixtures()
+      try {
+        const dialog = await openWizardAtScheduleTab(page, fixtures, "E2E Piso Calendario")
+
+        await dialog.locator("#date-picker").click()
+        const todayKey = await readTodayDateKey(page)
+        const yesterdayKey = shiftDateKey(todayKey, -1)
+
+        // MEDIDO no DOM: o dia anterior está desabilitado, hoje continua aberto.
+        await expect(page.locator(`td[data-day="${yesterdayKey}"]`)).toHaveAttribute(
+          "data-disabled",
+          "true"
+        )
+        await expect(page.locator(`td[data-day="${todayKey}"]`)).not.toHaveAttribute(
+          "data-disabled",
+          "true"
+        )
+
+        await page.locator(`td[data-day="${todayKey}"] button`).click()
+
+        // Ao escolher hoje, o piso entra como `min` e o default ("10:00") é
+        // empurrado para frente em vez de nascer vencido.
+        const timeInput = dialog.locator("#time-picker")
+        const min = await timeInput.getAttribute("min")
+        expect(min, "hoje deve receber piso de horário").toMatch(/^\d{2}:\d{2}$/)
+        const value = await timeInput.inputValue()
+        expect(
+          value >= (min as string),
+          `horário default ${value} não pode ser anterior ao piso ${min}`
+        ).toBe(true)
+
+        // O calendário segue aberto depois de escolher um dia — clicar de novo
+        // no trigger fecharia o popover e destacaria as células do DOM.
+        await page.locator(`td[data-day="${shiftDateKey(todayKey, 1)}"] button`).click()
+
+        // Dia posterior ao piso não recebe restrição de horário.
+        await expect(timeInput).not.toHaveAttribute("min", /.*/)
+      } finally {
+        await cleanupScheduleFixtures(fixtures)
+      }
+    })
+
+    test("wizard de agendamento passa nas checagens responsivas", async ({ page }) => {
+      const fixtures = await seedScheduleFixtures()
+      try {
+        await openWizardAtScheduleTab(page, fixtures, "E2E Piso Responsivo")
+
+        await runResponsiveChecks(page)
+      } finally {
+        await cleanupScheduleFixtures(fixtures)
+      }
+    })
+
+    test("horário vencido é apontado no campo com mensagem inline", async ({ page }) => {
+      const fixtures = await seedScheduleFixtures()
+      try {
+        const dialog = await openWizardAtScheduleTab(page, fixtures, "E2E Piso Inline")
+
+        await dialog.locator("#date-picker").click()
+        const todayKey = await readTodayDateKey(page)
+        await page.locator(`td[data-day="${todayKey}"] button`).click()
+
+        const timeInput = dialog.locator("#time-picker")
+        const min = (await timeInput.getAttribute("min")) as string
+        await timeInput.fill(subtractOneMinute(min))
+
+        // O campo vencido se explica sozinho — nunca só o botão apagado.
+        await expect(dialog.getByRole("alert").filter({ hasText: "Horário já passou" })).toBeVisible()
+        await expect(timeInput).toHaveAttribute("aria-invalid", "true")
+        await expect(dialog.locator("#date-picker")).toHaveAttribute("aria-invalid", "true")
+      } finally {
+        await cleanupScheduleFixtures(fixtures)
+      }
+    })
+
+    test("Revisão lista o motivo quando o agendamento vence durante o wizard", async ({ page }) => {
+      const fixtures = await seedScheduleFixtures()
+      try {
+        // Relógio fixo às 10:00 de hoje ANTES do primeiro goto: garante folga
+        // até a virada do dia para agendar à frente e depois vencer. Sem isso,
+        // uma execução às 23:58 faria "piso + 2 min" virar o dia e nascer no
+        // passado — exatamente o que o teste quer provocar só mais tarde.
+        const frozenNow = new Date()
+        frozenNow.setHours(10, 0, 0, 0)
+        await page.clock.setFixedTime(frozenNow)
+
+        const dialog = await openWizardAtScheduleTab(page, fixtures, "E2E Piso Revisao")
+        await selectTemplate(page, fixtures)
+
+        await dialog.locator("#date-picker").click()
+        const todayKey = await readTodayDateKey(page)
+        await page.locator(`td[data-day="${todayKey}"] button`).click()
+
+        // Agenda poucos minutos à frente: válido agora, vencido depois do salto.
+        const timeInput = dialog.locator("#time-picker")
+        const min = (await timeInput.getAttribute("min")) as string
+        const [hours, minutes] = min.split(":").map(Number)
+        const soon = new Date(Date.UTC(2000, 0, 1, hours, minutes + 2))
+        await timeInput.fill(
+          `${String(soon.getUTCHours()).padStart(2, "0")}:${String(soon.getUTCMinutes()).padStart(2, "0")}`
+        )
+
+        await page.getByRole("button", { name: "Próxima" }).click()
+        const confirmButton = dialog.getByRole("button", { name: /Segure para confirmar/ })
+        await expect(confirmButton).toBeEnabled()
+        await expect(dialog.getByText("Pendências para confirmar")).toHaveCount(0)
+
+        // O relógio avança e o agendamento vence com o wizard aberto. O salto é
+        // relativo ao tempo congelado, não ao relógio real do processo de teste.
+        await page.clock.setFixedTime(new Date(frozenNow.getTime() + 10 * 60 * 1000))
+        // Volta e avança de aba para forçar o re-render agora, em vez de
+        // esperar o tick do piso — o assert é sobre o conteúdo, não a cadência.
+        await dialog.getByRole("tab", { name: "Sub-campanhas" }).click()
+        await dialog.getByRole("tab", { name: "Revisão" }).click()
+
+        await expect(dialog.getByText("Pendências para confirmar")).toBeVisible()
+        await expect(
+          dialog.getByText("Data de agendamento deve ser no futuro")
+        ).toBeVisible()
+        await expect(confirmButton).toBeDisabled()
+      } finally {
+        await cleanupScheduleFixtures(fixtures)
       }
     })
   })

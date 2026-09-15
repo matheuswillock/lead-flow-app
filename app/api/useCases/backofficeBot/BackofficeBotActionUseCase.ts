@@ -8,6 +8,7 @@ import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
 import { listTasksUseCase } from "@/app/api/useCases/task/ListTasksUseCase";
 import { hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { resolveStudioBotTeamAccess } from "@/lib/studio-bot/team-access";
+import type { TeamScopeVisibility } from "@/lib/teams/teamScopeVisibility";
 import type { IBackofficeBotActionUseCase } from "./IBackofficeBotActionUseCase";
 
 type CachedActionOutput = {
@@ -16,6 +17,22 @@ type CachedActionOutput = {
   errorMessages: string[];
   result: unknown;
 };
+
+/**
+ * O bot opera num unico time — o da conversa — e sempre enxergou a agenda do
+ * time inteiro. O escopo `member-all` das telas nao se aplica aqui: manter o
+ * comportamento legado deste canal e proposital.
+ */
+function buildBotTeamVisibility(access: {
+  teamId: string;
+  profileId: string;
+}): TeamScopeVisibility {
+  return {
+    fullVisibilityTeamIds: [access.teamId],
+    ownOnlyTeamIds: [],
+    ownerProfileId: access.profileId,
+  };
+}
 
 function readCachedActionOutput(payload: unknown): CachedActionOutput | null {
   if (!payload || typeof payload !== "object") return null;
@@ -228,7 +245,7 @@ export class BackofficeBotActionUseCase implements IBackofficeBotActionUseCase {
       case "list_tasks": {
         const now = new Date();
         return listTasksUseCase.execute({
-          teamId: access.teamId,
+          visibility: buildBotTeamVisibility(access),
           dateFrom: typeof params.dateFrom === "string" ? new Date(params.dateFrom) : now,
           dateTo:
             typeof params.dateTo === "string"
@@ -240,7 +257,7 @@ export class BackofficeBotActionUseCase implements IBackofficeBotActionUseCase {
       case "team_digest": {
         const counts = await studioBotActionRepository.getTeamDigestCounts(access.teamId);
         const tasks = await listTasksUseCase.execute({
-          teamId: access.teamId,
+          visibility: buildBotTeamVisibility(access),
           dateFrom: new Date(),
           dateTo: new Date(Date.now() + 24 * 60 * 60 * 1000),
         });
