@@ -12,6 +12,7 @@ import { buildResendTrackingTags } from "@/lib/email/build-resend-tracking-tags"
 import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger";
 import { resolveTransactionalQuotaFailure } from "@/lib/email/resend-quota-incident";
 import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
+import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -661,7 +662,7 @@ export class EmailService {
         attachments?: Attachment[]
         tags?: Array<{ name: string; value: string }>
       } = {
-        from: options.from || "Corretor Studio <no-reply@corretorstudio.com>",
+        from: options.from || PLATFORM_FROM_HEADER,
         to: effectiveTestMode ? [resendOwnerEmail!] : options.to,
         subject: effectiveTestMode 
           ? `[TESTE - Para: ${options.to.join(', ')}] ${options.subject}`
@@ -2314,7 +2315,7 @@ export class EmailService {
       subject: "Finalize sua adesão no Corretor Studio",
       html,
       text: `Olá, ${data.userName}.\n\nSeu link para finalizar a adesão está pronto: ${data.checkoutUrl}\n\nValidade: ${expiresAt}\n`,
-      from: "Corretor Studio <no-reply@corretorstudio.com>",
+      from: PLATFORM_FROM_HEADER,
     })
   }
 

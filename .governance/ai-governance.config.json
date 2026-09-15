@@ -314,7 +314,6 @@
       "app/[supabaseId]/dashboard/page.tsx",
       "app/[supabaseId]/docs/page.tsx",
       "app/[supabaseId]/email/campanhas/page.tsx",
-      "app/[supabaseId]/email/configuracoes/page.tsx",
       "app/[supabaseId]/email/contatos/page.tsx",
       "app/[supabaseId]/email/descadastro/page.tsx",
       "app/[supabaseId]/email/historico/page.tsx",
@@ -421,7 +420,6 @@
       "e2e/specs/backoffice/member-access-copy-link.spec.ts",
       "e2e/specs/backoffice/pricing.spec.ts",
       "e2e/specs/product/email-campanhas.spec.ts",
-      "e2e/specs/product/email-configuracoes.spec.ts",
       "e2e/specs/product/radar.spec.ts",
       "e2e/specs/public/adquirir/creditos.spec.ts",
       "e2e/specs/public/home.spec.ts",
@@ -430,6 +428,7 @@
   },
   "e2ePageCoverage": {
     "coveredBy": {
+      "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
       "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"

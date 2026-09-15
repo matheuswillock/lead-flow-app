@@ -338,6 +338,7 @@ export function SenderCard() {
               </div>
               <Button
                 type="button"
+                className="max-lg:h-11"
                 onClick={() => {
                   clearSenderErrorMessage()
                   setAdding((current) => !current)

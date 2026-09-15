@@ -84,10 +84,6 @@ export class ResendWebhookUseCase {
     if (eventType) {
       let log = await emailLogRepository.findByResendEmailId(resendEmailId)
 
-      if (!log) {
-        log = await emailLogRepository.findByResendEmailId(resendEmailId)
-      }
-
       // Sem whitelist de tipo: a antiga excluía justamente os eventos de
       // conformidade (complained/unsubscribed/delivery_delayed/failed), que
       // sumiam sem rastro quando o EmailLog ainda não existia. O `eventType`
