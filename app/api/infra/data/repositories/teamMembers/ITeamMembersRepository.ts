@@ -71,6 +71,17 @@ export interface TeamMemberRoleAndFunctions {
   functions: UserFunction[];
 }
 
+/**
+ * Membership do perfil num time, com o papel e as funcoes que ele exerce ALI.
+ *
+ * Base do escopo "member-all" das agendas (Calendario e widget do Dashboard):
+ * os times saem das proprias memberships do perfil, inclusive de masters
+ * diferentes, e o papel e avaliado time a time.
+ */
+export interface ProfileTeamMembership extends TeamMemberRoleAndFunctions {
+  teamId: string;
+}
+
 export interface TeamMemberTransferAuthorization {
   role: UserRole;
   canTransferAccountLeads: boolean;
@@ -87,6 +98,8 @@ export interface ITeamMembersRepository {
   findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
   /** Papel e funcoes do membro, para decisoes de permissao no dominio de leads. */
   findRoleAndFunctions(teamId: string, profileId: string): Promise<TeamMemberRoleAndFunctions | null>;
+  /** Memberships ativas do perfil (todos os times, de qualquer master), para o escopo "member-all". */
+  findMembershipsByProfile(profileId: string): Promise<ProfileTeamMembership[]>;
   /** Papel e permissao de transferencia, para autorizar transferencia de lead. */
   findTransferAuthorization(teamId: string, profileId: string): Promise<TeamMemberTransferAuthorization | null>;
   /** Membros do time nos papeis informados, para destinatarios de notificacao. */

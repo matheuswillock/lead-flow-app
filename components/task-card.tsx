@@ -249,7 +249,7 @@ export function TaskCard({
                   variant="ghost"
                   size="icon"
                   data-no-card-open="true"
-                  className="size-7 shrink-0"
+                  className="size-7 max-lg:size-11 shrink-0"
                   disabled={updatingStatus || canceling}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -358,6 +358,7 @@ export function TaskCard({
               size="sm"
               variant="outline"
               data-no-card-open="true"
+              className="max-lg:h-11"
               disabled={updatingStatus || canceling || !canMarkDone}
               onClick={(e) => {
                 e.stopPropagation()

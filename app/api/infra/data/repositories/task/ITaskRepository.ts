@@ -1,4 +1,5 @@
 import type { Task, TaskAssignee, TaskAssigneeStatus } from "@prisma/client";
+import type { TeamScopeVisibility } from "@/lib/teams/teamScopeVisibility";
 
 export type TaskWithRelations = Task & {
   lead: { id: string; name: string; leadCode: string };
@@ -32,8 +33,9 @@ export type CreateActivityDTO = {
   assigneeProfileIds: string[];
 };
 
-export type TaskByDateFilter = {
-  teamId: string;
+export type TaskTeamScopeDateFilter = {
+  /** Times do escopo e restricao de papel POR TIME — ver `TeamScopeVisibility`. */
+  visibility: TeamScopeVisibility;
   dateFrom?: Date;
   dateTo?: Date;
   leadId?: string;
@@ -45,7 +47,7 @@ export type AssigneeWithGoogleSync = TaskAssignee & {
 
 export interface ITaskRepository {
   createActivityAndTask(dto: CreateTaskDTO & { activityDto: CreateActivityDTO }): Promise<TaskWithRelations>;
-  findByTeamAndDateRange(filter: TaskByDateFilter): Promise<TaskWithRelations[]>;
+  findByTeamScopeAndDateRange(filter: TaskTeamScopeDateFilter): Promise<TaskWithRelations[]>;
   findById(taskId: string): Promise<(Task & { lead: { teamId: string | null } }) | null>;
   updateTaskDetails(input: {
     taskId: string;

@@ -1,12 +1,14 @@
-import type { TaskAssigneeStatus, TaskType } from "@prisma/client";
+import type { Prisma, TaskAssigneeStatus, TaskType } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { isTeamScopeVisibilityEmpty } from "@/lib/teams/teamScopeVisibility";
+import { buildTaskTeamScopeWhere } from "./taskTeamScopeWhere";
 import type {
   ITaskRepository,
   TaskWithRelations,
   CreateTaskDTO,
   CreateActivityDTO,
-  TaskByDateFilter,
+  TaskTeamScopeDateFilter,
   AssigneeWithGoogleSync,
 } from "./ITaskRepository";
 
@@ -83,28 +85,36 @@ class TaskRepository implements ITaskRepository {
     return task as TaskWithRelations;
   }
 
-  async findByTeamAndDateRange(filter: TaskByDateFilter): Promise<TaskWithRelations[]> {
-    const where: Record<string, unknown> = {
-      lead: { teamId: filter.teamId },
-    };
+  async findByTeamScopeAndDateRange(
+    filter: TaskTeamScopeDateFilter
+  ): Promise<TaskWithRelations[]> {
+    if (isTeamScopeVisibilityEmpty(filter.visibility)) {
+      return [];
+    }
+
+    // O escopo e o intervalo de datas sao dois `OR` independentes: sob a mesma
+    // chave `where.OR` um sobrescreveria o outro, entao vao em `AND`.
+    const conditions: Prisma.TaskWhereInput[] = [buildTaskTeamScopeWhere(filter.visibility)];
 
     if (filter.leadId) {
-      where.leadId = filter.leadId;
+      conditions.push({ leadId: filter.leadId });
     }
 
     if (filter.dateFrom || filter.dateTo) {
-      const dateFilter: Record<string, unknown> = {};
+      const dateFilter: Prisma.DateTimeNullableFilter = {};
       if (filter.dateFrom) dateFilter.gte = filter.dateFrom;
       if (filter.dateTo) dateFilter.lte = filter.dateTo;
-      where.OR = [
-        { startAt: dateFilter },
-        { endAt: dateFilter },
-        { startAt: null, createdAt: dateFilter },
-      ];
+      conditions.push({
+        OR: [
+          { startAt: dateFilter },
+          { endAt: dateFilter },
+          { startAt: null, createdAt: dateFilter as Prisma.DateTimeFilter },
+        ],
+      });
     }
 
     const tasks = await prisma.task.findMany({
-      where,
+      where: { AND: conditions },
       include: TASK_INCLUDE,
       orderBy: [{ startAt: "asc" }, { createdAt: "asc" }],
     });

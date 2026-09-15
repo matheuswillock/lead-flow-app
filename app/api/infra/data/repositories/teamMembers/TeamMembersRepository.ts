@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import type {
   ITeamMembersRepository,
+  ProfileTeamMembership,
   TeamMembersEligibleProfile,
   TeamMembersListItem,
   TeamMembersProfileOption,
@@ -294,6 +295,18 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     return await prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },
       select: { role: true, functions: true },
+    });
+  }
+
+  /**
+   * Uma unica query para TODAS as memberships do perfil — nunca uma por time.
+   * O caso real que originou o escopo "member-all" tem 41 memberships.
+   */
+  async findMembershipsByProfile(profileId: string): Promise<ProfileTeamMembership[]> {
+    return await prisma.teamMember.findMany({
+      where: { profileId, team: { deletedAt: null } },
+      select: { teamId: true, role: true, functions: true },
+      orderBy: { teamId: "asc" },
     });
   }
 
