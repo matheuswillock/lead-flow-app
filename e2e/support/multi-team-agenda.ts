@@ -17,47 +17,105 @@
 import { E2E_MASTER_SUPABASE_ID } from "./e2e-ids";
 import { getPrisma } from "./db";
 
-const AGENDA_PREFIX = "e2e30000-0000-4000-8000-0000000000";
+/**
+ * `playwright.config.ts` roda `fullyParallel` com vários workers, e as duas
+ * specs que usam esta fixture podem cair em workers diferentes ao mesmo tempo.
+ * Cada spec recebe um NAMESPACE próprio: ids, e-mails, códigos de lead e títulos
+ * ficam disjuntos, então nenhum `beforeAll` apaga o dado da outra nem colide no
+ * `team.create`. O namespace é fixo por spec (não por worker) para o cleanup
+ * continuar determinístico.
+ */
+export type MultiTeamAgendaNamespace = "ca" | "da";
 
-export const MULTI_TEAM_AGENDA = {
-  managerTeamId: `${AGENDA_PREFIX}11`,
-  operatorTeamId: `${AGENDA_PREFIX}12`,
-  otherMasterProfileId: `${AGENDA_PREFIX}21`,
-  teammateProfileId: `${AGENDA_PREFIX}22`,
-  managerTeamLeadId: `${AGENDA_PREFIX}31`,
-  operatorTeamOwnLeadId: `${AGENDA_PREFIX}32`,
-  operatorTeamOtherLeadId: `${AGENDA_PREFIX}33`,
-  managerTeamTaskId: `${AGENDA_PREFIX}41`,
-  operatorTeamOwnTaskId: `${AGENDA_PREFIX}42`,
-  operatorTeamOtherTaskId: `${AGENDA_PREFIX}43`,
-  managerTeamScheduleId: `${AGENDA_PREFIX}51`,
-  operatorTeamOwnScheduleId: `${AGENDA_PREFIX}52`,
-  operatorTeamOtherScheduleId: `${AGENDA_PREFIX}53`,
-} as const;
+const AGENDA_UUID_PREFIX = "e2e30000-0000-4000-8000-00000000";
 
-/** Títulos únicos: os asserts procuram por texto, não por contagem de linhas. */
-export const MULTI_TEAM_AGENDA_TITLES = {
+export type MultiTeamAgendaIds = {
+  managerTeamId: string;
+  operatorTeamId: string;
+  otherMasterProfileId: string;
+  teammateProfileId: string;
+  managerTeamLeadId: string;
+  operatorTeamOwnLeadId: string;
+  operatorTeamOtherLeadId: string;
+  managerTeamTaskId: string;
+  operatorTeamOwnTaskId: string;
+  operatorTeamOtherTaskId: string;
+  managerTeamScheduleId: string;
+  operatorTeamOwnScheduleId: string;
+  operatorTeamOtherScheduleId: string;
+};
+
+export function multiTeamAgendaIds(namespace: MultiTeamAgendaNamespace): MultiTeamAgendaIds {
+  const id = (slot: string) => `${AGENDA_UUID_PREFIX}${namespace}${slot}`;
+  return {
+    managerTeamId: id("11"),
+    operatorTeamId: id("12"),
+    otherMasterProfileId: id("21"),
+    teammateProfileId: id("22"),
+    managerTeamLeadId: id("31"),
+    operatorTeamOwnLeadId: id("32"),
+    operatorTeamOtherLeadId: id("33"),
+    managerTeamTaskId: id("41"),
+    operatorTeamOwnTaskId: id("42"),
+    operatorTeamOtherTaskId: id("43"),
+    managerTeamScheduleId: id("51"),
+    operatorTeamOwnScheduleId: id("52"),
+    operatorTeamOtherScheduleId: id("53"),
+  };
+}
+
+export type MultiTeamAgendaTitles = {
   /** Time onde o perfil é manager, agendamento de OUTRO membro — deve aparecer. */
-  managerTeamTask: "E2E MultiTime Manager Agendamento",
+  managerTeamTask: string;
   /** Time onde o perfil é operator, agendamento DELE — deve aparecer. */
-  operatorTeamOwnTask: "E2E MultiTime Operator Proprio",
+  operatorTeamOwnTask: string;
   /** Time onde o perfil é operator, agendamento de OUTRO membro — NÃO deve aparecer. */
-  operatorTeamOtherTask: "E2E MultiTime Operator Alheio",
-} as const;
+  operatorTeamOtherTask: string;
+};
 
-export const MULTI_TEAM_AGENDA_LEAD_NAMES = {
-  managerTeam: "Lead MultiTime Manager E2E",
-  operatorTeamOwn: "Lead MultiTime Operator Proprio E2E",
-  operatorTeamOther: "Lead MultiTime Operator Alheio E2E",
-} as const;
+/** Títulos únicos por namespace: os asserts procuram texto, não contagem de linhas. */
+export function multiTeamAgendaTitles(
+  namespace: MultiTeamAgendaNamespace,
+): MultiTeamAgendaTitles {
+  const suffix = namespace.toUpperCase();
+  return {
+    managerTeamTask: `E2E MultiTime ${suffix} Manager Agendamento`,
+    operatorTeamOwnTask: `E2E MultiTime ${suffix} Operator Proprio`,
+    operatorTeamOtherTask: `E2E MultiTime ${suffix} Operator Alheio`,
+  };
+}
 
-const LEAD_CODES = {
-  managerTeam: "E2EAGENDAMANAGER1",
-  operatorTeamOwn: "E2EAGENDAOPOWN001",
-  operatorTeamOther: "E2EAGENDAOPOTHER1",
-} as const;
+export type MultiTeamAgendaLeadNames = {
+  managerTeam: string;
+  operatorTeamOwn: string;
+  operatorTeamOther: string;
+};
+
+export function multiTeamAgendaLeadNames(
+  namespace: MultiTeamAgendaNamespace,
+): MultiTeamAgendaLeadNames {
+  const suffix = namespace.toUpperCase();
+  return {
+    managerTeam: `Lead MultiTime ${suffix} Manager E2E`,
+    operatorTeamOwn: `Lead MultiTime ${suffix} Operator Proprio E2E`,
+    operatorTeamOther: `Lead MultiTime ${suffix} Operator Alheio E2E`,
+  };
+}
+
+function multiTeamAgendaLeadCodes(namespace: MultiTeamAgendaNamespace) {
+  const suffix = namespace.toUpperCase();
+  return {
+    managerTeam: `E2EAGENDA${suffix}MANAGER`,
+    operatorTeamOwn: `E2EAGENDA${suffix}OPOWN`,
+    operatorTeamOther: `E2EAGENDA${suffix}OPOTHER`,
+  };
+}
 
 export type MultiTeamAgendaFixture = {
+  namespace: MultiTeamAgendaNamespace;
+  ids: MultiTeamAgendaIds;
+  titles: MultiTeamAgendaTitles;
+  leadNames: MultiTeamAgendaLeadNames;
   subjectProfileId: string;
   activeTeamId: string;
   managerTeamId: string;
@@ -73,8 +131,14 @@ function middayUtcToday(): Date {
   );
 }
 
-export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixture> {
+export async function seedMultiTeamAgendaFixture(
+  namespace: MultiTeamAgendaNamespace,
+): Promise<MultiTeamAgendaFixture> {
   const prisma = getPrisma();
+  const ids = multiTeamAgendaIds(namespace);
+  const titles = multiTeamAgendaTitles(namespace);
+  const leadNames = multiTeamAgendaLeadNames(namespace);
+  const leadCodes = multiTeamAgendaLeadCodes(namespace);
 
   const subject = await prisma.profile.findUnique({
     where: { supabaseId: E2E_MASTER_SUPABASE_ID },
@@ -87,14 +151,14 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
     throw new Error("Time ativo do master E2E ausente — rode `bun run db:seed:e2e`");
   }
 
-  await cleanupMultiTeamAgendaFixture();
+  await cleanupMultiTeamAgendaFixture(namespace);
 
   const otherMaster = await prisma.profile.upsert({
-    where: { id: MULTI_TEAM_AGENDA.otherMasterProfileId },
+    where: { id: ids.otherMasterProfileId },
     create: {
-      id: MULTI_TEAM_AGENDA.otherMasterProfileId,
-      email: "e2e.agenda.outro.master@example.com",
-      fullName: "E2E Outro Master",
+      id: ids.otherMasterProfileId,
+      email: `e2e.agenda.${namespace}.outro.master@example.com`,
+      fullName: `E2E Outro Master ${namespace.toUpperCase()}`,
       isMaster: true,
       role: "manager",
       hasPermanentSubscription: true,
@@ -104,17 +168,19 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   });
 
   const teammate = await prisma.profile.upsert({
-    where: { id: MULTI_TEAM_AGENDA.teammateProfileId },
+    where: { id: ids.teammateProfileId },
     create: {
-      id: MULTI_TEAM_AGENDA.teammateProfileId,
-      email: "e2e.agenda.colega@example.com",
-      fullName: "E2E Colega de Time",
+      id: ids.teammateProfileId,
+      email: `e2e.agenda.${namespace}.colega@example.com`,
+      fullName: `E2E Colega de Time ${namespace.toUpperCase()}`,
       role: "operator",
       functions: ["SDR", "CLOSER"],
     },
     update: {},
   });
 
+  // A conta do time B precisa estar ativa: o escopo member-all descarta time
+  // cujo master está com assinatura inativa ou banido.
   await prisma.profileSubscription.upsert({
     where: { profileId: otherMaster.id },
     create: {
@@ -128,16 +194,16 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   // Time A: mesmo master do sujeito, que entra como manager — enxerga o time todo.
   await prisma.team.create({
     data: {
-      id: MULTI_TEAM_AGENDA.managerTeamId,
-      name: "E2E Time Manager MultiTime",
+      id: ids.managerTeamId,
+      name: `E2E Time Manager MultiTime ${namespace.toUpperCase()}`,
       masterId: subject.id,
     },
   });
   // Time B: master DIFERENTE (cross-master), sujeito entra como operator.
   await prisma.team.create({
     data: {
-      id: MULTI_TEAM_AGENDA.operatorTeamId,
-      name: "E2E Time Operator MultiTime",
+      id: ids.operatorTeamId,
+      name: `E2E Time Operator MultiTime ${namespace.toUpperCase()}`,
       masterId: otherMaster.id,
     },
   });
@@ -145,25 +211,25 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   await prisma.teamMember.createMany({
     data: [
       {
-        teamId: MULTI_TEAM_AGENDA.managerTeamId,
+        teamId: ids.managerTeamId,
         profileId: subject.id,
         role: "manager",
         functions: ["SDR", "CLOSER"],
       },
       {
-        teamId: MULTI_TEAM_AGENDA.managerTeamId,
+        teamId: ids.managerTeamId,
         profileId: teammate.id,
         role: "operator",
         functions: ["SDR", "CLOSER"],
       },
       {
-        teamId: MULTI_TEAM_AGENDA.operatorTeamId,
+        teamId: ids.operatorTeamId,
         profileId: subject.id,
         role: "operator",
         functions: ["SDR", "CLOSER"],
       },
       {
-        teamId: MULTI_TEAM_AGENDA.operatorTeamId,
+        teamId: ids.operatorTeamId,
         profileId: teammate.id,
         role: "operator",
         functions: ["SDR", "CLOSER"],
@@ -176,11 +242,11 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   await prisma.lead.createMany({
     data: [
       {
-        id: MULTI_TEAM_AGENDA.managerTeamLeadId,
-        leadCode: LEAD_CODES.managerTeam,
-        name: MULTI_TEAM_AGENDA_LEAD_NAMES.managerTeam,
+        id: ids.managerTeamLeadId,
+        leadCode: leadCodes.managerTeam,
+        name: leadNames.managerTeam,
         managerId: subject.id,
-        teamId: MULTI_TEAM_AGENDA.managerTeamId,
+        teamId: ids.managerTeamId,
         status: "new_opportunity",
         // Atendido pelo COLEGA: no time onde o sujeito é manager, o agendamento
         // de outro membro precisa aparecer.
@@ -189,22 +255,22 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
         updatedBy: teammate.id,
       },
       {
-        id: MULTI_TEAM_AGENDA.operatorTeamOwnLeadId,
-        leadCode: LEAD_CODES.operatorTeamOwn,
-        name: MULTI_TEAM_AGENDA_LEAD_NAMES.operatorTeamOwn,
+        id: ids.operatorTeamOwnLeadId,
+        leadCode: leadCodes.operatorTeamOwn,
+        name: leadNames.operatorTeamOwn,
         managerId: otherMaster.id,
-        teamId: MULTI_TEAM_AGENDA.operatorTeamId,
+        teamId: ids.operatorTeamId,
         status: "new_opportunity",
         assignedTo: subject.id,
         createdBy: subject.id,
         updatedBy: subject.id,
       },
       {
-        id: MULTI_TEAM_AGENDA.operatorTeamOtherLeadId,
-        leadCode: LEAD_CODES.operatorTeamOther,
-        name: MULTI_TEAM_AGENDA_LEAD_NAMES.operatorTeamOther,
+        id: ids.operatorTeamOtherLeadId,
+        leadCode: leadCodes.operatorTeamOther,
+        name: leadNames.operatorTeamOther,
         managerId: otherMaster.id,
-        teamId: MULTI_TEAM_AGENDA.operatorTeamId,
+        teamId: ids.operatorTeamId,
         status: "new_opportunity",
         assignedTo: teammate.id,
         createdBy: teammate.id,
@@ -218,25 +284,25 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   // API, que é justamente o que invalida o cache no arrange das specs.
   const seededTasks = [
     {
-      taskId: MULTI_TEAM_AGENDA.managerTeamTaskId,
-      leadId: MULTI_TEAM_AGENDA.managerTeamLeadId,
-      title: MULTI_TEAM_AGENDA_TITLES.managerTeamTask,
+      taskId: ids.managerTeamTaskId,
+      leadId: ids.managerTeamLeadId,
+      title: titles.managerTeamTask,
       body: "Agendamento de outro membro no time onde o sujeito é manager.",
       createdBy: teammate.id,
       assigneeProfileId: teammate.id,
     },
     {
-      taskId: MULTI_TEAM_AGENDA.operatorTeamOwnTaskId,
-      leadId: MULTI_TEAM_AGENDA.operatorTeamOwnLeadId,
-      title: MULTI_TEAM_AGENDA_TITLES.operatorTeamOwnTask,
+      taskId: ids.operatorTeamOwnTaskId,
+      leadId: ids.operatorTeamOwnLeadId,
+      title: titles.operatorTeamOwnTask,
       body: "Agendamento do próprio sujeito no time onde ele é operator.",
       createdBy: subject.id,
       assigneeProfileId: subject.id,
     },
     {
-      taskId: MULTI_TEAM_AGENDA.operatorTeamOtherTaskId,
-      leadId: MULTI_TEAM_AGENDA.operatorTeamOtherLeadId,
-      title: MULTI_TEAM_AGENDA_TITLES.operatorTeamOtherTask,
+      taskId: ids.operatorTeamOtherTaskId,
+      leadId: ids.operatorTeamOtherLeadId,
+      title: titles.operatorTeamOtherTask,
       body: "Agendamento alheio no time onde o sujeito é operator.",
       createdBy: teammate.id,
       assigneeProfileId: teammate.id,
@@ -280,42 +346,49 @@ export async function seedMultiTeamAgendaFixture(): Promise<MultiTeamAgendaFixtu
   await prisma.leadsSchedule.createMany({
     data: [
       {
-        id: MULTI_TEAM_AGENDA.managerTeamScheduleId,
-        leadId: MULTI_TEAM_AGENDA.managerTeamLeadId,
+        id: ids.managerTeamScheduleId,
+        leadId: ids.managerTeamLeadId,
         date: referenceDate,
-        meetingTitle: MULTI_TEAM_AGENDA_TITLES.managerTeamTask,
+        meetingTitle: titles.managerTeamTask,
       },
       {
-        id: MULTI_TEAM_AGENDA.operatorTeamOwnScheduleId,
-        leadId: MULTI_TEAM_AGENDA.operatorTeamOwnLeadId,
+        id: ids.operatorTeamOwnScheduleId,
+        leadId: ids.operatorTeamOwnLeadId,
         date: referenceDate,
-        meetingTitle: MULTI_TEAM_AGENDA_TITLES.operatorTeamOwnTask,
+        meetingTitle: titles.operatorTeamOwnTask,
       },
       {
-        id: MULTI_TEAM_AGENDA.operatorTeamOtherScheduleId,
-        leadId: MULTI_TEAM_AGENDA.operatorTeamOtherLeadId,
+        id: ids.operatorTeamOtherScheduleId,
+        leadId: ids.operatorTeamOtherLeadId,
         date: referenceDate,
-        meetingTitle: MULTI_TEAM_AGENDA_TITLES.operatorTeamOtherTask,
+        meetingTitle: titles.operatorTeamOtherTask,
       },
     ],
   });
 
   return {
+    namespace,
+    ids,
+    titles,
+    leadNames,
     subjectProfileId: subject.id,
     activeTeamId: subject.activeTeamId,
-    managerTeamId: MULTI_TEAM_AGENDA.managerTeamId,
-    operatorTeamId: MULTI_TEAM_AGENDA.operatorTeamId,
+    managerTeamId: ids.managerTeamId,
+    operatorTeamId: ids.operatorTeamId,
     referenceDate,
   };
 }
 
-export async function cleanupMultiTeamAgendaFixture(): Promise<void> {
+export async function cleanupMultiTeamAgendaFixture(
+  namespace: MultiTeamAgendaNamespace,
+): Promise<void> {
   const prisma = getPrisma();
-  const teamIds = [MULTI_TEAM_AGENDA.managerTeamId, MULTI_TEAM_AGENDA.operatorTeamId];
+  const ids = multiTeamAgendaIds(namespace);
+  const teamIds = [ids.managerTeamId, ids.operatorTeamId];
   const leadIds = [
-    MULTI_TEAM_AGENDA.managerTeamLeadId,
-    MULTI_TEAM_AGENDA.operatorTeamOwnLeadId,
-    MULTI_TEAM_AGENDA.operatorTeamOtherLeadId,
+    ids.managerTeamLeadId,
+    ids.operatorTeamOwnLeadId,
+    ids.operatorTeamOtherLeadId,
   ];
 
   // Ordem obrigatória pelas FKs: agendamento/tarefa → lead → membership → time.

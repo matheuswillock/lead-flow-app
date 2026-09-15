@@ -2,7 +2,7 @@ import type { Task, TaskAssignee, TaskAssigneeStatus } from "@prisma/client";
 import type { TeamScopeVisibility } from "@/lib/teams/teamScopeVisibility";
 
 export type TaskWithRelations = Task & {
-  lead: { id: string; name: string; leadCode: string };
+  lead: { id: string; name: string; leadCode: string; teamId: string | null };
   creator: { id: string; fullName: string | null; email: string; profileIconUrl: string | null };
   assignees: Array<
     TaskAssignee & {

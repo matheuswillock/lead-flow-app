@@ -5,12 +5,13 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
 import { runResponsiveChecks } from "../../support/responsive";
 import {
-  MULTI_TEAM_AGENDA,
-  MULTI_TEAM_AGENDA_LEAD_NAMES,
   cleanupMultiTeamAgendaFixture,
   seedMultiTeamAgendaFixture,
   type MultiTeamAgendaFixture,
 } from "../../support/multi-team-agenda";
+
+/** Namespace próprio: a spec do calendário usa "ca" e as duas podem rodar em paralelo. */
+const AGENDA_NAMESPACE = "da" as const;
 
 let fixture: MultiTeamAgendaFixture;
 
@@ -36,10 +37,14 @@ async function listDayAgendaLeadNames(api: APIRequestContext): Promise<string[]>
 }
 
 test.describe("app/[supabaseId]/dashboard", () => {
+  // Serial: além do motivo da spec do calendário (o `beforeAll` recria a
+  // fixture), o teste de conta inativa muda o estado da assinatura do outro
+  // master — em paralelo isso vazaria para os demais testes deste arquivo.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 
   test.beforeAll(async () => {
-    fixture = await seedMultiTeamAgendaFixture();
+    fixture = await seedMultiTeamAgendaFixture(AGENDA_NAMESPACE);
   });
 
   test.beforeEach(async ({ context }) => {
@@ -55,7 +60,7 @@ test.describe("app/[supabaseId]/dashboard", () => {
   });
 
   test.afterAll(async () => {
-    await cleanupMultiTeamAgendaFixture();
+    await cleanupMultiTeamAgendaFixture(AGENDA_NAMESPACE);
     await disconnectPrisma();
   });
 
@@ -68,9 +73,9 @@ test.describe("app/[supabaseId]/dashboard", () => {
       where: {
         id: {
           in: [
-            MULTI_TEAM_AGENDA.managerTeamScheduleId,
-            MULTI_TEAM_AGENDA.operatorTeamOwnScheduleId,
-            MULTI_TEAM_AGENDA.operatorTeamOtherScheduleId,
+            fixture.ids.managerTeamScheduleId,
+            fixture.ids.operatorTeamOwnScheduleId,
+            fixture.ids.operatorTeamOtherScheduleId,
           ],
         },
       },
@@ -84,9 +89,9 @@ test.describe("app/[supabaseId]/dashboard", () => {
     // Sem parâmetro de escopo: o default da rota é member-all.
     const leadNames = await listDayAgendaLeadNames(page.request);
 
-    expect(leadNames).toContain(MULTI_TEAM_AGENDA_LEAD_NAMES.managerTeam);
-    expect(leadNames).toContain(MULTI_TEAM_AGENDA_LEAD_NAMES.operatorTeamOwn);
-    expect(leadNames).not.toContain(MULTI_TEAM_AGENDA_LEAD_NAMES.operatorTeamOther);
+    expect(leadNames).toContain(fixture.leadNames.managerTeam);
+    expect(leadNames).toContain(fixture.leadNames.operatorTeamOwn);
+    expect(leadNames).not.toContain(fixture.leadNames.operatorTeamOther);
   });
 
   test("escopo active continua restrito ao time ativo", async ({ page }) => {
@@ -107,12 +112,10 @@ test.describe("app/[supabaseId]/dashboard", () => {
     await expect(page.getByText("Próximas Reuniões")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
 
-    await expect(
-      page.getByText(MULTI_TEAM_AGENDA_LEAD_NAMES.managerTeam).first(),
-    ).toBeVisible({ timeout: 60_000 });
-    await expect(
-      page.getByText(MULTI_TEAM_AGENDA_LEAD_NAMES.operatorTeamOther),
-    ).toHaveCount(0);
+    await expect(page.getByText(fixture.leadNames.managerTeam).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByText(fixture.leadNames.operatorTeamOther)).toHaveCount(0);
 
     // Com reuniões de mais de um time no dia, a coluna Time passa a informar algo.
     await expect(page.getByRole("columnheader", { name: "Time" })).toBeVisible();
@@ -126,5 +129,48 @@ test.describe("app/[supabaseId]/dashboard", () => {
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
+  });
+
+  // ÚLTIMO teste do arquivo de propósito: ele desliga a assinatura do outro
+  // master e `getAccountAccessStatus` tem cache de 45s — mesmo restaurando no
+  // `finally`, um teste logo depois ainda leria a conta como inativa.
+  test("time cuja conta ficou inativa sai do escopo member-all", async ({ page }) => {
+    const prisma = getPrisma();
+    const otherMasterId = fixture.ids.otherMasterProfileId;
+
+    // `getAccountSubscriptionStatus` aceita a assinatura permanente tanto do
+    // Profile quanto do ProfileSubscription — desligar só um deixa a conta ativa.
+    await prisma.profile.update({
+      where: { id: otherMasterId },
+      data: { hasPermanentSubscription: false, subscriptionStatus: "canceled" },
+    });
+    await prisma.profileSubscription.update({
+      where: { profileId: otherMasterId },
+      data: { hasPermanentSubscription: false, subscriptionStatus: "canceled" },
+    });
+
+    try {
+      // `getAccountAccessStatus` tem cache de 45s; o poll espera a virada em vez
+      // de assumir efeito imediato.
+      await expect
+        .poll(() => listDayAgendaLeadNames(page.request), {
+          message: "agenda deixa de trazer o time da conta inativa",
+          timeout: 90_000,
+        })
+        .not.toContain(fixture.leadNames.operatorTeamOwn);
+
+      // O time do master ativo continua no escopo — o filtro é por conta, não geral.
+      const leadNames = await listDayAgendaLeadNames(page.request);
+      expect(leadNames).toContain(fixture.leadNames.managerTeam);
+    } finally {
+      await prisma.profile.update({
+        where: { id: otherMasterId },
+        data: { hasPermanentSubscription: true, subscriptionStatus: "active" },
+      });
+      await prisma.profileSubscription.update({
+        where: { profileId: otherMasterId },
+        data: { hasPermanentSubscription: true, subscriptionStatus: "active" },
+      });
+    }
   });
 });

@@ -7,6 +7,10 @@ import {
 } from "@/lib/teams/teamScopeVisibility";
 import type { ProfileTeamMembership } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import {
+  getAccountAccessStatus,
+  type AccountAccessStatus,
+} from "@/lib/account/getAccountAccessStatus";
 import { resolveDashboardTeamScope } from "./dashboardTeamScope";
 import type { TeamAccess } from "./teamAccess";
 
@@ -43,11 +47,13 @@ export function getAgendaTeamScopeFromRequest(
 
 export type AgendaTeamScopeDependencies = {
   listProfileMemberships: (profileId: string) => Promise<ProfileTeamMembership[]>;
+  resolveAccountAccess: (accountMasterId: string) => Promise<AccountAccessStatus>;
 };
 
 const defaultDependencies: AgendaTeamScopeDependencies = {
   listProfileMemberships: (profileId) =>
     teamMembersRepository.findMembershipsByProfile(profileId),
+  resolveAccountAccess: (accountMasterId) => getAccountAccessStatus(accountMasterId),
 };
 
 export type ResolvedAgendaTeamVisibility =
@@ -76,6 +82,10 @@ export async function resolveAgendaTeamVisibility(
     teamId: access.teamId,
     role: access.teamMember.role,
     functions: access.teamMember.functions,
+    // `getTeamAccess` resolve `managerId` como o master da conta do time ativo,
+    // e a conta dele ja foi validada la — este time nunca passa pelo filtro de
+    // acesso de conta abaixo.
+    accountMasterId: access.managerId,
   };
 
   if (scope === "active") {
@@ -89,10 +99,11 @@ export async function resolveAgendaTeamVisibility(
 
   if (scope === "member-all") {
     const memberships = await dependencies.listProfileMemberships(ownerProfileId);
+    const eligible = withActiveTeam(memberships, activeMembership).filter(isTeamEligible);
     return {
       visibility: buildTeamScopeVisibility({
         ownerProfileId,
-        memberships: withActiveTeam(memberships, activeMembership).filter(isTeamEligible),
+        memberships: await filterByAccountAccess(eligible, activeMembership, dependencies),
       }),
     };
   }
@@ -138,4 +149,46 @@ function withActiveTeam(
     (membership) => membership.teamId === activeMembership.teamId,
   );
   return hasActiveTeam ? memberships : [activeMembership, ...memberships];
+}
+
+/**
+ * Time cuja conta esta com assinatura inativa ou master banido sai do escopo.
+ *
+ * `getTeamAccess` so valida a conta do time ATIVO; sem este filtro o
+ * `member-all` devolveria lead, contato e agendamento de uma conta que
+ * `/teams/active` recusaria — ou seja, mais do que o usuario ve trocando o time
+ * ativo, que e justamente a semantica que o escopo promete. Uma consulta por
+ * MASTER distinto (nao por time) e `getAccountAccessStatus` ja e cacheada.
+ */
+async function filterByAccountAccess(
+  memberships: ProfileTeamMembership[],
+  activeMembership: ProfileTeamMembership,
+  dependencies: AgendaTeamScopeDependencies,
+): Promise<ProfileTeamMembership[]> {
+  const accountMasterIds = [
+    ...new Set(
+      memberships
+        .filter((membership) => membership.teamId !== activeMembership.teamId)
+        .map((membership) => membership.accountMasterId),
+    ),
+  ];
+
+  if (accountMasterIds.length === 0) {
+    return memberships;
+  }
+
+  const statuses = await Promise.all(
+    accountMasterIds.map(async (accountMasterId) => {
+      const status = await dependencies.resolveAccountAccess(accountMasterId);
+      return [accountMasterId, status] as const;
+    }),
+  );
+  const statusByMaster = new Map(statuses);
+
+  return memberships.filter((membership) => {
+    // O time ativo ja passou pela validacao de conta em `getTeamAccess`.
+    if (membership.teamId === activeMembership.teamId) return true;
+    const status = statusByMaster.get(membership.accountMasterId);
+    return status?.subscriptionActive === true && status.banned === false;
+  });
 }

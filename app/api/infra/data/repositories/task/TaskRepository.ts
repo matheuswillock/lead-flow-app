@@ -20,7 +20,9 @@ const ASSIGNEE_PROFILE_SELECT = {
 } as const;
 
 const TASK_INCLUDE = {
-  lead: { select: { id: true, name: true, leadCode: true } },
+  // `teamId` vai no payload porque o Calendario lista tarefa de varios times e
+  // as acoes do card sao autorizadas contra o time DONO da tarefa.
+  lead: { select: { id: true, name: true, leadCode: true, teamId: true } },
   creator: { select: ASSIGNEE_PROFILE_SELECT },
   assignees: {
     include: { profile: { select: ASSIGNEE_PROFILE_SELECT } },

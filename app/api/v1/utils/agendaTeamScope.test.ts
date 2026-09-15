@@ -15,6 +15,8 @@ const { parseAgendaTeamScope, resolveAgendaTeamVisibility } = await import("./ag
 const PROFILE_ID = "11111111-1111-4111-8111-111111111111";
 const TEAM_MANAGER = "aaaaaaaa-0000-4000-8000-000000000001";
 const TEAM_OPERATOR = "bbbbbbbb-0000-4000-8000-000000000002";
+const MASTER_ID = "master-1";
+const OTHER_MASTER_ID = "master-2";
 
 function buildAccess(overrides: Partial<TeamAccess> = {}): TeamAccess {
   return {
@@ -35,24 +37,47 @@ function buildAccess(overrides: Partial<TeamAccess> = {}): TeamAccess {
   };
 }
 
+const ACCOUNT_OPEN = { subscriptionActive: true, banned: false };
+
 function buildDependencies(
   memberships: ProfileTeamMembership[],
-): AgendaTeamScopeDependencies & { calls: string[] } {
+  accountAccessByMaster: Record<string, { subscriptionActive: boolean; banned: boolean }> = {},
+): AgendaTeamScopeDependencies & { calls: string[]; accountCalls: string[] } {
   const calls: string[] = [];
+  const accountCalls: string[] = [];
   return {
     calls,
+    accountCalls,
     listProfileMemberships: async (profileId) => {
       calls.push(profileId);
       return memberships;
     },
+    resolveAccountAccess: async (accountMasterId) => {
+      accountCalls.push(accountMasterId);
+      return accountAccessByMaster[accountMasterId] ?? ACCOUNT_OPEN;
+    },
+  };
+}
+
+function membership(
+  teamId: string,
+  role: ProfileTeamMembership["role"],
+  overrides: Partial<ProfileTeamMembership> = {},
+): ProfileTeamMembership {
+  return {
+    teamId,
+    role,
+    functions: ["SDR"],
+    accountMasterId: MASTER_ID,
+    ...overrides,
   };
 }
 
 describe("resolveAgendaTeamVisibility — escopo member-all", () => {
   it("particiona por papel POR TIME: manager num time, operator no outro", async () => {
     const dependencies = buildDependencies([
-      { teamId: TEAM_MANAGER, role: "manager", functions: ["SDR"] },
-      { teamId: TEAM_OPERATOR, role: "operator", functions: ["SDR"] },
+      membership(TEAM_MANAGER, "manager"),
+      membership(TEAM_OPERATOR, "operator"),
     ]);
 
     const result = await resolveAgendaTeamVisibility(
@@ -72,8 +97,8 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
     // Operator no time ativo, manager no outro: o time onde ela é manager
     // precisa continuar team-wide.
     const dependencies = buildDependencies([
-      { teamId: TEAM_OPERATOR, role: "operator", functions: ["SDR"] },
-      { teamId: TEAM_MANAGER, role: "manager", functions: ["SDR"] },
+      membership(TEAM_OPERATOR, "operator"),
+      membership(TEAM_MANAGER, "manager"),
     ]);
 
     const result = await resolveAgendaTeamVisibility(
@@ -94,8 +119,8 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
   it("inclui times de masters diferentes sem exigir canViewAllTeams", async () => {
     const teamOtherMaster = "cccccccc-0000-4000-8000-000000000003";
     const dependencies = buildDependencies([
-      { teamId: TEAM_MANAGER, role: "manager", functions: ["SDR"] },
-      { teamId: teamOtherMaster, role: "manager", functions: ["SDR"] },
+      membership(TEAM_MANAGER, "manager"),
+      membership(teamOtherMaster, "manager", { accountMasterId: OTHER_MASTER_ID }),
     ]);
 
     const result = await resolveAgendaTeamVisibility(
@@ -109,11 +134,9 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
 
   it("resolve as memberships numa única consulta, não uma por time", async () => {
     const dependencies = buildDependencies(
-      Array.from({ length: 41 }, (_unused, index) => ({
-        teamId: `team-${index}`,
-        role: "manager" as const,
-        functions: [],
-      })),
+      Array.from({ length: 41 }, (_unused, index) =>
+        membership(`team-${index}`, "manager", { functions: [] }),
+      ),
     );
 
     const result = await resolveAgendaTeamVisibility(
@@ -127,8 +150,8 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
 
   it("descarta times onde o perfil não tem acesso a leads, sem derrubar os demais", async () => {
     const dependencies = buildDependencies([
-      { teamId: TEAM_MANAGER, role: "manager", functions: [] },
-      { teamId: TEAM_OPERATOR, role: "operator", functions: [] },
+      membership(TEAM_MANAGER, "manager", { functions: [] }),
+      membership(TEAM_OPERATOR, "operator", { functions: [] }),
     ]);
 
     const result = await resolveAgendaTeamVisibility(
@@ -139,6 +162,68 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
     // Manager tem acesso a leads pelo papel; operator sem função SDR, não.
     expect(result.visibility?.fullVisibilityTeamIds).toEqual([TEAM_MANAGER]);
     expect(result.visibility?.ownOnlyTeamIds).toEqual([]);
+  });
+
+  it("descarta time cuja conta está com assinatura inativa, mantendo o resto do escopo", async () => {
+    const teamOtherMaster = "cccccccc-0000-4000-8000-000000000003";
+    const dependencies = buildDependencies(
+      [
+        membership(TEAM_MANAGER, "manager"),
+        membership(teamOtherMaster, "manager", { accountMasterId: OTHER_MASTER_ID }),
+      ],
+      { [OTHER_MASTER_ID]: { subscriptionActive: false, banned: false } },
+    );
+
+    const result = await resolveAgendaTeamVisibility(
+      { access: buildAccess(), scope: "member-all" },
+      dependencies,
+    );
+
+    expect(result.visibility?.fullVisibilityTeamIds).toEqual([TEAM_MANAGER]);
+  });
+
+  it("descarta time cujo master está banido", async () => {
+    const teamOtherMaster = "cccccccc-0000-4000-8000-000000000003";
+    const dependencies = buildDependencies(
+      [
+        membership(TEAM_MANAGER, "manager"),
+        membership(teamOtherMaster, "operator", { accountMasterId: OTHER_MASTER_ID }),
+      ],
+      { [OTHER_MASTER_ID]: { subscriptionActive: true, banned: true } },
+    );
+
+    const result = await resolveAgendaTeamVisibility(
+      { access: buildAccess(), scope: "member-all" },
+      dependencies,
+    );
+
+    expect(result.visibility?.ownOnlyTeamIds).toEqual([]);
+    expect(result.visibility?.fullVisibilityTeamIds).toEqual([TEAM_MANAGER]);
+  });
+
+  it("checa a conta uma vez por MASTER distinto, não uma vez por time", async () => {
+    const dependencies = buildDependencies([
+      membership(TEAM_MANAGER, "manager"),
+      membership("team-mesmo-master-1", "manager"),
+      membership("team-mesmo-master-2", "operator"),
+      membership("team-outro-master", "manager", { accountMasterId: OTHER_MASTER_ID }),
+    ]);
+
+    await resolveAgendaTeamVisibility(
+      { access: buildAccess(), scope: "member-all" },
+      dependencies,
+    );
+
+    // O time ativo não entra: `getTeamAccess` já validou a conta dele.
+    expect(dependencies.accountCalls.sort()).toEqual([MASTER_ID, OTHER_MASTER_ID]);
+  });
+
+  it("não checa conta alguma no escopo active — getTeamAccess já validou o time ativo", async () => {
+    const dependencies = buildDependencies([membership(TEAM_MANAGER, "manager")]);
+
+    await resolveAgendaTeamVisibility({ access: buildAccess(), scope: "active" }, dependencies);
+
+    expect(dependencies.accountCalls).toEqual([]);
   });
 
   it("mantém o time ativo no escopo quando o acesso é de sponsor/backoffice sem membership", async () => {
@@ -159,7 +244,7 @@ describe("resolveAgendaTeamVisibility — escopo member-all", () => {
 describe("resolveAgendaTeamVisibility — escopo active", () => {
   it("usa só o time ativo e não consulta as memberships", async () => {
     const dependencies = buildDependencies([
-      { teamId: TEAM_OPERATOR, role: "operator", functions: ["SDR"] },
+      membership(TEAM_OPERATOR, "operator"),
     ]);
 
     const result = await resolveAgendaTeamVisibility(

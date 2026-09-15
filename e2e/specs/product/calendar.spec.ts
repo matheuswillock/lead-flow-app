@@ -5,12 +5,13 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
 import { runResponsiveChecks } from "../../support/responsive";
 import {
-  MULTI_TEAM_AGENDA,
-  MULTI_TEAM_AGENDA_TITLES,
   cleanupMultiTeamAgendaFixture,
   seedMultiTeamAgendaFixture,
   type MultiTeamAgendaFixture,
 } from "../../support/multi-team-agenda";
+
+/** Namespace próprio: a spec do dashboard usa "da" e as duas podem rodar em paralelo. */
+const AGENDA_NAMESPACE = "ca" as const;
 
 /** Mesma resolução de `playwright.config.ts` — hooks de worker não têm a fixture `request`. */
 const E2E_API_BASE_URL =
@@ -37,18 +38,18 @@ function headersForTeam(teamId: string) {
  * `revalidateTag(tag, "max")` é stale-while-revalidate, quem consome o serve
  * stale é o poll de cada teste.
  */
-async function invalidateSeededTeamTasksCache(api: APIRequestContext, reference: Date) {
+async function invalidateSeededTeamTasksCache(api: APIRequestContext) {
   const seededTasks = [
     {
-      taskId: MULTI_TEAM_AGENDA.managerTeamTaskId,
-      teamId: MULTI_TEAM_AGENDA.managerTeamId,
-      title: MULTI_TEAM_AGENDA_TITLES.managerTeamTask,
-      assigneeProfileIds: [MULTI_TEAM_AGENDA.teammateProfileId],
+      taskId: fixture.ids.managerTeamTaskId,
+      teamId: fixture.managerTeamId,
+      title: fixture.titles.managerTeamTask,
+      assigneeProfileIds: [fixture.ids.teammateProfileId],
     },
     {
-      taskId: MULTI_TEAM_AGENDA.operatorTeamOwnTaskId,
-      teamId: MULTI_TEAM_AGENDA.operatorTeamId,
-      title: MULTI_TEAM_AGENDA_TITLES.operatorTeamOwnTask,
+      taskId: fixture.ids.operatorTeamOwnTaskId,
+      teamId: fixture.operatorTeamId,
+      title: fixture.titles.operatorTeamOwnTask,
       assigneeProfileIds: [fixture.subjectProfileId],
     },
   ];
@@ -61,8 +62,8 @@ async function invalidateSeededTeamTasksCache(api: APIRequestContext, reference:
         taskType: "meeting",
         body: "Invalidação de cache do seed E2E.",
         isUrgent: false,
-        startAt: reference.toISOString(),
-        endAt: reference.toISOString(),
+        startAt: fixture.referenceDate.toISOString(),
+        endAt: fixture.referenceDate.toISOString(),
         assigneeProfileIds: seeded.assigneeProfileIds,
       },
     });
@@ -73,11 +74,8 @@ async function invalidateSeededTeamTasksCache(api: APIRequestContext, reference:
   }
 }
 
-async function listTaskTitlesInMemberAllScope(
-  api: APIRequestContext,
-  reference: Date,
-): Promise<string[]> {
-  const { dateFrom, dateTo } = dayWindow(reference);
+async function listTaskTitlesInMemberAllScope(api: APIRequestContext): Promise<string[]> {
+  const { dateFrom, dateTo } = dayWindow(fixture.referenceDate);
   const response = await api.get(
     `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}&teamScope=member-all`,
     { headers: headersForTeam(fixture.activeTeamId) },
@@ -88,13 +86,19 @@ async function listTaskTitlesInMemberAllScope(
 }
 
 test.describe("app/[supabaseId]/calendar", () => {
+  // Serial: com `fullyParallel`, dois testes do MESMO arquivo podem cair em
+  // workers diferentes e cada um rodaria o `beforeAll`, que apaga e recria a
+  // fixture — um worker derrubaria o dado que o outro está lendo. Em série o
+  // seed roda uma vez e os testes seguem a ordem declarada. A spec do dashboard
+  // continua paralela a esta: os namespaces são disjuntos.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(180_000);
 
   test.beforeAll(async ({ playwright }) => {
-    fixture = await seedMultiTeamAgendaFixture();
+    fixture = await seedMultiTeamAgendaFixture(AGENDA_NAMESPACE);
     const api = await playwright.request.newContext({ baseURL: E2E_API_BASE_URL });
     try {
-      await invalidateSeededTeamTasksCache(api, fixture.referenceDate);
+      await invalidateSeededTeamTasksCache(api);
     } finally {
       await api.dispose();
     }
@@ -113,7 +117,7 @@ test.describe("app/[supabaseId]/calendar", () => {
   });
 
   test.afterAll(async () => {
-    await cleanupMultiTeamAgendaFixture();
+    await cleanupMultiTeamAgendaFixture(AGENDA_NAMESPACE);
     await disconnectPrisma();
   });
 
@@ -126,9 +130,9 @@ test.describe("app/[supabaseId]/calendar", () => {
       where: {
         id: {
           in: [
-            MULTI_TEAM_AGENDA.managerTeamTaskId,
-            MULTI_TEAM_AGENDA.operatorTeamOwnTaskId,
-            MULTI_TEAM_AGENDA.operatorTeamOtherTaskId,
+            fixture.ids.managerTeamTaskId,
+            fixture.ids.operatorTeamOwnTaskId,
+            fixture.ids.operatorTeamOtherTaskId,
           ],
         },
       },
@@ -140,21 +144,41 @@ test.describe("app/[supabaseId]/calendar", () => {
     }
 
     await expect
-      .poll(() => listTaskTitlesInMemberAllScope(page.request, fixture.referenceDate), {
+      .poll(() => listTaskTitlesInMemberAllScope(page.request), {
         message: "escopo member-all traz o agendamento do time onde o perfil é manager",
         timeout: 150_000,
       })
-      .toContain(MULTI_TEAM_AGENDA_TITLES.managerTeamTask);
+      .toContain(fixture.titles.managerTeamTask);
 
-    const titles = await listTaskTitlesInMemberAllScope(page.request, fixture.referenceDate);
+    const titles = await listTaskTitlesInMemberAllScope(page.request);
 
     // Time onde é MANAGER: enxerga o agendamento de outro membro (team-wide).
-    expect(titles).toContain(MULTI_TEAM_AGENDA_TITLES.managerTeamTask);
+    expect(titles).toContain(fixture.titles.managerTeamTask);
     // Time (de outro master) onde é OPERATOR: enxerga o que é dele.
-    expect(titles).toContain(MULTI_TEAM_AGENDA_TITLES.operatorTeamOwnTask);
+    expect(titles).toContain(fixture.titles.operatorTeamOwnTask);
     // No MESMO time onde é operator, o agendamento alheio continua invisível —
     // a restrição de papel é por time, não global.
-    expect(titles).not.toContain(MULTI_TEAM_AGENDA_TITLES.operatorTeamOtherTask);
+    expect(titles).not.toContain(fixture.titles.operatorTeamOtherTask);
+  });
+
+  test("o payload traz o time dono da tarefa, para as ações do card não caírem no time ativo", async ({
+    page,
+  }) => {
+    const { dateFrom, dateTo } = dayWindow(fixture.referenceDate);
+    const response = await page.request.get(
+      `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}&teamScope=member-all`,
+      { headers: headersForTeam(fixture.activeTeamId) },
+    );
+    expect(response.ok()).toBe(true);
+    const body = (await response.json()) as {
+      result?: Array<{ title: string; lead: { teamId: string | null } }>;
+    };
+
+    const crossTeamTask = (body.result ?? []).find(
+      (task) => task.title === fixture.titles.managerTeamTask,
+    );
+    expect(crossTeamTask, "tarefa do time manager ausente no payload").toBeDefined();
+    expect(crossTeamTask?.lead.teamId).toBe(fixture.managerTeamId);
   });
 
   test("a página mostra o agendamento de um time que não é o ativo", async ({ page }) => {
@@ -164,7 +188,7 @@ test.describe("app/[supabaseId]/calendar", () => {
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
 
     const crossTeamTask = page
-      .getByText(MULTI_TEAM_AGENDA_TITLES.managerTeamTask, { exact: false })
+      .getByText(fixture.titles.managerTeamTask, { exact: false })
       .first();
     await expect(async () => {
       if ((await crossTeamTask.count()) === 0) {
@@ -175,7 +199,7 @@ test.describe("app/[supabaseId]/calendar", () => {
 
     // O agendamento alheio do time onde o perfil é operator não pode vazar.
     await expect(
-      page.getByText(MULTI_TEAM_AGENDA_TITLES.operatorTeamOtherTask, { exact: false }),
+      page.getByText(fixture.titles.operatorTeamOtherTask, { exact: false }),
     ).toHaveCount(0);
   });
 

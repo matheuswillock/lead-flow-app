@@ -864,6 +864,29 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       })
   }, [selectedDateKey, supabaseId, activeTeamId])
 
+  /**
+   * O board carrega os leads do time ATIVO. Uma tarefa de outro time aparece no
+   * Calendário (escopo member-all), mas o dialog de lead/edição depende do lead
+   * carregado — então aqui o usuário recebe o motivo real, com o nome do time,
+   * em vez de um "não encontrado" genérico. Concluir e cancelar seguem
+   * funcionando: o TaskCard usa o time dono da tarefa.
+   */
+  const findLeadForTask = React.useCallback(
+    (task: TaskItem): Lead | null => {
+      const leadFromTask = allLeads.find((lead) => lead.id === task.leadId)
+      if (leadFromTask) return leadFromTask
+
+      const isFromAnotherTeam = !!task.lead.teamId && task.lead.teamId !== activeTeamId
+      toast.error(
+        isFromAnotherTeam
+          ? "Este agendamento é de outro time. Troque o time ativo para abrir o lead."
+          : "Lead da tarefa não encontrado.",
+      )
+      return null
+    },
+    [allLeads, activeTeamId],
+  )
+
   const filteredTasks = React.useMemo(() => {
     const query = leadSearchFilter.trim().toLowerCase()
     return tasks.filter((task) => {
@@ -1167,21 +1190,15 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                       void refreshTaskDayCounts()
                     }}
                     onEdit={(selectedTask) => {
-                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
-                      if (!leadFromTask) {
-                        toast.error("Lead da tarefa não encontrado.")
-                        return
-                      }
+                      const leadFromTask = findLeadForTask(selectedTask)
+                      if (!leadFromTask) return
                       setEditingTask(selectedTask)
                       setTaskDialogLead(leadFromTask)
                       setTaskDialogOpen(true)
                     }}
                     onCardClick={(selectedTask) => {
-                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
-                      if (!leadFromTask) {
-                        toast.error("Lead da tarefa não encontrado.")
-                        return
-                      }
+                      const leadFromTask = findLeadForTask(selectedTask)
+                      if (!leadFromTask) return
                       handleCardClick(leadFromTask)
                       setEditingTask(selectedTask)
                       setTaskDialogLead(leadFromTask)

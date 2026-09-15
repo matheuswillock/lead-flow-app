@@ -80,6 +80,8 @@ export interface TeamMemberRoleAndFunctions {
  */
 export interface ProfileTeamMembership extends TeamMemberRoleAndFunctions {
   teamId: string;
+  /** Master dono do time — o escopo precisa checar o acesso da conta time a time. */
+  accountMasterId: string;
 }
 
 export interface TeamMemberTransferAuthorization {

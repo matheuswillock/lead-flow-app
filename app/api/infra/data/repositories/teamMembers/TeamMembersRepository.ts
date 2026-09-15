@@ -303,11 +303,23 @@ export class TeamMembersRepository implements ITeamMembersRepository {
    * O caso real que originou o escopo "member-all" tem 41 memberships.
    */
   async findMembershipsByProfile(profileId: string): Promise<ProfileTeamMembership[]> {
-    return await prisma.teamMember.findMany({
+    const memberships = await prisma.teamMember.findMany({
       where: { profileId, team: { deletedAt: null } },
-      select: { teamId: true, role: true, functions: true },
+      select: {
+        teamId: true,
+        role: true,
+        functions: true,
+        team: { select: { masterId: true } },
+      },
       orderBy: { teamId: "asc" },
     });
+
+    return memberships.map((membership) => ({
+      teamId: membership.teamId,
+      role: membership.role,
+      functions: membership.functions,
+      accountMasterId: membership.team.masterId,
+    }));
   }
 
   async findNotificationRecipients(input: {
