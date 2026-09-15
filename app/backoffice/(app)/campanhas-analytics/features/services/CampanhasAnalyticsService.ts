@@ -15,7 +15,7 @@ function buildRangeParams(params: CampaignAnalyticsQueryParams): URLSearchParams
   return searchParams
 }
 
-function parseCsvFilename(contentDisposition: string | null, fallback: string): string {
+function parseAttachmentFilename(contentDisposition: string | null, fallback: string): string {
   const match = contentDisposition ? /filename="?([^";]+)"?/.exec(contentDisposition) : null
   return match?.[1] ?? fallback
 }
@@ -65,9 +65,27 @@ export class CampanhasAnalyticsService implements ICampanhasAnalyticsService {
     }
 
     const blob = await response.blob()
-    const filename = parseCsvFilename(
+    const filename = parseAttachmentFilename(
       response.headers.get("content-disposition"),
       `campanhas_${params.dataset}_${params.from}_${params.to}.csv`
+    )
+    return { blob, filename }
+  }
+
+  async exportAllXlsx(params: CampaignAnalyticsQueryParams): Promise<CampaignAnalyticsExportResult> {
+    const searchParams = buildRangeParams(params)
+    const response = await fetch(`${BASE_PATH}/export-all.xlsx?${searchParams}`, { cache: "no-store" })
+
+    const contentType = response.headers.get("content-type") ?? ""
+    if (!response.ok || contentType.includes("application/json")) {
+      const json = (await response.json().catch(() => null)) as { errorMessages?: string[] } | null
+      throw new Error(json?.errorMessages?.[0] ?? `Erro ao exportar o pacote completo (HTTP ${response.status})`)
+    }
+
+    const blob = await response.blob()
+    const filename = parseAttachmentFilename(
+      response.headers.get("content-disposition"),
+      `campanhas_completo_${params.from}_${params.to}.xlsx`
     )
     return { blob, filename }
   }

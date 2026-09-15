@@ -63,6 +63,15 @@ type AttendeesByLead = Record<string, { attendees: ScheduleAttendee[]; hasGoogle
 
 const ROLE_ORDER: AttendeeRole[] = ["closer", "sdr", "lead", "extra"]
 
+/**
+ * O Calendário pede os agendamentos de TODOS os times em que o usuário é
+ * membro — inclusive de outros masters. Quem pertence a N times via só o time
+ * ativo antes desta mudança. A restrição de papel é aplicada pelo servidor, por
+ * time (manager-like vê o time inteiro; papel menor vê só os próprios), então
+ * não há filtro de papel no cliente para as tasks.
+ */
+const TASKS_TEAM_SCOPE = "member-all"
+
 const normalizeEmail = (value?: string | null) => value?.toLowerCase().trim() ?? ""
 
 const toSafeResponseStatus = (
@@ -835,7 +844,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
     }
     const dateFrom = `${selectedDateKey}T00:00:00.000Z`
     const dateTo = `${selectedDateKey}T23:59:59.999Z`
-    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
+    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}&teamScope=${TASKS_TEAM_SCOPE}`
 
     return fetch(url, {
       headers: {
@@ -855,14 +864,32 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       })
   }, [selectedDateKey, supabaseId, activeTeamId])
 
-  const visibleTasks = React.useMemo(() => {
-    if (!isRestrictedToOwnEvents || !user?.id) return tasks
-    return tasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
-  }, [tasks, isRestrictedToOwnEvents, user?.id])
+  /**
+   * O board carrega os leads do time ATIVO. Uma tarefa de outro time aparece no
+   * Calendário (escopo member-all), mas o dialog de lead/edição depende do lead
+   * carregado — então aqui o usuário recebe o motivo real, com o nome do time,
+   * em vez de um "não encontrado" genérico. Concluir e cancelar seguem
+   * funcionando: o TaskCard usa o time dono da tarefa.
+   */
+  const findLeadForTask = React.useCallback(
+    (task: TaskItem): Lead | null => {
+      const leadFromTask = allLeads.find((lead) => lead.id === task.leadId)
+      if (leadFromTask) return leadFromTask
+
+      const isFromAnotherTeam = !!task.lead.teamId && task.lead.teamId !== activeTeamId
+      toast.error(
+        isFromAnotherTeam
+          ? "Este agendamento é de outro time. Troque o time ativo para abrir o lead."
+          : "Lead da tarefa não encontrado.",
+      )
+      return null
+    },
+    [allLeads, activeTeamId],
+  )
 
   const filteredTasks = React.useMemo(() => {
     const query = leadSearchFilter.trim().toLowerCase()
-    return visibleTasks.filter((task) => {
+    return tasks.filter((task) => {
       const relatedLead = leadById.get(task.leadId)
       const leadEmail = (relatedLead?.email || "").toLowerCase()
       const assigneeEmails = task.assignees.map((assignee) => assignee.profile.email.toLowerCase())
@@ -888,7 +915,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
 
       return matchesSearch && matchesCloser && priorityMatch
     })
-  }, [visibleTasks, leadSearchFilter, leadById, closerFilter, nowReference, matchesPriority])
+  }, [tasks, leadSearchFilter, leadById, closerFilter, nowReference, matchesPriority])
 
   const refreshTaskDayCounts = React.useCallback((cancelled = false) => {
     if (!supabaseId || !activeTeamId) {
@@ -898,7 +925,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
 
     const monthStart = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth(), 1, 0, 0, 0, 0))
     const monthEnd = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + 1, 0, 23, 59, 59, 999))
-    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(monthStart.toISOString())}&dateTo=${encodeURIComponent(monthEnd.toISOString())}`
+    const url = `${API_CLIENT_BASE}/tasks?dateFrom=${encodeURIComponent(monthStart.toISOString())}&dateTo=${encodeURIComponent(monthEnd.toISOString())}&teamScope=${TASKS_TEAM_SCOPE}`
 
     return fetch(url, {
       headers: {
@@ -918,11 +945,8 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
   }, [supabaseId, activeTeamId, calendarMonth])
 
   const taskDayCounts = React.useMemo(() => {
-    const filtered = isRestrictedToOwnEvents && user?.id
-      ? monthTasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
-      : monthTasks
     const counts = new Map<string, number>()
-    filtered.forEach((task) => {
+    monthTasks.forEach((task) => {
       const rawDate = task.startAt || task.endAt || task.createdAt
       if (!rawDate) return
       const parsedDate = new Date(rawDate)
@@ -931,7 +955,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return counts
-  }, [monthTasks, isRestrictedToOwnEvents, user?.id, tz])
+  }, [monthTasks, tz])
 
   // Fetch tasks for the selected date range (full day)
   React.useEffect(() => {
@@ -1014,6 +1038,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
               <Button
                 variant="ghost"
                 size="sm"
+                className="max-lg:h-11"
                 onClick={() => setSelectedTime(null)}
                 disabled={!selectedTime}
               >
@@ -1029,7 +1054,7 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                   key={time}
                   variant={selectedTime === time ? "default" : "outline"}
                   onClick={() => setSelectedTime(time)}
-                  className="w-full shadow-none"
+                  className="w-full shadow-none max-lg:h-11"
                   data-time={time}
                 >
                   {time}
@@ -1043,7 +1068,10 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
           <CardContent className="flex h-full min-h-0 w-full flex-col gap-4 p-4">
             <LeadsFiltersLayout
               actions={
-                <Button onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
+                <Button
+                  onClick={() => setLeadPickerOpen(true)}
+                  className="group shrink-0 max-lg:h-11"
+                >
                   <CirclePlus
                     className="mr-2 transition-transform duration-300 group-hover:rotate-90"
                     size={16}
@@ -1162,21 +1190,15 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                       void refreshTaskDayCounts()
                     }}
                     onEdit={(selectedTask) => {
-                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
-                      if (!leadFromTask) {
-                        toast.error("Lead da tarefa não encontrado.")
-                        return
-                      }
+                      const leadFromTask = findLeadForTask(selectedTask)
+                      if (!leadFromTask) return
                       setEditingTask(selectedTask)
                       setTaskDialogLead(leadFromTask)
                       setTaskDialogOpen(true)
                     }}
                     onCardClick={(selectedTask) => {
-                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
-                      if (!leadFromTask) {
-                        toast.error("Lead da tarefa não encontrado.")
-                        return
-                      }
+                      const leadFromTask = findLeadForTask(selectedTask)
+                      if (!leadFromTask) return
                       handleCardClick(leadFromTask)
                       setEditingTask(selectedTask)
                       setTaskDialogLead(leadFromTask)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { buildCampaignAnalyticsCsv, formatCsvRate } from "./csv"
+import { buildCampaignAnalyticsCsv, formatCsvRate, formatCsvScore } from "./csv"
 
 describe("buildCampaignAnalyticsCsv", () => {
   it("DA4/D5 — BOM UTF-8, separador ';', header PT-BR", () => {
@@ -28,5 +28,15 @@ describe("formatCsvRate", () => {
 
   it("null vira célula vazia, nunca 0%", () => {
     expect(formatCsvRate(null)).toBe("")
+  })
+})
+
+describe("formatCsvScore", () => {
+  it("formata com vírgula decimal e 1 casa, sem símbolo de percentual (não é fração 0–1)", () => {
+    expect(formatCsvScore(3.7)).toBe("3,7")
+  })
+
+  it("null vira célula vazia, nunca 0", () => {
+    expect(formatCsvScore(null)).toBe("")
   })
 })

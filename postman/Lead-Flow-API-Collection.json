@@ -4127,7 +4127,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules?teamScope=active",
+                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules?teamScope=member-all",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -4140,8 +4140,8 @@
                       "query": [
                         {
                           "key": "teamScope",
-                          "value": "active",
-                          "description": "Escopo: active ou all (managers)"
+                          "value": "member-all",
+                          "description": "Escopo: member-all (default; todos os times em que o perfil e membro, inclusive de outros masters), active (so o time ativo) ou all (times do master do time ativo, exige canViewAllTeams)"
                         }
                       ]
                     },
@@ -14779,6 +14779,37 @@
                 },
                 "description": "Export CSV (UTF-8 BOM, separador ';', decimal com vírgula, header PT-BR) do dataset dispatches|templates|forms|series. Content-Disposition com filename campanhas_<dataset>_<from>_<to>.csv."
               }
+            },
+            {
+              "name": "GET Export Completo de Campanhas — XLSX (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/export-all.xlsx?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "export-all.xlsx"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Export completo em XLSX multi-abas (Resumo com os KPIs do período + Disparos + Templates + Formulários + Série diária), de todos os times do filtro. Teto próprio de 30 dias (mais estrito que o teto geral de 92 dias da tela) — período maior é rejeitado com 400. Content-Disposition com filename campanhas_completo_<from>_<to>.xlsx."
+              }
             }
           ]
         },
@@ -17385,7 +17416,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/tasks?dateFrom=2026-05-13T00:00:00.000Z&dateTo=2026-05-13T23:59:59.999Z",
+              "raw": "{{baseUrl}}/api/v1/tasks?dateFrom=2026-05-13T00:00:00.000Z&dateTo=2026-05-13T23:59:59.999Z&teamScope=member-all",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -17407,10 +17438,15 @@
                   "key": "leadId",
                   "value": "{{leadId}}",
                   "disabled": true
+                },
+                {
+                  "key": "teamScope",
+                  "value": "member-all",
+                  "description": "Escopo dos agendamentos: member-all (todos os times em que o perfil e membro, inclusive de outros masters) ou active (default; so o time ativo). Em ambos a restricao de papel e aplicada por time."
                 }
               ]
             },
-            "description": "Lista tarefas do time filtradas por intervalo de data (startAt/endAt). Suporta filtro opcional por leadId."
+            "description": "Lista os agendamentos (tarefas) filtrados por intervalo de data (startAt/endAt). O escopo de time vem de teamScope; a restricao de papel e aplicada por time (manager-like ve o time inteiro, papel menor so os proprios). Suporta filtro opcional por leadId."
           }
         },
         {

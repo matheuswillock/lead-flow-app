@@ -63,3 +63,26 @@ export function resolveCampaignAnalyticsDateRange(input: {
 
   return { ok: true, value: { from: fromDate, to: exclusiveTo } }
 }
+
+// Teto próprio do export completo (mais estrito que o teto geral de consulta
+// acima) — pedido do owner (bug 2026-09-15): todo o payload (4 datasets + KPIs
+// de todos os times do filtro) cabe numa única exportação só até 30 dias.
+export const CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS = 30
+
+export function resolveCampaignAnalyticsExportAllDateRange(input: {
+  from: string | null
+  to: string | null
+}): CampaignAnalyticsDateRangeResult {
+  const range = resolveCampaignAnalyticsDateRange(input)
+  if (!range.ok) return range
+
+  const dayCount = Math.round((range.value.to.getTime() - range.value.from.getTime()) / (24 * 60 * 60 * 1000))
+  if (dayCount > CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS) {
+    return {
+      ok: false,
+      error: `O export completo não pode ultrapassar ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias — selecione um intervalo menor.`,
+    }
+  }
+
+  return range
+}

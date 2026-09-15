@@ -7,6 +7,8 @@ import { describe, expect, it } from "bun:test"
 import {
   buildCampaignAnalyticsRequestKey,
   buildDefaultCampaignAnalyticsFilters,
+  CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS,
+  validateCampaignAnalyticsExportAllRange,
   validateCampaignAnalyticsRange,
 } from "./campaignAnalyticsRange"
 
@@ -38,6 +40,33 @@ describe("validateCampaignAnalyticsRange", () => {
   it("não valida quando algum dos dois ainda está vazio (aguardando seleção)", () => {
     expect(validateCampaignAnalyticsRange("", "2026-08-31")).toBeNull()
     expect(validateCampaignAnalyticsRange("2026-08-01", "")).toBeNull()
+  })
+})
+
+describe("validateCampaignAnalyticsExportAllRange", () => {
+  it("aceita um período dentro do teto de 30 dias", () => {
+    expect(validateCampaignAnalyticsExportAllRange("2026-08-01", "2026-08-15")).toBeNull()
+  })
+
+  it(`aceita exatamente ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias (limite inclusive)`, () => {
+    expect(validateCampaignAnalyticsExportAllRange("2026-08-02", "2026-08-31")).toBeNull()
+  })
+
+  it(`bloqueia range acima de ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias com a MESMA mensagem do backend`, () => {
+    const message = validateCampaignAnalyticsExportAllRange("2026-08-01", "2026-08-31") // 31 dias
+    expect(message).toBe(
+      `O export completo não pode ultrapassar ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias — selecione um intervalo menor.`
+    )
+  })
+
+  it("propaga o erro geral (ex.: >92 dias) em vez do erro específico do export quando ambos se aplicam", () => {
+    const message = validateCampaignAnalyticsExportAllRange("2026-01-01", "2026-12-31")
+    expect(message).toBe("O período não pode ultrapassar 92 dias — selecione um intervalo menor.")
+  })
+
+  it("não valida quando algum dos dois ainda está vazio (aguardando seleção)", () => {
+    expect(validateCampaignAnalyticsExportAllRange("", "2026-08-31")).toBeNull()
+    expect(validateCampaignAnalyticsExportAllRange("2026-08-01", "")).toBeNull()
   })
 })
 

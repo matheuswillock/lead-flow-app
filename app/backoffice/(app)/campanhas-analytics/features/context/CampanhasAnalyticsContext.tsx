@@ -6,6 +6,7 @@ import type { ICampanhasAnalyticsService } from "../services/ICampanhasAnalytics
 import {
   buildCampaignAnalyticsRequestKey,
   buildDefaultCampaignAnalyticsFilters,
+  validateCampaignAnalyticsExportAllRange,
   validateCampaignAnalyticsRange,
 } from "../utils/campaignAnalyticsRange"
 import {
@@ -92,6 +93,14 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
   const rangeValidationError = useMemo(
     () => validateCampaignAnalyticsRange(draftFilters.from, draftFilters.to),
     [draftFilters.from, draftFilters.to]
+  )
+
+  // Deriva de `appliedFilters` (não `draftFilters`): o export completo opera
+  // sobre o período atualmente aplicado/visível na tela, mesmo padrão do
+  // `exportCsv` abaixo — não sobre um rascunho de filtro ainda não aplicado.
+  const exportAllRangeError = useMemo(
+    () => validateCampaignAnalyticsExportAllRange(appliedFilters.from, appliedFilters.to),
+    [appliedFilters.from, appliedFilters.to]
   )
 
   const setDraftFilters = useCallback((next: CampaignAnalyticsFiltersState) => {
@@ -211,6 +220,11 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
     [appliedFilters, service]
   )
 
+  const exportAll = useCallback(
+    () => service.exportAllXlsx({ from: appliedFilters.from, to: appliedFilters.to, teamIds: appliedFilters.teamIds }),
+    [appliedFilters, service]
+  )
+
   const setDispatchesPage = useCallback(
     (page: number) => {
       setDispatchesPageState(page)
@@ -262,6 +276,8 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
       setDispatchesPageSize,
       retryDispatches,
       exportCsv,
+      exportAllRangeError,
+      exportAll,
     }),
     [
       draftFilters,
@@ -288,6 +304,8 @@ export function CampanhasAnalyticsProvider({ service, children }: ProviderProps)
       setDispatchesPageSize,
       retryDispatches,
       exportCsv,
+      exportAllRangeError,
+      exportAll,
     ]
   )
 

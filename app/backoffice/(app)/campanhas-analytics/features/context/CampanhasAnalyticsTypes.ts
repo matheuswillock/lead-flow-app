@@ -172,4 +172,8 @@ export interface CampanhasAnalyticsContextType {
   retryDispatches: () => Promise<void>
 
   exportCsv: (dataset: CampaignAnalyticsCsvDataset) => Promise<{ blob: Blob; filename: string }>
+
+  /** Espelha resolveCampaignAnalyticsExportAllDateRange do backend — mensagem PT-BR quando `appliedFilters` excede o teto de 30 dias do export completo. */
+  exportAllRangeError: string | null
+  exportAll: () => Promise<{ blob: Blob; filename: string }>
 }
