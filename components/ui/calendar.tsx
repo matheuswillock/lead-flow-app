@@ -68,18 +68,21 @@ function Calendar({
           "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
           defaultClassNames.nav
         ),
+        // 44px no toque (`max-lg:size-11`): a navegação de mês é alvo de toque
+        // em toda tela que usa o Calendar, e o caption recua junto para não
+        // ficar por baixo dos botões maiores.
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "h-9 w-9 select-none p-0 aria-disabled:opacity-50",
+          "size-9 max-lg:size-11 select-none p-0 aria-disabled:opacity-50",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "h-9 w-9 select-none p-0 aria-disabled:opacity-50",
+          "size-9 max-lg:size-11 select-none p-0 aria-disabled:opacity-50",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          "flex h-12 w-full items-center justify-center px-9",
+          "flex h-12 w-full items-center justify-center px-9 max-lg:px-12",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(

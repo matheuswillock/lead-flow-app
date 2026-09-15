@@ -79,6 +79,8 @@ export type TaskItem = {
     id: string
     name: string
     leadCode: string
+    /** Time DONO da tarefa. No Calendário multi-time pode não ser o time ativo. */
+    teamId: string | null
   }
   assignees: TaskAssignee[]
 }
@@ -87,6 +89,7 @@ interface TaskCardProps {
   task: TaskItem
   currentProfileId: string
   supabaseId: string
+  /** Fallback quando o payload não traz o time do lead (consumidores antigos). */
   activeTeamId: string
   tz: string
   onStatusUpdated?: () => void
@@ -146,6 +149,11 @@ export function TaskCard({
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [canceling, setCanceling] = React.useState(false)
 
+  // Concluir e cancelar são autorizados contra `task.lead.teamId` no servidor.
+  // Mandar o time ATIVO faria toda ação numa tarefa de outro time responder 404
+  // — o que o Calendário multi-time passou a listar.
+  const taskTeamId = task.lead.teamId ?? activeTeamId
+
   const overallStatus = deriveOverallStatus(task.assignees)
   const TaskTypeIcon = TASK_TYPE_ICON[task.taskType]
 
@@ -169,7 +177,7 @@ export function TaskCard({
             headers: {
               "Content-Type": "application/json",
               "x-supabase-user-id": supabaseId,
-              "x-team-id": activeTeamId,
+              "x-team-id": taskTeamId,
             },
             body: JSON.stringify({ status: "DONE" }),
           }
@@ -195,7 +203,7 @@ export function TaskCard({
         method: "POST",
         headers: {
           "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId,
+          "x-team-id": taskTeamId,
         },
       })
       const result = await response.json().catch(() => null)
@@ -249,7 +257,7 @@ export function TaskCard({
                   variant="ghost"
                   size="icon"
                   data-no-card-open="true"
-                  className="size-7 shrink-0"
+                  className="size-7 max-lg:size-11 shrink-0"
                   disabled={updatingStatus || canceling}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -358,6 +366,7 @@ export function TaskCard({
               size="sm"
               variant="outline"
               data-no-card-open="true"
+              className="max-lg:h-11"
               disabled={updatingStatus || canceling || !canMarkDone}
               onClick={(e) => {
                 e.stopPropagation()

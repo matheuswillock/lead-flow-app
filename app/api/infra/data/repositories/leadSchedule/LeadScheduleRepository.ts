@@ -7,6 +7,11 @@ import type {
   UpsertTransferPreScheduleDTO
 } from "./ILeadScheduleRepository";
 import { LeadsSchedule, Prisma } from "@prisma/client";
+import {
+  isTeamScopeVisibilityEmpty,
+  type TeamScopeVisibility,
+} from "@/lib/teams/teamScopeVisibility";
+import { buildLeadScheduleTeamScopeWhere } from "./leadScheduleTeamScopeWhere";
 
 export class LeadScheduleRepository implements ILeadScheduleRepository {
   async upsertTransferPreSchedule(data: UpsertTransferPreScheduleDTO): Promise<void> {
@@ -156,27 +161,21 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
     });
   }
 
-  async findDayAgendaByTeams(input: {
-    teamIds: string[];
-    restrictToProfileId: string | null;
+  async findDayAgendaByTeamScope(input: {
+    visibility: TeamScopeVisibility;
     dayStart: Date;
     dayEnd: Date;
   }): Promise<DayAgendaScheduleRow[]> {
-    const teamFilter =
-      input.teamIds.length === 1 ? { teamId: input.teamIds[0] } : { teamId: { in: input.teamIds } };
+    if (isTeamScopeVisibilityEmpty(input.visibility)) {
+      return [];
+    }
 
     return await prisma.leadsSchedule.findMany({
       where: {
-        lead: {
-          ...teamFilter,
-          ...(input.restrictToProfileId && {
-            OR: [
-              { assignedTo: input.restrictToProfileId },
-              { createdBy: input.restrictToProfileId },
-            ],
-          }),
-        },
-        date: { gte: input.dayStart, lte: input.dayEnd },
+        AND: [
+          buildLeadScheduleTeamScopeWhere(input.visibility),
+          { date: { gte: input.dayStart, lte: input.dayEnd } },
+        ],
       },
       select: {
         id: true,
