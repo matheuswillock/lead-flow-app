@@ -6,13 +6,16 @@ import { ptBR } from "date-fns/locale"
 import {
   AlertCircle,
   CheckCircle2,
+  ClipboardList,
   Clock,
   Copy,
   Globe,
   LoaderCircle,
+  Mail,
   MoreHorizontal,
   MousePointerClick,
   ShieldAlert,
+  Sparkles,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -42,6 +45,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -58,10 +62,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils"
 import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
+import {
+  groupDnsRecordsBySection,
+  isDnsRecordVerified,
+  type CustomDomainDnsRecord,
+  type DnsRecordSection,
+  type DnsRecordSectionKey,
+} from "@/lib/email/custom-domain-dns-instructions"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
-import type { DomainRecord, ResendDomainStatus } from "../context/EmailSettingsTypes"
+import type { ResendDomainStatus } from "../context/EmailSettingsTypes"
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
+import { SendDnsInstructionsDialog } from "./SendDnsInstructionsDialog"
 import { formatResendRegion } from "../utils/resend-region-labels"
 
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
@@ -140,7 +152,7 @@ function TrackingBadge({ enabled, label }: { enabled: boolean; label: string }) 
   )
 }
 
-function purposeLabel(record: DomainRecord): string {
+function purposeLabel(record: CustomDomainDnsRecord): string {
   const purpose = record.record?.trim()
   if (!purpose) return "—"
   const labels: Record<string, string> = {
@@ -153,55 +165,68 @@ function purposeLabel(record: DomainRecord): string {
   return labels[purpose] ?? purpose
 }
 
-function isTrackingRecord(record: DomainRecord): boolean {
+function isTrackingRecord(record: CustomDomainDnsRecord): boolean {
   const purpose = record.record?.trim()
   return purpose === "Tracking" || purpose === "TrackingCAA"
 }
 
 /**
- * Paridade com o painel do Resend: os registros são exibidos por seção
- * (Verificação do domínio / Envio / Tracking), cada uma com o próprio banner de
- * erro quando um registro falhou. Antes a tabela era única e todo status
- * não-verificado virava um relógio neutro — registro com VALOR ERRADO no DNS
- * (caso interplaza.com.br, 01/09) aparecia como "aguardando", e o operador não
- * tinha como saber qual linha corrigir.
+ * Paridade com painéis de provedor de e-mail: os registros são exibidos por
+ * seção (Verificação do domínio / Envio / Tracking), cada uma com o próprio
+ * banner de erro quando um registro falhou. Antes a tabela era única e todo
+ * status não-verificado virava um relógio neutro — registro com VALOR ERRADO
+ * no DNS (caso interplaza.com.br, 01/09) aparecia como "aguardando", e o
+ * operador não tinha como saber qual linha corrigir. O agrupamento vive em
+ * `lib/email/custom-domain-dns-instructions` porque as instruções copiadas e
+ * o e-mail para a hospedagem seguem as mesmas seções.
  */
-type RecordSection = {
-  key: string
-  title: string
-  records: DomainRecord[]
+const SECTION_TITLES: Record<DnsRecordSectionKey, string> = {
+  dkim: "Verificação do domínio (DKIM)",
+  spf: "Envio (SPF)",
+  tracking: "Tracking",
+  receiving: "Recebimento",
+  other: "Outros registros",
 }
 
-const SECTION_ORDER: Array<{ key: string; title: string; matches: (purpose: string) => boolean }> = [
-  { key: "dkim", title: "Verificação do domínio (DKIM)", matches: (p) => p === "DKIM" },
-  { key: "spf", title: "Envio (SPF)", matches: (p) => p === "SPF" },
-  { key: "tracking", title: "Tracking", matches: (p) => p === "Tracking" || p === "TrackingCAA" },
-  { key: "receiving", title: "Recebimento", matches: (p) => p === "Receiving" },
-]
-
-function groupRecordsBySection(records: DomainRecord[]): RecordSection[] {
-  const sections: RecordSection[] = SECTION_ORDER.map((section) => ({
-    key: section.key,
-    title: section.title,
-    records: records.filter((record) => section.matches(record.record?.trim() ?? "")),
-  }))
-  const matched = new Set(sections.flatMap((section) => section.records))
-  const leftovers = records.filter((record) => !matched.has(record))
-  if (leftovers.length > 0) {
-    sections.push({ key: "outros", title: "Outros registros", records: leftovers })
-  }
-  return sections.filter((section) => section.records.length > 0)
+/**
+ * Alerta por seção enquanto o registro segue pendente no DNS (o mesmo
+ * comportamento do banner "records not found" de painéis de provedor).
+ * Só DKIM e SPF bloqueiam o disparo — Tracking tem aviso informativo próprio.
+ */
+const SECTION_PENDING_ALERTS: Partial<
+  Record<DnsRecordSectionKey, { title: string; description: string }>
+> = {
+  dkim: {
+    title: "Registro de verificação do domínio (DKIM) não encontrado",
+    description:
+      "Ele é necessário para confirmar a propriedade do domínio — sem essa confirmação o disparo não é liberado. Cadastre o registro abaixo no DNS do seu domínio e, depois de corrigir, reinicie a verificação.",
+  },
+  spf: {
+    title: "Registros de envio (SPF) não encontrados",
+    description:
+      "Sem eles o disparo não é liberado. Cadastre os registros abaixo no DNS do seu domínio e, depois de corrigir, reinicie a verificação.",
+  },
 }
 
-function sectionFailures(section: RecordSection): DomainRecord[] {
+function sectionFailures(section: DnsRecordSection): CustomDomainDnsRecord[] {
   return section.records.filter((record) => record.status === "failed")
 }
 
-function sectionTemporaryFailures(section: RecordSection): DomainRecord[] {
+function sectionTemporaryFailures(section: DnsRecordSection): CustomDomainDnsRecord[] {
   return section.records.filter((record) => record.status === "temporary_failure")
 }
 
-function recordFailureSentence(record: DomainRecord): string {
+/** Registros ainda não encontrados no DNS (pendente/não iniciado) — falha tem banner próprio. */
+function sectionAwaitingRecords(section: DnsRecordSection): CustomDomainDnsRecord[] {
+  return section.records.filter(
+    (record) =>
+      !isDnsRecordVerified(record) &&
+      record.status !== "failed" &&
+      record.status !== "temporary_failure"
+  )
+}
+
+function recordFailureSentence(record: CustomDomainDnsRecord): string {
   return `${purposeLabel(record)} ${record.type} inválido: o valor publicado no DNS está incorreto ou ausente. Atualize o registro "${record.name}" para o valor mostrado na tabela e clique em "Verificar DNS".`
 }
 
@@ -260,7 +285,7 @@ function CopyableCell({ value, label }: { value: string; label: string }) {
         type="button"
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0"
+        className="size-7 max-lg:size-11 shrink-0"
         onClick={() => void copyToClipboard(value, label)}
         aria-label={`Copiar ${label}`}
       >
@@ -295,9 +320,15 @@ export function CustomDomainCard() {
     handleVerifyDomain,
     handleLoadDomainRecords,
     handleConfigureDomainTracking,
+    sendingDnsInstructions,
+    canSendDnsInstructions,
+    handleCopyDnsInstructions,
+    handleCopyDnsInstructionsPrompt,
+    handleSendDnsInstructions,
   } = useEmailSettingsContext()
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false)
+  const [sendInstructionsDialogOpen, setSendInstructionsDialogOpen] = useState(false)
   const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
   const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
 
@@ -345,7 +376,7 @@ export function CustomDomainCard() {
     <EmailSettingsSectionCard
       icon={Globe}
       title="Domínio personalizado"
-      description="Conecte um domínio próprio ao Resend para fortalecer a identidade da sua operação."
+      description="Conecte um domínio próprio para fortalecer a identidade da sua operação."
       contentClassName="flex flex-col gap-6"
     >
       {loading ? (
@@ -390,7 +421,13 @@ export function CustomDomainCard() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" size="icon" disabled={disconnectingDomain}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="max-lg:size-11"
+                    disabled={disconnectingDomain}
+                  >
                     <MoreHorizontal className="size-4" />
                     <span className="sr-only">Ações do domínio</span>
                   </Button>
@@ -403,6 +440,31 @@ export function CustomDomainCard() {
                     <Clock data-icon="inline-start" />
                     {verifyLabel}
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={domainRecords.length === 0}
+                    onClick={() => void handleCopyDnsInstructions()}
+                  >
+                    <ClipboardList data-icon="inline-start" />
+                    Copiar instruções
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={domainRecords.length === 0}
+                    onClick={() => void handleCopyDnsInstructionsPrompt()}
+                  >
+                    <Sparkles data-icon="inline-start" />
+                    Copiar como prompt de IA
+                  </DropdownMenuItem>
+                  {canSendDnsInstructions ? (
+                    <DropdownMenuItem
+                      disabled={sendingDnsInstructions}
+                      onClick={() => setSendInstructionsDialogOpen(true)}
+                    >
+                      <Mail data-icon="inline-start" />
+                      Enviar por e-mail
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuSeparator />
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <DropdownMenuItem
@@ -419,7 +481,7 @@ export function CustomDomainCard() {
                         <AlertDialogTitle>Deletar domínio</AlertDialogTitle>
                         <AlertDialogDescription>
                           Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação
-                          remove o domínio no Resend e os disparos voltarão a usar{" "}
+                          remove o domínio da plataforma e os disparos voltarão a usar{" "}
                           {PLATFORM_FROM_EMAIL}.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -490,7 +552,7 @@ export function CustomDomainCard() {
                   ) : null}
                 </div>
               </div>
-              <Button type="button" variant="outline" onClick={openTrackingDialog}>
+              <Button type="button" variant="outline" className="max-lg:h-11" onClick={openTrackingDialog}>
                 {hasTrackingConfigured ? "Alterar" : "Configurar"}
               </Button>
             </div>
@@ -511,6 +573,7 @@ export function CustomDomainCard() {
               </div>
               <Button
                 type="button"
+                className="max-lg:h-11"
                 onClick={() => void handleVerifyDomain()}
                 disabled={verifyingDomain || loadingRecords}
               >
@@ -530,11 +593,11 @@ export function CustomDomainCard() {
                 corporativo.
               </p>
               <p>
-                Desative o proxy Cloudflare (nuvem laranja) nos registros CNAME/MX/TXT do Resend.
+                Desative o proxy Cloudflare (nuvem laranja) nos registros CNAME/MX/TXT do e-mail.
               </p>
               <p>
                 DMARC (opcional): adicione um TXT em <span className="font-mono text-xs">_dmarc</span> no
-                domínio raiz para reforçar a autenticidade — não é exigido pelo Resend para verificar o
+                domínio raiz para reforçar a autenticidade — não é exigido para verificar o
                 domínio.
               </p>
               {hasTrackingConfigured ? (
@@ -551,14 +614,50 @@ export function CustomDomainCard() {
               </div>
             ) : domainRecords.length > 0 ? (
               <div className="flex flex-col gap-5">
-                {groupRecordsBySection(domainRecords).map((section) => {
+                {groupDnsRecordsBySection(domainRecords).map((section) => {
                   const failures = sectionFailures(section)
                   const temporaryFailures = sectionTemporaryFailures(section)
+                  const awaitingRecords = sectionAwaitingRecords(section)
+                  const pendingAlert = SECTION_PENDING_ALERTS[section.key]
                   return (
                     <div key={section.key} className="flex flex-col gap-3">
                       <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
-                        {section.title}
+                        {SECTION_TITLES[section.key]}
                       </p>
+                      {pendingAlert && awaitingRecords.length > 0 ? (
+                        <Alert variant="destructive">
+                          <AlertCircle className="size-4" />
+                          <AlertTitle>{pendingAlert.title}</AlertTitle>
+                          <AlertDescription className="flex flex-col items-start gap-3">
+                            <span>{pendingAlert.description}</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="max-lg:h-11"
+                              onClick={() => void handleVerifyDomain()}
+                              disabled={verifyingDomain || loadingRecords}
+                            >
+                              {verifyingDomain ? (
+                                <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                              ) : (
+                                <Clock data-icon="inline-start" />
+                              )}
+                              Reiniciar verificação
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
+                      ) : null}
+                      {section.key === "tracking" && awaitingRecords.length > 0 ? (
+                        <Alert className="border-border/60 bg-[color:var(--surface-1)] text-foreground">
+                          <MousePointerClick className="size-4 text-muted-foreground" />
+                          <AlertTitle>Registro de tracking pendente</AlertTitle>
+                          <AlertDescription>
+                            Ele não bloqueia o disparo. Cadastre o registro abaixo quando quiser
+                            medir as aberturas dos seus e-mails.
+                          </AlertDescription>
+                        </Alert>
+                      ) : null}
                       {failures.length > 0 ? (
                         <Alert variant="destructive">
                           <AlertCircle className="size-4" />
@@ -624,7 +723,7 @@ export function CustomDomainCard() {
                                     ? record.priority
                                     : "—"}
                                 </TableCell>
-                                <TableCell className="text-xs">{record.ttl}</TableCell>
+                                <TableCell className="text-xs">{record.ttl ?? "Auto"}</TableCell>
                                 <TableCell>
                                   <RecordStatusBadge status={record.status} />
                                 </TableCell>
@@ -639,7 +738,7 @@ export function CustomDomainCard() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Nenhum registro retornado pelo Resend para este domínio.
+                Nenhum registro DNS disponível para este domínio.
               </p>
             )}
           </div>
@@ -683,11 +782,12 @@ export function CustomDomainCard() {
                       checked={openTrackingDraft}
                       onCheckedChange={setOpenTrackingDraft}
                       disabled={configuringDomainTracking}
+                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
                     />
                   </Field>
 
                   <FieldDescription>
-                    Cliques não são rastreados pelo Resend de propósito: ligar isso
+                    Cliques não são rastreados de propósito: ligar isso
                     reescreve todo link do e-mail para o subdomínio de tracking, e
                     provedores marcam a mensagem como suspeita. Os cliques já são
                     medidos no próprio formulário.
@@ -721,6 +821,14 @@ export function CustomDomainCard() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <SendDnsInstructionsDialog
+            open={sendInstructionsDialogOpen}
+            onOpenChange={setSendInstructionsDialogOpen}
+            domainName={domainName ?? ""}
+            sending={sendingDnsInstructions}
+            onSend={handleSendDnsInstructions}
+          />
         </>
       ) : (
         <div className="rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
@@ -741,6 +849,7 @@ export function CustomDomainCard() {
                   />
                   <Button
                     type="button"
+                    className="max-lg:h-11"
                     onClick={() => void handleConnectDomain()}
                     disabled={connectingDomain || !domainInput.trim()}
                   >

@@ -53,6 +53,7 @@ export function TemplateApprovalCard() {
               checked={templateApprovalRequired}
               onCheckedChange={setTemplateApprovalRequired}
               disabled={saving}
+              className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
             />
             <FieldContent>
               <FieldLabel htmlFor="template-approval-required">Exigir aprovação antes do uso</FieldLabel>
@@ -81,7 +82,7 @@ export function TemplateApprovalCard() {
                       checked={checked}
                       onCheckedChange={() => toggleTemplateApprovalRole(role.value)}
                       disabled={saving || !templateApprovalRequired}
-                      className="mt-0.5"
+                      className="mt-0.5 max-lg:size-11 max-lg:rounded-lg max-lg:[&_svg]:size-6"
                     />
                     <FieldContent>
                       <FieldLabel htmlFor={`template-approval-role-${role.value}`}>{role.label}</FieldLabel>

@@ -10,7 +10,7 @@ export type DispatchBlockedDateEntry = { date?: string; from?: string; to?: stri
  * botão errado.
  */
 export const RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE =
-  "O DNS de envio do seu domínio ainda não está verificado no Resend. Nenhum disparo será liberado enquanto os registros DKIM e SPF não aparecerem como verificados. Publique os registros pendentes e use \"Verificar DNS\"."
+  "O DNS de envio do seu domínio ainda não está verificado. Nenhum disparo será liberado enquanto os registros DKIM e SPF não aparecerem como verificados. Publique os registros pendentes e use \"Verificar DNS\"."
 
 export const RESEND_DOMAIN_METRICS_DISABLED_MESSAGE =
   "Suas campanhas disparam normalmente, mas sem taxa de abertura. Para recuperar a métrica, publique o CNAME de tracking e habilite a abertura em Métricas de tracking. O rastreio de cliques permanece desligado de propósito: ele reescreve os links do e-mail e faz provedores marcarem a mensagem como suspeita — os cliques já são medidos no próprio formulário."
