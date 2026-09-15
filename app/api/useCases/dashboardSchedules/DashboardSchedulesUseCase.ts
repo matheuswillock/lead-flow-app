@@ -59,9 +59,8 @@ export class DashboardSchedulesUseCase implements IDashboardSchedulesUseCase {
         59
       );
 
-      const rows = await this.schedules.findDayAgendaByTeams({
-        teamIds: input.teamIds,
-        restrictToProfileId: input.restrictToProfileId,
+      const rows = await this.schedules.findDayAgendaByTeamScope({
+        visibility: input.visibility,
         dayStart,
         dayEnd,
       });
