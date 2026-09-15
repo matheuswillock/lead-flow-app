@@ -24,10 +24,10 @@ export function DashboardTeamScopeToggle() {
       size="sm"
       aria-label="Escopo do dashboard"
     >
-      <ToggleGroupItem value="active" aria-label="Time ativo">
+      <ToggleGroupItem value="active" aria-label="Time ativo" className="max-lg:h-11">
         Time ativo
       </ToggleGroupItem>
-      <ToggleGroupItem value="all" aria-label="Todos os times">
+      <ToggleGroupItem value="all" aria-label="Todos os times" className="max-lg:h-11">
         Todos os times
       </ToggleGroupItem>
     </ToggleGroup>
