@@ -159,8 +159,15 @@ class TaskRepository implements ITaskRepository {
     });
     const taskWithRelations = updatedTask as TaskWithRelations;
 
+    // `Task.activityId` é opcional (`onDelete: SetNull`): sem atividade vinculada
+    // não há payload para sincronizar. Mandar "" para uma coluna uuid quebra com
+    // P2023 e derruba o PATCH da tarefa com 500.
+    if (!taskWithRelations.activityId) {
+      return taskWithRelations;
+    }
+
     await prisma.leadActivity.updateMany({
-      where: { id: taskWithRelations.activityId ?? "" },
+      where: { id: taskWithRelations.activityId },
       data: {
         body: input.body.trim(),
         payload: {
