@@ -91,9 +91,13 @@ function buildResend(): ReturnType<typeof assertResend> {
   } as unknown as ReturnType<typeof assertResend>
 }
 
+/** Mesmo motivo do `domainExistence`: o default consulta DoH real. */
+const dnsProviderLookupMock = mock(async (_domainName: string) => null)
+
 /**
- * `domainExistence` SEMPRE injetado: o default do use case consulta DNS/RDAP
- * reais, e teste unitário não pode depender da rede da máquina.
+ * `domainExistence` e `dnsProviderLookup` SEMPRE injetados: os defaults do use
+ * case consultam DNS/RDAP/DoH reais, e teste unitário não pode depender da rede
+ * da máquina.
  */
 function buildUseCase(
   domainExistence: (name: string) => Promise<"exists" | "not_registered" | "unknown"> = async () =>
@@ -104,6 +108,7 @@ function buildUseCase(
     resendFactory: buildResend,
     domainEvents: buildDomainEvents(),
     domainExistence,
+    dnsProviderLookup: dnsProviderLookupMock,
   })
 }
 

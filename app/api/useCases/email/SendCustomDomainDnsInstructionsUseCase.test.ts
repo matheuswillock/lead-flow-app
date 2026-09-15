@@ -9,6 +9,7 @@ import type {
   SendDnsInstructionsEmailInput,
 } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import type { assertResend } from "@/lib/email"
+import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import { SendCustomDomainDnsInstructionsUseCase } from "./SendCustomDomainDnsInstructionsUseCase"
 
 const DOMAIN_RECORDS = [
@@ -55,11 +56,20 @@ function buildMailService(): ICustomDomainDnsInstructionsMailService {
   return { sendDnsInstructionsEmail: sendMailMock }
 }
 
+/**
+ * Stub explícito da resolução de hospedagem: sem ele o default bateria na
+ * consulta DoH real, e o teste passaria a depender de rede.
+ */
+const dnsProviderLookupMock = mock(
+  async (_domainName: string): Promise<DnsProviderMatch | null> => null
+)
+
 function buildUseCase(settings: EmailTeamSettingsRecord | null = CONNECTED_SETTINGS) {
   return new SendCustomDomainDnsInstructionsUseCase({
     settingsRepo: buildSettingsRepository(settings),
     resendFactory: buildResend,
     mailService: buildMailService(),
+    dnsProviderLookup: dnsProviderLookupMock,
   })
 }
 
@@ -81,6 +91,8 @@ const teamCtx = {
 
 describe("SendCustomDomainDnsInstructionsUseCase", () => {
   beforeEach(() => {
+    dnsProviderLookupMock.mockClear()
+    dnsProviderLookupMock.mockResolvedValue(null)
     sendMailMock.mockClear()
     sendMailMock.mockResolvedValue({ success: true, error: undefined })
     domainsGetMock.mockClear()
@@ -146,7 +158,32 @@ describe("SendCustomDomainDnsInstructionsUseCase", () => {
       recipientEmail: "hospedagem@cliente.com.br",
       domainName: "mail.empresa-exemplo.com.br",
       records: DOMAIN_RECORDS,
+      providerName: null,
     })
+  })
+
+  it("passa a hospedagem identificada para o serviço de e-mail", async () => {
+    dnsProviderLookupMock.mockResolvedValueOnce({
+      name: "HostGator",
+      nameservers: ["ns1158.hostgator.com.br"],
+    })
+
+    await buildUseCase().execute(teamCtx, { recipientEmail: "hospedagem@cliente.com.br" })
+
+    expect(dnsProviderLookupMock).toHaveBeenCalledWith("mail.empresa-exemplo.com.br")
+    expect(sendMailMock.mock.calls[0]?.[0]?.providerName).toBe("HostGator")
+  })
+
+  it("envia mesmo quando a consulta de hospedagem falha", async () => {
+    dnsProviderLookupMock.mockRejectedValueOnce(new Error("DoH indisponível"))
+
+    const output = await buildUseCase().execute(teamCtx, {
+      recipientEmail: "hospedagem@cliente.com.br",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(sendMailMock).toHaveBeenCalledTimes(1)
+    expect(sendMailMock.mock.calls[0]?.[0]?.providerName).toBeNull()
   })
 
   it("propaga falha de envio como Output inválido", async () => {

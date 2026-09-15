@@ -19,6 +19,8 @@ import {
   checkSendingDomainExistence,
   type SendingDomainExistence,
 } from "@/lib/email/sending-domain-existence"
+import { getCachedDomainDnsProvider } from "@/lib/email/cached-domain-dns-provider"
+import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
@@ -170,6 +172,8 @@ export type EmailTeamSettingsDependencies = {
   domainEvents?: IEmailTeamDomainEventRepository
   /** Costura de teste como o `resendFactory`: o default consulta DNS/RDAP reais. */
   domainExistence?: (name: string) => Promise<SendingDomainExistence>
+  /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
+  dnsProviderLookup?: (domainName: string) => Promise<DnsProviderMatch | null>
 }
 
 export class EmailTeamSettingsUseCase {
@@ -180,6 +184,7 @@ export class EmailTeamSettingsUseCase {
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
+  private readonly dnsProviderLookup: (domainName: string) => Promise<DnsProviderMatch | null>
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -195,6 +200,22 @@ export class EmailTeamSettingsUseCase {
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
+    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? getCachedDomainDnsProvider
+  }
+
+  /**
+   * A hospedagem é enfeite de diagnóstico: o campo some quando a consulta DoH
+   * falha, e nunca derruba a leitura dos registros. Por isso o `catch` engole o
+   * erro em vez de propagar — o contrário quebraria a tela de configuração de
+   * e-mail toda vez que um resolver público ficasse fora do ar.
+   */
+  private async resolveDnsProvider(domainName: string): Promise<DnsProviderMatch | null> {
+    try {
+      return await this.dnsProviderLookup(domainName)
+    } catch (error) {
+      console.error("[EmailTeamSettingsUseCase][resolveDnsProvider]", error)
+      return null
+    }
   }
 
   private composeResult(
@@ -595,6 +616,8 @@ export class EmailTeamSettingsUseCase {
         domainName: data.name,
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
+        // Momento em que o operador mais precisa saber qual painel abrir.
+        dnsProvider: await this.resolveDnsProvider(data.name),
         connectedAt: connectedAt.toISOString(),
         // Mesma fonte que `saveConnectedDomain` logo acima — a resposta não tem
         // como divergir do que foi gravado. Antes eram dois literais soltos, e
@@ -912,13 +935,17 @@ export class EmailTeamSettingsUseCase {
         new Date()
       )
 
-      const domainEvents = await this.domainEvents.listEvents(ctx.teamId)
+      const [domainEvents, dnsProvider] = await Promise.all([
+        this.domainEvents.listEvents(ctx.teamId),
+        this.resolveDnsProvider(data.name),
+      ])
 
       return new Output(true, [], [], {
         domainId: data.id,
         domainName: data.name,
         status: synced.status,
         region: synced.region ?? settings.resendDomainRegion,
+        dnsProvider,
         connectedAt: settings.resendDomainConnectedAt?.toISOString() ?? null,
         openTracking: synced.openTracking,
         clickTracking: synced.clickTracking,

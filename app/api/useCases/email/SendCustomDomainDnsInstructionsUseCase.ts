@@ -6,12 +6,16 @@ import type { IEmailTeamSettingsRepository } from "@/app/api/infra/data/reposito
 import { CustomDomainDnsInstructionsMailService } from "@/app/api/services/email/CustomDomainDnsInstructionsMailService"
 import type { ICustomDomainDnsInstructionsMailService } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import { getEmailService } from "@/lib/services/EmailService"
+import { getCachedDomainDnsProvider } from "@/lib/email/cached-domain-dns-provider"
+import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
 export type SendCustomDomainDnsInstructionsDependencies = {
   settingsRepo?: IEmailTeamSettingsRepository
   resendFactory?: () => ReturnType<typeof assertResend>
   mailService?: ICustomDomainDnsInstructionsMailService
+  /** Costura de teste: o default resolve os nameservers por DoH, com cache de horas. */
+  dnsProviderLookup?: (domainName: string) => Promise<DnsProviderMatch | null>
 }
 
 export type SendCustomDomainDnsInstructionsInput = {
@@ -39,11 +43,23 @@ export class SendCustomDomainDnsInstructionsUseCase {
   private readonly settingsRepo: IEmailTeamSettingsRepository
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly mailService: ICustomDomainDnsInstructionsMailService
+  private readonly dnsProviderLookup: (domainName: string) => Promise<DnsProviderMatch | null>
 
   constructor(dependencies: SendCustomDomainDnsInstructionsDependencies = {}) {
     this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.mailService = dependencies.mailService ?? buildDefaultDnsInstructionsMailService()
+    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? getCachedDomainDnsProvider
+  }
+
+  /** Hospedagem é enfeite: falha de DoH tira o nome do painel, não o e-mail. */
+  private async resolveProviderName(domainName: string): Promise<string | null> {
+    try {
+      return (await this.dnsProviderLookup(domainName))?.name ?? null
+    } catch (error) {
+      console.error("[SendCustomDomainDnsInstructionsUseCase][resolveProviderName]", error)
+      return null
+    }
   }
 
   async execute(
@@ -86,6 +102,7 @@ export class SendCustomDomainDnsInstructionsUseCase {
         recipientEmail: validation.email,
         domainName: settings.resendDomainName,
         records: data.records ?? [],
+        providerName: await this.resolveProviderName(settings.resendDomainName),
       })
       if (!dispatch.success) {
         console.error(
