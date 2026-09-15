@@ -8,6 +8,7 @@ import type {
   ChangeOrderTargetProduct,
   CreateBackofficeSubscriptionChangeOrderData,
   IBackofficeSubscriptionChangeOrderRepository,
+  LogSubscriptionChangeOrderEventData,
 } from "./IBackofficeSubscriptionChangeOrderRepository"
 
 const CHANGE_ORDER_SELECT = {
@@ -36,6 +37,44 @@ type ChangeOrderQueryResult = Prisma.BackofficeSubscriptionChangeOrderGetPayload
 function decimalToNumber(value: { toString(): string } | null | undefined): number | null {
   if (value === null || value === undefined) return null
   return Number(value.toString())
+}
+
+type CurrentProductPrices = {
+  priceMonthly: Prisma.Decimal | null
+  priceQuarterly: Prisma.Decimal | null
+  priceQuadrimester: Prisma.Decimal | null
+  priceSemiannual: Prisma.Decimal | null
+  priceAnnual: Prisma.Decimal | null
+}
+
+/**
+ * Achado codex/cursor[bot] no PR #1167: sem isto, um master legado (ciclo +
+ * vencimento sem adesão vinculada) ou qualquer master após a 1ª ordem
+ * aplicada (G3 zera `adhesionId` de propósito) ficava com
+ * `currentChargedAmount = null` → `?? 0` na pró-rata → cobra o valor cheio
+ * do alvo sem abater o que já se paga hoje. Fallback: preço de TABELA do
+ * produto atual no ciclo atual — mesmo padrão de `getProductListAmountForCycle`
+ * do E5/UseCase, duplicado aqui de propósito (repositórios não importam de
+ * useCases).
+ */
+function getCurrentProductListAmountForCycle(
+  product: CurrentProductPrices,
+  cycle: string
+): number | null {
+  switch (cycle) {
+    case "monthly":
+      return decimalToNumber(product.priceMonthly)
+    case "quarterly":
+      return decimalToNumber(product.priceQuarterly)
+    case "quadrimester":
+      return decimalToNumber(product.priceQuadrimester)
+    case "semiannual":
+      return decimalToNumber(product.priceSemiannual)
+    case "annual":
+      return decimalToNumber(product.priceAnnual)
+    default:
+      return null
+  }
 }
 
 /**
@@ -96,6 +135,15 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
             subscriptionCycle: true,
             subscriptionNextDueDate: true,
             adhesion: { select: { cycle: true, totalAmount: true, negotiatedTotalAmount: true } },
+            product: {
+              select: {
+                priceMonthly: true,
+                priceQuarterly: true,
+                priceQuadrimester: true,
+                priceSemiannual: true,
+                priceAnnual: true,
+              },
+            },
           },
         },
       },
@@ -108,7 +156,9 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
       subscription?.adhesion?.cycle ?? toBillingCycle(subscription?.subscriptionCycle ?? "") ?? null
     const currentChargedAmount = subscription?.adhesion
       ? decimalToNumber(subscription.adhesion.negotiatedTotalAmount ?? subscription.adhesion.totalAmount)
-      : null
+      : currentCycle && subscription?.product
+        ? getCurrentProductListAmountForCycle(subscription.product, currentCycle)
+        : null
 
     return {
       hasPermanentSubscription: master.hasPermanentSubscription,
@@ -199,16 +249,28 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
     return order ? mapRecord(order) : null
   }
 
+  /**
+   * Achado cursor[bot]/codex no PR #1167: até aqui, `chargeAmount` MUST
+   * permanecer a pró-rata (nunca o avulso não aprovado) — só a aprovação
+   * promove. Lê `overrideAmount` antes do UPDATE porque o query builder do
+   * Prisma não copia coluna→coluna declarativamente.
+   */
   async approveOverride(
     id: string,
     approverProfileId: string
   ): Promise<BackofficeSubscriptionChangeOrderRecord> {
+    const current = await prisma.backofficeSubscriptionChangeOrder.findUniqueOrThrow({
+      where: { id },
+      select: { overrideAmount: true },
+    })
+
     const updated = await prisma.backofficeSubscriptionChangeOrder.update({
       where: { id },
       data: {
         overrideStatus: "approved",
         overrideApprovedByProfileId: approverProfileId,
         overrideApprovedAt: new Date(),
+        chargeAmount: current.overrideAmount ?? undefined,
       },
       select: CHANGE_ORDER_SELECT,
     })
@@ -292,6 +354,33 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
 
       return mapRecord(order)
     })
+  }
+
+  /**
+   * Achado codex/cursor[bot] no PR #1167: timeline própria do módulo — nunca
+   * `logSubscriptionChange`/`SubscriptionChangeLog` (tabela do produto,
+   * violaria Backoffice Module Isolation em agents.md). `eventType` reusa só
+   * o TIPO `SubscriptionLifecycleEvent` do Prisma, preservando a semântica
+   * tipada do G4 sem acoplar ao módulo produto.
+   */
+  async logEvent(data: LogSubscriptionChangeOrderEventData): Promise<void> {
+    try {
+      await prisma.backofficeSubscriptionChangeOrderEvent.create({
+        data: {
+          changeOrderId: data.changeOrderId,
+          changeType: data.changeType,
+          eventType: data.eventType ?? undefined,
+          actorProfileId: data.actorProfileId ?? undefined,
+          payload: data.payload as Prisma.InputJsonValue | undefined,
+        },
+      })
+    } catch (error) {
+      console.error("[BackofficeSubscriptionChangeOrderRepository][logEvent]", {
+        changeOrderId: data.changeOrderId,
+        changeType: data.changeType,
+        error,
+      })
+    }
   }
 }
 

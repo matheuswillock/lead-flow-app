@@ -2,7 +2,6 @@ import { Output } from "@/lib/output"
 import type { BackofficeAdhesionBillingCycle } from "@prisma/client"
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
 import { calculateSubscriptionChangeProration } from "@/lib/billing/subscription-change-proration"
-import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
 import { asaasCustomerGateway as defaultAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway"
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway"
 import { emailService as defaultEmailService } from "@/lib/services/EmailService"
@@ -153,15 +152,19 @@ export class BackofficeSubscriptionChangeOrderUseCase {
           return new Output(false, [], ["Preço avulso deve ser maior que zero"], null)
         }
 
-        chargeAmount = input.overrideAmount
         const delta = Math.abs(input.overrideAmount - proratedAmount)
 
         if (delta <= SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT) {
           overrideStatus = "approved"
           overrideApprovedByProfileId = input.actorProfileId
           overrideApprovedAt = now
+          // Só promove chargeAmount aqui — auto-aprovado dentro do teto.
+          chargeAmount = input.overrideAmount
         } else {
           overrideStatus = "pending"
+          // Achado cursor[bot]/codex no PR #1167: chargeAmount PERMANECE a
+          // pró-rata enquanto pending — nunca o avulso não aprovado (contrato
+          // do model). Só `approveOverride` promove.
         }
       }
 
@@ -183,13 +186,11 @@ export class BackofficeSubscriptionChangeOrderUseCase {
         createdByBackofficeUserId: input.backofficeUserId,
       })
 
-      await logSubscriptionChange({
-        profileId: input.masterProfileId,
-        source: "backoffice_subscription_change_order",
+      await this.repository.logEvent({
+        changeOrderId: created.id,
         actorProfileId: input.actorProfileId,
         changeType: "subscription_change_order_created",
-        after: {
-          id: created.id,
+        payload: {
           targetProductId: created.targetProductId,
           targetCycle: created.targetCycle,
           chargeAmount: created.chargeAmount,
@@ -222,12 +223,11 @@ export class BackofficeSubscriptionChangeOrderUseCase {
 
       const approved = await this.repository.approveOverride(id, approverProfileId)
 
-      await logSubscriptionChange({
-        profileId: approved.masterProfileId,
-        source: "backoffice_subscription_change_order",
+      await this.repository.logEvent({
+        changeOrderId: approved.id,
         actorProfileId: approverProfileId,
         changeType: "subscription_change_order_override_approved",
-        after: { id: approved.id, chargeAmount: approved.chargeAmount },
+        payload: { chargeAmount: approved.chargeAmount },
       })
 
       return new Output(true, ["Preço avulso aprovado"], [], approved)
@@ -311,11 +311,10 @@ export class BackofficeSubscriptionChangeOrderUseCase {
         invoiceUrl: payment.invoiceUrl ?? "",
       })
 
-      await logSubscriptionChange({
-        profileId: order.masterProfileId,
-        source: "backoffice_subscription_change_order",
+      await this.repository.logEvent({
+        changeOrderId: updated.id,
         changeType: "subscription_change_order_payment_generated",
-        after: { id: updated.id, asaasPaymentId: updated.asaasPaymentId, status: updated.status },
+        payload: { asaasPaymentId: updated.asaasPaymentId, status: updated.status },
       })
 
       return new Output(true, ["Cobrança gerada e e-mail enviado"], [], updated)
@@ -429,9 +428,8 @@ export class BackofficeSubscriptionChangeOrderUseCase {
         return new Output(true, ["Ordem já estava aplicada"], [], null)
       }
 
-      await logSubscriptionChange({
-        profileId: applied.masterProfileId,
-        source: "backoffice_subscription_change_order",
+      await this.repository.logEvent({
+        changeOrderId: applied.id,
         changeType: "subscription_change_order_applied",
         // G4 (SPEC 20 E1/C12): a ÚNICA das 4 transições desta entidade que é
         // de fato um evento de lifecycle da assinatura — produto/ciclo
@@ -441,8 +439,7 @@ export class BackofficeSubscriptionChangeOrderUseCase {
         // então ficam sem eventType (mesmo tratamento do changeType
         // "level_transition" pré-existente).
         eventType: "plan_changed",
-        after: {
-          id: applied.id,
+        payload: {
           targetProductId: applied.targetProductId,
           targetCycle: applied.targetCycle,
           asaasPaymentId: applied.asaasPaymentId,

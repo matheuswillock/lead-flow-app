@@ -1087,6 +1087,7 @@ model Profile {
   // Backoffice: alteração de assinatura (E6/G1 de [[50 — Backoffice de Cobrança — Backend]])
   subscriptionChangeOrders                BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderMaster")
   subscriptionChangeOrderOverrideApprovals BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderOverrideApprover")
+  subscriptionChangeOrderEventsAsActor     BackofficeSubscriptionChangeOrderEvent[] @relation("BackofficeSubscriptionChangeOrderEventActor")
 
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
@@ -3800,10 +3801,37 @@ model BackofficeSubscriptionChangeOrder {
   targetProduct         BackofficeProduct @relation("BackofficeSubscriptionChangeOrderTargetProduct", fields: [targetProductId], references: [id], onDelete: Restrict)
   overrideApprovedBy    Profile?          @relation("BackofficeSubscriptionChangeOrderOverrideApprover", fields: [overrideApprovedByProfileId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser? @relation("BackofficeSubscriptionChangeOrderCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  events                BackofficeSubscriptionChangeOrderEvent[]
 
   @@index([masterProfileId], map: "backoffice_subscription_change_orders_master_profile_id_idx")
   @@index([status], map: "backoffice_subscription_change_orders_status_idx")
   @@map("backoffice_subscription_change_orders")
+}
+
+/**
+ * Achado codex/cursor[bot] no PR #1167: `BackofficeSubscriptionChangeOrderUseCase`
+ * gravava em `SubscriptionChangeLog` via `logSubscriptionChange` — tabela do
+ * módulo produto, violando "Backoffice Module Isolation" (agents.md), cujo
+ * único acoplamento permitido é `Profile`/`BackofficeUser`. Timeline própria,
+ * escopada ao módulo, seguindo o padrão de `BackofficeDeletionAuditLog`.
+ * `eventType` reusa o TIPO `SubscriptionLifecycleEvent` (não a tabela/
+ * repositório do produto) para preservar a semântica tipada do G4.
+ */
+model BackofficeSubscriptionChangeOrderEvent {
+  id             String                      @id @default(uuid()) @db.Uuid
+  changeOrderId  String                      @db.Uuid
+  changeType     String                      @db.Text
+  eventType      SubscriptionLifecycleEvent?
+  actorProfileId String?                     @map("actorProfileId") @db.Uuid
+  payload        Json?
+  createdAt      DateTime                    @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  changeOrder BackofficeSubscriptionChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Restrict)
+  actor       Profile?                          @relation("BackofficeSubscriptionChangeOrderEventActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([changeOrderId, createdAt(sort: Desc)])
+  @@index([actorProfileId])
+  @@map("backoffice_subscription_change_order_events")
 }
 
 model BackofficeFeature {

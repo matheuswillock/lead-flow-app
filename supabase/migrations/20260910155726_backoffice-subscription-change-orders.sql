@@ -53,11 +53,3 @@ alter table "public"."backoffice_subscription_change_orders" validate constraint
 alter table "public"."backoffice_subscription_change_orders" add constraint "backoffice_subscription_change_orders_targetProductId_fkey" FOREIGN KEY ("targetProductId") REFERENCES public.backoffice_products(id) ON UPDATE CASCADE ON DELETE RESTRICT not valid;
 
 alter table "public"."backoffice_subscription_change_orders" validate constraint "backoffice_subscription_change_orders_targetProductId_fkey";
-
--- Tabela server-only (só Prisma/service_role) — mesmo padrão de
--- billing_rate_limit_windows (20260901232956, achado cursor[bot]/codex no
--- PR #1134): RLS on, sem policy, grants explícitos.
-ALTER TABLE "public"."backoffice_subscription_change_orders" ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE "public"."backoffice_subscription_change_orders" FROM anon;
-REVOKE ALL ON TABLE "public"."backoffice_subscription_change_orders" FROM authenticated;
-GRANT ALL ON TABLE "public"."backoffice_subscription_change_orders" TO service_role;

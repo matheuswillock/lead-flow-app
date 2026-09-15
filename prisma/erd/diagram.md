@@ -3012,6 +3012,15 @@ completed completed
     }
   
 
+  "backoffice_subscription_change_order_events" {
+    String id "🗝️"
+    String changeType 
+    SubscriptionLifecycleEvent eventType "❓"
+    Json payload "❓"
+    DateTime createdAt 
+    }
+  
+
   "backoffice_features" {
     String id "🗝️"
     String slug 
@@ -4606,6 +4615,9 @@ completed completed
     "backoffice_subscription_change_orders" }o--|| backoffice_products : "targetProduct"
     "backoffice_subscription_change_orders" }o--|o corretor_studio_profiles : "overrideApprovedBy"
     "backoffice_subscription_change_orders" }o--|o backoffice_users : "createdByBackofficeUser"
+    "backoffice_subscription_change_order_events" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
+    "backoffice_subscription_change_order_events" }o--|| backoffice_subscription_change_orders : "changeOrder"
+    "backoffice_subscription_change_order_events" }o--|o corretor_studio_profiles : "actor"
     "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
     "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
     "backoffice_features" |o--|o backoffice_features : "parent"

@@ -1,4 +1,4 @@
-import type { AsaasAccount, BackofficeAdhesionBillingCycle } from "@prisma/client"
+import type { AsaasAccount, BackofficeAdhesionBillingCycle, SubscriptionLifecycleEvent } from "@prisma/client"
 
 /** Dados de cobrança do master (G2) — o mínimo para criar/verificar customer Asaas. */
 export interface ChangeOrderBillingProfile {
@@ -83,6 +83,19 @@ export interface AttachSubscriptionChangeOrderPaymentData {
   paymentInvoiceUrl: string | null
 }
 
+/**
+ * Achado codex/cursor[bot] no PR #1167: timeline própria do módulo
+ * (`BackofficeSubscriptionChangeOrderEvent`), nunca `logSubscriptionChange`/
+ * `SubscriptionChangeLog` — ver Backoffice Module Isolation em agents.md.
+ */
+export interface LogSubscriptionChangeOrderEventData {
+  changeOrderId: string
+  changeType: string
+  eventType?: SubscriptionLifecycleEvent | null
+  actorProfileId?: string | null
+  payload?: unknown
+}
+
 export interface IBackofficeSubscriptionChangeOrderRepository {
   findMasterContext(masterProfileId: string): Promise<ChangeOrderMasterContext | null>
   findTargetProduct(productId: string): Promise<ChangeOrderTargetProduct | null>
@@ -106,4 +119,6 @@ export interface IBackofficeSubscriptionChangeOrderRepository {
    * outra entrega do mesmo webhook já aplicou, ou a ordem foi cancelada).
    */
   applyChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null>
+  /** Timeline própria do módulo — nunca `logSubscriptionChange` (isolamento backoffice). */
+  logEvent(data: LogSubscriptionChangeOrderEventData): Promise<void>
 }

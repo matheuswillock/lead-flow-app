@@ -5,10 +5,6 @@ import {
 } from "./BackofficeSubscriptionChangeOrderUseCase"
 
 mock.module("server-only", () => ({}))
-const logSubscriptionChangeMock = mock(async () => {})
-mock.module("@/lib/billing/logSubscriptionChange", () => ({
-  logSubscriptionChange: logSubscriptionChangeMock,
-}))
 
 const MASTER_ID = "11111111-1111-4111-8111-111111111111"
 const PRODUCT_ID = "22222222-2222-4222-8222-222222222222"
@@ -110,13 +106,13 @@ function makeRepository(overrides: Partial<Record<string, unknown>> = {}) {
       paymentInvoiceUrl: "https://asaas.test/i/pay_new_1",
       createdAt: new Date(),
     })),
+    logEvent: mock(async () => {}),
     ...overrides,
   }
 }
 
 beforeEach(() => {
   delete process.env.BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT
-  logSubscriptionChangeMock.mockClear()
 })
 
 describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
@@ -157,14 +153,14 @@ describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
       backofficeUserId: BACKOFFICE_USER_ID,
     })
 
-    expect(logSubscriptionChangeMock).toHaveBeenCalledWith(
+    expect(repository.logEvent).toHaveBeenCalledWith(
       expect.objectContaining({ changeType: "subscription_change_order_created" })
     )
-    const calls = logSubscriptionChangeMock.mock.calls as unknown as Array<[{ eventType?: unknown }]>
+    const calls = repository.logEvent.mock.calls as unknown as Array<[{ eventType?: unknown }]>
     expect(calls[0]?.[0]?.eventType).toBeUndefined()
   })
 
-  it("T-50.15: preço avulso acima do teto (0) → ordem nasce pending de aprovação", async () => {
+  it("T-50.15: preço avulso acima do teto (0) → ordem nasce pending de aprovação, chargeAmount continua a pró-rata (achado cursor[bot]/codex no PR #1167)", async () => {
     const repository = makeRepository()
     const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
 
@@ -180,7 +176,10 @@ describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
     expect(output.isValid).toBe(true)
     const result = output.result as any
     expect(result.overrideStatus).toBe("pending")
-    expect(result.chargeAmount).toBe(150)
+    // Contrato do model: chargeAmount é sempre proratedAmount a menos que
+    // overrideAmount esteja APROVADO — nunca o valor avulso não aprovado.
+    expect(result.chargeAmount).toBe(100)
+    expect(result.overrideAmount).toBe(150)
     expect(output.successMessages[0]).toMatch(/aguardando aprovação/i)
   })
 
@@ -300,7 +299,7 @@ describe("BackofficeSubscriptionChangeOrderUseCase.approveOverride — G1", () =
     expect(repository.approveOverride).not.toHaveBeenCalled()
   })
 
-  it("ordem com preço avulso pendente → aprova", async () => {
+  it("ordem com preço avulso pendente → aprova e PROMOVE chargeAmount para o avulso (achado cursor[bot]/codex no PR #1167)", async () => {
     const repository = makeRepository({
       findById: mock(async () => ({
         id: "order-1",
@@ -313,7 +312,8 @@ describe("BackofficeSubscriptionChangeOrderUseCase.approveOverride — G1", () =
         overrideAmount: 150,
         overrideStatus: "pending",
         overrideApprovedByProfileId: null,
-        chargeAmount: 150,
+        // enquanto pending, chargeAmount é a pró-rata — nunca o avulso não aprovado.
+        chargeAmount: 100,
         createdAt: new Date(),
       })),
       approveOverride: mock(async () => ({
@@ -327,6 +327,7 @@ describe("BackofficeSubscriptionChangeOrderUseCase.approveOverride — G1", () =
         overrideAmount: 150,
         overrideStatus: "approved",
         overrideApprovedByProfileId: ACTOR_PROFILE_ID,
+        // só agora, aprovado, chargeAmount é promovido para o avulso.
         chargeAmount: 150,
         createdAt: new Date(),
       })),
@@ -337,6 +338,8 @@ describe("BackofficeSubscriptionChangeOrderUseCase.approveOverride — G1", () =
 
     expect(output.isValid).toBe(true)
     expect(repository.approveOverride).toHaveBeenCalledWith("order-1", ACTOR_PROFILE_ID)
+    const result = output.result as any
+    expect(result.chargeAmount).toBe(150)
   })
 
   it("ordem não encontrada → rejeitado", async () => {
@@ -583,7 +586,7 @@ describe("BackofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder — G3",
       account: "primary",
     })
 
-    expect(logSubscriptionChangeMock).toHaveBeenCalledWith(
+    expect(repository.logEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         changeType: "subscription_change_order_applied",
         eventType: "plan_changed",

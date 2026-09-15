@@ -152,6 +152,8 @@ describeIntegration("BackofficeSubscriptionChangeOrderUseCase.generatePayment â€
     async applyChangeOrder(): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
       return this.order
     }
+
+    async logEvent(): Promise<void> {}
   }
 
   const noopEmailService = { sendSubscriptionChangeOrderPaymentEmail: async () => undefined }
