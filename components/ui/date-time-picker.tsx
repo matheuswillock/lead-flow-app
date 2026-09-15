@@ -33,6 +33,28 @@ import {
 import { Input } from "./input"
 import { Spinner } from "./spinner"
 
+/**
+ * Existe alguma regra de dia a aplicar no calendário?
+ *
+ * Precisa listar TODA restrição de dia. Um piso que não aparece aqui vira prop
+ * que promete e não cumpre: o predicado nem chega a ser passado ao `Calendar` e
+ * o calendário libera tudo. Foi o caso de `minDateTime` combinado com
+ * `disablePastDates={false}` (achado do Codex no PR #1177).
+ */
+export function hasCalendarDayRestriction(params: {
+  disablePastDates: boolean
+  minDateKey?: string
+  availableDateKeys?: string[]
+  maxDateKey?: string
+}): boolean {
+  return Boolean(
+    params.disablePastDates ||
+      params.minDateKey ||
+      params.availableDateKeys ||
+      params.maxDateKey
+  )
+}
+
 interface DateTimePickerProps {
   date?: Date
   onDateChange: (date: Date | undefined) => void
@@ -271,7 +293,14 @@ export function DateTimePicker({
                 onSelect={handleDateSelect}
                 weekdayLabelFormat="short"
                 disabled={
-                  disablePastDates || availableDateKeySet || maxDateKey ? isDateDisabled : undefined
+                  hasCalendarDayRestriction({
+                    disablePastDates,
+                    minDateKey,
+                    availableDateKeys,
+                    maxDateKey,
+                  })
+                    ? isDateDisabled
+                    : undefined
                 }
                 initialFocus
                 locale={ptBR}
