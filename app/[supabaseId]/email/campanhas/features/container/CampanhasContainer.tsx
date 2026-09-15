@@ -125,11 +125,21 @@ export function CampanhasContainer({
           <h1 className="text-2xl font-semibold">Campanhas</h1>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={openGeneralAnalytics}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="max-lg:h-11"
+            onClick={openGeneralAnalytics}
+          >
             <BarChart3 data-icon="inline-start" />
             Métricas
           </Button>
-          <Button size="sm" onClick={() => void openWizard()} disabled={readOnly}>
+          <Button
+            size="sm"
+            className="max-lg:h-11"
+            onClick={() => void openWizard()}
+            disabled={readOnly}
+          >
             + Nova Campanha
           </Button>
         </div>

@@ -43,7 +43,7 @@ export function TrackingDegradedAlert({ warnings, blocked = false }: TrackingDeg
           ))}
         </div>
         {supabaseId ? (
-          <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Button asChild variant="outline" size="sm" className="shrink-0 max-lg:h-11">
             <Link href={`/${supabaseId}/email/configuracoes`}>
               <Settings data-icon="inline-start" />
               Ir para Configurações

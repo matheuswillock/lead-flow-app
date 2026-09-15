@@ -28,7 +28,7 @@ function OverviewMetric({ title, value, subtitle, delta, isRate, tooltip }: Over
             <Tooltip>
               <TooltipTrigger
                 aria-label={`Mais informações sobre ${title}`}
-                className="cursor-help rounded-full border-0 bg-transparent p-0"
+                className="cursor-help rounded-full border-0 bg-transparent p-0 max-lg:-m-[15px] max-lg:inline-flex max-lg:size-11 max-lg:items-center max-lg:justify-center"
               >
                 <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
               </TooltipTrigger>
