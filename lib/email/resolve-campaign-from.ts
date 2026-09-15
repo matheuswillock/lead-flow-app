@@ -4,27 +4,29 @@
  * Regras:
  * - Com remetente padrão → usar nome/e-mail do remetente
  * - Sem remetente + domínio do time → contato@[domínio]
- * - Sem remetente + sem domínio → contato@corretorstudio.com
+ * - Sem remetente + sem domínio → contato@mail.corretorstudio.com
  */
 
 import { isResendDomainSendCapable } from "@/lib/email/campaign-dispatch-guards"
 
-export const PLATFORM_FROM_DOMAIN = "corretorstudio.com"
+export const PLATFORM_ROOT_DOMAIN = "corretorstudio.com"
+export const PLATFORM_FROM_DOMAIN = "mail.corretorstudio.com"
 export const DELIVERY_LOCAL_PART = "contato"
 export const PLATFORM_FROM_NAME = "Corretor Studio"
 export const PLATFORM_FROM_EMAIL = `${DELIVERY_LOCAL_PART}@${PLATFORM_FROM_DOMAIN}`
+export const PLATFORM_FROM_HEADER = `${PLATFORM_FROM_NAME} <${PLATFORM_FROM_EMAIL}>`
 
 /**
  * Defaults legados ainda presentes em rows antigas.
  *
- * `deliveryby@corretorstudio.com` foi o default da plataforma até a troca para
- * `contato@` e é o `@default` de `EmailTeamSettings.fromEmail`, então continua
- * gravado em rows existentes. Precisa estar listado como literal: sem ele,
- * `resolveCampaignFrom` passaria a tratar o endereço antigo como remetente
- * próprio do time e o preservaria no disparo.
+ * `deliveryby@corretorstudio.com` e `contato@corretorstudio.com` foram defaults
+ * da plataforma antes do subdomínio de envio. Precisam continuar listados como
+ * literais: sem isso, `resolveCampaignFrom` trataria o endereço antigo como
+ * remetente próprio do time e o preservaria no disparo.
  */
 const LEGACY_PLATFORM_FROM_EMAILS = new Set([
   PLATFORM_FROM_EMAIL.toLowerCase(),
+  "contato@corretorstudio.com",
   "deliveryby@corretorstudio.com",
   "no-reply@corretorstudio.com",
 ])
@@ -131,7 +133,7 @@ export function isEmailOnPlatformDomain(email: string | null | undefined): boole
   const at = normalized.lastIndexOf("@")
   if (at < 0) return false
   const host = normalized.slice(at + 1)
-  return host === PLATFORM_FROM_DOMAIN || host.endsWith(`.${PLATFORM_FROM_DOMAIN}`)
+  return host === PLATFORM_ROOT_DOMAIN || host.endsWith(`.${PLATFORM_ROOT_DOMAIN}`)
 }
 
 export function buildDeliveryFromEmail(domainName: string | null | undefined): string {

@@ -135,10 +135,10 @@ export function DispatchRestrictionsCard() {
             ) : null}
 
             <div className="flex flex-wrap gap-2">
-                <Button type="button" variant={mode === "single" ? "default" : "outline"} size="sm" onClick={() => setMode("single")}>
+                <Button type="button" variant={mode === "single" ? "default" : "outline"} size="sm" className="max-lg:h-11" onClick={() => setMode("single")}>
                 Data única
               </Button>
-              <Button type="button" variant={mode === "range" ? "default" : "outline"} size="sm" onClick={() => setMode("range")}>
+              <Button type="button" variant={mode === "range" ? "default" : "outline"} size="sm" className="max-lg:h-11" onClick={() => setMode("range")}>
                 Período
               </Button>
             </div>
@@ -157,7 +157,7 @@ export function DispatchRestrictionsCard() {
                     />
                   </FieldContent>
                 </Field>
-                <Button type="button" variant="outline" onClick={handleAdd} disabled={!singleDate || saving}>
+                <Button type="button" variant="outline" className="max-lg:h-11" onClick={handleAdd} disabled={!singleDate || saving}>
                   Adicionar
                 </Button>
               </div>
@@ -187,7 +187,7 @@ export function DispatchRestrictionsCard() {
                     />
                   </FieldContent>
                 </Field>
-                <Button type="button" variant="outline" onClick={handleAdd} disabled={!rangeFrom || !rangeTo || saving}>
+                <Button type="button" variant="outline" className="max-lg:h-11" onClick={handleAdd} disabled={!rangeFrom || !rangeTo || saving}>
                   Adicionar
                 </Button>
               </div>
@@ -202,7 +202,7 @@ export function DispatchRestrictionsCard() {
               <p className="text-sm text-muted-foreground">Use para impedir disparos recorrentes em dias específicos, como fechamento ou faturamento.</p>
             </div>
 
-            <div className="grid grid-cols-7 gap-2 md:grid-cols-10">
+            <div className="grid grid-cols-5 gap-2 sm:grid-cols-7 md:grid-cols-10">
               {days.map((day) => {
                 const active = blockedDispatchDays.includes(day)
 
@@ -213,7 +213,7 @@ export function DispatchRestrictionsCard() {
                     onClick={() => toggleBlockedDispatchDay(day)}
                     disabled={saving}
                     className={cn(
-                      "flex h-10 items-center justify-center rounded-xl border text-sm font-medium transition",
+                      "flex h-10 max-lg:h-11 items-center justify-center rounded-xl border text-sm font-medium transition",
                       active
                         ? "border-primary bg-primary text-primary-foreground shadow-[var(--precision-shadow-1)]"
                         : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:bg-primary/10 hover:text-primary"

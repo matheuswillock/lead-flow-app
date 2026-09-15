@@ -5,7 +5,11 @@ import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
 import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
 import { reconcileResendDomainStatusUseCase } from "@/app/api/useCases/email/ReconcileResendDomainStatusUseCase"
 
-export const maxDuration = 60
+// Reconciliação é sequencial por domínio (~4s cada) — o rate limit do provider é
+// compartilhado com envios reais, por isso não paraleliza. Com 13 domínios já
+// beirava os 60s e a plataforma matava o processo (stale_running_timeout 3x em
+// 10-11/09). 300s dá margem linear para ~75 domínios.
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   await connection()

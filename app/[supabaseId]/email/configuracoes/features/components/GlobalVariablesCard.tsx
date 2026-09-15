@@ -504,7 +504,7 @@ export function GlobalVariablesCard() {
                 {globalVariables.length === 1 ? "variável cadastrada" : "variáveis cadastradas"}
               </p>
             </div>
-            <Button type="button" onClick={() => setAdding((current) => !current)} disabled={creatingVariable}>
+            <Button type="button" className="max-lg:h-11" onClick={() => setAdding((current) => !current)} disabled={creatingVariable}>
               {creatingVariable ? (
                 <LoaderCircle data-icon="inline-start" className="animate-spin" />
               ) : (
