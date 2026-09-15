@@ -142,6 +142,18 @@ export class EmailSettingsService implements IEmailSettingsService {
     return json.result as DomainConnectResult
   }
 
+  async sendDomainDnsInstructions(recipientEmail: string): Promise<void> {
+    const res = await fetch(`${this.base}/domain/send-dns-instructions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipientEmail }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.isValid) {
+      throw new Error(json.errorMessages?.join(", ") ?? `HTTP ${res.status}`)
+    }
+  }
+
   async getVariables(): Promise<EmailGlobalVariable[]> {
     const res = await fetch(`${this.base}/variables`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)

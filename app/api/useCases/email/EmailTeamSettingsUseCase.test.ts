@@ -21,7 +21,7 @@ function settingsRecord(
 ): EmailTeamSettingsRecord {
   return {
     fromName: "Corretor Studio",
-    fromEmail: "contato@corretorstudio.com",
+    fromEmail: "contato@mail.corretorstudio.com",
     replyTo: null,
     dispatchBlockedDates: null,
     dispatchTimeFrom: null,

@@ -57,7 +57,7 @@ function RoleChecklist({
                 checked={checked}
                 onCheckedChange={() => onToggle(role.value)}
                 disabled={disabled}
-                className="mt-0.5"
+                className="mt-0.5 max-lg:size-11 max-lg:rounded-lg max-lg:[&_svg]:size-6"
               />
               <FieldContent>
                 <FieldLabel htmlFor={fieldId}>{role.label}</FieldLabel>

@@ -58,6 +58,7 @@ export interface IEmailSettingsService {
   verifyDomain(): Promise<{ status: ResendDomainStatus }>
   getDomainRecords(): Promise<DomainConnectResult>
   configureDomainTracking(data: ConfigureDomainTrackingData): Promise<DomainConnectResult>
+  sendDomainDnsInstructions(recipientEmail: string): Promise<void>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: UpsertEmailVariableData): Promise<EmailGlobalVariable>

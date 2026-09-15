@@ -256,6 +256,13 @@ export interface StudioEmailSettingsService {
   configureDomainTracking(
     data: StudioEmailConfigureDomainTrackingData
   ): Promise<DomainConnectResult>
+  /**
+   * Opcional: envio das instruções de DNS por e-mail existe hoje só na
+   * superfície do produto (`/api/v1/email/settings/domain/send-dns-instructions`).
+   * O host do backoffice não implementa — o card esconde a ação quando o
+   * service não expõe o método (ver `canSendDnsInstructions` no hook).
+   */
+  sendDomainDnsInstructions?(recipientEmail: string): Promise<void>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>

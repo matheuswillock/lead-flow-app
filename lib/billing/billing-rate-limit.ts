@@ -21,9 +21,12 @@ export type BillingRateLimitResult = {
 /**
  * Retenção (achado codex no PR #1134): a chave inclui IP influenciado por
  * atacante, então sem limpeza a tabela cresce sem limite. Janela expirada há
- * mais de 1h não afeta nenhuma decisão (maior windowMs em uso: 5min) — a
- * limpeza roda como CTE na mesma operação do consumo, sem cron novo, apoiada
- * no índice de "windowStart" da migration.
+ * mais de 1h não afeta nenhuma decisão — o maior windowMs em uso é 60min
+ * (instruções DNS, `lib/email/dns-instructions-rate-limit.ts`), e a janela
+ * corrente sempre tem windowStart > now − windowMs, então nunca cai no
+ * cutoff de 1h. A limpeza roda como CTE na mesma operação do consumo, sem
+ * cron novo, apoiada no índice de "windowStart" da migration. Ao adotar um
+ * windowMs novo, mantenha BILLING_RATE_LIMIT_RETENTION_MS ≥ windowMs.
  */
 export const BILLING_RATE_LIMIT_RETENTION_MS = 60 * 60_000
 

@@ -41,7 +41,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "email-campaign-counters-reconcile": 60,
   "email-import": 60,
   "email-orphan-events-drain": 300,
-  "email-resend-domain-status-reconcile": 60,
+  "email-resend-domain-status-reconcile": 300,
   "email-resend-webhook-retry": 60,
   "email-stale-queued-logs-expire": 60,
   "engagement-backfill": 300,

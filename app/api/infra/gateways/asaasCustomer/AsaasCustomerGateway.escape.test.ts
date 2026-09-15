@@ -67,19 +67,29 @@ function findEscapes(): Array<{ file: string; line: number; snippet: string }> {
 }
 
 describe("AsaasCustomerGateway — sentinela anti-escape (M4.8, T-10.14)", () => {
-  it("nenhum POST /customers fora do gateway", () => {
-    const escapes = findEscapes()
+  // Timeout explícito: a varredura síncrona (readFileSync) de app/ e lib/
+  // inteiros roda em 223ms isolada, mas chegou a ~5.4-5.6s sob contenção de
+  // CPU/I-O nos runners da VPS (2 vCPU, E2E ou outro CI Light concorrente).
+  // O default do bun test é 5s, o que gerou 3 falsos vermelhos em 2 dias
+  // (10-11/09). É sentinela estática de código, não SLA de latência — 30s
+  // não esconde regressão real.
+  it(
+    "nenhum POST /customers fora do gateway",
+    () => {
+      const escapes = findEscapes()
 
-    if (escapes.length > 0) {
-      const details = escapes
-        .map((escape) => `  ${escape.file}:${escape.line} → ${escape.snippet}`)
-        .join("\n")
-      throw new Error(
-        `POST /customers encontrado fora do AsaasCustomerGateway:\n${details}\n` +
-          `Migre para asaasCustomerGateway.createCustomer({ profileId | adhesionId, ... }).`
-      )
-    }
+      if (escapes.length > 0) {
+        const details = escapes
+          .map((escape) => `  ${escape.file}:${escape.line} → ${escape.snippet}`)
+          .join("\n")
+        throw new Error(
+          `POST /customers encontrado fora do AsaasCustomerGateway:\n${details}\n` +
+            `Migre para asaasCustomerGateway.createCustomer({ profileId | adhesionId, ... }).`
+        )
+      }
 
-    expect(escapes).toEqual([])
-  })
+      expect(escapes).toEqual([])
+    },
+    30_000
+  )
 })
