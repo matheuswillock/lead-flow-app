@@ -29,6 +29,10 @@ export type LookupDomainDnsProviderDeps = {
 /** Código do tipo de registro NS no wire format do DNS (RFC 1035). */
 const DNS_RECORD_TYPE_NS = 2
 
+/** RCODEs do DNS (RFC 1035 §4.1.1) que o DoH JSON devolve no campo `Status`. */
+const DNS_STATUS_NOERROR = 0
+const DNS_STATUS_NXDOMAIN = 3
+
 /**
  * Curto de propósito: o campo é informativo e os dois resolvers respondem em
  * dezenas de milissegundos. No pior caso (primário mudo, secundário mudo) o
@@ -60,20 +64,31 @@ export const defaultLookupDomainDnsProviderDeps: LookupDomainDnsProviderDeps = {
 type DohAnswer = { type?: unknown; data?: unknown }
 
 /**
- * `null` = resposta inutilizável (tentar o próximo resolver).
- * `[]` = resolver respondeu e o nome não tem NS (tentar o próximo NOME, não o
- * próximo resolver — um segundo resolver devolveria o mesmo vazio).
+ * `null` = resposta inutilizável (tentar o próximo RESOLVER).
+ * `[]` = resolver respondeu de forma autoritativa e o nome não tem NS (tentar o
+ * próximo NOME — um segundo resolver devolveria o mesmo vazio).
+ *
+ * A distinção importa porque SERVFAIL e REFUSED chegam com **HTTP 200**: sem
+ * separá-los do NOERROR/NXDOMAIN, o `catch` nunca dispara, o fallback nunca é
+ * consultado e o campo fica vazio com um resolver perfeitamente saudável do
+ * outro lado (achado do cursor no PR #1182).
  */
 function parseNameserversFromDohJson(payload: unknown): string[] | null {
   if (!payload || typeof payload !== "object") return null
 
   const { Status: status, Answer: answer } = payload as { Status?: unknown; Answer?: unknown }
   if (typeof status !== "number") return null
-  if (status !== 0 || !Array.isArray(answer)) return []
 
-  return (answer as DohAnswer[])
-    .filter((record) => record.type === DNS_RECORD_TYPE_NS && typeof record.data === "string")
-    .map((record) => record.data as string)
+  if (status === DNS_STATUS_NOERROR) {
+    if (!Array.isArray(answer)) return []
+    return (answer as DohAnswer[])
+      .filter((record) => record.type === DNS_RECORD_TYPE_NS && typeof record.data === "string")
+      .map((record) => record.data as string)
+  }
+
+  // NXDOMAIN é veredito autoritativo sobre o nome; qualquer outro RCODE é falha
+  // do resolver, e falha de resolver é exatamente o que o fallback existe para cobrir.
+  return status === DNS_STATUS_NXDOMAIN ? [] : null
 }
 
 async function resolveNameservers(
@@ -96,6 +111,31 @@ function normalizeDomainName(domainName: string): string {
   return domainName.trim().toLowerCase().replace(/\.+$/, "")
 }
 
+/**
+ * Zonas candidatas, da mais específica ao apex registrável.
+ *
+ * Não basta `[nome, apex]`: `mail.marketing.empresa.com.br` pode ter a
+ * delegação em `marketing.empresa.com.br`, e pular esse degrau nomearia a
+ * hospedagem do apex — provedor errado no card e nas instruções copiadas
+ * (achado do codex no PR #1182). O teto de 4 nomes cobre apex + 3 níveis, que
+ * é mais fundo do que qualquer domínio de envio real; abaixo disso a consulta
+ * começa no degrau mais próximo do apex que couber.
+ */
+const MAX_CANDIDATE_ZONES = 4
+
+function buildCandidateZones(domainName: string): string[] {
+  const registrableDomain = getDomain(domainName)
+  if (!registrableDomain || registrableDomain === domainName) return [domainName]
+
+  const labels = domainName.split(".")
+  const apexLabelCount = registrableDomain.split(".").length
+  const candidates: string[] = []
+  for (let start = 0; labels.length - start >= apexLabelCount; start += 1) {
+    candidates.push(labels.slice(start).join("."))
+  }
+  return candidates.slice(-MAX_CANDIDATE_ZONES)
+}
+
 export async function lookupDomainDnsProvider(
   domainName: string,
   deps: LookupDomainDnsProviderDeps = defaultLookupDomainDnsProviderDeps
@@ -103,17 +143,13 @@ export async function lookupDomainDnsProvider(
   const normalized = normalizeDomainName(domainName)
   if (!normalized) return null
 
-  const registrableDomain = getDomain(normalized)
-  const candidates =
-    registrableDomain && registrableDomain !== normalized
-      ? [normalized, registrableDomain]
-      : [normalized]
+  const candidates = buildCandidateZones(normalized)
 
   const resolved = await Promise.all(
     candidates.map((candidate) => resolveNameservers(candidate, deps))
   )
 
-  // Ordem de `candidates`: o nome mais específico ganha do apex.
+  // Ordem de `candidates`: a zona mais específica com NS ganha das ancestrais.
   const nameservers = resolved.find((result) => result !== null && result.length > 0)
   if (!nameservers) {
     console.warn(`[lookupDomainDnsProvider] sem nameservers utilizáveis para ${normalized}`)

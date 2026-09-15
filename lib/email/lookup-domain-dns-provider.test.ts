@@ -108,6 +108,56 @@ describe("lookupDomainDnsProvider", () => {
     expect(match).toBeNull()
   })
 
+  it("usa o resolver de fallback quando o primário devolve SERVFAIL", async () => {
+    const requestedUrls: string[] = []
+    const deps: LookupDomainDnsProviderDeps = {
+      fetchDohJson: async (url) => {
+        requestedUrls.push(url)
+        // SERVFAIL/REFUSED chegam com HTTP 200 — não caem no catch.
+        if (url.startsWith("https://dns.google/")) return { Status: 2 }
+        return dohAnswer(["ns23.domaincontrol.com."])
+      },
+    }
+
+    const match = await lookupDomainDnsProvider("empresa.com.br", deps)
+
+    expect(match?.name).toBe("GoDaddy")
+    expect(requestedUrls).toHaveLength(2)
+  })
+
+  it("usa o resolver de fallback quando o primário devolve REFUSED", async () => {
+    const deps: LookupDomainDnsProviderDeps = {
+      fetchDohJson: async (url) =>
+        url.startsWith("https://dns.google/")
+          ? { Status: 5 }
+          : dohAnswer(["ns1.kinghost.net."]),
+    }
+
+    expect((await lookupDomainDnsProvider("empresa.com.br", deps))?.name).toBe("KingHost")
+  })
+
+  it("não gasta o segundo resolver quando o primeiro responde NXDOMAIN (resposta autoritativa)", async () => {
+    const requestedUrls: string[] = []
+    await lookupDomainDnsProvider(
+      "inexistente.com.br",
+      depsRespondingWith({ "inexistente.com.br": { Status: 3 } }, requestedUrls)
+    )
+    expect(requestedUrls).toHaveLength(1)
+  })
+
+  it("identifica a zona delegada intermediária, não o apex registrável", async () => {
+    const match = await lookupDomainDnsProvider(
+      "mail.marketing.empresa.com.br",
+      depsRespondingWith({
+        "mail.marketing.empresa.com.br": EMPTY_DOH_ANSWER,
+        "marketing.empresa.com.br": dohAnswer(["gina.ns.cloudflare.com."]),
+        "empresa.com.br": dohAnswer(["ns23.domaincontrol.com."]),
+      })
+    )
+
+    expect(match?.name).toBe("Cloudflare")
+  })
+
   it("devolve null quando o DNS responde NXDOMAIN em todos os nomes", async () => {
     const match = await lookupDomainDnsProvider(
       "mail.inexistente.com.br",

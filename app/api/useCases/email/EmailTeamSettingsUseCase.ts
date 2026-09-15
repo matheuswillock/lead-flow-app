@@ -19,7 +19,7 @@ import {
   checkSendingDomainExistence,
   type SendingDomainExistence,
 } from "@/lib/email/sending-domain-existence"
-import { getCachedDomainDnsProvider } from "@/lib/email/cached-domain-dns-provider"
+import { resolveDomainDnsProviderSafely } from "@/lib/email/cached-domain-dns-provider"
 import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import {
   assertSenderEmailIsAllowed,
@@ -200,22 +200,7 @@ export class EmailTeamSettingsUseCase {
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
-    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? getCachedDomainDnsProvider
-  }
-
-  /**
-   * A hospedagem é enfeite de diagnóstico: o campo some quando a consulta DoH
-   * falha, e nunca derruba a leitura dos registros. Por isso o `catch` engole o
-   * erro em vez de propagar — o contrário quebraria a tela de configuração de
-   * e-mail toda vez que um resolver público ficasse fora do ar.
-   */
-  private async resolveDnsProvider(domainName: string): Promise<DnsProviderMatch | null> {
-    try {
-      return await this.dnsProviderLookup(domainName)
-    } catch (error) {
-      console.error("[EmailTeamSettingsUseCase][resolveDnsProvider]", error)
-      return null
-    }
+    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? resolveDomainDnsProviderSafely
   }
 
   private composeResult(
@@ -617,7 +602,7 @@ export class EmailTeamSettingsUseCase {
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
         // Momento em que o operador mais precisa saber qual painel abrir.
-        dnsProvider: await this.resolveDnsProvider(data.name),
+        dnsProvider: await this.dnsProviderLookup(data.name),
         connectedAt: connectedAt.toISOString(),
         // Mesma fonte que `saveConnectedDomain` logo acima — a resposta não tem
         // como divergir do que foi gravado. Antes eram dois literais soltos, e
@@ -937,7 +922,7 @@ export class EmailTeamSettingsUseCase {
 
       const [domainEvents, dnsProvider] = await Promise.all([
         this.domainEvents.listEvents(ctx.teamId),
-        this.resolveDnsProvider(data.name),
+        this.dnsProviderLookup(data.name),
       ])
 
       return new Output(true, [], [], {

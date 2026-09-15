@@ -6,7 +6,7 @@ import type { IEmailTeamSettingsRepository } from "@/app/api/infra/data/reposito
 import { CustomDomainDnsInstructionsMailService } from "@/app/api/services/email/CustomDomainDnsInstructionsMailService"
 import type { ICustomDomainDnsInstructionsMailService } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import { getEmailService } from "@/lib/services/EmailService"
-import { getCachedDomainDnsProvider } from "@/lib/email/cached-domain-dns-provider"
+import { resolveDomainDnsProviderSafely } from "@/lib/email/cached-domain-dns-provider"
 import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
@@ -49,17 +49,7 @@ export class SendCustomDomainDnsInstructionsUseCase {
     this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.mailService = dependencies.mailService ?? buildDefaultDnsInstructionsMailService()
-    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? getCachedDomainDnsProvider
-  }
-
-  /** Hospedagem é enfeite: falha de DoH tira o nome do painel, não o e-mail. */
-  private async resolveProviderName(domainName: string): Promise<string | null> {
-    try {
-      return (await this.dnsProviderLookup(domainName))?.name ?? null
-    } catch (error) {
-      console.error("[SendCustomDomainDnsInstructionsUseCase][resolveProviderName]", error)
-      return null
-    }
+    this.dnsProviderLookup = dependencies.dnsProviderLookup ?? resolveDomainDnsProviderSafely
   }
 
   async execute(
@@ -102,7 +92,7 @@ export class SendCustomDomainDnsInstructionsUseCase {
         recipientEmail: validation.email,
         domainName: settings.resendDomainName,
         records: data.records ?? [],
-        providerName: await this.resolveProviderName(settings.resendDomainName),
+        providerName: (await this.dnsProviderLookup(settings.resendDomainName))?.name ?? null,
       })
       if (!dispatch.success) {
         console.error(

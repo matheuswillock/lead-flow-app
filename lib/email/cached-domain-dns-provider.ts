@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache"
 import { cacheTags } from "@/lib/cache/cacheTags"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { lookupDomainDnsProvider } from "@/lib/email/lookup-domain-dns-provider"
 import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 
@@ -32,4 +33,24 @@ export async function getCachedDomainDnsProvider(
   const match = await lookupDomainDnsProvider(domainName)
   cacheLife(match ? DNS_PROVIDER_LIFE : DNS_PROVIDER_UNAVAILABLE_LIFE)
   return match
+}
+
+/**
+ * Entrada que os UseCases consomem. O guard vive AQUI, e não repetido em cada
+ * UseCase, porque é aqui que mora o risco: `lookupDomainDnsProvider` já devolve
+ * `null` em falha de rede por contrato, mas `cacheTag`/`cacheLife` lançam fora
+ * de um work store do Next (script, worker, teste). Hospedagem é enfeite de
+ * diagnóstico — nenhuma dessas falhas pode derrubar a leitura dos registros DNS.
+ */
+export async function resolveDomainDnsProviderSafely(
+  domainName: string
+): Promise<DnsProviderMatch | null> {
+  try {
+    return await getCachedDomainDnsProvider(domainName)
+  } catch (error) {
+    // Interrupção de prerender não é falha de dado — precisa continuar subindo.
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[resolveDomainDnsProviderSafely]", error)
+    return null
+  }
 }

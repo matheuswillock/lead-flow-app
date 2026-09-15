@@ -174,8 +174,13 @@ describe("SendCustomDomainDnsInstructionsUseCase", () => {
     expect(sendMailMock.mock.calls[0]?.[0]?.providerName).toBe("HostGator")
   })
 
-  it("envia mesmo quando a consulta de hospedagem falha", async () => {
-    dnsProviderLookupMock.mockRejectedValueOnce(new Error("DoH indisponível"))
+  /**
+   * O contrato da dependência é total: `resolveDomainDnsProviderSafely` já
+   * converte falha de DoH e de cache em `null` (ver `cached-domain-dns-provider`).
+   * O que este teste trava é que `null` não impede o envio.
+   */
+  it("envia mesmo quando a hospedagem não pôde ser resolvida", async () => {
+    dnsProviderLookupMock.mockResolvedValueOnce(null)
 
     const output = await buildUseCase().execute(teamCtx, {
       recipientEmail: "hospedagem@cliente.com.br",
