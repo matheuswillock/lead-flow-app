@@ -7,8 +7,12 @@
  *
  * A narrativa voltada ao usuário não menciona o provedor de e-mail; nomes
  * técnicos de registro (ex.: `resend._domainkey`) são dados do DNS e
- * permanecem como são.
+ * permanecem como são. A hospedagem de DNS (HostGator, Cloudflare…) é outra
+ * coisa e É citada quando conhecida — é justamente o painel que o operador
+ * precisa abrir.
  */
+
+import { CLOUDFLARE_DNS_PROVIDER_NAME } from "./dns-provider-map"
 
 export type CustomDomainDnsRecord = {
   /** Propósito reportado pelo provedor: DKIM, SPF, Tracking, Receiving… */
@@ -73,6 +77,14 @@ const INSTRUCTION_SECTION_TITLES: Record<DnsRecordSectionKey, string> = {
 export type DnsInstructionsInput = {
   domainName: string
   records: CustomDomainDnsRecord[]
+  /**
+   * Hospedagem de DNS identificada pelos nameservers (`dns-provider-map.ts`).
+   * Quando conhecida, as instruções apontam o painel pelo nome em vez de falar
+   * em "gerenciador de DNS da hospedagem" — o operador do caso Inter Plaza
+   * levou uma investigação inteira para descobrir que precisava abrir a
+   * HostGator. Ausente/`null` mantém a narrativa genérica.
+   */
+  providerName?: string | null
 }
 
 function formatDnsRecordLine(record: CustomDomainDnsRecord): string {
@@ -94,23 +106,48 @@ function formatDnsSectionsBlock(records: CustomDomainDnsRecord[]): string {
     .join("\n\n")
 }
 
+/** Vale como precaução quando a hospedagem é desconhecida ou não é a Cloudflare. */
 const CLOUDFLARE_PROXY_WARNING =
   'Atenção: se a hospedagem usa Cloudflare, os registros do e-mail NÃO podem ficar atrás do proxy (nuvem laranja) — deixe cada um como "DNS only" (nuvem cinza).'
+
+/**
+ * Com a Cloudflare confirmada pelos nameservers o aviso deixa de ser hipótese e
+ * vira o primeiro passo da tarefa — por isso sobe do rodapé para o topo.
+ */
+const CONFIRMED_CLOUDFLARE_PROXY_WARNING =
+  'Atenção: o DNS deste domínio está na Cloudflare — os registros do e-mail NÃO podem ficar atrás do proxy (nuvem laranja). Deixe cada um como "DNS only" (nuvem cinza).'
 
 const AFTER_SETUP_NOTE =
   'Depois de cadastrar, volte ao Corretor Studio → Configurações de E-mail e clique em "Verificar DNS". A propagação pode levar de minutos a algumas horas.'
 
+function isCloudflareProvider(providerName?: string | null): boolean {
+  return providerName === CLOUDFLARE_DNS_PROVIDER_NAME
+}
+
+/** Sintagma sem artigo: quem chama compõe "no ..." ou "ao ..." conforme a frase. */
+function dnsManagerPhrase(domainName: string, providerName?: string | null): string {
+  return providerName
+    ? `painel da ${providerName}, hospedagem de DNS do domínio ${domainName}`
+    : `gerenciador de DNS da hospedagem do domínio ${domainName}`
+}
+
 /** Texto puro, pronto para colar num chat ou ticket com o suporte da hospedagem. */
-export function buildDnsInstructionsText({ domainName, records }: DnsInstructionsInput): string {
+export function buildDnsInstructionsText({
+  domainName,
+  records,
+  providerName,
+}: DnsInstructionsInput): string {
+  const cloudflareConfirmed = isCloudflareProvider(providerName)
+
   return [
     `Registros DNS para verificação do domínio ${domainName} no Corretor Studio`,
     "",
-    `Cadastre os registros abaixo no gerenciador de DNS da hospedagem do domínio ${domainName}:`,
+    ...(cloudflareConfirmed ? [CONFIRMED_CLOUDFLARE_PROXY_WARNING, ""] : []),
+    `Cadastre os registros abaixo no ${dnsManagerPhrase(domainName, providerName)}:`,
     "",
     formatDnsSectionsBlock(records),
     "",
-    CLOUDFLARE_PROXY_WARNING,
-    "",
+    ...(cloudflareConfirmed ? [] : [CLOUDFLARE_PROXY_WARNING, ""]),
     AFTER_SETUP_NOTE,
   ].join("\n")
 }
@@ -119,11 +156,15 @@ export function buildDnsInstructionsText({ domainName, records }: DnsInstruction
 export function buildDnsInstructionsAgentPrompt({
   domainName,
   records,
+  providerName,
 }: DnsInstructionsInput): string {
+  const cloudflareConfirmed = isCloudflareProvider(providerName)
+
   return [
-    `Você tem acesso ao gerenciador de DNS da hospedagem do domínio ${domainName}.`,
+    `Você tem acesso ao ${dnsManagerPhrase(domainName, providerName)}.`,
     `Sua tarefa é cadastrar os registros DNS abaixo, necessários para verificar o domínio ${domainName} no Corretor Studio.`,
     "",
+    ...(cloudflareConfirmed ? [CONFIRMED_CLOUDFLARE_PROXY_WARNING, ""] : []),
     "Regras:",
     "1. Cadastre cada registro exatamente como descrito: tipo, nome, valor, prioridade (quando houver) e TTL.",
     '2. Não use o proxy da Cloudflare (nuvem laranja) em nenhum destes registros — deixe todos como "DNS only" (nuvem cinza).',

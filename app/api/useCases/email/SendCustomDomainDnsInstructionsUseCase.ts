@@ -6,12 +6,16 @@ import type { IEmailTeamSettingsRepository } from "@/app/api/infra/data/reposito
 import { CustomDomainDnsInstructionsMailService } from "@/app/api/services/email/CustomDomainDnsInstructionsMailService"
 import type { ICustomDomainDnsInstructionsMailService } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import { getEmailService } from "@/lib/services/EmailService"
+import { DnsProviderLookupService } from "@/app/api/services/email/DnsProviderLookupService"
+import type { IDnsProviderLookupService } from "@/app/api/services/email/IDnsProviderLookupService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
 export type SendCustomDomainDnsInstructionsDependencies = {
   settingsRepo?: IEmailTeamSettingsRepository
   resendFactory?: () => ReturnType<typeof assertResend>
   mailService?: ICustomDomainDnsInstructionsMailService
+  /** Costura de teste: o default resolve os nameservers por DoH, com cache de horas. */
+  dnsProviderLookupService?: IDnsProviderLookupService
 }
 
 export type SendCustomDomainDnsInstructionsInput = {
@@ -39,11 +43,14 @@ export class SendCustomDomainDnsInstructionsUseCase {
   private readonly settingsRepo: IEmailTeamSettingsRepository
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly mailService: ICustomDomainDnsInstructionsMailService
+  private readonly dnsProviderLookupService: IDnsProviderLookupService
 
   constructor(dependencies: SendCustomDomainDnsInstructionsDependencies = {}) {
     this.settingsRepo = dependencies.settingsRepo ?? emailTeamSettingsRepository
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.mailService = dependencies.mailService ?? buildDefaultDnsInstructionsMailService()
+    this.dnsProviderLookupService =
+      dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
   }
 
   async execute(
@@ -86,6 +93,9 @@ export class SendCustomDomainDnsInstructionsUseCase {
         recipientEmail: validation.email,
         domainName: settings.resendDomainName,
         records: data.records ?? [],
+        providerName:
+          (await this.dnsProviderLookupService.lookupDnsProvider(settings.resendDomainName))
+            ?.name ?? null,
       })
       if (!dispatch.success) {
         console.error(
