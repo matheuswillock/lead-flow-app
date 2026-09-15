@@ -178,6 +178,204 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
   })
 
   /**
+   * Adenda E1/E1b (SPEC 31, todo 9/9b) — caso Rafael 10/09: adiamento
+   * silencioso e botão "Disparar" sem estado honesto.
+   *
+   * T-M31.11/12 (motivo visível, token de aviso — não destrutivo) e
+   * T-M31.13/14 (gating do botão) rodam como unit test em
+   * `getCampaignSendBlockReason.test.ts` e `campaign-dispatch-availability.test.ts`,
+   * onde o cenário de teto diário quase esgotado (starvation em cascata) é
+   * determinístico. Em E2E o time de seed é compartilhado entre workers
+   * (contagem de envios do dia variável — ver nota de projeto sobre flake
+   * sistêmico cross-worker), então os dois testes abaixo cobrem apenas os
+   * caminhos que NÃO dependem do consumo do teto: o motivo persistido
+   * (estático, independe de contagem) e o bloqueio de "parte já enviada"
+   * (por status, não por contagem).
+   */
+  test.describe("adiamento visível e botão com estado honesto", () => {
+    test("ficha apresenta o adiamento como falha de disparo — chip Adiada destrutivo + motivo do limite", async ({
+      page,
+    }) => {
+      const profile = await findE2eMasterProfile()
+      if (!profile?.activeTeamId) {
+        throw new Error("Seed E2E sem time ativo")
+      }
+
+      const prisma = getPrisma()
+      const templateId = randomUUID()
+      const parentId = randomUUID()
+      const subId = randomUUID()
+      const deferMessage =
+        "Adiada: limite diário de envio atingido (2.000/2.000) — o teto libera à meia-noite, mas os envios seguem a ordem de agendamento; partes mais antigas saem primeiro."
+
+      await prisma.emailTemplate.create({
+        data: {
+          id: templateId,
+          versionGroupId: templateId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Adiamento Template",
+          subject: "Assunto E2E adiamento",
+          html: "<p>Olá</p>",
+          status: "published",
+          versionNumber: 1,
+        },
+      })
+      await prisma.emailCampaign.create({
+        data: {
+          id: parentId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Adiamento Pai",
+          templateId,
+          status: "partially_sent",
+          totalRecipients: 5,
+        },
+      })
+      await prisma.emailCampaign.create({
+        data: {
+          id: subId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Adiamento Pai (parte 1/1)",
+          templateId,
+          parentCampaignId: parentId,
+          subCampaignIndex: 0,
+          status: "scheduled",
+          scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+          totalRecipients: 5,
+          errorMessage: deferMessage,
+        },
+      })
+
+      try {
+        await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+          waitUntil: "domcontentloaded",
+        })
+        const row = page.getByRole("row").filter({ hasText: "E2E Adiamento Pai" })
+        await expect(row).toBeVisible({ timeout: 30_000 })
+        const menuButton = row.getByRole("button", { name: "Abrir menu" })
+        await menuButton.scrollIntoViewIfNeeded()
+        await menuButton.click()
+        await page.getByRole("menuitem", { name: "Visualizar" }).click()
+
+        await expect(page.getByRole("heading", { name: "E2E Adiamento Pai" })).toBeVisible()
+        // A célula "Parte" mostra só o índice (subCampaignIndex), não o nome —
+        // localiza a linha pelo próprio motivo, já confirmado visível.
+        const motivoCell = page.getByText(deferMessage, { exact: false })
+        await expect(motivoCell).toBeVisible()
+        // Decisão do owner (15/09, caso Kathrein): adiamento é APRESENTADO
+        // como falha de disparo — chip "Adiada" destrutivo e a linha com o
+        // mesmo destaque de falha. O status interno segue `scheduled` (o
+        // cron redispara sozinho), mas o operador precisa VER que não saiu
+        // e o porquê.
+        const motivoRow = page.getByRole("row").filter({ has: motivoCell })
+        await expect(motivoRow).toHaveClass(/bg-semantic-danger-surface/)
+        await expect(motivoRow.getByText("Adiada", { exact: true })).toBeVisible()
+
+        // Verificação visual medida (MUST do agents.md): sem overflow
+        // horizontal em 360px com as colunas novas (Disparado em / Motivo).
+        await page.setViewportSize({ width: 360, height: 800 })
+        await expect(motivoCell).toBeVisible()
+        const overflow = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          innerWidth: window.innerWidth,
+        }))
+        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth + 1)
+      } finally {
+        await prisma.emailCampaign.deleteMany({ where: { id: { in: [subId, parentId] } } })
+        await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+      }
+    })
+
+    test("parte já enviada não pode ser disparada de novo — botão desabilitado com tooltip explicando o motivo", async ({
+      page,
+    }) => {
+      const profile = await findE2eMasterProfile()
+      if (!profile?.activeTeamId) {
+        throw new Error("Seed E2E sem time ativo")
+      }
+
+      const prisma = getPrisma()
+      const templateId = randomUUID()
+      const parentId = randomUUID()
+      const subId = randomUUID()
+
+      await prisma.emailTemplate.create({
+        data: {
+          id: templateId,
+          versionGroupId: templateId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Ja Enviada Template",
+          subject: "Assunto E2E já enviada",
+          html: "<p>Olá</p>",
+          status: "published",
+          versionNumber: 1,
+        },
+      })
+      await prisma.emailCampaign.create({
+        data: {
+          id: parentId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Ja Enviada Pai",
+          templateId,
+          status: "sent",
+          totalRecipients: 5,
+          totalSent: 5,
+        },
+      })
+      await prisma.emailCampaign.create({
+        data: {
+          id: subId,
+          teamId: profile.activeTeamId,
+          createdBy: profile.id,
+          name: "E2E Ja Enviada Pai (parte 1/1)",
+          templateId,
+          parentCampaignId: parentId,
+          subCampaignIndex: 0,
+          status: "sent",
+          totalRecipients: 5,
+          totalSent: 5,
+          sentAt: new Date(),
+        },
+      })
+
+      try {
+        await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+          waitUntil: "domcontentloaded",
+        })
+        const row = page.getByRole("row").filter({ hasText: "E2E Ja Enviada Pai" })
+        await expect(row).toBeVisible({ timeout: 30_000 })
+        const menuButton = row.getByRole("button", { name: "Abrir menu" })
+        await menuButton.scrollIntoViewIfNeeded()
+        await menuButton.click()
+        await page.getByRole("menuitem", { name: "Visualizar" }).click()
+
+        await expect(page.getByRole("heading", { name: "E2E Ja Enviada Pai" })).toBeVisible()
+        const dispatchButton = page.getByRole("button", { name: "Disparar" }).first()
+        await expect(dispatchButton).toBeVisible()
+        await expect(dispatchButton).toBeDisabled()
+
+        // Tooltip acessível por foco: o botão está `disabled` (nunca recebe
+        // foco de teclado sozinho), então o trigger de verdade é o `span`
+        // com `tabIndex=0` que o envolve — mesmo padrão do
+        // PrefillFieldIndicator (PR #1157) adaptado para elemento nativo
+        // desabilitado.
+        const tooltipTrigger = page.locator("span").filter({ has: dispatchButton })
+        await tooltipTrigger.focus()
+        await expect(
+          page.getByText("Parte já enviada", { exact: false })
+        ).toBeVisible({ timeout: 5_000 })
+      } finally {
+        await prisma.emailCampaign.deleteMany({ where: { id: { in: [subId, parentId] } } })
+        await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+      }
+    })
+  })
+
+  /**
    * Cadência do polling de progresso de disparo.
    *
    * O provider vive no layout autenticado, então o intervalo roda em qualquer

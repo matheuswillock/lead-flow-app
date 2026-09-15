@@ -82,6 +82,15 @@ import {
   EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
   isDailyLimitErrorMessage,
 } from "@/lib/email/campaign-limits"
+import {
+  formatDailyCapDeferMessage,
+  formatDispatchWindowDeferMessage,
+  formatTrackingNotReadyDeferMessage,
+} from "@/lib/email/campaign-dispatch-defer-messages"
+import {
+  loadDispatchAvailabilityForLeafCampaigns,
+  type DispatchAvailability,
+} from "@/lib/email/campaign-dispatch-availability"
 import { notifyCampaignDispatchFailure } from "@/lib/email/notify-campaign-dispatch-failure"
 import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-campaign-limits"
 import {
@@ -1509,6 +1518,40 @@ export class EmailCampaignUseCase {
         failedRetryCandidates
       )
 
+      // Estado honesto do botão "Disparar" da lista (mesmo gap medido na ficha
+      // — adenda E1b, caso Rafael 10/09): só campanhas-folha (sem sub-campanhas)
+      // disparam diretamente daqui. Uma leitura de timezone por request (o
+      // time inteiro é o mesmo dono), não por linha.
+      const leafCampaignsForAvailability = campaigns
+        .filter((campaign) => campaign._count.subCampaigns === 0)
+        .map((campaign) => {
+          const override = leafReconcileOverrides.get(campaign.id)
+          const status = override?.status ?? campaign.status
+          const totalSent = override?.totalSent ?? campaign.totalSent
+          return {
+            id: campaign.id,
+            status,
+            totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
+            totalSent,
+            scheduledAt: campaign.scheduledAt,
+            retryFailedOnly: isCampaignFailedRetry({ status, totalSent }),
+          }
+        })
+      let dispatchAvailabilityByCampaignId = new Map<string, DispatchAvailability>()
+      if (leafCampaignsForAvailability.length > 0) {
+        const team = await this.db.team.findUnique({
+          where: { id: ctx.teamId },
+          select: { master: { select: { timezone: true } } },
+        })
+        dispatchAvailabilityByCampaignId = await loadDispatchAvailabilityForLeafCampaigns({
+          teamId: ctx.teamId,
+          timezone: resolveTimezone(team?.master?.timezone),
+          now: new Date(),
+          monthlyQuotaActive: await this.isMonthlyQuotaIncidentActive(),
+          campaigns: leafCampaignsForAvailability,
+        })
+      }
+
       const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
       const templatesById = new Map(templates.map((template) => [template.id, template]))
       const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
@@ -1575,6 +1618,10 @@ export class EmailCampaignUseCase {
             activeDispatch: subCampaignCount === 0 ? leafProgress?.activeDispatch ?? null : null,
             latestDispatch: subCampaignCount === 0 ? leafProgress?.latestDispatch ?? null : null,
             dispatchProgressSummary,
+            dispatchAvailability:
+              subCampaignCount === 0
+                ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
+                : null,
           })
         }),
         total,
@@ -1595,6 +1642,7 @@ export class EmailCampaignUseCase {
         include: {
           template: { select: { id: true, name: true, subject: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
+          team: { select: { master: { select: { timezone: true } } } },
           subCampaigns: {
             select: {
               id: true,
@@ -1778,6 +1826,40 @@ export class EmailCampaignUseCase {
           })
         : []
 
+      // Estado honesto do botão "Disparar" (adenda E1b, caso Rafael 10/09): a
+      // MESMA lógica do cron (dispatchScheduledCampaigns) e do disparo manual
+      // (startManualDispatch) — nunca uma cópia da regra do teto no front.
+      const dispatchAvailabilityNow = new Date()
+      const dispatchAvailabilityTz = resolveTimezone(campaign.team?.master?.timezone)
+      const monthlyQuotaActiveForAvailability = await this.isMonthlyQuotaIncidentActive(
+        dispatchAvailabilityNow
+      )
+      const dispatchAvailabilityByCampaignId = await loadDispatchAvailabilityForLeafCampaigns({
+        teamId: ctx.teamId,
+        timezone: dispatchAvailabilityTz,
+        now: dispatchAvailabilityNow,
+        monthlyQuotaActive: monthlyQuotaActiveForAvailability,
+        campaigns: isParent
+          ? campaign.subCampaigns.map((sub) => ({
+              id: sub.id,
+              status: sub.status,
+              totalRecipients: sub.totalRecipients,
+              totalSent: sub.totalSent,
+              scheduledAt: sub.scheduledAt,
+              retryFailedOnly: isCampaignFailedRetry(sub),
+            }))
+          : [
+              {
+                id: campaign.id,
+                status: campaign.status,
+                totalRecipients: campaign.totalRecipients,
+                totalSent: campaign.totalSent,
+                scheduledAt: campaign.scheduledAt,
+                retryFailedOnly: isCampaignFailedRetry(campaign),
+              },
+            ],
+      })
+
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
         sourceContactListIds,
@@ -1801,6 +1883,9 @@ export class EmailCampaignUseCase {
         dispatchProgressSummary: isParent
           ? buildCampaignDispatchProgressSummary(childProgressList)
           : null,
+        dispatchAvailability: !isParent
+          ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
+          : null,
         subCampaigns: campaign.subCampaigns.map((sub) => {
           const subProgress = progressByCampaignId.get(sub.id)
           return {
@@ -1810,6 +1895,7 @@ export class EmailCampaignUseCase {
               : undefined,
             activeDispatch: subProgress?.activeDispatch ?? null,
             latestDispatch: subProgress?.latestDispatch ?? null,
+            dispatchAvailability: dispatchAvailabilityByCampaignId.get(sub.id) ?? null,
           }
         }),
       }))
@@ -4789,6 +4875,12 @@ export class EmailCampaignUseCase {
         contactList: { select: { id: true, name: true } },
         team: { select: { master: { select: { id: true, timezone: true } } } },
       },
+      // Determinístico e justo: sem isto, a ordem de retorno do Postgres não é
+      // garantida e não necessariamente reflete "a mais antiga primeiro" — o
+      // que a fila de starvation (teto diário disputado por várias partes,
+      // caso Rafael 10/09) precisa para que `queuedAheadCount`
+      // (campaign-dispatch-availability.ts) descreva a fila real.
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
       take: maxCampaigns,
     })
 
@@ -4879,7 +4971,10 @@ export class EmailCampaignUseCase {
           if (windowCheck.blocked && windowCheck.defer) {
             await this.db.emailCampaign.update({
               where: { id: campaign.id },
-              data: { status: "scheduled" },
+              data: {
+                status: "scheduled",
+                errorMessage: formatDispatchWindowDeferMessage(windowCheck.reason),
+              },
             })
             console.info(
               `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: ${windowCheck.reason}`
@@ -4969,7 +5064,10 @@ export class EmailCampaignUseCase {
         if (!scheduledTrackingGuard.ok) {
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
-            data: { status: "scheduled" },
+            data: {
+              status: "scheduled",
+              errorMessage: formatTrackingNotReadyDeferMessage(scheduledTrackingGuard.message),
+            },
           })
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: ${scheduledTrackingGuard.message}`
@@ -5001,7 +5099,13 @@ export class EmailCampaignUseCase {
         if (dailyCap.exceeded) {
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
-            data: { status: "scheduled" },
+            data: {
+              status: "scheduled",
+              errorMessage:
+                dailyCap.limit != null
+                  ? formatDailyCapDeferMessage(dailyCap.used, dailyCap.limit)
+                  : null,
+            },
           })
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: limite diário ${dailyCap.used}/${dailyCap.limit}`

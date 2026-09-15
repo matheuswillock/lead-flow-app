@@ -174,7 +174,10 @@ function CampaignActionsMenu({
               ) : sendDisabledReason && !canSend ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="w-full">
+                    {/* tabIndex torna o span focável — sem isto o Tooltip nunca
+                        dispara por teclado, só por hover (mesmo achado do
+                        CampaignDetailSheet nesta rodada). */}
+                    <span className="w-full" tabIndex={0}>
                       <DropdownMenuItem disabled className="pointer-events-none w-full">
                         <Send className="mr-2 h-4 w-4" />
                         {sendActionLabel}
