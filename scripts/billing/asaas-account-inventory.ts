@@ -30,7 +30,9 @@
  *                            fingir que reconciliou.
  * --output=<path>            grava o JSON no arquivo (nome sugerido versionado:
  *                            `buildDefaultOutputFilename`, ex. asaas-inventory-legacy-2026-09-16.json).
- *                            Sem esta flag, imprime o JSON em stdout.
+ *                            Sem esta flag, imprime o JSON em stdout — e SÓ o JSON:
+ *                            logs de progresso e o resumo humano saem sempre por
+ *                            stderr, então `... | jq .` e redirecionamento funcionam.
  *
  * Decisão de desenho (30-E1, sem instrução mais específica na SPEC): o
  * formato de planilha acima é o contrato mínimo suficiente para casar por
@@ -55,6 +57,15 @@ import {
 import { reconcileInventory, type OwnerSpreadsheetEntry } from "./lib/reconcileInventory"
 import type { AsaasCustomer, AsaasPayment, AsaasSubscription, AsaasWebhookConfig } from "./lib/asaasInventoryTypes"
 
+/**
+ * Log operacional em stderr: stdout fica reservado para o JSON do relatório
+ * (quando não há --output), mantendo a saída parseável por pipe (achado
+ * Codex no PR #1189).
+ */
+function logInfo(message: string): void {
+  process.stderr.write(`${message}\n`)
+}
+
 function loadOwnerSpreadsheet(path: string): OwnerSpreadsheetEntry[] {
   const raw = readFileSync(path, "utf-8")
   const parsed = JSON.parse(raw)
@@ -65,53 +76,53 @@ function loadOwnerSpreadsheet(path: string): OwnerSpreadsheetEntry[] {
 }
 
 function printSummary(report: InventoryReport, account: AsaasAccountId, suggestedFilename: string) {
-  console.info("\n[inventory] ── resumo ──────────────────────────────────────")
-  console.info(`  conta               : ${account}`)
-  console.info(`  gerado em           : ${report.generatedAt}`)
-  console.info(`  customers total     : ${report.customers.total}`)
-  console.info(`  notificações LIGADAS: ${report.customers.withNotificationsEnabled}  ← candidatos ao silenciamento (E2)`)
-  console.info(`  assinaturas total   : ${report.subscriptions.total}`)
+  logInfo("\n[inventory] ── resumo ──────────────────────────────────────")
+  logInfo(`  conta               : ${account}`)
+  logInfo(`  gerado em           : ${report.generatedAt}`)
+  logInfo(`  customers total     : ${report.customers.total}`)
+  logInfo(`  notificações LIGADAS: ${report.customers.withNotificationsEnabled}  ← candidatos ao silenciamento (E2)`)
+  logInfo(`  assinaturas total   : ${report.subscriptions.total}`)
   for (const [status, count] of Object.entries(report.subscriptions.byStatus)) {
-    console.info(`    status ${status.padEnd(12)}: ${count}`)
+    logInfo(`    status ${status.padEnd(12)}: ${count}`)
   }
-  console.info(`  cartão de crédito   : ${report.subscriptions.creditCardCount}  ← dimensiona E6`)
-  console.info(`  pagamentos pendentes: ${report.pendingPayments.total} (R$ ${report.pendingPayments.totalValue})`)
-  console.info(`  pagamentos vencidos : ${report.overduePayments.total} (R$ ${report.overduePayments.totalValue})`)
-  console.info(`  webhooks configurados: ${report.webhooks.total} (${report.webhooks.enabled} habilitados)`)
+  logInfo(`  cartão de crédito   : ${report.subscriptions.creditCardCount}  ← dimensiona E6`)
+  logInfo(`  pagamentos pendentes: ${report.pendingPayments.total} (R$ ${report.pendingPayments.totalValue})`)
+  logInfo(`  pagamentos vencidos : ${report.overduePayments.total} (R$ ${report.overduePayments.totalValue})`)
+  logInfo(`  webhooks configurados: ${report.webhooks.total} (${report.webhooks.enabled} habilitados)`)
 
   if (report.reconciliation) {
     const r = report.reconciliation
-    console.info(`  ── reconciliação ───────────────────────────────────────`)
-    console.info(`  INTEGRO             : ${r.countsByCode.INTEGRO}`)
-    console.info(`  ORFAO               : ${r.countsByCode.ORFAO}`)
-    console.info(`  DIVERGENCIA_STATUS  : ${r.countsByCode.DIVERGENCIA_STATUS}`)
-    console.info(`  FANTASMA            : ${r.countsByCode.FANTASMA}`)
-    console.info(
+    logInfo(`  ── reconciliação ───────────────────────────────────────`)
+    logInfo(`  INTEGRO             : ${r.countsByCode.INTEGRO}`)
+    logInfo(`  ORFAO               : ${r.countsByCode.ORFAO}`)
+    logInfo(`  DIVERGENCIA_STATUS  : ${r.countsByCode.DIVERGENCIA_STATUS}`)
+    logInfo(`  FANTASMA            : ${r.countsByCode.FANTASMA}`)
+    logInfo(
       `  SEM_BANCO           : ${r.spreadsheetChecked ? r.countsByCode.SEM_BANCO : "não checado (sem --spreadsheet)"}`
     )
-    console.info(`  due > fim (anomalias): ${r.dueAfterEnd.length}`)
-    console.info(`  installments abertos : ${r.openInstallments.length}  ← dimensiona E9 (X5)`)
+    logInfo(`  due > fim (anomalias): ${r.dueAfterEnd.length}`)
+    logInfo(`  installments abertos : ${r.openInstallments.length}  ← dimensiona E9 (X5)`)
 
     const namedIssues = r.cases.filter((c) => c.code !== "INTEGRO")
     if (namedIssues.length > 0) {
-      console.info(`\n[inventory] divergências (linha nomeada, nunca média silenciosa):`)
+      logInfo(`\n[inventory] divergências (linha nomeada, nunca média silenciosa):`)
       for (const issue of namedIssues) {
-        console.info(`  [${issue.code}] ${issue.detail}`)
+        logInfo(`  [${issue.code}] ${issue.detail}`)
       }
     }
   } else {
-    console.info(`  reconciliação        : não executada (rode com --reconcile)`)
+    logInfo(`  reconciliação        : não executada (rode com --reconcile)`)
   }
 
-  console.info(`  nome sugerido p/ dump versionado (C34): ${suggestedFilename}`)
-  console.info("────────────────────────────────────────────────────────────\n")
+  logInfo(`  nome sugerido p/ dump versionado (C34): ${suggestedFilename}`)
+  logInfo("────────────────────────────────────────────────────────────\n")
 }
 
 async function main() {
   const args = parseInventoryArgs(process.argv.slice(2))
   const gateway = createAsaasReadOnlyGateway(args.account)
 
-  console.info(`[inventory] iniciando  conta=${args.account}  reconcile=${args.reconcile}`)
+  logInfo(`[inventory] iniciando  conta=${args.account}  reconcile=${args.reconcile}`)
 
   const [customers, subscriptions, pendingPayments, overduePayments, creditCardPayments, webhooks] =
     await Promise.all([
@@ -134,16 +145,16 @@ async function main() {
   })
 
   if (args.reconcile) {
-    console.info("[inventory] reconciliando com o banco...")
+    logInfo("[inventory] reconciliando com o banco...")
     const repository = new BillingInventoryRepository()
     const [dbCustomerPointers, dbSubscriptionPointers] = await Promise.all([
-      repository.listCustomerPointers(),
-      repository.listSubscriptionPointers(),
+      repository.listCustomerPointers(args.account),
+      repository.listSubscriptionPointers(args.account),
     ])
 
     const ownerSpreadsheet = args.spreadsheet ? loadOwnerSpreadsheet(args.spreadsheet) : undefined
     if (args.spreadsheet) {
-      console.info(`[inventory] planilha do owner carregada: ${ownerSpreadsheet!.length} pagantes`)
+      logInfo(`[inventory] planilha do owner carregada: ${ownerSpreadsheet!.length} pagantes`)
     }
 
     report.reconciliation = reconcileInventory({
@@ -160,7 +171,7 @@ async function main() {
 
   if (args.output) {
     writeFileSync(args.output, json, "utf-8")
-    console.info(`[inventory] relatório gravado em ${args.output}`)
+    logInfo(`[inventory] relatório gravado em ${args.output}`)
   } else {
     process.stdout.write(json + "\n")
   }

@@ -98,17 +98,30 @@ export function summarizePayments(payments: AsaasPayment[]): PaymentSummary {
   }
 }
 
+/**
+ * Shape do webhook no relatório: `authToken` NUNCA entra — o relatório vai
+ * para stdout/arquivo versionado (dump C34) e um token de webhook vivo em
+ * repositório é vazamento de credencial (achado cursor/Codex no PR #1189).
+ * Só o fato "tem token configurado" é preservado.
+ */
+export type RedactedAsaasWebhookConfig = Omit<AsaasWebhookConfig, "authToken"> & {
+  hasAuthToken: boolean
+}
+
 export type WebhookSummary = {
   total: number
   enabled: number
-  data: AsaasWebhookConfig[]
+  data: RedactedAsaasWebhookConfig[]
 }
 
 export function summarizeWebhooks(webhooks: AsaasWebhookConfig[]): WebhookSummary {
   return {
     total: webhooks.length,
     enabled: webhooks.filter((w) => w.enabled).length,
-    data: webhooks,
+    data: webhooks.map(({ authToken, ...rest }) => ({
+      ...rest,
+      hasAuthToken: Boolean(authToken),
+    })),
   }
 }
 

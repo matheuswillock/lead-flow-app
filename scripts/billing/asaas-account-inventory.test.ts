@@ -108,6 +108,22 @@ describe("summarizeWebhooks", () => {
     expect(summary.total).toBe(2)
     expect(summary.enabled).toBe(1)
   })
+
+  it("REDIGE o authToken — o segredo nunca entra no relatório serializado", () => {
+    const webhooks: AsaasWebhookConfig[] = [
+      { id: "w1", url: "https://a", enabled: true, events: [], authToken: "segredo-vivo" },
+      { id: "w2", url: "https://b", enabled: false, events: [] },
+    ]
+    const summary = summarizeWebhooks(webhooks)
+
+    expect(summary.data[0]?.hasAuthToken).toBe(true)
+    expect(summary.data[1]?.hasAuthToken).toBe(false)
+    for (const entry of summary.data) {
+      expect("authToken" in entry).toBe(false)
+    }
+    // O que vai para o dump é o JSON — prova no formato final:
+    expect(JSON.stringify(summary)).not.toContain("segredo-vivo")
+  })
 })
 
 describe("dedupePaymentsById", () => {

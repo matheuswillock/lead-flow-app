@@ -52,6 +52,7 @@ const dbSubscriptionPointers: DbSubscriptionPointer[] = [
   {
     refId: "ps-integro",
     profileId: "profile-integro",
+    source: "profileSubscription",
     asaasSubscriptionId: "sub_integro",
     subscriptionStatus: "active",
     subscriptionEndDate: new Date("2027-01-01"),
@@ -59,6 +60,7 @@ const dbSubscriptionPointers: DbSubscriptionPointer[] = [
   {
     refId: "ps-divergente",
     profileId: "profile-integro",
+    source: "profileSubscription",
     asaasSubscriptionId: "sub_divergente",
     subscriptionStatus: "active", // banco diz ativo, Asaas diz INACTIVE → divergência
     subscriptionEndDate: new Date("2026-12-01"),
@@ -158,6 +160,47 @@ describe("reconcileInventory — T-30.2", () => {
     const report = buildReport()
     expect(report.spreadsheetChecked).toBe(false)
     expect(report.cases.some((c) => c.code === "SEM_BANCO")).toBe(false)
+  })
+
+  it("status local null NUNCA vira INTEGRO — cai em DIVERGENCIA_STATUS explícita", () => {
+    const report = buildReport({
+      dbSubscriptionPointers: [
+        {
+          refId: "ps-status-null",
+          profileId: "profile-integro",
+          source: "profileSubscription",
+          asaasSubscriptionId: "sub_integro",
+          subscriptionStatus: null,
+          subscriptionEndDate: null,
+        },
+      ],
+    })
+    const divergencias = report.cases.filter((c) => c.code === "DIVERGENCIA_STATUS")
+    expect(divergencias).toHaveLength(1)
+    expect(divergencias[0]?.detail).toContain("não verificável")
+    expect(divergencias[0]?.detail).toContain("status local ausente")
+    expect(report.cases.filter((c) => c.code === "INTEGRO" && c.asaasId === "sub_integro")).toHaveLength(0)
+  })
+
+  it("status Asaas não mapeável NUNCA vira INTEGRO — cai em DIVERGENCIA_STATUS explícita", () => {
+    const report = buildReport({
+      asaasSubscriptions: [
+        {
+          id: "sub_integro",
+          customer: "cus_integro",
+          billingType: "PIX",
+          status: "STATUS_INVENTADO",
+          value: 100,
+          nextDueDate: "2026-10-01",
+          cycle: "MONTHLY",
+        },
+      ],
+      dbSubscriptionPointers: [dbSubscriptionPointers[0]!],
+    })
+    const divergencias = report.cases.filter((c) => c.code === "DIVERGENCIA_STATUS")
+    expect(divergencias).toHaveLength(1)
+    expect(divergencias[0]?.detail).toContain("não mapeável")
+    expect(report.cases.filter((c) => c.code === "INTEGRO" && c.asaasId === "sub_integro")).toHaveLength(0)
   })
 
   it("marca due > fim (nextDueDate posterior a subscriptionEndDate)", () => {

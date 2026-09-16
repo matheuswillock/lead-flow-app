@@ -169,8 +169,21 @@ export function reconcileInventory(input: ReconcileInventoryInput): Reconciliati
       continue
     }
 
+    // Status ausente ou não mapeável NUNCA vira INTEGRO: sem os dois lados
+    // classificáveis não há como provar consistência, e esconder isso em
+    // "íntegro" seria exatamente a média silenciosa que a regra §2.3 proíbe.
     const mappedLocalStatus = mapSubscriptionStatusFromPayload(asaasSub.status)
-    if (mappedLocalStatus && pointer.subscriptionStatus && mappedLocalStatus !== pointer.subscriptionStatus) {
+    if (!mappedLocalStatus || !pointer.subscriptionStatus) {
+      const missingSide = !mappedLocalStatus
+        ? `status Asaas "${asaasSub.status}" não mapeável pelo mapeamento canônico`
+        : "status local ausente (null) no banco"
+      cases.push({
+        code: "DIVERGENCIA_STATUS",
+        detail: `Subscription ${pointer.asaasSubscriptionId}: consistência não verificável — ${missingSide} (banco=${pointer.subscriptionStatus ?? "null"}, Asaas=${asaasSub.status})`,
+        asaasId: pointer.asaasSubscriptionId,
+        dbRefId: pointer.refId,
+      })
+    } else if (mappedLocalStatus !== pointer.subscriptionStatus) {
       cases.push({
         code: "DIVERGENCIA_STATUS",
         detail: `Subscription ${pointer.asaasSubscriptionId}: banco=${pointer.subscriptionStatus}, Asaas=${asaasSub.status} (mapeado=${mappedLocalStatus})`,
