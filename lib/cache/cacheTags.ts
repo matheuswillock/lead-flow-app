@@ -53,5 +53,7 @@ export const cacheTags = {
   radarSegments: (teamId: string) => `radar-segments:${teamId}`,
   /** Numeros institucionais da home. Sem escopo: valem para a conta inteira. */
   landingPublicStats: () => "landing-public-stats",
+  /** Hospedagem de DNS do dominio. Sem escopo de time: o NS e do dominio, nao da conta. */
+  domainDnsProvider: (domainName: string) => `domain-dns-provider:${domainName}`,
 } as const;
 

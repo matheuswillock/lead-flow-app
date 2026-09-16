@@ -9,6 +9,8 @@ import {
   formatLocalDateValue,
   formatLocalTimeValue,
   parseDateKeyAndTimeToUtc,
+  resolveDayScheduleFloor,
+  resolveTimeAtOrAfterFloor,
 } from "@/lib/dates"
 
 import { cn } from "@/lib/utils"
@@ -31,6 +33,28 @@ import {
 import { Input } from "./input"
 import { Spinner } from "./spinner"
 
+/**
+ * Existe alguma regra de dia a aplicar no calendário?
+ *
+ * Precisa listar TODA restrição de dia. Um piso que não aparece aqui vira prop
+ * que promete e não cumpre: o predicado nem chega a ser passado ao `Calendar` e
+ * o calendário libera tudo. Foi o caso de `minDateTime` combinado com
+ * `disablePastDates={false}` (achado do Codex no PR #1177).
+ */
+export function hasCalendarDayRestriction(params: {
+  disablePastDates: boolean
+  minDateKey?: string
+  availableDateKeys?: string[]
+  maxDateKey?: string
+}): boolean {
+  return Boolean(
+    params.disablePastDates ||
+      params.minDateKey ||
+      params.availableDateKeys ||
+      params.maxDateKey
+  )
+}
+
 interface DateTimePickerProps {
   date?: Date
   onDateChange: (date: Date | undefined) => void
@@ -47,6 +71,15 @@ interface DateTimePickerProps {
   timeLoadingText?: string
   invalid?: boolean
   tz?: string
+  /**
+   * Piso de agendamento (opt-in). Quando presente: dias anteriores ao piso
+   * ficam desabilitados, horários vencidos do dia do piso saem da lista/ganham
+   * `min`, o horário default nunca nasce vencido e um valor abaixo do piso é
+   * apontado com mensagem inline no próprio campo.
+   *
+   * Sem esta prop o componente mantém o comportamento anterior intacto.
+   */
+  minDateTime?: Date
 }
 
 export function DateTimePicker({
@@ -65,6 +98,7 @@ export function DateTimePicker({
   timeLoadingText = "Carregando...",
   invalid = false,
   tz,
+  minDateTime,
 }: DateTimePickerProps) {
   const resolvedTz = tz ?? detectBrowserTimezone()
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
@@ -115,17 +149,36 @@ export function DateTimePicker({
     [onDateChange, resolvedTz, showTime]
   )
 
+  const selectedDateKey = selectedCalendarDate
+    ? toCalendarDateKey(selectedCalendarDate)
+    : undefined
+
+  /** Piso aplicado ao dia selecionado — `undefined` quando não há piso. */
+  const selectedDayFloor = React.useMemo(() => {
+    if (!minDateTime || !selectedDateKey) return undefined
+    return resolveDayScheduleFloor({ dateKey: selectedDateKey, tz: resolvedTz, minDateTime })
+  }, [minDateTime, resolvedTz, selectedDateKey])
+
+  /** Slots realmente ofertáveis: sem piso, é a lista original sem cópia. */
+  const selectableTimes = React.useMemo(() => {
+    if (!availableTimes) return undefined
+    if (!selectedDayFloor || selectedDayFloor.kind === "unrestricted") return availableTimes
+    if (selectedDayFloor.kind === "noTimeAvailable") return []
+    const earliest = selectedDayFloor.time
+    return availableTimes.filter((slot) => slot >= earliest)
+  }, [availableTimes, selectedDayFloor])
+
   React.useEffect(() => {
     if (!showTime) return
-    if (!availableTimes || availableTimes.length === 0) return
-    if (!availableTimes.includes(time)) {
-      const nextTime = availableTimes[0]
+    if (!selectableTimes || selectableTimes.length === 0) return
+    if (!selectableTimes.includes(time)) {
+      const nextTime = selectableTimes[0]
       setTime(nextTime)
       if (selectedCalendarDate) {
         updateSelectedDate(toCalendarDateKey(selectedCalendarDate), nextTime)
       }
     }
-  }, [availableTimes, selectedCalendarDate, time, toCalendarDateKey, updateSelectedDate, showTime])
+  }, [selectableTimes, selectedCalendarDate, time, toCalendarDateKey, updateSelectedDate, showTime])
 
   const handleDateSelect = (newDate: Date | undefined) => {
     if (!newDate) {
@@ -145,7 +198,20 @@ export function DateTimePicker({
       0
     )
     setSelectedCalendarDate(normalizedCalendarDate)
-    updateSelectedDate(toCalendarDateKey(normalizedCalendarDate), time)
+
+    // O horário default ("10:00") não pode nascer vencido quando o dia
+    // escolhido é o do piso — origem do agendamento no passado.
+    const dateKey = toCalendarDateKey(normalizedCalendarDate)
+    const effectiveTime = minDateTime
+      ? resolveTimeAtOrAfterFloor({
+          preferredTime: time,
+          dateKey,
+          tz: resolvedTz,
+          minDateTime,
+        })
+      : time
+    if (effectiveTime !== time) setTime(effectiveTime)
+    updateSelectedDate(dateKey, effectiveTime)
   }
 
   const handleTimeChange = (newTime: string) => {
@@ -158,6 +224,7 @@ export function DateTimePicker({
   }
 
   const todayDateKey = formatLocalDateValue(new Date(), resolvedTz)
+  const minDateKey = minDateTime ? formatLocalDateValue(minDateTime, resolvedTz) : undefined
   const availableDateKeySet = React.useMemo(
     () => (availableDateKeys ? new Set(availableDateKeys) : undefined),
     [availableDateKeys]
@@ -166,12 +233,26 @@ export function DateTimePicker({
     (candidate: Date) => {
       const candidateKey = toCalendarDateKey(candidate)
       if (disablePastDates && candidateKey < todayDateKey) return true
+      if (minDateKey && candidateKey < minDateKey) return true
       if (maxDateKey && candidateKey > maxDateKey) return true
       if (availableDateKeySet && !availableDateKeySet.has(candidateKey)) return true
       return false
     },
-    [availableDateKeySet, disablePastDates, maxDateKey, toCalendarDateKey, todayDateKey]
+    [availableDateKeySet, disablePastDates, maxDateKey, minDateKey, toCalendarDateKey, todayDateKey]
   )
+
+  /** Único juiz de validade: comparação direta contra o piso. */
+  const isBelowMinDateTime = Boolean(
+    minDateTime && selectedDate && selectedDate.getTime() < minDateTime.getTime()
+  )
+  const floorMessage =
+    isBelowMinDateTime && selectedDayFloor?.kind === "earliestTime"
+      ? `Horário já passou. Escolha a partir de ${selectedDayFloor.time}.`
+      : isBelowMinDateTime
+        ? "Data e hora já passaram. Escolha um momento no futuro."
+        : undefined
+  const isInvalid = invalid || isBelowMinDateTime
+  const timeSlots = selectableTimes ?? []
 
   return (
     <div className={cn("grid gap-1", className)}>
@@ -190,12 +271,12 @@ export function DateTimePicker({
                 id="date-picker"
                 variant="outline"
                 className={cn(
-                  "h-9 w-full sm:w-45 justify-start text-left font-normal",
+                  "h-9 max-lg:h-11 w-full sm:w-45 justify-start text-left font-normal",
                   !selectedDate && "text-muted-foreground",
-                  invalid && "border-destructive focus-visible:ring-destructive"
+                  isInvalid && "border-destructive focus-visible:ring-destructive"
                 )}
                 disabled={disabled}
-                aria-invalid={invalid || undefined}
+                aria-invalid={isInvalid || undefined}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {selectedCalendarDate && isValid(selectedCalendarDate) ? (
@@ -212,7 +293,14 @@ export function DateTimePicker({
                 onSelect={handleDateSelect}
                 weekdayLabelFormat="short"
                 disabled={
-                  disablePastDates || availableDateKeySet || maxDateKey ? isDateDisabled : undefined
+                  hasCalendarDayRestriction({
+                    disablePastDates,
+                    minDateKey,
+                    availableDateKeys,
+                    maxDateKey,
+                  })
+                    ? isDateDisabled
+                    : undefined
                 }
                 initialFocus
                 locale={ptBR}
@@ -233,15 +321,15 @@ export function DateTimePicker({
                   <Select
                     value={time}
                     onValueChange={handleTimeChange}
-                    disabled={disabled || availableTimes.length === 0}
+                    disabled={disabled || timeSlots.length === 0}
                   >
                     <SelectTrigger
                       className={cn(
-                        "h-9 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
+                        "h-9 max-lg:h-11 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
                         timeSelectWidthClass,
-                        invalid && "border-destructive focus-visible:ring-destructive"
+                        isInvalid && "border-destructive focus-visible:ring-destructive"
                       )}
-                      aria-invalid={invalid || undefined}
+                      aria-invalid={isInvalid || undefined}
                     >
                       <SelectValue placeholder="Selecione um horário" />
                     </SelectTrigger>
@@ -253,7 +341,7 @@ export function DateTimePicker({
                       sideOffset={4}
                     >
                       <SelectGroup>
-                        {availableTimes.map((slot) => (
+                        {timeSlots.map((slot) => (
                           <SelectItem
                             key={slot}
                             value={slot}
@@ -272,7 +360,7 @@ export function DateTimePicker({
                     </div>
                   )}
                 </div>
-                {availableTimes.length === 0 && selectedDate && (
+                {timeSlots.length === 0 && selectedDate && (
                   <p className="text-xs text-muted-foreground">
                     Nenhum horário disponível para este dia.
                   </p>
@@ -285,21 +373,29 @@ export function DateTimePicker({
                 value={time}
                 onChange={(e) => handleTimeChange(e.target.value)}
                 disabled={disabled}
+                min={
+                  selectedDayFloor?.kind === "earliestTime" ? selectedDayFloor.time : undefined
+                }
                 className={cn(
-                  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
+                  "flex h-9 max-lg:h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
                   "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
                   "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                   "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
                   "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none",
-                  invalid && "border-destructive focus-visible:ring-destructive"
+                  isInvalid && "border-destructive focus-visible:ring-destructive"
                 )}
                 required={required}
-                aria-invalid={invalid || undefined}
+                aria-invalid={isInvalid || undefined}
               />
             )}
           </div>
         )}
       </div>
+      {floorMessage ? (
+        <p className="px-1 text-sm text-destructive" role="alert">
+          {floorMessage}
+        </p>
+      ) : null}
     </div>
   )
 }

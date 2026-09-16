@@ -172,6 +172,9 @@ export class FakeCampanhasAnalyticsService implements ICampanhasAnalyticsService
   readonly summaryCalls: CampaignAnalyticsQueryParams[] = []
   readonly dispatchesCalls: CampaignAnalyticsDispatchesParams[] = []
   readonly exportCalls: CampaignAnalyticsExportParams[] = []
+  readonly exportAllCalls: CampaignAnalyticsQueryParams[] = []
+  /** Quando definido, `exportAllXlsx` rejeita com esta mensagem (simula 400 do backend). */
+  failExportAllWith: string | null = null
 
   constructor(private readonly options: FakeServiceOptions = {}) {}
 
@@ -223,6 +226,15 @@ export class FakeCampanhasAnalyticsService implements ICampanhasAnalyticsService
     this.exportCalls.push(params)
     return { blob: new Blob(["csv"], { type: "text/csv" }), filename: `campanhas_${params.dataset}.csv` }
   }
+
+  async exportAllXlsx(params: CampaignAnalyticsQueryParams): Promise<CampaignAnalyticsExportResult> {
+    this.exportAllCalls.push(params)
+    if (this.failExportAllWith) throw new Error(this.failExportAllWith)
+    return {
+      blob: new Blob(["xlsx"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      filename: `campanhas_completo_${params.from}_${params.to}.xlsx`,
+    }
+  }
 }
 
 /**
@@ -261,6 +273,13 @@ export class QueuedDispatchesCampanhasAnalyticsService implements ICampanhasAnal
 
   async exportCsv(params: CampaignAnalyticsExportParams): Promise<CampaignAnalyticsExportResult> {
     return { blob: new Blob(["csv"], { type: "text/csv" }), filename: `campanhas_${params.dataset}.csv` }
+  }
+
+  async exportAllXlsx(params: CampaignAnalyticsQueryParams): Promise<CampaignAnalyticsExportResult> {
+    return {
+      blob: new Blob(["xlsx"], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      filename: `campanhas_completo_${params.from}_${params.to}.xlsx`,
+    }
   }
 
   /** Resolve a chamada de índice `callIndex` com uma página de disparos identificável por `page`. */

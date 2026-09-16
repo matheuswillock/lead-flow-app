@@ -152,7 +152,7 @@ function CampaignActionsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-8 w-8 p-0">
+          <Button variant="ghost" className="h-8 w-8 p-0 max-lg:size-11">
             <span className="sr-only">Abrir menu</span>
             <MoreHorizontal className="h-4 w-4" />
           </Button>
@@ -174,7 +174,10 @@ function CampaignActionsMenu({
               ) : sendDisabledReason && !canSend ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="w-full">
+                    {/* tabIndex torna o span focável — sem isto o Tooltip nunca
+                        dispara por teclado, só por hover (mesmo achado do
+                        CampaignDetailSheet nesta rodada). */}
+                    <span className="w-full" tabIndex={0}>
                       <DropdownMenuItem disabled className="pointer-events-none w-full">
                         <Send className="mr-2 h-4 w-4" />
                         {sendActionLabel}
@@ -478,7 +481,13 @@ export function CampaignList({
                         Crie uma campanha para disparar comunicações para a sua base.
                       </p>
                     </div>
-                    <Button type="button" size="sm" onClick={() => void openWizard()} disabled={readOnly}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="max-lg:h-11"
+                      onClick={() => void openWizard()}
+                      disabled={readOnly}
+                    >
                       Criar campanha
                     </Button>
                   </div>
@@ -586,7 +595,7 @@ export function CampaignList({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 max-lg:size-11"
             disabled={page <= 1 || loading}
             onClick={() => handlePageChange(1)}
           >
@@ -595,7 +604,7 @@ export function CampaignList({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 max-lg:size-11"
             disabled={page <= 1 || loading}
             onClick={() => handlePageChange(page - 1)}
           >
@@ -605,7 +614,7 @@ export function CampaignList({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 max-lg:size-11"
             disabled={page >= totalPages || loading}
             onClick={() => handlePageChange(page + 1)}
           >
@@ -614,7 +623,7 @@ export function CampaignList({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 max-lg:size-11"
             disabled={page >= totalPages || loading}
             onClick={() => handlePageChange(totalPages)}
           >
