@@ -41,7 +41,10 @@ jobs:
     name: CI Light (VPS)
     if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 8
+    # 12min (era 8): mesmo teto do `ci-light` de `ci-main.yml` — ver o incidente
+    # de 16/09 comentado lá. A VPS é de 2 vCPU e o tempo do job varia com quantos
+    # pipelines disputam a máquina.
+    timeout-minutes: 12
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
