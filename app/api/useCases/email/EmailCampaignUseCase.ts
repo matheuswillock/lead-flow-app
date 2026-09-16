@@ -87,6 +87,7 @@ import {
   formatDispatchWindowDeferMessage,
   formatTrackingNotReadyDeferMessage,
 } from "@/lib/email/campaign-dispatch-defer-messages"
+import { selectFairDispatchBatch } from "@/lib/email/campaign-dispatch-fair-batch"
 import {
   loadDispatchAvailabilityForLeafCampaigns,
   type DispatchAvailability,
@@ -156,6 +157,13 @@ import {
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
+/**
+ * Janela de candidatas do round-robin = lote × este fator. Cobre o pior caso
+ * observado (caso Kathrein 15/09: 11 partes de um único time na fila) sem
+ * carregar a tabela inteira — partes adiadas por teto mantêm `scheduledAt` e
+ * ficariam eternamente à frente com janela igual ao lote.
+ */
+const SCHEDULED_FAIR_BATCH_CANDIDATE_FACTOR = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 /** Lote máximo de destinatários `queued` processado por invocação do consumer da fila (Fase 4 / PR1). */
 const DISPATCH_QUEUE_BATCH_SIZE = 500
@@ -1528,13 +1536,20 @@ export class EmailCampaignUseCase {
           const override = leafReconcileOverrides.get(campaign.id)
           const status = override?.status ?? campaign.status
           const totalSent = override?.totalSent ?? campaign.totalSent
+          const retryFailedOnly = isCampaignFailedRetry({ status, totalSent })
           return {
             id: campaign.id,
             status,
             totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
             totalSent,
             scheduledAt: campaign.scheduledAt,
-            retryFailedOnly: isCampaignFailedRetry({ status, totalSent }),
+            retryFailedOnly,
+            // Público EXATO do disparo quando já computado neste request
+            // (achado codex P2, PR #1178): retry usa a contagem real dos logs
+            // falhados; envio normal usa a recontagem dinâmica da audiência.
+            exactAdditionalRecipients: retryFailedOnly
+              ? failedRetryCountsByCampaignId.get(campaign.id) ?? null
+              : dynamicRecipientCounts.get(campaign.id) ?? null,
           }
         })
       let dispatchAvailabilityByCampaignId = new Map<string, DispatchAvailability>()
@@ -1847,6 +1862,12 @@ export class EmailCampaignUseCase {
               totalSent: sub.totalSent,
               scheduledAt: sub.scheduledAt,
               retryFailedOnly: isCampaignFailedRetry(sub),
+              // Contagem real dos logs falhados quando é retry (achado codex
+              // P2, PR #1178); envio normal de sub-campanha usa snapshot
+              // persistido mesmo (audiência de parte é congelada na partição).
+              exactAdditionalRecipients: isCampaignFailedRetry(sub)
+                ? subFailedRetryCountById.get(sub.id) ?? null
+                : null,
             }))
           : [
               {
@@ -1856,6 +1877,14 @@ export class EmailCampaignUseCase {
                 totalSent: campaign.totalSent,
                 scheduledAt: campaign.scheduledAt,
                 retryFailedOnly: isCampaignFailedRetry(campaign),
+                // Público EXATO já computado nesta ficha (achado codex P2,
+                // PR #1178): contagem real dos logs falhados no retry;
+                // recontagem dinâmica da audiência no envio normal.
+                exactAdditionalRecipients: isCampaignFailedRetry(campaign)
+                  ? failedRetryRecipientCount ?? null
+                  : ["draft", "scheduled", "sending"].includes(campaign.status)
+                    ? activeRecipientCount
+                    : null,
               },
             ],
       })
@@ -4864,7 +4893,12 @@ export class EmailCampaignUseCase {
       console.error("[EmailCampaignUseCase][dispatchScheduled][reclaim]", error)
     })
 
-    const campaigns = await this.db.emailCampaign.findMany({
+    // Janela de candidatas maior que o lote: o adiamento por teto mantém
+    // `scheduledAt`, então as partes adiadas de um time no teto continuam no
+    // topo da fila global — com `take` igual ao lote, elas monopolizavam todos
+    // os ticks e represavam times COM capacidade (achado codex/cursor no
+    // PR #1178). O round-robin abaixo dá no máximo 1 slot por time por rodada.
+    const candidates = await this.db.emailCampaign.findMany({
       where: {
         status: "scheduled",
         scheduledAt: { lte: now },
@@ -4881,10 +4915,17 @@ export class EmailCampaignUseCase {
       // caso Rafael 10/09) precisa para que `queuedAheadCount`
       // (campaign-dispatch-availability.ts) descreva a fila real.
       orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
-      take: maxCampaigns,
+      take: maxCampaigns * SCHEDULED_FAIR_BATCH_CANDIDATE_FACTOR,
     })
+    const campaigns = selectFairDispatchBatch(candidates, maxCampaigns)
 
     let dispatched = 0
+
+    // Times que já bateram no teto NESTE tick: as partes seguintes do mesmo
+    // time nem tentam (o teto não libera no meio do tick) — recebem só o
+    // mesmo motivo de adiamento, para a ficha não ficar muda, e o slot do
+    // lote sobra para quem tem capacidade.
+    const capDeferredMessageByTeam = new Map<string, string>()
 
     // Recusa na origem do caminho agendado. Medido no `EMAIL_AUDIT` §8.2: dos
     // 429 estouros de cota pós-deploy, **129** vieram de `dispatch-scheduled` —
@@ -4917,6 +4958,15 @@ export class EmailCampaignUseCase {
 
     for (const campaign of campaigns) {
       try {
+        const capDeferMessage = capDeferredMessageByTeam.get(campaign.teamId)
+        if (capDeferMessage) {
+          await this.db.emailCampaign.updateMany({
+            where: { id: campaign.id, status: "scheduled" },
+            data: { errorMessage: capDeferMessage },
+          })
+          continue
+        }
+
         const lockResult = await this.db.emailCampaign.updateMany({
           where: { id: campaign.id, status: "scheduled" },
           // `errorMessage: null` espelha o `startManualDispatch`: a ficha da
@@ -5097,14 +5147,18 @@ export class EmailCampaignUseCase {
           additionalRecipients: recipientCount,
         })
         if (dailyCap.exceeded) {
+          const deferMessage =
+            dailyCap.limit != null
+              ? formatDailyCapDeferMessage(dailyCap.used, dailyCap.limit)
+              : null
+          if (deferMessage) {
+            capDeferredMessageByTeam.set(campaign.teamId, deferMessage)
+          }
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
             data: {
               status: "scheduled",
-              errorMessage:
-                dailyCap.limit != null
-                  ? formatDailyCapDeferMessage(dailyCap.used, dailyCap.limit)
-                  : null,
+              errorMessage: deferMessage,
             },
           })
           console.info(

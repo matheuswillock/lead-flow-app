@@ -120,29 +120,52 @@ export type LeafDispatchAvailabilityInput = {
   scheduledAt: Date | null
   /** true quando o disparo real seria retry-only (failed/partially_sent com totalSent>0). */
   retryFailedOnly: boolean
+  /**
+   * Contagem EXATA de destinatários que o disparo consumiria, quando o
+   * chamador já a computou (ex.: retry-only com contagem real dos logs
+   * falhados na ficha individual). `null`/ausente → heurística persistida
+   * (`totalRecipients - totalSent` para retry; `totalRecipients` para envio
+   * normal). Achado codex P2 no PR #1178: os totais persistidos podem
+   * divergir do público real do disparo.
+   */
+  exactAdditionalRecipients?: number | null
 }
 
 /**
- * Conta, para uma parte agendada e vencida, quantas outras partes do mesmo
- * time também já venceram (`scheduledAt <= now`) e são mais antigas —
- * candidatas a sair primeiro na próxima folga de teto. Só roda quando o
- * motivo já é `daily_cap_reached`: consulta desnecessária nos demais casos.
+ * Fila de partes vencidas do time (`scheduled`, `scheduledAt <= now`) numa
+ * ÚNICA consulta para o lote inteiro — a listagem aceita até 100 linhas e um
+ * COUNT por linha custaria até 100 idas sequenciais ao banco exatamente
+ * durante o incidente que esta UI existe para expor (achado codex P2,
+ * PR #1178). A posição de cada parte é derivada em memória com a MESMA
+ * semântica do COUNT antigo: estritamente mais antigas (`<`), excluindo a
+ * própria linha.
  */
-async function countScheduledPartsAhead(params: {
+async function listDueScheduledParts(params: {
   teamId: string
   now: Date
-  scheduledAt: Date | null
-  excludeCampaignId: string
-}): Promise<number> {
-  if (!params.scheduledAt) return 0
-  return prisma.emailCampaign.count({
+}): Promise<Array<{ id: string; scheduledAt: Date | null }>> {
+  return prisma.emailCampaign.findMany({
     where: {
       teamId: params.teamId,
-      id: { not: params.excludeCampaignId },
       status: "scheduled",
-      scheduledAt: { lte: params.now, lt: params.scheduledAt },
+      scheduledAt: { lte: params.now },
     },
+    select: { id: true, scheduledAt: true },
   })
+}
+
+function countPartsAheadInMemory(
+  dueParts: Array<{ id: string; scheduledAt: Date | null }>,
+  target: { id: string; scheduledAt: Date | null }
+): number {
+  if (!target.scheduledAt) return 0
+  const targetTime = target.scheduledAt.getTime()
+  let ahead = 0
+  for (const part of dueParts) {
+    if (part.id === target.id || part.scheduledAt == null) continue
+    if (part.scheduledAt.getTime() < targetTime) ahead += 1
+  }
+  return ahead
 }
 
 /**
@@ -166,10 +189,17 @@ export async function loadDispatchAvailabilityForLeafCampaigns(params: {
     now: params.now,
   })
 
+  // Carregada preguiçosamente UMA vez, e só se algum item cair em
+  // daily_cap_reached — os demais motivos não usam posição de fila.
+  let dueParts: Array<{ id: string; scheduledAt: Date | null }> | null = null
+
   for (const campaign of params.campaigns) {
-    const additionalRecipients = campaign.retryFailedOnly
-      ? Math.max(0, campaign.totalRecipients - campaign.totalSent)
-      : campaign.totalRecipients
+    const additionalRecipients =
+      campaign.exactAdditionalRecipients != null
+        ? campaign.exactAdditionalRecipients
+        : campaign.retryFailedOnly
+          ? Math.max(0, campaign.totalRecipients - campaign.totalSent)
+          : campaign.totalRecipients
 
     const availability = resolveDispatchAvailability({
       status: campaign.status,
@@ -181,12 +211,8 @@ export async function loadDispatchAvailabilityForLeafCampaigns(params: {
     })
 
     if (availability.reason === "daily_cap_reached") {
-      const queuedAheadCount = await countScheduledPartsAhead({
-        teamId: params.teamId,
-        now: params.now,
-        scheduledAt: campaign.scheduledAt,
-        excludeCampaignId: campaign.id,
-      })
+      dueParts ??= await listDueScheduledParts({ teamId: params.teamId, now: params.now })
+      const queuedAheadCount = countPartsAheadInMemory(dueParts, campaign)
       result.set(campaign.id, { ...availability, queuedAheadCount })
       continue
     }
