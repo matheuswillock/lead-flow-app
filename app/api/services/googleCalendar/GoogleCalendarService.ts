@@ -391,6 +391,7 @@ export async function upsertCalendarEvent({
   meetingTitle,
   notes: _notes,
   meetingLink,
+  meetingFormatLabel,
   extraGuests,
   attendeeEmails,
   existingEventId,
@@ -404,6 +405,8 @@ export async function upsertCalendarEvent({
   meetingTitle?: string | null;
   notes?: string | null;
   meetingLink?: string | null;
+  /** Rótulo do formato ("Ligação"/"WhatsApp") para reuniões sem link de vídeo — evita criar um Google Meet automático. */
+  meetingFormatLabel?: string | null;
   extraGuests?: string[];
   attendeeEmails?: string[];
   existingEventId?: string | null;
@@ -420,7 +423,7 @@ export async function upsertCalendarEvent({
       ? Math.floor(durationMinutes as number)
       : 30;
   const endTime = getEventEnd(meetingDate, resolvedDuration);
-  const normalizedAttendeeEmails = (attendeeEmails && attendeeEmails.length > 0
+  const normalizedAttendeeEmails = (attendeeEmails !== undefined
     ? attendeeEmails
     : [
         lead.email,
@@ -434,7 +437,9 @@ export async function upsertCalendarEvent({
   const attendees = normalizedAttendeeEmails.map((email) => ({ email }));
 
   const summary = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
-  const description = "Reunião agendada pelo Corretor Studio.";
+  const description = meetingFormatLabel
+    ? `Reunião agendada pelo Corretor Studio via ${meetingFormatLabel}.`
+    : "Reunião agendada pelo Corretor Studio.";
   const body: Record<string, unknown> = {
     summary,
     description,
@@ -443,7 +448,9 @@ export async function upsertCalendarEvent({
     attendees,
   };
 
-  if (meetingLink) {
+  if (meetingFormatLabel) {
+    body.location = meetingFormatLabel;
+  } else if (meetingLink) {
     body.location = meetingLink;
   } else {
     body.conferenceData = {

@@ -46,7 +46,13 @@ Token namespaces:
 - `--surface-*` for depth layers.
 - `--precision-*` for fintech-grade emphasis.
 - `--semantic-*` for status and intent color pairs.
+- `--stage-*` for pipeline stage hues (same value in both themes; see §12).
+- `--btn-primary-*` for the primary button pair (decoupled from `--primary`, which must not change).
 - `--motion-*` for timing/easing.
+
+Reference artifacts (source of the values below, kept at repo root):
+- `UI-Kit.html` — colors, typography, buttons, badges, toggle, stage palette.
+- `CRM_(2).html` — CRM table/kanban mockup; reference for the lead status badge style only (hues come from the UI Kit).
 
 Compatibility:
 - Existing core tokens remain supported (`--primary`, `--background`, etc.).
@@ -61,7 +67,16 @@ Families:
 - Body/UI: `Inter`
 - Monospace snippets: `ui-monospace, SFMono-Regular, Menlo, Consolas`
 
-Scale:
+Product UI scale (UI Kit):
+- Page title: Poppins `30px`, `font-weight: 700`, `letter-spacing: -0.02em`
+- Section title: Poppins `22px`, `font-weight: 700`, `letter-spacing: -0.02em`
+- Sub-section: Poppins `16px`, `font-weight: 600`, `letter-spacing: -0.01em`
+- Body large: Inter `15px`, `400`
+- Body (default UI): Inter `13px`, `400`
+- Caption / metadata: Inter `12px`, `400`, `--muted-foreground`
+- Group label: Inter `10px`, `600`, `letter-spacing: 0.06em`, uppercase
+
+Landing scale:
 - Display XL: `72px`, `font-weight: 800`, `line-height: 0.98`, `letter-spacing: -0.03em`
 - Display LG: `60px`, `font-weight: 800`, `line-height: 1.0`, `letter-spacing: -0.028em`
 - Section: `48px`, `font-weight: 700`, `line-height: 1.05`, `letter-spacing: -0.024em`
@@ -80,11 +95,21 @@ Rules:
 ## 5. Component Language
 
 Buttons:
-- `primary`: orange fill, high emphasis shadow, rounded-2xl.
+- `primary` (UI Kit `.btn-primary`, implemented as `.btn-primary-accessible` in `globals.css`, used by the `default` variant of `components/ui/button.tsx`): `--btn-primary-bg` (#ff6900) + `--btn-primary-foreground` (white), shadow `0 10px 24px -6px color-mix(in oklab, var(--btn-primary-bg) 55%, transparent)`, hover `filter: brightness(1.04)` + `translateY(-1px)`, disabled `opacity: 0.5` without shadow. Also applied to the toast action button and to `TooltipContent`.
 - `secondary`: neutral/ghost with border emphasis.
 - `ghost`: minimal action, no heavy elevation.
 - `pill-cta`: conversion-focused pill allowed only in hero/pricing/checkout hotspots.
 - `utility-chip`: compact contextual pills for filters/status.
+
+Lead status badge (`components/lead-status-badge.tsx`, class `.lead-status-badge`; style from `CRM_(2).html .badge`, hues from §12):
+- Pill (`rounded-full`), `px-3 py-1`, `text-xs`, `font-bold`, **no dot** — label only.
+- Background `color-mix(in srgb, var(--stage-color) 16%, transparent)`, border `45%`.
+- Text `color-mix(in oklab, var(--stage-color) var(--stage-foreground-mix), var(--foreground))` — the hue darkens in light (55%) and lightens in dark (60%); the pure hue as text does not reach 4.5:1 on light tints (ceiling ≈3.6:1 for `#5b86d4`).
+- Never render lead status with `bg-primary`/`bg-*-500` utilities or with the semantic badge variants below.
+
+Kanban column header (`.board-column-head`): solid `var(--stage-color)` + `--stage-solid-foreground` (#17171c). White text, as in the kit demo, fails contrast on 11 of the 14 hues.
+
+View toggle (Pipeline ↔ Kanban, `CrmContainer.tsx`): `Switch` between two labels inside a `rounded-full` bordered container; active label `--foreground`, inactive `--muted-foreground`.
 
 Cards:
 - `feature`: border + soft surface mix + subtle blur.
@@ -161,6 +186,11 @@ Engineering checks:
 - No `window.alert`, `window.confirm`, `window.prompt`.
 - New visual components should reuse shadcn primitives first.
 
+Measured decisions (WCAG relative luminance, verified in the rendered DOM):
+- Primary button `#ff6900` + white = **2.89:1**, below the 4.5:1 floor. Kept by explicit owner decision on 2026-09-15 to follow the UI Kit; do not "fix" it silently.
+- Lead status badge text is derived (`--stage-foreground-mix`) instead of using the pure stage hue precisely so it passes 4.5:1 in both themes.
+- Kanban headers use dark ink on the stage hue for the same reason.
+
 ---
 
 ## 9. Token Source (machine-readable)
@@ -171,8 +201,8 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
 ```json
 {
   "--radius": "0.65rem",
-  "--background": "oklch(1 0 0)",
-  "--foreground": "oklch(0.141 0.005 285.823)",
+  "--background": "#f4f4f6",
+  "--foreground": "#17171c",
   "--card": "oklch(1 0 0)",
   "--card-foreground": "oklch(0.141 0.005 285.823)",
   "--popover": "oklch(1 0 0)",
@@ -211,19 +241,19 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
   "--precision-shadow-2": "0 20px 40px -22px rgba(50, 50, 93, 0.28), 0 12px 24px -16px rgba(0, 0, 0, 0.12)",
   "--precision-shadow-3": "0 30px 45px -30px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.1)",
   "--frost-border": "rgba(214, 235, 253, 0.19)",
-  "--semantic-success": "#00a87e",
+  "--semantic-success": "#3faa8a",
   "--semantic-success-foreground": "#ffffff",
   "--semantic-success-surface": "color-mix(in oklab, var(--semantic-success) 16%, var(--card))",
   "--semantic-success-border": "color-mix(in oklab, var(--semantic-success) 38%, var(--border))",
-  "--semantic-warning": "#ec7e00",
+  "--semantic-warning": "#c99530",
   "--semantic-warning-foreground": "#ffffff",
   "--semantic-warning-surface": "color-mix(in oklab, var(--semantic-warning) 14%, var(--card))",
   "--semantic-warning-border": "color-mix(in oklab, var(--semantic-warning) 34%, var(--border))",
-  "--semantic-danger": "#e23b4a",
+  "--semantic-danger": "#c96060",
   "--semantic-danger-foreground": "#ffffff",
   "--semantic-danger-surface": "color-mix(in oklab, var(--semantic-danger) 14%, var(--card))",
   "--semantic-danger-border": "color-mix(in oklab, var(--semantic-danger) 36%, var(--border))",
-  "--semantic-info": "#3b9eff",
+  "--semantic-info": "#5b86d4",
   "--semantic-info-foreground": "#ffffff",
   "--semantic-info-surface": "color-mix(in oklab, var(--semantic-info) 15%, var(--card))",
   "--semantic-info-border": "color-mix(in oklab, var(--semantic-info) 36%, var(--border))",
@@ -263,7 +293,25 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
   "--sidebar-accent": "oklch(0.967 0.001 286.375)",
   "--sidebar-accent-foreground": "oklch(0.21 0.006 285.885)",
   "--sidebar-border": "oklch(0.92 0.004 286.32)",
-  "--sidebar-ring": "oklch(0.705 0.213 47.604)"
+  "--sidebar-ring": "oklch(0.705 0.213 47.604)",
+  "--btn-primary-bg": "#ff6900",
+  "--btn-primary-foreground": "#ffffff",
+  "--stage-new-opportunity": "#5b86d4",
+  "--stage-scheduled": "#a3a8d4",
+  "--stage-no-show": "#d4b084",
+  "--stage-pricing-request": "#8ac4e0",
+  "--stage-future-sale": "#9b7ec8",
+  "--stage-offer-negotiation": "#b5a8cc",
+  "--stage-pending-documents": "#c99530",
+  "--stage-offer-submission": "#5bbcb6",
+  "--stage-dps-agreement": "#8ac4e0",
+  "--stage-invoice-payment": "#c99530",
+  "--stage-disqualified": "#c96060",
+  "--stage-opportunity-lost": "#c96060",
+  "--stage-operator-denied": "#c96060",
+  "--stage-contract-finalized": "#3faa8a",
+  "--stage-foreground-mix": "55%",
+  "--stage-solid-foreground": "#17171c"
 }
 ```
 <!-- TOKENS:LIGHT:END -->
@@ -271,7 +319,7 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
 <!-- TOKENS:DARK:START -->
 ```json
 {
-  "--background": "oklch(0.141 0.005 285.823)",
+  "--background": "#0f0f14",
   "--foreground": "oklch(0.985 0 0)",
   "--card": "oklch(0.21 0.006 285.885)",
   "--card-foreground": "oklch(0.985 0 0)",
@@ -311,19 +359,19 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
   "--precision-shadow-2": "0 20px 40px -22px rgba(0, 0, 0, 0.52), 0 12px 24px -16px rgba(30, 30, 68, 0.45)",
   "--precision-shadow-3": "0 30px 45px -30px rgba(0, 0, 0, 0.6), 0 18px 36px -18px rgba(36, 36, 78, 0.44)",
   "--frost-border": "rgba(214, 235, 253, 0.19)",
-  "--semantic-success": "#22c08a",
+  "--semantic-success": "#18b47e",
   "--semantic-success-foreground": "#052116",
   "--semantic-success-surface": "color-mix(in oklab, var(--semantic-success) 22%, var(--card))",
   "--semantic-success-border": "color-mix(in oklab, var(--semantic-success) 44%, var(--border))",
-  "--semantic-warning": "#f2a236",
+  "--semantic-warning": "#d97706",
   "--semantic-warning-foreground": "#251603",
   "--semantic-warning-surface": "color-mix(in oklab, var(--semantic-warning) 22%, var(--card))",
   "--semantic-warning-border": "color-mix(in oklab, var(--semantic-warning) 44%, var(--border))",
-  "--semantic-danger": "#f06572",
+  "--semantic-danger": "#e0524b",
   "--semantic-danger-foreground": "#2d070b",
   "--semantic-danger-surface": "color-mix(in oklab, var(--semantic-danger) 22%, var(--card))",
   "--semantic-danger-border": "color-mix(in oklab, var(--semantic-danger) 44%, var(--border))",
-  "--semantic-info": "#62b6ff",
+  "--semantic-info": "#3b82f6",
   "--semantic-info-foreground": "#071b32",
   "--semantic-info-surface": "color-mix(in oklab, var(--semantic-info) 22%, var(--card))",
   "--semantic-info-border": "color-mix(in oklab, var(--semantic-info) 44%, var(--border))",
@@ -363,7 +411,10 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
   "--sidebar-accent": "oklch(0.274 0.006 286.033)",
   "--sidebar-accent-foreground": "oklch(0.985 0 0)",
   "--sidebar-border": "oklch(1 0 0 / 10%)",
-  "--sidebar-ring": "oklch(0.646 0.222 41.116)"
+  "--sidebar-ring": "oklch(0.646 0.222 41.116)",
+  "--btn-primary-bg": "#ff6900",
+  "--btn-primary-foreground": "#ffffff",
+  "--stage-foreground-mix": "60%"
 }
 ```
 <!-- TOKENS:DARK:END -->
@@ -547,6 +598,31 @@ Managed CSS regions:
 - `/* TOKENS:DARK:START/END */`
 
 Do not edit generated regions manually.
+
+---
+
+## 12. Pipeline Stage Palette
+
+Source: `UI-Kit.html`, section "Etapas do pipeline" (`stage-grid`). One hue per `LeadStatus`, identical in light and dark. Consumers: `getLeadStatusStageColor()` in `lib/lead-status.ts`, rendered by `LeadStatusBadge` and `.board-column-head`.
+
+| LeadStatus | Label | Token | Hex |
+|---|---|---|---|
+| `new_opportunity` | Nova oportunidade | `--stage-new-opportunity` | `#5b86d4` |
+| `scheduled` | Agendado | `--stage-scheduled` | `#a3a8d4` |
+| `no_show` | No Show | `--stage-no-show` | `#d4b084` |
+| `pricingRequest` | Cotação | `--stage-pricing-request` | `#8ac4e0` |
+| `future_sale` | Venda Futura | `--stage-future-sale` | `#9b7ec8` |
+| `offerNegotiation` | Negociação | `--stage-offer-negotiation` | `#b5a8cc` |
+| `pending_documents` | Documentos pendentes | `--stage-pending-documents` | `#c99530` |
+| `offerSubmission` | Proposta | `--stage-offer-submission` | `#5bbcb6` |
+| `dps_agreement` | DPS \| Contrato | `--stage-dps-agreement` | `#8ac4e0` |
+| `invoicePayment` | Boleto | `--stage-invoice-payment` | `#c99530` |
+| `disqualified` | Desqualificado | `--stage-disqualified` | `#c96060` |
+| `opportunityLost` | Perdido | `--stage-opportunity-lost` | `#c96060` |
+| `operator_denied` | Negado operadora | `--stage-operator-denied` | `#c96060` |
+| `contract_finalized` | Negócio fechado | `--stage-contract-finalized` | `#3faa8a` |
+
+Support tokens: `--stage-foreground-mix` (light `55%`, dark `60%`) and `--stage-solid-foreground` (`#17171c`). The kit also lists `Contato feito` (`#6b93d8`) and `Reagendado` (`#b5a8cc`), which have no `LeadStatus` yet.
 
 ---
 

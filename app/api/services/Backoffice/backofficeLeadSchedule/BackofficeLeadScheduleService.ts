@@ -64,11 +64,11 @@ export class BackofficeLeadScheduleService
         return new Output(false, [], ["Closer informado não está ativo"], null)
       }
 
-      if (isOnlineMeeting && !input.leadEmail?.trim()) {
+      if (!input.leadEmail?.trim()) {
         return new Output(
           false,
           [],
-          ["Lead precisa de um e-mail para agendamento online."],
+          ["Lead precisa de um e-mail para agendar a reunião."],
           null
         )
       }
@@ -204,6 +204,7 @@ export class BackofficeLeadScheduleService
             closerEmail,
             meetingDate: input.meetingDate,
             meetingTitle: input.meetingTitle,
+            meetingType: resolvedMeetingType,
             meetingNotes: input.meetingNotes,
             meetingLink: finalMeetingLink ?? "",
             extraGuests: input.extraGuests ?? [],
@@ -216,6 +217,32 @@ export class BackofficeLeadScheduleService
               meetingType: resolvedMeetingType,
               resend: toInputJsonValue(resendOutput.result),
             }
+          }
+        }
+
+        // Evento pessoal (sem convidados) na agenda do closer — best-effort, não bloqueia o agendamento.
+        if (organizer) {
+          try {
+            const meetingFormatLabel = resolvedMeetingType === "call" ? "Ligação" : "WhatsApp"
+            const calendarResult = await this.googleCalendarService.upsertEvent({
+              organizer,
+              leadId: input.leadId,
+              leadName: input.leadName,
+              meetingDate: input.meetingDate,
+              meetingTitle: input.meetingTitle,
+              meetingNotes: input.meetingNotes,
+              meetingFormatLabel,
+              attendeeEmails: [],
+              existingEventId: existingSchedule?.googleEventId ?? null,
+            })
+            googleEventId = calendarResult.eventId
+            googleCalendarId = calendarResult.calendarId
+          } catch (error) {
+            console.warn("[BackofficeLeadScheduleService][Google][call-whatsapp]", {
+              leadId: input.leadId,
+              closerBackofficeUserId: input.closerBackofficeUserId,
+              error: getErrorMessage(error, "Falha ao criar evento pessoal no Google Calendar"),
+            })
           }
         }
       }
@@ -257,6 +284,7 @@ export class BackofficeLeadScheduleService
           meetingDate: input.meetingDate,
           meetingTitle: input.meetingTitle,
           meetingLink: finalMeetingLink,
+          meetingType: resolvedMeetingType,
           timezone: closer.timezone,
         })
         .catch((err) =>

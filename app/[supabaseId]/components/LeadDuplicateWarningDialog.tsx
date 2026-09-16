@@ -13,10 +13,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CopyX } from "lucide-react";
 import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status";
+import { LeadStatusBadge } from "@/components/lead-status-badge";
 import { maskPhone } from "@/lib/masks";
 import { maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token";
-import { cn } from "@/lib/utils";
 
 interface LeadDuplicateWarningDialogProps {
   open: boolean;
@@ -64,12 +63,7 @@ export function LeadDuplicateWarningDialog({
                 <span className="font-medium text-foreground">{candidate.name}</span>
                 <span className="text-xs text-muted-foreground">{candidate.leadCode}</span>
                 {candidate.status ? (
-                  <Badge
-                    variant="outline"
-                    className={cn("font-normal", getLeadStatusBadgeClass(candidate.status))}
-                  >
-                    {getLeadStatusLabel(candidate.status)}
-                  </Badge>
+                  <LeadStatusBadge status={candidate.status} />
                 ) : (
                   <Badge variant="outline">Rascunho</Badge>
                 )}

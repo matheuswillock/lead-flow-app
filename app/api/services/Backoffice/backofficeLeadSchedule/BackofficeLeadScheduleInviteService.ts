@@ -75,6 +75,12 @@ function escapeHtmlAttribute(value?: string | null): string {
   return escapeHtml(value)
 }
 
+function meetingFormatLabel(meetingType: SendBackofficeLeadScheduleInviteInput["meetingType"]): string | null {
+  if (meetingType === "call") return "Ligação"
+  if (meetingType === "whatsapp") return "WhatsApp"
+  return null
+}
+
 function buildInviteIcs(input: SendBackofficeLeadScheduleInviteInput, attendees: string[]) {
   const start = input.meetingDate
   const end = new Date(start.getTime() + CALENDAR_DURATION_MINUTES * 60 * 1000)
@@ -83,10 +89,12 @@ function buildInviteIcs(input: SendBackofficeLeadScheduleInviteInput, attendees:
       ? input.eventUid
       : `${input.eventUid || randomUUID()}@corretorstudio.com`
   )
+  const formatLabel = meetingFormatLabel(input.meetingType)
+  const location = formatLabel ?? input.meetingLink
   const descriptionLines = [
     "Demonstração agendada pelo Corretor Studio.",
     `Lead: ${input.leadName}`,
-    `Link: ${input.meetingLink}`,
+    formatLabel ? `Formato: ${formatLabel}` : `Link: ${input.meetingLink}`,
   ]
 
   if (input.meetingNotes?.trim()) {
@@ -106,7 +114,7 @@ function buildInviteIcs(input: SendBackofficeLeadScheduleInviteInput, attendees:
     `DTEND:${formatIcsDate(end)}`,
     `SUMMARY:${escapeIcsText(input.meetingTitle)}`,
     `DESCRIPTION:${escapeIcsText(descriptionLines.join("\n"))}`,
-    `LOCATION:${escapeIcsText(input.meetingLink)}`,
+    `LOCATION:${escapeIcsText(location)}`,
     `ORGANIZER;CN=${escapeIcsText(input.closerName)}:mailto:${input.closerEmail}`,
   ]
 
@@ -133,14 +141,17 @@ function buildScheduleDetailsHtml(input: SendBackofficeLeadScheduleInviteInput) 
   const timezone = input.timezone || DEFAULT_TZ
   const formattedDate = formatIntimezone(input.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone)
   const formattedTime = formatIntimezone(input.meetingDate, "HH:mm", timezone)
-  const safeMeetingLink = escapeHtml(input.meetingLink)
-  const linkMarkup = `<a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${safeMeetingLink}</a>`
+  const formatLabel = meetingFormatLabel(input.meetingType)
+  const linkRowLabel = formatLabel ? "Formato" : "Link"
+  const linkRowValue = formatLabel
+    ? escapeHtml(formatLabel)
+    : `<a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a>`
 
   return `
     <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-      <p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
+      <p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>${linkRowLabel}:</strong> ${linkRowValue}</p>
     </div>
   `
 }
@@ -434,9 +445,12 @@ export class BackofficeLeadScheduleInviteService
         .filter(Boolean)
         .join("")
 
-      const meetingLinkRow = input.meetingLink
-        ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> <a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a></p>`
-        : ""
+      const closerNotificationFormatLabel = meetingFormatLabel(input.meetingType)
+      const meetingLinkRow = closerNotificationFormatLabel
+        ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Formato:</strong> ${escapeHtml(closerNotificationFormatLabel)}</p>`
+        : input.meetingLink
+          ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> <a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a></p>`
+          : ""
 
       const body = `
         <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">

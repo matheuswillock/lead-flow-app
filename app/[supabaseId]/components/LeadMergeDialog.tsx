@@ -23,13 +23,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
+import { LeadStatusBadge } from "@/components/lead-status-badge";
 import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status";
 import { maskPhone } from "@/lib/masks";
 import { maskEmailForUnsubscribe } from "@/lib/email/unsubscribe-token";
 import { cn } from "@/lib/utils";
@@ -233,12 +232,7 @@ export function LeadMergeDialog({
                       <span className="font-medium">{lead.name}</span>
                       <span className="text-xs text-muted-foreground">{lead.leadCode}</span>
                       {lead.status ? (
-                        <Badge
-                          variant="outline"
-                          className={cn("font-normal", getLeadStatusBadgeClass(lead.status))}
-                        >
-                          {getLeadStatusLabel(lead.status)}
-                        </Badge>
+                        <LeadStatusBadge status={lead.status} />
                       ) : null}
                     </div>
                   </button>

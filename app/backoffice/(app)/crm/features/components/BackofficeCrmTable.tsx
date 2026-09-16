@@ -400,6 +400,7 @@ export function BackofficeCrmTable() {
     closerOptions,
     canManage,
     openEditDialog,
+    updateLead,
     updateLeadStatus,
     removeLead,
     tableColumnVisibility,
@@ -453,6 +454,9 @@ export function BackofficeCrmTable() {
 
       setPendingStatusLeadId(leadToSchedule.id)
       try {
+        if (schedule.leadEmail && schedule.leadEmail !== leadToSchedule.email) {
+          await updateLead(leadToSchedule.id, { email: schedule.leadEmail })
+        }
         await updateLeadStatus(leadToSchedule.id, "scheduled", schedule)
         setScheduleDialogOpen(false)
         setLeadToSchedule(null)
@@ -460,7 +464,7 @@ export function BackofficeCrmTable() {
         setPendingStatusLeadId(null)
       }
     },
-    [leadToSchedule, updateLeadStatus]
+    [leadToSchedule, updateLead, updateLeadStatus]
   )
 
   function handleDeleteDialogOpenChange(open: boolean) {

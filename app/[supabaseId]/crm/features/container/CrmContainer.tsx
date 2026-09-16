@@ -15,7 +15,7 @@ function CrmViewModeSwitch() {
   const isKanban = viewMode === "kanban";
 
   return (
-    <div className="flex h-9 max-lg:h-12 items-center gap-2 rounded-md border border-border/60 px-3">
+    <div className="flex h-9 max-lg:h-12 items-center gap-2 rounded-full border border-border/60 px-3">
       <span
         className={cn(
           "text-xs font-medium",
