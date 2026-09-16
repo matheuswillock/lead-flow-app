@@ -278,13 +278,15 @@
 
 /* Botão primary com contraste garantido, fora de --primary/--primary-foreground
    (esses dois não devem mudar — ver histórico do CTA da landing). Usado pelo
-   variant "default" de components/ui/button.tsx em todo o app. */
+   variant "default" de components/ui/button.tsx em todo o app.
+   #d43f04 = mesmo hue do #df4204 original a 95%; branco sobre ele mede 4.65:1
+   (WCAG AA >= 4.5 para texto normal). O #df4204 original media 4.27:1. */
 :root {
-  --btn-primary-bg: #df4204;
+  --btn-primary-bg: #d43f04;
   --btn-primary-foreground: #ffffff;
 }
 .dark {
-  --btn-primary-bg: #df4204;
+  --btn-primary-bg: #d43f04;
   --btn-primary-foreground: #ffffff;
 }
 
@@ -555,7 +557,7 @@ h1, h2, h3, h4, h5, h6 {
   --border: color-mix(in oklab, #141118 9%, transparent);
   --input: color-mix(in oklab, #141118 14%, transparent);
   --ring: #fb5c1e;
-  --landing-cta-bg: #df4204;
+  --landing-cta-bg: #d43f04;
   --landing-cta-foreground: #fefefe;
   --semantic-warning: #ff8a3d;
   --semantic-danger: #e24e0c;
