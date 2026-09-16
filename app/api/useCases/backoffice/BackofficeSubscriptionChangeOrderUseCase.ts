@@ -7,6 +7,7 @@ import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustom
 import { emailService as defaultEmailService } from "@/lib/services/EmailService"
 import type {
   BackofficeSubscriptionChangeOrderOverrideStatus,
+  BackofficeSubscriptionChangeOrderRecord,
   ChangeOrderTargetProduct,
   IBackofficeSubscriptionChangeOrderRepository,
 } from "@/app/api/infra/data/repositories/backoffice/SubscriptionChangeOrderRepository/IBackofficeSubscriptionChangeOrderRepository"
@@ -59,6 +60,16 @@ export function parseChangeOrderExternalReference(externalReference: string): st
 export const SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT = Number(
   process.env.BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT ?? "0"
 )
+
+/**
+ * Achado cursor[bot] no PR #1167 (rodada 2): pagar a diferença de UMA
+ * alteração de plano não quita o que causou suspended/past_due, nem deve
+ * reverter canceled. `create`/`generatePayment` recusam nesses status —
+ * `null` (nunca teve assinatura) e `active`/`trial` passam.
+ */
+function isBlockedSubscriptionStatus(status: string | null): boolean {
+  return status === "past_due" || status === "suspended" || status === "canceled"
+}
 
 function getProductListAmountForCycle(
   product: ChangeOrderTargetProduct,
@@ -113,6 +124,14 @@ export class BackofficeSubscriptionChangeOrderUseCase {
           false,
           [],
           ["Perfil com assinatura vitalícia não usa alteração de assinatura paga"],
+          null
+        )
+      }
+      if (isBlockedSubscriptionStatus(master.currentSubscriptionStatus)) {
+        return new Output(
+          false,
+          [],
+          [`Assinatura em status ${master.currentSubscriptionStatus} — regularize antes de alterar o plano`],
           null
         )
       }
@@ -272,6 +291,18 @@ export class BackofficeSubscriptionChangeOrderUseCase {
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
+      if (isBlockedSubscriptionStatus(master.currentSubscriptionStatus)) {
+        return new Output(
+          false,
+          [],
+          [`Assinatura em status ${master.currentSubscriptionStatus} — regularize antes de gerar a cobrança`],
+          null
+        )
+      }
+
+      if (order.chargeAmount === 0) {
+        return this.applyFreeOrder(order)
+      }
 
       const customerId = await this.ensurePrimaryCustomer(master.billingProfile)
       const client = this.asaasClientFactory("primary")
@@ -322,6 +353,34 @@ export class BackofficeSubscriptionChangeOrderUseCase {
       console.error("[BackofficeSubscriptionChangeOrderUseCase][generatePayment]", error)
       return new Output(false, [], ["Erro ao gerar a cobrança da alteração de assinatura"], null)
     }
+  }
+
+  /**
+   * Achado cursor[bot] no PR #1167 (rodada 2): `calculateSubscriptionChangeProration`
+   * usa `Math.max(0, …)` — downgrade ou diferença zero produz `chargeAmount
+   * === 0`, que o Asaas rejeita (`value <= 0`). Sem cobrança para gerar, a
+   * ordem aplica direto — mesma marcação de lifecycle tipada do G4
+   * (`plan_changed`, produto/ciclo mudam de verdade neste instante).
+   */
+  private async applyFreeOrder(order: BackofficeSubscriptionChangeOrderRecord): Promise<Output> {
+    const applied = await this.repository.applyFreeChangeOrder(order.id)
+    if (!applied) {
+      return new Output(
+        false,
+        [],
+        ["Ordem não está em draft com cobrança zero — não foi possível aplicar diretamente"],
+        null
+      )
+    }
+
+    await this.repository.logEvent({
+      changeOrderId: applied.id,
+      changeType: "subscription_change_order_applied",
+      eventType: "plan_changed",
+      payload: { targetProductId: applied.targetProductId, targetCycle: applied.targetCycle, chargeAmount: 0 },
+    })
+
+    return new Output(true, ["Sem diferença de cobrança — ordem aplicada diretamente, sem Asaas"], [], applied)
   }
 
   /**

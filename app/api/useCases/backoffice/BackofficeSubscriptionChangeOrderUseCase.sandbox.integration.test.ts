@@ -86,6 +86,7 @@ describeIntegration("BackofficeSubscriptionChangeOrderUseCase.generatePayment â€
         currentProductId: null,
         currentCycle: null,
         currentChargedAmount: null,
+        currentSubscriptionStatus: "active",
         currentPeriodEnd: null,
         billingProfile: {
           id: MASTER_ID,
@@ -150,6 +151,10 @@ describeIntegration("BackofficeSubscriptionChangeOrderUseCase.generatePayment â€
     }
 
     async applyChangeOrder(): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
+      return this.order
+    }
+
+    async applyFreeChangeOrder(): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
       return this.order
     }
 

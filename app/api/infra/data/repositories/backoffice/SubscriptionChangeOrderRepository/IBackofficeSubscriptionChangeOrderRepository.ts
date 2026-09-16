@@ -1,4 +1,9 @@
-import type { AsaasAccount, BackofficeAdhesionBillingCycle, SubscriptionLifecycleEvent } from "@prisma/client"
+import type {
+  AsaasAccount,
+  BackofficeAdhesionBillingCycle,
+  SubscriptionLifecycleEvent,
+  SubscriptionStatus,
+} from "@prisma/client"
 
 /** Dados de cobrança do master (G2) — o mínimo para criar/verificar customer Asaas. */
 export interface ChangeOrderBillingProfile {
@@ -22,6 +27,8 @@ export interface ChangeOrderMasterContext {
   currentProductId: string | null
   currentCycle: BackofficeAdhesionBillingCycle | null
   currentChargedAmount: number | null
+  /** Achado cursor[bot] no PR #1167 (rodada 2): gate de create()/generatePayment(). */
+  currentSubscriptionStatus: SubscriptionStatus | null
   currentPeriodEnd: Date | null
   billingProfile: ChangeOrderBillingProfile
 }
@@ -119,6 +126,12 @@ export interface IBackofficeSubscriptionChangeOrderRepository {
    * outra entrega do mesmo webhook já aplicou, ou a ordem foi cancelada).
    */
   applyChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null>
+  /**
+   * Achado cursor[bot] no PR #1167 (rodada 2): mesma transição atômica de
+   * `applyChangeOrder`, mas partindo de `draft` (nunca existe cobrança
+   * quando `chargeAmount === 0` — Asaas rejeita `value <= 0`).
+   */
+  applyFreeChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null>
   /** Timeline própria do módulo — nunca `logSubscriptionChange` (isolamento backoffice). */
   logEvent(data: LogSubscriptionChangeOrderEventData): Promise<void>
 }

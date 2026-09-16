@@ -90,6 +90,14 @@ const LEGACY_CYCLE_LABEL: Record<string, string> = {
   annual: "YEARLY",
 }
 
+/**
+ * Achado cursor[bot] no PR #1167 (rodada 2): pagar a diferença de UMA
+ * alteração de plano não quita o que causou suspended/past_due, nem deve
+ * reverter canceled. `applyEntitlement` não promove para "active" a partir
+ * destes.
+ */
+const BLOCKED_ENTITLEMENT_PROMOTION_STATUSES = new Set(["suspended", "past_due", "canceled"])
+
 function mapRecord(order: ChangeOrderQueryResult): BackofficeSubscriptionChangeOrderRecord {
   return {
     id: order.id,
@@ -133,6 +141,7 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
           select: {
             productId: true,
             subscriptionCycle: true,
+            subscriptionStatus: true,
             subscriptionNextDueDate: true,
             adhesion: { select: { cycle: true, totalAmount: true, negotiatedTotalAmount: true } },
             product: {
@@ -165,6 +174,7 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
       currentProductId: subscription?.productId ?? null,
       currentCycle,
       currentChargedAmount,
+      currentSubscriptionStatus: subscription?.subscriptionStatus ?? null,
       currentPeriodEnd: subscription?.subscriptionNextDueDate ?? null,
       billingProfile: {
         id: master.id,
@@ -326,33 +336,73 @@ export class BackofficeSubscriptionChangeOrderRepository implements IBackofficeS
         select: CHANGE_ORDER_SELECT,
       })
 
-      const legacyCycle = LEGACY_CYCLE_LABEL[order.targetCycle] ?? order.targetCycle
-
-      // adhesionId: null — a assinatura passa a ser governada por esta
-      // ordem, não pela adesão histórica (que teria produto/ciclo velhos e
-      // sobrescreveria o que acabamos de aplicar na leitura de E5/§7.7).
-      // Trade-off aceito: chargedAmount de E5 (que só lê de `adhesion`)
-      // fica null após uma alteração via backoffice até uma iteração
-      // futura ensinar `mapPlanSubscription` a também ler
-      // `BackofficeSubscriptionChangeOrder.chargeAmount` — documentado
-      // como gap conhecido, não regressão silenciosa.
-      await tx.profileSubscription.upsert({
-        where: { profileId: order.masterProfileId },
-        update: {
-          productId: order.targetProductId,
-          subscriptionCycle: legacyCycle,
-          subscriptionStatus: "active",
-          adhesionId: null,
-        },
-        create: {
-          profileId: order.masterProfileId,
-          productId: order.targetProductId,
-          subscriptionCycle: legacyCycle,
-          subscriptionStatus: "active",
-        },
-      })
+      await this.applyEntitlement(tx, order)
 
       return mapRecord(order)
+    })
+  }
+
+  /**
+   * Achado cursor[bot] no PR #1167 (rodada 2): `generatePayment` sempre
+   * postava no Asaas mesmo com `chargeAmount === 0` (downgrade/sem
+   * diferença) — Asaas rejeita `value <= 0`. Mesma trava de concorrência de
+   * `applyChangeOrder` (`updateMany` como lock real), partindo de `draft`
+   * em vez de `awaiting_payment` — nunca existe cobrança para este caminho.
+   */
+  async applyFreeChangeOrder(id: string): Promise<BackofficeSubscriptionChangeOrderRecord | null> {
+    return prisma.$transaction(async (tx) => {
+      const claim = await tx.backofficeSubscriptionChangeOrder.updateMany({
+        where: { id, status: "draft", chargeAmount: 0 },
+        data: { status: "applied", appliedAt: new Date() },
+      })
+
+      if (claim.count === 0) {
+        return null
+      }
+
+      const order = await tx.backofficeSubscriptionChangeOrder.findUniqueOrThrow({
+        where: { id },
+        select: CHANGE_ORDER_SELECT,
+      })
+
+      await this.applyEntitlement(tx, order)
+
+      return mapRecord(order)
+    })
+  }
+
+  private async applyEntitlement(tx: Prisma.TransactionClient, order: ChangeOrderQueryResult): Promise<void> {
+    const legacyCycle = LEGACY_CYCLE_LABEL[order.targetCycle] ?? order.targetCycle
+
+    const current = await tx.profileSubscription.findUnique({
+      where: { profileId: order.masterProfileId },
+      select: { subscriptionStatus: true },
+    })
+    const shouldPromoteToActive =
+      !current?.subscriptionStatus || !BLOCKED_ENTITLEMENT_PROMOTION_STATUSES.has(current.subscriptionStatus)
+
+    // adhesionId: null — a assinatura passa a ser governada por esta
+    // ordem, não pela adesão histórica (que teria produto/ciclo velhos e
+    // sobrescreveria o que acabamos de aplicar na leitura de E5/§7.7).
+    // Trade-off aceito: chargedAmount de E5 (que só lê de `adhesion`)
+    // fica null após uma alteração via backoffice até uma iteração
+    // futura ensinar `mapPlanSubscription` a também ler
+    // `BackofficeSubscriptionChangeOrder.chargeAmount` — documentado
+    // como gap conhecido, não regressão silenciosa.
+    await tx.profileSubscription.upsert({
+      where: { profileId: order.masterProfileId },
+      update: {
+        productId: order.targetProductId,
+        subscriptionCycle: legacyCycle,
+        ...(shouldPromoteToActive ? { subscriptionStatus: "active" as const } : {}),
+        adhesionId: null,
+      },
+      create: {
+        profileId: order.masterProfileId,
+        productId: order.targetProductId,
+        subscriptionCycle: legacyCycle,
+        subscriptionStatus: "active",
+      },
     })
   }
 

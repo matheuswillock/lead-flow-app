@@ -36,6 +36,7 @@ function makeRepository(overrides: Partial<Record<string, unknown>> = {}) {
       currentProductId: null,
       currentCycle: null,
       currentChargedAmount: null,
+      currentSubscriptionStatus: "active",
       currentPeriodEnd: null,
       billingProfile: makeBillingProfile(),
     })),
@@ -104,6 +105,24 @@ function makeRepository(overrides: Partial<Record<string, unknown>> = {}) {
       asaasPaymentId: "pay_new_1",
       asaasAccount: "primary",
       paymentInvoiceUrl: "https://asaas.test/i/pay_new_1",
+      createdAt: new Date(),
+    })),
+    applyFreeChangeOrder: mock(async (id: string) => ({
+      id,
+      masterProfileId: MASTER_ID,
+      status: "applied",
+      targetProductId: PRODUCT_ID,
+      targetProductName: "CRM",
+      targetCycle: "monthly",
+      listAmount: 100,
+      proratedAmount: 0,
+      overrideAmount: null,
+      overrideStatus: "not_required",
+      overrideApprovedByProfileId: null,
+      chargeAmount: 0,
+      asaasPaymentId: null,
+      asaasAccount: "primary",
+      paymentInvoiceUrl: null,
       createdAt: new Date(),
     })),
     logEvent: mock(async () => {}),
@@ -243,6 +262,36 @@ describe("BackofficeSubscriptionChangeOrderUseCase.create — G1", () => {
 
     expect(output.isValid).toBe(false)
   })
+
+  it.each(["suspended", "past_due", "canceled"])(
+    "master com assinatura %s → rejeitado, create não é chamado (achado cursor[bot] no PR #1167, rodada 2)",
+    async (status) => {
+      const repository = makeRepository({
+        findMasterContext: mock(async () => ({
+          hasPermanentSubscription: false,
+          currentProductId: PRODUCT_ID,
+          currentCycle: "monthly",
+          currentChargedAmount: 100,
+          currentSubscriptionStatus: status,
+          currentPeriodEnd: null,
+          billingProfile: makeBillingProfile(),
+        })),
+      })
+      const useCase = new BackofficeSubscriptionChangeOrderUseCase(repository as any)
+
+      const output = await useCase.create({
+        masterProfileId: MASTER_ID,
+        targetProductId: PRODUCT_ID,
+        targetCycle: "monthly",
+        overrideAmount: null,
+        actorProfileId: ACTOR_PROFILE_ID,
+        backofficeUserId: BACKOFFICE_USER_ID,
+      })
+
+      expect(output.isValid).toBe(false)
+      expect(repository.create).not.toHaveBeenCalled()
+    }
+  )
 
   it("produto alvo inativo → rejeitado, create não é chamado", async () => {
     const repository = makeRepository({
@@ -496,6 +545,73 @@ describe("BackofficeSubscriptionChangeOrderUseCase.generatePayment — G2", () =
         chargeAmount: 100,
       })
     )
+  })
+
+  it("master suspenso enquanto a ordem aguardava (defesa em profundidade) → rejeitado, nenhuma cobrança é gerada", async () => {
+    const repository = makeRepository({
+      findById: mock(async () => makeDraftOrder()),
+      findMasterContext: mock(async () => ({
+        hasPermanentSubscription: false,
+        currentProductId: null,
+        currentCycle: null,
+        currentChargedAmount: null,
+        currentSubscriptionStatus: "suspended",
+        currentPeriodEnd: null,
+        billingProfile: makeBillingProfile(),
+      })),
+    })
+    const deps = makeDeps()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(
+      repository as any,
+      deps.asaasClientFactory as any,
+      deps.asaasCustomerGateway as any,
+      deps.emailService as any
+    )
+
+    const output = await useCase.generatePayment("order-1")
+
+    expect(output.isValid).toBe(false)
+    expect(deps.asaasClientFactory).not.toHaveBeenCalled()
+    expect(repository.attachPayment).not.toHaveBeenCalled()
+  })
+
+  it("chargeAmount 0 (downgrade/sem diferença) → aplica direto, sem Asaas (achado cursor[bot] no PR #1167, rodada 2)", async () => {
+    const repository = makeRepository({ findById: mock(async () => makeDraftOrder({ chargeAmount: 0 })) })
+    const deps = makeDeps()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(
+      repository as any,
+      deps.asaasClientFactory as any,
+      deps.asaasCustomerGateway as any,
+      deps.emailService as any
+    )
+
+    const output = await useCase.generatePayment("order-1")
+
+    expect(output.isValid).toBe(true)
+    expect(deps.asaasClientFactory).not.toHaveBeenCalled()
+    expect(repository.attachPayment).not.toHaveBeenCalled()
+    expect(repository.applyFreeChangeOrder).toHaveBeenCalledWith("order-1")
+    expect(repository.logEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ changeType: "subscription_change_order_applied", eventType: "plan_changed" })
+    )
+  })
+
+  it("chargeAmount 0 mas applyFreeChangeOrder devolve null (status inesperado) → rejeitado", async () => {
+    const repository = makeRepository({
+      findById: mock(async () => makeDraftOrder({ chargeAmount: 0 })),
+      applyFreeChangeOrder: mock(async () => null),
+    })
+    const deps = makeDeps()
+    const useCase = new BackofficeSubscriptionChangeOrderUseCase(
+      repository as any,
+      deps.asaasClientFactory as any,
+      deps.asaasCustomerGateway as any,
+      deps.emailService as any
+    )
+
+    const output = await useCase.generatePayment("order-1")
+
+    expect(output.isValid).toBe(false)
   })
 
   it("ordem com preço avulso pendente → rejeitado, nenhuma cobrança é gerada", async () => {
