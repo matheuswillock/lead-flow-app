@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS, resolveCampaignAnalyticsDateRange } from "./dateRange"
+import {
+  CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS,
+  CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS,
+  resolveCampaignAnalyticsDateRange,
+  resolveCampaignAnalyticsExportAllDateRange,
+} from "./dateRange"
 
 describe("resolveCampaignAnalyticsDateRange", () => {
   it("resolve from/to em dia fechado UTC [from 00:00, to+1 00:00)", () => {
@@ -72,5 +77,32 @@ describe("resolveCampaignAnalyticsDateRange", () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toContain("92")
+  })
+})
+
+describe("resolveCampaignAnalyticsExportAllDateRange", () => {
+  it("herda as mesmas validações de formato/ordem de resolveCampaignAnalyticsDateRange", () => {
+    const result = resolveCampaignAnalyticsExportAllDateRange({ from: null, to: "2026-08-31" })
+    expect(result.ok).toBe(false)
+  })
+
+  it("herda o teto geral de 92 dias (mensagem do teto geral, não do teto do export)", () => {
+    const result = resolveCampaignAnalyticsExportAllDateRange({ from: "2026-05-31", to: "2026-08-31" })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain("92")
+  })
+
+  it(`aceita range de exatamente ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias`, () => {
+    const result = resolveCampaignAnalyticsExportAllDateRange({ from: "2026-08-02", to: "2026-08-31" })
+    expect(result.ok).toBe(true)
+  })
+
+  it(`rejeita range de ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS + 1} dias (abaixo do teto geral de 92) com mensagem PT-BR própria do export completo`, () => {
+    const result = resolveCampaignAnalyticsExportAllDateRange({ from: "2026-08-01", to: "2026-08-31" })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain(String(CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS))
+    expect(result.error).toContain("export completo")
   })
 })

@@ -5,6 +5,11 @@ import type { CampaignAnalyticsFiltersState } from "../context/CampanhasAnalytic
 export const CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS = 92
 export const CAMPAIGN_ANALYTICS_DEFAULT_RANGE_DAYS = 30
 
+// Teto próprio do export completo (mais estrito que o teto geral acima) —
+// mesma constante/mensagem de resolveCampaignAnalyticsExportAllDateRange no
+// backend (lib/backoffice-campaign-analytics/dateRange.ts).
+export const CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS = 30
+
 function toUtcDateOnly(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
   const date = new Date(`${value}T00:00:00.000Z`)
@@ -26,6 +31,24 @@ export function validateCampaignAnalyticsRange(from: string, to: string): string
   const dayCount = Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1
   if (dayCount > CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS) {
     return `O período não pode ultrapassar ${CAMPAIGN_ANALYTICS_MAX_RANGE_DAYS} dias — selecione um intervalo menor.`
+  }
+
+  return null
+}
+
+/** Espelha resolveCampaignAnalyticsExportAllDateRange no backend — mesma mensagem. */
+export function validateCampaignAnalyticsExportAllRange(from: string, to: string): string | null {
+  const generalError = validateCampaignAnalyticsRange(from, to)
+  if (generalError) return generalError
+  if (!from || !to) return null
+
+  const fromDate = toUtcDateOnly(from)
+  const toDate = toUtcDateOnly(to)
+  if (!fromDate || !toDate) return null // já coberto pela validação geral acima
+
+  const dayCount = Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1
+  if (dayCount > CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS) {
+    return `O export completo não pode ultrapassar ${CAMPAIGN_ANALYTICS_EXPORT_ALL_MAX_RANGE_DAYS} dias — selecione um intervalo menor.`
   }
 
   return null

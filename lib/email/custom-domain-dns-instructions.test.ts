@@ -123,8 +123,58 @@ describe("buildDnsInstructionsText", () => {
     expect(text).toContain('clique em "Verificar DNS"')
   })
 
-  it("não menciona o provedor na narrativa", () => {
+  it("não menciona o provedor de e-mail na narrativa", () => {
     expect(text).not.toMatch(/Resend/)
+  })
+
+  it("aponta o painel pelo nome quando a hospedagem é conhecida", () => {
+    const withProvider = buildDnsInstructionsText({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "HostGator",
+    })
+    expect(withProvider).toContain(
+      `Cadastre os registros abaixo no painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}:`
+    )
+    expect(withProvider).not.toContain("gerenciador de DNS da hospedagem")
+    expect(withProvider).not.toMatch(/Resend/)
+  })
+
+  it("mantém a narrativa genérica quando o provedor vem null", () => {
+    const withoutProvider = buildDnsInstructionsText({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: null,
+    })
+    expect(withoutProvider).toContain(
+      `Cadastre os registros abaixo no gerenciador de DNS da hospedagem do domínio ${DOMAIN_NAME}:`
+    )
+  })
+
+  it("sobe o aviso da nuvem laranja para o topo quando a hospedagem é a Cloudflare", () => {
+    const cloudflare = buildDnsInstructionsText({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "Cloudflare",
+    })
+    const warningIndex = cloudflare.indexOf("nuvem laranja")
+    const recordsIndex = cloudflare.indexOf("DKIM (verificação do domínio)")
+    expect(warningIndex).toBeGreaterThan(-1)
+    expect(warningIndex).toBeLessThan(recordsIndex)
+    expect(cloudflare).toContain("o DNS deste domínio está na Cloudflare")
+    // Uma vez só: com a hospedagem confirmada o aviso deixa de repetir no rodapé.
+    expect(cloudflare.split("nuvem laranja")).toHaveLength(2)
+  })
+
+  it("mantém o aviso da nuvem laranja no rodapé para hospedagem que não é Cloudflare", () => {
+    const hostgator = buildDnsInstructionsText({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "HostGator",
+    })
+    const warningIndex = hostgator.indexOf("nuvem laranja")
+    const recordsIndex = hostgator.indexOf("DKIM (verificação do domínio)")
+    expect(warningIndex).toBeGreaterThan(recordsIndex)
   })
 })
 
@@ -150,8 +200,31 @@ describe("buildDnsInstructionsAgentPrompt", () => {
     expect(prompt).toContain(DKIM_RECORD.value)
   })
 
-  it("não menciona o provedor na narrativa", () => {
+  it("não menciona o provedor de e-mail na narrativa", () => {
     expect(prompt).not.toMatch(/Resend/)
+  })
+
+  it("nomeia o painel da hospedagem na persona quando ela é conhecida", () => {
+    const withProvider = buildDnsInstructionsAgentPrompt({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "Locaweb",
+    })
+    expect(withProvider).toContain(
+      `Você tem acesso ao painel da Locaweb, hospedagem de DNS do domínio ${DOMAIN_NAME}.`
+    )
+    expect(withProvider).not.toMatch(/Resend/)
+  })
+
+  it("abre com o aviso da Cloudflare antes das regras quando a hospedagem é a Cloudflare", () => {
+    const cloudflare = buildDnsInstructionsAgentPrompt({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "Cloudflare",
+    })
+    const warningIndex = cloudflare.indexOf("o DNS deste domínio está na Cloudflare")
+    expect(warningIndex).toBeGreaterThan(-1)
+    expect(warningIndex).toBeLessThan(cloudflare.indexOf("Regras:"))
   })
 })
 
@@ -177,9 +250,20 @@ describe("buildDnsInstructionsEmailContent", () => {
     expect(hostile.html).toContain("&lt;script&gt;")
   })
 
-  it("não menciona o provedor na narrativa", () => {
+  it("não menciona o provedor de e-mail na narrativa", () => {
     expect(content.subject).not.toMatch(/Resend/)
     expect(content.text).not.toMatch(/Resend/)
     expect(content.html).not.toMatch(/Resend/)
+  })
+
+  it("propaga a hospedagem conhecida para o corpo do e-mail", () => {
+    const withProvider = buildDnsInstructionsEmailContent({
+      domainName: DOMAIN_NAME,
+      records: ALL_RECORDS,
+      providerName: "GoDaddy",
+    })
+    expect(withProvider.text).toContain("no painel da GoDaddy")
+    expect(withProvider.html).toContain("no painel da GoDaddy")
+    expect(withProvider.html).not.toMatch(/Resend/)
   })
 })

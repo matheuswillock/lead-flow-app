@@ -202,6 +202,9 @@ const prismaMock = {
   teamEmailCampaignLimitGrant: {
     findUnique: mock(async () => null),
   },
+  team: {
+    findUnique: mock(async () => ({ master: { timezone: "America/Sao_Paulo" } })),
+  },
   $transaction: transactionMock,
   $queryRaw: queryRawMock,
   $queryRawUnsafe: queryRawUnsafeMock,
@@ -2247,6 +2250,195 @@ describe("D13 — guard de domínio bloqueando disparo", () => {
     expect((lockCall?.[0] as { data: { errorMessage?: string | null } }).data.errorMessage).toBeNull()
   })
 
+  /**
+   * Adenda E4 (SPEC 20, todo 18) — caso KKJ 01/09: os 3 ramos de adiamento
+   * silencioso do caminho agendado (teto diário / janela / tracking) só
+   * logavam `console.info`, sem gravar nada. O operador lia "erro no disparo"
+   * sem erro nenhum registrado. A partir desta mudança, os 3 gravam
+   * `errorMessage` — sem virar `failed`, porque o envio não morreu.
+   */
+  describe("Adenda E4 (todo 18) — adiamentos do agendado gravam errorMessage", () => {
+    /** `emailCampaignUpdateMock` é tipado sem parâmetros (`mock(async () => ...)`),
+     * então `.mock.calls[i][0]` não existe a nível de tipo — cast explícito,
+     * mesmo padrão já usado em D13g/D13h nesta suíte. */
+    function findScheduledDeferUpdate(): { data: { status?: string; errorMessage?: string | null } } | undefined {
+      const calls = emailCampaignUpdateMock.mock.calls as unknown as Array<
+        [{ data: { status?: string; errorMessage?: string | null } }]
+      >
+      return calls.find((call) => call[0].data.status === "scheduled")?.[0]
+    }
+
+    /** Achado de review (PR #1074 já corrigido): a query de agendadas precisa
+     * ser determinística (mais antiga primeiro) para `queuedAheadCount`
+     * (campaign-dispatch-availability.ts) descrever a fila real. */
+    it("T-C4.5a — busca campanhas agendadas ordenada por scheduledAt asc, id asc (fila determinística)", async () => {
+      setupScheduledCampaignLock()
+
+      const uc = new EmailCampaignUseCase()
+      await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+      const findManyCall = emailCampaignFindManyMock.mock.calls.find(
+        (call) => (call[0] as MockWhereArgs)?.where?.status === "scheduled"
+      )
+      expect(findManyCall).toBeDefined()
+      expect((findManyCall?.[0] as { orderBy?: unknown })?.orderBy).toEqual([
+        { scheduledAt: "asc" },
+        { id: "asc" },
+      ])
+    })
+
+    /**
+     * Caso real (time "Planos de Saúde Inteligente | Rafael", 09/09): teto
+     * diário (2.000/dia) já consumido por outra parte — a campanha some do
+     * lock, mas NENHUM erro fica registrado hoje. Depois desta mudança, a
+     * campanha segue `scheduled` com `errorMessage` explicando o motivo e o
+     * consumo exato.
+     */
+    it("T-C4.5b — teto diário esgotado (2000/2000): campanha segue scheduled com errorMessage do teto", async () => {
+      setupScheduledCampaignLock()
+      emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as { where?: { teamId?: string } }
+        if (whereArgs?.where?.teamId === "team-1") {
+          return [
+            {
+              totalRecipients: 2000,
+              totalSent: 2000,
+              status: "completed",
+              dispatchedAt: new Date(),
+            },
+          ]
+        }
+        return []
+      })
+      buildCampaignDispatchInputMock.mockImplementation(async () =>
+        makeDefaultDispatchInput(makeRecipients(1))
+      )
+
+      const uc = new EmailCampaignUseCase()
+      const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+      expect(output.result.dispatched).toBe(0)
+      expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+
+      const deferData = findScheduledDeferUpdate()?.data
+      expect(deferData).toBeDefined()
+      expect(deferData?.errorMessage).toContain("2.000/2.000")
+      expect(deferData?.errorMessage).toContain("Adiada")
+      // Nunca promete a meia-noite sozinha (starvation em cascata, caso Rafael 10/09).
+      expect(deferData?.errorMessage).toContain("ordem de agendamento")
+    })
+
+    /**
+     * Cenário de STARVATION EM CASCATA medido em produção (time Rafael,
+     * 10/09): a parte represada de ontem consumiu 1.998/2.000 assim que o
+     * teto liberou à meia-noite. Uma parte nova de 2.000 destinatários
+     * agendada para hoje é adiada de novo — o teto tecnicamente "abriu" 2
+     * vagas, mas não o suficiente. O `errorMessage` precisa expor o consumo
+     * exato (1.998/2.000), não só "esgotado".
+     */
+    it("T-C4.5c — starvation em cascata: 1998/2000 usados, parte de 2000 é adiada com o consumo exato", async () => {
+      setupScheduledCampaignLock()
+      emailCampaignDispatchFindManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as { where?: { teamId?: string } }
+        if (whereArgs?.where?.teamId === "team-1") {
+          return [
+            {
+              totalRecipients: 1998,
+              totalSent: 1998,
+              status: "completed",
+              dispatchedAt: new Date(),
+            },
+          ]
+        }
+        return []
+      })
+
+      const uc = new EmailCampaignUseCase()
+      const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+      expect(output.result.dispatched).toBe(0)
+      const deferData = findScheduledDeferUpdate()?.data
+      expect(deferData).toBeDefined()
+      expect(deferData?.errorMessage).toContain("1.998/2.000")
+    })
+
+    it("T-C4.6a — janela de horário bloqueada grava errorMessage com o motivo (antes só console.info)", async () => {
+      emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as MockWhereArgs
+        if (whereArgs?.where?.status === "sending") return []
+        if (whereArgs?.where?.status === "scheduled") return [makeScheduledCampaign()]
+        return []
+      })
+      emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as MockWhereArgs
+        if (whereArgs?.where?.status === "scheduled") return { count: 1 }
+        return { count: 0 }
+      })
+      emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+        dispatchBlockedDates: [],
+        // Janela 08:00–09:00 — disparo fora dela sempre bloqueia/defere.
+        dispatchTimeFrom: "08:00",
+        dispatchTimeTo: "08:01",
+        fromName: null,
+        fromEmail: null,
+        replyTo: null,
+        resendDomainName: null,
+        resendDomainStatus: null,
+      }))
+
+      const uc = new EmailCampaignUseCase()
+      const output = await uc.dispatchScheduledCampaigns({
+        maxCampaigns: 5,
+        now: new Date("2026-09-10T20:00:00.000Z"),
+      })
+
+      expect(output.result.dispatched).toBe(0)
+      expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+      const deferData = findScheduledDeferUpdate()?.data
+      expect(deferData).toBeDefined()
+      expect(deferData?.errorMessage).toContain("Adiada")
+      expect(deferData?.errorMessage).toContain("janela de disparo")
+    })
+
+    it("T-C4.6b — tracking de domínio não pronto grava errorMessage com o motivo (antes só console.info)", async () => {
+      emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as MockWhereArgs
+        if (whereArgs?.where?.status === "sending") return []
+        if (whereArgs?.where?.status === "scheduled") return [makeScheduledCampaign()]
+        return []
+      })
+      emailCampaignUpdateManyMock.mockImplementation(async (args: unknown) => {
+        const whereArgs = args as MockWhereArgs
+        if (whereArgs?.where?.status === "scheduled") return { count: 1 }
+        return { count: 0 }
+      })
+      emailTeamSettingsFindUniqueMock.mockImplementation(async () => ({
+        dispatchBlockedDates: [],
+        dispatchTimeFrom: null,
+        dispatchTimeTo: null,
+        fromName: "Vendas",
+        fromEmail: "contato@meudominio.com.br",
+        replyTo: null,
+        resendDomainName: "meudominio.com.br",
+        // send-capable (DKIM/SPF ok) mas tracking (CNAME) ainda não verificado.
+        resendDomainStatus: "partially_failed",
+        resendOpenTracking: false,
+        resendClickTracking: false,
+        resendSendingDnsVerified: false,
+      }))
+
+      const uc = new EmailCampaignUseCase()
+      const output = await uc.dispatchScheduledCampaigns({ maxCampaigns: 5 })
+
+      expect(output.result.dispatched).toBe(0)
+      expect(emailCampaignDispatchCreateMock).not.toHaveBeenCalled()
+      const deferData = findScheduledDeferUpdate()?.data
+      expect(deferData).toBeDefined()
+      expect(deferData?.errorMessage).toContain("Adiada")
+      expect(deferData?.errorMessage).toContain(RESEND_DOMAIN_DNS_NOT_VERIFIED_MESSAGE)
+    })
+  })
+
   it("D13d — scheduled domínio null + sender próprio → marca campanha failed com msg de domínio", async () => {
     setupScheduledCampaignLock()
     emailTeamSenderFindFirstMock.mockImplementation(async () => ({
@@ -3131,6 +3323,59 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     })
   })
 
+  /**
+   * T-M31.13 (adenda E1b, caso Rafael 10/09) — `list()` também anexa
+   * `dispatchAvailability` para campanhas-folha, fechando o mesmo risco de
+   * re-disparo acidental na tabela principal (não só na ficha de detalhe).
+   */
+  it("list anexa dispatchAvailability=already_sent para campanha-folha já enviada", async () => {
+    emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
+      const whereArgs = args as MockWhereArgs
+      if (whereArgs?.where && "parentCampaignId" in (whereArgs.where ?? {}) && whereArgs.where.parentCampaignId != null) {
+        return []
+      }
+      return [
+        {
+          id: "camp-sent-1",
+          name: "Campanha Já Enviada",
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date("2026-01-01T00:00:00.000Z"),
+          totalRecipients: 10,
+          totalSent: 10,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          dispatchCount: 1,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          createdBy: "profile-1",
+          managedByBackofficeUserId: null,
+          templateId: "tpl-1",
+          contactListId: "list-1",
+          radarSegmentSlug: null,
+          audienceContactIds: ["c1"],
+          errorMessage: null,
+          _count: { subCampaigns: 0 },
+        },
+      ]
+    })
+    emailCampaignCountMock.mockImplementation(async () => 1)
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [])
+    mockLogCounterAggregation([])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.list(teamCtx, { page: 1, pageSize: 20 })
+
+    expect(output.isValid).toBe(true)
+    const campaign = (output.result as { campaigns: Array<Record<string, unknown>> }).campaigns[0]
+    expect(campaign.dispatchAvailability).toMatchObject({
+      canDispatchNow: false,
+      reason: "already_sent",
+      dailyCap: 2000,
+    })
+  })
+
   it("list corrige status failed divergente quando os EmailLog mostram 100% de aceite (regressão Mulheres)", async () => {
     emailCampaignFindManyMock.mockImplementation(async (args: unknown) => {
       const whereArgs = args as MockWhereArgs
@@ -3708,6 +3953,100 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     // não pode aparecer como "não concluída" no resumo "X de Y partes enviadas".
     expect(result.partiallySentCount).toBe(2)
     expect(result.partiallySentTotal).toBe(2)
+  })
+
+  /**
+   * T-M31.13/14 (adenda E1b, caso Rafael 10/09) — `getById` passa a anexar
+   * `dispatchAvailability` por sub-campanha, usando a MESMA lógica do cron
+   * (`campaign-dispatch-availability.ts`, que por sua vez lê
+   * `getTeamDailyDispatchStatus`). "sub-sent" (status `sent`) fica bloqueada
+   * por `already_sent` mesmo com teto livre — fecha o risco de re-disparo
+   * acidental já coberto pelo bug reportado. "sub-partial" continua liberada.
+   */
+  it("getById anexa dispatchAvailability por sub-campanha (already_sent bloqueia mesmo com teto livre)", async () => {
+    emailCampaignFindFirstMock.mockImplementation(async () => ({
+      ...makeCampaign({ id: "parent-3", status: "partially_sent" }),
+      description: null,
+      sourceContactListIds: [],
+      audienceContactIds: [],
+      managedByBackofficeUserId: null,
+      dispatchCount: 2,
+      totalRecipients: 20,
+      totalSent: 15,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalBounced: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      scheduledAt: null,
+      sentAt: null,
+      createdBy: "profile-1",
+      errorMessage: null,
+      template: { id: "tpl-1", name: "T", subject: "S" },
+      contactList: { id: "list-1", name: "T", totalContacts: 10 },
+      team: { master: { timezone: "America/Sao_Paulo" } },
+      subCampaigns: [
+        {
+          id: "sub-sent",
+          name: "Parte 1",
+          description: null,
+          status: "sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 10,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 0,
+          contactListId: "list-1",
+          templateId: "tpl-1",
+          errorMessage: null,
+        },
+        {
+          id: "sub-partial",
+          name: "Parte 2",
+          description: null,
+          status: "partially_sent",
+          scheduledAt: null,
+          sentAt: new Date(),
+          totalRecipients: 10,
+          totalSent: 5,
+          totalDelivered: 0,
+          totalOpened: 0,
+          totalClicked: 0,
+          totalBounced: 0,
+          subCampaignIndex: 1,
+          contactListId: "list-2",
+          templateId: "tpl-1",
+          errorMessage: "Limite mensal de envios do provedor atingido",
+        },
+      ],
+    }))
+    emailCampaignDispatchFindManyMock.mockImplementation(async () => [])
+    mockLogCounterAggregation([])
+    emailLogFindManyMock.mockImplementation(async () => [])
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.getById("parent-3", teamCtx)
+    expect(output.isValid).toBe(true)
+    const result = output.result as {
+      subCampaigns: Array<{
+        id: string
+        dispatchAvailability?: { canDispatchNow: boolean; reason: string | null; dailyCap: number | null }
+      }>
+    }
+
+    const sent = result.subCampaigns.find((sub) => sub.id === "sub-sent")
+    expect(sent?.dispatchAvailability?.canDispatchNow).toBe(false)
+    expect(sent?.dispatchAvailability?.reason).toBe("already_sent")
+
+    const partial = result.subCampaigns.find((sub) => sub.id === "sub-partial")
+    expect(partial?.dispatchAvailability?.canDispatchNow).toBe(true)
+    expect(partial?.dispatchAvailability?.reason).toBeNull()
+    expect(partial?.dispatchAvailability?.dailyCap).toBe(2000)
   })
 
   it("agregação diferencia queued/accepted/failed e não reduz aceite após delivered/opened", async () => {

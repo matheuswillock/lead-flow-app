@@ -1,12 +1,32 @@
 import { Output } from "@/lib/output"
 import { backofficeCampaignAnalyticsRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics/BackofficeCampaignAnalyticsRepository"
 import type {
+  DailySeriesPoint,
   DispatchPage,
+  DispatchRecord,
+  FormFunnelRow,
   IBackofficeCampaignAnalyticsRepository,
+  LeadsByOriginRow,
+  TemplateAggregate,
 } from "@/app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics/IBackofficeCampaignAnalyticsRepository"
-import { resolveCampaignAnalyticsDateRange } from "@/lib/backoffice-campaign-analytics/dateRange"
+import { backofficeCampaignAnalyticsExportAllService } from "@/app/api/services/backofficeCampaignAnalyticsExport/BackofficeCampaignAnalyticsExportAllService"
+import type {
+  CampaignAnalyticsExportAllSheet,
+  IBackofficeCampaignAnalyticsExportAllService,
+} from "@/app/api/services/backofficeCampaignAnalyticsExport/IBackofficeCampaignAnalyticsExportAllService"
+import {
+  resolveCampaignAnalyticsDateRange,
+  resolveCampaignAnalyticsExportAllDateRange,
+  type CampaignAnalyticsDateRange,
+} from "@/lib/backoffice-campaign-analytics/dateRange"
 import { finalScore, formCloseRate, openRate, startRate } from "@/lib/backoffice-campaign-analytics/metrics"
-import { buildCampaignAnalyticsCsv, formatCsvDateTime, formatCsvInteger, formatCsvRate } from "@/lib/backoffice-campaign-analytics/csv"
+import {
+  buildCampaignAnalyticsCsv,
+  formatCsvDateTime,
+  formatCsvInteger,
+  formatCsvRate,
+  formatCsvScore,
+} from "@/lib/backoffice-campaign-analytics/csv"
 
 // Ordena desc pela taxa; null (divisor zero) sempre por último — nunca tratado como 0.
 function sortByRateDesc<T>(rows: T[], getRate: (row: T) => number | null): T[] {
@@ -72,7 +92,8 @@ function sumTemplateTotals(templates: { sent: number; delivered: number; opened:
 
 export class BackofficeCampaignAnalyticsUseCase {
   constructor(
-    private readonly repository: IBackofficeCampaignAnalyticsRepository = backofficeCampaignAnalyticsRepository
+    private readonly repository: IBackofficeCampaignAnalyticsRepository = backofficeCampaignAnalyticsRepository,
+    private readonly exportAllService: IBackofficeCampaignAnalyticsExportAllService = backofficeCampaignAnalyticsExportAllService
   ) {}
 
   async getSummary(input: CampaignAnalyticsRangeInput): Promise<Output> {
@@ -87,53 +108,199 @@ export class BackofficeCampaignAnalyticsUseCase {
         this.repository.formFunnel(filter),
       ])
 
-      const totals = sumTemplateTotals(templates)
-      const leadsTotal = leads.reduce((sum, row) => sum + row.count, 0)
-      const leadsCreated = funnel.reduce((sum, row) => sum + row.leadCreated, 0)
-      const leadsAttached = funnel.reduce((sum, row) => sum + row.leadAttached, 0)
-
-      const teamSentByTeamId = new Map<string, { teamId: string; teamName: string; sent: number; opened: number }>()
-      for (const row of templates) {
-        const existing = teamSentByTeamId.get(row.teamId) ?? {
-          teamId: row.teamId,
-          teamName: row.teamName,
-          sent: 0,
-          opened: 0,
-        }
-        existing.sent += row.sent
-        existing.opened += row.opened
-        teamSentByTeamId.set(row.teamId, existing)
-      }
-
-      const teamLeadsByTeamId = new Map<string, number>()
-      for (const row of leads) {
-        teamLeadsByTeamId.set(row.teamId, (teamLeadsByTeamId.get(row.teamId) ?? 0) + row.count)
-      }
-
-      const byTeam = [...teamSentByTeamId.values()].map((team) => {
-        const teamLeads = teamLeadsByTeamId.get(team.teamId) ?? 0
-        return {
-          teamId: team.teamId,
-          teamName: team.teamName,
-          sent: team.sent,
-          leads: teamLeads,
-          finalScore: finalScore(teamLeads, team.sent),
-          openRate: openRate(team.opened, team.sent),
-        }
-      })
-
-      return new Output(true, [], [], {
-        period: { from: range.value.from.toISOString(), to: range.value.to.toISOString() },
-        totals: { ...totals, leadsCreated, leadsAttached, leadsTotal },
-        rates: {
-          openRate: openRate(totals.opened, totals.sent),
-          finalScore: finalScore(leadsTotal, totals.sent),
-        },
-        byTeam,
-      })
+      return new Output(true, [], [], this.buildSummaryFromAggregates(range.value, templates, leads, funnel))
     } catch (error) {
       console.error("[BackofficeCampaignAnalyticsUseCase][getSummary]", error)
       return new Output(false, [], ["Erro ao carregar o resumo de campanhas"], null)
+    }
+  }
+
+  async exportAll(input: CampaignAnalyticsRangeInput): Promise<Output> {
+    const range = resolveCampaignAnalyticsExportAllDateRange({ from: input.from, to: input.to })
+    if (!range.ok) return new Output(false, [], [range.error], null)
+
+    try {
+      const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
+      const [templates, leads, funnel, dispatchRows, points] = await Promise.all([
+        this.repository.aggregateByTemplate(filter),
+        this.repository.leadsByOrigin(filter),
+        this.repository.formFunnel(filter),
+        this.fetchAllDispatches(filter),
+        this.repository.dailySeries(filter),
+      ])
+
+      const summary = this.buildSummaryFromAggregates(range.value, templates, leads, funnel)
+      const filename = `campanhas_completo_${input.from}_${input.to}.xlsx`
+
+      const { buffer } = this.exportAllService.buildWorkbook({
+        filename,
+        sheets: [
+          this.summaryTable(input.from ?? "", input.to ?? "", summary),
+          { name: "Disparos", ...this.dispatchesTable(dispatchRows) },
+          { name: "Templates", ...this.templatesTable(this.toTemplateRows(templates)) },
+          { name: "Formulários", ...this.formsTable(this.toFormFunnelRows(funnel)) },
+          { name: "Série diária", ...this.seriesTable(points) },
+        ],
+      })
+
+      return new Output(true, [], [], { buffer, filename })
+    } catch (error) {
+      if (error instanceof CampaignAnalyticsExportTooLargeError) {
+        return new Output(false, [], [error.message], null)
+      }
+      console.error("[BackofficeCampaignAnalyticsUseCase][exportAll]", error)
+      return new Output(false, [], ["Erro ao gerar o export completo"], null)
+    }
+  }
+
+  private buildSummaryFromAggregates(
+    range: CampaignAnalyticsDateRange,
+    templates: TemplateAggregate[],
+    leads: LeadsByOriginRow[],
+    funnel: FormFunnelRow[]
+  ) {
+    const totals = sumTemplateTotals(templates)
+    const leadsTotal = leads.reduce((sum, row) => sum + row.count, 0)
+    const leadsCreated = funnel.reduce((sum, row) => sum + row.leadCreated, 0)
+    const leadsAttached = funnel.reduce((sum, row) => sum + row.leadAttached, 0)
+
+    const teamSentByTeamId = new Map<string, { teamId: string; teamName: string; sent: number; opened: number }>()
+    for (const row of templates) {
+      const existing = teamSentByTeamId.get(row.teamId) ?? {
+        teamId: row.teamId,
+        teamName: row.teamName,
+        sent: 0,
+        opened: 0,
+      }
+      existing.sent += row.sent
+      existing.opened += row.opened
+      teamSentByTeamId.set(row.teamId, existing)
+    }
+
+    const teamLeadsByTeamId = new Map<string, number>()
+    for (const row of leads) {
+      teamLeadsByTeamId.set(row.teamId, (teamLeadsByTeamId.get(row.teamId) ?? 0) + row.count)
+    }
+
+    const byTeam = [...teamSentByTeamId.values()].map((team) => {
+      const teamLeads = teamLeadsByTeamId.get(team.teamId) ?? 0
+      return {
+        teamId: team.teamId,
+        teamName: team.teamName,
+        sent: team.sent,
+        leads: teamLeads,
+        finalScore: finalScore(teamLeads, team.sent),
+        openRate: openRate(team.opened, team.sent),
+      }
+    })
+
+    return {
+      period: { from: range.from.toISOString(), to: range.to.toISOString() },
+      totals: { ...totals, leadsCreated, leadsAttached, leadsTotal },
+      rates: {
+        openRate: openRate(totals.opened, totals.sent),
+        finalScore: finalScore(leadsTotal, totals.sent),
+      },
+      byTeam,
+    }
+  }
+
+  private summaryTable(
+    from: string,
+    to: string,
+    summary: ReturnType<BackofficeCampaignAnalyticsUseCase["buildSummaryFromAggregates"]>
+  ): CampaignAnalyticsExportAllSheet {
+    return {
+      name: "Resumo",
+      headers: ["Métrica", "Valor"],
+      rows: [
+        ["Período (início)", from],
+        ["Período (fim)", to],
+        ["Disparos", formatCsvInteger(summary.totals.dispatches)],
+        ["Falhas", formatCsvInteger(summary.totals.failed)],
+        ["Enviados", formatCsvInteger(summary.totals.sent)],
+        ["Entregues", formatCsvInteger(summary.totals.delivered)],
+        ["Taxa de Abertura", formatCsvRate(summary.rates.openRate)],
+        ["Cliques", formatCsvInteger(summary.totals.clicked)],
+        ["Bounces", formatCsvInteger(summary.totals.bounced)],
+        ["Nota Final", formatCsvScore(summary.rates.finalScore)],
+        ["Leads Criados", formatCsvInteger(summary.totals.leadsCreated)],
+        ["Leads Anexados", formatCsvInteger(summary.totals.leadsAttached)],
+        ["Leads Totais", formatCsvInteger(summary.totals.leadsTotal)],
+      ],
+    }
+  }
+
+  private dispatchesTable(rows: DispatchRecord[]): { headers: string[]; rows: string[][] } {
+    return {
+      headers: ["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"],
+      rows: rows.map((row) => [
+        formatCsvDateTime(row.dispatchedAt),
+        row.teamName,
+        row.templateName,
+        row.status,
+        formatCsvInteger(row.totalSent),
+        formatCsvInteger(row.totalDelivered),
+        formatCsvInteger(row.totalOpened),
+        formatCsvInteger(row.totalClicked),
+        formatCsvInteger(row.totalBounced),
+        row.errorMessage ?? "",
+      ]),
+    }
+  }
+
+  private templatesTable(rows: ReturnType<BackofficeCampaignAnalyticsUseCase["toTemplateRows"]>): {
+    headers: string[]
+    rows: string[][]
+  } {
+    return {
+      headers: ["Time", "Template", "Disparos", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Falhas", "Taxa de Abertura"],
+      rows: rows.map((row) => [
+        row.teamName,
+        row.templateName,
+        formatCsvInteger(row.dispatches),
+        formatCsvInteger(row.sent),
+        formatCsvInteger(row.delivered),
+        formatCsvInteger(row.opened),
+        formatCsvInteger(row.clicked),
+        formatCsvInteger(row.bounced),
+        formatCsvInteger(row.failed),
+        formatCsvRate(row.openRate),
+      ]),
+    }
+  }
+
+  private formsTable(rows: ReturnType<BackofficeCampaignAnalyticsUseCase["toFormFunnelRows"]>): {
+    headers: string[]
+    rows: string[][]
+  } {
+    return {
+      headers: ["Time", "Formulário", "Visualizações", "Inícios", "Conclusões", "Leads Criados", "Leads Anexados", "Taxa de Início", "Taxa de Fechamento"],
+      rows: rows.map((row) => [
+        row.teamName,
+        row.formName,
+        formatCsvInteger(row.viewed),
+        formatCsvInteger(row.started),
+        formatCsvInteger(row.completed),
+        formatCsvInteger(row.leadCreated),
+        formatCsvInteger(row.leadAttached),
+        formatCsvRate(row.startRate),
+        formatCsvRate(row.closeRate),
+      ]),
+    }
+  }
+
+  private seriesTable(points: DailySeriesPoint[]): { headers: string[]; rows: string[][] } {
+    return {
+      headers: ["Dia", "Time", "Enviados", "Entregues", "Abertos", "Cliques"],
+      rows: points.map((row) => [
+        row.day,
+        row.teamName,
+        formatCsvInteger(row.sent),
+        formatCsvInteger(row.delivered),
+        formatCsvInteger(row.opened),
+        formatCsvInteger(row.clicked),
+      ]),
     }
   }
 
@@ -242,20 +409,28 @@ export class BackofficeCampaignAnalyticsUseCase {
     }
   }
 
-  private async buildTemplateRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
-    const templates = await this.repository.aggregateByTemplate(filter)
+  private toTemplateRows(templates: TemplateAggregate[]) {
     const rows = templates.map((row) => ({ ...row, openRate: openRate(row.opened, row.sent) }))
     return sortByRateDesc(rows, (row) => row.openRate)
   }
 
-  private async buildFormFunnelRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
-    const funnel = await this.repository.formFunnel(filter)
+  private async buildTemplateRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
+    const templates = await this.repository.aggregateByTemplate(filter)
+    return this.toTemplateRows(templates)
+  }
+
+  private toFormFunnelRows(funnel: FormFunnelRow[]) {
     const rows = funnel.map((row) => ({
       ...row,
       startRate: startRate(row.started, row.viewed),
       closeRate: formCloseRate(row.completed, row.started),
     }))
     return sortByRateDesc(rows, (row) => row.closeRate)
+  }
+
+  private async buildFormFunnelRows(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
+    const funnel = await this.repository.formFunnel(filter)
+    return this.toFormFunnelRows(funnel)
   }
 
   private async fetchAllDispatches(filter: { from: Date; to: Date; teamIds: string[] | undefined }) {
@@ -278,73 +453,27 @@ export class BackofficeCampaignAnalyticsUseCase {
   ): Promise<string> {
     if (dataset === "dispatches") {
       const rows = await this.fetchAllDispatches(filter)
-      return buildCampaignAnalyticsCsv(
-        ["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"],
-        rows.map((row) => [
-          formatCsvDateTime(row.dispatchedAt),
-          row.teamName,
-          row.templateName,
-          row.status,
-          formatCsvInteger(row.totalSent),
-          formatCsvInteger(row.totalDelivered),
-          formatCsvInteger(row.totalOpened),
-          formatCsvInteger(row.totalClicked),
-          formatCsvInteger(row.totalBounced),
-          row.errorMessage ?? "",
-        ])
-      )
+      const table = this.dispatchesTable(rows)
+      return buildCampaignAnalyticsCsv(table.headers, table.rows)
     }
 
     if (dataset === "templates") {
       const rows = await this.buildTemplateRows(filter)
-      return buildCampaignAnalyticsCsv(
-        ["Time", "Template", "Disparos", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Falhas", "Taxa de Abertura"],
-        rows.map((row) => [
-          row.teamName,
-          row.templateName,
-          formatCsvInteger(row.dispatches),
-          formatCsvInteger(row.sent),
-          formatCsvInteger(row.delivered),
-          formatCsvInteger(row.opened),
-          formatCsvInteger(row.clicked),
-          formatCsvInteger(row.bounced),
-          formatCsvInteger(row.failed),
-          formatCsvRate(row.openRate),
-        ])
-      )
+      const table = this.templatesTable(rows)
+      return buildCampaignAnalyticsCsv(table.headers, table.rows)
     }
 
     if (dataset === "forms") {
       const rows = await this.buildFormFunnelRows(filter)
-      return buildCampaignAnalyticsCsv(
-        ["Time", "Formulário", "Visualizações", "Inícios", "Conclusões", "Leads Criados", "Leads Anexados", "Taxa de Início", "Taxa de Fechamento"],
-        rows.map((row) => [
-          row.teamName,
-          row.formName,
-          formatCsvInteger(row.viewed),
-          formatCsvInteger(row.started),
-          formatCsvInteger(row.completed),
-          formatCsvInteger(row.leadCreated),
-          formatCsvInteger(row.leadAttached),
-          formatCsvRate(row.startRate),
-          formatCsvRate(row.closeRate),
-        ])
-      )
+      const table = this.formsTable(rows)
+      return buildCampaignAnalyticsCsv(table.headers, table.rows)
     }
 
     const points = await this.repository.dailySeries(filter)
-    return buildCampaignAnalyticsCsv(
-      ["Dia", "Time", "Enviados", "Entregues", "Abertos", "Cliques"],
-      points.map((row) => [
-        row.day,
-        row.teamName,
-        formatCsvInteger(row.sent),
-        formatCsvInteger(row.delivered),
-        formatCsvInteger(row.opened),
-        formatCsvInteger(row.clicked),
-      ])
-    )
+    const table = this.seriesTable(points)
+    return buildCampaignAnalyticsCsv(table.headers, table.rows)
   }
+
 }
 
 export const backofficeCampaignAnalyticsUseCase = new BackofficeCampaignAnalyticsUseCase()

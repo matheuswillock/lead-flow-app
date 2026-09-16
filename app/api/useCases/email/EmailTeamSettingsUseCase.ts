@@ -19,6 +19,8 @@ import {
   checkSendingDomainExistence,
   type SendingDomainExistence,
 } from "@/lib/email/sending-domain-existence"
+import { DnsProviderLookupService } from "@/app/api/services/email/DnsProviderLookupService"
+import type { IDnsProviderLookupService } from "@/app/api/services/email/IDnsProviderLookupService"
 import {
   assertSenderEmailIsAllowed,
   buildDeliveryFromEmail,
@@ -170,6 +172,8 @@ export type EmailTeamSettingsDependencies = {
   domainEvents?: IEmailTeamDomainEventRepository
   /** Costura de teste como o `resendFactory`: o default consulta DNS/RDAP reais. */
   domainExistence?: (name: string) => Promise<SendingDomainExistence>
+  /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
+  dnsProviderLookupService?: IDnsProviderLookupService
 }
 
 export class EmailTeamSettingsUseCase {
@@ -180,6 +184,7 @@ export class EmailTeamSettingsUseCase {
   private readonly resendFactory: () => ReturnType<typeof assertResend>
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
+  private readonly dnsProviderLookupService: IDnsProviderLookupService
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -195,6 +200,8 @@ export class EmailTeamSettingsUseCase {
     this.resendFactory = dependencies.resendFactory ?? assertResend
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
+    this.dnsProviderLookupService =
+      dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
   }
 
   private composeResult(
@@ -595,6 +602,8 @@ export class EmailTeamSettingsUseCase {
         domainName: data.name,
         status: "pending",
         region: DEFAULT_DOMAIN_REGION,
+        // Momento em que o operador mais precisa saber qual painel abrir.
+        dnsProvider: await this.dnsProviderLookupService.lookupDnsProvider(data.name),
         connectedAt: connectedAt.toISOString(),
         // Mesma fonte que `saveConnectedDomain` logo acima — a resposta não tem
         // como divergir do que foi gravado. Antes eram dois literais soltos, e
@@ -912,13 +921,17 @@ export class EmailTeamSettingsUseCase {
         new Date()
       )
 
-      const domainEvents = await this.domainEvents.listEvents(ctx.teamId)
+      const [domainEvents, dnsProvider] = await Promise.all([
+        this.domainEvents.listEvents(ctx.teamId),
+        this.dnsProviderLookupService.lookupDnsProvider(data.name),
+      ])
 
       return new Output(true, [], [], {
         domainId: data.id,
         domainName: data.name,
         status: synced.status,
         region: synced.region ?? settings.resendDomainRegion,
+        dnsProvider,
         connectedAt: settings.resendDomainConnectedAt?.toISOString() ?? null,
         openTracking: synced.openTracking,
         clickTracking: synced.clickTracking,
