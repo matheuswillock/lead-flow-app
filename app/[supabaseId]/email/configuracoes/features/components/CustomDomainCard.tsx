@@ -70,7 +70,7 @@ import {
   type DnsRecordSectionKey,
 } from "@/lib/email/custom-domain-dns-instructions"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
-import type { ResendDomainStatus } from "../context/EmailSettingsTypes"
+import type { DomainDnsProvider, ResendDomainStatus } from "../context/EmailSettingsTypes"
 import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { SendDnsInstructionsDialog } from "./SendDnsInstructionsDialog"
@@ -79,10 +79,16 @@ import { formatResendRegion } from "../utils/resend-region-labels"
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
 const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
 
+/**
+ * `w-fit` não é enfeite: o badge é filho direto de um `flex flex-col` (a coluna
+ * "Status" do grid abaixo), e filho de flex-col estica na largura por
+ * `align-items: stretch`. Sem isso, "Falhou" ocupava a coluna inteira e o badge
+ * virava uma faixa.
+ */
 function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
   if (!status) {
     return (
-      <Badge variant="outline" className="rounded-lg text-muted-foreground">
+      <Badge variant="outline" className="w-fit rounded-lg text-muted-foreground">
         Não conectado
       </Badge>
     )
@@ -129,7 +135,7 @@ function DomainStatusBadge({ status }: { status: ResendDomainStatus | null }) {
   const config = map[status]
 
   return (
-    <Badge variant="outline" className={cn("gap-1 rounded-lg", config.className)}>
+    <Badge variant="outline" className={cn("w-fit gap-1 rounded-lg", config.className)}>
       {config.icon}
       {config.label}
     </Badge>
@@ -141,7 +147,7 @@ function TrackingBadge({ enabled, label }: { enabled: boolean; label: string }) 
     <Badge
       variant="outline"
       className={cn(
-        "rounded-lg",
+        "w-fit rounded-lg",
         enabled
           ? "border-semantic-success/30 text-semantic-success"
           : "border-border text-muted-foreground"
@@ -149,6 +155,31 @@ function TrackingBadge({ enabled, label }: { enabled: boolean; label: string }) 
     >
       {label}: {enabled ? "Habilitado" : "Desabilitado"}
     </Badge>
+  )
+}
+
+/**
+ * Espelho do campo "Provider" do painel do provedor de e-mail: a hospedagem sai
+ * dos nameservers do domínio (`lib/email/dns-provider-map.ts`). Quando o mapa
+ * não reconhece os NS, eles vão para a tela como estão — foi lendo NS cru que o
+ * suporte chegou à HostGator no caso Inter Plaza.
+ */
+function DomainHostingValue({ dnsProvider }: { dnsProvider: DomainDnsProvider | null }) {
+  if (!dnsProvider) {
+    return <p className="text-sm font-medium text-foreground">—</p>
+  }
+
+  if (dnsProvider.name) {
+    return <p className="text-sm font-medium text-foreground">{dnsProvider.name}</p>
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-sm font-medium text-foreground">Não identificado</p>
+      <p className="break-all font-mono text-xs text-muted-foreground">
+        {dnsProvider.nameservers.join(", ")}
+      </p>
+    </div>
   )
 }
 
@@ -304,6 +335,7 @@ export function CustomDomainCard() {
     domainStatus,
     domainName,
     domainRegion,
+    domainDnsProvider,
     domainConnectedAt,
     domainOpenTracking,
     domainClickTracking,
@@ -497,7 +529,7 @@ export function CustomDomainCard() {
               </DropdownMenu>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex flex-col gap-1">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Criado
@@ -513,6 +545,12 @@ export function CustomDomainCard() {
                   Status
                 </p>
                 <DomainStatusBadge status={domainStatus} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Hospedagem
+                </p>
+                <DomainHostingValue dnsProvider={domainDnsProvider} />
               </div>
               <div className="flex flex-col gap-1">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

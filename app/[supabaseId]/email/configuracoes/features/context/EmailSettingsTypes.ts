@@ -35,11 +35,23 @@ export type DomainEvent = {
   metadata: Record<string, unknown> | null
 }
 
+/**
+ * Hospedagem de DNS do domínio, resolvida no servidor a partir dos nameservers
+ * (`lib/email/dns-provider-map.ts`). `name` null = nameservers encontrados, mas
+ * fora do mapa conhecido — a tela mostra os NS crus para o suporte seguir.
+ * O campo inteiro ausente/null = a consulta DoH não respondeu.
+ */
+export type DomainDnsProvider = {
+  name: string | null
+  nameservers: string[]
+}
+
 export type DomainConnectResult = {
   domainId: string
   domainName: string
   status: ResendDomainStatus
   region?: string | null
+  dnsProvider?: DomainDnsProvider | null
   connectedAt?: string | null
   openTracking?: boolean
   clickTracking?: boolean
