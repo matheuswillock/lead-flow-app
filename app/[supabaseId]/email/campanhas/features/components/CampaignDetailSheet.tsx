@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { BarChart3, CalendarX, Copy, Eye, GitBranch, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText, ArrowLeft } from "lucide-react"
+import { AlertCircle, BarChart3, CalendarX, Copy, Eye, GitBranch, Loader2, MoreHorizontal, Pencil, Radar, Send, ScrollText, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -53,6 +53,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 import type { SubCampaignSummary } from "../context/CampanhasTypes"
 import { getCampaignSendBlockReason } from "../utils/getCampaignSendBlockReason"
+import { isDispatchedLate } from "../utils/resolveDispatchedAtDivergence"
 import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
   CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
@@ -298,7 +299,10 @@ function SubCampaignActionsMenu({
           {canRetryByStatus && retryDisabledReason && !canRetry ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="w-full">
+                {/* tabIndex torna o span focável — sem isto o Tooltip nunca
+                    dispara por teclado, só por hover (achado desta rodada,
+                    mesmo padrão do PrefillFieldIndicator, PR #1157). */}
+                <span className="w-full" tabIndex={0}>
                   <DropdownMenuItem disabled className="pointer-events-none w-full">
                     {isSendingThis ? <Loader2 className="animate-spin" /> : <Send />}
                     {isSendingThis ? pendingLabel : actionLabel}
@@ -507,6 +511,13 @@ export function CampaignDetailSheet({
           ...detailProgress,
           errorMessage: formatCampaignDispatchErrorMessage(detailProgress.errorMessage),
         }
+  // Consumo do teto diário do time (todo 9 de [[31]]): mesmo número em todas
+  // as partes (é do time, não da parte) — pega da primeira disponível para não
+  // recalcular no front.
+  const teamDailyDispatchStatus =
+    detailCampaign?.dispatchAvailability ??
+    detailCampaign?.subCampaigns?.find((sub) => sub.dispatchAvailability)?.dispatchAvailability ??
+    null
 
   function getSendBlockReason(subCampaign: SubCampaignSummary): string | undefined {
     return getCampaignSendBlockReason({
@@ -632,6 +643,12 @@ export function CampaignDetailSheet({
                         </span>
                       ) : null}
                     </div>
+                    {teamDailyDispatchStatus && !teamDailyDispatchStatus.isUnlimitedDailyCap && teamDailyDispatchStatus.dailyCap != null ? (
+                      <p className="text-xs text-muted-foreground">
+                        Enviados hoje: {teamDailyDispatchStatus.sentToday.toLocaleString("pt-BR")}{" "}
+                        de {teamDailyDispatchStatus.dailyCap.toLocaleString("pt-BR")}
+                      </p>
+                    ) : null}
                     <div className="overflow-x-auto rounded-md border">
                       <Table className="min-w-[760px]">
                         <TableHeader>
@@ -639,36 +656,75 @@ export function CampaignDetailSheet({
                             <TableHead>Parte</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Agendamento</TableHead>
+                            <TableHead>Disparado em</TableHead>
                             <TableHead className="text-right">Destinatários</TableHead>
-                            <TableHead>Erro</TableHead>
+                            <TableHead>Motivo</TableHead>
                             <TableHead className="w-12 text-right">Ações</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {detailCampaign.subCampaigns.map((sub) => {
                             const subSendBlockReason = getSendBlockReason(sub)
+                            // Botão visível (habilitado ou não) para todo status
+                            // acionável — inclusive "scheduled" (adiada) e "sending"
+                            // (em andamento): o estado honesto do botão É a
+                            // explicação, não só a célula de motivo (adenda E1b,
+                            // caso Rafael 10/09). "draft" fica de fora: sub-campanha
+                            // sem agendamento próprio não tem ação de disparo aqui.
                             const canShowResend =
                               sub.status === "failed" ||
                               sub.status === "partially_sent" ||
-                              sub.status === "sent"
+                              sub.status === "sent" ||
+                              sub.status === "scheduled" ||
+                              sub.status === "sending"
                             const canResendNow =
                               canShowResend && canSendCampaign && !subSendBlockReason && !readOnly
                             const subErrorMessage = formatCampaignDispatchErrorMessage(
                               sub.errorMessage
                             )
+                            // Decisão do owner (15/09, caso Kathrein): adiamento é
+                            // APRESENTADO como falha de disparo (token destrutivo +
+                            // motivo), senão o operador lê "Agendado" mudo e abre
+                            // chamado. O status INTERNO segue `scheduled` de
+                            // propósito — é ele que faz o cron redisparar sozinho
+                            // na próxima janela do teto; `failed` de verdade
+                            // abandonaria a parte.
+                            const isSubDeferred = sub.status === "scheduled" && Boolean(subErrorMessage)
+                            const sentAtDate = sub.sentAt ? new Date(sub.sentAt) : null
+                            // Descolamento agendamento×envio real (>1h) — evidência
+                            // visual que conversa com o motivo de adiamento (todo 9c,
+                            // caso Rafael: parte agendada 10:00 saiu só à meia-noite
+                            // seguinte por starvation do teto diário).
+                            const dispatchedLate = isDispatchedLate(sub.scheduledAt, sub.sentAt)
                             const subProgress = sub.activeDispatch ?? sub.latestDispatch ?? null
                             const childActionLabel = isCampaignFailedRetry(sub)
                               ? "Reenviar apenas falhas"
                               : "Disparar"
 
                             return (
-                            <TableRow key={sub.id} className={cn(sub.status === "failed" && "bg-semantic-danger-surface/30")}>
+                            <TableRow key={sub.id} className={cn((sub.status === "failed" || isSubDeferred) && "bg-semantic-danger-surface/30")}>
                               <TableCell className="font-medium">
                                 {sub.subCampaignIndex ?? "—"}
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col gap-1">
-                                  <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
+                                  {isSubDeferred ? (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge
+                                          variant="outline"
+                                          className="w-fit gap-1 border-semantic-danger-border text-semantic-danger"
+                                          tabIndex={0}
+                                        >
+                                          <AlertCircle data-icon="inline-start" />
+                                          Adiada
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-sm">{subErrorMessage}</TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
+                                  )}
                                   <CampaignDispatchProgressLine
                                     progress={
                                       subProgress
@@ -688,14 +744,45 @@ export function CampaignDetailSheet({
                                   ? formatIntimezone(new Date(sub.scheduledAt), "dd/MM/yyyy HH:mm", tz)
                                   : "—"}
                               </TableCell>
+                              <TableCell
+                                className={cn(
+                                  dispatchedLate ? "text-semantic-warning" : "text-muted-foreground"
+                                )}
+                              >
+                                {sentAtDate ? (
+                                  dispatchedLate ? (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          className="cursor-default underline decoration-dotted"
+                                          tabIndex={0}
+                                        >
+                                          {formatIntimezone(sentAtDate, "dd/MM HH:mm", tz)}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-sm">
+                                        Saiu depois do agendado — provável adiamento por teto diário,
+                                        janela de horário ou tracking de domínio.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    formatIntimezone(sentAtDate, "dd/MM HH:mm", tz)
+                                  )
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {sub.totalRecipients.toLocaleString("pt-BR")}
                               </TableCell>
                               <TableCell className="max-w-[200px]">
-                                {sub.status === "failed" && subErrorMessage ? (
+                                {subErrorMessage && (sub.status === "failed" || isSubDeferred) ? (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <span className="line-clamp-2 cursor-default text-xs text-semantic-danger">
+                                      <span
+                                        className="line-clamp-2 cursor-default text-xs text-semantic-danger"
+                                        tabIndex={0}
+                                      >
                                         {subErrorMessage}
                                       </span>
                                     </TooltipTrigger>
@@ -717,7 +804,10 @@ export function CampaignDetailSheet({
                                     ) : (
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <span>
+                                          {/* tabIndex torna o span focável — botão nativo
+                                              disabled nunca recebe foco de teclado sozinho
+                                              (padrão PrefillFieldIndicator, PR #1157). */}
+                                          <span tabIndex={0}>
                                             <Button
                                               type="button"
                                               variant="outline"
@@ -801,7 +891,7 @@ export function CampaignDetailSheet({
                             ) : (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="w-full">
+                                  <span className="w-full" tabIndex={0}>
                                     <DropdownMenuItem
                                       disabled
                                       className="pointer-events-none w-full"
