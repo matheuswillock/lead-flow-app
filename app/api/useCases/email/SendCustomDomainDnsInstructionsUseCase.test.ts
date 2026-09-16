@@ -9,6 +9,8 @@ import type {
   SendDnsInstructionsEmailInput,
 } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import type { assertResend } from "@/lib/email"
+import type { IDnsProviderLookupService } from "@/app/api/services/email/IDnsProviderLookupService"
+import type { DnsProviderMatch } from "@/lib/email/dns-provider-map"
 import { SendCustomDomainDnsInstructionsUseCase } from "./SendCustomDomainDnsInstructionsUseCase"
 
 const DOMAIN_RECORDS = [
@@ -55,11 +57,24 @@ function buildMailService(): ICustomDomainDnsInstructionsMailService {
   return { sendDnsInstructionsEmail: sendMailMock }
 }
 
+/**
+ * Stub explícito da resolução de hospedagem: sem ele o default bateria na
+ * consulta DoH real, e o teste passaria a depender de rede.
+ */
+const dnsProviderLookupMock = mock(
+  async (_domainName: string): Promise<DnsProviderMatch | null> => null
+)
+
+function buildDnsProviderLookupService(): IDnsProviderLookupService {
+  return { lookupDnsProvider: dnsProviderLookupMock }
+}
+
 function buildUseCase(settings: EmailTeamSettingsRecord | null = CONNECTED_SETTINGS) {
   return new SendCustomDomainDnsInstructionsUseCase({
     settingsRepo: buildSettingsRepository(settings),
     resendFactory: buildResend,
     mailService: buildMailService(),
+    dnsProviderLookupService: buildDnsProviderLookupService(),
   })
 }
 
@@ -81,6 +96,8 @@ const teamCtx = {
 
 describe("SendCustomDomainDnsInstructionsUseCase", () => {
   beforeEach(() => {
+    dnsProviderLookupMock.mockClear()
+    dnsProviderLookupMock.mockResolvedValue(null)
     sendMailMock.mockClear()
     sendMailMock.mockResolvedValue({ success: true, error: undefined })
     domainsGetMock.mockClear()
@@ -146,7 +163,37 @@ describe("SendCustomDomainDnsInstructionsUseCase", () => {
       recipientEmail: "hospedagem@cliente.com.br",
       domainName: "mail.empresa-exemplo.com.br",
       records: DOMAIN_RECORDS,
+      providerName: null,
     })
+  })
+
+  it("passa a hospedagem identificada para o serviço de e-mail", async () => {
+    dnsProviderLookupMock.mockResolvedValueOnce({
+      name: "HostGator",
+      nameservers: ["ns1158.hostgator.com.br"],
+    })
+
+    await buildUseCase().execute(teamCtx, { recipientEmail: "hospedagem@cliente.com.br" })
+
+    expect(dnsProviderLookupMock).toHaveBeenCalledWith("mail.empresa-exemplo.com.br")
+    expect(sendMailMock.mock.calls[0]?.[0]?.providerName).toBe("HostGator")
+  })
+
+  /**
+   * O contrato da dependência é total: `resolveDomainDnsProviderSafely` já
+   * converte falha de DoH e de cache em `null` (ver `cached-domain-dns-provider`).
+   * O que este teste trava é que `null` não impede o envio.
+   */
+  it("envia mesmo quando a hospedagem não pôde ser resolvida", async () => {
+    dnsProviderLookupMock.mockResolvedValueOnce(null)
+
+    const output = await buildUseCase().execute(teamCtx, {
+      recipientEmail: "hospedagem@cliente.com.br",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(sendMailMock).toHaveBeenCalledTimes(1)
+    expect(sendMailMock.mock.calls[0]?.[0]?.providerName).toBeNull()
   })
 
   it("propaga falha de envio como Output inválido", async () => {

@@ -1,4 +1,5 @@
 import { InviteDispatchStatus, LeadsSchedule, MeetingHeald, Prisma } from "@prisma/client";
+import type { TeamScopeVisibility } from "@/lib/teams/teamScopeVisibility";
 
 export interface CreateLeadScheduleDTO {
   id?: string;
@@ -89,12 +90,13 @@ export interface ILeadScheduleRepository {
   /**
    * Agendamentos do dia para o widget de agenda do dashboard.
    *
-   * `restrictToProfileId` limita o resultado aos leads que o proprio usuario
-   * atende ou criou — papeis manager-like passam `null` e enxergam o time todo.
+   * A restricao de papel vem particionada POR TIME em `visibility`: nos times
+   * onde o perfil e manager-like entra a agenda inteira; nos demais, so os leads
+   * que ele atende ou criou. Um perfil multi-time pode cair nos dois casos na
+   * mesma consulta.
    */
-  findDayAgendaByTeams(input: {
-    teamIds: string[];
-    restrictToProfileId: string | null;
+  findDayAgendaByTeamScope(input: {
+    visibility: TeamScopeVisibility;
     dayStart: Date;
     dayEnd: Date;
   }): Promise<DayAgendaScheduleRow[]>;

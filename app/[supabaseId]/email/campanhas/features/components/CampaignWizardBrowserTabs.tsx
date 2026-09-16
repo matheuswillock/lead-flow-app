@@ -67,7 +67,7 @@ export function CampaignWizardBrowserTabs({
               disabled={disabled || isLocked}
               aria-disabled={disabled || isLocked ? true : undefined}
               className={cn(
-                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 shadow-none",
+                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 shadow-none max-lg:h-11",
                 "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
                 isLocked && "pointer-events-none cursor-not-allowed opacity-40"
               )}

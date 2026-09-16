@@ -22,4 +22,5 @@ export interface ICampanhasAnalyticsService {
   getTemplates(params: CampaignAnalyticsQueryParams): Promise<Output>
   getFormsFunnel(params: CampaignAnalyticsQueryParams): Promise<Output>
   exportCsv(params: CampaignAnalyticsExportParams): Promise<CampaignAnalyticsExportResult>
+  exportAllXlsx(params: CampaignAnalyticsQueryParams): Promise<CampaignAnalyticsExportResult>
 }
