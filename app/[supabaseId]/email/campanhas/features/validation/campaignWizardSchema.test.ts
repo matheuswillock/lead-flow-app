@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it, setSystemTime } from "bun:test"
 import {
   buildCampaignWizardSubmitSchema,
   EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
@@ -12,6 +12,21 @@ const ONE_HOUR_IN_MS = 60 * 60 * 1000
 
 const inTheFuture = (offsetMs = ONE_HOUR_IN_MS) => new Date(Date.now() + offsetMs)
 const inThePast = (offsetMs = ONE_HOUR_IN_MS) => new Date(Date.now() - offsetMs)
+
+/**
+ * Instante fixo para os testes de fronteira do `<=`.
+ *
+ * Sem congelar o relógio, o `new Date()` que o schema avalia é sempre posterior
+ * ao `new Date()` montado na payload, então uma regressão de `<=` para `<`
+ * continuaria passando: o teste comparava "passado por alguns micros", não
+ * igualdade. Com o relógio parado os dois lados caem no mesmo instante e a
+ * fronteira vira observável.
+ */
+const FROZEN_NOW = new Date("2026-01-01T12:00:00.000Z")
+
+afterEach(() => {
+  setSystemTime()
+})
 
 type SubmitParams = Parameters<typeof buildCampaignWizardSubmitSchema>[0]
 type SubmitSchema = ReturnType<typeof buildCampaignWizardSubmitSchema>
@@ -67,10 +82,21 @@ describe("buildCampaignWizardSubmitSchema", () => {
       expect(issuePaths(result, FUTURE_REQUIRED)).toEqual(["scheduledAt"])
     })
 
-    it("rejeita data de agendamento igual ao instante atual (limite é <=, não <)", () => {
-      const result = parseSubmit(singleListParams, { scheduledAt: new Date() })
+    it("rejeita data de agendamento exatamente igual ao instante atual (limite é <=, não <)", () => {
+      setSystemTime(FROZEN_NOW)
+
+      const result = parseSubmit(singleListParams, { scheduledAt: new Date(FROZEN_NOW) })
       expect(result.success).toBe(false)
       expect(issueMessages(result)).toContain(FUTURE_REQUIRED)
+    })
+
+    it("aceita data de agendamento um milissegundo à frente do instante atual", () => {
+      setSystemTime(FROZEN_NOW)
+
+      const result = parseSubmit(singleListParams, {
+        scheduledAt: new Date(FROZEN_NOW.getTime() + 1),
+      })
+      expect(result.success).toBe(true)
     })
 
     it("ignora subCampaignSchedules quando não há split", () => {
@@ -166,6 +192,33 @@ describe("buildCampaignWizardSubmitSchema", () => {
       })
       expect(result.success).toBe(false)
       expect(issuePaths(result, ALL_SUBS_IN_FUTURE)).toEqual(["subCampaignSchedules"])
+    })
+
+    it("rejeita data de sub-campanha exatamente igual ao instante atual (limite é <=, não <)", () => {
+      setSystemTime(FROZEN_NOW)
+
+      const result = parseSubmit(splitParams, {
+        subCampaignSchedules: [
+          { index: 1, scheduledAt: new Date(FROZEN_NOW) },
+          { index: 2, scheduledAt: new Date(FROZEN_NOW.getTime() + ONE_HOUR_IN_MS) },
+          { index: 3, scheduledAt: new Date(FROZEN_NOW.getTime() + 2 * ONE_HOUR_IN_MS) },
+        ],
+      })
+      expect(result.success).toBe(false)
+      expect(issueMessages(result)).toContain(ALL_SUBS_IN_FUTURE)
+    })
+
+    it("aceita datas de sub-campanha um milissegundo à frente do instante atual", () => {
+      setSystemTime(FROZEN_NOW)
+
+      const result = parseSubmit(splitParams, {
+        subCampaignSchedules: [
+          { index: 1, scheduledAt: new Date(FROZEN_NOW.getTime() + 1) },
+          { index: 2, scheduledAt: new Date(FROZEN_NOW.getTime() + ONE_HOUR_IN_MS) },
+          { index: 3, scheduledAt: new Date(FROZEN_NOW.getTime() + 2 * ONE_HOUR_IN_MS) },
+        ],
+      })
+      expect(result.success).toBe(true)
     })
 
     it("exige datas por sub-campanha quando subCampaignCount > 1 mesmo sem needsSplit", () => {
