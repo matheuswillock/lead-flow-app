@@ -35,7 +35,12 @@ jobs:
   ci-light:
     name: CI Light (VPS)
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    timeout-minutes: 8
+    # 12min (era 8): em 16/09 o job passou em todos os checks (step verde aos
+    # 7min16s) e mesmo assim terminou `cancelled` — o teto de 8min bateu durante
+    # o post-cleanup. Como `migration-status` tem `needs: ci-light`, isso pulou o
+    # deploy de produção do release v0.303.0. A VPS é de 2 vCPU e o tempo do job
+    # varia com quantos pipelines disputam a máquina.
+    timeout-minutes: 12
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
