@@ -8,6 +8,7 @@ import {
   PREFETCH_DELIVERY_DELTA_MAX_SECONDS,
   classifyEmailEventOrigin,
   isIpv4InAnyCidr,
+  readEmailEventOrigin,
   reinforceOriginWithDeliveryDelta,
 } from "./email-event-origin-classifier"
 
@@ -264,6 +265,37 @@ describe("reinforceOriginWithDeliveryDelta — reforço aplicado depois, no dren
     )
 
     expect(reinforced.botSource).toBe("gmail-proxy")
+  })
+})
+
+describe("readEmailEventOrigin — rótulo de heurística retroativa", () => {
+  it("preserva `estimated` do backfill histórico", () => {
+    // O backfill grava `'estimated', true` quando inferiu `bot` por delta de
+    // tempo. Descartar a chave faria a inferência parecer tão firme quanto a
+    // identificação por user-agent do proxy.
+    const origin = readEmailEventOrigin({
+      origin: { classification: "bot", botSource: "generic", estimated: true },
+    })
+
+    expect(origin?.classification).toBe("bot")
+    expect(origin?.estimated).toBe(true)
+  })
+
+  it("não inventa `estimated` em evento classificado ao vivo", () => {
+    const origin = readEmailEventOrigin({
+      origin: { classification: "bot", botSource: "gmail-proxy", uaFamily: "gmail-image-proxy" },
+    })
+
+    expect(origin?.botSource).toBe("gmail-proxy")
+    expect(origin?.estimated).toBeUndefined()
+  })
+
+  it("ignora `estimated` que não seja booleano verdadeiro", () => {
+    const origin = readEmailEventOrigin({
+      origin: { classification: "human", estimated: "sim" },
+    })
+
+    expect(origin?.estimated).toBeUndefined()
   })
 })
 

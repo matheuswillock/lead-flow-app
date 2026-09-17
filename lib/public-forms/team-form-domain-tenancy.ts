@@ -4,6 +4,7 @@ import { cacheLife, cacheTag } from "next/cache"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { cacheTags } from "@/lib/cache/cacheTags"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { classifyFormsHost, normalizeHostname } from "@/lib/proxy/forms-host"
 
 /**
  * Guarda de tenancy do serving multi-tenant de formulários.
@@ -61,6 +62,35 @@ export async function resolveVerifiedTeamFormDomainSafely(
     console.error("[resolveVerifiedTeamFormDomainSafely]", error)
     return null
   }
+}
+
+/**
+ * O formulário `publicId` pode ser servido no host desta requisição?
+ *
+ * Fonte única da guarda de tenancy — usada pela página `app/forms/[publicId]`
+ * E pelas rotas públicas que o proxy libera no mesmo host custom (`prefill`,
+ * `events`, `progress`, `submissions`, `availability`). Sem a guarda na API, o
+ * `notFound()` da página vira teatro: bastava chamar o endpoint direto no
+ * domínio do time A para ler dados do time B — e `prefill` devolve PII, o que
+ * torna isso vazamento entre clientes, não só phishing.
+ *
+ * Host da plataforma e host neutro de fallback servem qualquer time (`true`).
+ * Só o host custom (domínio de formulários de um time) é restrito.
+ */
+export async function isPublicFormAllowedOnRequestHost(
+  rawHost: string | null,
+  publicId: string,
+): Promise<boolean> {
+  if (classifyFormsHost(rawHost) !== "custom") return true
+
+  const hostname = normalizeHostname(rawHost)
+  if (!hostname) return false
+
+  const domain = await resolveVerifiedTeamFormDomainSafely(hostname)
+  if (!domain) return false
+
+  const formTeamId = await findPublicFormTeamId(publicId)
+  return formTeamId !== null && formTeamId === domain.teamId
 }
 
 /** teamId dono do formulário público (consulta única indexada por publicId). */

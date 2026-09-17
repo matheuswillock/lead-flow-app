@@ -39,6 +39,13 @@ mock.module("@/lib/public-forms/rate-limit", () => ({
   publicFormRequestFingerprint: () => "fp-1",
 }))
 
+// Guarda de tenancy de host: `server-only` (prisma + cache do Next), com teste
+// próprio e controle negativo em `lib/public-forms/team-form-domain-tenancy.test.ts`.
+// Neutra aqui — o host das requisições de teste não é host custom.
+mock.module("@/lib/public-forms/team-form-domain-tenancy", () => ({
+  isPublicFormAllowedOnRequestHost: mock(async () => true),
+}))
+
 const { POST } = await import("./route")
 
 const BACKGROUND_JOB = {

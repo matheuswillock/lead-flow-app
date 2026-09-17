@@ -19,7 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { buildPublicFormLinkEmailSnippet } from "@/lib/email/public-form-link-embed"
 import { isApiRequestError } from "@/lib/http/api-request-error"
-import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
+import { usePublicFormShareBaseUrlInfo } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
 import { publicFormsClientService } from "@/app/[supabaseId]/forms/features/services/PublicFormsService"
 import type { PublicFormListItem } from "@/app/[supabaseId]/forms/features/context/PublicFormsTypes"
 
@@ -79,7 +79,7 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
   const selected = forms.find((item) => item.id === selectedId) ?? null
   // Domínio de formulários VERIFICADO do time quando existir (Frente C) —
   // alinha o link copiado com o host que o disparo vai usar de fato.
-  const shareBaseUrl = usePublicFormShareBaseUrl()
+  const { baseUrl: shareBaseUrl, teamDomainHostname } = usePublicFormShareBaseUrlInfo()
   const formUrl = selected ? `${shareBaseUrl}/forms/${selected.publicId}` : ""
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
@@ -98,6 +98,13 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
         <p className="text-xs text-muted-foreground">
           Escolha um formulário publicado para copiar o link ou o botão HTML.
         </p>
+        {teamDomainHostname ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="forms-share-domain-hint">
+            Os links sairão em{" "}
+            <span className="font-medium text-foreground">{teamDomainHostname}</span>, o domínio de
+            formulários do seu time.
+          </p>
+        ) : null}
       </div>
 
       {loading ? (

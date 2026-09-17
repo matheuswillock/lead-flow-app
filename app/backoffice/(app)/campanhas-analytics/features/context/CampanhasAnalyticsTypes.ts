@@ -102,6 +102,12 @@ export type CampaignAnalyticsTemplateRow = {
   sent: number
   delivered: number
   opened: number
+  /**
+   * Aberturas humanas da linha. O CSV desta mesma tabela já exporta a coluna
+   * "Aberturas reais"; sem ela no tipo, a tela mostrava só o bruto e o usuário
+   * encontrava no arquivo uma coluna que não viu na tela.
+   */
+  openedHuman?: number
   clicked: number
   bounced: number
   failed: number

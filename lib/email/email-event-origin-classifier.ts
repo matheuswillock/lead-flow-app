@@ -27,6 +27,17 @@ export type EmailEventOrigin = {
   classification: EmailEventOriginClassification
   botSource?: EmailEventOriginBotSource
   uaFamily?: string
+  /**
+   * `true` quando a classificação veio de heurística retroativa, e não de
+   * sinal do próprio evento — hoje só o backfill histórico
+   * (`20260917180021_backfill-human-open-classification`), que infere `bot`
+   * por delta de tempo entrega→abertura.
+   *
+   * Sem o rótulo, um `bot` inferido por tempo aparece com a mesma autoridade
+   * de um `bot` identificado pelo user-agent do proxy do Gmail. São níveis de
+   * confiança diferentes e precisam continuar distinguíveis (decisão F-D4).
+   */
+  estimated?: boolean
 }
 
 export type ClassifyEmailEventOriginInput = {
@@ -281,9 +292,13 @@ export function readEmailEventOrigin(
   }
   const botSource = (origin as Record<string, unknown>).botSource
   const uaFamily = (origin as Record<string, unknown>).uaFamily
+  // O backfill histórico grava `estimated: true`; descartar a chave aqui
+  // apagaria a diferença entre heurística de tempo e sinal do evento.
+  const estimated = (origin as Record<string, unknown>).estimated
   return {
     classification,
     ...(typeof botSource === "string" ? { botSource: botSource as EmailEventOriginBotSource } : {}),
     ...(typeof uaFamily === "string" ? { uaFamily } : {}),
+    ...(estimated === true ? { estimated: true } : {}),
   }
 }

@@ -9,6 +9,7 @@ import {
 import { PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG } from "@/lib/queues/public-form-metric-events"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { isPublicFormAllowedOnRequestHost } from "@/lib/public-forms/team-form-domain-tenancy"
 
 export async function POST(
   request: Request,
@@ -17,6 +18,11 @@ export async function POST(
   const { publicId } = await params
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
+  }
+
+  // Tenancy do host custom — mesma regra da página `app/forms/[publicId]`.
+  if (!(await isPublicFormAllowedOnRequestHost(request.headers.get("host"), publicId))) {
+    return NextResponse.json(new Output(false, [], ["Formulário não encontrado"], null), { status: 404 })
   }
   const parsed = publicFormMetricEventSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {

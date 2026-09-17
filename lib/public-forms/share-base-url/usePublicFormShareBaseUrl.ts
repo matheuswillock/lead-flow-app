@@ -53,6 +53,26 @@ export function clearPublicFormShareBaseUrlCache(): void {
 export function usePublicFormShareBaseUrl(
   service: IPublicFormShareBaseUrlClientService = publicFormShareBaseUrlClientService,
 ): string {
+  return usePublicFormShareBaseUrlInfo(service).baseUrl
+}
+
+export type PublicFormShareBaseUrlInfo = {
+  /** Origem usada para montar o link copiável. */
+  baseUrl: string
+  /**
+   * Hostname do domínio de formulários do time quando o link sai por ele;
+   * `null` quando cai no origin da plataforma.
+   *
+   * A UI precisa DIZER isso: sem o rótulo, o host do link copiado muda em
+   * silêncio assim que o time verifica um domínio, e quem copia não tem como
+   * saber para onde o link aponta.
+   */
+  teamDomainHostname: string | null
+}
+
+export function usePublicFormShareBaseUrlInfo(
+  service: IPublicFormShareBaseUrlClientService = publicFormShareBaseUrlClientService,
+): PublicFormShareBaseUrlInfo {
   const [baseUrl, setBaseUrl] = useState<string | null>(
     cacheExpiresAt > Date.now() ? cachedBaseUrl : null,
   )
@@ -67,6 +87,19 @@ export function usePublicFormShareBaseUrl(
     }
   }, [service])
 
-  if (baseUrl) return baseUrl
-  return typeof window !== "undefined" ? window.location.origin : ""
+  if (baseUrl) {
+    return { baseUrl, teamDomainHostname: safeHostname(baseUrl) }
+  }
+  return {
+    baseUrl: typeof window !== "undefined" ? window.location.origin : "",
+    teamDomainHostname: null,
+  }
+}
+
+function safeHostname(baseUrl: string): string | null {
+  try {
+    return new URL(baseUrl).hostname
+  } catch {
+    return null
+  }
 }
