@@ -17,13 +17,6 @@ mock.module("@/lib/public-forms/rate-limit", () => ({
   publicFormRequestFingerprint: mock(() => "fp-test"),
 }))
 
-// Guarda de tenancy de host: `server-only` (prisma + cache do Next), com teste
-// próprio e controle negativo em `lib/public-forms/team-form-domain-tenancy.test.ts`.
-// Neutra aqui — o host das requisições de teste não é host custom.
-mock.module("@/lib/public-forms/team-form-domain-tenancy", () => ({
-  isPublicFormAllowedOnRequestHost: mock(async () => true),
-}))
-
 const queueProgressForBackgroundProcessing = mock(async () => ({ accepted: true }))
 mock.module("@/lib/public-forms/queue-progress-for-background-processing", () => ({
   queueProgressForBackgroundProcessing,
@@ -31,6 +24,13 @@ mock.module("@/lib/public-forms/queue-progress-for-background-processing", () =>
 
 mock.module("@/lib/e2e/is-e2e-test-mode", () => ({
   isE2eTestMode: () => false,
+}))
+
+// Guarda de tenancy por hostname: aqui sempre libera (é `server-only` e
+// consulta banco). O isolamento entre times é medido de ponta a ponta em
+// e2e/specs/public/forms-host-routing-api.spec.ts, com Host forjado.
+mock.module("@/lib/public-forms/public-form-host-tenancy-guard", () => ({
+  rejectPublicFormRequestOnForeignHost: mock(async () => null),
 }))
 
 const { POST } = await import("./route")

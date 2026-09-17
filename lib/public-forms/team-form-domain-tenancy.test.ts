@@ -1,13 +1,12 @@
 import { describe, expect, mock, test, beforeEach } from "bun:test"
 
 /**
- * Guarda de tenancy do serving multi-tenant — a que impede o time A de ler
+ * Decisão de tenancy do serving multi-tenant — a que impede o time A de ler
  * dados do time B chamando a API pública no próprio domínio de formulários.
  *
- * O `prefill` devolve PII do lead, então falha aqui é vazamento entre
- * clientes, não só phishing. A guarda vivia só na página
- * `app/forms/[publicId]/page.tsx`; estas asserções travam a versão
- * compartilhada que as rotas passaram a usar.
+ * `e2e/specs/public/forms-host-routing-api.spec.ts` já mede isso ponta a ponta
+ * com Host forjado; estas asserções cobrem a mesma regra na suíte unitária,
+ * que roda em toda CI e não depende de banco nem de servidor de pé.
  */
 
 const findUnique = mock(async (_args: unknown) => null as { teamId: string } | null)
@@ -35,7 +34,7 @@ mock.module("@/lib/cache/cacheTags", () => ({
 // `server-only` estoura fora do runtime do Next; o módulo sob teste é server.
 mock.module("server-only", () => ({}))
 
-const { isPublicFormAllowedOnRequestHost } = await import(
+const { isPublicFormServableOnHost } = await import(
   "@/lib/public-forms/team-form-domain-tenancy"
 )
 
@@ -50,9 +49,12 @@ beforeEach(() => {
   delete process.env.PUBLIC_FORMS_FALLBACK_HOST
 })
 
-describe("isPublicFormAllowedOnRequestHost", () => {
+describe("isPublicFormServableOnHost", () => {
   test("host da plataforma serve formulário de qualquer time", async () => {
-    const allowed = await isPublicFormAllowedOnRequestHost("www.corretorstudio.com", "qualquer-id")
+    const allowed = await isPublicFormServableOnHost({
+      publicId: "qualquer-id",
+      hostHeader: "www.corretorstudio.com",
+    })
 
     expect(allowed).toBe(true)
     // Host da plataforma não paga round-trip de banco.
@@ -67,9 +69,13 @@ describe("isPublicFormAllowedOnRequestHost", () => {
     })
     findUnique.mockResolvedValue({ teamId: TEAM_A })
 
-    expect(await isPublicFormAllowedOnRequestHost(CUSTOM_HOST, "form-do-time-a")).toBe(true)
+    expect(
+      await isPublicFormServableOnHost({ publicId: "form-do-time-a", hostHeader: CUSTOM_HOST }),
+    ).toBe(true)
   })
 
+  // O caso que motivou a guarda: `prefill` devolve PII, então servir formulário
+  // de outro time no domínio custom é vazamento entre clientes.
   test("host custom NÃO serve formulário de outro time", async () => {
     findUniqueDomain.mockResolvedValue({
       teamId: TEAM_A,
@@ -78,7 +84,9 @@ describe("isPublicFormAllowedOnRequestHost", () => {
     })
     findUnique.mockResolvedValue({ teamId: TEAM_B })
 
-    expect(await isPublicFormAllowedOnRequestHost(CUSTOM_HOST, "form-do-time-b")).toBe(false)
+    expect(
+      await isPublicFormServableOnHost({ publicId: "form-do-time-b", hostHeader: CUSTOM_HOST }),
+    ).toBe(false)
   })
 
   test("domínio ainda não verificado não serve nada", async () => {
@@ -89,13 +97,20 @@ describe("isPublicFormAllowedOnRequestHost", () => {
     })
     findUnique.mockResolvedValue({ teamId: TEAM_A })
 
-    expect(await isPublicFormAllowedOnRequestHost(CUSTOM_HOST, "form-do-time-a")).toBe(false)
+    expect(
+      await isPublicFormServableOnHost({ publicId: "form-do-time-a", hostHeader: CUSTOM_HOST }),
+    ).toBe(false)
   })
 
   test("hostname desconhecido não serve nada", async () => {
     findUniqueDomain.mockResolvedValue(null)
 
-    expect(await isPublicFormAllowedOnRequestHost("host-que-ninguem-conectou.com", "x")).toBe(false)
+    expect(
+      await isPublicFormServableOnHost({
+        publicId: "x",
+        hostHeader: "host-que-ninguem-conectou.com",
+      }),
+    ).toBe(false)
   })
 
   test("formulário inexistente não serve nada", async () => {
@@ -106,13 +121,15 @@ describe("isPublicFormAllowedOnRequestHost", () => {
     })
     findUnique.mockResolvedValue(null)
 
-    expect(await isPublicFormAllowedOnRequestHost(CUSTOM_HOST, "nao-existe")).toBe(false)
+    expect(
+      await isPublicFormServableOnHost({ publicId: "nao-existe", hostHeader: CUSTOM_HOST }),
+    ).toBe(false)
   })
 
   // Header `host` ausente não é host custom — cai no caminho da plataforma,
-  // que já é o comportamento de sempre (sem restrição de tenancy).
+  // que é o comportamento de sempre (sem restrição de tenancy).
   test("host ausente no header não é tratado como host custom", async () => {
-    expect(await isPublicFormAllowedOnRequestHost(null, "x")).toBe(true)
+    expect(await isPublicFormServableOnHost({ publicId: "x", hostHeader: null })).toBe(true)
     expect(findUniqueDomain).not.toHaveBeenCalled()
   })
 })

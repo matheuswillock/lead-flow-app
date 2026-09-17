@@ -10,7 +10,7 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
-import { isPublicFormAllowedOnRequestHost } from "@/lib/public-forms/team-form-domain-tenancy"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 
 export async function POST(
   request: Request,
@@ -23,14 +23,11 @@ export async function POST(
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
   }
-
-  // Tenancy do host custom — mesma regra da página `app/forms/[publicId]`.
-  // Aqui a guarda impede que o domínio do time A colete submissão (e crie
-  // lead) no formulário do time B.
-  if (!(await isPublicFormAllowedOnRequestHost(request.headers.get("host"), publicId))) {
-    return NextResponse.json(new Output(false, [], ["Formulário não encontrado"], null), { status: 404 })
-  }
-
+  // Tenancy por hostname: em domínio de formulários do time A, submissão de
+  // formulário do time B é 404 — sem isso o `Origin` ausente passaria no guard
+  // acima e criaria lead do time B no domínio do time A.
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
   const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },

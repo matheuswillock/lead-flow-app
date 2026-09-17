@@ -77,9 +77,14 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
   }, [activeTeamId, supabaseId])
 
   const selected = forms.find((item) => item.id === selectedId) ?? null
-  // Domínio de formulários VERIFICADO do time quando existir (Frente C) —
-  // alinha o link copiado com o host que o disparo vai usar de fato.
-  const { baseUrl: shareBaseUrl, teamDomainHostname } = usePublicFormShareBaseUrlInfo()
+  // Domínio de formulários VERIFICADO do time ATIVO quando existir (Frente C)
+  // — alinha o link copiado com o host que o disparo vai usar de fato. O
+  // teamId entra na chave do cache: sem ele, trocar de time devolvia o domínio
+  // do time anterior e gerava link que a guarda de tenancy responde 404.
+  // `teamDomainHostname` é o que permite ao painel DIZER por onde os links
+  // sairão, em vez de trocar de host em silêncio.
+  const { baseUrl: shareBaseUrl, teamDomainHostname } =
+    usePublicFormShareBaseUrlInfo(activeTeamId)
   const formUrl = selected ? `${shareBaseUrl}/forms/${selected.publicId}` : ""
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {

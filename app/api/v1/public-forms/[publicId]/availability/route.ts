@@ -4,7 +4,7 @@ import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLea
 import { parseDateKeyAndTimeToUtc } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
-import { isPublicFormAllowedOnRequestHost } from "@/lib/public-forms/team-form-domain-tenancy"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 
 export async function GET(
   request: NextRequest,
@@ -13,11 +13,8 @@ export async function GET(
   await connection();
 
   const { publicId } = await params
-
-  // Tenancy do host custom — mesma regra da página `app/forms/[publicId]`.
-  if (!(await isPublicFormAllowedOnRequestHost(request.headers.get("host"), publicId))) {
-    return NextResponse.json(new Output(false, [], ["Formulário não encontrado"], null), { status: 404 })
-  }
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
 
   const date = request.nextUrl.searchParams.get("date")
   if (!date) {

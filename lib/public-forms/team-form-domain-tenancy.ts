@@ -9,10 +9,11 @@ import { classifyFormsHost, normalizeHostname } from "@/lib/proxy/forms-host"
 /**
  * Guarda de tenancy do serving multi-tenant de formulários.
  *
- * O proxy só filtra host + path (barato). Quem garante que o time A não serve
- * formulário do time B no domínio dele é a página `app/forms/[publicId]`:
- * resolve o domínio verificado pelo hostname e exige
- * `form.teamId === domain.teamId`.
+ * O proxy só filtra host + path (barato) — e libera tanto `/forms/*` quanto as
+ * APIs públicas do formulário em qualquer host de formulários. Quem garante
+ * que o time A não serve (nem recebe submissão de) formulário do time B no
+ * domínio dele é `isPublicFormServableOnHost`, chamada pela página
+ * `app/forms/[publicId]` E pelas rotas `app/api/v1/public-forms/[publicId]/**`.
  */
 
 /**
@@ -64,35 +65,6 @@ export async function resolveVerifiedTeamFormDomainSafely(
   }
 }
 
-/**
- * O formulário `publicId` pode ser servido no host desta requisição?
- *
- * Fonte única da guarda de tenancy — usada pela página `app/forms/[publicId]`
- * E pelas rotas públicas que o proxy libera no mesmo host custom (`prefill`,
- * `events`, `progress`, `submissions`, `availability`). Sem a guarda na API, o
- * `notFound()` da página vira teatro: bastava chamar o endpoint direto no
- * domínio do time A para ler dados do time B — e `prefill` devolve PII, o que
- * torna isso vazamento entre clientes, não só phishing.
- *
- * Host da plataforma e host neutro de fallback servem qualquer time (`true`).
- * Só o host custom (domínio de formulários de um time) é restrito.
- */
-export async function isPublicFormAllowedOnRequestHost(
-  rawHost: string | null,
-  publicId: string,
-): Promise<boolean> {
-  if (classifyFormsHost(rawHost) !== "custom") return true
-
-  const hostname = normalizeHostname(rawHost)
-  if (!hostname) return false
-
-  const domain = await resolveVerifiedTeamFormDomainSafely(hostname)
-  if (!domain) return false
-
-  const formTeamId = await findPublicFormTeamId(publicId)
-  return formTeamId !== null && formTeamId === domain.teamId
-}
-
 /** teamId dono do formulário público (consulta única indexada por publicId). */
 export async function findPublicFormTeamId(publicId: string): Promise<string | null> {
   try {
@@ -106,4 +78,30 @@ export async function findPublicFormTeamId(publicId: string): Promise<string | n
     console.error("[findPublicFormTeamId]", error)
     return null
   }
+}
+
+/**
+ * Decisão ÚNICA de tenancy por hostname do serving de formulários — a mesma
+ * para a página e para as rotas de API.
+ *
+ * - Host da plataforma e host neutro de fallback: liberado para qualquer time
+ *   (fail-open documentado, é o comportamento anterior ao domínio próprio).
+ * - Host custom: exige domínio `verified` para aquele hostname E
+ *   `form.teamId === domain.teamId`. Qualquer outra combinação é recusada —
+ *   inclusive hostname ilegível e domínio não verificado (fail-closed).
+ */
+export async function isPublicFormServableOnHost(input: {
+  publicId: string
+  hostHeader: string | null | undefined
+}): Promise<boolean> {
+  if (classifyFormsHost(input.hostHeader) !== "custom") return true
+
+  const hostname = normalizeHostname(input.hostHeader)
+  if (!hostname) return false
+
+  const domain = await resolveVerifiedTeamFormDomainSafely(hostname)
+  if (!domain) return false
+
+  const formTeamId = await findPublicFormTeamId(input.publicId)
+  return formTeamId !== null && formTeamId === domain.teamId
 }

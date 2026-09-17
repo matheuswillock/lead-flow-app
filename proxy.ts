@@ -78,9 +78,12 @@ export async function proxy(request: NextRequest) {
   try {
     // Host de formulários (domínio do time ou host neutro de fallback):
     // serve SOMENTE /forms/* + APIs públicas do formulário. Sem query de
-    // banco aqui — só host + path; a tenancy é validada na página
-    // (app/forms/[publicId]/page.tsx). Qualquer outra rota volta para o
-    // host da plataforma via 307.
+    // banco aqui — só host + path. A tenancy (form.teamId == domain.teamId)
+    // é validada depois, com a MESMA decisão, nos dois destinos que este
+    // branch libera: a página (app/forms/[publicId]/page.tsx) e as rotas
+    // app/api/v1/public-forms/[publicId]/** (ver
+    // lib/public-forms/public-form-host-tenancy-guard.ts). Qualquer outra
+    // rota volta para o host da plataforma via 307.
     const formsHostKind = classifyFormsHost(request.headers.get("host"))
     if (formsHostKind !== "platform") {
       return handleFormsHostRequest(request, pathname, isClientApiSlug)
