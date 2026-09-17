@@ -1084,6 +1084,11 @@ model Profile {
   subscriptionChangeLogs        SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
   subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
 
+  // Backoffice: alteração de assinatura (E6/G1 de [[50 — Backoffice de Cobrança — Backend]])
+  subscriptionChangeOrders                BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderMaster")
+  subscriptionChangeOrderOverrideApprovals BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderOverrideApprover")
+  subscriptionChangeOrderEventsAsActor     BackofficeSubscriptionChangeOrderEvent[] @relation("BackofficeSubscriptionChangeOrderEventActor")
+
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
   assignedUserTypeChanges ProfileUserTypeAssignment[] @relation("ProfileUserTypeAssignmentAssignedBy")
@@ -1193,6 +1198,7 @@ model BackofficeUser {
   sdrAdhesions                   BackofficeAdhesion[]         @relation("BackofficeAdhesionSdr")
   closerAdhesions                BackofficeAdhesion[]         @relation("BackofficeAdhesionCloser")
   createdAdhesions               BackofficeAdhesion[]         @relation("BackofficeAdhesionCreator")
+  createdSubscriptionChangeOrders BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderCreator")
   emailCampaignsCreated          BackofficeEmailCampaign[]    @relation("BackofficeEmailCampaignCreator")
   emailContactListsCreated       BackofficeEmailContactList[] @relation("BackofficeEmailContactListCreator")
   emailImportJobsCreated         BackofficeEmailImportJob[]   @relation("BackofficeEmailImportJobCreator")
@@ -3732,9 +3738,100 @@ model BackofficeProduct {
   profileSubscriptions ProfileSubscription[]
   adhesions            BackofficeAdhesion[]
 
+  subscriptionChangeOrdersAsCurrent BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderCurrentProduct")
+  subscriptionChangeOrdersAsTarget  BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderTargetProduct")
+
   @@index([featureSlugs], type: Gin)
   @@index([type, isActive])
   @@map("backoffice_products")
+}
+
+enum BackofficeSubscriptionChangeOrderStatus {
+  draft
+  awaiting_payment
+  applied
+  canceled
+
+  @@map("backoffice_subscription_change_order_status")
+}
+
+/// Trava do preço avulso (S7/DA6) — espelha `BackofficeAdhesion.discountStatus`.
+enum BackofficeSubscriptionChangeOrderOverrideStatus {
+  not_required
+  pending
+  approved
+
+  @@map("backoffice_subscription_change_order_override_status")
+}
+
+/// Ordem de alteração de assinatura pelo backoffice (E6/G1 de
+/// [[50 — Backoffice de Cobrança — Backend]]). `chargeAmount` é sempre
+/// `proratedAmount` a menos que `overrideAmount` esteja definido E aprovado
+/// (`overrideStatus = approved`) — nunca aceito do payload sem essa checagem.
+model BackofficeSubscriptionChangeOrder {
+  id                      String                                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  masterProfileId         String                                          @db.Uuid
+  status                  BackofficeSubscriptionChangeOrderStatus         @default(draft)
+  currentProductId        String?                                         @db.Uuid
+  currentCycle            BackofficeAdhesionBillingCycle?
+  currentChargedAmount    Decimal?                                        @db.Decimal(12, 2)
+  currentPeriodEnd        DateTime?                                       @db.Timestamptz(6)
+  targetProductId         String                                          @db.Uuid
+  targetCycle             BackofficeAdhesionBillingCycle
+  listAmount              Decimal                                         @db.Decimal(12, 2)
+  proratedAmount          Decimal                                         @db.Decimal(12, 2)
+  overrideAmount          Decimal?                                        @db.Decimal(12, 2)
+  overrideStatus          BackofficeSubscriptionChangeOrderOverrideStatus @default(not_required)
+  overrideApprovedByProfileId String?                                     @db.Uuid
+  overrideApprovedAt      DateTime?                                       @db.Timestamptz(6)
+  chargeAmount            Decimal                                         @db.Decimal(12, 2)
+  createdByBackofficeUserId String?                                       @db.Uuid
+  // G2 — cobrança da alteração (nasce sempre na conta nova, DA6/§3.2 da
+  // auditoria). Default primary pelo mesmo motivo de Profile.asaasCustomerAccount.
+  asaasPaymentId          String?                                         @db.Text
+  asaasAccount            AsaasAccount                                    @default(primary)
+  paymentInvoiceUrl       String?                                         @db.Text
+  canceledAt              DateTime?                                       @db.Timestamptz(6)
+  appliedAt               DateTime?                                       @db.Timestamptz(6)
+  createdAt               DateTime                                        @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime                                        @updatedAt @db.Timestamptz(6)
+
+  masterProfile         Profile           @relation("BackofficeSubscriptionChangeOrderMaster", fields: [masterProfileId], references: [id], onDelete: Restrict)
+  currentProduct        BackofficeProduct? @relation("BackofficeSubscriptionChangeOrderCurrentProduct", fields: [currentProductId], references: [id], onDelete: SetNull)
+  targetProduct         BackofficeProduct @relation("BackofficeSubscriptionChangeOrderTargetProduct", fields: [targetProductId], references: [id], onDelete: Restrict)
+  overrideApprovedBy    Profile?          @relation("BackofficeSubscriptionChangeOrderOverrideApprover", fields: [overrideApprovedByProfileId], references: [id], onDelete: SetNull)
+  createdByBackofficeUser BackofficeUser? @relation("BackofficeSubscriptionChangeOrderCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  events                BackofficeSubscriptionChangeOrderEvent[]
+
+  @@index([masterProfileId], map: "backoffice_subscription_change_orders_master_profile_id_idx")
+  @@index([status], map: "backoffice_subscription_change_orders_status_idx")
+  @@map("backoffice_subscription_change_orders")
+}
+
+/**
+ * Achado codex/cursor[bot] no PR #1167: `BackofficeSubscriptionChangeOrderUseCase`
+ * gravava em `SubscriptionChangeLog` via `logSubscriptionChange` — tabela do
+ * módulo produto, violando "Backoffice Module Isolation" (agents.md), cujo
+ * único acoplamento permitido é `Profile`/`BackofficeUser`. Timeline própria,
+ * escopada ao módulo, seguindo o padrão de `BackofficeDeletionAuditLog`.
+ * `eventType` reusa o TIPO `SubscriptionLifecycleEvent` (não a tabela/
+ * repositório do produto) para preservar a semântica tipada do G4.
+ */
+model BackofficeSubscriptionChangeOrderEvent {
+  id             String                      @id @default(uuid()) @db.Uuid
+  changeOrderId  String                      @db.Uuid
+  changeType     String                      @db.Text
+  eventType      SubscriptionLifecycleEvent?
+  actorProfileId String?                     @map("actorProfileId") @db.Uuid
+  payload        Json?
+  createdAt      DateTime                    @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  changeOrder BackofficeSubscriptionChangeOrder @relation(fields: [changeOrderId], references: [id], onDelete: Restrict)
+  actor       Profile?                          @relation("BackofficeSubscriptionChangeOrderEventActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+
+  @@index([changeOrderId, createdAt(sort: Desc)])
+  @@index([actorProfileId])
+  @@map("backoffice_subscription_change_order_events")
 }
 
 model BackofficeFeature {
@@ -5000,6 +5097,7 @@ model RadarProfile {
   teamId                    String    @db.Uuid
   normalizedName            String    @db.Text
   displayName               String    @db.Text
+  nameSource                String?   @db.Text
   normalizedPhone           String?   @db.Text
   displayPhone              String?   @db.Text
   primaryEmail              String?   @db.Text

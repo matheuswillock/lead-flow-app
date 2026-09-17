@@ -375,6 +375,42 @@ export async function processAsaasWebhookEvent(
         });
       }
     }
+
+    // G3 de [[50 — Backoffice de Cobrança — Backend]] E6: a ordem de
+    // alteração de assinatura só transiciona para `applied` (e só aí muda
+    // entitlement) quando este evento confirma a liquidação — nunca no
+    // create()/generatePayment(). Idempotente por externalReference = id
+    // da ordem; reprocessar o mesmo evento não reaplica (ver
+    // BackofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder).
+    const isSubscriptionChangeOrderRef =
+      !!externalReference && externalReference.startsWith("subscription-change-order-");
+    if (isSubscriptionChangeOrderRef && (isPaid || paymentStatus === "CONFIRMED")) {
+      try {
+        const { backofficeSubscriptionChangeOrderUseCase } = await import(
+          "@/app/api/useCases/backoffice/BackofficeSubscriptionChangeOrderUseCase"
+        );
+        const applyResult = await backofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder({
+          externalReference,
+          asaasPaymentId: paymentId,
+          account,
+        });
+
+        if (!applyResult.isValid) {
+          console.error("[AsaasWebhookRoute][process] subscription change order apply failed", {
+            eventId,
+            errorMessages: applyResult.errorMessages,
+            paymentId,
+            externalReference,
+          });
+        }
+      } catch (error) {
+        rethrowIfPrerenderInterrupted(error);
+        console.error("[AsaasWebhookRoute][process] subscription change order apply error", {
+          eventId,
+          error,
+        });
+      }
+    }
   }
 
   if (isPaid && body?.payment?.subscription) {

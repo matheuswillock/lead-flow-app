@@ -10060,6 +10060,63 @@
           }
         },
         {
+          "name": "Backoffice Subscription Change Orders",
+          "item": [
+            {
+              "name": "POST Create Subscription Change Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"masterProfileId\": \"\",\n  \"targetProductId\": \"\",\n  \"targetCycle\": \"monthly\",\n  \"overrideAmount\": null\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders"]
+                },
+                "description": "E6/G1 (SPEC 50): cria ordem de alteração de assinatura em `draft`. Pró-rata calculada no servidor; `overrideAmount` (preço avulso) acima do teto (`BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT`, default 0 até D13 ser decidida) nasce `pending` de aprovação. Exige manager (`requireManagerAccess`)."
+              }
+            },
+            {
+              "name": "POST Approve Subscription Change Order Override",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "approve"],
+                  "variable": [{ "key": "id", "value": "" }]
+                },
+                "description": "E6/G1 (SPEC 50, trava S7/DA6): aprova preço avulso `pending`. Exige manager (`requireManagerAccess`)."
+              }
+            },
+            {
+              "name": "POST Generate Subscription Change Order Payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/generate-payment",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "generate-payment"],
+                  "variable": [{ "key": "id", "value": "" }]
+                },
+                "description": "E6/G2 (SPEC 50): gera a cobrança da diferença sempre na conta Asaas nova (DA6) e envia e-mail nosso (Resend) com o link de pagamento — nunca notificação do Asaas. Exige ordem em `draft` com preço avulso resolvido (não `pending`). Exige manager (`requireManagerAccess`)."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Platform Users",
           "item": [
             {
