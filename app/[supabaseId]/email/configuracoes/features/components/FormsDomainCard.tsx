@@ -190,6 +190,7 @@ export function FormsDomainCard() {
                 <Button
                   type="button"
                   variant="outline"
+                  className="max-lg:h-11"
                   disabled={verifyingFormDomain || loadingFormDomainRecords}
                   onClick={() => void handleVerifyFormDomain()}
                 >
@@ -350,6 +351,7 @@ export function FormsDomainCard() {
                 />
                 <Button
                   type="button"
+                  className="max-lg:h-11"
                   disabled={connectingFormDomain || formDomainInput.trim().length === 0}
                   onClick={() => void handleConnectFormDomain()}
                 >

@@ -162,20 +162,31 @@ test.describe("roteamento por host dos formulários públicos", () => {
     expect(await response.text()).toContain(FORM_A_COVER_TITLE)
   })
 
-  test("formulário de OUTRO time no host verificado responde 404", async ({ request }) => {
+  /**
+   * Com `cacheComponents: true` (PPR) o shell estático sai com status 200 e o
+   * `notFound()` da guarda de tenancy acontece no streaming — o status HTTP
+   * não muda mais, mas o CONTEÚDO servido é a página 404. A propriedade de
+   * segurança (form do time B nunca é servido no domínio do time A) é medida
+   * pelo corpo: ausência do formulário + marcador de not-found.
+   */
+  test("formulário de OUTRO time no host verificado serve 404 no corpo", async ({ request }) => {
     const response = await request.get(`/forms/${FORM_B_PUBLIC_ID}`, {
       headers: { host: VERIFIED_HOST },
     })
 
-    expect(response.status()).toBe(404)
+    const body = await response.text()
+    expect(body).not.toContain("Formulário do Time B (host routing)")
+    expect(body).toContain("404")
   })
 
-  test("host desconhecido (sem domínio verificado) responde 404", async ({ request }) => {
+  test("host desconhecido (sem domínio verificado) serve 404 no corpo", async ({ request }) => {
     const response = await request.get(`/forms/${FORM_A_PUBLIC_ID}`, {
       headers: { host: UNKNOWN_HOST },
     })
 
-    expect(response.status()).toBe(404)
+    const body = await response.text()
+    expect(body).not.toContain(FORM_A_COVER_TITLE)
+    expect(body).toContain("404")
   })
 
   test("rota fora de /forms/* em host custom redireciona 307 para a plataforma", async ({
