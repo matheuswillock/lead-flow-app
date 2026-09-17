@@ -95,7 +95,7 @@ async function resolveE2eTeamId(): Promise<string> {
   return profile.activeTeamId
 }
 
-async function seedConnectedDomain(status: string = "pending"): Promise<void> {
+async function seedConnectedDomain(status: "pending" | "verified" = "pending"): Promise<void> {
   const teamId = await resolveE2eTeamId()
   const domainFields = {
     resendDomainId: DOMAIN_ID,
@@ -103,12 +103,41 @@ async function seedConnectedDomain(status: string = "pending"): Promise<void> {
     resendDomainStatus: status,
     resendDomainRegion: "us-east-1",
     resendDomainConnectedAt: new Date(),
+    resendOpenTracking: status === "verified",
+    resendClickTracking: false,
   }
   await getPrisma().emailTeamSettings.upsert({
     where: { teamId },
     update: domainFields,
     create: { teamId, ...domainFields },
   })
+}
+
+/** Registros todos verificados — o estado que destrava o toggle de cliques. */
+const VERIFIED_DNS_RECORDS = MOCK_DNS_RECORDS.map((record) => ({
+  ...record,
+  status: "verified",
+}))
+
+function verifiedDomainRecordsPayload() {
+  return {
+    isValid: true,
+    successMessages: [],
+    errorMessages: [],
+    result: {
+      domainId: DOMAIN_ID,
+      domainName: DOMAIN_NAME,
+      status: "verified",
+      region: "us-east-1",
+      dnsProvider: MOCK_DNS_PROVIDER,
+      connectedAt: new Date().toISOString(),
+      openTracking: true,
+      clickTracking: false,
+      trackingSubdomain: "links",
+      records: VERIFIED_DNS_RECORDS,
+      events: [],
+    },
+  }
 }
 
 async function clearConnectedDomain(): Promise<void> {
@@ -418,6 +447,101 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(
         page.getByRole("heading", { name: "Enviar instruções por e-mail" })
       ).toHaveCount(0)
+    })
+
+    test("toggle de cliques fica BLOQUEADO enquanto o CNAME de Tracking não verifica", async ({
+      page,
+    }) => {
+      await mockDomainRecordsRoute(page)
+      await gotoEmailSettings(page)
+
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
+      await page.getByRole("button", { name: "Configurar" }).click()
+
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toBeVisible()
+
+      const clickSwitch = page.locator("#click-tracking-switch")
+      await expect(clickSwitch).toBeDisabled()
+      await expect(clickSwitch).not.toBeChecked()
+      await expect(
+        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
+          exact: false,
+        })
+      ).toBeVisible()
+    })
+  })
+
+  test.describe("com domínio verificado e CNAME de Tracking resolvendo", () => {
+    test.beforeEach(async () => {
+      await seedConnectedDomain("verified")
+    })
+
+    test.afterEach(async () => {
+      await clearConnectedDomain()
+    })
+
+    test("liga o rastreio de cliques e envia clickTracking: true para a rota de tracking", async ({
+      page,
+    }) => {
+      await page.route("**/email/settings/domain/records**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(verifiedDomainRecordsPayload()),
+        })
+      )
+
+      const trackingRequests: Array<Record<string, unknown>> = []
+      await page.route("**/email/settings/domain/tracking**", (route) => {
+        trackingRequests.push(route.request().postDataJSON() as Record<string, unknown>)
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: ["Métricas de tracking configuradas."],
+            errorMessages: [],
+            result: {
+              domainId: DOMAIN_ID,
+              domainName: DOMAIN_NAME,
+              status: "verified",
+              region: "us-east-1",
+              openTracking: true,
+              clickTracking: true,
+              trackingSubdomain: "links",
+              records: VERIFIED_DNS_RECORDS,
+            },
+          }),
+        })
+      })
+
+      await gotoEmailSettings(page)
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
+      await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
+
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toBeVisible()
+
+      const clickSwitch = page.locator("#click-tracking-switch")
+      await expect(clickSwitch).toBeEnabled()
+      await clickSwitch.click()
+      await expect(clickSwitch).toBeChecked()
+
+      await page.getByRole("button", { name: "Salvar" }).click()
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toHaveCount(0)
+
+      // O corpo enviado é o contrato: clickTracking respeitado, não descartado.
+      expect(trackingRequests).toHaveLength(1)
+      expect(trackingRequests[0]).toEqual({
+        trackingSubdomain: "links",
+        openTracking: true,
+        clickTracking: true,
+      })
     })
   })
 

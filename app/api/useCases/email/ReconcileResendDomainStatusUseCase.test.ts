@@ -344,6 +344,70 @@ describe("ReconcileResendDomainStatusUseCase", () => {
     expect(syncedSnapshot.clickTracking).toBe(false)
   })
 
+  it("religa o clique quando o TIME optou por ele e o provedor está OFF (escolha por time, 17/09)", async () => {
+    listConnectedDomainsMock.mockImplementation(async () => [
+      connectedDomain({
+        teamId: "team-1",
+        resendDomainId: "dom-1",
+        resendDomainStatus: "partially_failed",
+        resendClickTracking: true,
+      }),
+    ])
+    // Provedor com clique OFF (ex.: alguém desligou no painel) — o desejo do
+    // time persiste e o cron reaplica.
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
+    await useCase.execute()
+
+    expect(updateTrackingMock).toHaveBeenCalledTimes(1)
+    expect(updateTrackingMock.mock.calls[0][0]).toEqual({
+      domainId: "dom-1",
+      openTracking: true,
+      clickTracking: true,
+    })
+  })
+
+  it("domínio da plataforma nunca recebe clique ligado, mesmo com flag persistida", async () => {
+    listConnectedDomainsMock.mockImplementation(async () => [
+      connectedDomain({
+        teamId: "team-1",
+        resendDomainId: "dom-1",
+        resendDomainName: "mail.corretorstudio.com",
+        resendDomainStatus: "partially_failed",
+        resendClickTracking: true,
+      }),
+    ])
+    fetchDomainMock.mockImplementation(async () => ({
+      data: {
+        id: "dom-1",
+        name: "mail.corretorstudio.com",
+        status: "partially_failed",
+        region: "sa-east-1",
+        openTracking: true,
+        clickTracking: true,
+      },
+      error: null,
+    }))
+
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+    })
+    await useCase.execute()
+
+    // Remoto está com clique ON num domínio inelegível → o cron DESLIGA.
+    expect(updateTrackingMock).toHaveBeenCalledTimes(1)
+    expect(updateTrackingMock.mock.calls[0][0]).toEqual({
+      domainId: "dom-1",
+      openTracking: true,
+      clickTracking: false,
+    })
+  })
+
   it("T-C3.1b — domínio já na política não recebe update (idempotente)", async () => {
     listConnectedDomainsMock.mockImplementation(async () => [
       connectedDomain({

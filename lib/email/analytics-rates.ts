@@ -46,6 +46,13 @@ export function buildRates(totals: {
   delivered: number
   /** Da coorte ENTREGUE: quantos foram abertos (D6). */
   opened: number
+  /**
+   * Da coorte ENTREGUE: quantos tiveram abertura HUMANA (classificador de
+   * origem — exclui proxies/robôs do provedor). Ausente em recortes ainda sem
+   * o sinal → taxa 0, nunca herda o bruto: "não medido" não pode parecer
+   * "medido igual ao bruto".
+   */
+  openedHuman?: number
   /** Denominador do openRate: tamanho da coorte de entregas da janela. */
   deliveredCohort?: number
   /** Da coorte enviada: quantos foram abertos (base antiga, transição 30d). */
@@ -73,6 +80,12 @@ export function buildRates(totals: {
      * 22,40% → 25,86% sem nada ter mudado no mundo real.
      */
     openRate: safeRate(totals.opened, deliveredCohort),
+    /**
+     * "Aberturas reais": só opens classificados como humanos no numerador,
+     * mesma coorte de entregas no denominador. O bruto (`openRate`) segue
+     * exposto como secundário — inclui robôs/proxies do provedor.
+     */
+    openRateHuman: safeRate(totals.openedHuman ?? 0, deliveredCohort),
     /**
      * A base antiga, exposta em paralelo pelos 30 dias de transição para a
      * mudança ser conferível em vez de aparecer como salto inexplicado. Sai

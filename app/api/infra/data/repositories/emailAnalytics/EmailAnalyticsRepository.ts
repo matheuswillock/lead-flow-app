@@ -29,6 +29,7 @@ export type EmailAnalyticsDispatchRecord = {
   totalSent: number
   totalDelivered: number
   totalOpened: number
+  totalOpenedHuman: number
   totalClicked: number
   totalBounced: number
   totalComplained: number
@@ -46,6 +47,7 @@ export type EmailAnalyticsDispatchRecord = {
 export type EmailAnalyticsLogFilter =
   | "delivered"
   | "opened"
+  | "openedHuman"
   | "clicked"
   | "bounced"
   | "complained"
@@ -78,6 +80,8 @@ const LOG_FILTER_CLAUSES: Record<EmailAnalyticsLogFilter, LogFilterClause> = {
   // exclui NULL, então não há `{ not: null }` redundante junto.
   delivered: (period) => ({ deliveredAt: period }),
   opened: (period) => ({ openedAt: period }),
+  // Abertura HUMANA (classificador de origem): a headline "Aberturas reais".
+  openedHuman: (period) => ({ humanOpenedAt: period }),
   clicked: (period) => ({ clickedAt: period }),
   bounced: (period) => ({ bouncedAt: period }),
   complained: (period) => ({ complainedAt: period }),
@@ -120,6 +124,7 @@ const LOG_FILTER_CLAUSES: Record<EmailAnalyticsLogFilter, LogFilterClause> = {
 export type EmailAnalyticsCohortFilter =
   | "delivered"
   | "opened"
+  | "openedHuman"
   | "openedOnSent"
   | "clicked"
   | "bounced"
@@ -143,6 +148,8 @@ const COHORT_FILTER_CLAUSES: Record<EmailAnalyticsCohortFilter, LogFilterClause>
   delivered: (period) => ({ sentAt: period, deliveredAt: { not: null } }),
   // D6: a base do openRate é a entrega, então a coorte é a das ENTREGAS.
   opened: (period) => ({ deliveredAt: period, openedAt: { not: null } }),
+  // Mesma coorte de entregas, numerador humano — base do openRateHuman.
+  openedHuman: (period) => ({ deliveredAt: period, humanOpenedAt: { not: null } }),
   // A base antiga da transição, na coorte de envio.
   openedOnSent: (period) => ({ sentAt: period, openedAt: { not: null } }),
   clicked: (period) => ({ sentAt: period, clickedAt: { not: null } }),
@@ -458,6 +465,7 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         totalSent: true,
         totalDelivered: true,
         totalOpened: true,
+        totalOpenedHuman: true,
         totalClicked: true,
         totalBounced: true,
         totalComplained: true,

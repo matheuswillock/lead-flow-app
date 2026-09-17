@@ -2869,6 +2869,7 @@ completed completed
     Int totalSent 
     Int totalDelivered 
     Int totalOpened 
+    Int totalOpenedHuman 
     Int totalClicked 
     Int totalBounced 
     Int dispatchCount 
@@ -2893,6 +2894,7 @@ completed completed
     Int totalSent 
     Int totalDelivered 
     Int totalOpened 
+    Int totalOpenedHuman 
     Int totalClicked 
     Int totalBounced 
     Int totalComplained 
@@ -2921,6 +2923,7 @@ completed completed
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime openedAt "❓"
+    DateTime humanOpenedAt "❓"
     DateTime clickedAt "❓"
     DateTime bouncedAt "❓"
     DateTime complainedAt "❓"

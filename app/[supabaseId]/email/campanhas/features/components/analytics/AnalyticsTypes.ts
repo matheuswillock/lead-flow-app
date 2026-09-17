@@ -9,6 +9,8 @@ export type MetricDelta = {
 export type AnalyticsRates = {
   deliverabilityRate: number
   openRate: number
+  /** "Aberturas reais": só opens humanos no numerador (exclui robôs/proxies). */
+  openRateHuman?: number
   clickRate: number
   bounceRate: number
   complainRate: number
@@ -18,6 +20,8 @@ export type AnalyticsTotals = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas classificadas como humanas — a headline da tela. */
+  openedHuman?: number
   clicked: number
   bounced: number
   complained: number
@@ -68,6 +72,7 @@ export type DispatchAnalyticsItem = {
   totalSent: number
   totalDelivered: number
   totalOpened: number
+  totalOpenedHuman?: number
   totalClicked: number
   totalBounced: number
   totalComplained: number

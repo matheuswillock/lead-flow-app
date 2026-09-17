@@ -89,7 +89,7 @@ export class EmailLogRepository implements IEmailLogRepository {
   }
 
   async applyWebhookEvent(input: ApplyEmailLogWebhookInput): Promise<void> {
-    const { log, eventType, occurredAt, metadata, eventId } = input
+    const { log, eventType, occurredAt, metadata, eventId, origin } = input
 
     const timestampField: Partial<Record<EmailEventType, string>> = {
       delivered: "deliveredAt",
@@ -164,6 +164,21 @@ export class EmailLogRepository implements IEmailLogRepository {
             await tx.emailLog.update({ where: { id: log.id }, data: statusUpdate })
           }
 
+          // Segunda camada da métrica de abertura: `humanOpenedAt` só é
+          // reivindicado por open classificado como HUMANO — mesmo claim
+          // atômico do `openedAt` bruto, que continua intocado acima (qualquer
+          // open, inclusive proxy do provedor, reivindica o bruto). Um open
+          // humano tardio ainda conta aqui mesmo com o bruto já reivindicado
+          // pelo pré-fetch.
+          let claimedFirstHumanOpen = false
+          if (eventType === "opened" && origin?.classification === "human") {
+            const humanClaim = await tx.emailLog.updateMany({
+              where: { id: log.id, humanOpenedAt: null },
+              data: { humanOpenedAt: occurredAt },
+            })
+            claimedFirstHumanOpen = humanClaim.count === 1
+          }
+
           // Bounce é GLOBAL de propósito, ao contrário de `complained` logo
           // abaixo. Não é falta de escopo: um bounce permanente significa que a
           // caixa não existe, o que vale para qualquer remetente. Tratar como
@@ -233,15 +248,21 @@ export class EmailLogRepository implements IEmailLogRepository {
             }
           }
 
-          // `claimedFirstEvent` — e não a leitura pré-transação — é o que
-          // garante que cada contador sobe no máximo uma vez por destinatário.
-          if (log.campaignId && claimedFirstEvent) {
+          // `claimedFirstEvent` / `claimedFirstHumanOpen` — e não a leitura
+          // pré-transação — é o que garante que cada contador sobe no máximo
+          // uma vez por destinatário. Os dois claims são independentes: o open
+          // humano que chega DEPOIS de um pré-fetch já ter reivindicado o
+          // bruto ainda precisa subir `totalOpenedHuman`.
+          if (log.campaignId && (claimedFirstEvent || claimedFirstHumanOpen)) {
             const campaignIncrements: Record<string, number> = {}
-            if (eventType === "delivered") campaignIncrements.totalDelivered = 1
-            if (eventType === "opened") campaignIncrements.totalOpened = 1
-            if (eventType === "clicked") campaignIncrements.totalClicked = 1
-            if (eventType === "bounced") campaignIncrements.totalBounced = 1
-            if (eventType === "complained") campaignIncrements.totalComplained = 1
+            if (claimedFirstEvent) {
+              if (eventType === "delivered") campaignIncrements.totalDelivered = 1
+              if (eventType === "opened") campaignIncrements.totalOpened = 1
+              if (eventType === "clicked") campaignIncrements.totalClicked = 1
+              if (eventType === "bounced") campaignIncrements.totalBounced = 1
+              if (eventType === "complained") campaignIncrements.totalComplained = 1
+            }
+            if (claimedFirstHumanOpen) campaignIncrements.totalOpenedHuman = 1
 
             if (Object.keys(campaignIncrements).length > 0) {
               // lock order: campaign then dispatch (must match EmailCampaignUseCase completion)

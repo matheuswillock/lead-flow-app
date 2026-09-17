@@ -12,6 +12,8 @@ export type CampaignAnalyticsTotals = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas humanas ("Aberturas reais") — exclui robôs/proxies do provedor. */
+  openedHuman?: number
   clicked: number
   bounced: number
   failed: number
@@ -22,6 +24,8 @@ export type CampaignAnalyticsTotals = {
 
 export type CampaignAnalyticsRates = {
   openRate: number | null
+  /** Headline: taxa de aberturas humanas. */
+  openRateHuman?: number | null
   finalScore: number | null
 }
 

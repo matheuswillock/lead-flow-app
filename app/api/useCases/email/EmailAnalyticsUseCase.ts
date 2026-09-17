@@ -128,6 +128,7 @@ export class EmailAnalyticsUseCase {
       total,
       delivered,
       opened,
+      openedHuman,
       clicked,
       bounced,
       complained,
@@ -143,6 +144,7 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere),
       this.repository.countLogs(logWhere, "delivered"),
       this.repository.countLogs(logWhere, "opened"),
+      this.repository.countLogs(logWhere, "openedHuman"),
       this.repository.countLogs(logWhere, "clicked"),
       this.repository.countLogs(logWhere, "bounced"),
       this.repository.countLogs(logWhere, "complained"),
@@ -166,6 +168,7 @@ export class EmailAnalyticsUseCase {
       sent: total,
       delivered,
       opened,
+      openedHuman,
       clicked,
       bounced,
       complained,
@@ -204,14 +207,16 @@ export class EmailAnalyticsUseCase {
     logWhere: EmailAnalyticsLogWhere,
     totals: AnalyticsTotalsForDelta,
   ) {
-    const [delivered, opened, openedOnSent, clicked, bounced, complained] = await Promise.all([
-      this.repository.countCohortLogs(logWhere, "delivered"),
-      this.repository.countCohortLogs(logWhere, "opened"),
-      this.repository.countCohortLogs(logWhere, "openedOnSent"),
-      this.repository.countCohortLogs(logWhere, "clicked"),
-      this.repository.countCohortLogs(logWhere, "bounced"),
-      this.repository.countCohortLogs(logWhere, "complained"),
-    ])
+    const [delivered, opened, openedHuman, openedOnSent, clicked, bounced, complained] =
+      await Promise.all([
+        this.repository.countCohortLogs(logWhere, "delivered"),
+        this.repository.countCohortLogs(logWhere, "opened"),
+        this.repository.countCohortLogs(logWhere, "openedHuman"),
+        this.repository.countCohortLogs(logWhere, "openedOnSent"),
+        this.repository.countCohortLogs(logWhere, "clicked"),
+        this.repository.countCohortLogs(logWhere, "bounced"),
+        this.repository.countCohortLogs(logWhere, "complained"),
+      ])
 
     return {
       sent: totals.sent,
@@ -220,6 +225,7 @@ export class EmailAnalyticsUseCase {
       deliveredCohort: totals.delivered,
       delivered,
       opened,
+      openedHuman,
       openedOnSent,
       clicked,
       bounced,
@@ -332,6 +338,7 @@ export class EmailAnalyticsUseCase {
             sent: dispatch.totalSent,
             delivered: dispatch.totalDelivered,
             opened: dispatch.totalOpened,
+            openedHuman: dispatch.totalOpenedHuman,
             clicked: dispatch.totalClicked,
             bounced: dispatch.totalBounced,
             complained: dispatch.totalComplained,
