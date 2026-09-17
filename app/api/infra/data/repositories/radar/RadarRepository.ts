@@ -797,7 +797,23 @@ export class RadarRepository {
       // contato novo segue para o upsert por telefone+nome abaixo e a claim
       // de e-mail continua com o dono original (flag consumida na claim
       // final).
+      //
+      // Achado de review (PR #1059, threads PRRT_kwDOPrEc6s6cLQP2 e
+      // PRRT_kwDOPrEc6s6cLtES): este branch gravava normalizedPhone/
+      // displayPhone mas nunca passava por `resolveRadarName` — ao contrário
+      // dos outros dois pontos de escrita de nome desta função, um push name
+      // chegando por este caminho (telefone novo para um e-mail já
+      // conhecido) ficava fora da precedência por fonte. `emailOwnerProfile`
+      // agora é buscado uma única vez (com `nameSource`) e reaproveitado
+      // tanto pela guarda de e-mail compartilhado quanto pela política de
+      // nome abaixo.
       let emailOwnedByDivergentProfile = false
+      let emailOwnerProfile: {
+        displayName: string | null
+        normalizedName: string | null
+        normalizedPhone: string | null
+        nameSource: string | null
+      } | null = null
       if (input.normalizedPrimaryEmail) {
         const existingByEmailIdentity = await tx.radarIdentity.findUnique({
           where: {
@@ -811,9 +827,14 @@ export class RadarRepository {
         })
 
         if (existingByEmailIdentity) {
-          const emailOwnerProfile = await tx.radarProfile.findUnique({
+          emailOwnerProfile = await tx.radarProfile.findUnique({
             where: { id: existingByEmailIdentity.profileId },
-            select: { displayName: true, normalizedName: true, normalizedPhone: true },
+            select: {
+              displayName: true,
+              normalizedName: true,
+              normalizedPhone: true,
+              nameSource: true,
+            },
           })
           const ownerDecision = decideEmailProfileMatch({
             candidate: {
@@ -829,11 +850,25 @@ export class RadarRepository {
         }
 
         if (existingByEmailIdentity && !emailOwnedByDivergentProfile) {
+          const nameWrite = resolveRadarName(
+            {
+              displayName: emailOwnerProfile?.displayName ?? null,
+              normalizedName: emailOwnerProfile?.normalizedName ?? null,
+              nameSource: emailOwnerProfile?.nameSource ?? null,
+            },
+            {
+              displayName: input.displayName,
+              normalizedName: input.normalizedName,
+              source: input.nameSource ?? input.phoneSource,
+            }
+          )
+
           const profile = await tx.radarProfile.update({
             where: { id: existingByEmailIdentity.profileId },
             data: {
               normalizedPhone: input.normalizedPhone,
               displayPhone: input.displayPhone || undefined,
+              ...(nameWrite ?? {}),
               lastSeenAt: input.lastSeenAt ?? new Date(),
             },
           })

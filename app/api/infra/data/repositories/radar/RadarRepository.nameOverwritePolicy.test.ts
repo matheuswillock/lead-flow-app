@@ -23,16 +23,29 @@ type ExistingProfile = {
   normalizedPrimaryDocument: string | null
   displayName: string
   normalizedName: string
+  normalizedPhone: string | null
   nameSource: string | null
 }
 
 let existingProfile: ExistingProfile
+// Controla se `resolveProfileForPhone` encontra uma `RadarIdentity` de
+// telefone (branch 1) e/ou de e-mail (branch D4) já existente. Default
+// reproduz o comportamento anterior à cobertura de D4: telefone já
+// identificado, sem e-mail.
+let phoneIdentityProfileId: string | null = "profile-1"
+let emailIdentityProfileId: string | null = null
 
 const radarIdentityFindUniqueMock = mock(async (args: { where: { teamId_type_normalizedValue: { type: string } } }) => {
-  if (args.where.teamId_type_normalizedValue.type === "phone") return { profileId: "profile-1" }
-  if (args.where.teamId_type_normalizedValue.type === "contract_holder") return { profileId: "profile-1" }
+  const type = args.where.teamId_type_normalizedValue.type
+  if (type === "phone") return phoneIdentityProfileId ? { profileId: phoneIdentityProfileId } : null
+  if (type === "contract_holder") return { profileId: "profile-1" }
+  if (type === "email") return emailIdentityProfileId ? { profileId: emailIdentityProfileId } : null
   return null
 })
+const radarIdentityUpsertMock = mock(async (args: { create: Record<string, unknown> }) => ({
+  id: "identity-1",
+  ...args.create,
+}))
 const radarProfileFindUniqueMock = mock(async (_args: unknown) => existingProfile)
 const radarProfileUpdateMock = mock(async (args: { data: Record<string, unknown> }) => ({
   id: "profile-1",
@@ -41,7 +54,7 @@ const radarProfileUpdateMock = mock(async (args: { data: Record<string, unknown>
 
 const txMock = {
   $executeRaw: mock(async () => 0),
-  radarIdentity: { findUnique: radarIdentityFindUniqueMock },
+  radarIdentity: { findUnique: radarIdentityFindUniqueMock, upsert: radarIdentityUpsertMock },
   radarProfile: { findUnique: radarProfileFindUniqueMock, update: radarProfileUpdateMock },
 }
 
@@ -61,7 +74,13 @@ function lastUpdateData(): Record<string, unknown> {
   return call[0].data
 }
 
-function phoneInput(overrides: { displayName: string; normalizedName: string; phoneSource: string; nameSource?: string }) {
+function phoneInput(overrides: {
+  displayName: string
+  normalizedName: string
+  phoneSource: string
+  nameSource?: string
+  normalizedPrimaryEmail?: string
+}) {
   return {
     teamId: "team-1",
     normalizedPhone: "5511999999999",
@@ -79,8 +98,11 @@ beforeEach(() => {
     normalizedPrimaryDocument: null,
     displayName: "Nome Antigo",
     normalizedName: "nome antigo",
+    normalizedPhone: null,
     nameSource: null,
   }
+  phoneIdentityProfileId = "profile-1"
+  emailIdentityProfileId = null
 })
 
 describe("Achado #7 — fonte sem nome nunca apaga nome bom", () => {
@@ -212,5 +234,63 @@ describe("Precedência por fonte", () => {
     })
 
     expect(lastUpdateData().displayName).toBeUndefined()
+  })
+})
+
+describe("D4 — promoção de perfil email-only para telefone (achado de review PR #1059)", () => {
+  // D4 é o branch de resolveProfileForPhone que promove um perfil que só
+  // tinha e-mail (sem `RadarIdentity` de telefone ainda) quando o telefone
+  // chega pela primeira vez para aquele e-mail. Antes deste teste, este
+  // branch gravava normalizedPhone/displayPhone mas nunca passava pelo
+  // `resolveRadarName` — diferente dos outros dois pontos de escrita de nome
+  // desta mesma função. Aqui simulamos: sem identidade de telefone ainda
+  // (`phoneIdentityProfileId = null`), com identidade de e-mail já
+  // reivindicada por um perfil (`emailIdentityProfileId`) — o que força a
+  // execução do branch D4 em vez do branch 1 (telefone já identificado) ou
+  // do upsert por chave natural.
+  beforeEach(() => {
+    phoneIdentityProfileId = null
+    emailIdentityProfileId = "email-profile-1"
+  })
+
+  it("push name do WhatsApp chegando via D4 NÃO sobrescreve nome curado no CRM", async () => {
+    existingProfile.displayName = "João Pedro Almeida"
+    existingProfile.normalizedName = "joao pedro almeida"
+    existingProfile.nameSource = "crm"
+    existingProfile.normalizedPhone = null // perfil ainda era email-only
+
+    const repo = new RadarRepository()
+    await repo.resolveProfileForPhone(
+      phoneInput({
+        displayName: "Jhow 🔥",
+        normalizedName: "jhow",
+        phoneSource: "whatsapp",
+        normalizedPrimaryEmail: "joao@example.com",
+      })
+    )
+
+    expect(lastUpdateData().normalizedPhone).toBe("5511999999999")
+    expect(lastUpdateData().displayName).toBeUndefined()
+    expect(lastUpdateData().nameSource).toBeUndefined()
+  })
+
+  it("D4 aceita o nome quando o perfil email-only ainda não tem nome usável", async () => {
+    existingProfile.displayName = ""
+    existingProfile.normalizedName = ""
+    existingProfile.nameSource = null
+    existingProfile.normalizedPhone = null
+
+    const repo = new RadarRepository()
+    await repo.resolveProfileForPhone(
+      phoneInput({
+        displayName: "Maria S.",
+        normalizedName: "maria s",
+        phoneSource: "whatsapp",
+        normalizedPrimaryEmail: "maria@example.com",
+      })
+    )
+
+    expect(lastUpdateData().displayName).toBe("Maria S.")
+    expect(lastUpdateData().nameSource).toBe("whatsapp")
   })
 })
