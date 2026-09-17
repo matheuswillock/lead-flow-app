@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import dynamic from "next/dynamic"
-import { BarChart3, Send, X } from "lucide-react"
+import { BarChart3, Send, ShieldAlert, X } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter"
@@ -69,8 +70,11 @@ export function CampanhasContainer({
     campaigns,
     detailCampaign,
     credits,
+    releasingSendingHealth,
+    releaseSendingHealth,
   } = useCampanhasContext()
   const sendingHealthBlocked = Boolean(credits?.sendingHealthBlocked)
+  const canReleaseSendingHealth = Boolean(credits?.canReleaseSendingHealth)
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsDefaultTab, setAnalyticsDefaultTab] = useState<"metrics" | "logs">("metrics")
 
@@ -152,6 +156,38 @@ export function CampanhasContainer({
           </Button>
         </div>
       </div>
+
+      {/*
+        A copy do bloqueio (`formatSendingHealthBlockMessage`) manda o owner
+        "liberar o envio". Sem esta ação o usuário era mandado para um lugar
+        onde nada existia. O botão só aparece quando o servidor confirma que a
+        liberação é possível para QUEM está olhando (`canReleaseSendingHealth`
+        = master + `paused`); `suspended` continua exclusivo do backoffice.
+      */}
+      {sendingHealthBlocked ? (
+        <Alert variant="destructive" data-testid="sending-health-block-alert">
+          <ShieldAlert />
+          <AlertTitle>Envio de campanhas bloqueado</AlertTitle>
+          <AlertDescription>
+            <p>
+              {credits?.sendingHealthBlockReason ??
+                "O envio de campanhas deste time está pausado pela trava de reputação."}
+            </p>
+            {canReleaseSendingHealth ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="max-lg:h-11"
+                disabled={releasingSendingHealth}
+                onClick={() => void releaseSendingHealth()}
+                data-testid="release-sending-health-button"
+              >
+                {releasingSendingHealth ? "Liberando..." : "Liberar envio"}
+              </Button>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <CampaignsOverviewPanel />
 

@@ -59,13 +59,17 @@ export class BackofficeTeamEmailLimitService implements IBackofficeTeamEmailLimi
     )
   }
 
-  async listSendingHealth(teamIds: string[]): Promise<{ teams: TeamSendingHealthItem[] }> {
-    const params = new URLSearchParams({ teamIds: teamIds.join(",") })
+  async listSendingHealth(teamIds?: string[]): Promise<{ teams: TeamSendingHealthItem[] }> {
+    // Sem `teamIds` a rota devolve todos os times fora de `healthy` — é esse
+    // modo que a tela usa, para não esconder time bloqueado sem grant.
+    const query =
+      teamIds && teamIds.length > 0
+        ? `?${new URLSearchParams({ teamIds: teamIds.join(",") }).toString()}`
+        : ""
     return parseOutput<{ teams: TeamSendingHealthItem[] }>(
-      await fetch(
-        `${API_CLIENT_BASE}/backoffice/team-email-sending-health?${params.toString()}`,
-        { cache: "no-store" }
-      )
+      await fetch(`${API_CLIENT_BASE}/backoffice/team-email-sending-health${query}`, {
+        cache: "no-store",
+      })
     )
   }
 

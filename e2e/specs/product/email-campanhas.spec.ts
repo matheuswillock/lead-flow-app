@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { Prisma } from "@prisma/client"
 import { expect, test, type Page, type Request } from "@playwright/test"
 import { formatPermanentBounceAlert } from "@/lib/email/campaign-audience-copy"
 import {
@@ -796,6 +797,16 @@ test.describe("app/[supabaseId]/email/campanhas — trava de reputação", () =>
       await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeDisabled({
         timeout: 30_000,
       })
+
+      // A copy manda "liberar o envio" — a ação TEM que existir aqui para o
+      // master. Antes o endpoint existia sem nenhum consumidor de produto e o
+      // owner ficava sem autoatendimento.
+      await expect(page.getByTestId("sending-health-block-alert")).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByTestId("release-sending-health-button")).toBeVisible({
+        timeout: 30_000,
+      })
     } finally {
       await prisma.emailTeamSettings
         .update({
@@ -803,6 +814,101 @@ test.describe("app/[supabaseId]/email/campanhas — trava de reputação", () =>
           data: {
             sendingHealthStatus: "healthy",
             sendingHealthReason: null,
+            sendingHealthChangedAt: new Date(),
+          },
+        })
+        .catch(() => {})
+    }
+  })
+
+  test("owner libera o envio pela UI e o baseline impede recontar o incidente", async ({
+    page,
+  }) => {
+    const profile = await findE2eMasterProfile()
+    if (!profile?.activeTeamId) {
+      throw new Error("Seed E2E sem time ativo")
+    }
+    const prisma = getPrisma()
+    const teamId = profile.activeTeamId
+    // Janela com o incidente já dentro dela: é exatamente o cenário em que a
+    // liberação virava armadilha (o cron repausava e suspendia em minutos).
+    const incidentWindows = {
+      sent7d: 1000,
+      hardBounced7d: 80,
+      complained7d: 0,
+      sent30d: 4000,
+      hardBounced30d: 80,
+      complained30d: 0,
+    }
+
+    await prisma.emailTeamSettings.upsert({
+      where: { teamId },
+      update: {
+        sendingHealthStatus: "paused",
+        sendingHealthReason: "Envio pausado automaticamente: bounce 8% na janela de 7 dias.",
+        sendingHealthChangedAt: new Date(),
+        sendingHealthMetrics: {
+          computedAt: new Date().toISOString(),
+          windows: incidentWindows,
+          rates: { hardBounceRate7d: 0.08, complaintRate7d: 0, hasMinimumVolume: true },
+          belowWarnSince: null,
+          pauseHistory: [new Date().toISOString()],
+          releaseBaseline: null,
+        },
+      },
+      create: {
+        teamId,
+        sendingHealthStatus: "paused",
+        sendingHealthReason: "Envio pausado automaticamente: bounce 8% na janela de 7 dias.",
+        sendingHealthChangedAt: new Date(),
+      },
+    })
+
+    try {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.locator("h1.text-2xl", { hasText: "Campanhas" })).toBeVisible({
+        timeout: 30_000,
+      })
+
+      const releaseButton = page.getByTestId("release-sending-health-button")
+      await expect(releaseButton).toBeVisible({ timeout: 30_000 })
+      await releaseButton.click()
+
+      // Estado no BANCO, não só o toast.
+      await expect
+        .poll(
+          async () => {
+            const settings = await prisma.emailTeamSettings.findUnique({
+              where: { teamId },
+              select: { sendingHealthStatus: true, sendingHealthMetrics: true },
+            })
+            const metrics = settings?.sendingHealthMetrics as {
+              releaseBaseline?: { at?: string; windows?: { hardBounced7d?: number } }
+            } | null
+            return {
+              status: settings?.sendingHealthStatus ?? null,
+              baselineBounces: metrics?.releaseBaseline?.windows?.hardBounced7d ?? null,
+            }
+          },
+          { timeout: 30_000 }
+        )
+        .toEqual({ status: "warned", baselineBounces: 80 })
+
+      // Com o bloqueio levantado, criar campanha volta a ser possível.
+      await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeEnabled({
+        timeout: 30_000,
+      })
+      await expect(page.getByTestId("sending-health-block-alert")).toHaveCount(0)
+    } finally {
+      await prisma.emailTeamSettings
+        .update({
+          where: { teamId },
+          data: {
+            sendingHealthStatus: "healthy",
+            sendingHealthReason: null,
+            sendingHealthMetrics: Prisma.JsonNull,
             sendingHealthChangedAt: new Date(),
           },
         })

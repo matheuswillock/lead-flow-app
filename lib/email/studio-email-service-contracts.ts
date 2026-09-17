@@ -125,6 +125,12 @@ export interface StudioEmailCampanhasService {
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
+  /**
+   * Liberação manual da trava de reputação pelo owner (`paused` → `warned`).
+   * O host backoffice não expõe a ação: lá a liberação sai pela tela de
+   * limites por time, que também alcança `suspended`.
+   */
+  releaseSendingHealth(supabaseId: string, teamId: string | null | undefined): Promise<void>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<CampaignTemplate[]>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
   getCampaignLogs(

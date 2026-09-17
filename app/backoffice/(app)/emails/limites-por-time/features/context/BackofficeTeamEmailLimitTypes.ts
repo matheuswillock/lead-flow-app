@@ -46,6 +46,8 @@ export type SendingHealthAction = "release" | "pause"
 export interface IBackofficeTeamEmailLimitContext {
   grants: TeamEmailLimitGrantItem[]
   sendingHealthByTeamId: Record<string, TeamSendingHealthItem>
+  /** Times fora de `healthy` SEM limite customizado — invisíveis na tabela de grants. */
+  unlistedSendingHealth: TeamSendingHealthItem[]
   isLoading: boolean
   error: string | null
   isGranting: boolean

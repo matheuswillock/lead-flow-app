@@ -224,6 +224,15 @@ export class CampanhasService implements ICampanhasService {
     return this.parseCampaignsResponse<CreditStatus>(res)
   }
 
+  /** Liberação manual da trava de reputação pelo owner (`paused` → `warned`). */
+  async releaseSendingHealth(supabaseId: string, teamId: string | null | undefined) {
+    const res = await fetch(`${this.baseUrl}/sending-health/release`, {
+      method: 'POST',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
+    await this.parseCampaignsResponse<unknown>(res)
+  }
+
   async getTemplates(supabaseId: string, teamId: string | null | undefined) {
     const res = await fetch(`${this.baseUrl}/templates?scope=campaign`, {
       cache: 'no-store',

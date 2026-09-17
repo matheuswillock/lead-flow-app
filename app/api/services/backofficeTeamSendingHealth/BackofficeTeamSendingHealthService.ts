@@ -6,6 +6,7 @@ import type {
 } from "@/app/api/infra/data/repositories/backofficeTeamSendingHealth/IBackofficeTeamSendingHealthRepository"
 import {
   buildPauseSnapshotFromExisting,
+  buildReleaseSnapshotFromExisting,
   buildSendingHealthSuspendReason,
   resolveManualSendingHealthRelease,
   SENDING_HEALTH_SUSPEND_PAUSE_COUNT,
@@ -65,6 +66,9 @@ export class BackofficeTeamSendingHealthService
         status: release.next,
         reason: release.reason,
         changedAt: now,
+        // Mesma marca de água da liberação do produto: sem ela o cron
+        // recontaria o incidente já liberado e re-suspenderia o time.
+        snapshot: buildReleaseSnapshotFromExisting(meta?.metricsJson ?? null, now),
       })
       return { ok: true, status: release.next }
     }

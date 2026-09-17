@@ -4729,17 +4729,29 @@ export class EmailCampaignUseCase {
       }
     )
 
-    await this.failDispatchOnDomainGuard(dispatch, abortMessage)
-    await this.deferSiblingScheduledPartsAfterAbort(dispatch, dispatchLabel).catch((deferError) => {
-      console.error("[EmailCampaignUseCase][abortByBounce][deferSiblings]", deferError)
-    })
+    // ORDEM DE EFEITO COLATERAL — não reordenar sem controle negativo.
+    //
+    // A pausa vem PRIMEIRO e sem `.catch`. Ela é o único efeito que segura as
+    // partes irmãs no próximo tick do cron (`isSendingHealthBlocked`);
+    // `deferSiblingScheduledPartsAfterAbort` só grava `errorMessage` e deixa o
+    // status `scheduled`. Se a pausa falhasse DEPOIS de finalizar a parte
+    // abortada, engolir o erro devolveria "abort ok" para a fila, o wake seria
+    // ackado, e as irmãs continuariam elegíveis — o sangramento que o abort
+    // existe para cortar seguiria em frente.
+    //
+    // Deixar o erro propagar é seguro porque todo o abort é idempotente:
+    // `getDispatchBounceStats` continua acima do limiar no retry e
+    // `pauseTeamSendingHealthAfterAbort` sai cedo quando o time já está
+    // paused/suspended.
     await this.pauseTeamSendingHealthAfterAbort({
       teamId: dispatch.teamId,
       dispatchLabel,
       hardBounceRate,
       sentCount: stats.sentCount,
-    }).catch((pauseError) => {
-      console.error("[EmailCampaignUseCase][abortByBounce][pauseTeam]", pauseError)
+    })
+    await this.failDispatchOnDomainGuard(dispatch, abortMessage)
+    await this.deferSiblingScheduledPartsAfterAbort(dispatch, dispatchLabel).catch((deferError) => {
+      console.error("[EmailCampaignUseCase][abortByBounce][deferSiblings]", deferError)
     })
 
     return new Output(false, [], [abortMessage], {

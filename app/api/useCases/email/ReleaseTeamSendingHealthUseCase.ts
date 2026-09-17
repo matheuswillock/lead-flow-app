@@ -3,7 +3,10 @@ import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-ch
 import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import type { IEmailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/IEmailSendingHealthRepository"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
-import { resolveManualSendingHealthRelease } from "@/lib/email/sending-health"
+import {
+  buildReleaseSnapshotFromExisting,
+  resolveManualSendingHealthRelease,
+} from "@/lib/email/sending-health"
 
 /**
  * Liberação MANUAL da trava de reputação pelo lado do PRODUTO: somente o
@@ -42,6 +45,10 @@ export class ReleaseTeamSendingHealthUseCase {
       const now = new Date()
       await this.repository.updateTeamSendingHealth({
         teamId: ctx.teamId,
+        // Marca de água obrigatória: sem ela o cron reclassifica `pause` sobre
+        // o MESMO incidente no tick seguinte, empilha a 2ª pausa em 30 dias e
+        // o time liberado cai em `suspended` — que só o backoffice desfaz.
+        snapshot: buildReleaseSnapshotFromExisting(state.metricsJson, now),
         transition: { status: release.next, reason: release.reason, changedAt: now },
       })
 

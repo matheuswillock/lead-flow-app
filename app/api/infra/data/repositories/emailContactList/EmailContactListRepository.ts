@@ -34,8 +34,22 @@ export type ContactListQuarantineState = {
  * importação marca a lista, a liberação é explícita por manager/owner, e o
  * disparo de campanha consulta antes de montar audiência.
  */
+/** Client Prisma OU transação — quem chama decide a fronteira transacional. */
+export type PrismaExecutor = Prisma.TransactionClient | typeof prisma
+
 export interface IEmailContactListQuarantineRepository {
   quarantineList(params: { listId: string; reason: string; now: Date }): Promise<void>
+  /**
+   * Quarentena de N listas dentro de uma transação de quem chama. Existe para
+   * o finalize da importação poder commitar status terminal do job E a
+   * quarentena no MESMO commit — fora de transação, uma quarentena que falha
+   * depois do job já `completed` nunca mais é reaplicada (o job não volta à
+   * fila) e a lista de risco ALTO fica sendável em silêncio.
+   */
+  quarantineListsWithin(
+    executor: PrismaExecutor,
+    params: { listIds: string[]; reason: string; now: Date }
+  ): Promise<void>
   releaseQuarantine(params: {
     listId: string
     teamId: string
@@ -125,8 +139,21 @@ class EmailContactListRepository {
 
   /** Import de risco ALTO: a lista sai de circulação até liberação explícita. */
   async quarantineList(params: { listId: string; reason: string; now: Date }): Promise<void> {
-    await prisma.emailContactList.update({
-      where: { id: params.listId },
+    await this.quarantineListsWithin(prisma, {
+      listIds: [params.listId],
+      reason: params.reason,
+      now: params.now,
+    })
+  }
+
+  async quarantineListsWithin(
+    executor: PrismaExecutor,
+    params: { listIds: string[]; reason: string; now: Date }
+  ): Promise<void> {
+    const uniqueIds = [...new Set(params.listIds.filter(Boolean))]
+    if (uniqueIds.length === 0) return
+    await executor.emailContactList.updateMany({
+      where: { id: { in: uniqueIds } },
       data: {
         isQuarantined: true,
         quarantinedAt: params.now,

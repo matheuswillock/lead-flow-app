@@ -163,6 +163,21 @@ export class BackofficeCampanhasService implements StudioEmailCampanhasService {
     }
   }
 
+  /**
+   * Host backoffice não libera a trava de reputação por aqui: a rota de
+   * produto exige o master do time, e `suspended` só sai pela tela de limites
+   * por time. Sem ação disponível, `canReleaseSendingHealth` fica falso e o
+   * botão nunca aparece — este método existe só para satisfazer o contrato.
+   */
+  async releaseSendingHealth(
+    _supabaseId: string,
+    _teamId: string | null | undefined
+  ): Promise<void> {
+    throw new Error(
+      "Libere o envio deste time em Backoffice → E-mails → Limites por time."
+    )
+  }
+
   async getTemplates(
     supabaseId: string,
     teamId: string | null | undefined

@@ -80,6 +80,7 @@ export function BackofficeTeamEmailLimitContainer() {
   const {
     grants,
     sendingHealthByTeamId,
+    unlistedSendingHealth,
     isLoading,
     error,
     isGranting,
@@ -100,8 +101,11 @@ export function BackofficeTeamEmailLimitContainer() {
   const [maxEmailsPerDay, setMaxEmailsPerDay] = useState("5000")
   const [notes, setNotes] = useState("")
   const [revokeTarget, setRevokeTarget] = useState<TeamEmailLimitGrantItem | null>(null)
+  // Alvo por teamId, não por grant: time bloqueado SEM limite customizado
+  // também precisa da ação de liberar (só o backoffice desfaz `suspended`).
   const [healthActionTarget, setHealthActionTarget] = useState<{
-    grant: TeamEmailLimitGrantItem
+    teamId: string
+    teamName: string
     action: SendingHealthAction
   } | null>(null)
 
@@ -171,8 +175,8 @@ export function BackofficeTeamEmailLimitContainer() {
 
   async function handleSendingHealthAction() {
     if (!healthActionTarget) return
-    const { grant: targetGrant, action } = healthActionTarget
-    const ok = await applySendingHealthAction(targetGrant.teamId, action)
+    const { teamId, action } = healthActionTarget
+    const ok = await applySendingHealthAction(teamId, action)
     if (ok) {
       toast.success(action === "release" ? "Envio liberado" : "Envio pausado")
       setHealthActionTarget(null)
@@ -271,7 +275,11 @@ export function BackofficeTeamEmailLimitContainer() {
                             <DropdownMenuItem
                               disabled={isApplyingHealthTeamId === item.teamId}
                               onClick={() =>
-                                setHealthActionTarget({ grant: item, action: "release" })
+                                setHealthActionTarget({
+                                  teamId: item.teamId,
+                                  teamName: item.team.name,
+                                  action: "release",
+                                })
                               }
                             >
                               Liberar envio
@@ -280,7 +288,11 @@ export function BackofficeTeamEmailLimitContainer() {
                             <DropdownMenuItem
                               disabled={isApplyingHealthTeamId === item.teamId}
                               onClick={() =>
-                                setHealthActionTarget({ grant: item, action: "pause" })
+                                setHealthActionTarget({
+                                  teamId: item.teamId,
+                                  teamName: item.team.name,
+                                  action: "pause",
+                                })
                               }
                             >
                               Pausar envio
@@ -303,6 +315,76 @@ export function BackofficeTeamEmailLimitContainer() {
           </TableBody>
         </Table>
       </div>
+
+      {/*
+        Segunda tabela, não uma coluna a mais: estes times não têm limite
+        customizado, então não existe linha de grant onde caberiam. Sem isso um
+        time `suspended` sem grant ficava invisível — e suspensão só sai pelo
+        backoffice, ou seja, o suporte não tinha por onde destravar.
+      */}
+      {!isLoading && unlistedSendingHealth.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <div>
+            <h3 className="text-sm font-medium">Times sem limite customizado</h3>
+            <p className="text-sm text-muted-foreground">
+              Fora de &quot;saudável&quot; pela trava de reputação. Suspensão só sai por aqui.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Master</TableHead>
+                  <TableHead>Saúde de envio</TableHead>
+                  <TableHead>Desde</TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unlistedSendingHealth.map((team) => {
+                  const healthBadge = resolveSendingHealthBadge(team)
+                  const healthBlocked = isSendingBlockedStatus(team.status)
+                  return (
+                    <TableRow key={team.teamId}>
+                      <TableCell className="font-medium">{team.teamName}</TableCell>
+                      <TableCell>{team.masterName || "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant={healthBadge.variant} title={team.reason ?? undefined}>
+                          {healthBadge.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {team.changedAt
+                          ? formatIntimezone(new Date(team.changedAt), "dd/MM/yyyy HH:mm", tz)
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {healthBlocked ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isApplyingHealthTeamId === team.teamId}
+                            onClick={() =>
+                              setHealthActionTarget({
+                                teamId: team.teamId,
+                                teamName: team.teamName,
+                                action: "release",
+                              })
+                            }
+                          >
+                            Liberar envio
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : null}
 
       <Dialog open={grantOpen} onOpenChange={setGrantOpen}>
         <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-lg">
@@ -406,13 +488,13 @@ export function BackofficeTeamEmailLimitContainer() {
             <AlertDialogDescription>
               {healthActionTarget?.action === "release" ? (
                 <>
-                  O time <strong>{healthActionTarget?.grant.team.name}</strong> volta ao status
+                  O time <strong>{healthActionTarget?.teamName}</strong> volta ao status
                   de alerta e pode disparar campanhas novamente. A recuperação plena exige 14
                   dias com taxas abaixo do limiar.
                 </>
               ) : (
                 <>
-                  O time <strong>{healthActionTarget?.grant.team.name}</strong> fica impedido de
+                  O time <strong>{healthActionTarget?.teamName}</strong> fica impedido de
                   criar e disparar campanhas; partes agendadas serão adiadas com motivo visível.
                   A pausa conta para o gatilho de suspensão (2 pausas em 30 dias).
                 </>

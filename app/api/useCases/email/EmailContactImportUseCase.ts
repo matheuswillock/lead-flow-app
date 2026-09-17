@@ -643,8 +643,13 @@ export class EmailContactImportUseCase {
       data: { totalContacts: totalCount },
     })
 
+    // `!listIsSystemDefault` é exatamente a condição de `fanOutToDefaultList`
+    // em `importContactsBatch`: quando ela vale, os MESMOS contatos também
+    // foram replicados na lista padrão ("Todos contatos").
+    let fanOutListId: string | null = null
     if (!listIsSystemDefault) {
       const defaultList = await this.ensureDefaultList(ctx)
+      fanOutListId = defaultList.id
       const defaultTotalCount = await this.db.emailContact.count({
         where: { listId: defaultList.id },
       })
@@ -661,33 +666,47 @@ export class EmailContactImportUseCase {
     const status =
       failedBatches.length > 0 ? "completed_with_errors" : "completed"
 
-    await this.db.emailImportJob.update({
-      where: { id: job.id },
-      data: {
-        status,
-        ...(verdict
-          ? {
-              validationCounts: verdict.counts as Prisma.InputJsonValue,
-              riskLevel: verdict.riskLevel,
-            }
-          : {}),
-      },
-    })
-
     // Quarentena: risco ALTO tira a lista de circulação — ela não entra em
     // audiência de campanha até liberação explícita (manager/owner) no
     // relatório de importação.
-    let quarantined = false
-    if (verdict?.riskLevel === "high") {
-      const quarantineReason = `Importação ${job.importId} com risco ALTO — ${formatImportVerdictSummary(verdict.counts)}.`
-      await emailContactListRepository.quarantineList({
-        listId: job.listId,
+    //
+    // A CÓPIA DO FAN-OUT ENTRA JUNTO. Quarentenar só `job.listId` deixava a
+    // mesma audiência de risco ALTO enviável por "Todos contatos":
+    // `findQuarantinedLists` só bloqueia lista com `isQuarantined: true`, e a
+    // lista padrão não era marcada — o gate inteiro ficava contornável
+    // escolhendo outra lista no seletor de audiência.
+    const quarantineListIds =
+      verdict?.riskLevel === "high" ? [job.listId, ...(fanOutListId ? [fanOutListId] : [])] : []
+    const quarantined = quarantineListIds.length > 0
+    const quarantineReason = `Importação ${job.importId} com risco ALTO — ${formatImportVerdictSummary(verdict?.counts ?? {})}.`
+
+    // ATOMICIDADE: status terminal do job e quarentena no MESMO commit. Marcar
+    // `completed` antes e quarentenar depois deixava uma janela permanente —
+    // job fora de `pending`/`processing` (nenhum retry o reclama) com a lista
+    // de risco ALTO ainda enviável se a segunda escrita falhasse.
+    await this.db.$transaction(async (tx) => {
+      await tx.emailImportJob.update({
+        where: { id: job.id },
+        data: {
+          status,
+          ...(verdict
+            ? {
+                validationCounts: verdict.counts as Prisma.InputJsonValue,
+                riskLevel: verdict.riskLevel,
+              }
+            : {}),
+        },
+      })
+      await emailContactListRepository.quarantineListsWithin(tx, {
+        listIds: quarantineListIds,
         reason: quarantineReason,
         now: new Date(),
       })
-      quarantined = true
+    })
+
+    if (quarantined) {
       console.info(
-        `[EmailContactImport][${job.importId}] Lista ${job.listId} quarentenada — risco ALTO`
+        `[EmailContactImport][${job.importId}] Lista(s) ${quarantineListIds.join(", ")} quarentenada(s) — risco ALTO`
       )
     }
 
@@ -702,8 +721,14 @@ export class EmailContactImportUseCase {
     const verdictSuffix = verdict
       ? ` Veredito: ${formatImportVerdictSummary(verdict.counts)} · risco ${IMPORT_RISK_LEVEL_LABELS[verdict.riskLevel]}.`
       : ""
+    // A cópia do fan-out também é declarada: sem isso o usuário não entende
+    // por que "Todos contatos" parou de aparecer na audiência.
+    const fanOutQuarantineNote =
+      quarantined && fanOutListId
+        ? ` A lista padrão "${DEFAULT_LIST_NAME}" recebeu os mesmos contatos e também entrou em quarentena.`
+        : ""
     const quarantineSuffix = quarantined
-      ? ` A lista "${verdict?.listName ?? ""}" foi colocada em quarentena e não entra em campanhas até liberação explícita.`
+      ? ` A lista "${verdict?.listName ?? ""}" foi colocada em quarentena e não entra em campanhas até liberação explícita.${fanOutQuarantineNote}`
       : ""
     const message =
       `Importação concluída: ${job.importedCount} importados, ${job.skippedCount} recusados, ${job.updatedCount} atualizados, ${failedBatchCount} lote(s) com falha.` +
@@ -732,6 +757,7 @@ export class EmailContactImportUseCase {
               validationCounts: verdict.counts,
               riskLevel: verdict.riskLevel,
               quarantined,
+              quarantinedListIds: quarantineListIds,
             }
           : {}),
       },

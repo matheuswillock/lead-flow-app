@@ -1,15 +1,20 @@
 import { describe, expect, it } from "bun:test"
 import {
+  applySendingHealthReleaseBaseline,
   buildPauseSnapshotFromExisting,
+  buildReleaseSnapshotFromExisting,
   classifySendingHealthSeverity,
   computeSendingHealthRates,
   formatDispatchBounceAbortMessage,
   isSendingHealthBlocked,
+  parseSendingHealthReleaseBaseline,
+  parseSendingHealthSnapshot,
   resolveManualSendingHealthRelease,
   resolveSendingHealthTransition,
   shouldAbortDispatchForBounceSpike,
   SENDING_HEALTH_ABORT_MIN_SENT,
   SENDING_HEALTH_MIN_SENDS_7D,
+  SENDING_HEALTH_RELEASE_BASELINE_DAYS,
   type SendingHealthRates,
   type SendingHealthWindowMetrics,
 } from "./sending-health"
@@ -283,5 +288,109 @@ describe("buildPauseSnapshotFromExisting — pausa fora do cron", () => {
     const { snapshot, pauseCount } = buildPauseSnapshotFromExisting(null, NOW)
     expect(pauseCount).toBe(1)
     expect(snapshot.windows.sent7d).toBe(0)
+  })
+})
+
+describe("baseline de liberação — o incidente não pode ser contado duas vezes", () => {
+  const incidentWindows = windows({ sent7d: 1000, hardBounced7d: 80 })
+
+  function releasedSnapshot(releasedAt: Date) {
+    return buildReleaseSnapshotFromExisting(
+      {
+        computedAt: releasedAt.toISOString(),
+        windows: incidentWindows,
+        rates: computeSendingHealthRates(incidentWindows),
+        belowWarnSince: null,
+        pauseHistory: [daysAgo(1).toISOString()],
+      },
+      releasedAt
+    )
+  }
+
+  it("grava a marca de água com as janelas do instante da liberação", () => {
+    const snapshot = releasedSnapshot(NOW)
+    expect(snapshot.releaseBaseline?.at).toBe(NOW.toISOString())
+    expect(snapshot.releaseBaseline?.windows.hardBounced7d).toBe(80)
+    // A pausa liberada CONTINUA no histórico: 2 pausas em 30 dias ainda
+    // suspendem — desde que a segunda venha de envio novo.
+    expect(snapshot.pauseHistory).toHaveLength(1)
+  })
+
+  it("REGRESSÃO: logo após liberar, a MESMA janela não repausa o time", () => {
+    const releasedAt = daysAgo(0.01)
+    const parsed = parseSendingHealthSnapshot(releasedSnapshot(releasedAt))
+    const applied = applySendingHealthReleaseBaseline({
+      windows: incidentWindows,
+      baseline: parsed.releaseBaseline,
+      now: NOW,
+    })
+    // Janela líquida zerada ⇒ sem volume mínimo ⇒ severidade `ok`.
+    expect(applied.windows.sent7d).toBe(0)
+    expect(applied.windows.hardBounced7d).toBe(0)
+
+    const transition = resolveSendingHealthTransition({
+      current: "warned",
+      rates: computeSendingHealthRates(applied.windows),
+      now: NOW,
+      belowWarnSince: parsed.belowWarnSince,
+      pauseHistory: parsed.pauseHistory,
+    })
+    expect(transition.next).not.toBe("suspended")
+    expect(transition.next).not.toBe("paused")
+    expect(transition.pauseHistory).toHaveLength(1)
+  })
+
+  it("envio NOVO e ruim depois da liberação repausa — e suspende (2ª pausa em 30d)", () => {
+    const releasedAt = daysAgo(1)
+    const parsed = parseSendingHealthSnapshot(releasedSnapshot(releasedAt))
+    // +400 envios novos com 40 hard bounces = 10% na janela líquida.
+    const afterRelease = windows({ sent7d: 1400, hardBounced7d: 120 })
+    const applied = applySendingHealthReleaseBaseline({
+      windows: afterRelease,
+      baseline: parsed.releaseBaseline,
+      now: NOW,
+    })
+    expect(applied.windows.sent7d).toBe(400)
+    expect(applied.windows.hardBounced7d).toBe(40)
+
+    const transition = resolveSendingHealthTransition({
+      current: "warned",
+      rates: computeSendingHealthRates(applied.windows),
+      now: NOW,
+      belowWarnSince: null,
+      pauseHistory: parsed.pauseHistory,
+    })
+    expect(transition.next).toBe("suspended")
+  })
+
+  it(`o baseline expira em ${SENDING_HEALTH_RELEASE_BASELINE_DAYS} dias — depois a janela crua volta a valer`, () => {
+    const baseline = {
+      at: daysAgo(SENDING_HEALTH_RELEASE_BASELINE_DAYS).toISOString(),
+      windows: incidentWindows,
+    }
+    const applied = applySendingHealthReleaseBaseline({
+      windows: incidentWindows,
+      baseline,
+      now: NOW,
+    })
+    expect(applied.baseline).toBeNull()
+    expect(applied.windows.sent7d).toBe(1000)
+  })
+
+  it("uma pausa nova apaga o baseline anterior", () => {
+    const { snapshot } = buildPauseSnapshotFromExisting(releasedSnapshot(daysAgo(1)), NOW)
+    expect(snapshot.releaseBaseline).toBeNull()
+  })
+
+  it("JSON sem baseline: parse devolve null e a janela passa intacta", () => {
+    expect(parseSendingHealthSnapshot({ pauseHistory: [] }).releaseBaseline).toBeNull()
+    expect(parseSendingHealthReleaseBaseline(null)).toBeNull()
+    expect(parseSendingHealthReleaseBaseline({ releaseBaseline: { at: "nao-e-data" } })).toBeNull()
+    const applied = applySendingHealthReleaseBaseline({
+      windows: incidentWindows,
+      baseline: null,
+      now: NOW,
+    })
+    expect(applied.windows).toEqual(incidentWindows)
   })
 })
