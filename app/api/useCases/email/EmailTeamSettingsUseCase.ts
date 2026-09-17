@@ -701,6 +701,25 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
+        // O gate de DNS abaixo lê `currentDomain.records`, que descreve o
+        // subdomínio de tracking ATUAL no Resend. Se este mesmo request troca o
+        // subdomínio, aquele snapshot é do hostname ANTIGO: o gate passaria com
+        // o CNAME velho e o clique seria ligado sobre um hostname ainda sem
+        // CNAME verificado — links quebrados no e-mail entregue. Trocar o
+        // subdomínio e ligar o clique são, por isso, duas operações: primeiro
+        // salva o subdomínio com o clique desligado, verifica o DNS novo,
+        // depois liga.
+        if (!trackingAlreadyConfigured) {
+          return new Output(
+            false,
+            [],
+            [
+              `O subdomínio de tracking está mudando para ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}. Salve a troca com o rastreio de cliques desligado, aguarde o CNAME novo aparecer verificado no Resend e só então ligue o rastreio de cliques.`,
+            ],
+            null
+          )
+        }
+
         // Checkpoint: sem o CNAME de Tracking verificado o rewrite produziria
         // links quebrados no e-mail entregue. `false` E `undefined` bloqueiam.
         const trackingDnsVerified = deriveTrackingDnsVerified(currentDomain.records)

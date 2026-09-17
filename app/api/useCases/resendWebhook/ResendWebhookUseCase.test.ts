@@ -416,4 +416,56 @@ describe("ResendWebhookUseCase", () => {
     expect(call.origin?.classification).toBe("bot")
     expect(call.origin?.botSource).toBe("scanner")
   })
+
+  it("abertura órfã é enfileirada COM a classificação de origem (os sinais crus morrem aqui)", async () => {
+    queueOrphanEventMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValue(null)
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.opened",
+        created_at: "2026-09-17T16:04:07.000Z",
+        data: {
+          email_id: "re_orphan_open",
+          created_at: "2026-09-17T16:03:54.000Z",
+          tags: { team_id: "team-1" },
+          open: {
+            ipAddress: "74.125.210.9",
+            userAgent: "Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)",
+            timestamp: "2026-09-17T16:04:07.000Z",
+          },
+        },
+      },
+    })
+
+    expect(queueOrphanEventMock).toHaveBeenCalled()
+    const queued = queueOrphanEventMock.mock.calls[0] as unknown as [
+      { originHint?: { classification: string; botSource?: string } },
+    ]
+    expect(queued[0].originHint?.classification).toBe("bot")
+    expect(queued[0].originHint?.botSource).toBe("gmail-proxy")
+    // IP nunca viaja para a fila — só o resultado da classificação.
+    expect(JSON.stringify(queued[0])).not.toContain("74.125.210.9")
+  })
+
+  it("órfão de tipo sem sinal de origem (delivered) é enfileirado sem originHint", async () => {
+    queueOrphanEventMock.mockClear()
+    findByResendEmailIdMock.mockResolvedValue(null)
+
+    const useCase = new ResendWebhookUseCase(createWebhookService(), publishResendWebhookRadarEventMock)
+    await useCase.handle({
+      event: {
+        type: "email.delivered",
+        data: {
+          email_id: "re_orphan_delivered",
+          created_at: "2026-09-17T16:03:54.000Z",
+          tags: { team_id: "team-1" },
+        },
+      },
+    })
+
+    const queued = queueOrphanEventMock.mock.calls[0] as unknown as [{ originHint?: unknown }]
+    expect(queued[0].originHint).toBeUndefined()
+  })
 })

@@ -2914,6 +2914,7 @@ completed completed
     String resendEventType 
     DateTime occurredAt 
     Json tagsHint "❓"
+    Json originHint "❓"
     EmailOrphanEventStatus status 
     Int attempts 
     String lastError "❓"

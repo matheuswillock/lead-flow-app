@@ -239,6 +239,50 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
     expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({ clickTracking: true })
   })
 
+  it("recusa ligar o clique no MESMO request que troca o subdomínio de tracking", async () => {
+    // `records` continua verificado — mas descreve o CNAME de `links.…`, o
+    // subdomínio antigo. Sem este bloqueio o gate de DNS passaria com o
+    // registro velho e o clique seria ligado sobre `cliques.…`, ainda sem CNAME.
+    const output = await buildUseCase().configureDomainTracking(
+      { trackingSubdomain: "cliques", openTracking: true, clickTracking: true },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("cliques.empresaxyz.com.br")
+    expect(domainsUpdateMock).not.toHaveBeenCalled()
+  })
+
+  it("trocar o subdomínio com o clique JÁ ligado também é bloqueado até o DNS novo verificar", async () => {
+    findSettingsMock.mockImplementation(async () =>
+      settingsRecord({ resendClickTracking: true })
+    )
+
+    // `clickTracking` ausente preserva `true` — o rewrite continuaria ativo
+    // enquanto o hostname muda debaixo dele.
+    const output = await buildUseCase().configureDomainTracking(
+      { trackingSubdomain: "cliques", openTracking: true },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("desligado")
+    expect(domainsUpdateMock).not.toHaveBeenCalled()
+  })
+
+  it("troca o subdomínio normalmente quando o clique está desligado", async () => {
+    const output = await buildUseCase().configureDomainTracking(
+      { trackingSubdomain: "cliques", openTracking: true, clickTracking: false },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(true)
+    expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({
+      trackingSubdomain: "cliques",
+      clickTracking: false,
+    })
+  })
+
   it("desligar o clique não exige gate nenhum", async () => {
     findSettingsMock.mockImplementation(async () =>
       settingsRecord({ resendClickTracking: true, resendDomainStatus: "pending" })

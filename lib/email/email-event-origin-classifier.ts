@@ -239,6 +239,32 @@ export function classifyEmailEventOrigin(input: ClassifyEmailEventOriginInput): 
 }
 
 /**
+ * Reaplica a regra 3 (delta entrega→evento) sobre uma classificação já
+ * computada SEM conhecer a entrega.
+ *
+ * É o caso do evento órfão: quando o open/clique chega antes do `EmailLog`, o
+ * classificador roda no webhook com `deliveredAt` desconhecido e a janela de
+ * pré-fetch não pôde ser avaliada. No dreno, com o log em mãos, o delta
+ * finalmente existe — e evento a menos de
+ * `PREFETCH_DELIVERY_DELTA_MAX_SECONDS` da entrega é pré-fetch, não leitura.
+ *
+ * Só rebaixa: origem já classificada como `bot` fica como está (a evidência de
+ * UA/IP é mais específica que a de tempo).
+ */
+export function reinforceOriginWithDeliveryDelta(
+  origin: EmailEventOrigin,
+  input: { occurredAt: Date; deliveredAt?: Date | null }
+): EmailEventOrigin {
+  if (origin.classification === "bot") return origin
+  if (!isWithinPrefetchWindow(input.occurredAt, input.deliveredAt)) return origin
+  return {
+    classification: "bot",
+    botSource: "generic",
+    ...(origin.uaFamily ? { uaFamily: origin.uaFamily } : {}),
+  }
+}
+
+/**
  * Extrai a classificação persistida de um `EmailEvent.metadata` (ou do
  * metadata que trafega nas filas). Devolve null quando o evento nunca passou
  * pelo classificador (histórico pré-classificador sem backfill, clique

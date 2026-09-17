@@ -48,6 +48,32 @@ export class ResendWebhookUseCase {
     ) => Promise<{ messageId: string | null }> = defaultPublishRadarEvent
   ) {}
 
+  /**
+   * Origem de `opened`/`clicked` a partir dos sinais crus do payload. Os
+   * demais tipos não têm origem — devolve `undefined`.
+   *
+   * `deliveredAt` é opcional de propósito: no caminho órfão o `EmailLog` ainda
+   * não existe e a janela de pré-fetch não pode ser avaliada aqui; ela é
+   * reaplicada no dreno (`reinforceOriginWithDeliveryDelta`).
+   */
+  private classifyEventOrigin(input: {
+    event: ResendWebhookPayload
+    eventType: EmailEventType
+    occurredAt: Date
+    deliveredAt: Date | null
+  }): EmailEventOrigin | undefined {
+    const { event, eventType, occurredAt, deliveredAt } = input
+    if (eventType !== "opened" && eventType !== "clicked") return undefined
+
+    const rawSignals = eventType === "opened" ? event.data.open : event.data.click
+    return classifyEmailEventOrigin({
+      userAgent: rawSignals?.userAgent ?? null,
+      ipAddress: rawSignals?.ipAddress ?? null,
+      occurredAt,
+      deliveredAt,
+    })
+  }
+
   async handle(input: HandleResendWebhookInput): Promise<Output> {
     const { event, svixId } = input
 
@@ -105,6 +131,12 @@ export class ResendWebhookUseCase {
             resendEventType: event.type,
             occurredAt,
             tagsHint,
+            // Os sinais crus de origem só existem NESTE payload: o dreno roda
+            // minutos depois, sem user-agent nem IP. Sem o carimbo aqui, todo
+            // open/clique recuperado voltaria sem origem e ficaria fora de
+            // `humanOpenedAt` e dos segmentos humanos do Radar. A janela de
+            // pré-fetch é reavaliada no dreno, quando a entrega é conhecida.
+            originHint: this.classifyEventOrigin({ event, eventType, occurredAt, deliveredAt: null }),
           })
         }
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
@@ -115,17 +147,13 @@ export class ResendWebhookUseCase {
         // provedor (Gmail image proxy, Apple MPP) e scanners não contam como
         // engajamento humano. Decisão do owner (17/09): origem não-humana NÃO
         // conta nas métricas de "Aberturas reais".
-        let origin: EmailEventOrigin | undefined
-        if (eventType === "opened" || eventType === "clicked") {
-          const rawSignals = eventType === "opened" ? event.data.open : event.data.click
-          origin = classifyEmailEventOrigin({
-            userAgent: rawSignals?.userAgent ?? null,
-            ipAddress: rawSignals?.ipAddress ?? null,
-            occurredAt,
-            deliveredAt: log.deliveredAt,
-          })
-          metadata.origin = origin
-        }
+        const origin = this.classifyEventOrigin({
+          event,
+          eventType,
+          occurredAt,
+          deliveredAt: log.deliveredAt,
+        })
+        if (origin) metadata.origin = origin
 
         await this.webhookService.processEmailLogWebhook({
           log,

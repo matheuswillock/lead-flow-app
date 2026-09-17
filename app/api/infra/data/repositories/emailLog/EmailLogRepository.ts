@@ -103,12 +103,33 @@ export class EmailLogRepository implements IEmailLogRepository {
       ? { [timestampField[eventType]!]: occurredAt }
       : {}
 
+    // Clique de origem NÃO-HUMANA não é engajamento: o scanner corporativo
+    // (Safe Links, Proofpoint) segue todo link do e-mail antes do destinatário
+    // ler. Sem este corte, `clickedAt` + `totalClicked` afirmavam que a pessoa
+    // clicou — a mesma mentira que o filtro de robôs existe para desfazer.
+    //
+    // Assimetria proposital com `opened`: o bruto `openedAt` continua sendo
+    // reivindicado por qualquer open (a UI mostra as duas camadas, "Aberturas
+    // reais" e bruto), enquanto o clique tem uma camada só. Excluir aqui é o
+    // que mantém `totalClicked` coerente com o que a tela promete.
+    //
+    // O `EmailEvent` continua gravado com `metadata.origin.classification =
+    // 'bot'`: a trilha do clique do robô não se perde, ela só não conta. Um
+    // clique humano posterior ainda encontra `clickedAt` nulo e reivindica.
+    //
+    // Só `bot` CLASSIFICADO é excluído — `unknown` e ausência de classificação
+    // (clique first-party, histórico pré-classificador) continuam contando.
+    const isBotOriginClick = eventType === "clicked" && origin?.classification === "bot"
+
     const statusPriority: string[] = [
       "complained", "bounced", "suppressed", "failed", "clicked", "opened", "delivered", "sent", "queued",
     ]
     const currentStatusIdx = statusPriority.indexOf(log.status as EmailEventType)
     const newStatusIdx = statusPriority.indexOf(eventType)
-    const shouldUpdateStatus = newStatusIdx !== -1 && (currentStatusIdx === -1 || newStatusIdx < currentStatusIdx)
+    const shouldUpdateStatus =
+      !isBotOriginClick &&
+      newStatusIdx !== -1 &&
+      (currentStatusIdx === -1 || newStatusIdx < currentStatusIdx)
 
     try {
       await withDeadlockRetry(async () => {
@@ -146,7 +167,9 @@ export class EmailLogRepository implements IEmailLogRepository {
           // ou duas visualizações do mesmo formulário — leem `null` juntos e
           // ambos incrementam o contador. A unique do EmailEvent não segura,
           // porque ela inclui `occurredAt` e os dois carimbos diferem.
-          const timestampFieldName = timestampField[eventType]
+          // `undefined` no clique de robô: sem campo para reivindicar, não há
+          // claim, não há promoção de status e nenhum contador sobe.
+          const timestampFieldName = isBotOriginClick ? undefined : timestampField[eventType]
           const statusUpdate = shouldUpdateStatus
             ? { status: eventType as never }
             : {}
