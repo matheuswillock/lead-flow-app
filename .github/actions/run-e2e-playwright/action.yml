@@ -191,7 +191,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if ! bun run test:integration; then
+        if command -v ionice >/dev/null 2>&1; then
+          RUN_INTEGRATION="ionice -c3 nice -n 19"
+        else
+          RUN_INTEGRATION="nice -n 19"
+        fi
+        if ! ${RUN_INTEGRATION} bun run test:integration; then
           echo "::error title=Testes de integração reprovaram::bun run test:integration falhou. A falha é dos TESTES DE INTEGRAÇÃO contra o Postgres :55322, não do Playwright — este job hospeda os dois. Reproduza local com: bun run test:integration:local"
           exit 1
         fi
