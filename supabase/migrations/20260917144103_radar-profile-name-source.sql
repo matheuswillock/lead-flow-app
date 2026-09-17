@@ -10,6 +10,10 @@
 -- `nameSource String? @db.Text`. Nome físico da tabela vem do
 -- @@map("corretor_studio_radar_profiles"); as colunas não têm @map, então são
 -- camelCase entre aspas.
+--
+-- Re-timestampada em 2026-09-17 (PR #1059): o arquivo original
+-- (20260825151952) ficou órfão frente ao histórico de supabase/migrations/
+-- que já passou por 2026-09-16 durante a revisão do PR. Corpo SQL idêntico.
 
 ALTER TABLE "public"."corretor_studio_radar_profiles"
   ADD COLUMN IF NOT EXISTS "nameSource" TEXT;
