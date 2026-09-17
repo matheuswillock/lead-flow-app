@@ -774,7 +774,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       } else {
         toast.info("DNS ainda não propagado. Verifique novamente em alguns minutos.")
       }
-      void handleLoadFormDomainRecords()
+      // Verificado esconde a tabela de registros — e reler aqui poderia
+      // sobrescrever o status recém-verificado com uma leitura stale.
+      if (result.formDomain?.status !== "verified") {
+        void handleLoadFormDomainRecords()
+      }
     } catch (err) {
       console.error("[useEmailSettings] handleVerifyFormDomain error", err)
       toastUserError(err)
