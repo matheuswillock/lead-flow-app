@@ -16006,6 +16006,7 @@
             {
               "name": "Configurar Tracking do Domínio",
               "request": {
+                "description": "openTracking é obrigatório e sempre ligado. clickTracking passou a ser respeitado (17/09): opcional (ausente preserva a escolha persistida do time); ligar exige domínio verificado + CNAME de Tracking verificado, e nunca é aceito para o domínio compartilhado da plataforma.",
                 "method": "PATCH",
                 "header": [],
                 "url": {

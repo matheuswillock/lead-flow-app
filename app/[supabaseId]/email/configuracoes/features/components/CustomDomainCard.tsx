@@ -62,6 +62,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils"
 import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
+import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   groupDnsRecordsBySection,
   isDnsRecordVerified,
@@ -363,6 +364,7 @@ export function CustomDomainCard() {
   const [sendInstructionsDialogOpen, setSendInstructionsDialogOpen] = useState(false)
   const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
   const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
+  const [clickTrackingDraft, setClickTrackingDraft] = useState(false)
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
@@ -377,9 +379,16 @@ export function CustomDomainCard() {
     ? `${trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN}.${domainName}`
     : trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN
 
+  // Gate do rastreio de cliques (17/09): só libera com o domínio verificado E
+  // o CNAME de Tracking resolvendo — sem ele o rewrite quebraria os links do
+  // e-mail entregue. O backend aplica o mesmo gate; aqui é só UX antecipada.
+  const trackingDnsVerified = deriveTrackingDnsVerified(domainRecords) === true
+  const clickTrackingUnlockable = trackingDnsVerified && domainStatus === "verified"
+
   function openTrackingDialog() {
     setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
     setOpenTrackingDraft(hasTrackingConfigured ? domainOpenTracking : true)
+    setClickTrackingDraft(domainClickTracking)
     setTrackingDialogOpen(true)
   }
 
@@ -397,9 +406,9 @@ export function CustomDomainCard() {
     const ok = await handleConfigureDomainTracking({
       trackingSubdomain: subdomain,
       openTracking: openTrackingDraft,
-      // Sempre `false`. O backend também força — ver a rota
-      // `PATCH /email/settings/domain/tracking`.
-      clickTracking: false,
+      // Escolha do time (17/09). Com o gate travado o valor volta a `false` —
+      // o backend valida de novo (domínio verificado + CNAME de Tracking ok).
+      clickTracking: clickTrackingUnlockable ? clickTrackingDraft : false,
     })
     if (ok) setTrackingDialogOpen(false)
   }
@@ -824,12 +833,37 @@ export function CustomDomainCard() {
                     />
                   </Field>
 
-                  <FieldDescription>
-                    Cliques não são rastreados de propósito: ligar isso
-                    reescreve todo link do e-mail para o subdomínio de tracking, e
-                    provedores marcam a mensagem como suspeita. Os cliques já são
-                    medidos no próprio formulário.
-                  </FieldDescription>
+                  <Field orientation="horizontal">
+                    <FieldContent>
+                      <FieldLabel htmlFor="click-tracking-switch">Cliques</FieldLabel>
+                      <FieldDescription>
+                        Rastreia cliques nos links do e-mail reescrevendo cada um
+                        para o subdomínio de tracking do seu domínio.
+                      </FieldDescription>
+                    </FieldContent>
+                    <Switch
+                      id="click-tracking-switch"
+                      checked={clickTrackingUnlockable ? clickTrackingDraft : false}
+                      onCheckedChange={setClickTrackingDraft}
+                      disabled={configuringDomainTracking || !clickTrackingUnlockable}
+                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
+                    />
+                  </Field>
+
+                  {clickTrackingUnlockable ? (
+                    <FieldDescription>
+                      Os cliques do provedor passam pelo filtro de robôs
+                      (scanners corporativos não contam) e convivem com a
+                      medição feita no próprio formulário.
+                    </FieldDescription>
+                  ) : (
+                    <FieldDescription>
+                      O rastreio de cliques fica disponível quando o domínio
+                      estiver verificado e o registro DNS de Tracking (CNAME{" "}
+                      <span className="font-mono text-xs">{trackingPreviewHost}</span>)
+                      estiver resolvendo. Verifique o DNS e tente de novo.
+                    </FieldDescription>
+                  )}
                 </FieldGroup>
               </div>
 

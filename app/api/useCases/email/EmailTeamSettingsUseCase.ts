@@ -8,7 +8,11 @@ import type {
   IEmailTeamSettingsRepository,
 } from "@/app/api/infra/data/repositories/emailTeamSettings/IEmailTeamSettingsRepository"
 import { assertResend } from "@/lib/email"
-import { RESEND_TRACKING_POLICY } from "@/lib/email/resend-domain-reconcile"
+import {
+  isClickTrackingEligibleDomain,
+  RESEND_TRACKING_POLICY,
+} from "@/lib/email/resend-domain-reconcile"
+import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   isSelfInflictedTrackingConflict,
   isTrackingSubdomainConflict,
@@ -78,14 +82,16 @@ const DEFAULT_DOMAIN_REGION = "sa-east-1"
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
 
 /**
- * Sem `clickTracking` de propósito: o rastreio de cliques do Resend fica sempre
- * desligado. Ele reescreve os links do e-mail para o subdomínio de tracking, o
- * que faz provedores marcarem a mensagem como suspeita, e o clique já é medido
- * no first-party do formulário. Não é uma escolha do time.
+ * `clickTracking` voltou a ser escolha do time (17/09 — reverte parcialmente a
+ * decisão de 01/09): habilitável SÓ para domínio próprio verificado e com o
+ * CNAME de Tracking resolvendo; o domínio compartilhado da plataforma segue
+ * travado em OFF (`isClickTrackingEligibleDomain`). Ausente = preserva o valor
+ * persistido do time. `openTracking` continua obrigatório e sempre ligado.
  */
 export type ConfigureDomainTrackingInput = {
   trackingSubdomain: string
   openTracking: boolean
+  clickTracking?: boolean
 }
 
 const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
@@ -474,7 +480,7 @@ export class EmailTeamSettingsUseCase {
         region: DEFAULT_DOMAIN_REGION,
         customReturnPath: "bounce",
         openTracking: RESEND_TRACKING_POLICY.openTracking,
-        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
+        clickTracking: RESEND_TRACKING_POLICY.defaultClickTracking,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
       })
       if (error || !data) {
@@ -507,7 +513,7 @@ export class EmailTeamSettingsUseCase {
       const { error: trackingError } = await resend.domains.update({
         id: data.id,
         openTracking: RESEND_TRACKING_POLICY.openTracking,
-        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
+        clickTracking: RESEND_TRACKING_POLICY.defaultClickTracking,
       })
 
       // Conflito causado pelo próprio `create` é sucesso idempotente: o estado
@@ -582,7 +588,7 @@ export class EmailTeamSettingsUseCase {
         region: DEFAULT_DOMAIN_REGION,
         connectedAt,
         openTracking: RESEND_TRACKING_POLICY.openTracking,
-        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
+        clickTracking: RESEND_TRACKING_POLICY.defaultClickTracking,
         // Só assume o endereço de entrega do domínio quando o time ainda não
         // escolheu nenhum remetente — caso contrário sobrescreveria a escolha dele.
         deliveryFrom:
@@ -610,7 +616,7 @@ export class EmailTeamSettingsUseCase {
         // o da resposta dizia `clickTracking: true`: mentira para o cliente da
         // API, que montaria relatório em cima de um clique que nunca chegaria.
         openTracking: RESEND_TRACKING_POLICY.openTracking,
-        clickTracking: RESEND_TRACKING_POLICY.clickTracking,
+        clickTracking: RESEND_TRACKING_POLICY.defaultClickTracking,
         trackingSubdomain: DEFAULT_TRACKING_SUBDOMAIN,
         records: data.records ?? [],
       })
@@ -678,6 +684,49 @@ export class EmailTeamSettingsUseCase {
         currentDomain.tracking_subdomain?.trim().toLowerCase() || null
       const trackingAlreadyConfigured = existingTrackingSubdomain === trackingSubdomain
 
+      // Ausente = preserva a escolha persistida do time; presente = novo desejo.
+      const desiredClickTracking = input.clickTracking ?? settings.resendClickTracking
+
+      if (desiredClickTracking) {
+        // Guard da plataforma: o redirecionador de clique herdaria a reputação
+        // do domínio compartilhado — nunca habilitável ali (decisão de 17/09).
+        if (!isClickTrackingEligibleDomain(settings.resendDomainName)) {
+          return new Output(
+            false,
+            [],
+            [
+              "O rastreio de cliques só pode ser ligado em domínio próprio do time — o domínio compartilhado da plataforma permanece sem rastreio de cliques.",
+            ],
+            null
+          )
+        }
+
+        // Checkpoint: sem o CNAME de Tracking verificado o rewrite produziria
+        // links quebrados no e-mail entregue. `false` E `undefined` bloqueiam.
+        const trackingDnsVerified = deriveTrackingDnsVerified(currentDomain.records)
+        if (trackingDnsVerified !== true) {
+          return new Output(
+            false,
+            [],
+            [
+              `O registro DNS de Tracking (CNAME ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}) ainda não está verificado no Resend. Verifique o DNS do domínio antes de ligar o rastreio de cliques.`,
+            ],
+            null
+          )
+        }
+
+        if (currentDomain.status !== "verified") {
+          return new Output(
+            false,
+            [],
+            [
+              "O domínio precisa estar verificado no Resend antes de ligar o rastreio de cliques.",
+            ],
+            null
+          )
+        }
+      }
+
       const updatePayload: {
         id: string
         openTracking: boolean
@@ -686,7 +735,7 @@ export class EmailTeamSettingsUseCase {
       } = {
         id: settings.resendDomainId,
         openTracking: input.openTracking,
-        clickTracking: false,
+        clickTracking: desiredClickTracking,
       }
       if (!trackingAlreadyConfigured) {
         updatePayload.trackingSubdomain = trackingSubdomain
