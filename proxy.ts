@@ -20,6 +20,11 @@ import {
 } from "@/lib/supabase/auth-sessions"
 import { API_CLIENT_SLUG } from "@/lib/route-map"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import {
+  classifyFormsHost,
+  getPlatformBaseUrl,
+  isPathAllowedOnFormsHost,
+} from "@/lib/proxy/forms-host"
 
 /** Prefixo público das chamadas client-side: /api/q/... */
 const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
@@ -71,6 +76,16 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
+    // Host de formulários (domínio do time ou host neutro de fallback):
+    // serve SOMENTE /forms/* + APIs públicas do formulário. Sem query de
+    // banco aqui — só host + path; a tenancy é validada na página
+    // (app/forms/[publicId]/page.tsx). Qualquer outra rota volta para o
+    // host da plataforma via 307.
+    const formsHostKind = classifyFormsHost(request.headers.get("host"))
+    if (formsHostKind !== "platform") {
+      return handleFormsHostRequest(request, pathname, isClientApiSlug)
+    }
+
     if (pathname === "/monitoring" || pathname.startsWith("/monitoring/")) {
       if (process.env.NODE_ENV !== "production") {
         return new NextResponse(null, { status: 204 })
@@ -265,6 +280,50 @@ export async function proxy(request: NextRequest) {
 
     return NextResponse.next()
   }
+}
+
+/**
+ * Trata requests em host de formulários (custom/fallback). Nunca toca em
+ * sessão Supabase nem banco: formulário público não depende de sessão, e o
+ * host custom não deve receber cookies da plataforma.
+ */
+function handleFormsHostRequest(
+  request: NextRequest,
+  pathname: string,
+  isClientApiSlug: boolean,
+): NextResponse {
+  if (!isPathAllowedOnFormsHost(pathname)) {
+    const platformBase = getPlatformBaseUrl()
+    // Sem base da plataforma derivável não há para onde redirecionar sem
+    // arriscar loop — segue o fluxo normal (fail-open).
+    if (!platformBase) {
+      return NextResponse.next()
+    }
+    const redirectUrl = new URL(pathname, platformBase)
+    redirectUrl.search = request.nextUrl.search
+    return NextResponse.redirect(redirectUrl, { status: 307 })
+  }
+
+  // Host custom nunca injeta identidade de sessão nas APIs públicas.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete("x-supabase-user-id")
+
+  if (isClientApiSlug) {
+    const rest = pathname.slice(SLUG_PREFIX.length)
+    const rewrittenUrl = request.nextUrl.clone()
+    rewrittenUrl.pathname = REAL_API_PREFIX + rest
+
+    const rewriteResponse = NextResponse.rewrite(rewrittenUrl, {
+      request: { headers: requestHeaders },
+    })
+    rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
+    rewriteResponse.headers.set("X-Robots-Tag", "noindex")
+    return rewriteResponse
+  }
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+  response.headers.set("X-Robots-Tag", "noindex")
+  return response
 }
 
 export const config = {

@@ -2559,6 +2559,7 @@ model Team {
   emailLogs                   EmailLog[]                    @relation("TeamEmailLogs")
   emailSettings               EmailTeamSettings?            @relation("TeamEmailSettings")
   emailDomainEvents           EmailTeamDomainEvent[]        @relation("TeamEmailDomainEvents")
+  formDomain                  TeamFormDomain?               @relation("TeamFormDomain")
   emailSenders                EmailTeamSender[]             @relation("TeamEmailSenders")
   emailVariables              EmailTeamVariable[]           @relation("TeamEmailVariables")
   emailTemplateHistory        EmailTemplateHistory[]
@@ -4245,6 +4246,36 @@ model EmailTeamDomainEvent {
 
   @@index([teamId, occurredAt(sort: Desc)])
   @@map("corretor_studio_email_team_domain_events")
+}
+
+enum TeamFormDomainStatus {
+  pending
+  verified
+  failed
+
+  @@map("team_form_domain_status")
+}
+
+/// Domínio próprio do time para servir formulários públicos (ex.:
+/// forms.imobiliariax.com.br), isolando a reputação de link por time.
+/// 1 domínio por time nesta fase (`teamId` unique). O hostname é sempre
+/// armazenado em lowercase; `vercelDomainId` guarda o vínculo com o projeto
+/// na Vercel e `lastCheckedAt` alimenta o cron de reconciliação de status.
+model TeamFormDomain {
+  id             String               @id @default(uuid()) @db.Uuid
+  teamId         String               @unique @db.Uuid
+  hostname       String               @unique @db.Text
+  status         TeamFormDomainStatus @default(pending)
+  vercelDomainId String?              @db.Text
+  verifiedAt     DateTime?            @db.Timestamptz(6)
+  lastCheckedAt  DateTime?            @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamFormDomain", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastCheckedAt])
+  @@map("corretor_studio_team_form_domains")
 }
 
 model EmailTeamSender {

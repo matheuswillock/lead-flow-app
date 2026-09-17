@@ -1008,6 +1008,14 @@ approved approved
     
 
 
+        team_form_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -3280,6 +3288,18 @@ completed completed
     }
   
 
+  "corretor_studio_team_form_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamFormDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "email_team_senders" {
     String id "🗝️"
     String name 
@@ -4665,6 +4685,8 @@ completed completed
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
+    "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
     "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"

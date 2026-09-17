@@ -8,6 +8,9 @@ import {
   templateIncludesManualUnsubscribeLink,
 } from "@/lib/email/unsubscribe-link-embed"
 import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
+import { extractFormPublicIdsFromHtml } from "@/lib/email/form-links-in-html"
+import { rewriteFormUrlHostsToBase } from "@/lib/email/rewrite-form-urls-to-team-domain"
+import type { IPublicFormBaseUrlResolverService } from "@/app/api/services/publicFormBaseUrl/IPublicFormBaseUrlResolverService"
 import {
   buildResendBatchIdempotencyKey,
   buildResendIdempotencyKeyWithVariant,
@@ -130,6 +133,57 @@ export function parseResendBatchSendItems(
 }
 
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
+  /**
+   * Injetável para teste; o default é resolvido por import dinâmico para não
+   * arrastar o Prisma para consumidores que nunca despacham HTML com
+   * `/forms/` (e para os testes existentes que instanciam sem argumentos).
+   */
+  constructor(
+    private readonly formBaseUrlResolverOverride?: IPublicFormBaseUrlResolverService,
+  ) {}
+
+  private async getFormBaseUrlResolver(): Promise<IPublicFormBaseUrlResolverService> {
+    if (this.formBaseUrlResolverOverride) return this.formBaseUrlResolverOverride
+    const { publicFormBaseUrlResolverService } = await import(
+      "@/app/api/services/publicFormBaseUrl/PublicFormBaseUrlResolverService"
+    )
+    return publicFormBaseUrlResolverService
+  }
+
+  /**
+   * Troca o HOST dos links `/forms/{uuid}` para o domínio de formulários do
+   * time no momento do disparo (Frente C — Deliverability). Fallbacks:
+   * `PUBLIC_FORMS_FALLBACK_HOST` e, sem env, o HTML sai intocado
+   * (comportamento anterior). Só links de formulário DO PRÓPRIO time são
+   * reescritos. Falha aqui nunca bloqueia o disparo.
+   */
+  private async rewriteFormUrlsToTeamDomain(teamId: string, html: string): Promise<string> {
+    if (!html.includes("/forms/")) return html
+
+    try {
+      const resolver = await this.getFormBaseUrlResolver()
+      const resolution = await resolver.resolvePublicFormBaseUrl(teamId)
+      if (resolution.source === "platform" || !resolution.baseUrl) return html
+
+      const publicIds = extractFormPublicIdsFromHtml(html)
+      if (publicIds.length === 0) return html
+
+      const allowedPublicIds = await resolver.filterFormPublicIdsOwnedByTeam(teamId, publicIds)
+      if (allowedPublicIds.size === 0) return html
+
+      return rewriteFormUrlHostsToBase(html, {
+        baseUrl: resolution.baseUrl,
+        allowedPublicIds,
+      })
+    } catch (error) {
+      console.error(
+        "[EmailCampaignDispatchService][rewriteFormUrlsToTeamDomain] Falha ao trocar host dos links de formulário — HTML original mantido:",
+        error,
+      )
+      return html
+    }
+  }
+
   async dispatchBatch(params: {
     from: string
     replyTo?: string | null
@@ -166,6 +220,12 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           ? new Map(Object.entries(params.logIdByEmail))
           : null
 
+    // Host dos links de formulário resolvido por disparo (não por
+    // destinatário): domínio verificado do time > fallback por env > HTML
+    // original. Antes da interpolação — o cs_el por destinatário é injetado
+    // depois, sobre a URL já reescrita.
+    const campaignHtml = await this.rewriteFormUrlsToTeamDomain(params.teamId, params.html)
+
     const result: DispatchBatchResult = {
       sent: 0,
       failed: 0,
@@ -197,7 +257,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
     const chunks = this.chunkArray(sendable, BATCH_SIZE)
 
-    const manualUnsubscribeLink = templateIncludesManualUnsubscribeLink(params.html)
+    const manualUnsubscribeLink = templateIncludesManualUnsubscribeLink(campaignHtml)
 
     const batchIdempotencyScheme = params.batchIdempotencyScheme ?? "contentHash"
     const enableContentHashFallbackOnIdempotencyConflict =
@@ -234,7 +294,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             : ""
           const usesManualUnsubscribe = manualUnsubscribeLink && Boolean(unsubscribeUrl)
           let renderedHtml = interpolateEmailTemplate(
-            params.html,
+            campaignHtml,
             recipient,
             params.globalDefaults,
             params.templateVariables,

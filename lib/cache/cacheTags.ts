@@ -55,5 +55,7 @@ export const cacheTags = {
   landingPublicStats: () => "landing-public-stats",
   /** Hospedagem de DNS do dominio. Sem escopo de time: o NS e do dominio, nao da conta. */
   domainDnsProvider: (domainName: string) => `domain-dns-provider:${domainName}`,
+  /** Dominio de formularios do time, chaveado por hostname (resolucao no serving publico). */
+  teamFormDomain: (hostname: string) => `team-form-domain:${hostname}`,
 } as const;
 
