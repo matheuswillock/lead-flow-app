@@ -3,6 +3,7 @@ import {
   normalizeResendRecipientEmail,
   type ResendRecipientEmailValidation,
 } from "@/lib/email/is-valid-resend-recipient-email"
+import { isDisposableEmailDomain } from "@/lib/email/disposable-email-domains"
 
 export const AUDIENCE_TYPO_DOMAINS = [
   "gmail.com.br",
@@ -71,6 +72,9 @@ export const AUDIENCE_REASON_DEAD_ISP = "Provedor de e-mail desativado"
 export const AUDIENCE_REASON_ROLE = "Endereço genérico não permitido"
 export const AUDIENCE_REASON_BOUNCED = "E-mail com bounce anterior"
 export const AUDIENCE_REASON_BLOCKLISTED = "E-mail na lista de bloqueados do time"
+export const AUDIENCE_REASON_DISPOSABLE = "Domínio de e-mail descartável"
+/** Aplicado pelo gate volátil do import (DNS por lote), não por esta função. */
+export const AUDIENCE_REASON_NO_MX = "Domínio sem servidor de e-mail (MX)"
 
 export type AudienceEmailValidation = ResendRecipientEmailValidation
 
@@ -131,6 +135,10 @@ export function evaluateEmailForAudience(
 
   if (isAudienceDeadIspDomain(domain)) {
     return { ok: false, reason: AUDIENCE_REASON_DEAD_ISP }
+  }
+
+  if (isDisposableEmailDomain(domain)) {
+    return { ok: false, reason: AUDIENCE_REASON_DISPOSABLE }
   }
 
   if (isAudienceRoleLocalPart(localPart)) {

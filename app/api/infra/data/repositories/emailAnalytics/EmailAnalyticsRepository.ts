@@ -269,6 +269,8 @@ export interface IEmailAnalyticsRepository {
     openTracking: boolean
     clickTracking: boolean
     sendingDnsVerified: boolean
+    sendingHealthStatus: string
+    sendingHealthReason: string | null
   }>
 }
 
@@ -703,6 +705,8 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
     openTracking: boolean
     clickTracking: boolean
     sendingDnsVerified: boolean
+    sendingHealthStatus: string
+    sendingHealthReason: string | null
   }> {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
@@ -712,6 +716,8 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
         resendOpenTracking: true,
         resendClickTracking: true,
         resendSendingDnsVerified: true,
+        sendingHealthStatus: true,
+        sendingHealthReason: true,
       },
     })
     return {
@@ -720,6 +726,8 @@ export class EmailAnalyticsRepository implements IEmailAnalyticsRepository {
       openTracking: Boolean(settings?.resendOpenTracking),
       clickTracking: Boolean(settings?.resendClickTracking),
       sendingDnsVerified: Boolean(settings?.resendSendingDnsVerified),
+      sendingHealthStatus: settings?.sendingHealthStatus ?? "healthy",
+      sendingHealthReason: settings?.sendingHealthReason ?? null,
     }
   }
 }

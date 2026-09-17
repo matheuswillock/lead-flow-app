@@ -20,6 +20,10 @@ import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAc
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 import { resolveTimezone } from "@/lib/dates"
 import { assertResendDomainTrackingReady } from "@/lib/email/campaign-dispatch-guards"
+import {
+  formatSendingHealthBlockMessage,
+  isSendingHealthBlocked,
+} from "@/lib/email/sending-health"
 
 export class EmailCreditUseCase {
   constructor(
@@ -59,6 +63,8 @@ export class EmailCreditUseCase {
         resendOpenTracking: true,
         resendClickTracking: true,
         resendSendingDnsVerified: true,
+        sendingHealthStatus: true,
+        sendingHealthReason: true,
       },
     })
     const tracking = assertResendDomainTrackingReady({
@@ -68,9 +74,25 @@ export class EmailCreditUseCase {
       clickTracking: settings?.resendClickTracking,
       sendingDnsVerified: settings?.resendSendingDnsVerified,
     })
+
+    // Trava de reputação: mesma fonte dos guards do backend
+    // (create/startManualDispatch/dispatchScheduled) — o front só exibe.
+    const sendingHealthStatus = settings?.sendingHealthStatus ?? "healthy"
+    const sendingHealthBlocked = isSendingHealthBlocked(sendingHealthStatus)
+
     return {
       trackingDispatchBlocked: !tracking.ok,
       ...(tracking.ok ? {} : { trackingDispatchBlockReason: tracking.message }),
+      sendingHealthStatus,
+      sendingHealthBlocked,
+      ...(sendingHealthBlocked
+        ? {
+            sendingHealthBlockReason: formatSendingHealthBlockMessage({
+              status: sendingHealthStatus,
+              reason: settings?.sendingHealthReason,
+            }),
+          }
+        : {}),
     }
   }
 

@@ -680,6 +680,7 @@ enum NotificationType {
   BETHANIA_AUTH_CODE
   EMAIL_IMPORT_COMPLETED
   EMAIL_CAMPAIGN_DISPATCH_FAILED
+  EMAIL_SENDING_HEALTH_CHANGED
   AUTOMATION_RULE
   WEBHOOK_AUTO_PAUSED
   LEAD_DOCUMENT_UPLOADED
@@ -914,6 +915,27 @@ enum EmailEventType {
   failed
 
   @@map("email_event_type")
+}
+
+/// Saúde de envio do time (trava de reputação estilo Mailchimp).
+/// Transições automáticas via cron `evaluate-sending-health`; paused/suspended
+/// só saem por liberação manual (owner do time ou backoffice).
+enum EmailSendingHealthStatus {
+  healthy
+  warned
+  paused
+  suspended
+
+  @@map("email_sending_health_status")
+}
+
+/// Veredito de risco de uma importação de contatos (gate pré-envio).
+enum EmailImportRiskLevel {
+  low
+  medium
+  high
+
+  @@map("email_import_risk_level")
 }
 
 // -----------------------------
@@ -3288,6 +3310,16 @@ model EmailContactList {
   isBlocklist               Boolean  @default(false)
   isArchived                Boolean  @default(false)
   radarSegmentId            String?  @db.Uuid
+
+  /// Quarentena do gate de importação: lista marcada por um EmailImportJob de
+  /// risco ALTO não entra em audiência de campanha até liberação explícita
+  /// (manager/owner). `quarantineReleasedBy` guarda o Profile que liberou.
+  isQuarantined        Boolean   @default(false)
+  quarantinedAt        DateTime? @db.Timestamptz(6)
+  quarantineReason     String?   @db.Text
+  quarantineReleasedAt DateTime? @db.Timestamptz(6)
+  quarantineReleasedBy String?   @db.Uuid
+
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
@@ -3327,6 +3359,15 @@ model EmailImportJob {
   failedBatches             Json?
   batchSize                 Int      @default(500)
   attemptsByBatch           Json?
+
+  /// Veredito do gate de validação: contagens por categoria de remoção
+  /// (sintaxe, typo, sem MX, descartável, role, duplicado, supressão…) —
+  /// shape em `lib/email/import-validation-verdict.ts`.
+  validationCounts Json?
+  /// Risco da importação: low (<8% removidos), medium (8–20%),
+  /// high (≥20% OU ≥500 absolutos). High quarentena a lista alvo.
+  riskLevel        EmailImportRiskLevel?
+
   createdAt                 DateTime @default(now()) @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
 
@@ -4224,6 +4265,15 @@ model EmailTeamSettings {
   /// fica `partially_failed`, indistinguível de um com DKIM quebrado. Derivado
   /// registro a registro em `syncFromResendDomain`.
   resendSendingDnsVerified Boolean @default(false)
+
+  /// Trava de reputação por time (estilo Mailchimp). Limiares e máquina de
+  /// transição em `lib/email/sending-health.ts`; avaliado pelo cron
+  /// `evaluate-sending-health`. `sendingHealthMetrics` guarda o snapshot das
+  /// janelas 7d/30d, `belowWarnSince` e o histórico de pausas (30d).
+  sendingHealthStatus    EmailSendingHealthStatus @default(healthy)
+  sendingHealthReason    String?                  @db.Text
+  sendingHealthChangedAt DateTime?                @db.Timestamptz(6)
+  sendingHealthMetrics   Json?
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
