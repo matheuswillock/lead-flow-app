@@ -16,6 +16,7 @@ import type {
 } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignRecipientService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { emailCampaignLeadActivityService } from "@/app/api/services/email/EmailCampaignLeadActivityService"
+import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-change"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
@@ -87,7 +88,21 @@ import {
   formatDailyCapDeferMessage,
   formatDispatchWindowDeferMessage,
   formatTrackingNotReadyDeferMessage,
+  formatBounceAbortSiblingDeferMessage,
+  formatQuarantinedListDeferMessage,
+  formatSendingHealthDeferMessage,
 } from "@/lib/email/campaign-dispatch-defer-messages"
+import {
+  buildPauseSnapshotFromExisting,
+  buildSendingHealthAbortPauseReason,
+  buildSendingHealthSuspendReason,
+  formatDispatchBounceAbortMessage,
+  formatSendingHealthBlockMessage,
+  isSendingHealthBlocked,
+  shouldAbortDispatchForBounceSpike,
+  SENDING_HEALTH_SUSPEND_PAUSE_COUNT,
+} from "@/lib/email/sending-health"
+import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import { selectFairDispatchBatch } from "@/lib/email/campaign-dispatch-fair-batch"
 import {
   loadDispatchAvailabilityForLeafCampaigns,
@@ -1946,7 +1961,11 @@ export class EmailCampaignUseCase {
       const teamSettings = await this.db.emailTeamSettings
         .findUnique({
           where: { teamId: ctx.teamId },
-          select: { dispatchAllowedRoles: true },
+          select: {
+            dispatchAllowedRoles: true,
+            sendingHealthStatus: true,
+            sendingHealthReason: true,
+          },
         })
         .catch(() => null)
 
@@ -1954,7 +1973,42 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Seu perfil não tem permissão para criar campanhas"], null)
       }
 
+      // Trava de reputação: time pausado/suspenso não cria nem agenda campanha.
+      if (teamSettings && isSendingHealthBlocked(teamSettings.sendingHealthStatus)) {
+        return new Output(
+          false,
+          [],
+          [
+            formatSendingHealthBlockMessage({
+              status: teamSettings.sendingHealthStatus,
+              reason: teamSettings.sendingHealthReason,
+            }),
+          ],
+          null
+        )
+      }
+
       const contactListIds = normalizeContactListIds(data)
+
+      // Gate de importação: lista quarentenada (risco ALTO) não entra em
+      // audiência até liberação explícita no relatório de importação.
+      if (contactListIds.length > 0) {
+        const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
+          ctx.teamId,
+          contactListIds
+        )
+        if (quarantinedLists.length > 0) {
+          const names = quarantinedLists.map((list) => list.name).join(", ")
+          return new Output(
+            false,
+            [],
+            [
+              `Lista(s) em quarentena pelo gate de importação: ${names}. Libere a lista no relatório de importação antes de usá-la em campanha.`,
+            ],
+            null
+          )
+        }
+      }
       const hasLists = contactListIds.length > 0
       const hasRadar = Boolean(data.radarSegmentSlug)
 
@@ -2343,6 +2397,31 @@ export class EmailCampaignUseCase {
         const nextContactListId = data.contactListId !== undefined ? data.contactListId : existing.contactListId
         const nextSegmentSlug =
           data.radarSegmentSlug !== undefined ? data.radarSegmentSlug : existing.radarSegmentSlug
+
+        // Gate de importação: mesma recusa do create — lista quarentenada não
+        // pode entrar na audiência por edição.
+        const nextListIdsForQuarantine = [
+          ...(data.contactListIds ?? []),
+          ...(nextContactListId ? [nextContactListId] : []),
+        ]
+        if (nextListIdsForQuarantine.length > 0) {
+          const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
+            ctx.teamId,
+            nextListIdsForQuarantine
+          )
+          if (quarantinedLists.length > 0) {
+            const names = quarantinedLists.map((list) => list.name).join(", ")
+            return new Output(
+              false,
+              [],
+              [
+                `Lista(s) em quarentena pelo gate de importação: ${names}. Libere a lista no relatório de importação antes de usá-la em campanha.`,
+              ],
+              null
+            )
+          }
+        }
+
         totalRecipients = await this.countActiveRecipients(ctx.teamId, {
           contactListId: nextContactListId,
           radarSegmentSlug: nextSegmentSlug,
@@ -2892,6 +2971,46 @@ export class EmailCampaignUseCase {
 
       if (!canDispatchEmail(ctx, teamSettings)) {
         return new Output(false, [], ["Seu perfil não tem permissão para disparar campanhas"], null)
+      }
+
+      // Trava de reputação: time pausado/suspenso não dispara manualmente —
+      // mesma recusa do create/agendamento, antes de qualquer escrita.
+      if (teamSettings && isSendingHealthBlocked(teamSettings.sendingHealthStatus)) {
+        return new Output(
+          false,
+          [],
+          [
+            formatSendingHealthBlockMessage({
+              status: teamSettings.sendingHealthStatus,
+              reason: teamSettings.sendingHealthReason,
+            }),
+          ],
+          null
+        )
+      }
+
+      // Gate de importação: lista quarentenada (risco ALTO) não vira audiência
+      // nem no botão Disparar.
+      const dispatchAudienceListIds = [
+        ...(campaign.contactListId ? [campaign.contactListId] : []),
+        ...(campaign.sourceContactListIds ?? []),
+      ]
+      if (dispatchAudienceListIds.length > 0) {
+        const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
+          ctx.teamId,
+          dispatchAudienceListIds
+        )
+        if (quarantinedLists.length > 0) {
+          const names = quarantinedLists.map((list) => list.name).join(", ")
+          return new Output(
+            false,
+            [],
+            [
+              `Lista(s) em quarentena pelo gate de importação: ${names}. Libere a lista no relatório de importação antes de disparar.`,
+            ],
+            null
+          )
+        }
       }
 
       // Recusa na origem. Com a cota do mês estourada, aceitar o disparo só
@@ -4414,6 +4533,15 @@ export class EmailCampaignUseCase {
     })
     const remaining = remainingQueued + (materializedHasMore ? batchSize : 0)
 
+    // Abort mid-send: se ESTA parte já cruzou o limiar de bounce permanente
+    // (≥8% com ≥100 enviados), cada lote a mais é bounce garantido. Abortar o
+    // restante aqui — entre lotes, quando os webhooks já aterrissaram — é o
+    // ponto mais cedo em que o dado existe.
+    if (remainingQueued > 0 || materializedHasMore) {
+      const abortOutput = await this.maybeAbortDispatchForBounceSpike(dispatch)
+      if (abortOutput) return abortOutput
+    }
+
     if (remainingQueued > 0 || materializedHasMore) {
       console.info("[EmailCampaignUseCase][processDispatchQueueBatch] lote processado, republicando wake", {
         dispatchId: dispatch.id,
@@ -4547,6 +4675,175 @@ export class EmailCampaignUseCase {
     }
 
     await this.finalizeDispatchQueueBatch(dispatch, guardMessage)
+  }
+
+  /**
+   * ABORT mid-send por taxa de bounce (trava de reputação, item c): se a
+   * própria parte cruzou `SENDING_HEALTH_ABORT_HARD_BOUNCE_RATE` com
+   * `SENDING_HEALTH_ABORT_MIN_SENT` enviados, o restante da parte é abortado
+   * (logs `queued` → `failed` + finalize com o motivo), as partes irmãs
+   * agendadas são ADIADAS com motivo visível, e a saúde de envio do time é
+   * pausada — o que segura qualquer parte futura no gate do cron até a
+   * liberação manual. Devolve `null` quando não há abort.
+   *
+   * Falha ao LER as métricas não pode derrubar o lote (fail-open): só a
+   * decisão é protegida; as ações do abort propagam erro para o retry da fila.
+   */
+  private async maybeAbortDispatchForBounceSpike(dispatch: {
+    id: string
+    campaignId: string
+    teamId: string
+    dispatchNumber: number
+    totalRecipients?: number
+    reservedCredits: number
+    hasCampaignsBetaAccess: boolean
+    campaign: { name: string }
+  }): Promise<Output | null> {
+    let stats: { sentCount: number; hardBouncedCount: number }
+    try {
+      stats = await emailSendingHealthRepository.getDispatchBounceStats(dispatch.id)
+    } catch (statsError) {
+      console.error(
+        "[EmailCampaignUseCase][processDispatchQueueBatch] falha ao ler métricas de bounce do dispatch — seguindo sem abort",
+        { dispatchId: dispatch.id, error: statsError }
+      )
+      return null
+    }
+
+    if (!shouldAbortDispatchForBounceSpike(stats)) return null
+
+    const hardBounceRate = stats.hardBouncedCount / stats.sentCount
+    const dispatchLabel = `"${dispatch.campaign.name}" (parte ${dispatch.dispatchNumber})`
+    const abortMessage = formatDispatchBounceAbortMessage({
+      hardBounceRate,
+      sentCount: stats.sentCount,
+      hardBouncedCount: stats.hardBouncedCount,
+    })
+
+    console.error(
+      "[EmailCampaignUseCase][processDispatchQueueBatch] ABORT por taxa de bounce",
+      {
+        dispatchId: dispatch.id,
+        campaignId: dispatch.campaignId,
+        teamId: dispatch.teamId,
+        sentCount: stats.sentCount,
+        hardBouncedCount: stats.hardBouncedCount,
+        hardBounceRate,
+      }
+    )
+
+    await this.failDispatchOnDomainGuard(dispatch, abortMessage)
+    await this.deferSiblingScheduledPartsAfterAbort(dispatch, dispatchLabel).catch((deferError) => {
+      console.error("[EmailCampaignUseCase][abortByBounce][deferSiblings]", deferError)
+    })
+    await this.pauseTeamSendingHealthAfterAbort({
+      teamId: dispatch.teamId,
+      dispatchLabel,
+      hardBounceRate,
+      sentCount: stats.sentCount,
+    }).catch((pauseError) => {
+      console.error("[EmailCampaignUseCase][abortByBounce][pauseTeam]", pauseError)
+    })
+
+    return new Output(false, [], [abortMessage], {
+      dispatchId: dispatch.id,
+      hasMore: false,
+      abortedByBounceRate: true,
+    })
+  }
+
+  /**
+   * Partes irmãs (mesmo grupo/campanha-pai) ainda `scheduled` ganham o motivo
+   * do abort — status interno intacto; quem as segura de fato no próximo tick
+   * é o gate de saúde (o abort pausa o time).
+   */
+  private async deferSiblingScheduledPartsAfterAbort(
+    dispatch: { campaignId: string; teamId: string },
+    dispatchLabel: string
+  ): Promise<void> {
+    const campaign = await this.db.emailCampaign.findUnique({
+      where: { id: dispatch.campaignId },
+      select: { parentCampaignId: true },
+    })
+    if (!campaign?.parentCampaignId) return
+
+    const deferred = await this.db.emailCampaign.updateMany({
+      where: {
+        parentCampaignId: campaign.parentCampaignId,
+        teamId: dispatch.teamId,
+        status: "scheduled",
+        id: { not: dispatch.campaignId },
+      },
+      data: { errorMessage: formatBounceAbortSiblingDeferMessage(dispatchLabel) },
+    })
+    if (deferred.count > 0) {
+      console.info(
+        `[EmailCampaignUseCase][abortByBounce] ${deferred.count} parte(s) irmã(s) adiada(s) com motivo`
+      )
+    }
+  }
+
+  /**
+   * O abort pausa a saúde de envio do time na hora (2ª pausa em 30 dias vira
+   * suspensão) e notifica o owner — parar o sangramento em minutos, não no
+   * próximo ciclo de avaliação.
+   */
+  private async pauseTeamSendingHealthAfterAbort(params: {
+    teamId: string
+    dispatchLabel: string
+    hardBounceRate: number
+    sentCount: number
+  }): Promise<void> {
+    const state = await emailSendingHealthRepository.getTeamSendingHealth(params.teamId)
+    const currentStatus = state?.status ?? "healthy"
+    if (currentStatus === "paused" || currentStatus === "suspended") return
+
+    const now = new Date()
+    const { snapshot, pauseCount } = buildPauseSnapshotFromExisting(
+      state?.metricsJson ?? null,
+      now
+    )
+    const suspended = pauseCount >= SENDING_HEALTH_SUSPEND_PAUSE_COUNT
+    const reason = suspended
+      ? buildSendingHealthSuspendReason(pauseCount)
+      : buildSendingHealthAbortPauseReason({
+          dispatchLabel: params.dispatchLabel,
+          hardBounceRate: params.hardBounceRate,
+          sentCount: params.sentCount,
+        })
+
+    await emailSendingHealthRepository.updateTeamSendingHealth({
+      teamId: params.teamId,
+      snapshot,
+      transition: {
+        status: suspended ? "suspended" : "paused",
+        reason,
+        changedAt: now,
+      },
+    })
+
+    const masterProfileId =
+      state?.masterProfileId ??
+      (
+        await this.db.team.findUnique({
+          where: { id: params.teamId },
+          select: { master: { select: { id: true } } },
+        })
+      )?.master.id
+
+    if (masterProfileId) {
+      await notifySendingHealthChanged({
+        recipientProfileId: masterProfileId,
+        teamId: params.teamId,
+        status: suspended ? "suspended" : "paused",
+        previousStatus: currentStatus,
+        reason,
+        message: `Envio de campanhas ${suspended ? "suspenso" : "pausado"} automaticamente: ${reason}`,
+        trigger: "dispatch_bounce_abort",
+      }).catch((notifyError) => {
+        console.error("[EmailCampaignUseCase][abortByBounce][notifyOwner]", notifyError)
+      })
+    }
   }
 
   /**
@@ -5002,9 +5299,58 @@ export class EmailCampaignUseCase {
               resendOpenTracking: true,
               resendClickTracking: true,
               resendSendingDnsVerified: true,
+              sendingHealthStatus: true,
+              sendingHealthReason: true,
             },
           })
           .catch(() => null)
+
+        // Trava de reputação: time pausado/suspenso tem a parte ADIADA, nunca
+        // failed — apresentação de falha ("Adiada" + motivo) com status
+        // interno `scheduled`, para o cron retomar sozinho após a liberação
+        // (mesma semântica da v0.305.0).
+        if (teamSettings && isSendingHealthBlocked(teamSettings.sendingHealthStatus)) {
+          const healthDeferMessage = formatSendingHealthDeferMessage({
+            status: teamSettings.sendingHealthStatus as "paused" | "suspended",
+            reason: teamSettings.sendingHealthReason,
+          })
+          await this.db.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: "scheduled", errorMessage: healthDeferMessage },
+          })
+          console.info(
+            `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: saúde de envio ${teamSettings.sendingHealthStatus}`
+          )
+          continue
+        }
+
+        // Gate de importação: parte cuja audiência vem de lista quarentenada é
+        // adiada até a liberação explícita da lista.
+        const scheduledAudienceListIds = [
+          ...(campaign.contactListId ? [campaign.contactListId] : []),
+          ...(campaign.sourceContactListIds ?? []),
+        ]
+        if (scheduledAudienceListIds.length > 0) {
+          const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
+            campaign.teamId,
+            scheduledAudienceListIds
+          )
+          if (quarantinedLists.length > 0) {
+            await this.db.emailCampaign.update({
+              where: { id: campaign.id },
+              data: {
+                status: "scheduled",
+                errorMessage: formatQuarantinedListDeferMessage(
+                  quarantinedLists.map((list) => list.name)
+                ),
+              },
+            })
+            console.info(
+              `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: lista(s) em quarentena`
+            )
+            continue
+          }
+        }
 
         const scheduledDispatchWarnings = getResendDomainDispatchWarnings(
           resendDomainTrackingInputFromSettings(teamSettings)

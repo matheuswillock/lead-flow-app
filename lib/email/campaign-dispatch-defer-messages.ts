@@ -35,3 +35,38 @@ export function formatDispatchWindowDeferMessage(reason: string): string {
 export function formatTrackingNotReadyDeferMessage(message: string): string {
   return `Adiada: ${message}`
 }
+
+/**
+ * Trava de reputação (`EmailTeamSettings.sendingHealthStatus` paused ou
+ * suspended). A parte continua `scheduled` e o cron retoma sozinho quando o
+ * envio for liberado — mesma semântica da v0.305.0: apresentação de falha
+ * ("Adiada" + motivo), status interno intacto.
+ */
+export function formatSendingHealthDeferMessage(params: {
+  status: "paused" | "suspended"
+  reason?: string | null
+}): string {
+  const statusLabel = params.status === "suspended" ? "suspenso" : "pausado"
+  const reasonPart = params.reason?.trim() ? ` — ${params.reason.trim()}` : ""
+  return `Adiada: envio ${statusLabel} pela trava de reputação${reasonPart}`
+}
+
+/**
+ * Parte irmã adiada porque um disparo do MESMO grupo foi abortado por taxa de
+ * bounce (≥8% com ≥100 enviados). O abort também pausa a saúde de envio do
+ * time, então o gate de reputação segura estas partes até liberação manual.
+ */
+export function formatBounceAbortSiblingDeferMessage(dispatchLabel: string): string {
+  return `Adiada: abortada por taxa de bounce no disparo ${dispatchLabel} — o envio do time foi pausado até liberação manual`
+}
+
+/**
+ * Lista de contatos em quarentena pelo gate de importação (risco ALTO). A
+ * parte continua `scheduled`; libere a lista no relatório de importação para
+ * o cron retomar.
+ */
+export function formatQuarantinedListDeferMessage(listNames: string[]): string {
+  const names = listNames.filter(Boolean)
+  const listPart = names.length > 0 ? ` (${names.join(", ")})` : ""
+  return `Adiada: lista de contatos em quarentena pelo gate de importação${listPart} — libere a lista no relatório de importação para retomar`
+}

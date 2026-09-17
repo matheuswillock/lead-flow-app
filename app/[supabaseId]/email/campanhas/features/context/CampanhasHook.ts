@@ -538,6 +538,15 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       return
     }
 
+    // Trava de reputação: recusa no clique, com o mesmo motivo do backend.
+    if (credits?.sendingHealthBlocked) {
+      toast.error(
+        credits.sendingHealthBlockReason ??
+          "O envio de campanhas deste time está pausado pela trava de reputação."
+      )
+      return
+    }
+
     if (credits?.trackingDispatchBlocked) {
       toast.error(credits.trackingDispatchBlockReason ?? RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE)
       return

@@ -40,6 +40,7 @@ export interface IContatosService {
   ): Promise<EmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
+  releaseQuarantine(listId: string): Promise<void>
   listRadarSegments(supabaseId: string): Promise<RadarSegmentOption[]>
   createRadarSegmentForList(supabaseId: string, name: string, listId: string): Promise<RadarSegmentOption>
   setListRadarSegment(listId: string, segmentId: string | null): Promise<void>
@@ -98,6 +99,21 @@ export class ContatosService implements IContatosService {
     if (!response.ok) {
       throw new Error(
         data?.errorMessages?.join(", ") || "Erro ao excluir lista de contatos"
+      );
+    }
+  }
+
+  async releaseQuarantine(listId: string): Promise<void> {
+    console.info("[ContatosService] releaseQuarantine", listId);
+    const response = await fetch(`${this.baseUrl}/${listId}/quarantine/release`, {
+      method: "POST",
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data?.isValid) {
+      throw new Error(
+        data?.errorMessages?.join(", ") || "Erro ao liberar a lista da quarentena"
       );
     }
   }

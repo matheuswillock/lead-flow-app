@@ -48,6 +48,9 @@ export type AnalyticsData = {
   /** Decidido no servidor pelo gate. `trackingWarnings` também existe sem bloqueio. */
   trackingDispatchBlocked?: boolean
   trackingWarnings?: string[]
+  /** Trava de reputação por time (paused/suspended) — aviso já incluso em trackingWarnings. */
+  sendingHealthBlocked?: boolean
+  sendingHealthStatus?: string
 }
 
 export type DispatchAnalyticsStatus = "sending" | "completed" | "failed"
@@ -116,5 +119,8 @@ export type CompareCampaignsData = {
   /** Decidido no servidor pelo gate. `trackingWarnings` também existe sem bloqueio. */
   trackingDispatchBlocked?: boolean
   trackingWarnings?: string[]
+  /** Trava de reputação por time (paused/suspended) — aviso já incluso em trackingWarnings. */
+  sendingHealthBlocked?: boolean
+  sendingHealthStatus?: string
   campaigns: CompareCampaignItem[]
 }

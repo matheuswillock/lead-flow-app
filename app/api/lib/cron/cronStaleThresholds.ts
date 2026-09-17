@@ -44,6 +44,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "email-orphan-events-drain": 300,
   "email-resend-domain-status-reconcile": 300,
   "email-resend-webhook-retry": 60,
+  "email-sending-health": 60,
   "email-stale-queued-logs-expire": 60,
   "engagement-backfill": 300,
   "evaluate-idle": VERCEL_DEFAULT_MAX_DURATION_SECONDS,

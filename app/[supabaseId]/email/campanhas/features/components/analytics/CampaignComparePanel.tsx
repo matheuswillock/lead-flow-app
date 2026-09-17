@@ -189,7 +189,7 @@ export function CampaignComparePanel({
 
       <TrackingDegradedAlert
         warnings={data?.trackingWarnings}
-        blocked={data?.trackingDispatchBlocked}
+        blocked={data?.trackingDispatchBlocked || data?.sendingHealthBlocked}
       />
 
       {loading ? (

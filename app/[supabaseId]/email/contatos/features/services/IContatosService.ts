@@ -45,4 +45,5 @@ export interface IContatosService {
   importMapped(listId: string, rows: EmailContactImportRow[]): Promise<EmailContactImportEnqueueResult>
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
+  releaseQuarantine(listId: string): Promise<void>
 }

@@ -15,6 +15,37 @@ export type ContactRow = {
   isBounced?: boolean
 }
 
+export type QuarantinedListRow = {
+  id: string
+  name: string
+  quarantineReason: string | null
+}
+
+export type ContactListQuarantineState = {
+  id: string
+  name: string
+  isQuarantined: boolean
+  quarantinedAt: Date | null
+  quarantineReason: string | null
+}
+
+/**
+ * Contrato mínimo consumido pelos casos de uso de quarentena (DIP) — o gate de
+ * importação marca a lista, a liberação é explícita por manager/owner, e o
+ * disparo de campanha consulta antes de montar audiência.
+ */
+export interface IEmailContactListQuarantineRepository {
+  quarantineList(params: { listId: string; reason: string; now: Date }): Promise<void>
+  releaseQuarantine(params: {
+    listId: string
+    teamId: string
+    releasedBy: string
+    now: Date
+  }): Promise<{ released: boolean }>
+  findQuarantinedLists(teamId: string, listIds: string[]): Promise<QuarantinedListRow[]>
+  getQuarantineState(listId: string, teamId: string): Promise<ContactListQuarantineState | null>
+}
+
 class EmailContactListRepository {
   async createList(input: CreateContactListInput): Promise<{ id: string }> {
     return prisma.emailContactList.create({
@@ -89,6 +120,66 @@ class EmailContactListRepository {
     await prisma.emailContactList.update({
       where: { id: listId },
       data: { totalContacts },
+    })
+  }
+
+  /** Import de risco ALTO: a lista sai de circulação até liberação explícita. */
+  async quarantineList(params: { listId: string; reason: string; now: Date }): Promise<void> {
+    await prisma.emailContactList.update({
+      where: { id: params.listId },
+      data: {
+        isQuarantined: true,
+        quarantinedAt: params.now,
+        quarantineReason: params.reason,
+        quarantineReleasedAt: null,
+        quarantineReleasedBy: null,
+      },
+    })
+  }
+
+  /**
+   * `updateMany` com predicado completo: liberar lista de outro time ou lista
+   * já liberada devolve `released: false` em vez de estourar.
+   */
+  async releaseQuarantine(params: {
+    listId: string
+    teamId: string
+    releasedBy: string
+    now: Date
+  }): Promise<{ released: boolean }> {
+    const result = await prisma.emailContactList.updateMany({
+      where: { id: params.listId, teamId: params.teamId, isQuarantined: true },
+      data: {
+        isQuarantined: false,
+        quarantineReleasedAt: params.now,
+        quarantineReleasedBy: params.releasedBy,
+      },
+    })
+    return { released: result.count === 1 }
+  }
+
+  async findQuarantinedLists(teamId: string, listIds: string[]): Promise<QuarantinedListRow[]> {
+    const uniqueIds = [...new Set(listIds.filter(Boolean))]
+    if (uniqueIds.length === 0) return []
+    return prisma.emailContactList.findMany({
+      where: { teamId, id: { in: uniqueIds }, isQuarantined: true },
+      select: { id: true, name: true, quarantineReason: true },
+    })
+  }
+
+  async getQuarantineState(
+    listId: string,
+    teamId: string
+  ): Promise<ContactListQuarantineState | null> {
+    return prisma.emailContactList.findFirst({
+      where: { id: listId, teamId },
+      select: {
+        id: true,
+        name: true,
+        isQuarantined: true,
+        quarantinedAt: true,
+        quarantineReason: true,
+      },
     })
   }
 }

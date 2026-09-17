@@ -304,6 +304,10 @@
       "schedule": "20 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/evaluate-sending-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
       "schedule": "*/5 * * * *"
     },

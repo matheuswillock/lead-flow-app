@@ -24,6 +24,9 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
       domainStatus: null,
       openTracking: false,
       clickTracking: false,
+      sendingDnsVerified: false,
+      sendingHealthStatus: "healthy",
+      sendingHealthReason: null,
     })),
     ...overrides,
   } as IEmailAnalyticsRepository
@@ -212,6 +215,8 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         clickTracking: false,
         // DNS de envio íntegro: o domínio despacha, só não mede abertura.
         sendingDnsVerified: true,
+        sendingHealthStatus: "healthy",
+        sendingHealthReason: null,
       })),
     })
     const uc = new EmailAnalyticsUseCase(repo)

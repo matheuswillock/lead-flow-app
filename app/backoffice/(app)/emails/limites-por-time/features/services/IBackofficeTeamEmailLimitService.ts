@@ -1,4 +1,9 @@
-import type { TeamEmailLimitGrantItem, TeamSearchItem } from "../context/BackofficeTeamEmailLimitTypes"
+import type {
+  SendingHealthAction,
+  TeamEmailLimitGrantItem,
+  TeamSearchItem,
+  TeamSendingHealthItem,
+} from "../context/BackofficeTeamEmailLimitTypes"
 
 export interface IBackofficeTeamEmailLimitService {
   list(): Promise<{ grants: TeamEmailLimitGrantItem[] }>
@@ -9,4 +14,6 @@ export interface IBackofficeTeamEmailLimitService {
     notes?: string | null
   ): Promise<TeamEmailLimitGrantItem>
   revoke(grantId: string): Promise<void>
+  listSendingHealth(teamIds: string[]): Promise<{ teams: TeamSendingHealthItem[] }>
+  applySendingHealthAction(teamId: string, action: SendingHealthAction): Promise<void>
 }

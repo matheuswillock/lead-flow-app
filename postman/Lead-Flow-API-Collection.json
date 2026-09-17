@@ -10067,8 +10067,14 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "Content-Type", "value": "application/json" }
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
                 ],
                 "body": {
                   "mode": "raw",
@@ -10076,8 +10082,15 @@
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "subscription-change-orders"]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "subscription-change-orders"
+                  ]
                 },
                 "description": "E6/G1 (SPEC 50): cria ordem de alteração de assinatura em `draft`. Pró-rata calculada no servidor; `overrideAmount` (preço avulso) acima do teto (`BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT`, default 0 até D13 ser decidida) nasce `pending` de aprovação. Exige manager (`requireManagerAccess`)."
               }
@@ -10087,13 +10100,30 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/approve",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "approve"],
-                  "variable": [{ "key": "id", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "subscription-change-orders",
+                    ":id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "E6/G1 (SPEC 50, trava S7/DA6): aprova preço avulso `pending`. Exige manager (`requireManagerAccess`)."
               }
@@ -10103,13 +10133,30 @@
               "request": {
                 "method": "POST",
                 "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
                 ],
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/generate-payment",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "generate-payment"],
-                  "variable": [{ "key": "id", "value": "" }]
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "subscription-change-orders",
+                    ":id",
+                    "generate-payment"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
                 },
                 "description": "E6/G2 (SPEC 50): gera a cobrança da diferença sempre na conta Asaas nova (DA6) e envia e-mail nosso (Resend) com o link de pagamento — nunca notificação do Asaas. Exige ordem em `draft` com preço avulso resolvido (não `pending`). Exige manager (`requireManagerAccess`)."
               }
@@ -14671,9 +14718,18 @@
                     "summary"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "KPIs do período (disparos, enviados, entregues, abertos, cliques, bounces, falhas, leads criados/anexados/total) e ranking por time. from/to obrigatórios (AAAA-MM-DD), range máximo de 92 dias, teamIds opcional (CSV de UUIDs)."
@@ -14702,11 +14758,26 @@
                     "dispatches"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" },
-                    { "key": "page", "value": "1" },
-                    { "key": "pageSize", "value": "25" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "25"
+                    }
                   ]
                 },
                 "description": "Tabela paginada de disparos do período (pageSize máximo 25 padrão / 100 limite)."
@@ -14735,9 +14806,18 @@
                     "teams-series"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "Série diária (por time e total agregado) de enviados/entregues/abertos/cliques, para o gráfico de área."
@@ -14766,9 +14846,18 @@
                     "templates"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "Agregado por time+template com taxa de abertura calculada, ordenado desc."
@@ -14797,9 +14886,18 @@
                     "forms-funnel"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "Funil por formulário (views/starts/completes, dos metric events) com leadsCreated e leadsAttached SEMPRE separados, startRate/closeRate calculados. v1.1 (01/09): leadsCreated/leadsAttached derivam de submissão completa + lead (lead.createdAt vs. submission.createdAt), não mais dos eventos lead_created/lead_attached — o fluxo legado do gate rotula esses eventos errado (mislabel confirmado em produção)."
@@ -14828,10 +14926,22 @@
                     "export.csv"
                   ],
                   "query": [
-                    { "key": "dataset", "value": "dispatches" },
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "dataset",
+                      "value": "dispatches"
+                    },
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "Export CSV (UTF-8 BOM, separador ';', decimal com vírgula, header PT-BR) do dataset dispatches|templates|forms|series. Content-Disposition com filename campanhas_<dataset>_<from>_<to>.csv."
@@ -14860,9 +14970,18 @@
                     "export-all.xlsx"
                   ],
                   "query": [
-                    { "key": "from", "value": "2026-08-26" },
-                    { "key": "to", "value": "2026-08-31" },
-                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                    {
+                      "key": "from",
+                      "value": "2026-08-26"
+                    },
+                    {
+                      "key": "to",
+                      "value": "2026-08-31"
+                    },
+                    {
+                      "key": "teamIds",
+                      "value": "{{backofficeTeamId}}"
+                    }
                   ]
                 },
                 "description": "Export completo em XLSX multi-abas (Resumo com os KPIs do período + Disparos + Templates + Formulários + Série diária), de todos os times do filtro. Teto próprio de 30 dias (mais estrito que o teto geral de 92 dias da tela) — período maior é rejeitado com 400. Content-Disposition com filename campanhas_completo_<from>_<to>.xlsx."
@@ -15251,6 +15370,70 @@
             "description": "Pesquisa pessoas (sócios) pelo CNPJá com filtros de nome, tipo e faixa etária. Retorna vínculos empresariais de cada pessoa encontrada."
           },
           "response": []
+        },
+        {
+          "name": "Saúde de Envio por Time",
+          "item": [
+            {
+              "name": "Listar Saúde de Envio dos Times",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-sending-health?teamIds={{teamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-sending-health"
+                  ],
+                  "query": [
+                    {
+                      "key": "teamIds",
+                      "value": "{{teamId}}",
+                      "description": "CSV de teamIds; sem o parametro, devolve todos os times fora de healthy."
+                    }
+                  ]
+                },
+                "description": "Visibilidade da trava de reputacao por time (backoffice, manager)."
+              },
+              "response": []
+            },
+            {
+              "name": "Liberar/Pausar Envio de um Time",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"release\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/team-email-sending-health/{{teamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "team-email-sending-health",
+                    "{{teamId}}"
+                  ]
+                },
+                "description": "action: release (paused/suspended -> warned) ou pause (forca a pausa; 2a pausa em 30 dias vira suspended)."
+              },
+              "response": []
+            }
+          ]
         }
       ]
     },
@@ -16430,6 +16613,30 @@
                 "description": "Importa contatos via CSV. Coluna email obrigatoria, name opcional."
               },
               "response": []
+            },
+            {
+              "name": "Liberar Lista da Quarentena (gate de importação)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/contact-lists/{{contactListId}}/quarantine/release",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "contact-lists",
+                    "{{contactListId}}",
+                    "quarantine",
+                    "release"
+                  ]
+                },
+                "description": "Liberacao explicita da quarentena aplicada pelo gate de importacao (risco ALTO). Restrito a manager/owner (isManagerLikeRole). Assume o custo de reputacao de enviar para a lista."
+              },
+              "response": []
             }
           ]
         },
@@ -17376,6 +17583,55 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {{cronSecret}}. Cron 2x/dia (08:00 e 14:00 BRT)."
+              },
+              "response": []
+            },
+            {
+              "name": "Avaliar Saúde de Envio dos Times",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/evaluate-sending-health",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "evaluate-sending-health"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Calcula janelas 7d/30d (hard bounce Permanent e complaint) por time e aplica as transicoes da trava de reputacao (healthy|warned|paused|suspended). paused/suspended nunca saem automaticamente."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Saúde de Envio",
+          "item": [
+            {
+              "name": "Liberar Envio do Time (owner)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/sending-health/release",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "sending-health",
+                    "release"
+                  ]
+                },
+                "description": "Liberacao manual da trava de reputacao pelo owner (master) do time: paused -> warned. suspended so sai pelo backoffice."
               },
               "response": []
             }

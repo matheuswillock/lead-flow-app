@@ -68,7 +68,9 @@ export function CampanhasContainer({
     openWizard,
     campaigns,
     detailCampaign,
+    credits,
   } = useCampanhasContext()
+  const sendingHealthBlocked = Boolean(credits?.sendingHealthBlocked)
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [analyticsDefaultTab, setAnalyticsDefaultTab] = useState<"metrics" | "logs">("metrics")
 
@@ -138,7 +140,13 @@ export function CampanhasContainer({
             size="sm"
             className="max-lg:h-11"
             onClick={() => void openWizard()}
-            disabled={readOnly}
+            disabled={readOnly || sendingHealthBlocked}
+            title={
+              sendingHealthBlocked
+                ? (credits?.sendingHealthBlockReason ??
+                  "O envio de campanhas deste time está pausado pela trava de reputação.")
+                : undefined
+            }
           >
             + Nova Campanha
           </Button>
