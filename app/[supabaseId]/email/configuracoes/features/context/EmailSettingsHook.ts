@@ -18,6 +18,7 @@ import type {
   EmailGlobalVariable,
   EmailSender,
   EmailSettings,
+  FormDomain,
   ResendDomainStatus,
 } from "./EmailSettingsTypes"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
@@ -25,6 +26,7 @@ import {
   buildDnsInstructionsAgentPrompt,
   buildDnsInstructionsText,
 } from "@/lib/email/custom-domain-dns-instructions"
+import { suggestFormDomainHostname } from "@/lib/public-forms/suggest-form-domain-hostname"
 
 const defaultService = new EmailSettingsService()
 const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
@@ -108,6 +110,25 @@ export type EmailSettingsHookReturn = {
   handleCopyDnsInstructionsPrompt: () => Promise<void>
   handleSendDnsInstructions: (recipientEmail: string) => Promise<boolean>
 
+  formDomain: FormDomain | null
+  formDomainInput: string
+  setFormDomainInput: (v: string) => void
+  formDomainRecords: DomainRecord[]
+  canManageFormDomain: boolean
+  canSendFormDomainDnsInstructions: boolean
+  connectingFormDomain: boolean
+  verifyingFormDomain: boolean
+  disconnectingFormDomain: boolean
+  loadingFormDomainRecords: boolean
+  sendingFormDomainDnsInstructions: boolean
+  handleConnectFormDomain: () => Promise<void>
+  handleDisconnectFormDomain: () => Promise<void>
+  handleVerifyFormDomain: () => Promise<void>
+  handleLoadFormDomainRecords: () => Promise<void>
+  handleCopyFormDomainDnsInstructions: () => Promise<void>
+  handleCopyFormDomainDnsInstructionsPrompt: () => Promise<void>
+  handleSendFormDomainDnsInstructions: (recipientEmail: string) => Promise<boolean>
+
   globalVariables: EmailGlobalVariable[]
   creatingVariable: boolean
   updatingVariableId: string | null
@@ -177,8 +198,21 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [configuringDomainTracking, setConfiguringDomainTracking] = useState(false)
   const [sendingDnsInstructions, setSendingDnsInstructions] = useState(false)
 
+  const [formDomain, setFormDomain] = useState<FormDomain | null>(null)
+  const [formDomainLoaded, setFormDomainLoaded] = useState(false)
+  const [formDomainInput, setFormDomainInput] = useState("")
+  const [formDomainRecords, setFormDomainRecords] = useState<DomainRecord[]>([])
+  const [connectingFormDomain, setConnectingFormDomain] = useState(false)
+  const [verifyingFormDomain, setVerifyingFormDomain] = useState(false)
+  const [disconnectingFormDomain, setDisconnectingFormDomain] = useState(false)
+  const [loadingFormDomainRecords, setLoadingFormDomainRecords] = useState(false)
+  const [sendingFormDomainDnsInstructions, setSendingFormDomainDnsInstructions] = useState(false)
+
   const fetchingRef = useRef(false)
   const lastSettingsKeyRef = useRef("")
+  const fetchingFormDomainRef = useRef(false)
+  const lastFormDomainKeyRef = useRef("")
+  const formDomainSuggestionAppliedRef = useRef(false)
 
   const applySettings = useCallback((result: EmailSettings) => {
     setSettings(result)
@@ -616,6 +650,195 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     [configuringDomainTracking, domainRegion, reloadSettings]
   )
 
+  // ---------- Domínio dos formulários (Frente C — Deliverability) ----------
+
+  /**
+   * O host do backoffice ainda não expõe o domínio de formulários — os métodos
+   * são opcionais no contrato e o card some quando não existem (mesmo padrão
+   * de `canSendDnsInstructions`).
+   */
+  const canManageFormDomain = typeof service.getFormDomain === "function"
+  const canSendFormDomainDnsInstructions =
+    typeof service.sendFormDomainDnsInstructions === "function"
+
+  const handleLoadFormDomainRecords = useCallback(async () => {
+    if (!service.getFormDomainRecords) return
+    setLoadingFormDomainRecords(true)
+    try {
+      const result = await service.getFormDomainRecords()
+      setFormDomainRecords(result.records ?? [])
+      if (result.formDomain) setFormDomain(result.formDomain)
+    } catch (err) {
+      console.error("[useEmailSettings] handleLoadFormDomainRecords error", err)
+    } finally {
+      setLoadingFormDomainRecords(false)
+    }
+  }, [service])
+
+  const fetchFormDomain = useCallback(async () => {
+    if (!service.getFormDomain) return
+    const key = "email-settings-form-domain"
+    if (fetchingFormDomainRef.current || lastFormDomainKeyRef.current === key) return
+    fetchingFormDomainRef.current = true
+    try {
+      const result = await service.getFormDomain()
+      setFormDomain(result.formDomain ?? null)
+      setFormDomainLoaded(true)
+      lastFormDomainKeyRef.current = key
+      if (result.formDomain) {
+        void handleLoadFormDomainRecords()
+      }
+    } catch (err) {
+      console.error("[useEmailSettings] fetchFormDomain error", err)
+    } finally {
+      fetchingFormDomainRef.current = false
+    }
+  }, [handleLoadFormDomainRecords, service])
+
+  useEffect(() => {
+    void fetchFormDomain()
+  }, [fetchFormDomain])
+
+  /**
+   * Sugestão única de `forms.<dominio-do-time>` quando o domínio de ENVIO já
+   * está verificado e ainda não há domínio de formulários. Nunca sobrescreve
+   * o que o usuário digitou.
+   */
+  useEffect(() => {
+    if (formDomainSuggestionAppliedRef.current) return
+    if (!formDomainLoaded || formDomain) return
+    if (!settings?.resendDomainName || settings.resendDomainStatus !== "verified") return
+
+    const suggestion = suggestFormDomainHostname(settings.resendDomainName)
+    if (!suggestion) return
+
+    formDomainSuggestionAppliedRef.current = true
+    setFormDomainInput((prev) => prev || suggestion)
+  }, [formDomain, formDomainLoaded, settings])
+
+  const handleConnectFormDomain = useCallback(async () => {
+    if (connectingFormDomain) return
+    if (!service.connectFormDomain) return
+    const hostname = formDomainInput.trim()
+    if (!hostname) {
+      toast.error("Informe o subdomínio dos formulários")
+      return
+    }
+    setConnectingFormDomain(true)
+    try {
+      const result = await service.connectFormDomain(hostname)
+      setFormDomain(result.formDomain ?? null)
+      setFormDomainRecords(result.records ?? [])
+      setFormDomainInput("")
+      lastFormDomainKeyRef.current = ""
+      toast.success("Domínio de formulários conectado. Crie o registro DNS para ativar.")
+    } catch (err) {
+      console.error("[useEmailSettings] handleConnectFormDomain error", err)
+      toastUserError(err)
+    } finally {
+      setConnectingFormDomain(false)
+    }
+  }, [connectingFormDomain, formDomainInput, service])
+
+  const handleDisconnectFormDomain = useCallback(async () => {
+    if (disconnectingFormDomain) return
+    if (!service.disconnectFormDomain) return
+    setDisconnectingFormDomain(true)
+    try {
+      await service.disconnectFormDomain()
+      setFormDomain(null)
+      setFormDomainRecords([])
+      lastFormDomainKeyRef.current = ""
+      toast.success("Domínio de formulários removido")
+    } catch (err) {
+      console.error("[useEmailSettings] handleDisconnectFormDomain error", err)
+      toastUserError(err)
+    } finally {
+      setDisconnectingFormDomain(false)
+    }
+  }, [disconnectingFormDomain, service])
+
+  const handleVerifyFormDomain = useCallback(async () => {
+    if (verifyingFormDomain) return
+    if (!service.verifyFormDomain) return
+    setVerifyingFormDomain(true)
+    try {
+      const result = await service.verifyFormDomain()
+      if (result.formDomain) setFormDomain(result.formDomain)
+      if (result.formDomain?.status === "verified") {
+        toast.success(
+          "Domínio verificado! Os novos disparos de campanha usarão este domínio nos links de formulário."
+        )
+      } else if (result.formDomain?.status === "failed") {
+        toast.error("O domínio não está mais ativo. Remova e conecte novamente.")
+      } else {
+        toast.info("DNS ainda não propagado. Verifique novamente em alguns minutos.")
+      }
+      void handleLoadFormDomainRecords()
+    } catch (err) {
+      console.error("[useEmailSettings] handleVerifyFormDomain error", err)
+      toastUserError(err)
+    } finally {
+      setVerifyingFormDomain(false)
+    }
+  }, [handleLoadFormDomainRecords, service, verifyingFormDomain])
+
+  const copyFormDomainDnsArtifactToClipboard = useCallback(
+    async (buildArtifact: typeof buildDnsInstructionsText, successMessage: string) => {
+      if (!formDomain || formDomainRecords.length === 0) {
+        toast.error("Carregue o registro DNS antes de copiar as instruções")
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(
+          buildArtifact({
+            domainName: formDomain.hostname,
+            records: formDomainRecords,
+            providerName: null,
+          })
+        )
+        toast.success(successMessage)
+      } catch (err) {
+        console.error("[useEmailSettings] copyFormDomainDnsArtifactToClipboard error", err)
+        toast.error("Não foi possível copiar")
+      }
+    },
+    [formDomain, formDomainRecords]
+  )
+
+  const handleCopyFormDomainDnsInstructions = useCallback(
+    () => copyFormDomainDnsArtifactToClipboard(buildDnsInstructionsText, "Instruções copiadas"),
+    [copyFormDomainDnsArtifactToClipboard]
+  )
+
+  const handleCopyFormDomainDnsInstructionsPrompt = useCallback(
+    () => copyFormDomainDnsArtifactToClipboard(buildDnsInstructionsAgentPrompt, "Prompt copiado"),
+    [copyFormDomainDnsArtifactToClipboard]
+  )
+
+  const handleSendFormDomainDnsInstructions = useCallback(
+    async (recipientEmail: string) => {
+      if (sendingFormDomainDnsInstructions) return false
+      if (!service.sendFormDomainDnsInstructions) {
+        toast.error("Envio de instruções não disponível nesta tela")
+        return false
+      }
+      setSendingFormDomainDnsInstructions(true)
+      try {
+        await service.sendFormDomainDnsInstructions(recipientEmail)
+        toast.success(`Instruções enviadas para ${recipientEmail}`)
+        return true
+      } catch (err) {
+        console.error("[useEmailSettings] handleSendFormDomainDnsInstructions error", err)
+        toastUserError(err)
+        return false
+      } finally {
+        setSendingFormDomainDnsInstructions(false)
+      }
+    },
+    [sendingFormDomainDnsInstructions, service]
+  )
+
   return {
     settings,
     loading,
@@ -678,6 +901,24 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     handleCopyDnsInstructions,
     handleCopyDnsInstructionsPrompt,
     handleSendDnsInstructions,
+    formDomain,
+    formDomainInput,
+    setFormDomainInput,
+    formDomainRecords,
+    canManageFormDomain,
+    canSendFormDomainDnsInstructions,
+    connectingFormDomain,
+    verifyingFormDomain,
+    disconnectingFormDomain,
+    loadingFormDomainRecords,
+    sendingFormDomainDnsInstructions,
+    handleConnectFormDomain,
+    handleDisconnectFormDomain,
+    handleVerifyFormDomain,
+    handleLoadFormDomainRecords,
+    handleCopyFormDomainDnsInstructions,
+    handleCopyFormDomainDnsInstructionsPrompt,
+    handleSendFormDomainDnsInstructions,
     globalVariables,
     creatingVariable,
     updatingVariableId,

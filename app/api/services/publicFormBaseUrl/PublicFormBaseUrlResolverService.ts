@@ -1,9 +1,12 @@
-import { prisma } from "@/app/api/infra/data/prisma"
 import { normalizeHostname } from "@/lib/proxy/forms-host"
 import type {
-  IPublicFormBaseUrlResolverService,
+  IPublicFormBaseUrlResolver,
   PublicFormBaseUrlResolution,
-} from "./IPublicFormBaseUrlResolverService"
+} from "@/lib/public-forms/public-form-base-url-resolution"
+import type { ITeamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/ITeamFormDomainRepository"
+import { teamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/TeamFormDomainRepository"
+import type { IPublicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/IPublicFormsRepository"
+import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
 
 /**
  * Cache curto em memória por time: um disparo chama `dispatchBatch` várias
@@ -37,7 +40,17 @@ function resolvePlatformBaseUrl(): string | null {
   }
 }
 
-export class PublicFormBaseUrlResolverService implements IPublicFormBaseUrlResolverService {
+/**
+ * Implementação concreta da porta `IPublicFormBaseUrlResolver` (ver
+ * `lib/public-forms/public-form-base-url-resolution.ts`). Injetada no
+ * `EmailCampaignDispatchService` pelo UseCase de campanha.
+ */
+export class PublicFormBaseUrlResolverService implements IPublicFormBaseUrlResolver {
+  constructor(
+    private readonly formDomainRepository: ITeamFormDomainRepository = teamFormDomainRepository,
+    private readonly formsRepository: IPublicFormsRepository = publicFormsRepository,
+  ) {}
+
   async resolvePublicFormBaseUrl(teamId: string): Promise<PublicFormBaseUrlResolution> {
     const cached = resolutionCache.get(teamId)
     if (cached && cached.expiresAt > Date.now()) {
@@ -58,18 +71,12 @@ export class PublicFormBaseUrlResolverService implements IPublicFormBaseUrlResol
   ): Promise<Set<string>> {
     if (publicIds.length === 0) return new Set()
 
-    const forms = await prisma.publicForm.findMany({
-      where: { teamId, publicId: { in: publicIds } },
-      select: { publicId: true },
-    })
-    return new Set(forms.map((form) => form.publicId.toLowerCase()))
+    const owned = await this.formsRepository.findPublicIdsOwnedByTeam(teamId, publicIds)
+    return new Set(owned.map((publicId) => publicId.toLowerCase()))
   }
 
   private async resolveUncached(teamId: string): Promise<PublicFormBaseUrlResolution> {
-    const domain = await prisma.teamFormDomain.findUnique({
-      where: { teamId },
-      select: { hostname: true, status: true },
-    })
+    const domain = await this.formDomainRepository.findByTeamId(teamId)
 
     if (domain?.status === "verified") {
       return { baseUrl: `https://${domain.hostname}`, source: "team-domain" }

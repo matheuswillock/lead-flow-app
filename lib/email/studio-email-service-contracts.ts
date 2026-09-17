@@ -23,6 +23,8 @@ import type {
   EmailSettings,
   EmailVariableType,
   EmailVariableValueSource,
+  FormDomainRecordsResult,
+  FormDomainResult,
   ResendDomainStatus,
 } from "@/app/[supabaseId]/email/configuracoes/features/context/EmailSettingsTypes"
 import type { EmailLog, LogDetail } from "@/app/[supabaseId]/email/historico/features/context/HistoricoTypes"
@@ -263,6 +265,18 @@ export interface StudioEmailSettingsService {
    * service não expõe o método (ver `canSendDnsInstructions` no hook).
    */
   sendDomainDnsInstructions?(recipientEmail: string): Promise<void>
+  /**
+   * Opcionais pelo mesmo motivo do envio de instruções: o domínio de
+   * FORMULÁRIOS (Frente C) existe hoje só na superfície do produto. O card
+   * some quando o service do host não expõe os métodos (ver
+   * `canManageFormDomain` no hook).
+   */
+  getFormDomain?(): Promise<FormDomainResult>
+  connectFormDomain?(hostname: string): Promise<FormDomainResult>
+  disconnectFormDomain?(): Promise<void>
+  verifyFormDomain?(): Promise<FormDomainResult>
+  getFormDomainRecords?(): Promise<FormDomainRecordsResult>
+  sendFormDomainDnsInstructions?(recipientEmail: string): Promise<void>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>

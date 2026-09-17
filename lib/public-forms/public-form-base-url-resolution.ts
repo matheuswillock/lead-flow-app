@@ -1,8 +1,13 @@
 /**
- * Resolve a base pública dos links de formulário de um time no momento do
- * disparo de campanha.
+ * Porta de resolução da base pública dos links de formulário no disparo de
+ * campanha (Frente C — Deliverability).
  *
- * Precedência:
+ * Vive em `lib` (e não em `app/api/services`) de propósito: o
+ * `EmailCampaignDispatchService` consome só o CONTRATO — Service não importa
+ * outro Service (governança). A implementação concreta é
+ * `PublicFormBaseUrlResolverService`, injetada pelo UseCase de campanha.
+ *
+ * Precedência da resolução:
  * 1. `team-domain`  — domínio de formulários VERIFICADO do time.
  * 2. `fallback-env` — host neutro configurável (`PUBLIC_FORMS_FALLBACK_HOST`).
  * 3. `platform`     — sem os anteriores: mantém o comportamento de hoje
@@ -17,7 +22,7 @@ export type PublicFormBaseUrlResolution = {
   source: PublicFormBaseUrlSource
 }
 
-export interface IPublicFormBaseUrlResolverService {
+export interface IPublicFormBaseUrlResolver {
   resolvePublicFormBaseUrl(teamId: string): Promise<PublicFormBaseUrlResolution>
   /** Intersecção dos publicIds informados com os formulários do time. */
   filterFormPublicIdsOwnedByTeam(teamId: string, publicIds: string[]): Promise<Set<string>>

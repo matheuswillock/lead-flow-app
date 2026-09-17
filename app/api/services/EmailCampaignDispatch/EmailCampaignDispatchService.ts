@@ -10,7 +10,7 @@ import {
 import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
 import { extractFormPublicIdsFromHtml } from "@/lib/email/form-links-in-html"
 import { rewriteFormUrlHostsToBase } from "@/lib/email/rewrite-form-urls-to-team-domain"
-import type { IPublicFormBaseUrlResolverService } from "@/app/api/services/publicFormBaseUrl/IPublicFormBaseUrlResolverService"
+import type { IPublicFormBaseUrlResolver } from "@/lib/public-forms/public-form-base-url-resolution"
 import {
   buildResendBatchIdempotencyKey,
   buildResendIdempotencyKeyWithVariant,
@@ -134,21 +134,11 @@ export function parseResendBatchSendItems(
 
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
   /**
-   * Injetável para teste; o default é resolvido por import dinâmico para não
-   * arrastar o Prisma para consumidores que nunca despacham HTML com
-   * `/forms/` (e para os testes existentes que instanciam sem argumentos).
+   * Porta injetada pelo UseCase de campanha (Service não importa outro
+   * Service — governança). Sem resolver injetado, o HTML sai intocado —
+   * comportamento anterior preservado para os consumidores existentes.
    */
-  constructor(
-    private readonly formBaseUrlResolverOverride?: IPublicFormBaseUrlResolverService,
-  ) {}
-
-  private async getFormBaseUrlResolver(): Promise<IPublicFormBaseUrlResolverService> {
-    if (this.formBaseUrlResolverOverride) return this.formBaseUrlResolverOverride
-    const { publicFormBaseUrlResolverService } = await import(
-      "@/app/api/services/publicFormBaseUrl/PublicFormBaseUrlResolverService"
-    )
-    return publicFormBaseUrlResolverService
-  }
+  constructor(private readonly formBaseUrlResolver?: IPublicFormBaseUrlResolver) {}
 
   /**
    * Troca o HOST dos links `/forms/{uuid}` para o domínio de formulários do
@@ -160,8 +150,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
   private async rewriteFormUrlsToTeamDomain(teamId: string, html: string): Promise<string> {
     if (!html.includes("/forms/")) return html
 
+    const resolver = this.formBaseUrlResolver
+    if (!resolver) return html
+
     try {
-      const resolver = await this.getFormBaseUrlResolver()
       const resolution = await resolver.resolvePublicFormBaseUrl(teamId)
       if (resolution.source === "platform" || !resolution.baseUrl) return html
 

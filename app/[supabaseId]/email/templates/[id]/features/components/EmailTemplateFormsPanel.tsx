@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { buildPublicFormLinkEmailSnippet } from "@/lib/email/public-form-link-embed"
 import { isApiRequestError } from "@/lib/http/api-request-error"
+import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
 import { publicFormsClientService } from "@/app/[supabaseId]/forms/features/services/PublicFormsService"
 import type { PublicFormListItem } from "@/app/[supabaseId]/forms/features/context/PublicFormsTypes"
 
@@ -76,7 +77,10 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
   }, [activeTeamId, supabaseId])
 
   const selected = forms.find((item) => item.id === selectedId) ?? null
-  const formUrl = selected ? `${window.location.origin}/forms/${selected.publicId}` : ""
+  // Domínio de formulários VERIFICADO do time quando existir (Frente C) —
+  // alinha o link copiado com o host que o disparo vai usar de fato.
+  const shareBaseUrl = usePublicFormShareBaseUrl()
+  const formUrl = selected ? `${shareBaseUrl}/forms/${selected.publicId}` : ""
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {

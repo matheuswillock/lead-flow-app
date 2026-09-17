@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import { AccessPermissionsCard } from "../components/AccessPermissionsCard"
 import { CustomDomainCard } from "../components/CustomDomainCard"
+import { FormsDomainCard } from "../components/FormsDomainCard"
 import { DispatchRestrictionsCard } from "../components/DispatchRestrictionsCard"
 import { GlobalVariablesCard } from "../components/GlobalVariablesCard"
 import { SenderCard } from "../components/SenderCard"
@@ -51,6 +52,7 @@ export function EmailSettingsContainer() {
 
       <div className={readOnly ? "pointer-events-none opacity-60" : undefined}>
         <CustomDomainCard />
+        <FormsDomainCard />
         <SenderCard />
         <GlobalVariablesCard />
         <DispatchRestrictionsCard />

@@ -9,6 +9,7 @@ import {
 } from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { prisma, getEmailCronPrisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
+import { publicFormBaseUrlResolverService } from "@/app/api/services/publicFormBaseUrl/PublicFormBaseUrlResolverService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
 import type {
   CampaignRecipient,
@@ -391,7 +392,9 @@ function buildListPlanRows({
 }
 
 export class EmailCampaignUseCase {
-  private dispatchService = new EmailCampaignDispatchService()
+  // Resolver do domínio de formulários injetado aqui (camada UseCase) porque
+  // Service não importa outro Service — ver lib/public-forms/public-form-base-url-resolution.ts.
+  private dispatchService = new EmailCampaignDispatchService(publicFormBaseUrlResolverService)
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
   private repository: IEmailCampaignRepository
