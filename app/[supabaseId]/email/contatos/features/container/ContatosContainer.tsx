@@ -49,7 +49,7 @@ export function ContatosContainer() {
         </div>
         <ContactListCreateModal
           trigger={
-            <Button size="sm" disabled={readOnly}>+ Nova Lista</Button>
+            <Button size="sm" className="min-h-11" disabled={readOnly}>+ Nova Lista</Button>
           }
         />
       </div>
