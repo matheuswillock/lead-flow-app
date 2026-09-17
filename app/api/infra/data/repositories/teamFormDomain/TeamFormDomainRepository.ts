@@ -68,9 +68,20 @@ export class TeamFormDomainRepository implements ITeamFormDomainRepository {
     await prisma.teamFormDomain.delete({ where: { id } })
   }
 
-  async listPendingOrFailed(limit: number): Promise<TeamFormDomainRecord[]> {
+  /**
+   * Todos os status entram na reconciliação — inclusive `verified`. Sem isso
+   * um domínio verificado cuja infraestrutura sumiu (CNAME removido, domínio
+   * apagado na Vercel) nunca seria rebaixado, e o disparo continuaria
+   * reescrevendo links para um host que não resolve mais.
+   *
+   * `lastCheckedAt asc nulls first` mantém a prioridade natural: domínio
+   * recém-conectado (`lastCheckedAt` nulo) vem antes de um verificado que
+   * acabou de ser checado — verificado não rouba o lote de quem está
+   * esperando a primeira checagem.
+   */
+  async listForReconciliation(limit: number): Promise<TeamFormDomainRecord[]> {
     return prisma.teamFormDomain.findMany({
-      where: { status: { in: ["pending", "failed"] } },
+      where: { status: { in: ["pending", "failed", "verified"] } },
       orderBy: [{ lastCheckedAt: { sort: "asc", nulls: "first" } }],
       take: limit,
       select: TEAM_FORM_DOMAIN_SELECT,

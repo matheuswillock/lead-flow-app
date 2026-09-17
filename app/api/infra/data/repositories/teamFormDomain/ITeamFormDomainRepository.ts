@@ -30,6 +30,12 @@ export interface ITeamFormDomainRepository {
   create(input: CreateTeamFormDomainInput): Promise<TeamFormDomainRecord>
   saveCheckResult(id: string, input: SaveTeamFormDomainCheckInput): Promise<TeamFormDomainRecord>
   deleteById(id: string): Promise<void>
-  /** Domínios não verificados para o cron de reconciliação, mais antigos primeiro. */
-  listPendingOrFailed(limit: number): Promise<TeamFormDomainRecord[]>
+  /**
+   * Domínios para o cron de reconciliação, mais antigos primeiro.
+   *
+   * Inclui `verified` de propósito: se o CNAME for removido depois da
+   * verificação, o registro precisa ser REBAIXADO — senão as campanhas seguem
+   * gerando links para um host morto. Reconciliação é bidirecional.
+   */
+  listForReconciliation(limit: number): Promise<TeamFormDomainRecord[]>
 }

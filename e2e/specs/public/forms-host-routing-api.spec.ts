@@ -213,6 +213,111 @@ test.describe("roteamento por host dos formulários públicos", () => {
     expect(payload.isValid).toBe(true)
   })
 
+  /**
+   * Guarda de tenancy NAS ROTAS, não só na página. O proxy libera
+   * `/api/(q|v1)/public-forms/**` em host custom sem consultar banco, e
+   * `Origin` ausente passa no `isPublicFormRequestOriginAllowed` — então sem
+   * `rejectPublicFormRequestOnForeignHost` daria para ler o snapshot e, pior,
+   * CRIAR LEAD do time B no domínio verificado do time A.
+   *
+   * Aqui o status HTTP é medido de verdade (diferente da página, onde o PPR
+   * devolve o shell 200 e o notFound acontece no streaming).
+   */
+  test("snapshot de formulário de OUTRO time é 404 na API do host custom", async ({ request }) => {
+    const response = await request.get(`/api/q/public-forms/${FORM_B_PUBLIC_ID}`, {
+      headers: { host: VERIFIED_HOST },
+    })
+
+    expect(response.status()).toBe(404)
+    const payload = (await response.json()) as { isValid: boolean; result: unknown }
+    expect(payload.isValid).toBe(false)
+    expect(payload.result).toBeNull()
+  })
+
+  test("submissão de formulário de OUTRO time é recusada no host custom", async ({ request }) => {
+    const response = await request.post(
+      `/api/q/public-forms/${FORM_B_PUBLIC_ID}/submissions`,
+      {
+        headers: { host: VERIFIED_HOST, "content-type": "application/json" },
+        data: {
+          visitorSessionId: "e2e-host-tenancy-session",
+          answers: [],
+          origin: {},
+        },
+      },
+    )
+
+    expect(response.status()).toBe(404)
+
+    // A prova que importa: nenhuma submissão do time B nasceu pelo host do A.
+    const submissionCount = await getPrisma().publicFormSubmission.count({
+      where: { form: { publicId: FORM_B_PUBLIC_ID } },
+    })
+    expect(submissionCount).toBe(0)
+  })
+
+  /**
+   * O prefill já devolve 404 por outros motivos (parâmetro ausente), então o
+   * status sozinho não discrimina — a mensagem é que prova que quem recusou
+   * foi a guarda de tenancy, e não a validação de parâmetros.
+   */
+  test("prefill de formulário de OUTRO time é recusado pela guarda no host custom", async ({
+    request,
+  }) => {
+    const response = await request.get(
+      `/api/q/public-forms/${FORM_B_PUBLIC_ID}/prefill`,
+      { headers: { host: VERIFIED_HOST } },
+    )
+
+    expect(response.status()).toBe(404)
+    const payload = (await response.json()) as { errorMessages?: string[] }
+    expect(payload.errorMessages).toContain("Formulário não encontrado")
+  })
+
+  test("progresso de formulário de OUTRO time é recusado no host custom", async ({ request }) => {
+    const response = await request.post(`/api/q/public-forms/${FORM_B_PUBLIC_ID}/progress`, {
+      headers: { host: VERIFIED_HOST, "content-type": "application/json" },
+      data: {
+        visitorSessionId: "e2e-host-tenancy-session",
+        answers: [],
+      },
+    })
+
+    expect(response.status()).toBe(404)
+  })
+
+  test("evento de métrica de formulário de OUTRO time é recusado no host custom", async ({
+    request,
+  }) => {
+    const response = await request.post(`/api/q/public-forms/${FORM_B_PUBLIC_ID}/events`, {
+      headers: { host: VERIFIED_HOST, "content-type": "application/json" },
+      data: {
+        visitorSessionId: "e2e-host-tenancy-session",
+        eventType: "form_view",
+        eventKey: "e2e-host-tenancy-event",
+      },
+    })
+
+    expect(response.status()).toBe(404)
+  })
+
+  test("host desconhecido é 404 na API mesmo para formulário existente", async ({ request }) => {
+    const response = await request.get(`/api/q/public-forms/${FORM_A_PUBLIC_ID}`, {
+      headers: { host: UNKNOWN_HOST },
+    })
+
+    expect(response.status()).toBe(404)
+  })
+
+  /** O caminho normal (host da plataforma) não pode ter sido estreitado. */
+  test("host da plataforma segue servindo a API de qualquer formulário", async ({ request }) => {
+    const response = await request.get(`/api/q/public-forms/${FORM_B_PUBLIC_ID}`)
+
+    expect(response.status()).toBe(200)
+    const payload = (await response.json()) as { isValid: boolean }
+    expect(payload.isValid).toBe(true)
+  })
+
   test("API fora do escopo do formulário redireciona no host custom", async ({ request }) => {
     const response = await request.get("/api/q/leads", {
       headers: { host: VERIFIED_HOST },

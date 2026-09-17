@@ -17,10 +17,14 @@ export type ReconcileTeamFormDomainDependencies = {
 }
 
 /**
- * Cron de reconciliação do domínio de formulários: varre os domínios
- * `pending`/`failed` e atualiza o status a partir da infraestrutura —
- * espelho do reconcile do domínio de envio (Resend), mas para o gateway de
- * domínios da Vercel.
+ * Cron de reconciliação do domínio de formulários: varre os domínios e
+ * atualiza o status a partir da infraestrutura — espelho do reconcile do
+ * domínio de envio (Resend), mas para o gateway de domínios da Vercel.
+ *
+ * A varredura é BIDIRECIONAL: `pending`/`failed` podem subir para `verified`,
+ * e `verified` pode ser rebaixado quando o CNAME sai do ar. Sem o segundo
+ * sentido, um domínio verificado cuja infraestrutura sumiu ficaria verificado
+ * para sempre e o disparo continuaria montando links para um host morto.
  */
 export class ReconcileTeamFormDomainStatusUseCase {
   private readonly repository: ITeamFormDomainRepository
@@ -42,16 +46,17 @@ export class ReconcileTeamFormDomainStatusUseCase {
           true,
           ["Integração de domínio de formulários não configurada — nada a reconciliar"],
           [],
-          { scanned: 0, verified: 0, stillPending: 0, failed: 0, errors: 0 },
+          { scanned: 0, verified: 0, stillPending: 0, failed: 0, downgraded: 0, errors: 0 },
         )
       }
 
-      const domains = await this.repository.listPendingOrFailed(RECONCILE_BATCH_SIZE)
+      const domains = await this.repository.listForReconciliation(RECONCILE_BATCH_SIZE)
 
       let verified = 0
       let stillPending = 0
       let failed = 0
       let errors = 0
+      let downgraded = 0
 
       for (const domain of domains) {
         try {
@@ -66,6 +71,16 @@ export class ReconcileTeamFormDomainStatusUseCase {
 
           if (outcome.status !== domain.status) {
             this.invalidateCache({ hostname: domain.hostname })
+          }
+
+          // Rebaixamento (verified -> pending/failed) é o caso que o operador
+          // precisa ver: links de campanha já emitidos apontam para um host
+          // que parou de resolver.
+          if (domain.status === "verified" && outcome.status !== "verified") {
+            downgraded += 1
+            console.error(
+              `[ReconcileTeamFormDomainStatusUseCase] Domínio rebaixado de verified para ${outcome.status}: ${domain.hostname}`,
+            )
           }
 
           if (outcome.status === "verified") verified += 1
@@ -85,6 +100,7 @@ export class ReconcileTeamFormDomainStatusUseCase {
         verified,
         stillPending,
         failed,
+        downgraded,
         errors,
       }
 

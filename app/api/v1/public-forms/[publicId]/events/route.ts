@@ -8,6 +8,7 @@ import {
 } from "@/lib/public-forms/rate-limit"
 import { PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG } from "@/lib/queues/public-form-metric-events"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 
 export async function POST(
@@ -18,6 +19,8 @@ export async function POST(
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
   }
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
   const parsed = publicFormMetricEventSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })

@@ -95,9 +95,11 @@ type Member = { profileId: string; name: string; functions: string[] }
 export function PublicFormsContainer() {
   const params = useParams<{ supabaseId: string }>()
   const forms = usePublicForms()
-  // Domínio de formulários VERIFICADO do time (Frente C): copiar link/iframe
-  // usa o mesmo host que o disparo de campanha vai usar.
-  const shareBaseUrl = usePublicFormShareBaseUrl()
+  // Domínio de formulários VERIFICADO do time ATIVO (Frente C): copiar
+  // link/iframe usa o mesmo host que o disparo de campanha vai usar. O teamId
+  // entra na chave do cache — sem ele, trocar de time devolvia o domínio do
+  // time anterior e gerava link que a guarda de tenancy responde 404.
+  const shareBaseUrl = usePublicFormShareBaseUrl(forms.ids?.teamId ?? null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [analyticsId, setAnalyticsId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<PublicFormListItem | null>(null)

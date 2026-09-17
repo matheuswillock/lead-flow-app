@@ -4,14 +4,16 @@ import { cacheLife, cacheTag } from "next/cache"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { cacheTags } from "@/lib/cache/cacheTags"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { classifyFormsHost, normalizeHostname } from "@/lib/proxy/forms-host"
 
 /**
  * Guarda de tenancy do serving multi-tenant de formulários.
  *
- * O proxy só filtra host + path (barato). Quem garante que o time A não serve
- * formulário do time B no domínio dele é a página `app/forms/[publicId]`:
- * resolve o domínio verificado pelo hostname e exige
- * `form.teamId === domain.teamId`.
+ * O proxy só filtra host + path (barato) — e libera tanto `/forms/*` quanto as
+ * APIs públicas do formulário em qualquer host de formulários. Quem garante
+ * que o time A não serve (nem recebe submissão de) formulário do time B no
+ * domínio dele é `isPublicFormServableOnHost`, chamada pela página
+ * `app/forms/[publicId]` E pelas rotas `app/api/v1/public-forms/[publicId]/**`.
  */
 
 /**
@@ -76,4 +78,30 @@ export async function findPublicFormTeamId(publicId: string): Promise<string | n
     console.error("[findPublicFormTeamId]", error)
     return null
   }
+}
+
+/**
+ * Decisão ÚNICA de tenancy por hostname do serving de formulários — a mesma
+ * para a página e para as rotas de API.
+ *
+ * - Host da plataforma e host neutro de fallback: liberado para qualquer time
+ *   (fail-open documentado, é o comportamento anterior ao domínio próprio).
+ * - Host custom: exige domínio `verified` para aquele hostname E
+ *   `form.teamId === domain.teamId`. Qualquer outra combinação é recusada —
+ *   inclusive hostname ilegível e domínio não verificado (fail-closed).
+ */
+export async function isPublicFormServableOnHost(input: {
+  publicId: string
+  hostHeader: string | null | undefined
+}): Promise<boolean> {
+  if (classifyFormsHost(input.hostHeader) !== "custom") return true
+
+  const hostname = normalizeHostname(input.hostHeader)
+  if (!hostname) return false
+
+  const domain = await resolveVerifiedTeamFormDomainSafely(hostname)
+  if (!domain) return false
+
+  const formTeamId = await findPublicFormTeamId(input.publicId)
+  return formTeamId !== null && formTeamId === domain.teamId
 }

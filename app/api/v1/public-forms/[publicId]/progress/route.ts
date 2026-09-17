@@ -6,6 +6,7 @@ import {
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { buildPublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
 import { queueProgressForBackgroundProcessing } from "@/lib/public-forms/queue-progress-for-background-processing"
@@ -18,6 +19,8 @@ export async function POST(
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
   }
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
   const parsed = publicFormProgressSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })
