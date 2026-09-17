@@ -23,24 +23,25 @@ export function useBackofficeTeamEmailLimitHook(
   const [isApplyingHealthTeamId, setIsApplyingHealthTeamId] = useState<string | null>(null)
   const inFlightRef = useRef(false)
 
-  const fetchSendingHealth = useCallback(
-    async (teamIds: string[]) => {
-      if (teamIds.length === 0) {
-        setSendingHealthByTeamId({})
-        return
-      }
-      try {
-        const result = await service.listSendingHealth(teamIds)
-        const byTeamId: Record<string, TeamSendingHealthItem> = {}
-        for (const team of result.teams) byTeamId[team.teamId] = team
-        setSendingHealthByTeamId(byTeamId)
-      } catch (healthError) {
-        // Coluna informativa: falha aqui não pode derrubar a tela de limites.
-        console.error("[useBackofficeTeamEmailLimitHook] fetchSendingHealth", healthError)
-      }
-    },
-    [service]
-  )
+  /**
+   * Busca SEM `teamIds`: a rota devolve todos os times fora de `healthy`.
+   *
+   * Pedir saúde só para `result.grants` escondia exatamente o caso que a tela
+   * existe para resolver: time `suspended` sem limite customizado — e
+   * suspensão só sai pelo backoffice. Grant que não aparecer na resposta está
+   * `healthy` por definição, então uma chamada cobre as duas necessidades.
+   */
+  const fetchSendingHealth = useCallback(async () => {
+    try {
+      const result = await service.listSendingHealth()
+      const byTeamId: Record<string, TeamSendingHealthItem> = {}
+      for (const team of result.teams) byTeamId[team.teamId] = team
+      setSendingHealthByTeamId(byTeamId)
+    } catch (healthError) {
+      // Coluna informativa: falha aqui não pode derrubar a tela de limites.
+      console.error("[useBackofficeTeamEmailLimitHook] fetchSendingHealth", healthError)
+    }
+  }, [service])
 
   const fetchItems = useCallback(async () => {
     if (inFlightRef.current) return
@@ -50,7 +51,7 @@ export function useBackofficeTeamEmailLimitHook(
     try {
       const result = await service.list()
       setGrants(result.grants)
-      await fetchSendingHealth(result.grants.map((grantItem) => grantItem.teamId))
+      await fetchSendingHealth()
     } catch (fetchError) {
       setError(toUserToastMessage(fetchError))
     } finally {
@@ -113,7 +114,7 @@ export function useBackofficeTeamEmailLimitHook(
       setIsApplyingHealthTeamId(teamId)
       try {
         await service.applySendingHealthAction(teamId, action)
-        await fetchSendingHealth(grants.map((grantItem) => grantItem.teamId))
+        await fetchSendingHealth()
         return true
       } catch (actionError) {
         setError(toUserToastMessage(actionError))
@@ -122,12 +123,20 @@ export function useBackofficeTeamEmailLimitHook(
         setIsApplyingHealthTeamId(null)
       }
     },
-    [fetchSendingHealth, grants, isApplyingHealthTeamId, service]
+    [fetchSendingHealth, isApplyingHealthTeamId, service]
   )
+
+  // Times bloqueados/alertados SEM limite customizado: fora da tabela de
+  // grants eles não teriam onde ser liberados pelo suporte.
+  const grantedTeamIds = new Set(grants.map((grantItem) => grantItem.teamId))
+  const unlistedSendingHealth = Object.values(sendingHealthByTeamId)
+    .filter((team) => !grantedTeamIds.has(team.teamId))
+    .sort((left, right) => left.teamName.localeCompare(right.teamName, "pt-BR"))
 
   return {
     grants,
     sendingHealthByTeamId,
+    unlistedSendingHealth,
     isLoading,
     error,
     isGranting,

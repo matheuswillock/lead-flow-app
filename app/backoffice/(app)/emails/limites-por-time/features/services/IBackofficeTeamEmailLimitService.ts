@@ -14,6 +14,7 @@ export interface IBackofficeTeamEmailLimitService {
     notes?: string | null
   ): Promise<TeamEmailLimitGrantItem>
   revoke(grantId: string): Promise<void>
-  listSendingHealth(teamIds: string[]): Promise<{ teams: TeamSendingHealthItem[] }>
+  /** Sem `teamIds`: TODOS os times fora de `healthy` — inclusive sem grant. */
+  listSendingHealth(teamIds?: string[]): Promise<{ teams: TeamSendingHealthItem[] }>
   applySendingHealthAction(teamId: string, action: SendingHealthAction): Promise<void>
 }

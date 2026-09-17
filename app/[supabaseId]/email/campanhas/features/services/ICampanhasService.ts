@@ -49,6 +49,8 @@ export interface ICampanhasService {
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
+  /** Liberação manual da trava de reputação pelo owner (`paused` → `warned`). */
+  releaseSendingHealth(supabaseId: string, teamId: string | null | undefined): Promise<void>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<Template[]>
   getTemplateById(supabaseId: string, teamId: string | null | undefined, id: string): Promise<Template>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>

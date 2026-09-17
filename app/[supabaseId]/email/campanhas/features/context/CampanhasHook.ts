@@ -219,6 +219,8 @@ export type CampanhasHookReturn = {
   loading: boolean
   credits: CreditStatus | null
   loadingCredits: boolean
+  releasingSendingHealth: boolean
+  releaseSendingHealth: () => Promise<boolean>
   sendingId: string | null
   cancelingId: string | null
   deletingId: string | null
@@ -281,6 +283,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const [loading, setLoading] = useState(false)
   const [credits, setCredits] = useState<CreditStatus | null>(null)
   const [loadingCredits, setLoadingCredits] = useState(false)
+  const [releasingSendingHealth, setReleasingSendingHealth] = useState(false)
+  const releasingSendingHealthRef = useRef(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -480,6 +484,31 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
       setLoadingCredits(false)
     }
   }, [activeTeamId, supabaseId, teamLoading])
+
+  /**
+   * Liberação manual da trava de reputação pelo owner. A copy do bloqueio
+   * manda "liberar o envio" — sem esta ação o usuário era mandado para um
+   * lugar onde nada existia. O gate de papel e de status é do SERVIDOR
+   * (`ReleaseTeamSendingHealthUseCase`); aqui só há lock de botão e refresh.
+   */
+  const releaseSendingHealth = useCallback(async () => {
+    if (teamLoading || !activeTeamId || releasingSendingHealthRef.current) return false
+    releasingSendingHealthRef.current = true
+    setReleasingSendingHealth(true)
+    try {
+      await service.releaseSendingHealth(supabaseId, activeTeamId)
+      await fetchCredits()
+      toast.success("Envio liberado — o time volta ao status de alerta")
+      return true
+    } catch (err) {
+      console.error("[useCampanhas] releaseSendingHealth error", err)
+      toast.error(toUserToastMessage(err))
+      return false
+    } finally {
+      releasingSendingHealthRef.current = false
+      setReleasingSendingHealth(false)
+    }
+  }, [activeTeamId, fetchCredits, supabaseId, teamLoading])
 
   useEffect(() => {
     if (teamLoading) return
@@ -1711,6 +1740,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     loading,
     credits,
     loadingCredits,
+    releasingSendingHealth,
+    releaseSendingHealth,
     sendingId,
     cancelingId,
     deletingId,

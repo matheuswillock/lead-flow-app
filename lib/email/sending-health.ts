@@ -33,6 +33,13 @@ export const SENDING_HEALTH_RECOVERY_DAYS = 14
 export const SENDING_HEALTH_SUSPEND_PAUSE_COUNT = 2
 export const SENDING_HEALTH_SUSPEND_WINDOW_DAYS = 30
 
+/**
+ * Validade do baseline de liberação manual. A janela de bounce tem 7 dias: o
+ * baseline só precisa existir enquanto ainda houver evento PRÉ-liberação
+ * dentro dela. Depois disso a janela crua já é "só o que veio depois".
+ */
+export const SENDING_HEALTH_RELEASE_BASELINE_DAYS = 7
+
 /** Abort mid-send: a própria parte com bounce ≥ 8% e ≥ 100 enviados. */
 export const SENDING_HEALTH_ABORT_MIN_SENT = 100
 export const SENDING_HEALTH_ABORT_HARD_BOUNCE_RATE = 0.08
@@ -88,6 +95,24 @@ export function classifySendingHealthSeverity(rates: SendingHealthRates): Sendin
   return "ok"
 }
 
+/**
+ * Marca de água gravada na liberação MANUAL (owner ou backoffice). Sem ela a
+ * liberação é uma armadilha: o incidente que causou a pausa continua dentro
+ * da janela de 7 dias, o próximo tick do cron reclassifica `pause` sobre os
+ * MESMOS eventos, empilha uma 2ª pausa e o time cai em `suspended` minutos
+ * depois de ter sido liberado.
+ *
+ * Com o baseline, o cron mede a janela LÍQUIDA (janela atual − janela no
+ * instante da liberação): logo após liberar, zero envios líquidos ⇒ sem
+ * volume mínimo ⇒ severidade `ok`. Só envio NOVO reconta — o que é um
+ * incidente novo, não o mesmo duas vezes. Dano agudo continua coberto pelo
+ * abort mid-send, que não passa por esta máquina.
+ */
+export type SendingHealthReleaseBaseline = {
+  at: string
+  windows: SendingHealthWindowMetrics
+}
+
 /** Shape persistido em `EmailTeamSettings.sendingHealthMetrics` (Json). */
 export type SendingHealthSnapshot = {
   computedAt: string
@@ -97,10 +122,12 @@ export type SendingHealthSnapshot = {
   belowWarnSince: string | null
   /** ISO das entradas em `paused` — base do gatilho de suspensão (30d). */
   pauseHistory: string[]
+  /** Marca de água da última liberação manual; `null` quando não há/expirou. */
+  releaseBaseline: SendingHealthReleaseBaseline | null
 }
 
-function parseSendingHealthWindows(value: unknown): SendingHealthWindowMetrics {
-  const zeroWindows: SendingHealthWindowMetrics = {
+function zeroWindows(): SendingHealthWindowMetrics {
+  return {
     sent7d: 0,
     hardBounced7d: 0,
     complained7d: 0,
@@ -108,10 +135,12 @@ function parseSendingHealthWindows(value: unknown): SendingHealthWindowMetrics {
     hardBounced30d: 0,
     complained30d: 0,
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return zeroWindows
-  const windows = (value as Record<string, unknown>).windows
-  if (!windows || typeof windows !== "object" || Array.isArray(windows)) return zeroWindows
-  const source = windows as Record<string, unknown>
+}
+
+/** Lê o objeto `windows` cru (aceita tanto o snapshot inteiro quanto o nó). */
+function readWindowCounts(value: unknown): SendingHealthWindowMetrics {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return zeroWindows()
+  const source = value as Record<string, unknown>
   const readCount = (key: keyof SendingHealthWindowMetrics): number => {
     const count = source[key]
     return typeof count === "number" && Number.isFinite(count) && count >= 0 ? count : 0
@@ -126,12 +155,63 @@ function parseSendingHealthWindows(value: unknown): SendingHealthWindowMetrics {
   }
 }
 
+function parseSendingHealthWindows(value: unknown): SendingHealthWindowMetrics {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return zeroWindows()
+  return readWindowCounts((value as Record<string, unknown>).windows)
+}
+
+export function parseSendingHealthReleaseBaseline(
+  value: unknown
+): SendingHealthReleaseBaseline | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const baseline = (value as Record<string, unknown>).releaseBaseline
+  if (!baseline || typeof baseline !== "object" || Array.isArray(baseline)) return null
+  const at = (baseline as Record<string, unknown>).at
+  if (typeof at !== "string" || Number.isNaN(Date.parse(at))) return null
+  return { at, windows: readWindowCounts((baseline as Record<string, unknown>).windows) }
+}
+
+/**
+ * Janela LÍQUIDA pós-liberação. Devolve também o baseline que deve continuar
+ * persistido: `null` depois de `SENDING_HEALTH_RELEASE_BASELINE_DAYS`, quando
+ * a janela crua já não contém nenhum evento pré-liberação.
+ */
+export function applySendingHealthReleaseBaseline(params: {
+  windows: SendingHealthWindowMetrics
+  baseline: SendingHealthReleaseBaseline | null
+  now: Date
+}): { windows: SendingHealthWindowMetrics; baseline: SendingHealthReleaseBaseline | null } {
+  const { baseline } = params
+  if (!baseline) return { windows: params.windows, baseline: null }
+
+  const expiresAt = Date.parse(baseline.at) + SENDING_HEALTH_RELEASE_BASELINE_DAYS * DAY_MS
+  if (params.now.getTime() >= expiresAt) {
+    return { windows: params.windows, baseline: null }
+  }
+
+  const net = (key: keyof SendingHealthWindowMetrics): number =>
+    Math.max(0, params.windows[key] - baseline.windows[key])
+
+  return {
+    windows: {
+      sent7d: net("sent7d"),
+      hardBounced7d: net("hardBounced7d"),
+      complained7d: net("complained7d"),
+      sent30d: net("sent30d"),
+      hardBounced30d: net("hardBounced30d"),
+      complained30d: net("complained30d"),
+    },
+    baseline,
+  }
+}
+
 export function parseSendingHealthSnapshot(value: unknown): {
   belowWarnSince: Date | null
   pauseHistory: Date[]
+  releaseBaseline: SendingHealthReleaseBaseline | null
 } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { belowWarnSince: null, pauseHistory: [] }
+    return { belowWarnSince: null, pauseHistory: [], releaseBaseline: null }
   }
   const source = value as Record<string, unknown>
 
@@ -149,7 +229,11 @@ export function parseSendingHealthSnapshot(value: unknown): {
         .map((entry) => new Date(entry))
     : []
 
-  return { belowWarnSince, pauseHistory }
+  return {
+    belowWarnSince,
+    pauseHistory,
+    releaseBaseline: parseSendingHealthReleaseBaseline(value),
+  }
 }
 
 function pruneToSuspendWindow(pauseHistory: Date[], now: Date): Date[] {
@@ -349,7 +433,10 @@ export function formatSendingHealthBlockMessage(params: {
   const releaseHint =
     params.status === "suspended"
       ? "Fale com o suporte do Corretor Studio para liberar."
-      : "Higienize suas listas e libere o envio em Configurações de e-mail, ou fale com o suporte."
+      : // O botão vive no aviso da tela de Campanhas e só aparece para o
+        // responsável (master) do time — ver `canReleaseSendingHealth` em
+        // `EmailCreditUseCase`. Não citar uma tela onde a ação não existe.
+        "Higienize suas listas e use \"Liberar envio\" no aviso em Campanhas (somente o responsável do time), ou fale com o suporte."
   const reasonPart = params.reason?.trim() ? ` Motivo: ${params.reason.trim()}` : ""
   const statusLabel = params.status === "suspended" ? "suspenso" : "pausado"
   return `O envio de campanhas deste time está ${statusLabel} pela trava de reputação.${reasonPart} ${releaseHint}`
@@ -395,9 +482,33 @@ export function buildPauseSnapshotFromExisting(
       rates,
       belowWarnSince: null,
       pauseHistory: nextHistory,
+      // Nova pausa invalida qualquer baseline de liberação anterior: o
+      // incidente agora é este, e a contagem recomeça do zero na liberação.
+      releaseBaseline: null,
     }),
     pauseCount: nextHistory.length,
   }
+}
+
+/**
+ * Snapshot da LIBERAÇÃO manual (owner ou backoffice): preserva janelas e
+ * histórico de pausas e grava a marca de água que impede o cron de recontar
+ * o incidente já liberado. Ver `SendingHealthReleaseBaseline`.
+ */
+export function buildReleaseSnapshotFromExisting(
+  metricsJson: unknown,
+  now: Date
+): SendingHealthSnapshot {
+  const windows = parseSendingHealthWindows(metricsJson)
+  const { pauseHistory } = parseSendingHealthSnapshot(metricsJson)
+  return buildSendingHealthSnapshot({
+    now,
+    windows,
+    rates: computeSendingHealthRates(windows),
+    belowWarnSince: null,
+    pauseHistory: pruneToSuspendWindow(pauseHistory, now),
+    releaseBaseline: { at: now.toISOString(), windows },
+  })
 }
 
 export function buildSendingHealthSnapshot(params: {
@@ -406,6 +517,7 @@ export function buildSendingHealthSnapshot(params: {
   rates: SendingHealthRates
   belowWarnSince: Date | null
   pauseHistory: Date[]
+  releaseBaseline?: SendingHealthReleaseBaseline | null
 }): SendingHealthSnapshot {
   return {
     computedAt: params.now.toISOString(),
@@ -413,5 +525,6 @@ export function buildSendingHealthSnapshot(params: {
     rates: params.rates,
     belowWarnSince: params.belowWarnSince ? params.belowWarnSince.toISOString() : null,
     pauseHistory: params.pauseHistory.map((pausedAt) => pausedAt.toISOString()),
+    releaseBaseline: params.releaseBaseline ?? null,
   }
 }

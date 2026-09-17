@@ -54,7 +54,7 @@ export class EmailCreditUseCase {
     }
   }
 
-  private async buildTrackingDispatchGate(teamId: string) {
+  private async buildTrackingDispatchGate(teamId: string, isTeamMaster = false) {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
       select: {
@@ -85,6 +85,11 @@ export class EmailCreditUseCase {
       ...(tracking.ok ? {} : { trackingDispatchBlockReason: tracking.message }),
       sendingHealthStatus,
       sendingHealthBlocked,
+      // A copy do bloqueio manda o owner "liberar o envio" — então a UI
+      // precisa saber quando a ação REALMENTE existe para quem está olhando.
+      // `suspended` fica de fora de propósito: só o backoffice desfaz
+      // (`resolveManualSendingHealthRelease`).
+      canReleaseSendingHealth: isTeamMaster && sendingHealthStatus === "paused",
       ...(sendingHealthBlocked
         ? {
             sendingHealthBlockReason: formatSendingHealthBlockMessage({
@@ -188,7 +193,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
 
@@ -208,7 +213,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
 
@@ -225,7 +230,7 @@ export class EmailCreditUseCase {
         pricePerMonth: status.plan ? PLAN_PRICES[status.plan] : null,
         availablePlans: this.getAvailablePlans(),
         dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-        ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+        ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
       })
     } catch (error) {
       console.error("[EmailCreditUseCase][getStatus]", error)

@@ -3,6 +3,7 @@ import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-ch
 import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import type { IEmailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/IEmailSendingHealthRepository"
 import {
+  applySendingHealthReleaseBaseline,
   buildSendingHealthSnapshot,
   computeSendingHealthRates,
   parseSendingHealthSnapshot,
@@ -49,8 +50,16 @@ export class EvaluateTeamSendingHealthUseCase {
 
       for (const team of teams) {
         try {
-          const rates = computeSendingHealthRates(team.windows)
           const parsedSnapshot = parseSendingHealthSnapshot(team.metricsJson)
+          // Janela LÍQUIDA: depois de uma liberação manual, só conta o que foi
+          // enviado DEPOIS dela. Sem isso o mesmo incidente reclassifica
+          // `pause` no tick seguinte e a liberação vira suspensão imediata.
+          const { windows: netWindows, baseline } = applySendingHealthReleaseBaseline({
+            windows: team.windows,
+            baseline: parsedSnapshot.releaseBaseline,
+            now,
+          })
+          const rates = computeSendingHealthRates(netWindows)
           const transition = resolveSendingHealthTransition({
             current: team.status as EmailSendingHealthStatusValue,
             rates,
@@ -65,6 +74,9 @@ export class EvaluateTeamSendingHealthUseCase {
             rates,
             belowWarnSince: transition.belowWarnSince,
             pauseHistory: transition.pauseHistory,
+            // Uma pausa nova reabre o ciclo: o baseline antigo não vale mais.
+            releaseBaseline:
+              transition.next === "paused" || transition.next === "suspended" ? null : baseline,
           })
 
           await this.repository.updateTeamSendingHealth({
