@@ -50,6 +50,23 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     await runResponsiveChecks(page)
   })
 
+  test("aba Analytics tem 'Aberturas reais' como manchete e o bruto como secundário", async ({
+    page,
+  }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas?tab=analytics`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    // Headline da decisão de 17/09: abertura humana vira a manchete; a taxa
+    // bruta (inclui robôs/proxies do provedor) permanece visível no subtítulo.
+    await expect(page.getByText(/Aberturas reais/).first()).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText(/% bruta/).first()).toBeVisible()
+    // A manchete antiga não pode continuar ocupando o tile do overview.
+    await expect(page.getByText("Taxa de Abertura (hoje)", { exact: true })).toHaveCount(0)
+  })
+
   test("AlertDialog de cancelar envio avisa que não enviados não saem", async ({ page }) => {
     const profile = await findE2eMasterProfile()
     if (!profile?.activeTeamId) {
