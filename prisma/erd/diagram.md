@@ -670,6 +670,7 @@ MEETING_FOLLOW_UP_DIGEST MEETING_FOLLOW_UP_DIGEST
 BETHANIA_AUTH_CODE BETHANIA_AUTH_CODE
 EMAIL_IMPORT_COMPLETED EMAIL_IMPORT_COMPLETED
 EMAIL_CAMPAIGN_DISPATCH_FAILED EMAIL_CAMPAIGN_DISPATCH_FAILED
+EMAIL_SENDING_HEALTH_CHANGED EMAIL_SENDING_HEALTH_CHANGED
 AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
 LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
@@ -898,6 +899,23 @@ suppressed suppressed
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
+        }
+    
+
+
+        email_sending_health_status {
+            healthy healthy
+warned warned
+paused paused
+suspended suspended
+        }
+    
+
+
+        email_import_risk_level {
+            low low
+medium medium
+high high
         }
     
 
@@ -2769,6 +2787,11 @@ completed completed
     Boolean isSystemDefault 
     Boolean isBlocklist 
     Boolean isArchived 
+    Boolean isQuarantined 
+    DateTime quarantinedAt "❓"
+    String quarantineReason "❓"
+    DateTime quarantineReleasedAt "❓"
+    String quarantineReleasedBy "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -2789,6 +2812,8 @@ completed completed
     Json failedBatches "❓"
     Int batchSize 
     Json attemptsByBatch "❓"
+    Json validationCounts "❓"
+    EmailImportRiskLevel riskLevel "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -3266,6 +3291,10 @@ completed completed
     Boolean resendOpenTracking 
     Boolean resendClickTracking 
     Boolean resendSendingDnsVerified 
+    EmailSendingHealthStatus sendingHealthStatus 
+    String sendingHealthReason "❓"
+    DateTime sendingHealthChangedAt "❓"
+    Json sendingHealthMetrics "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4569,6 +4598,7 @@ completed completed
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contact_lists" }o--|o backoffice_users : "managedByBackofficeUser"
     "corretor_studio_email_contact_lists" }o--|o corretor_studio_radar_segments : "radarSegment"
+    "corretor_studio_email_import_jobs" |o--|o "EmailImportRiskLevel" : "enum:riskLevel"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_import_jobs" }o--|| corretor_studio_profiles : "requester"
@@ -4664,6 +4694,7 @@ completed completed
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "email_team_settings" |o--|| "EmailSendingHealthStatus" : "enum:sendingHealthStatus"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
