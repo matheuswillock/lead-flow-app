@@ -304,6 +304,12 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
   notifyCampaignDispatchFailure: mock(async () => {}),
 }))
 
+// Trava de reputação: mesmo motivo do mock acima — a lib puxa o
+// notificationService, que importa `lib/cache/invalidation` (server-only).
+mock.module("@/lib/email/notify-sending-health-change", () => ({
+  notifySendingHealthChanged: mock(async () => {}),
+}))
+
 // --- Fila email-campaign-dispatch (Fase 4 / PR1) — evita bater no @vercel/queue
 // real (que precisa de OIDC token e só funciona dentro de uma Vercel Function).
 const publishEmailCampaignDispatchWakeMock = mock(async (..._args: unknown[]) => ({
@@ -321,6 +327,8 @@ const findBouncedEmailsMock = mock(async (_emails: string[]) => new Set<string>(
 const createSnapshotListMock = mock(async () => ({ id: "snap-list-1" }))
 const createSnapshotContactsMock = mock(async () => 0)
 const updateSnapshotContactCountMock = mock(async () => {})
+// Gate de importação: nenhuma lista quarentenada por padrão nos cenários.
+const findQuarantinedListsMock = mock(async (_teamId: string, _listIds: string[]) => [])
 mock.module("@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository", () => ({
   emailContactListRepository: {
     findBouncedEmails: findBouncedEmailsMock,
@@ -328,8 +336,22 @@ mock.module("@/app/api/infra/data/repositories/emailContactList/EmailContactList
     createContacts: createSnapshotContactsMock,
     updateContactCount: updateSnapshotContactCountMock,
     findExistingEmailsInList: mock(async () => new Set<string>()),
+    findQuarantinedLists: findQuarantinedListsMock,
   },
 }))
+// Trava de reputação: leituras de métricas do dispatch são fail-open; time
+// saudável por padrão.
+mock.module(
+  "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository",
+  () => ({
+    emailSendingHealthRepository: {
+      getDispatchBounceStats: mock(async () => ({ sentCount: 0, hardBouncedCount: 0 })),
+      getTeamSendingHealth: mock(async () => null),
+      updateTeamSendingHealth: mock(async () => {}),
+      listTeamsForEvaluation: mock(async () => []),
+    },
+  })
+)
 mock.module(
   "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository",
   () => ({

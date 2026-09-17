@@ -16,6 +16,7 @@ import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { ContactImportButton } from "../components/ContactImportButton"
+import { ContactListQuarantineBanner } from "../components/ContactListQuarantineBanner"
 import { ContatosSelectedListHeader } from "../components/ContatosSelectedListHeader"
 import { ContactListSegmentPicker } from "../components/contact-import/ContactListSegmentPicker"
 import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext"
@@ -24,7 +25,14 @@ import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 
 export function ContatosContainer() {
   const { readOnly, hideRadarSegments } = useStudioEmailRuntime()
-  const { selectedListId, lists, supabaseId, handleSelectList, handleSetListSegment } = useContactsContext()
+  const {
+    selectedListId,
+    lists,
+    supabaseId,
+    handleSelectList,
+    handleSetListSegment,
+    handleReleaseQuarantine,
+  } = useContactsContext()
   const featureAccess = useOptionalFeatureAccess()
   const hasRadar = hideRadarSegments
     ? false
@@ -90,6 +98,13 @@ export function ContatosContainer() {
             </div>
           ) : (
             <>
+              {selectedList?.isQuarantined ? (
+                <ContactListQuarantineBanner
+                  list={selectedList}
+                  readOnly={readOnly}
+                  onRelease={() => handleReleaseQuarantine(selectedList.id)}
+                />
+              ) : null}
               <div className="flex flex-col gap-2">
                 <ContatosSelectedListHeader
                   listName={selectedList?.name ?? ""}

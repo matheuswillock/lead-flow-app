@@ -2,18 +2,45 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { IBackofficeTeamEmailLimitService } from "../services/IBackofficeTeamEmailLimitService"
-import type { IBackofficeTeamEmailLimitContext } from "./BackofficeTeamEmailLimitTypes"
+import type {
+  IBackofficeTeamEmailLimitContext,
+  SendingHealthAction,
+  TeamSendingHealthItem,
+} from "./BackofficeTeamEmailLimitTypes"
 import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function useBackofficeTeamEmailLimitHook(
   service: IBackofficeTeamEmailLimitService
 ): IBackofficeTeamEmailLimitContext {
   const [grants, setGrants] = useState<IBackofficeTeamEmailLimitContext["grants"]>([])
+  const [sendingHealthByTeamId, setSendingHealthByTeamId] = useState<
+    Record<string, TeamSendingHealthItem>
+  >({})
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isGranting, setIsGranting] = useState(false)
   const [isRevokingId, setIsRevokingId] = useState<string | null>(null)
+  const [isApplyingHealthTeamId, setIsApplyingHealthTeamId] = useState<string | null>(null)
   const inFlightRef = useRef(false)
+
+  const fetchSendingHealth = useCallback(
+    async (teamIds: string[]) => {
+      if (teamIds.length === 0) {
+        setSendingHealthByTeamId({})
+        return
+      }
+      try {
+        const result = await service.listSendingHealth(teamIds)
+        const byTeamId: Record<string, TeamSendingHealthItem> = {}
+        for (const team of result.teams) byTeamId[team.teamId] = team
+        setSendingHealthByTeamId(byTeamId)
+      } catch (healthError) {
+        // Coluna informativa: falha aqui não pode derrubar a tela de limites.
+        console.error("[useBackofficeTeamEmailLimitHook] fetchSendingHealth", healthError)
+      }
+    },
+    [service]
+  )
 
   const fetchItems = useCallback(async () => {
     if (inFlightRef.current) return
@@ -23,13 +50,14 @@ export function useBackofficeTeamEmailLimitHook(
     try {
       const result = await service.list()
       setGrants(result.grants)
+      await fetchSendingHealth(result.grants.map((grantItem) => grantItem.teamId))
     } catch (fetchError) {
       setError(toUserToastMessage(fetchError))
     } finally {
       inFlightRef.current = false
       setIsLoading(false)
     }
-  }, [service])
+  }, [fetchSendingHealth, service])
 
   useEffect(() => {
     void fetchItems()
@@ -79,15 +107,36 @@ export function useBackofficeTeamEmailLimitHook(
     [fetchItems, isRevokingId, service]
   )
 
+  const applySendingHealthAction = useCallback(
+    async (teamId: string, action: SendingHealthAction) => {
+      if (isApplyingHealthTeamId) return false
+      setIsApplyingHealthTeamId(teamId)
+      try {
+        await service.applySendingHealthAction(teamId, action)
+        await fetchSendingHealth(grants.map((grantItem) => grantItem.teamId))
+        return true
+      } catch (actionError) {
+        setError(toUserToastMessage(actionError))
+        return false
+      } finally {
+        setIsApplyingHealthTeamId(null)
+      }
+    },
+    [fetchSendingHealth, grants, isApplyingHealthTeamId, service]
+  )
+
   return {
     grants,
+    sendingHealthByTeamId,
     isLoading,
     error,
     isGranting,
     isRevokingId,
+    isApplyingHealthTeamId,
     fetchItems,
     searchTeams,
     grant,
     revoke,
+    applySendingHealthAction,
   }
 }

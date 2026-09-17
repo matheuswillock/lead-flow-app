@@ -181,6 +181,12 @@ export interface StudioEmailContatosService {
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
   setListRadarSegment(listId: string, segmentId: string | null): Promise<void>
+  /**
+   * Opcional: liberação da quarentena do gate de importação. O host do
+   * Studio (backoffice) ainda não expõe este fluxo — o hook degrada com
+   * aviso em vez de quebrar o contrato existente.
+   */
+  releaseQuarantine?(listId: string): Promise<void>
 }
 
 export type StudioEmailCreateTemplateData = {

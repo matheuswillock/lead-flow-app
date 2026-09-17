@@ -139,6 +139,10 @@ export type CreditStatus = {
   }
   trackingDispatchBlocked?: boolean
   trackingDispatchBlockReason?: string
+  /** Trava de reputação por time — decidida no servidor (EmailCreditUseCase). */
+  sendingHealthStatus?: string
+  sendingHealthBlocked?: boolean
+  sendingHealthBlockReason?: string
 }
 
 export type Template = {

@@ -1,6 +1,5 @@
-import { NotificationType } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { notificationService } from "@/app/api/services/notifications/NotificationService"
+import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-change"
 import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import type { IEmailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/IEmailSendingHealthRepository"
 import {
@@ -83,31 +82,27 @@ export class EvaluateTeamSendingHealthUseCase {
             `[EvaluateTeamSendingHealthUseCase] teamId=${team.teamId} ${team.status} → ${transition.next} — ${transition.reason ?? "sem motivo"}`
           )
 
-          await notificationService
-            .createSystemNotification({
-              recipientProfileId: team.masterProfileId,
-              teamId: team.teamId,
-              type: NotificationType.EMAIL_SENDING_HEALTH_CHANGED,
-              message: this.buildTransitionMessage(transition.next, transition.reason),
-              metadata: {
-                event: "EMAIL_SENDING_HEALTH_CHANGED",
-                status: transition.next,
-                previousStatus: team.status,
-                reason: transition.reason,
-                rates: {
-                  hardBounceRate7d: rates.hardBounceRate7d,
-                  complaintRate7d: rates.complaintRate7d,
-                  hasMinimumVolume: rates.hasMinimumVolume,
-                },
-                trigger: "cron_evaluation",
+          await notifySendingHealthChanged({
+            recipientProfileId: team.masterProfileId,
+            teamId: team.teamId,
+            status: transition.next,
+            previousStatus: team.status,
+            reason: transition.reason,
+            message: this.buildTransitionMessage(transition.next, transition.reason),
+            trigger: "cron_evaluation",
+            extraMetadata: {
+              rates: {
+                hardBounceRate7d: rates.hardBounceRate7d,
+                complaintRate7d: rates.complaintRate7d,
+                hasMinimumVolume: rates.hasMinimumVolume,
               },
-            })
-            .catch((notifyError) => {
-              console.error(
-                "[EvaluateTeamSendingHealthUseCase] falha ao notificar owner",
-                { teamId: team.teamId, error: notifyError }
-              )
-            })
+            },
+          }).catch((notifyError) => {
+            console.error(
+              "[EvaluateTeamSendingHealthUseCase] falha ao notificar owner",
+              { teamId: team.teamId, error: notifyError }
+            )
+          })
         } catch (teamError) {
           failures += 1
           console.error("[EvaluateTeamSendingHealthUseCase] falha ao avaliar time", {

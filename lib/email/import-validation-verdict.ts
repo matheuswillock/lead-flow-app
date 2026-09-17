@@ -24,42 +24,32 @@ import {
  * volátil lendo só as chaves voláteis do JSON persistido.
  */
 
-export const IMPORT_STABLE_REMOVAL_CATEGORIES = [
-  "emptyLine",
-  "syntax",
-  "typoDomain",
-  "deadProvider",
-  "disposableDomain",
-  "roleAccount",
-  "duplicate",
-  "other",
-] as const
+import {
+  IMPORT_VOLATILE_REMOVAL_CATEGORIES,
+  type EmailImportRiskLevelValue,
+  type ImportRemovalCategory,
+  type ImportValidationCounts,
+} from "@/lib/email/import-verdict-labels"
 
-export const IMPORT_VOLATILE_REMOVAL_CATEGORIES = [
-  "noMxDomain",
-  "suppressedBounce",
-  "suppressedBlocklist",
-] as const
-
-export type ImportStableRemovalCategory = (typeof IMPORT_STABLE_REMOVAL_CATEGORIES)[number]
-export type ImportVolatileRemovalCategory = (typeof IMPORT_VOLATILE_REMOVAL_CATEGORIES)[number]
-export type ImportRemovalCategory = ImportStableRemovalCategory | ImportVolatileRemovalCategory
-
-export type ImportValidationCounts = Partial<Record<ImportRemovalCategory, number>>
-
-export const IMPORT_REMOVAL_CATEGORY_LABELS: Record<ImportRemovalCategory, string> = {
-  emptyLine: "linha sem e-mail",
-  syntax: "sintaxe inválida",
-  typoDomain: "typo de domínio",
-  deadProvider: "provedor desativado",
-  disposableDomain: "descartáveis",
-  roleAccount: "endereço genérico",
-  duplicate: "duplicados",
-  other: "outros",
-  noMxDomain: "sem MX",
-  suppressedBounce: "supressão (bounce)",
-  suppressedBlocklist: "supressão (blocklist)",
-}
+// Rótulos e tipos vivem em `import-verdict-labels.ts` (client-safe, sem a
+// lista de descartáveis no bundle). Aqui ficam classificação e risco, que
+// dependem dos motivos da pré-validação. Re-export para os consumidores de
+// servidor não precisarem de dois imports.
+export {
+  IMPORT_REMOVAL_CATEGORY_LABELS,
+  IMPORT_RISK_LEVEL_LABELS,
+  IMPORT_STABLE_REMOVAL_CATEGORIES,
+  IMPORT_VOLATILE_REMOVAL_CATEGORIES,
+  formatImportVerdictSummary,
+  sumImportValidationCounts,
+} from "@/lib/email/import-verdict-labels"
+export type {
+  EmailImportRiskLevelValue,
+  ImportRemovalCategory,
+  ImportStableRemovalCategory,
+  ImportValidationCounts,
+  ImportVolatileRemovalCategory,
+} from "@/lib/email/import-verdict-labels"
 
 /** Motivo textual do skip → categoria do veredito. */
 export function classifyImportSkipReason(reason: string): ImportRemovalCategory {
@@ -129,10 +119,6 @@ export function pickVolatileImportValidationCounts(
   return volatileCounts
 }
 
-export function sumImportValidationCounts(counts: ImportValidationCounts): number {
-  return Object.values(counts).reduce<number>((total, count) => total + (count ?? 0), 0)
-}
-
 /**
  * Removidos que CONTAM para o risco: só o que queima reputação ou denuncia
  * lista suja. `duplicate` e `emptyLine` ficam de fora do numerador — linha
@@ -149,8 +135,6 @@ export function countRemovalsRelevantForRisk(counts: ImportValidationCounts): nu
   }
   return total
 }
-
-export type EmailImportRiskLevelValue = "low" | "medium" | "high"
 
 /** Limiar de risco MÉDIO: fração removida ≥ 8%. */
 export const IMPORT_RISK_MEDIUM_MIN_REMOVED_RATIO = 0.08
@@ -173,29 +157,3 @@ export function computeImportRiskLevel(params: {
   return "low"
 }
 
-export const IMPORT_RISK_LEVEL_LABELS: Record<EmailImportRiskLevelValue, string> = {
-  low: "BAIXO",
-  medium: "MÉDIO",
-  high: "ALTO",
-}
-
-/**
- * Resumo humano do veredito, na ordem canônica das categorias — usado na
- * notificação de conclusão e no relatório. Ex.:
- * `87 removidos (43 supressão (bounce), 22 sem MX, 12 descartáveis, 10 duplicados)`.
- */
-export function formatImportVerdictSummary(counts: ImportValidationCounts): string {
-  const orderedCategories: ImportRemovalCategory[] = [
-    ...IMPORT_VOLATILE_REMOVAL_CATEGORIES,
-    ...IMPORT_STABLE_REMOVAL_CATEGORIES,
-  ]
-  const parts: string[] = []
-  for (const category of orderedCategories) {
-    const count = counts[category] ?? 0
-    if (count <= 0) continue
-    parts.push(`${count.toLocaleString("pt-BR")} ${IMPORT_REMOVAL_CATEGORY_LABELS[category]}`)
-  }
-  const removedTotal = sumImportValidationCounts(counts)
-  if (removedTotal === 0) return "0 removidos"
-  return `${removedTotal.toLocaleString("pt-BR")} removidos (${parts.join(", ")})`
-}

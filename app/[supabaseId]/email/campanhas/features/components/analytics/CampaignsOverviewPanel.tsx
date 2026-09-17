@@ -82,7 +82,7 @@ export function CampaignsOverviewPanel() {
     <div className="flex flex-col gap-4">
       <TrackingDegradedAlert
         warnings={data.trackingWarnings}
-        blocked={data.trackingDispatchBlocked}
+        blocked={data.trackingDispatchBlocked || data.sendingHealthBlocked}
       />
       <div className="grid gap-4 md:grid-cols-3">
         <OverviewMetric

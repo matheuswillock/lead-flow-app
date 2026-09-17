@@ -31,12 +31,26 @@ export type TeamSearchItem = {
   }
 }
 
+/** Trava de reputação por time (EmailTeamSettings.sendingHealth*). */
+export type TeamSendingHealthItem = {
+  teamId: string
+  teamName: string
+  masterName: string | null
+  status: string
+  reason: string | null
+  changedAt: string | null
+}
+
+export type SendingHealthAction = "release" | "pause"
+
 export interface IBackofficeTeamEmailLimitContext {
   grants: TeamEmailLimitGrantItem[]
+  sendingHealthByTeamId: Record<string, TeamSendingHealthItem>
   isLoading: boolean
   error: string | null
   isGranting: boolean
   isRevokingId: string | null
+  isApplyingHealthTeamId: string | null
   fetchItems: () => Promise<void>
   searchTeams: (query: string) => Promise<TeamSearchItem[]>
   grant: (
@@ -45,4 +59,5 @@ export interface IBackofficeTeamEmailLimitContext {
     notes?: string | null
   ) => Promise<boolean>
   revoke: (grantId: string) => Promise<boolean>
+  applySendingHealthAction: (teamId: string, action: SendingHealthAction) => Promise<boolean>
 }

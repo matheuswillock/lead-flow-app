@@ -1,6 +1,5 @@
-import { NotificationType } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { notificationService } from "@/app/api/services/notifications/NotificationService"
+import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-change"
 import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import type { IEmailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/IEmailSendingHealthRepository"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
@@ -46,23 +45,17 @@ export class ReleaseTeamSendingHealthUseCase {
         transition: { status: release.next, reason: release.reason, changedAt: now },
       })
 
-      await notificationService
-        .createSystemNotification({
-          recipientProfileId: state.masterProfileId,
-          teamId: ctx.teamId,
-          type: NotificationType.EMAIL_SENDING_HEALTH_CHANGED,
-          message: `Envio de campanhas liberado (status: em alerta). ${release.reason} O time volta a "saudável" após 14 dias com taxas abaixo do limiar.`,
-          metadata: {
-            event: "EMAIL_SENDING_HEALTH_CHANGED",
-            status: release.next,
-            previousStatus: state.status,
-            reason: release.reason,
-            trigger: "manual_release_owner",
-          },
-        })
-        .catch((notifyError) => {
-          console.error("[ReleaseTeamSendingHealthUseCase] falha ao notificar", notifyError)
-        })
+      await notifySendingHealthChanged({
+        recipientProfileId: state.masterProfileId,
+        teamId: ctx.teamId,
+        status: release.next,
+        previousStatus: state.status,
+        reason: release.reason,
+        message: `Envio de campanhas liberado (status: em alerta). ${release.reason} O time volta a "saudável" após 14 dias com taxas abaixo do limiar.`,
+        trigger: "manual_release_owner",
+      }).catch((notifyError) => {
+        console.error("[ReleaseTeamSendingHealthUseCase] falha ao notificar", notifyError)
+      })
 
       return new Output(true, ["Envio liberado — o time volta ao status de alerta"], [], {
         status: release.next,

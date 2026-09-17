@@ -1,4 +1,9 @@
-import { prisma } from "@/app/api/infra/data/prisma"
+import {
+  backofficeTeamSendingHealthRepository,
+} from "@/app/api/infra/data/repositories/backofficeTeamSendingHealth/BackofficeTeamSendingHealthRepository"
+import type {
+  IBackofficeTeamSendingHealthRepository,
+} from "@/app/api/infra/data/repositories/backofficeTeamSendingHealth/IBackofficeTeamSendingHealthRepository"
 import {
   buildPauseSnapshotFromExisting,
   buildSendingHealthSuspendReason,
@@ -16,42 +21,26 @@ const BACKOFFICE_FORCED_PAUSE_REASON =
   "Envio pausado manualmente pelo Corretor Studio (backoffice)."
 
 /**
- * Módulo backoffice isolado: consultas próprias sobre `email_team_settings`
- * (a trava de reputação é dado do produto ADMINISTRADO pelo backoffice, mesmo
- * modelo de `backofficeTeamEmailLimitGrant`). A máquina de estados é a MESMA
- * de `lib/email/sending-health.ts` — lib compartilhada, nunca cópia.
+ * Módulo backoffice isolado (dados via repositório backoffice próprio). A
+ * máquina de estados é a MESMA de `lib/email/sending-health.ts` — lib
+ * compartilhada, nunca cópia.
  */
 export class BackofficeTeamSendingHealthService
   implements IBackofficeTeamSendingHealthService
 {
-  async list(teamIds?: string[]): Promise<BackofficeTeamSendingHealthRow[]> {
-    const settings = await prisma.emailTeamSettings.findMany({
-      where:
-        teamIds && teamIds.length > 0
-          ? { teamId: { in: teamIds } }
-          : { sendingHealthStatus: { not: "healthy" } },
-      select: {
-        teamId: true,
-        sendingHealthStatus: true,
-        sendingHealthReason: true,
-        sendingHealthChangedAt: true,
-        team: {
-          select: {
-            name: true,
-            master: { select: { fullName: true, email: true } },
-          },
-        },
-      },
-      orderBy: { sendingHealthChangedAt: "desc" },
-    })
+  constructor(
+    private readonly repository: IBackofficeTeamSendingHealthRepository = backofficeTeamSendingHealthRepository
+  ) {}
 
-    return settings.map((row) => ({
+  async list(teamIds?: string[]): Promise<BackofficeTeamSendingHealthRow[]> {
+    const rows = await this.repository.listHealthSettings(teamIds)
+    return rows.map((row) => ({
       teamId: row.teamId,
-      teamName: row.team.name,
-      masterName: row.team.master.fullName ?? row.team.master.email ?? null,
-      status: row.sendingHealthStatus,
-      reason: row.sendingHealthReason,
-      changedAt: row.sendingHealthChangedAt ? row.sendingHealthChangedAt.toISOString() : null,
+      teamName: row.teamName,
+      masterName: row.masterName,
+      status: row.status,
+      reason: row.reason,
+      changedAt: row.changedAt ? row.changedAt.toISOString() : null,
     }))
   }
 
@@ -59,12 +48,8 @@ export class BackofficeTeamSendingHealthService
     teamId: string
     action: BackofficeSendingHealthAction
   }): Promise<{ ok: true; status: string } | { ok: false; message: string }> {
-    const settings = await prisma.emailTeamSettings.findUnique({
-      where: { teamId: params.teamId },
-      select: { sendingHealthStatus: true, sendingHealthMetrics: true },
-    })
-    const currentStatus = (settings?.sendingHealthStatus ??
-      "healthy") as EmailSendingHealthStatusValue
+    const meta = await this.repository.getTeamHealthMeta(params.teamId)
+    const currentStatus = (meta?.status ?? "healthy") as EmailSendingHealthStatusValue
     const now = new Date()
 
     if (params.action === "release") {
@@ -75,19 +60,11 @@ export class BackofficeTeamSendingHealthService
       if (!release.ok) {
         return { ok: false, message: release.message }
       }
-      await prisma.emailTeamSettings.upsert({
-        where: { teamId: params.teamId },
-        update: {
-          sendingHealthStatus: release.next,
-          sendingHealthReason: release.reason,
-          sendingHealthChangedAt: now,
-        },
-        create: {
-          teamId: params.teamId,
-          sendingHealthStatus: release.next,
-          sendingHealthReason: release.reason,
-          sendingHealthChangedAt: now,
-        },
+      await this.repository.upsertTeamHealth({
+        teamId: params.teamId,
+        status: release.next,
+        reason: release.reason,
+        changedAt: now,
       })
       return { ok: true, status: release.next }
     }
@@ -97,7 +74,7 @@ export class BackofficeTeamSendingHealthService
     }
 
     const { snapshot, pauseCount } = buildPauseSnapshotFromExisting(
-      settings?.sendingHealthMetrics ?? null,
+      meta?.metricsJson ?? null,
       now
     )
     const suspended = pauseCount >= SENDING_HEALTH_SUSPEND_PAUSE_COUNT
@@ -106,21 +83,12 @@ export class BackofficeTeamSendingHealthService
       ? buildSendingHealthSuspendReason(pauseCount)
       : BACKOFFICE_FORCED_PAUSE_REASON
 
-    await prisma.emailTeamSettings.upsert({
-      where: { teamId: params.teamId },
-      update: {
-        sendingHealthStatus: nextStatus,
-        sendingHealthReason: reason,
-        sendingHealthChangedAt: now,
-        sendingHealthMetrics: snapshot as unknown as object,
-      },
-      create: {
-        teamId: params.teamId,
-        sendingHealthStatus: nextStatus,
-        sendingHealthReason: reason,
-        sendingHealthChangedAt: now,
-        sendingHealthMetrics: snapshot as unknown as object,
-      },
+    await this.repository.upsertTeamHealth({
+      teamId: params.teamId,
+      status: nextStatus,
+      reason,
+      changedAt: now,
+      snapshot,
     })
     return { ok: true, status: nextStatus }
   }

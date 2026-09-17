@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 import * as Sentry from "@sentry/nextjs"
-import { NotificationType, Prisma, type EmailCampaignStatus, type PrismaClient } from "@prisma/client"
+import { Prisma, type EmailCampaignStatus, type PrismaClient } from "@prisma/client"
 import { Output } from "@/lib/output"
 import {
   EmailCampaignRepository,
@@ -15,7 +15,7 @@ import type {
 } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignRecipientService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import { emailCampaignLeadActivityService } from "@/app/api/services/email/EmailCampaignLeadActivityService"
-import { notificationService } from "@/app/api/services/notifications/NotificationService"
+import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-change"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { resolveEmailCreator } from "@/lib/email/format-email-creator"
 import {
@@ -2990,7 +2990,7 @@ export class EmailCampaignUseCase {
       // nem no botão Disparar.
       const dispatchAudienceListIds = [
         ...(campaign.contactListId ? [campaign.contactListId] : []),
-        ...campaign.sourceContactListIds,
+        ...(campaign.sourceContactListIds ?? []),
       ]
       if (dispatchAudienceListIds.length > 0) {
         const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
@@ -4829,22 +4829,17 @@ export class EmailCampaignUseCase {
       )?.master.id
 
     if (masterProfileId) {
-      await notificationService
-        .createSystemNotification({
-          recipientProfileId: masterProfileId,
-          teamId: params.teamId,
-          type: NotificationType.EMAIL_SENDING_HEALTH_CHANGED,
-          message: `Envio de campanhas ${suspended ? "suspenso" : "pausado"} automaticamente: ${reason}`,
-          metadata: {
-            event: "EMAIL_SENDING_HEALTH_CHANGED",
-            status: suspended ? "suspended" : "paused",
-            reason,
-            trigger: "dispatch_bounce_abort",
-          },
-        })
-        .catch((notifyError) => {
-          console.error("[EmailCampaignUseCase][abortByBounce][notifyOwner]", notifyError)
-        })
+      await notifySendingHealthChanged({
+        recipientProfileId: masterProfileId,
+        teamId: params.teamId,
+        status: suspended ? "suspended" : "paused",
+        previousStatus: currentStatus,
+        reason,
+        message: `Envio de campanhas ${suspended ? "suspenso" : "pausado"} automaticamente: ${reason}`,
+        trigger: "dispatch_bounce_abort",
+      }).catch((notifyError) => {
+        console.error("[EmailCampaignUseCase][abortByBounce][notifyOwner]", notifyError)
+      })
     }
   }
 
@@ -5330,7 +5325,7 @@ export class EmailCampaignUseCase {
         // adiada até a liberação explícita da lista.
         const scheduledAudienceListIds = [
           ...(campaign.contactListId ? [campaign.contactListId] : []),
-          ...campaign.sourceContactListIds,
+          ...(campaign.sourceContactListIds ?? []),
         ]
         if (scheduledAudienceListIds.length > 0) {
           const quarantinedLists = await emailContactListRepository.findQuarantinedLists(
