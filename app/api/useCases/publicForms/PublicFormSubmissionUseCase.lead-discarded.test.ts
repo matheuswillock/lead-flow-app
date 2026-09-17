@@ -98,6 +98,10 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
   publicFormsRepository: {
     findFormSubmissionContext,
     findLeadForSubmission,
+    findSubmissionAcceptedAt: mock(async () => ({
+      createdAt: new Date("2026-08-20T22:10:31.000Z"),
+      dispatchAcceptedAt: null as Date | null,
+    })),
     completeSubmission,
     markSubmissionFailed,
   },

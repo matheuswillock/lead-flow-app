@@ -64,6 +64,20 @@ describe("resolveE2eUser", () => {
     ).toEqual(user);
   });
 
+  it("aceita JWT válido de usuário E2E customizado", async () => {
+    enableTestMode();
+    const token = signE2eJwt({
+      supabaseId: "11111111-2222-4333-8444-555555555555",
+      email: "backoffice.e2e@example.com",
+    });
+
+    expect(await resolveE2eUserFromCookie(token)).toEqual({
+      id: "11111111-2222-4333-8444-555555555555",
+      email: "backoffice.e2e@example.com",
+      supabaseId: "11111111-2222-4333-8444-555555555555",
+    });
+  });
+
   it("aceita JWT válido com NODE_ENV=production e APP_ENV=test (next start)", async () => {
     enableTestMode();
     const token = signE2eJwt();

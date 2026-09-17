@@ -9,6 +9,7 @@ import { PaymentValidationUseCase } from "@/app/api/useCases/payments/PaymentVal
 import { getFullUrl } from "@/lib/utils/app-url";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 export type AsaasWebhookBody = {
   id?: string;
@@ -31,6 +32,21 @@ export type AsaasWebhookBody = {
     status?: string;
   };
 };
+
+// Achado cursor[bot] no PR #1137 (P1): o gate anterior só escalava a
+// string genérica exata ("Erro ao processar pagamento do operador"), então
+// falhas posteriores ao incremento da assinatura (auth do Supabase, criação
+// de usuário) caíam num Output(false) com OUTRA mensagem e nunca eram
+// retentadas — cliente cobrado, operador nunca entregue, sem sinal. A lista
+// abaixo é o allowlist do que é *legitimamente* não-retryável (ocorre antes
+// de qualquer efeito colateral de cobrança): tudo que não bater aqui escala
+// para o outbox/retry por padrão (fail-safe, não fail-silent).
+const NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES = [
+  "Operador pendente não encontrado",
+  "Operador já foi criado",
+  "Pagamento não vinculado a assinatura",
+  "Manager não possui assinatura anterior",
+];
 
 export function resolveAsaasWebhookEventId(body: AsaasWebhookBody): string {
   const explicitId = typeof body.id === "string" ? body.id.trim() : "";
@@ -58,12 +74,16 @@ function parseBrazilianDate(dateStr: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<void> {
+export async function processAsaasWebhookEvent(
+  body: AsaasWebhookBody,
+  account: AsaasAccountId
+): Promise<void> {
   const startedAt = Date.now();
   const eventId = resolveAsaasWebhookEventId(body);
 
   console.info("[AsaasWebhookRoute][process] start", {
     eventId,
+    account,
     event: body.event,
     paymentId: body.payment?.id ?? null,
     externalReference: body.payment?.externalReference ?? null,
@@ -120,6 +140,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
       const adhesionOutput = await backofficeAdhesionUseCase.processPaymentWebhook(
         body.event ?? "",
         body.payment,
+        account,
         { deferEmailDelivery: true }
       );
 
@@ -139,14 +160,25 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
     if (checkoutSessionId) {
       try {
         const { prisma } = await import("@/app/api/infra/data/prisma");
+        // Achado cursor[bot] (PR #1137, round 10): checkoutSessionId
+        // colide entre contas (C33) igual paymentId — sem o filtro por
+        // account aqui, o gate podia marcar isOperatorPayment=true com a
+        // linha da OUTRA conta; processOperatorCheckoutPaid (que já filtra
+        // por account desde o round 7) então não achava nada,
+        // "Operador pendente não encontrado" era engolido como no-op
+        // conhecido (allowlist), e o fallback por externalReference nunca
+        // rodava porque isOperatorPayment já estava true — cliente pagou,
+        // não recebeu, sem retry.
         const pendingOperator = await prisma.pendingOperator.findFirst({
-          where: { paymentId: checkoutSessionId },
+          where: { paymentId: checkoutSessionId, asaasAccount: account },
         });
 
         isOperatorPayment = !!pendingOperator;
 
+        // Mesmo achado para PendingAction — filtra por account antes de
+        // suprimir o fallback por externalReference.
         const pendingAction = await prisma.pendingAction.findFirst({
-          where: { checkoutId: checkoutSessionId, status: "pending" },
+          where: { checkoutId: checkoutSessionId, status: "pending", asaasAccount: account },
         });
 
         isPendingActionPayment = !!pendingAction;
@@ -166,7 +198,8 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         );
         const operatorResult = await checkoutAsaasUseCase.processOperatorCheckoutPaid(
           checkoutSessionId!,
-          paymentId
+          paymentId,
+          account
         );
 
         if (!operatorResult.isValid) {
@@ -176,10 +209,27 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
             paymentId,
             externalReference,
           });
+
+          // E4 (C22) + achado cursor[bot]: qualquer falha que não seja um
+          // no-op legítimo conhecido é o modo "cliente pagou e nada foi
+          // entregue" — não pode ficar só no log. Propagar aqui faz o evento
+          // inteiro cair no outbox/retry que já existe em nível de evento
+          // (AsaasWebhookEvent + fila + cron de retry), em vez de um
+          // Output(false) descartado silenciosamente.
+          const isKnownNoOp = operatorResult.errorMessages.some((message) =>
+            NON_RETRYABLE_OPERATOR_CHECKOUT_OUTCOMES.some((noOp) => message.includes(noOp))
+          );
+          if (!isKnownNoOp) {
+            throw new Error(
+              `[processOperatorCheckoutPaid] falha não idempotente para checkoutSessionId=${checkoutSessionId} ` +
+                `paymentId=${paymentId}: ${operatorResult.errorMessages.join("; ")}`
+            );
+          }
         }
       } catch (error) {
         rethrowIfPrerenderInterrupted(error);
         console.error("[AsaasWebhookRoute][process] operator checkout error", { eventId, error });
+        throw error;
       }
     }
 
@@ -190,6 +240,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         );
         const actionResult = await pendingActionUseCase.applyPendingActionByCheckout(
           checkoutSessionId!,
+          account,
           paymentId
         );
 
@@ -215,7 +266,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         const { pendingActionUseCase } = await import(
           "@/app/api/useCases/pendingActions/PendingActionUseCase"
         );
-        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
+        const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId, account);
 
         if (!actionResult.isValid) {
           console.error("[AsaasWebhookRoute][process] pending action payment failed", {
@@ -239,8 +290,11 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         const { subscriptionUpgradeUseCase } = await import(
           "@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase"
         );
+        // Achado cursor[bot] (PR #1137): a conta do evento acompanha o
+        // paymentId — sem ela, uma colisão C33 podia selecionar o
+        // PendingOperator da outra conta e provisionar o manager errado.
         const operatorResult =
-          await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+          await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId, account);
 
         if (!operatorResult.isValid) {
           console.error("[AsaasWebhookRoute][process] operator externalRef failed", {
@@ -269,6 +323,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         const purchaseResult = await platformCheckoutUseCase.applyPaidPurchase({
           externalReference,
           asaasPaymentId: paymentId,
+          account,
         });
 
         if (!purchaseResult.isValid) {
@@ -300,6 +355,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
               externalReference,
               checkoutId: details.checkoutId,
               productSlug: details.productSlug,
+              account,
             });
             console.info("[AsaasWebhookRoute][process][EmailCredits]", {
               eventId,
@@ -319,6 +375,42 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         });
       }
     }
+
+    // G3 de [[50 — Backoffice de Cobrança — Backend]] E6: a ordem de
+    // alteração de assinatura só transiciona para `applied` (e só aí muda
+    // entitlement) quando este evento confirma a liquidação — nunca no
+    // create()/generatePayment(). Idempotente por externalReference = id
+    // da ordem; reprocessar o mesmo evento não reaplica (ver
+    // BackofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder).
+    const isSubscriptionChangeOrderRef =
+      !!externalReference && externalReference.startsWith("subscription-change-order-");
+    if (isSubscriptionChangeOrderRef && (isPaid || paymentStatus === "CONFIRMED")) {
+      try {
+        const { backofficeSubscriptionChangeOrderUseCase } = await import(
+          "@/app/api/useCases/backoffice/BackofficeSubscriptionChangeOrderUseCase"
+        );
+        const applyResult = await backofficeSubscriptionChangeOrderUseCase.applyPaidChangeOrder({
+          externalReference,
+          asaasPaymentId: paymentId,
+          account,
+        });
+
+        if (!applyResult.isValid) {
+          console.error("[AsaasWebhookRoute][process] subscription change order apply failed", {
+            eventId,
+            errorMessages: applyResult.errorMessages,
+            paymentId,
+            externalReference,
+          });
+        }
+      } catch (error) {
+        rethrowIfPrerenderInterrupted(error);
+        console.error("[AsaasWebhookRoute][process] subscription change order apply error", {
+          eventId,
+          error,
+        });
+      }
+    }
   }
 
   if (isPaid && body?.payment?.subscription) {
@@ -326,7 +418,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
       const { checkoutAsaasUseCase } = await import(
         "@/app/api/useCases/subscriptions/CheckoutAsaasUseCase"
       );
-      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id!);
+      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id!, account);
 
       if (!activationResult.isValid) {
         console.error("[AsaasWebhookRoute][process] subscription activation failed", {
@@ -346,9 +438,12 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
     if (subscription?.id && subscription?.customer) {
       try {
         const { prisma } = await import("@/app/api/infra/data/prisma");
+        // C33 (E4): filtra pela conta do evento — sem isso um cus_ colidindo
+        // entre as duas contas aplicaria a assinatura no profile errado.
         const manager = await prisma.profile.findFirst({
           where: {
             asaasCustomerId: subscription.customer,
+            asaasCustomerAccount: account,
             role: "manager",
           },
         });
@@ -357,10 +452,12 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
           const nextDueDate = parseBrazilianDate(subscription.nextDueDate ?? "");
           const updateData: {
             asaasSubscriptionId: string;
+            asaasSubscriptionAccount: AsaasAccountId;
             subscriptionCycle: string;
             subscriptionNextDueDate?: Date;
           } = {
             asaasSubscriptionId: subscription.id,
+            asaasSubscriptionAccount: account,
             subscriptionCycle: subscription.cycle || "MONTHLY",
           };
 
@@ -397,9 +494,11 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
   if (subscriptionStatusChangeEvents.includes(body.event ?? "") && body.subscription?.customer) {
     try {
       const { prisma } = await import("@/app/api/infra/data/prisma");
+      // C33 (E4): mesma razão do lookup acima — filtra pela conta do evento.
       const manager = await prisma.profile.findFirst({
         where: {
           asaasCustomerId: body.subscription.customer,
+          asaasCustomerAccount: account,
           role: "manager",
         },
       });
@@ -453,7 +552,7 @@ export async function processAsaasWebhookEvent(body: AsaasWebhookBody): Promise<
         "@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository"
       );
       const backofficePaymentRepo = new BackofficePaymentRepository();
-      const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id);
+      const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id, account);
       if (existing) {
         await backofficePaymentRepo.updateStatus(existing.id, body.payment.status ?? "", {
           invoiceUrl: body.payment.invoiceUrl ?? existing.invoiceUrl ?? undefined,

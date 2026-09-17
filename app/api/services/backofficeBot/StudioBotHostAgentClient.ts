@@ -1,31 +1,28 @@
 import { signStudioBotPayload } from "@/lib/studio-bot/hmac";
+import type { HostAgentService } from "@/lib/studio-bot/host-services";
+
+export type HostAgentServiceState = {
+  service: HostAgentService;
+  container: string | null;
+  image: string | null;
+  status: string | null;
+  ok: boolean;
+};
 
 export type HostAgentHealthResult = {
   ok: boolean;
   containers?: Array<{ name: string; status: string; image?: string }>;
-  workflows?: Array<{ id: string; name: string; active: boolean | null }>;
   hostVersion?: string | null;
-  bethaniaProductionCheck?: {
+  vpsStackCheck?: {
     ok: boolean;
-    env: {
-      n8n: Array<{ key: string; configured: boolean }>;
-      evolution: Array<{ key: string; configured: boolean }>;
-    };
-    workflows: Array<{
-      name: string;
-      expected: "active" | "inactive";
-      actual: boolean | "missing" | null;
-      ok: boolean;
-    }>;
-    containers: { n8nImage: string | null; imagePinned: boolean };
-    productionEvidenceRequired: string[];
+    services: HostAgentServiceState[];
   };
   error?: string;
 };
 
 export type HostAgentLogsResult = {
   ok: boolean;
-  service?: "n8n" | "api";
+  service?: HostAgentService;
   lines?: string[];
   fetchedAt?: string;
   error?: string;
@@ -38,7 +35,7 @@ export type HostAgentApplyEnvInput = {
 };
 
 export type HostAgentRestartInput = {
-  service: "n8n" | "api" | "all";
+  service: HostAgentService | "all";
 };
 
 export type HostAgentSyncInput = {
@@ -48,7 +45,7 @@ export type HostAgentSyncInput = {
 };
 
 export type HostAgentLogsInput = {
-  service: "n8n" | "api";
+  service: HostAgentService;
   tail?: number;
 };
 
@@ -68,10 +65,6 @@ export interface IStudioBotHostAgentClient {
     baseUrl: string,
     token: string,
     input: HostAgentRestartInput
-  ): Promise<{ ok: boolean; detail?: unknown; error?: string }>;
-  importWorkflows(
-    baseUrl: string,
-    token: string
   ): Promise<{ ok: boolean; detail?: unknown; error?: string }>;
   syncHost(
     baseUrl: string,
@@ -194,10 +187,6 @@ export class StudioBotHostAgentClient implements IStudioBotHostAgentClient {
 
   restart(baseUrl: string, token: string, input: HostAgentRestartInput) {
     return postJson(baseUrl, token, "/v1/services/restart", input);
-  }
-
-  importWorkflows(baseUrl: string, token: string) {
-    return postJson(baseUrl, token, "/v1/workflows/import", {});
   }
 
   syncHost(baseUrl: string, token: string, input: HostAgentSyncInput) {

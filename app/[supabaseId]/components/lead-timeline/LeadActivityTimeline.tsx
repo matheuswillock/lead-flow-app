@@ -24,6 +24,7 @@ import {
   TIMELINE_FILTER_OPTIONS,
   type TimelineFilterValue,
 } from "./timeline-utils"
+import { useDragScroll } from "./useDragScroll"
 
 type LeadActivityTimelineProps = {
   activities: LeadActivityResponseDTO[]
@@ -155,6 +156,7 @@ export function LeadActivityTimeline({
   mentionRegex,
 }: LeadActivityTimelineProps) {
   const [typeFilter, setTypeFilter] = useState<TimelineFilterValue>("all")
+  const chipsDragScroll = useDragScroll<HTMLDivElement>()
 
   const filteredActivities = useMemo(
     () => activities.filter((activity) => activityMatchesFilter(activity, typeFilter)),
@@ -171,10 +173,15 @@ export function LeadActivityTimeline({
         }}
         variant="outline"
         size="sm"
-        className="flex flex-wrap justify-start gap-1"
+        {...chipsDragScroll}
+        className="activity-scrollbar flex w-full shrink-0 flex-nowrap cursor-grab select-none justify-start gap-1 overflow-x-auto pb-1 active:cursor-grabbing"
       >
         {TIMELINE_FILTER_OPTIONS.map((option) => (
-          <ToggleGroupItem key={option.value} value={option.value} className="text-xs">
+          <ToggleGroupItem
+            key={option.value}
+            value={option.value}
+            className="shrink-0 whitespace-nowrap text-xs data-[state=on]:border-primary/40 data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
+          >
             {option.label}
           </ToggleGroupItem>
         ))}

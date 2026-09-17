@@ -80,6 +80,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     style: {
                       zIndex: 9999,
                     },
+                    classNames: {
+                      actionButton: "btn-primary-accessible",
+                    },
                   }}
                 />
               </TimezoneProvider>

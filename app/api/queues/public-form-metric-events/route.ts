@@ -6,8 +6,13 @@ import {
   type PublicFormMetricQueuePayload,
 } from "@/lib/queues/public-form-metric-events"
 import {
-  ackAfterMaxDeliveries,
-  type AckAfterMaxDeliveriesFn,
+  ackAfterMaxDeliveriesWithOutcome,
+  buildInvalidPayloadIdempotencyKey,
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
+  type AckAfterMaxDeliveriesWithOutcomeFn,
+  type DeadLetterInvalidPayloadFn,
 } from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
@@ -28,7 +33,8 @@ export async function processPublicFormMetricQueueMessage(
   message: PublicFormMetricQueuePayload,
   metadata: QueueMessageMetadata,
   useCase: Pick<PublicFormsUseCase, "persistQueuedMetric"> = publicFormsUseCase,
-  ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
+  ackDeadLetter: AckAfterMaxDeliveriesWithOutcomeFn = ackAfterMaxDeliveriesWithOutcome,
+  deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
   console.info("[PublicFormMetricEventsQueueRoute][POST] message received", {
     messageId: metadata.messageId,
@@ -41,13 +47,28 @@ export async function processPublicFormMetricQueueMessage(
     publicId: message?.publicId,
   })
 
-  if (!message?.publicId || !message?.eventKey || !message?.visitorSessionId || !message?.eventType) {
-    console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    publicId: message?.publicId,
+    eventKey: message?.eventKey,
+    visitorSessionId: message?.visitorSessionId,
+    eventType: message?.eventType,
+  })
+  if (missingFields.length > 0) {
+    console.error("[PublicFormMetricEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       publicId: message?.publicId,
       eventId: message?.eventId ?? null,
       eventKey: message?.eventKey,
       eventType: message?.eventType,
+      missingFields,
+    })
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await deadLetter({
+      topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventKey, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
     })
     return
   }
@@ -94,20 +115,29 @@ export async function processPublicFormMetricQueueMessage(
       error,
     })
 
-    const acked = await ackDeadLetter({
-      deliveryCount: metadata.deliveryCount,
-      topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
-      idempotencyKey: message.eventKey,
-      payload: message,
-      lastError: error,
-    })
+    let persistedToOutbox = false
+    const acked = await ackDeadLetter(
+      {
+        deliveryCount: metadata.deliveryCount,
+        topic: PUBLIC_FORM_METRIC_EVENTS_TOPIC,
+        idempotencyKey: message.eventKey,
+        payload: message,
+        lastError: error,
+      },
+      (outcome) => {
+        persistedToOutbox = outcome
+      },
+    )
     if (acked) {
       console.error(
-        "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking",
+        persistedToOutbox
+          ? "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite, movido para outbox, acking"
+          : "[PublicFormMetricEventsQueueRoute][POST] deliveryCount excedeu o limite rígido sem outbox, payload só no log, acking",
         {
           messageId: metadata.messageId,
           deliveryCount: metadata.deliveryCount,
           eventKey: message.eventKey,
+          persistedToOutbox,
         },
       )
       return

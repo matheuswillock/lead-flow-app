@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { toastUserError } from "@/lib/ui/to-user-toast-message"
+import { toastUserError, toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { EmailSettingsService } from "../services/EmailSettingsService"
 import type {
   ConfigureDomainTrackingData,
@@ -12,6 +12,7 @@ import type {
 import type {
   BlockedDateRange,
   DomainConnectResult,
+  DomainDnsProvider,
   DomainEvent,
   DomainRecord,
   EmailGlobalVariable,
@@ -20,8 +21,23 @@ import type {
   ResendDomainStatus,
 } from "./EmailSettingsTypes"
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host"
+import {
+  buildDnsInstructionsAgentPrompt,
+  buildDnsInstructionsText,
+} from "@/lib/email/custom-domain-dns-instructions"
 
 const defaultService = new EmailSettingsService()
+const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
+
+export function buildSenderErrorMessage(error: unknown, domainName: string | null): string {
+  const message = error instanceof Error ? error.message : String(error ?? "")
+  if (!message.includes(SENDER_DOMAIN_ERROR_PREFIX)) return toUserToastMessage(error)
+
+  const normalizedDomain = domainName?.trim()
+  return normalizedDomain
+    ? `Não foi possível cadastrar o remetente porque ele não possui o domínio cadastrado. Use um e-mail com o domínio cadastrado (@${normalizedDomain}).`
+    : "Não foi possível cadastrar o remetente porque ele não possui o domínio cadastrado."
+}
 
 export type EmailSettingsHookReturn = {
   settings: EmailSettings | null
@@ -56,6 +72,8 @@ export type EmailSettingsHookReturn = {
   updatingSenderId: string | null
   deletingSenderId: string | null
   settingDefaultSenderId: string | null
+  senderErrorMessage: string | null
+  clearSenderErrorMessage: () => void
   handleCreateSender: (data: UpsertEmailSenderData) => Promise<void>
   handleUpdateSender: (senderId: string, data: UpsertEmailSenderData) => Promise<void>
   handleDeleteSender: (senderId: string) => Promise<void>
@@ -67,6 +85,7 @@ export type EmailSettingsHookReturn = {
   domainStatus: ResendDomainStatus | null
   domainName: string | null
   domainRegion: string | null
+  domainDnsProvider: DomainDnsProvider | null
   domainConnectedAt: string | null
   domainOpenTracking: boolean
   domainClickTracking: boolean
@@ -83,6 +102,11 @@ export type EmailSettingsHookReturn = {
   handleVerifyDomain: () => Promise<void>
   handleLoadDomainRecords: () => Promise<void>
   handleConfigureDomainTracking: (data: ConfigureDomainTrackingData) => Promise<boolean>
+  sendingDnsInstructions: boolean
+  canSendDnsInstructions: boolean
+  handleCopyDnsInstructions: () => Promise<void>
+  handleCopyDnsInstructionsPrompt: () => Promise<void>
+  handleSendDnsInstructions: (recipientEmail: string) => Promise<boolean>
 
   globalVariables: EmailGlobalVariable[]
   creatingVariable: boolean
@@ -117,6 +141,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [updatingSenderId, setUpdatingSenderId] = useState<string | null>(null)
   const [deletingSenderId, setDeletingSenderId] = useState<string | null>(null)
   const [settingDefaultSenderId, setSettingDefaultSenderId] = useState<string | null>(null)
+  const [senderErrorMessage, setSenderErrorMessage] = useState<string | null>(null)
 
   const [globalVariables, setGlobalVariables] = useState<EmailGlobalVariable[]>([])
   const [creatingVariable, setCreatingVariable] = useState(false)
@@ -128,6 +153,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainStatus, setDomainStatus] = useState<ResendDomainStatus | null>(null)
   const [domainName, setDomainName] = useState<string | null>(null)
   const [domainRegion, setDomainRegion] = useState<string | null>(null)
+  const [domainDnsProvider, setDomainDnsProvider] = useState<DomainDnsProvider | null>(null)
   const [domainConnectedAt, setDomainConnectedAt] = useState<string | null>(null)
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
@@ -149,6 +175,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [loadingRecords, setLoadingRecords] = useState(false)
   const [disconnectingDomain, setDisconnectingDomain] = useState(false)
   const [configuringDomainTracking, setConfiguringDomainTracking] = useState(false)
+  const [sendingDnsInstructions, setSendingDnsInstructions] = useState(false)
 
   const fetchingRef = useRef(false)
   const lastSettingsKeyRef = useRef("")
@@ -288,34 +315,41 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const handleCreateSender = useCallback(async (data: UpsertEmailSenderData) => {
     setCreatingSender(true)
+    setSenderErrorMessage(null)
     try {
       await service.createSender(data)
       await fetchSettings()
       toast.success("Remetente criado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleCreateSender error", err)
-      toastUserError(err)
+      const message = buildSenderErrorMessage(err, domainName)
+      setSenderErrorMessage(message)
+      toast.error(message)
     } finally {
       setCreatingSender(false)
     }
-  }, [fetchSettings])
+  }, [domainName, fetchSettings])
 
   const handleUpdateSender = useCallback(async (senderId: string, data: UpsertEmailSenderData) => {
     setUpdatingSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       await service.updateSender(senderId, data)
       await fetchSettings()
       toast.success("Remetente atualizado com sucesso")
     } catch (err) {
       console.error("[useEmailSettings] handleUpdateSender error", err)
-      toastUserError(err)
+      const message = buildSenderErrorMessage(err, domainName)
+      setSenderErrorMessage(message)
+      toast.error(message)
     } finally {
       setUpdatingSenderId(null)
     }
-  }, [fetchSettings])
+  }, [domainName, fetchSettings])
 
   const handleDeleteSender = useCallback(async (senderId: string) => {
     setDeletingSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       await service.deleteSender(senderId)
       await fetchSettings()
@@ -330,6 +364,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const handleSetDefaultSender = useCallback(async (senderId: string) => {
     setSettingDefaultSenderId(senderId)
+    setSenderErrorMessage(null)
     try {
       const updated = await service.setDefaultSender(senderId)
       applySettings(updated)
@@ -399,6 +434,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainName(result.domainName)
       setDomainStatus(result.status as ResendDomainStatus)
       setDomainRegion(result.region ?? null)
+      setDomainDnsProvider(result.dnsProvider ?? null)
       setDomainConnectedAt(result.connectedAt ?? new Date().toISOString())
       setDomainOpenTracking(result.openTracking ?? true)
       setDomainClickTracking(result.clickTracking ?? true)
@@ -426,6 +462,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainName(null)
       setDomainStatus(null)
       setDomainRegion(null)
+      setDomainDnsProvider(null)
       setDomainConnectedAt(null)
       setDomainOpenTracking(false)
       setDomainClickTracking(false)
@@ -451,6 +488,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainRecords(result.records)
       setDomainStatus(result.status as ResendDomainStatus)
       setDomainRegion(result.region ?? domainRegion)
+      setDomainDnsProvider(result.dnsProvider ?? null)
       setDomainConnectedAt(result.connectedAt ?? domainConnectedAt)
       setDomainOpenTracking(result.openTracking ?? domainOpenTracking)
       setDomainClickTracking(result.clickTracking ?? domainClickTracking)
@@ -482,6 +520,73 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setVerifyingDomain(false)
     }
   }, [handleLoadDomainRecords, reloadSettings])
+
+  /**
+   * As instruções são montadas dos registros já carregados na tela — os mesmos
+   * que a tabela renderiza. Sem registros não há o que copiar, então o guard
+   * orienta a carregar em vez de copiar um texto vazio.
+   */
+  const copyDnsArtifactToClipboard = useCallback(
+    async (buildArtifact: typeof buildDnsInstructionsText, successMessage: string) => {
+      if (!domainName || domainRecords.length === 0) {
+        toast.error("Carregue os registros DNS antes de copiar as instruções")
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(
+          buildArtifact({
+            domainName,
+            records: domainRecords,
+            providerName: domainDnsProvider?.name ?? null,
+          })
+        )
+        toast.success(successMessage)
+      } catch (err) {
+        console.error("[useEmailSettings] copyDnsArtifactToClipboard error", err)
+        toast.error("Não foi possível copiar")
+      }
+    },
+    [domainName, domainRecords, domainDnsProvider]
+  )
+
+  const handleCopyDnsInstructions = useCallback(
+    () => copyDnsArtifactToClipboard(buildDnsInstructionsText, "Instruções copiadas"),
+    [copyDnsArtifactToClipboard]
+  )
+
+  const handleCopyDnsInstructionsPrompt = useCallback(
+    () => copyDnsArtifactToClipboard(buildDnsInstructionsAgentPrompt, "Prompt copiado"),
+    [copyDnsArtifactToClipboard]
+  )
+
+  /**
+   * O host do backoffice ainda não expõe o envio de instruções — o card usa
+   * esta flag para esconder a ação em vez de falhar no clique.
+   */
+  const canSendDnsInstructions = typeof service.sendDomainDnsInstructions === "function"
+
+  const handleSendDnsInstructions = useCallback(
+    async (recipientEmail: string) => {
+      if (sendingDnsInstructions) return false
+      if (!service.sendDomainDnsInstructions) {
+        toast.error("Envio de instruções não disponível nesta tela")
+        return false
+      }
+      setSendingDnsInstructions(true)
+      try {
+        await service.sendDomainDnsInstructions(recipientEmail)
+        toast.success(`Instruções enviadas para ${recipientEmail}`)
+        return true
+      } catch (err) {
+        console.error("[useEmailSettings] handleSendDnsInstructions error", err)
+        toastUserError(err)
+        return false
+      } finally {
+        setSendingDnsInstructions(false)
+      }
+    },
+    [sendingDnsInstructions]
+  )
 
   const handleConfigureDomainTracking = useCallback(
     async (data: ConfigureDomainTrackingData) => {
@@ -539,6 +644,8 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     updatingSenderId,
     deletingSenderId,
     settingDefaultSenderId,
+    senderErrorMessage,
+    clearSenderErrorMessage: () => setSenderErrorMessage(null),
     handleCreateSender,
     handleUpdateSender,
     handleDeleteSender,
@@ -549,6 +656,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     domainStatus,
     domainName,
     domainRegion,
+    domainDnsProvider,
     domainConnectedAt,
     domainOpenTracking,
     domainClickTracking,
@@ -565,6 +673,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     handleVerifyDomain,
     handleLoadDomainRecords,
     handleConfigureDomainTracking,
+    sendingDnsInstructions,
+    canSendDnsInstructions,
+    handleCopyDnsInstructions,
+    handleCopyDnsInstructionsPrompt,
+    handleSendDnsInstructions,
     globalVariables,
     creatingVariable,
     updatingVariableId,

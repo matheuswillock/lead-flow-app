@@ -9,7 +9,12 @@ import {
 } from "@/lib/queues/asaas-webhook-events"
 import {
   ackAfterMaxDeliveries,
+  buildInvalidPayloadIdempotencyKey,
+  deadLetterInvalidPayload,
+  describeMissingRequiredFields,
+  listMissingRequiredFields,
   type AckAfterMaxDeliveriesFn,
+  type DeadLetterInvalidPayloadFn,
 } from "@/lib/queues/queue-processing-failure"
 
 type QueueMessageMetadata = {
@@ -39,6 +44,7 @@ export async function processAsaasWebhookEventMessage(
     markProcessed: typeof asaasWebhookEventRepository.markProcessed
     markFailed: typeof asaasWebhookEventRepository.markFailed
     ackDeadLetter?: AckAfterMaxDeliveriesFn
+    deadLetter?: DeadLetterInvalidPayloadFn
   } = {
     process: processAsaasWebhookEvent,
     markProcessed: asaasWebhookEventRepository.markProcessed.bind(asaasWebhookEventRepository),
@@ -54,16 +60,30 @@ export async function processAsaasWebhookEventMessage(
     event: message?.body?.event,
   })
 
-  if (!message?.eventId || !message?.body) {
-    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, acking", {
+  const missingFields = listMissingRequiredFields({
+    eventId: message?.eventId,
+    body: message?.body,
+    account: message?.account,
+  })
+  if (missingFields.length > 0) {
+    console.error("[AsaasWebhookEventsQueueRoute][POST] invalid payload, dead-letter e ack", {
       messageId: metadata.messageId,
       message,
+      missingFields,
+    })
+    // Payload malformado não melhora com reentrega: vai direto para a
+    // dead-letter terminal (fora do cron de retry) e só então acka.
+    await (deps.deadLetter ?? deadLetterInvalidPayload)({
+      topic: ASAAS_WEBHOOK_EVENTS_TOPIC,
+      idempotencyKey: buildInvalidPayloadIdempotencyKey(message?.eventId, metadata.messageId),
+      payload: message ?? null,
+      reason: describeMissingRequiredFields(missingFields),
     })
     return
   }
 
   try {
-    await deps.process(message.body)
+    await deps.process(message.body, message.account)
     await deps.markProcessed(message.eventId)
     console.info("[AsaasWebhookEventsQueueRoute][POST] event processed", {
       messageId: metadata.messageId,

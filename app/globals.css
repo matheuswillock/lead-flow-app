@@ -89,7 +89,7 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
   --primary: #ff6900;
-  --primary-foreground: oklch(0.98 0.016 73.684);
+  --primary-foreground: oklch(0.141 0.005 285.823);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
@@ -170,7 +170,7 @@
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
   --sidebar-primary: oklch(0.705 0.213 47.604);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-primary-foreground: oklch(0.141 0.005 285.823);
   --sidebar-accent: oklch(0.967 0.001 286.375);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
@@ -187,7 +187,7 @@
   --popover: oklch(0.21 0.006 285.885);
   --popover-foreground: oklch(0.985 0 0);
   --primary: #f54900;
-  --primary-foreground: oklch(0.98 0.016 73.684);
+  --primary-foreground: oklch(0.141 0.005 285.823);
   --secondary: oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.274 0.006 286.033);
@@ -268,13 +268,27 @@
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.646 0.222 41.116);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-primary-foreground: oklch(0.141 0.005 285.823);
   --sidebar-accent: oklch(0.274 0.006 286.033);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.646 0.222 41.116);
 }
 /* TOKENS:DARK:END */
+
+/* Botão primary com contraste garantido, fora de --primary/--primary-foreground
+   (esses dois não devem mudar — ver histórico do CTA da landing). Usado pelo
+   variant "default" de components/ui/button.tsx em todo o app.
+   #d43f04 = mesmo hue do #df4204 original a 95%; branco sobre ele mede 4.65:1
+   (WCAG AA >= 4.5 para texto normal). O #df4204 original media 4.27:1. */
+:root {
+  --btn-primary-bg: #d43f04;
+  --btn-primary-foreground: #ffffff;
+}
+.dark {
+  --btn-primary-bg: #d43f04;
+  --btn-primary-foreground: #ffffff;
+}
 
 /* Basic base styles */
 *, *::before, *::after { box-sizing: border-box; }
@@ -352,6 +366,15 @@ h1, h2, h3, h4, h5, h6 {
 
 
 @layer components {
+  .btn-primary-accessible {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-foreground);
+  }
+
+  .btn-primary-accessible:hover {
+    filter: brightness(0.92);
+  }
+
   .tiptap .lead-flow-email-node {
     border: 1px solid color-mix(in oklab, var(--primary) 34%, var(--border));
     border-radius: 8px;
@@ -457,9 +480,9 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .landing-primary-cta {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--primary) 60%, transparent);
+    background: var(--landing-cta-bg, var(--primary));
+    color: var(--landing-cta-foreground, var(--primary-foreground));
+    box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--landing-cta-bg, var(--primary)) 60%, transparent);
   }
 
   .landing-secondary-cta {
@@ -522,7 +545,7 @@ h1, h2, h3, h4, h5, h6 {
   --popover: #ffffff;
   --popover-foreground: #141118;
   --primary: #fb5c1e;
-  --primary-foreground: #ffffff;
+  --primary-foreground: #141118;
   --secondary: #f6f4f8;
   --secondary-foreground: #141118;
   --muted: #f6f4f8;
@@ -534,6 +557,8 @@ h1, h2, h3, h4, h5, h6 {
   --border: color-mix(in oklab, #141118 9%, transparent);
   --input: color-mix(in oklab, #141118 14%, transparent);
   --ring: #fb5c1e;
+  --landing-cta-bg: #d43f04;
+  --landing-cta-foreground: #fefefe;
   --semantic-warning: #ff8a3d;
   --semantic-danger: #e24e0c;
   --semantic-success: #0b9e88;
@@ -1249,6 +1274,10 @@ h1, h2, h3, h4, h5, h6 {
   body {
     @apply bg-background text-foreground;
   }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 /* Kanban-specific scrollbar styling (board only) */
@@ -1287,10 +1316,18 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(220, 220, 220, 0.95);
 }
 
+/* Skeleton pulse é decorativo: um skeleton estático ainda comunica loading.
+   Spinners (animate-spin) ficam de fora — movimento essencial de progresso. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}
+
 /* Activity feed scrollbar (hover to reveal) */
 .activity-scrollbar {
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent) transparent;
   scrollbar-width: none;
 }
 
@@ -1309,25 +1346,24 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .activity-scrollbar::-webkit-scrollbar-track {
-  background: rgba(5, 5, 5, 0.75);
+  background: transparent;
   border-radius: 999px;
 }
 
 .activity-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.9);
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   border-radius: 999px;
-  border: 2px solid rgba(5, 5, 5, 0.75);
 }
 
 .activity-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 220, 220, 0.95);
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
 
 /* Hover-reveal vertical scrollbar */
 .scroll-hover-y,
 .dialog-scrollbar {
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent) transparent;
   scrollbar-width: none;
 }
 
@@ -1350,20 +1386,19 @@ h1, h2, h3, h4, h5, h6 {
 
 .scroll-hover-y::-webkit-scrollbar-track,
 .dialog-scrollbar::-webkit-scrollbar-track {
-  background: rgba(5, 5, 5, 0.75);
+  background: transparent;
   border-radius: 999px;
 }
 
 .scroll-hover-y::-webkit-scrollbar-thumb,
 .dialog-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.9);
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   border-radius: 999px;
-  border: 2px solid rgba(5, 5, 5, 0.75);
 }
 
 .scroll-hover-y::-webkit-scrollbar-thumb:hover,
 .dialog-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 220, 220, 0.95);
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
 
 /* Template card banner gradients */

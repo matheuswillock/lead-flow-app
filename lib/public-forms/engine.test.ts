@@ -156,6 +156,21 @@ describe("motor dos formulários públicos", () => {
     ).toBeNull()
   })
 
+  it("telefone com código do país (12-13 dígitos) passa na validação — a régua compartilhada remove o 55", () => {
+    const phoneQuestion = { ...form().questions[0], type: "phone" as const, options: [] }
+    // Caso GERSON (fixo com DDI, 12 díg.) e caso Nathany (celular com DDI, 13 díg.):
+    // o engine validava por contagem crua de dígitos e devolvia invalid_phone
+    // ANTES de a régua do gate normalizar (achado do codex no PR #1129).
+    expect(validateAnswer(phoneQuestion, "55 11 2422-2006")).toBeNull()
+    expect(validateAnswer(phoneQuestion, "+55 (11) 98230-8088")).toBeNull()
+    // DDD 55 legítimo (RS) continua passando sem alteração.
+    expect(validateAnswer(phoneQuestion, "(55) 99632-6534")).toBeNull()
+    // Lixo comprido que NÃO normaliza continua rejeitado.
+    expect(validateAnswer(phoneQuestion, "5599999999999999")).toBe("Informe um telefone válido")
+    // Curto demais continua rejeitado.
+    expect(validateAnswer(phoneQuestion, "119823")).toBe("Informe um telefone válido")
+  })
+
   it("respeita maxSelections em multiple_choice", () => {
     const question = {
       ...form().questions[0],

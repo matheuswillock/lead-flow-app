@@ -1,4 +1,5 @@
 import type { Profile, UserRole } from "@prisma/client";
+import type { AsaasAccountId } from "@/lib/asaas";
 
 export interface IProfileRepository {
   findById(id: string): Promise<Profile | null>;
@@ -119,6 +120,7 @@ export interface IProfileRepository {
     neighborhood: string | null;
     complement: string | null;
     asaasCustomerId: string | null;
+    asaasCustomerAccount: AsaasAccountId;
   } | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
   /** Dados minimos de contato, para notificacao e rotulo em atividade. */
@@ -141,6 +143,32 @@ export interface IProfileRepository {
    * Devolve o Profile completo porque `cancelCalendarEvent` o recebe como organizer.
    */
   findWithGoogleConnectionById(id: string): Promise<ProfileWithGoogleConnection | null>;
+  /** Marca o inicio do trial pos-checkout (CheckoutAsaasUseCase — E5). */
+  markProfileCheckoutTrialStarted(profileId: string): Promise<void>;
+  /** Rollback parcial de checkout: remove o asaasCustomerId gravado. */
+  clearAsaasCustomerId(supabaseId: string): Promise<void>;
+  /**
+   * Cria o perfil do operador a partir de um PendingOperator confirmado
+   * (CheckoutAsaasUseCase.processOperatorCheckoutPaid — E5).
+   */
+  createOperatorProfileFromPendingOperator(input: {
+    supabaseId: string;
+    fullName: string;
+    email: string;
+    role: UserRole;
+    functions: ("SDR" | "CLOSER")[];
+    managerId: string;
+  }): Promise<Profile>;
+  /**
+   * Filtra por conta (E4/E5 de [[10 — Fundações Multi-conta — Backend]],
+   * C33) — o mesmo asaasSubscriptionId pode existir nas duas contas durante
+   * a janela dual.
+   */
+  findByAsaasSubscriptionIdAndAccount(
+    subscriptionId: string,
+    account: AsaasAccountId
+  ): Promise<Profile | null>;
+  activateSubscription(profileId: string): Promise<void>;
 }
 
 export type ProfileContact = Pick<Profile, "id" | "email" | "fullName">;

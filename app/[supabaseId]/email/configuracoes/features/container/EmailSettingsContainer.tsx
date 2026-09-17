@@ -75,7 +75,7 @@ export function EmailSettingsContainer() {
             </div>
           </div>
 
-          <Button onClick={() => void handleSave()} disabled={saving || loading} className="md:min-w-52">
+          <Button onClick={() => void handleSave()} disabled={saving || loading} className="md:min-w-52 max-lg:h-11">
             {saving ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : null}
             {saving ? "Salvando..." : "Salvar configurações"}
           </Button>

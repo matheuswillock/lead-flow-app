@@ -87,6 +87,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         billingMode: data.billingMode,
         priceMonthly: toDecimalOrNull(data.priceMonthly),
         priceQuarterly: toDecimalOrNull(data.priceQuarterly),
+        priceQuadrimester: toDecimalOrNull(data.priceQuadrimester),
         priceSemiannual: toDecimalOrNull(data.priceSemiannual),
         priceAnnual: toDecimalOrNull(data.priceAnnual),
         priceLifetime: toDecimalOrNull(data.priceLifetime),
@@ -112,6 +113,9 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         }),
         ...(Object.prototype.hasOwnProperty.call(data, "priceQuarterly") && {
           priceQuarterly: toDecimalOrNull(data.priceQuarterly),
+        }),
+        ...(Object.prototype.hasOwnProperty.call(data, "priceQuadrimester") && {
+          priceQuadrimester: toDecimalOrNull(data.priceQuadrimester),
         }),
         ...(Object.prototype.hasOwnProperty.call(data, "priceSemiannual") && {
           priceSemiannual: toDecimalOrNull(data.priceSemiannual),
@@ -248,23 +252,24 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
 
   async findLockedBillingCycles(
     productId: string
-  ): Promise<Array<"monthly" | "quarterly" | "semiannual" | "annual">> {
+  ): Promise<Array<"monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual">> {
     const userSubs = await prisma.backofficeUserSubscription.findMany({
       where: { productId, status: "active" },
       select: { cycle: true },
     })
 
-    const locked = new Set<"monthly" | "quarterly" | "semiannual" | "annual">()
+    const locked = new Set<"monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual">()
     const normalize = (value: string | null | undefined) => {
       if (!value) return null
       const lower = value.toLowerCase()
       if (
         lower === "monthly" ||
         lower === "quarterly" ||
+        lower === "quadrimester" ||
         lower === "semiannual" ||
         lower === "annual"
       ) {
-        return lower as "monthly" | "quarterly" | "semiannual" | "annual"
+        return lower as "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
       }
       return null
     }
@@ -292,7 +297,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   async syncPaymentRules(
     productId: string,
     rules: UpsertPaymentRuleInput[],
-    lockedCycles: Array<"monthly" | "quarterly" | "semiannual" | "annual">
+    lockedCycles: Array<"monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual">
   ): Promise<{ blockedRemovals: string[]; blockedUpdates: string[] }> {
     const existing = await prisma.backofficeProductPaymentRule.findMany({ where: { productId } })
     const locked = new Set(lockedCycles)
@@ -303,7 +308,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     const toDelete = existing.filter((rule) => {
       const key = `${rule.paymentMethod}:${rule.billingCycle}`
       if (incomingKeys.has(key)) return false
-      if (locked.has(rule.billingCycle as "monthly" | "quarterly" | "semiannual" | "annual")) {
+      if (locked.has(rule.billingCycle as "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual")) {
         blockedRemovals.push(rule.billingCycle)
         return false
       }

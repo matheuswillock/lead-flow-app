@@ -5,7 +5,7 @@ import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManag
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
-const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
+const ADHESION_CYCLES = ["monthly", "quarterly", "quadrimester", "semiannual", "annual"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
 
 const BILLING_TYPES = ["PIX", "CREDIT_CARD", "EXTERNAL"] as const

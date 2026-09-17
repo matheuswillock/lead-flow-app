@@ -1,5 +1,6 @@
 import type { LeadStatus } from "@prisma/client"
 import { CRM_CLOSED_STATUSES, RECENT_CAMPAIGN_WINDOW_DAYS, type RadarSegmentSlug } from "@/lib/radar/segment-config"
+import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
 
 export type RadarSegmentEvent = {
   eventType: string
@@ -90,7 +91,7 @@ export function profileEngagedNoLeadInWindow(
   now: number,
   recentMs: number = RECENT_CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
 ): boolean {
-  const hasLeadId = profile.identities.some((identity) => identity.type === "lead_id")
+  const hasLeadId = profile.identities.some(isRealLeadIdentity)
   if (hasLeadId) return false
 
   return profile.events.some(
@@ -118,7 +119,7 @@ export function profileMatchesRadarSegment(
   const hasEmail = Boolean(profile.normalizedPrimaryEmail)
   const emailEvents = profile.events.filter((event) => event.eventType.startsWith("email."))
   const hasPortfolio = profile.sourceLinks.some((link) => link.sourceType === "portfolio")
-  const leadIdentity = profile.identities.find((identity) => identity.type === "lead_id")
+  const leadIdentity = profile.identities.find(isRealLeadIdentity)
   const leadId = leadIdentity?.normalizedValue ?? profile.identities[0]?.normalizedValue
   const leadStatus = leadId ? (leadStatuses.get(leadId) as LeadStatus | undefined) : undefined
   const isClosed =
@@ -150,7 +151,7 @@ export function profileMatchesRadarSegment(
     case "portfolio_clients":
       return hasPortfolio
     case "crm_clients":
-      return Boolean(profile.identities.some((identity) => identity.type === "lead_id"))
+      return Boolean(profile.identities.some(isRealLeadIdentity))
     case "engaged_no_lead":
       return profileEngagedNoLeadInWindow(profile, now, recentMs)
     default: {

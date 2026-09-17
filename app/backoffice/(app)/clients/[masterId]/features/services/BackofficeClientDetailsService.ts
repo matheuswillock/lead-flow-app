@@ -6,6 +6,7 @@ import type {
   BackofficeClientPendingActionsResult,
 } from "../context/BackofficeClientDetailsTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 function mapMutationResult(result: unknown): BackofficeMutationResult {
   if (
@@ -38,20 +39,42 @@ function mapMutationResult(result: unknown): BackofficeMutationResult {
 }
 
 export class BackofficeClientDetailsService implements IBackofficeClientDetailsService {
-  async sendAccessEmail(
-    memberId: string,
+  async sendAccessEmail(input: {
+    memberId: string
+    accountMasterId: string
     mode: "invite" | "reset_password"
-  ): Promise<{ email: string }> {
-    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${memberId}/access-email`, {
+  }): Promise<{ email: string }> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode: input.mode, accountMasterId: input.accountMasterId }),
     })
     const json = await res.json()
     if (!json.isValid || !json.result) {
-      throw new Error(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso")
+      throw new ApiRequestError(json.errorMessages?.[0] ?? "Erro ao enviar e-mail de acesso", res.status)
     }
     return json.result as { email: string }
+  }
+
+  /** Entregável 3: gera link de convite novo sem disparar e-mail, para copiar no clipboard. */
+  async generateInviteLink(input: {
+    memberId: string
+    accountMasterId: string
+  }): Promise<{ actionLink: string; email: string }> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "invite",
+        deliver: "link",
+        accountMasterId: input.accountMasterId,
+      }),
+    })
+    const json = await res.json()
+    if (!json.isValid || !json.result) {
+      throw new ApiRequestError(json.errorMessages?.[0] ?? "Erro ao gerar link de convite", res.status)
+    }
+    return json.result as { actionLink: string; email: string }
   }
 
   async getByMasterId(

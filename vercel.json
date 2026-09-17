@@ -280,12 +280,24 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/v1/email/cron/drain-orphan-events",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/integrations/webhooks/cron/retry-asaas-webhook-failures",
       "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/v1/email/cron/reconcile-resend-domain-status",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/reconcile-campaign-counters",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/expire-stale-queued-logs",
+      "schedule": "20 * * * *"
     },
     {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",
@@ -302,6 +314,10 @@
     {
       "path": "/api/v1/queues/cron/retry-processing-failures",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/queues/cron/mark-stale-cron-executions",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

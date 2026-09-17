@@ -55,4 +55,18 @@ export function assertAsaasSandbox(): void {
       "E2E Asaas abortou: ASAAS_API_KEY coincide com a chave em uso sem ASAAS_ENV=sandbox.",
     );
   }
+
+  // Conta legacy (E2 de [[10 — Fundações Multi-conta — Backend]], C30): se
+  // alguma spec configurou ASAAS_LEGACY_API_KEY, exige o par sandbox — sem
+  // isso não há como provar que o código legacy nunca escreve na conta
+  // antiga REAL. A URL efetiva já é validada acima (dimensão única, C30:
+  // primary e legacy compartilham a mesma resolução de ambiente).
+  const legacyKey = readEnv("ASAAS_LEGACY_API_KEY");
+  const legacySandboxKey = readEnv("ASAAS_LEGACY_SANDBOX_API_KEY");
+  if (legacyKey && !legacySandboxKey) {
+    throw new Error(
+      "E2E Asaas abortou: ASAAS_LEGACY_API_KEY definida sem ASAAS_LEGACY_SANDBOX_API_KEY " +
+        "(sem o par sandbox, specs não têm como provar que nunca escrevem na conta legacy real).",
+    );
+  }
 }

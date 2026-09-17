@@ -4,12 +4,15 @@ import type {
 } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
+  ClaimStaleRunningAsFailedParams,
   CreateBackofficeCronExecutionInput,
+  FindStaleRunningCandidatesParams,
   IBackofficeCronExecutionRepository,
   ListBackofficeCronExecutionsParams,
 } from "./IBackofficeCronExecutionRepository"
 
 const DEFAULT_LIMIT = 50
+const DEFAULT_STALE_CANDIDATES_LIMIT = 500
 
 export class BackofficeCronExecutionRepository
   implements IBackofficeCronExecutionRepository
@@ -78,6 +81,39 @@ export class BackofficeCronExecutionRepository
         errorDetail,
       },
     })
+  }
+
+  async findStaleRunningCandidates(
+    params: FindStaleRunningCandidatesParams
+  ): Promise<BackofficeCronExecution[]> {
+    return prisma.backofficeCronExecution.findMany({
+      where: {
+        status: "running" satisfies BackofficeCronStatus,
+        startedAt: { lt: params.startedBefore },
+      },
+      orderBy: { startedAt: "asc" },
+      take: params.limit ?? DEFAULT_STALE_CANDIDATES_LIMIT,
+    })
+  }
+
+  async claimStaleRunningAsFailed(
+    params: ClaimStaleRunningAsFailedParams
+  ): Promise<boolean> {
+    const claimed = await prisma.backofficeCronExecution.updateMany({
+      where: {
+        id: params.id,
+        status: "running" satisfies BackofficeCronStatus,
+      },
+      data: {
+        status: "failed" satisfies BackofficeCronStatus,
+        finishedAt: params.finishedAt,
+        durationMs: params.durationMs,
+        errorSummary: params.errorSummary,
+        errorDetail: params.errorDetail,
+      },
+    })
+
+    return claimed.count === 1
   }
 }
 

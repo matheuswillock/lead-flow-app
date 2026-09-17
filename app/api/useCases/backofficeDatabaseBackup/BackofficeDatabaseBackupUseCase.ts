@@ -3,9 +3,36 @@ import { Output } from "@/lib/output"
 import { BackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/BackofficeDatabaseBackupRepository"
 import type { IBackofficeDatabaseBackupRepository } from "@/app/api/infra/data/repositories/backoffice/DatabaseBackupRepository/IBackofficeDatabaseBackupRepository"
 import { BackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupExportService"
-import type { IBackofficeDatabaseBackupExportService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
+import type {
+  IBackofficeDatabaseBackupExportService,
+  BackupArchiveStats,
+} from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupExportService"
 import { BackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/BackofficeDatabaseBackupGoogleDriveService"
 import type { IBackofficeDatabaseBackupGoogleDriveService } from "@/app/api/services/backofficeDatabaseBackup/IBackofficeDatabaseBackupGoogleDriveService"
+
+const MAX_ERROR_SUMMARY_LENGTH = 240
+
+/**
+ * Resume a causa raiz em uma linha para caber no `errorSummary` do cron.
+ *
+ * O `withCronAudit` deriva o resumo de `errorMessages.join("; ")` e corta na
+ * primeira quebra de linha, então uma mensagem multi-linha (típica de erro do
+ * Prisma) chegaria truncada e sem a causa. Achatar aqui é o que faz o operador
+ * enxergar "Invalid string length" sem abrir o banco.
+ */
+function summarizeFailure(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  const firstMeaningfulLine = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+
+  if (!firstMeaningfulLine) return "causa não identificada"
+
+  return firstMeaningfulLine.length > MAX_ERROR_SUMMARY_LENGTH
+    ? `${firstMeaningfulLine.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3)}...`
+    : firstMeaningfulLine
+}
 
 function serializeBackup(row: {
   id: string
@@ -98,18 +125,14 @@ export class BackofficeDatabaseBackupUseCase {
     })
 
     try {
-      const exported = await this.exportService.exportToZip()
-      const { fileId } = await this.driveService.upload({
-        buffer: exported.buffer,
-        fileName: exported.fileName,
-      })
+      const { fileId, stats, fileName } = await this.uploadArchive()
 
       await this.repository.update(pending.id, {
         status: "success",
         finishedAt: new Date(),
-        fileName: exported.fileName,
-        sizeBytes: BigInt(exported.sizeBytes),
-        checksumSha256: exported.checksumSha256,
+        fileName,
+        sizeBytes: BigInt(stats.sizeBytes),
+        checksumSha256: stats.checksumSha256,
         googleDriveFileId: fileId,
       })
 
@@ -117,6 +140,9 @@ export class BackofficeDatabaseBackupUseCase {
         id: pending.id,
         source: input.source,
         triggeredByProfileId: input.triggeredByProfileId ?? null,
+        modelCount: stats.modelCount,
+        rowCount: stats.rowCount,
+        sizeBytes: stats.sizeBytes,
       })
       return new Output(true, ["Backup concluído"], [], { id: pending.id })
     } catch (error) {
@@ -126,8 +152,48 @@ export class BackofficeDatabaseBackupUseCase {
         finishedAt: new Date(),
         errorMessage: error instanceof Error ? error.message : String(error),
       })
-      return new Output(false, [], ["Erro ao gerar backup"], { id: pending.id })
+      return new Output(
+        false,
+        [],
+        [`Erro ao gerar backup: ${summarizeFailure(error)}`],
+        { id: pending.id }
+      )
     }
+  }
+
+  /**
+   * Gera e envia o arquivo em stream: o ZIP é consumido pelo Drive enquanto o
+   * export ainda lê o banco, então nada é materializado em memória.
+   */
+  private async uploadArchive(): Promise<{
+    fileId: string
+    fileName: string
+    stats: BackupArchiveStats
+  }> {
+    const archive = this.exportService.createArchive()
+
+    let fileId: string
+    try {
+      const uploaded = await this.driveService.upload({
+        body: archive.body,
+        fileName: archive.fileName,
+      })
+      fileId = uploaded.fileId
+    } catch (uploadError) {
+      archive.abort(
+        uploadError instanceof Error ? uploadError : new Error(String(uploadError))
+      )
+      // Quando o export falha, o upload só enxerga o stream quebrado. A causa
+      // raiz está em `completion` — é ela que precisa chegar ao operador.
+      const exportError = await archive.completion.then(
+        () => null,
+        (error: unknown) => error
+      )
+      throw exportError ?? uploadError
+    }
+
+    const stats = await archive.completion
+    return { fileId, fileName: archive.fileName, stats }
   }
 
   async getDownloadStream(id: string): Promise<

@@ -6,6 +6,7 @@ import type {
   BackofficeAdhesionPaymentWebhookInput,
   BackofficeAdhesionUpdateInput,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
+import type { AsaasAccountId } from "@/lib/asaas"
 
 export interface IBackofficeAdhesionUseCase {
   list(input: {
@@ -28,6 +29,7 @@ export interface IBackofficeAdhesionUseCase {
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
+    account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<Output>
 }

@@ -1,6 +1,7 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { asaasApi, asaasFetch, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
 import type {
@@ -78,65 +79,72 @@ const normalizeAsaasCycle = (value: string | null | undefined): AsaasCycle => {
 
 const roundCurrency = (value: number) => Number(value.toFixed(2));
 
+// E5 de [[10 — Fundações Multi-conta — Backend]] (DA5/M4.8): criação de
+// customer passa pelo AsaasCustomerGateway — nunca POST /customers direto.
 const createAsaasCustomer = async (master: BillingOwnerProfile): Promise<string> => {
-  const customer = await asaasFetch(asaasApi.customers, {
-    method: "POST",
-    body: JSON.stringify({
-      name: master.fullName || master.email,
-      email: master.email,
-      cpfCnpj: master.cpfCnpj || "",
-      phone: master.phone || undefined,
-      postalCode: master.postalCode || undefined,
-      address: master.address || undefined,
-      addressNumber: master.addressNumber || undefined,
-      complement: master.complement || undefined,
-      province: master.neighborhood || undefined,
-      externalReference: master.id,
-    }),
+  const customer = await asaasCustomerGateway.createCustomer({
+    profileId: master.id,
+    name: master.fullName || master.email,
+    email: master.email,
+    cpfCnpj: master.cpfCnpj || "",
+    phone: master.phone || undefined,
+    postalCode: master.postalCode || undefined,
+    address: master.address || undefined,
+    addressNumber: master.addressNumber || undefined,
+    complement: master.complement || undefined,
+    province: master.neighborhood || undefined,
   });
 
-  return customer.id as string;
+  return customer.id;
 };
 
 const createAsaasCustomerFromOverride = async (
   masterId: string,
   override: IncrementalChargeCustomerOverride
 ): Promise<string> => {
-  const customer = await asaasFetch(asaasApi.customers, {
-    method: "POST",
-    body: JSON.stringify({
-      name: override.fullName,
-      email: override.email,
-      cpfCnpj: override.cpfCnpj || "",
-      phone: override.phone || undefined,
-      postalCode: override.postalCode || undefined,
-      address: override.address || undefined,
-      addressNumber: override.addressNumber || undefined,
-      complement: override.complement || undefined,
-      province: override.neighborhood || undefined,
-      externalReference: masterId,
-    }),
+  const customer = await asaasCustomerGateway.createCustomer({
+    profileId: masterId,
+    name: override.fullName,
+    email: override.email,
+    cpfCnpj: override.cpfCnpj || "",
+    phone: override.phone || undefined,
+    postalCode: override.postalCode || undefined,
+    address: override.address || undefined,
+    addressNumber: override.addressNumber || undefined,
+    complement: override.complement || undefined,
+    province: override.neighborhood || undefined,
   });
 
-  return customer.id as string;
+  return customer.id;
 };
 
-const getAsaasSubscription = async (subscriptionId: string): Promise<AsaasSubscriptionDetails> => {
-  return asaasFetch(`${asaasApi.subscriptions}/${subscriptionId}`, {
+// E2 de [[40 — Checkout, Adesões e Add-ons — Backend]] (DA2): toda operação
+// sobre assinatura/pagamento armazenado roteia pela conta do dono (master),
+// nunca pelo transporte global primary-only.
+const getAsaasSubscription = async (
+  subscriptionId: string,
+  account: AsaasAccountId
+): Promise<AsaasSubscriptionDetails> => {
+  const client = createAsaasClient(account);
+  return client.request(`${client.endpoints.subscriptions}/${subscriptionId}`, {
     method: "GET",
   });
 };
 
 const updateAsaasSubscription = async (
   subscriptionId: string,
+  account: AsaasAccountId,
   data: { value: number; updatePendingPayments: boolean; nextDueDate?: string }
 ): Promise<void> => {
-  await asaasFetch(`${asaasApi.subscriptions}/${subscriptionId}`, {
+  const client = createAsaasClient(account);
+  await client.request(`${client.endpoints.subscriptions}/${subscriptionId}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 };
 
+// Criação de assinatura nova é categoria (a) do censo de call-sites — nasce
+// sempre na conta primary, nunca na legacy (que é somente-leitura, DA1).
 const createAsaasSubscription = async (data: AsaasSubscriptionCreationPayload) => {
   const subscription = await asaasFetch(asaasApi.subscriptions, {
     method: "POST",
@@ -149,14 +157,16 @@ const createAsaasSubscription = async (data: AsaasSubscriptionCreationPayload) =
   };
 };
 
-const cancelAsaasSubscription = async (subscriptionId: string): Promise<void> => {
-  await asaasFetch(`${asaasApi.subscriptions}/${subscriptionId}`, {
+const cancelAsaasSubscription = async (subscriptionId: string, account: AsaasAccountId): Promise<void> => {
+  const client = createAsaasClient(account);
+  await client.request(`${client.endpoints.subscriptions}/${subscriptionId}`, {
     method: "DELETE",
   });
 };
 
-const getPixQrCode = async (paymentId: string) => {
-  const data = await asaasFetch(asaasApi.pixQrCode(paymentId), { method: "GET" });
+const getPixQrCode = async (paymentId: string, account: AsaasAccountId) => {
+  const client = createAsaasClient(account);
+  const data = await client.request(client.endpoints.pixQrCode(paymentId), { method: "GET" });
   return {
     encodedImage: data?.encodedImage as string,
     payload: data?.payload as string,
@@ -164,14 +174,28 @@ const getPixQrCode = async (paymentId: string) => {
   };
 };
 
-const getBoletoIdentificationField = async (paymentId: string) => {
-  const data = await asaasFetch(`${asaasApi.payments}/${paymentId}/identificationField`, {
+const getBoletoIdentificationField = async (paymentId: string, account: AsaasAccountId) => {
+  const client = createAsaasClient(account);
+  const data = await client.request(`${client.endpoints.payments}/${paymentId}/identificationField`, {
     method: "GET",
   });
   return {
     identificationField: data?.identificationField as string,
     barCode: data?.barCode as string,
   };
+};
+
+// DA1: token de cartão é por conta — reusar o token de uma assinatura legacy
+// para cobrar ou criar uma assinatura nova na primary sempre falha (ou pior,
+// cobra o cartão errado). Reautorização é passo explícito da F6 do runbook.
+const assertCreditCardTokenTransferable = (account: AsaasAccountId): void => {
+  if (account === "legacy") {
+    throw new Error(
+      "Cobrança em cartão de crédito de assinatura da conta legada requer reautorização do " +
+        "cartão na conta nova antes de prosseguir — o token não atravessa contas Asaas. " +
+        "Aguarda a F6 do runbook de migração ([[30 — Migração de Conta (execução) — Backend]])."
+    );
+  }
 };
 
 export class IncrementalBillingService implements IIncrementalBillingService {
@@ -230,6 +254,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       if (!hasCreditCardForm && input.master.asaasSubscriptionId) {
         const subscription = await this.getCurrentSubscription(input.master);
         if (subscription.billingType === "CREDIT_CARD") {
+          assertCreditCardTokenTransferable(input.master.asaasSubscriptionAccount);
           creditCardToken = subscription.creditCard?.creditCardToken;
         }
       }
@@ -237,6 +262,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       const subscription = await this.getCurrentSubscription(input.master);
       billingType = normalizeBillingType(subscription.billingType);
       if (billingType === "CREDIT_CARD") {
+        assertCreditCardTokenTransferable(input.master.asaasSubscriptionAccount);
         creditCardToken = subscription.creditCard?.creditCardToken;
         if (!creditCardToken) {
           throw new Error(
@@ -300,7 +326,12 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       }
     }
 
-    const payment = await asaasFetch(asaasApi.payments, {
+    // O pagamento pertence ao customer resolvido em ensureCustomer — precisa
+    // ir para a mesma conta onde esse customer vive (DA2), nunca para o
+    // transporte global primary-only.
+    const chargeAccount = input.master.asaasCustomerAccount;
+    const chargeClient = createAsaasClient(chargeAccount);
+    const payment = await chargeClient.request(chargeClient.endpoints.payments, {
       method: "POST",
       body: JSON.stringify(paymentPayload),
     });
@@ -315,12 +346,12 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     };
 
     if (billingType === "PIX") {
-      result.pix = await getPixQrCode(payment.id);
+      result.pix = await getPixQrCode(payment.id, chargeAccount);
       result.invoiceUrl = payment.invoiceUrl || null;
     }
 
     if (billingType === "BOLETO") {
-      const boleto = await getBoletoIdentificationField(payment.id);
+      const boleto = await getBoletoIdentificationField(payment.id, chargeAccount);
       result.boleto = {
         bankSlipUrl: payment.bankSlipUrl || payment.invoiceUrl || null,
         identificationField: boleto.identificationField,
@@ -343,6 +374,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     const formattedOverride =
       nextDueDateOverride != null ? formatDueDate(nextDueDateOverride, ownerTz) : undefined;
 
+    const account = master.asaasSubscriptionAccount;
     const currentSubscription = await this.getCurrentSubscription(master);
     const billingType = normalizeBillingType(currentSubscription.billingType);
     const updatePayload: { value: number; updatePendingPayments: boolean; nextDueDate?: string } = {
@@ -354,7 +386,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
 
     if (billingType !== "CREDIT_CARD") {
-      await updateAsaasSubscription(master.asaasSubscriptionId!, updatePayload);
+      await updateAsaasSubscription(master.asaasSubscriptionId!, account, updatePayload);
       if (formattedOverride) {
         await billingRepository.updateSubscriptionData(master.id, {
           asaasSubscriptionId: master.asaasSubscriptionId!,
@@ -366,7 +398,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
 
     try {
-      await updateAsaasSubscription(master.asaasSubscriptionId!, updatePayload);
+      await updateAsaasSubscription(master.asaasSubscriptionId!, account, updatePayload);
       if (formattedOverride) {
         await billingRepository.updateSubscriptionData(master.id, {
           asaasSubscriptionId: master.asaasSubscriptionId!,
@@ -388,6 +420,12 @@ export class IncrementalBillingService implements IIncrementalBillingService {
         throw error;
       }
     }
+
+    // Asaas recusa PUT de valor em assinatura de cartão — o único jeito é
+    // recriar a assinatura reusando o token do cartão. Token não atravessa
+    // contas (DA1): se a assinatura é legacy, isso é reautorização (F6), não
+    // um catch automático.
+    assertCreditCardTokenTransferable(account);
 
     const creditCardToken = currentSubscription.creditCard?.creditCardToken;
     if (!creditCardToken) {
@@ -416,7 +454,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     });
 
     try {
-      await cancelAsaasSubscription(currentSubscription.id);
+      await cancelAsaasSubscription(currentSubscription.id, account);
     } catch (error) {
       console.error("[IncrementalBillingService] Falha ao cancelar assinatura antiga:", error);
     }
@@ -436,6 +474,18 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       return;
     }
 
+    // DA1: mesmo um asaasSubscriptionId "não-real" (placeholder de adesão)
+    // aponta para uma conta. Criar assinatura nova aqui embaixo, sem checar
+    // isso, deixaria uma eventual assinatura legacy órfã e ativa — dupla
+    // cobrança silenciosa (C28). Recriação é passo explícito do runbook (F5).
+    if (master.asaasSubscriptionId && master.asaasSubscriptionAccount === "legacy") {
+      throw new Error(
+        `Master ${master.id} tem asaasSubscriptionId (${master.asaasSubscriptionId}) na conta legacy — ` +
+          "criar uma assinatura nova aqui deixaria a legada órfã e ativa. Recriação é passo do " +
+          "runbook de migração ([[30 — Migração de Conta (execução) — Backend]] F5), nunca automática."
+      );
+    }
+
     const ownerTz = master.timezone ?? DEFAULT_TZ;
     const nextDueDate =
       input.nextDueDateOverride != null
@@ -443,7 +493,24 @@ export class IncrementalBillingService implements IIncrementalBillingService {
         : formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
 
     const cycle = normalizeAsaasCycle(master.subscriptionCycle);
-    const customerId = await this.ensureCustomer(master);
+    let customerId = await this.ensureCustomer(master);
+    if (master.asaasCustomerAccount === "legacy") {
+      // Achado cursor[bot] (PR #1137, P1, round 12): createAsaasSubscription
+      // (abaixo) roda sempre na conta primary (DA1/DA5, comentário na
+      // definição da função) — enviar o cus_ validado por ensureCustomer
+      // acima quebra com "invalid customer" quando ele vive na legacy
+      // (customer_id do Asaas é escopado por conta). Diferente do catch de
+      // ensureCustomer (DA1: nunca recria por um GET que falhou), aqui o
+      // cus_ legacy é válido — só não serve para esta chamada específica.
+      // Mesmo padrão já usado em createOperatorCheckout (DA6): resolve um
+      // par novo na primary via gateway antes do POST, sem tocar a legacy.
+      console.info(
+        `🔁 [ensureOrSyncRecurringSubscription] master ${master.id} tem customer legacy ` +
+          `(${customerId}) — criando par novo na conta primary via gateway.`
+      );
+      customerId = await createAsaasCustomer(master);
+      await billingRepository.updateAsaasCustomerId(master.id, customerId);
+    }
     const description = input.reason || "Assinatura Corretor Studio";
 
     if (defaultBillingType === "CREDIT_CARD" && master.asaasSubscriptionId) {
@@ -499,11 +566,26 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     override?: IncrementalChargeCustomerOverride
   ): Promise<string> {
     if (master.asaasCustomerId) {
+      const account = master.asaasCustomerAccount;
       try {
-        await asaasFetch(`${asaasApi.customers}/${master.asaasCustomerId}`, { method: "GET" });
+        const client = createAsaasClient(account);
+        await client.request(`${client.endpoints.customers}/${master.asaasCustomerId}`, {
+          method: "GET",
+        });
         return master.asaasCustomerId;
       } catch (error) {
-        console.info("[IncrementalBillingService] Cliente Asaas desatualizado, recriando cadastro.", error);
+        const statusCode = (error as { statusCode?: number } | null)?.statusCode;
+
+        // DA1: recriar customer nunca é comportamento emergente de um catch —
+        // é passo explícito do runbook de migração, com registro no ledger.
+        // Vale para qualquer status (404 ou não) e qualquer conta: um GET que
+        // falha em cus_ armazenado não significa "cadastro desatualizado".
+        throw new Error(
+          `Cliente Asaas ${master.asaasCustomerId} (conta ${account}) não pôde ser lido ` +
+            `(statusCode=${statusCode ?? "desconhecido"}). Recriação de customer é passo explícito ` +
+            "do runbook de migração ([[30 — Migração de Conta (execução) — Backend]]), nunca automática.",
+          { cause: error }
+        );
       }
     }
 
@@ -520,7 +602,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       throw new Error("Master não possui assinatura ativa configurada.");
     }
 
-    return getAsaasSubscription(master.asaasSubscriptionId);
+    return getAsaasSubscription(master.asaasSubscriptionId, master.asaasSubscriptionAccount);
   }
 
   private resolveNextDueDate(master: BillingOwnerProfile, currentSubscription: AsaasSubscriptionDetails): string {

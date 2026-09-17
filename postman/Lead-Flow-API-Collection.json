@@ -4127,7 +4127,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules?teamScope=active",
+                      "raw": "{{baseUrl}}/api/v1/dashboard/schedules?teamScope=member-all",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -4140,8 +4140,8 @@
                       "query": [
                         {
                           "key": "teamScope",
-                          "value": "active",
-                          "description": "Escopo: active ou all (managers)"
+                          "value": "member-all",
+                          "description": "Escopo: member-all (default; todos os times em que o perfil e membro, inclusive de outros masters), active (so o time ativo) ou all (times do master do time ativo, exige canViewAllTeams)"
                         }
                       ]
                     },
@@ -10035,6 +10035,88 @@
           ]
         },
         {
+          "name": "GET Backoffice Subscriptions Panel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "subscriptions"
+              ]
+            },
+            "description": "Painel de assinaturas do backoffice (E4, SPEC 50 §7.8): MRR normalizado por ciclo, vencimentos 30/60/90, permanentes à parte, divergência local (C4) e enriquecimento Asaas best-effort com flag `partial` quando indisponível. Somente leitura."
+          }
+        },
+        {
+          "name": "Backoffice Subscription Change Orders",
+          "item": [
+            {
+              "name": "POST Create Subscription Change Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"masterProfileId\": \"\",\n  \"targetProductId\": \"\",\n  \"targetCycle\": \"monthly\",\n  \"overrideAmount\": null\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders"]
+                },
+                "description": "E6/G1 (SPEC 50): cria ordem de alteração de assinatura em `draft`. Pró-rata calculada no servidor; `overrideAmount` (preço avulso) acima do teto (`BACKOFFICE_SUBSCRIPTION_CHANGE_ORDER_OVERRIDE_AUTO_APPROVE_MAX_AMOUNT`, default 0 até D13 ser decidida) nasce `pending` de aprovação. Exige manager (`requireManagerAccess`)."
+              }
+            },
+            {
+              "name": "POST Approve Subscription Change Order Override",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "approve"],
+                  "variable": [{ "key": "id", "value": "" }]
+                },
+                "description": "E6/G1 (SPEC 50, trava S7/DA6): aprova preço avulso `pending`. Exige manager (`requireManagerAccess`)."
+              }
+            },
+            {
+              "name": "POST Generate Subscription Change Order Payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/subscription-change-orders/:id/generate-payment",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "subscription-change-orders", ":id", "generate-payment"],
+                  "variable": [{ "key": "id", "value": "" }]
+                },
+                "description": "E6/G2 (SPEC 50): gera a cobrança da diferença sempre na conta Asaas nova (DA6) e envia e-mail nosso (Resend) com o link de pagamento — nunca notificação do Asaas. Exige ordem em `draft` com preço avulso resolvido (não `pending`). Exige manager (`requireManagerAccess`)."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Platform Users",
           "item": [
             {
@@ -12284,7 +12366,48 @@
                     }
                   ]
                 },
-                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha."
+                "description": "Envia e-mail de acesso para um membro de cliente. Use mode=invite para reenviar o convite de primeiro acesso e mode=reset_password para enviar reset de senha. Cada reenvio de convite gera um link novo (o anterior é invalidado pelo GoTrue) e usa idempotencyKey por conteúdo do link — reenvio legítimo sempre sai, duplo-clique/retry do mesmo corpo não duplica o envio."
+              }
+            },
+            {
+              "name": "POST Generate Member Invite Link",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"mode\": \"invite\",\n  \"deliver\": \"link\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/access-email",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "access-email"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Gera um link de convite novo (invalida o anterior) SEM disparar e-mail — para o dono copiar e enviar por outro canal (ex.: WhatsApp) quando o e-mail não chega. Retorna actionLink no result; a resposta é one-shot, o link não é persistido nem logado no servidor."
               }
             }
           ]
@@ -14523,6 +14646,231 @@
           ]
         },
         {
+          "name": "Backoffice Campanhas Analytics",
+          "item": [
+            {
+              "name": "GET Resumo de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/summary?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "summary"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "KPIs do período (disparos, enviados, entregues, abertos, cliques, bounces, falhas, leads criados/anexados/total) e ranking por time. from/to obrigatórios (AAAA-MM-DD), range máximo de 92 dias, teamIds opcional (CSV de UUIDs)."
+              }
+            },
+            {
+              "name": "GET Disparos de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/dispatches?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}&page=1&pageSize=25",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "dispatches"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" },
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "25" }
+                  ]
+                },
+                "description": "Tabela paginada de disparos do período (pageSize máximo 25 padrão / 100 limite)."
+              }
+            },
+            {
+              "name": "GET Série Diária de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/teams-series?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "teams-series"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Série diária (por time e total agregado) de enviados/entregues/abertos/cliques, para o gráfico de área."
+              }
+            },
+            {
+              "name": "GET Templates de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/templates?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "templates"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Agregado por time+template com taxa de abertura calculada, ordenado desc."
+              }
+            },
+            {
+              "name": "GET Funil de Formulários de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/forms-funnel?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "forms-funnel"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Funil por formulário (views/starts/completes, dos metric events) com leadsCreated e leadsAttached SEMPRE separados, startRate/closeRate calculados. v1.1 (01/09): leadsCreated/leadsAttached derivam de submissão completa + lead (lead.createdAt vs. submission.createdAt), não mais dos eventos lead_created/lead_attached — o fluxo legado do gate rotula esses eventos errado (mislabel confirmado em produção)."
+              }
+            },
+            {
+              "name": "GET Export CSV de Campanhas (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/export.csv?dataset=dispatches&from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "export.csv"
+                  ],
+                  "query": [
+                    { "key": "dataset", "value": "dispatches" },
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Export CSV (UTF-8 BOM, separador ';', decimal com vírgula, header PT-BR) do dataset dispatches|templates|forms|series. Content-Disposition com filename campanhas_<dataset>_<from>_<to>.csv."
+              }
+            },
+            {
+              "name": "GET Export Completo de Campanhas — XLSX (Backoffice)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/campanhas-analytics/export-all.xlsx?from=2026-08-26&to=2026-08-31&teamIds={{backofficeTeamId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "campanhas-analytics",
+                    "export-all.xlsx"
+                  ],
+                  "query": [
+                    { "key": "from", "value": "2026-08-26" },
+                    { "key": "to", "value": "2026-08-31" },
+                    { "key": "teamIds", "value": "{{backofficeTeamId}}" }
+                  ]
+                },
+                "description": "Export completo em XLSX multi-abas (Resumo com os KPIs do período + Disparos + Templates + Formulários + Série diária), de todos os times do filtro. Teto próprio de 30 dias (mais estrito que o teto geral de 92 dias da tela) — período maior é rejeitado com 400. Content-Disposition com filename campanhas_completo_<from>_<to>.xlsx."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Lead Quick Entry",
           "item": [
             {
@@ -15685,6 +16033,37 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Enviar Instruções DNS por E-mail",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/settings/domain/send-dns-instructions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "settings",
+                    "domain",
+                    "send-dns-instructions"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"recipientEmail\": \"hospedagem@cliente.com.br\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -16488,6 +16867,41 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Funil da Campanha (campanha → lead)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/campaigns/{{campaignId}}/funnel?from=&to=",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "campaigns",
+                    "{{campaignId}}",
+                    "funnel"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "",
+                      "description": "ISO 8601. Opcional — sem período o funil cobre a campanha inteira."
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "description": "ISO 8601. Opcional."
+                    }
+                  ]
+                },
+                "description": "Funil ponta a ponta da campanha: enviado → entregue → aberto → clicado → formulário visto/iniciado/respondido/concluído → lead. Cada etapa de formulário conta SESSÕES ÚNICAS (`unit: unique_sessions`); o período ancora no `createdAt` do log (`anchor: log_created_at`) para que a campanha que falhou antes de enviar não desapareça. `rates` mede cada salto sobre o degrau anterior, mais `sentToLeadRate` ponta a ponta. 404 quando a campanha não pertence ao time. Datas malformadas em `from`/`to` respondem 400 (nunca 200 com o histórico inteiro). 404 quando a campanha não pertence ao time; 500 em falha de infraestrutura — os dois casos são distintos na resposta."
+              },
+              "response": []
             }
           ]
         },
@@ -16643,6 +17057,28 @@
               "response": []
             },
             {
+              "name": "Drenar Eventos Orfaos do Resend",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/drain-orphan-events",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "drain-orphan-events"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Drena email_orphan_events (evento do Resend que chegou antes do EmailLog existir) em lotes de 200, ordenados por occurredAt. Substitui a carona de 10 por execucao no fim do dispatch-scheduled."
+              },
+              "response": []
+            },
+            {
               "name": "Retry Falhas de Processamento de Fila",
               "request": {
                 "method": "GET",
@@ -16665,6 +17101,28 @@
               "response": []
             },
             {
+              "name": "Watchdog de Execuções de Cron Órfãs",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/queues/cron/mark-stale-cron-executions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "queues",
+                    "cron",
+                    "mark-stale-cron-executions"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Marca como failed toda execução presa em running além do teto do proprio cronKey (2x maxDuration) e dispara o alerta Slack que o kill de plataforma nunca disparou."
+              },
+              "response": []
+            },
+            {
               "name": "Reconciliar Status de Domínio Resend",
               "request": {
                 "method": "GET",
@@ -16683,6 +17141,50 @@
                   ]
                 },
                 "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Poll Resend API e corrige resendDomainStatus dessincronizado (D12 item 3)."
+              },
+              "response": []
+            },
+            {
+              "name": "Reconciliar Contadores de Campanha",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/reconcile-campaign-counters",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "reconcile-campaign-counters"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Recomputa total* de campanha e disparo a partir dos logs e corrige a divergencia (SPEC 20 E1 / DA1). Nao toca linha em voo: campanha ou disparo sending com atividade na ultima hora fica de fora. Metadata da execucao traz campanhas/disparos corrigidos e o delta somado - delta persistente e sinal de bug de incremento, nao de cache frio."
+              },
+              "response": []
+            },
+            {
+              "name": "Expirar Logs Queued Parados",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/email/cron/expire-stale-queued-logs",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "email",
+                    "cron",
+                    "expire-stale-queued-logs"
+                  ]
+                },
+                "description": "Header obrigatorio: Authorization: Bearer {CRON_SECRET}. Fecha log queued ORFAO (sem dispatchId) parado ha mais de 48h, marcando failed com errorMessage queued_expired no evento (SPEC 20 E2 / DA2). NUNCA reenvia: reenviar e-mail de trinta dias atras e dano, nao recuperacao — a decisao de reenvio e do usuario. Log com dispatch, terminal ou nao, fica fora: quem o drena e o reclaim."
               },
               "response": []
             },
@@ -16971,7 +17473,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/tasks?dateFrom=2026-05-13T00:00:00.000Z&dateTo=2026-05-13T23:59:59.999Z",
+              "raw": "{{baseUrl}}/api/v1/tasks?dateFrom=2026-05-13T00:00:00.000Z&dateTo=2026-05-13T23:59:59.999Z&teamScope=member-all",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -16993,10 +17495,15 @@
                   "key": "leadId",
                   "value": "{{leadId}}",
                   "disabled": true
+                },
+                {
+                  "key": "teamScope",
+                  "value": "member-all",
+                  "description": "Escopo dos agendamentos: member-all (todos os times em que o perfil e membro, inclusive de outros masters) ou active (default; so o time ativo). Em ambos a restricao de papel e aplicada por time."
                 }
               ]
             },
-            "description": "Lista tarefas do time filtradas por intervalo de data (startAt/endAt). Suporta filtro opcional por leadId."
+            "description": "Lista os agendamentos (tarefas) filtrados por intervalo de data (startAt/endAt). O escopo de time vem de teamScope; a restricao de papel e aplicada por time (manager-like ve o time inteiro, papel menor so os proprios). Suporta filtro opcional por leadId."
           }
         },
         {
@@ -19212,8 +19719,17 @@
               {
                 "key": "x-team-id",
                 "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
+            "description": "Body opcional. Sem body, um possivel duplicado devolve 409 com result.requiresDuplicateConfirmation e result.duplicateCandidates. Reenvie com confirmDuplicate=true para criar mesmo assim.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmDuplicate\": false\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/promote-to-lead",
               "host": [
@@ -19434,6 +19950,44 @@
               ]
             },
             "description": "D13: contratos atuais (LeadPortfolio[]) + histórico (LeadFinalized com holder/dependentes) do perfil Radar via identidades lead_id / portfolio_id."
+          },
+          "response": []
+        },
+        {
+          "name": "Leads no CRM do perfil",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/radar/profiles/:id/related-leads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "radar",
+                "profiles",
+                ":id",
+                "related-leads"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{radarProfileId}}"
+                }
+              ]
+            },
+            "description": "Adenda 31/08 (pós-#1107): todos os leads vinculados ao perfil ao longo da vida da negociação (histórico via radarIdentity type lead_id, 1:N), mais recente primeiro."
           },
           "response": []
         },

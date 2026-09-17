@@ -4,15 +4,14 @@ import { processWhatsAppMediaIngestUseCase } from "@/app/api/useCases/whatsapp/P
 import { resolveWhatsAppGlobalFeatureGate } from "@/lib/whatsapp/whatsapp-globally-enabled"
 import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
 import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
+import {
+  buildSkippedCronOutput,
+  CRON_SKIP_REASON_FEATURE_DISABLED,
+} from "@/app/api/lib/cron/cronSkippedOutput"
 
 async function handle(request: NextRequest) {
   if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
-  }
-
-  const gate = await resolveWhatsAppGlobalFeatureGate()
-  if (gate.status === "disabled") {
-    return NextResponse.json({ skipped: true }, { status: 200 })
   }
 
   const output = await withCronAudit(
@@ -21,6 +20,10 @@ async function handle(request: NextRequest) {
       cronPath: "/api/v1/whatsapp/cron/ingest-media",
     },
     async () => {
+      const gate = await resolveWhatsAppGlobalFeatureGate()
+      if (gate.status === "disabled") {
+        return buildSkippedCronOutput(CRON_SKIP_REASON_FEATURE_DISABLED)
+      }
       if (gate.status === "lookup_failed") {
         return new Output(
           false,

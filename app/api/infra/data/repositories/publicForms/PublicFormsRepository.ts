@@ -22,6 +22,13 @@ import {
   snapshotContainsAllQuestions,
   snapshotContainsQuestion,
 } from "@/lib/public-forms/publication-snapshot"
+import type { GroupedMetricEvent } from "@/lib/public-forms/metric-event-aggregation"
+import {
+  buildMetricEventWhereSql,
+  isFabricatedByDispatcher,
+  QUESTION_IDENTITY_KEY_SQL,
+  type MetricEventAggregationFilter,
+} from "./MetricEventAggregationSql"
 import {
   type IPublicFormsRepository,
   type PendingPublicFormSubmissionDispatch,
@@ -742,64 +749,54 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return form?.publications ?? null
   }
 
-  async groupMetricEvents(formId: string, where: Prisma.PublicFormMetricEventWhereInput) {
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where: { formId, ...where },
-      select: {
-        eventType: true,
-        publicationId: true,
-        questionId: true,
-        visitorSessionId: true,
-      },
-    })
-
-    const buckets = new Map<
-      string,
-      {
-        eventType: (typeof rows)[number]["eventType"]
+  async groupMetricEvents(filter: MetricEventAggregationFilter): Promise<GroupedMetricEvent[]> {
+    const rows = await prisma.$queryRaw<
+      Array<{
+        eventType: string
         publicationId: string
         questionId: string | null
-        sessions: Set<string>
-      }
-    >()
+        questionKey: string | null
+        uniqueSessions: number | bigint
+      }>
+    >`
+      SELECT
+        "eventType"::text AS "eventType",
+        "publicationId"::text AS "publicationId",
+        -- Pergunta recriada mistura linhas com e sem FK viva no mesmo bucket;
+        -- o id que sobreviveu é o que casa com a pergunta na tela.
+        (array_agg("questionId") FILTER (WHERE "questionId" IS NOT NULL))[1]::text AS "questionId",
+        ${QUESTION_IDENTITY_KEY_SQL} AS "questionKey",
+        COUNT(DISTINCT "visitorSessionId")::int AS "uniqueSessions"
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE ${buildMetricEventWhereSql(filter)}
+      GROUP BY "eventType", "publicationId", ${QUESTION_IDENTITY_KEY_SQL}
+    `
 
-    for (const row of rows) {
-      const key = `${row.eventType}\0${row.publicationId}\0${row.questionId ?? ""}`
-      const bucket = buckets.get(key) ?? {
-        eventType: row.eventType,
-        publicationId: row.publicationId,
-        questionId: row.questionId,
-        sessions: new Set<string>(),
-      }
-      bucket.sessions.add(row.visitorSessionId)
-      buckets.set(key, bucket)
-    }
-
-    return Array.from(buckets.values()).map((bucket) => ({
-      eventType: bucket.eventType,
-      publicationId: bucket.publicationId,
-      questionId: bucket.questionId,
-      _count: { _all: bucket.sessions.size },
+    return rows.map((row) => ({
+      eventType: row.eventType,
+      publicationId: row.publicationId,
+      questionId: row.questionId,
+      questionKey: row.questionKey,
+      uniqueSessions: Number(row.uniqueSessions),
+      _count: { _all: Number(row.uniqueSessions) },
     }))
   }
 
   async countDistinctSessionsByEventType(
-    formId: string,
-    where: Prisma.PublicFormMetricEventWhereInput,
-  ) {
-    const rows = await prisma.publicFormMetricEvent.findMany({
-      where: { formId, ...where },
-      select: { eventType: true, visitorSessionId: true },
-    })
-    const byType = new Map<string, Set<string>>()
-    for (const row of rows) {
-      const sessions = byType.get(row.eventType) ?? new Set<string>()
-      sessions.add(row.visitorSessionId)
-      byType.set(row.eventType, sessions)
-    }
-    return Object.fromEntries(
-      Array.from(byType, ([eventType, sessions]) => [eventType, sessions.size]),
-    ) as Record<string, number>
+    filter: MetricEventAggregationFilter,
+  ): Promise<Record<string, number>> {
+    const rows = await prisma.$queryRaw<
+      Array<{ eventType: string; uniqueSessions: number | bigint }>
+    >`
+      SELECT
+        "eventType"::text AS "eventType",
+        COUNT(DISTINCT "visitorSessionId")::int AS "uniqueSessions"
+      FROM "corretor_studio_public_form_metric_events"
+      WHERE ${buildMetricEventWhereSql(filter)}
+      GROUP BY "eventType"
+    `
+
+    return Object.fromEntries(rows.map((row) => [row.eventType, Number(row.uniqueSessions)]))
   }
 
   /**
@@ -857,10 +854,34 @@ export class PublicFormsRepository implements IPublicFormsRepository {
             }
           : {}),
       },
-      select: { leadId: true },
-      distinct: ["leadId"],
+      select: { leadId: true, origin: true },
     })
-    return rows.length
+    // SPEC 40, todo 23 (review #1070). `uniqueLeads` e `leadCreatedSessions`
+    // moram no MESMO card do funil ("Leads vinculados"), e vinham de fontes
+    // diferentes: este conta submissões, aquele conta eventos. Com o corte só
+    // nos eventos, os leads criados a partir de submissões fabricadas sumiriam
+    // de um número e continuariam no outro — dois valores brigando na mesma
+    // tela, que é pior que os dois errados juntos: não há como saber qual
+    // conferir.
+    //
+    // O lead em si continua no CRM, intocado — é pessoa real. O que sai daqui é
+    // a atribuição dele a uma conversão que nunca houve.
+    //
+    // Sem `distinct: ["leadId"]` de propósito (segundo review do #1070): a
+    // dedupe acontecia ANTES deste filtro, então para um lead com submissão
+    // fabricada E submissão real o banco devolvia UMA linha, arbitrária. Caindo
+    // a fabricada, o lead legítimo sumia da conta — erro no sentido oposto ao
+    // do bug original, e justamente nas sessões mistas que este PR quis
+    // preservar. Medido em produção: 2 leads nessa situação.
+    //
+    // Deduplicar depois de filtrar é o que garante a ordem certa: sobra o lead
+    // se QUALQUER submissão dele for legítima.
+    const leadIds = new Set<string>()
+    for (const row of rows) {
+      if (isFabricatedByDispatcher(row.origin)) continue
+      if (row.leadId) leadIds.add(row.leadId)
+    }
+    return leadIds.size
   }
 
   async listFormConversionTotals(teamId: string, options?: { from?: Date; to?: Date }) {
@@ -891,6 +912,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         formId: true,
         eventType: true,
         visitorSessionId: true,
+        origin: true,
       },
     })
 
@@ -909,6 +931,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     for (const row of rows) {
       const entry = byForm.get(row.formId)
       if (!entry) continue
+      // Mesmo corte de `buildMetricEventWhereSql` (SPEC 40, todo 23): este é o
+      // ranking "top convertendo", e sem o filtro ele premiava justamente os
+      // formulários que o cron mais completou sozinho.
+      if (isFabricatedByDispatcher(row.origin)) continue
       if (row.eventType === "form_viewed") entry.viewedSessions.add(row.visitorSessionId)
       if (row.eventType === "form_completed") entry.completedSessions.add(row.visitorSessionId)
     }
@@ -1144,6 +1170,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       select: { lead: true },
     })
     return submission?.lead ?? null
+  }
+
+  async findSubmissionAcceptedAt(submissionId: string) {
+    return prisma.publicFormSubmission.findUnique({
+      where: { id: submissionId },
+      select: { createdAt: true, dispatchAcceptedAt: true },
+    })
   }
 
   /**
@@ -1410,6 +1443,21 @@ export class PublicFormsRepository implements IPublicFormsRepository {
    * formulário público ser gravada por cima do lead errado — ou empata o
    * `byName` em 2 e perde o match legítimo. Ver `lib/prisma/escape-like-pattern.ts`.
    */
+  /**
+   * SPEC 40 — claim atômico por submissão. `updateMany` guardado por
+   * `leadSyncClaimedAt: null` é atômico no banco por si só — não precisa de
+   * advisory lock de sessão nem de transação longa envolvendo o create
+   * inteiro (o pool em modo transação do pgbouncer não sustenta nenhum dos
+   * dois). `count === 1` só é possível para quem chega primeiro.
+   */
+  async claimSubmissionForLeadSync(submissionId: string): Promise<boolean> {
+    const { count } = await prisma.publicFormSubmission.updateMany({
+      where: { id: submissionId, leadSyncClaimedAt: null },
+      data: { leadSyncClaimedAt: new Date() },
+    })
+    return count === 1
+  }
+
   findLeadCandidates(teamId: string, email: string, phone: string, normalizedPhone: string) {
     return prisma.lead.findMany({
       where: {
@@ -1773,16 +1821,32 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     input: PublicFormCompleteSubmissionInput<TMetricEvent>,
   ): Promise<TMetricEvent[]> {
     return prisma.$transaction(async (tx) => {
+      // O `leadId` fica de fora deste update de propósito. `input.leadId` foi
+      // resolvido lá atrás, em `processInBackground`, e o gate do Radar pode ter
+      // reatribuído a sessão para um card de indicação nesse meio-tempo —
+      // gravá-lo aqui desfaria a reatribuição e mandaria a atividade com
+      // identidade e respostas para o card do destinatário. Este update segura a
+      // linha; a releitura logo abaixo enxerga o que o gate comitou.
       await tx.publicFormSubmission.update({
         where: { id: input.submissionId },
         data: {
-          leadId: input.leadId ?? undefined,
           status: "completed",
           completionStatus: "complete",
           submittedAt: new Date(),
           errorMessage: input.processingAlerts?.slice(0, 2000) ?? null,
         },
       })
+      const current = await tx.publicFormSubmission.findUnique({
+        where: { id: input.submissionId },
+        select: { leadId: true },
+      })
+      const resolvedLeadId = current?.leadId ?? input.leadId ?? null
+      if (!current?.leadId && input.leadId) {
+        await tx.publicFormSubmission.update({
+          where: { id: input.submissionId },
+          data: { leadId: input.leadId },
+        })
+      }
       await this.syncSubmissionAnswers(tx, input.submissionId, input.answers)
 
       // SPEC 40 E2 × modo radar (review #1058). A decisão de emitir
@@ -1798,10 +1862,10 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         ? await this.dropDiscardWhenLeadAttached(tx, input)
         : input.metricEvents
 
-      if (input.leadId && input.activityBody && input.activityPayload) {
+      if (resolvedLeadId && input.activityBody && input.activityPayload) {
         await tx.leadActivity.create({
           data: {
-            leadId: input.leadId,
+            leadId: resolvedLeadId,
             type: ActivityType.note,
             body: input.activityBody,
             payload: input.activityPayload,
@@ -1817,6 +1881,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
           visitorSessionId: event.visitorSessionId,
           eventType: event.eventType,
           eventKey: event.eventKey,
+          // Relógio do aceite. Sem ele a linha nasce com `occurredAt` NULL e o
+          // analytics data a conversão pelo `createdAt` — o dia do drain.
+          occurredAt: event.occurredAt ?? null,
           origin: event.origin,
         })
         try {

@@ -5,6 +5,7 @@ import {
   isNewTerminalDispatch,
   PRE_ATTEMPT_DISPATCH_ID_UNKNOWN,
   resolveCampaignDispatchTerminal,
+  resolveCampaignExitToast,
 } from "./campaign-dispatch-terminal"
 import { formatCampaignDispatchProgressLabel } from "./campaign-dispatch-progress"
 
@@ -392,6 +393,75 @@ describe("realtime UPDATE leave-sending — totalSent stale", () => {
     expect(terminal.completionKind).toBe("partial")
     expect(terminal.acceptedCount).toBe(15)
     expect(terminal.completionKind).not.toBe(bannedHeuristicFromZeroSent)
+  })
+})
+
+describe("resolveCampaignExitToast — nunca celebrar disparo que não aconteceu (incidente Calli, 2026-08-27)", () => {
+  it("terminal resolvido (disparo realmente concluído) → emite o toast terminal normalmente", () => {
+    const terminal = resolveCampaignDispatchTerminal({
+      status: "sent",
+      totalRecipients: 5,
+      totalSent: 5,
+    })!
+
+    const decision = resolveCampaignExitToast({
+      name: "Campanha A",
+      status: "sent",
+      terminal,
+    })
+
+    expect(decision.emit).toBe(true)
+    if (decision.emit) {
+      expect(decision.toast.type).toBe("success")
+    }
+  })
+
+  it("status failed sem terminal resolvido (fallback) → emite erro com o errorMessage atual", () => {
+    const decision = resolveCampaignExitToast({
+      name: "Campanha B",
+      status: "failed",
+      terminal: null,
+      errorMessage: "créditos insuficientes",
+    })
+
+    expect(decision.emit).toBe(true)
+    if (decision.emit) {
+      expect(decision.toast.type).toBe("error")
+      expect(decision.toast.message).toContain("créditos insuficientes")
+    }
+  })
+
+  it("regressão Calli: recusa pré-dispatch (campanha volta a draft, terminal null) NÃO emite toast de sucesso", () => {
+    // O gate de Radar recusou o disparo antes de criar qualquer EmailCampaignDispatch:
+    // status nunca saiu de "draft" no servidor. resolveCampaignDispatchTerminal
+    // corretamente devolve null (não é sending/failed/sent/partially_sent) — o bug
+    // era o watcher tratar "terminal null e não-failed" como sucesso por padrão.
+    const decision = resolveCampaignExitToast({
+      name: "Campanha Calli",
+      status: "draft",
+      terminal: null,
+    })
+
+    expect(decision.emit).toBe(false)
+  })
+
+  it("recusa pré-dispatch de campanha agendada (status scheduled, terminal null) também NÃO emite sucesso", () => {
+    const decision = resolveCampaignExitToast({
+      name: "Campanha Agendada",
+      status: "scheduled",
+      terminal: null,
+    })
+
+    expect(decision.emit).toBe(false)
+  })
+
+  it("status canceled/archived sem terminal resolvido também não inventa sucesso", () => {
+    expect(
+      resolveCampaignExitToast({ name: "X", status: "canceled", terminal: null }).emit
+    ).toBe(false)
+    expect(
+      resolveCampaignExitToast({ name: "X", status: "archived", terminal: null }).emit
+    ).toBe(false)
   })
 })
 

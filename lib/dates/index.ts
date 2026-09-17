@@ -33,6 +33,12 @@ export {
 export { isValidTimezone, resolveTimezone, detectBrowserTimezone } from "./validators"
 
 export {
+  resolveDayScheduleFloor,
+  resolveTimeAtOrAfterFloor,
+  type DayScheduleFloor,
+} from "./scheduleFloor"
+
+export {
   PROFILE_TIMEZONE_OPTIONS,
   getProfileTimezoneOptions,
   getTimezoneOption,
