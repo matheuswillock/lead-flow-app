@@ -222,7 +222,13 @@ export function CampaignComparePanel({
                   isRate
                 />
                 <RateCell
-                  label="Abertura"
+                  label="Aberturas reais"
+                  value={`${(campaign.rates.openRateHuman ?? 0).toFixed(1)}%`}
+                  delta={campaign.deltas?.rates.openRateHuman}
+                  isRate
+                />
+                <RateCell
+                  label="Abertura (bruta)"
                   value={`${campaign.rates.openRate.toFixed(1)}%`}
                   delta={campaign.deltas?.rates.openRate}
                   isRate
