@@ -21,7 +21,7 @@ function settingsRecord(
 ): EmailTeamSettingsRecord {
   return {
     fromName: "Corretor Studio",
-    fromEmail: "contato@corretorstudio.com",
+    fromEmail: "contato@mail.corretorstudio.com",
     replyTo: null,
     dispatchBlockedDates: null,
     dispatchTimeFrom: null,
@@ -106,7 +106,7 @@ function resetMocks() {
 }
 
 describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-capable", () => {
-  const uc = new EmailTeamSettingsUseCase(buildSettingsRepository())
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
 
   beforeEach(() => {
     resetMocks()
@@ -163,6 +163,58 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
 
       expect(output.isValid).toBe(true)
       expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio mail e e-mail no domínio raiz → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio raiz e e-mail com prefixo mail → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@mail.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(createSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio mail e e-mail em outro subdomínio raiz → bloqueia", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.createSender(
+        { name: "Alexandre", email: "alexandre@app.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(false)
+      expect(output.errorMessages[0]).toContain("@mail.libercorretora.com.br")
+      expect(createSenderMock).not.toHaveBeenCalled()
     })
 
     it("e-mail @corretorstudio.com (plataforma) → sempre ok", async () => {
@@ -240,6 +292,42 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
       expect(updateSenderMock).toHaveBeenCalled()
     })
 
+    it("verified + domínio mail e e-mail no domínio raiz → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "mail.libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.updateSender(
+        "sender-1",
+        { name: "Alexandre", email: "alexandre@libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(updateSenderMock).toHaveBeenCalled()
+    })
+
+    it("verified + domínio raiz e e-mail com prefixo mail → ok", async () => {
+      findSettingsMock.mockResolvedValue(
+        settingsRecord({
+          resendDomainName: "libercorretora.com.br",
+          resendDomainStatus: "verified",
+        })
+      )
+
+      const output = await uc.updateSender(
+        "sender-1",
+        { name: "Alexandre", email: "alexandre@mail.libercorretora.com.br" },
+        teamCtx
+      )
+
+      expect(output.isValid).toBe(true)
+      expect(updateSenderMock).toHaveBeenCalled()
+    })
+
     it("e-mail @corretorstudio.com (plataforma) → sempre ok", async () => {
       findSettingsMock.mockResolvedValue(settingsRecord())
       updateSenderMock.mockResolvedValue({
@@ -270,7 +358,7 @@ describe("EmailTeamSettingsUseCase createSender/updateSender — domínio send-c
  * nada tivesse acontecido no banco.
  */
 describe("EmailTeamSettingsUseCase — remetente inexistente", () => {
-  const uc = new EmailTeamSettingsUseCase(buildSettingsRepository())
+  const uc = new EmailTeamSettingsUseCase({ settingsRepo: buildSettingsRepository() })
 
   beforeEach(() => {
     resetMocks()

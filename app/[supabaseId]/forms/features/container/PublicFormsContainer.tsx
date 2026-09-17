@@ -79,6 +79,7 @@ import type {
 import { publicFormsClientService } from "../services/PublicFormsService"
 import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -935,15 +936,21 @@ function AnalyticsDialog({
               </TabsContent>
               <TabsContent value="funnel" className="space-y-2">
                 {questions.map((question) => {
+                  // Junta por identidade de snapshot COM reserva na FK — ver
+                  // `metricEventMatchesQuestion`. A FK é `SetNull`: pergunta
+                  // deletada e recriada zera o `questionId` do histórico, e casar
+                  // só por id exibia "0/0" para pergunta com respostas
+                  // persistidas. Mas a chave sozinha também não basta: quando as
+                  // duas existem e divergem, é o id que resolve.
                   const questionEvents = events.filter(
                     (event) =>
                       event.publicationId === question.publicationId &&
-                      event.questionId === question.id,
+                      metricEventMatchesQuestion(event, question),
                   )
                   const metric = (type: string) =>
                     questionEvents
                       .filter((event) => event.eventType === type)
-                      .reduce((sum, event) => sum + event._count._all, 0)
+                      .reduce((sum, event) => sum + (event.uniqueSessions ?? event._count._all), 0)
                   const viewed = metric("question_viewed")
                   const answered = metric("question_answered")
                   const skipped = metric("question_skipped")

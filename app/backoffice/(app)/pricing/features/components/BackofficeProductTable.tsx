@@ -37,6 +37,7 @@ function getDefinedCycles(product: BackofficeProductItem): {
   const order: BackofficeAdhesionBillingCycleKey[] = [
     "monthly",
     "quarterly",
+    "quadrimester",
     "semiannual",
     "annual",
   ]

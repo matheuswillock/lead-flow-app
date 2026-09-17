@@ -6,7 +6,7 @@ import { removeProfileFromSegmentList } from "@/lib/radar/radar-segment-promote-
 import { toast } from "sonner"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { radarFrontendService } from "../services/RadarService"
+import { radarFrontendService, RadarDuplicateLeadError } from "../services/RadarService"
 import { buildProfileHref, buildTabHref } from "../utils/radarSegmentBuilderUtils"
 import {
   buildCampaignRadarSegmentSlug,
@@ -15,10 +15,12 @@ import {
 import type {
   RadarCustomSegmentListItem,
   RadarMetrics,
+  RadarDuplicateLeadCandidate,
   RadarProfileDetail,
   RadarProfileListItem,
   RadarProfileContracts,
   RadarProfileTouchpoints,
+  RadarRelatedLead,
   RadarSegment,
   RadarSegmentRules,
 } from "./RadarTypes"
@@ -57,6 +59,8 @@ export function useRadarHookFn() {
   const [isLoadingContracts, setIsLoadingContracts] = useState(false)
   const [profileForms, setProfileForms] = useState<RadarProfileFormItem[] | null>(null)
   const [isLoadingProfileForms, setIsLoadingProfileForms] = useState(false)
+  const [relatedLeads, setRelatedLeads] = useState<RadarRelatedLead[] | null>(null)
+  const [isLoadingRelatedLeads, setIsLoadingRelatedLeads] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
   const [isPreviewingAudience, setIsPreviewingAudience] = useState(false)
@@ -73,6 +77,12 @@ export function useRadarHookFn() {
   const [segmentProfilesTarget, setSegmentProfilesTarget] = useState<RadarSegmentProfilesTarget | null>(null)
   const [segmentProfilesItems, setSegmentProfilesItems] = useState<RadarProfileDetail[]>([])
   const [segmentProfilesTotal, setSegmentProfilesTotal] = useState(0)
+  /** Promoção parada esperando o usuário confirmar que quer criar mesmo com duplicata. */
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    profileId: string
+    source?: "profile-sheet" | "segment-list"
+    candidates: RadarDuplicateLeadCandidate[]
+  } | null>(null)
   const [segmentProfilesPage, setSegmentProfilesPage] = useState(1)
   const [isLoadingSegmentProfiles, setIsLoadingSegmentProfiles] = useState(false)
   const pageSize = 20
@@ -85,6 +95,7 @@ export function useRadarHookFn() {
   const touchpointsProfileIdRef = useRef<string | null>(null)
   const contractsProfileIdRef = useRef<string | null>(null)
   const formsProfileIdRef = useRef<string | null>(null)
+  const relatedLeadsProfileIdRef = useRef<string | null>(null)
   const deepLinkSegmentRef = useRef<string | null>(null)
   const [campaignDeepLinkSegment, setCampaignDeepLinkSegment] = useState<RadarSegment | null>(null)
 
@@ -186,6 +197,7 @@ export function useRadarHookFn() {
       setTouchpoints(null)
       setContracts(null)
       setProfileForms(null)
+      setRelatedLeads(null)
       try {
         const [detail, eventsResult] = await Promise.all([
           radarFrontendService.getProfile(supabaseId, activeTeamId, profileId),
@@ -213,9 +225,11 @@ export function useRadarHookFn() {
       touchpointsProfileIdRef.current = profileId
       contractsProfileIdRef.current = profileId
       formsProfileIdRef.current = profileId
+      relatedLeadsProfileIdRef.current = profileId
       setIsLoadingTouchpoints(true)
       setIsLoadingContracts(true)
       setIsLoadingProfileForms(true)
+      setIsLoadingRelatedLeads(true)
       void (async () => {
         try {
           const result = await radarFrontendService.getProfileTouchpoints(supabaseId, activeTeamId, profileId)
@@ -249,6 +263,21 @@ export function useRadarHookFn() {
           if (formsProfileIdRef.current === profileId) setIsLoadingProfileForms(false)
         }
       })()
+      void (async () => {
+        try {
+          const result = await radarFrontendService.getProfileRelatedLeads(
+            supabaseId,
+            activeTeamId,
+            profileId
+          )
+          if (relatedLeadsProfileIdRef.current !== profileId) return
+          setRelatedLeads(result.items)
+        } catch (relatedLeadsError) {
+          console.error("[useRadarHookFn][loadRelatedLeads]", relatedLeadsError)
+        } finally {
+          if (relatedLeadsProfileIdRef.current === profileId) setIsLoadingRelatedLeads(false)
+        }
+      })()
     },
     [activeTeamId, detailEventsPageSize, pathname, router, searchParams, supabaseId]
   )
@@ -264,6 +293,8 @@ export function useRadarHookFn() {
     contractsProfileIdRef.current = null
     setProfileForms(null)
     formsProfileIdRef.current = null
+    setRelatedLeads(null)
+    relatedLeadsProfileIdRef.current = null
     router.replace(buildProfileHref(pathname, searchParams, null), { scroll: false })
   }, [pathname, router, searchParams])
 
@@ -719,13 +750,33 @@ export function useRadarHookFn() {
   const promoteProfileToLead = useCallback(
     async (
       profileId: string,
-      options?: { source?: "profile-sheet" | "segment-list" }
+      options?: {
+        source?: "profile-sheet" | "segment-list"
+        /** Reenvio depois de o usuário confirmar no diálogo de duplicata. */
+        confirmDuplicate?: boolean
+      }
     ): Promise<boolean> => {
       if (!supabaseId || !activeTeamId) return false
       const result = await withMutationLock(async () => {
         try {
-          await radarFrontendService.promoteProfileToLead(supabaseId, activeTeamId, profileId)
-          toast.success("Lead criado a partir do perfil Radar.")
+          const promoted = await radarFrontendService.promoteProfileToLead(
+            supabaseId,
+            activeTeamId,
+            profileId,
+            { confirmDuplicate: options?.confirmDuplicate }
+          )
+          setDuplicatePrompt(null)
+
+          if (promoted.identityLinked === false) {
+            // O Lead EXISTE; repetir criaria um segundo. O aviso é honesto e
+            // desencoraja o retry.
+            toast.warning(
+              "Lead criado, mas o vínculo com o perfil Radar não foi confirmado. Ele será refeito no próximo sync."
+            )
+          } else {
+            toast.success("Lead criado a partir do perfil Radar.")
+          }
+
           if (options?.source === "segment-list") {
             let removedFromList = false
             setSegmentProfilesItems((prev) => {
@@ -742,6 +793,18 @@ export function useRadarHookFn() {
           await loadDashboard()
           return true
         } catch (promoteError) {
+          // Duplicata não é falha: o backend devolveu 409 com os candidatos e
+          // está esperando confirmação. Abrir o diálogo em vez de torrar num
+          // toast é o que torna o fluxo completável.
+          if (promoteError instanceof RadarDuplicateLeadError) {
+            setDuplicatePrompt({
+              profileId,
+              source: options?.source,
+              candidates: promoteError.candidates,
+            })
+            return false
+          }
+
           console.error("[useRadarHookFn][promoteProfileToLead]", promoteError)
           toastUserError(promoteError)
           return false
@@ -751,6 +814,17 @@ export function useRadarHookFn() {
     },
     [activeTeamId, loadDashboard, openProfile, supabaseId, withMutationLock]
   )
+
+  /** Reenvia a promoção que ficou pendente de confirmação de duplicata. */
+  const confirmDuplicatePromotion = useCallback(async (): Promise<boolean> => {
+    if (!duplicatePrompt) return false
+    return promoteProfileToLead(duplicatePrompt.profileId, {
+      source: duplicatePrompt.source,
+      confirmDuplicate: true,
+    })
+  }, [duplicatePrompt, promoteProfileToLead])
+
+  const dismissDuplicatePromotion = useCallback(() => setDuplicatePrompt(null), [])
 
   const updateProfileGender = useCallback(
     async (profileId: string, gender: "male" | "female" | "unknown"): Promise<boolean> => {
@@ -831,9 +905,14 @@ export function useRadarHookFn() {
     isLoadingContracts,
     profileForms,
     isLoadingProfileForms,
+    relatedLeads,
+    isLoadingRelatedLeads,
     previewSegmentContactList,
     materializeSegmentToContactList,
     promoteProfileToLead,
+    duplicatePrompt,
+    confirmDuplicatePromotion,
+    dismissDuplicatePromotion,
     updateProfileGender,
     reload: loadDashboard,
   }

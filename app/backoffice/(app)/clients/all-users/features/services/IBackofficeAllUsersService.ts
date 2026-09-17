@@ -44,10 +44,11 @@ export interface IBackofficeAllUsersService {
     }
   ): Promise<BackofficeAllUsersEmailDispatchListResult>
 
-  sendAccessEmail(
-    memberId: string,
+  sendAccessEmail(input: {
+    memberId: string
+    accountMasterId: string
     mode: "invite" | "reset_password"
-  ): Promise<{ email: string }>
+  }): Promise<{ email: string }>
 
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
 

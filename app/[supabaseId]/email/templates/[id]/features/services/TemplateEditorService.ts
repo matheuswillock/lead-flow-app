@@ -25,6 +25,19 @@ class TemplateEditorService implements ITemplateEditorService {
     };
   }
 
+  /**
+   * Auditoria de review (PR #1085, Entregável 3): diferente de
+   * `CampanhasService.parseCampaignsResponse`, `fallbackMessage` aqui é sempre
+   * uma constante PT-BR escrita à mão por cada chamador (ex.: "Erro ao buscar
+   * template") — nunca interpola `response.status` nem uma mensagem de
+   * exceção. Por isso etiquetar como `ApiRequestError` incondicionalmente é
+   * seguro: mesmo no ramo sem `errorMessages` (corpo não-JSON de proxy/CDN,
+   * `isValid:false` sem detalhe), o texto que chega ao toast nunca é um
+   * detalhe técnico/interno — é copy de fallback intencional. Se algum
+   * chamador futuro passar um `fallbackMessage` derivado de status HTTP ou de
+   * `error.message`, este método deixa de ser seguro e precisa do mesmo split
+   * de `parseCampaignsResponse` (produto vs. técnico).
+   */
   private async parseResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
     const body = (await response.json().catch(() => null)) as ApiOutput<T> | null;
     if (!response.ok || !body?.isValid) {

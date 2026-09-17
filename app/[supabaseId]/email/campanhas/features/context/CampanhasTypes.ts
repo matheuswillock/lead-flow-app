@@ -43,6 +43,24 @@ export type CampaignDispatchProgressSummary = {
   updatedAt: string
 }
 
+/** Espelho de `DispatchAvailability` em lib/email/campaign-dispatch-availability.ts. */
+export type DispatchAvailabilityReason =
+  | "already_sent"
+  | "dispatch_in_progress"
+  | "monthly_quota_active"
+  | "daily_cap_reached"
+  | null
+
+export type DispatchAvailability = {
+  canDispatchNow: boolean
+  reason: DispatchAvailabilityReason
+  dailyCap: number | null
+  sentToday: number
+  isUnlimitedDailyCap: boolean
+  nextWindowAt: string
+  queuedAheadCount: number | null
+}
+
 export type SubCampaignSummary = {
   id: string
   name: string
@@ -63,6 +81,7 @@ export type SubCampaignSummary = {
   failedRetryRecipientCount?: number
   activeDispatch?: CampaignDispatchProgress | null
   latestDispatch?: CampaignDispatchProgress | null
+  dispatchAvailability?: DispatchAvailability | null
 }
 
 export type Campaign = {
@@ -101,6 +120,7 @@ export type Campaign = {
   activeDispatch?: CampaignDispatchProgress | null
   latestDispatch?: CampaignDispatchProgress | null
   dispatchProgressSummary?: CampaignDispatchProgressSummary | null
+  dispatchAvailability?: DispatchAvailability | null
 }
 
 export type CreditStatus = {

@@ -20,9 +20,7 @@ rmSync(STAGE, { recursive: true, force: true });
 mkdirSync(STAGE, { recursive: true });
 
 const includes = [
-  ["n8n/workflows", "n8n/workflows"],
   ["deploy/hostinger/studio-bot-ops", "deploy/hostinger/studio-bot-ops"],
-  ["deploy/hostinger/backup-supabase.sh", "deploy/hostinger/backup-supabase.sh"],
   ["deploy/hostinger/.env.ops.example", "deploy/hostinger/.env.ops.example"],
   ["deploy/hostinger/Caddyfile", "Caddyfile"],
 ];

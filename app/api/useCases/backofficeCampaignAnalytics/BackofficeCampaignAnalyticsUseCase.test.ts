@@ -1,0 +1,460 @@
+import { describe, expect, it } from "bun:test"
+import * as XLSX from "xlsx"
+import { BackofficeCampaignAnalyticsUseCase } from "./BackofficeCampaignAnalyticsUseCase"
+import type {
+  CampaignAnalyticsExportAllWorkbookInput,
+  CampaignAnalyticsExportAllWorkbookResult,
+  IBackofficeCampaignAnalyticsExportAllService,
+} from "@/app/api/services/backofficeCampaignAnalyticsExport/IBackofficeCampaignAnalyticsExportAllService"
+import { BackofficeCampaignAnalyticsExportAllService } from "@/app/api/services/backofficeCampaignAnalyticsExport/BackofficeCampaignAnalyticsExportAllService"
+import type {
+  CampaignAnalyticsFilter,
+  CampaignAnalyticsPagination,
+  DailySeriesPoint,
+  DispatchPage,
+  FormFunnelRow,
+  IBackofficeCampaignAnalyticsRepository,
+  LeadsByOriginRow,
+  TemplateAggregate,
+} from "@/app/api/infra/data/repositories/backoffice/backofficeCampaignAnalytics/IBackofficeCampaignAnalyticsRepository"
+
+class FakeRepository implements IBackofficeCampaignAnalyticsRepository {
+  dispatchPage: DispatchPage = { rows: [], total: 0, page: 1, pageSize: 25 }
+  /** Quando definido, simula um total maior que o array de linhas devolvido por página (para T-10.9b). */
+  simulatedDispatchTotal: number | undefined
+  templates: TemplateAggregate[] = []
+  series: DailySeriesPoint[] = []
+  funnel: FormFunnelRow[] = []
+  leads: LeadsByOriginRow[] = []
+
+  /** Contadores de chamada — usados para provar que exportAll não refaz a mesma query (SPEC do export completo). */
+  aggregateByTemplateCalls = 0
+  formFunnelCalls = 0
+  leadsByOriginCalls = 0
+  dailySeriesCalls = 0
+
+  async aggregateDispatches(
+    _filter: CampaignAnalyticsFilter,
+    pagination: CampaignAnalyticsPagination
+  ): Promise<DispatchPage> {
+    if (this.simulatedDispatchTotal !== undefined) {
+      const sampleRow = this.dispatchPage.rows[0]
+      return {
+        rows: sampleRow ? Array(pagination.pageSize).fill(sampleRow) : [],
+        total: this.simulatedDispatchTotal,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+      }
+    }
+    return { ...this.dispatchPage, page: pagination.page, pageSize: pagination.pageSize }
+  }
+
+  async aggregateByTemplate(): Promise<TemplateAggregate[]> {
+    this.aggregateByTemplateCalls++
+    return this.templates
+  }
+
+  async dailySeries(): Promise<DailySeriesPoint[]> {
+    this.dailySeriesCalls++
+    return this.series
+  }
+
+  async formFunnel(): Promise<FormFunnelRow[]> {
+    this.formFunnelCalls++
+    return this.funnel
+  }
+
+  async leadsByOrigin(): Promise<LeadsByOriginRow[]> {
+    this.leadsByOriginCalls++
+    return this.leads
+  }
+}
+
+function buildUseCase(
+  configure?: (repo: FakeRepository) => void,
+  exportAllService: IBackofficeCampaignAnalyticsExportAllService = new BackofficeCampaignAnalyticsExportAllService()
+) {
+  const repo = new FakeRepository()
+  configure?.(repo)
+  return { useCase: new BackofficeCampaignAnalyticsUseCase(repo, exportAllService), repo }
+}
+
+class RecordingExportAllService implements IBackofficeCampaignAnalyticsExportAllService {
+  lastInput: CampaignAnalyticsExportAllWorkbookInput | null = null
+  private readonly real = new BackofficeCampaignAnalyticsExportAllService()
+
+  buildWorkbook(input: CampaignAnalyticsExportAllWorkbookInput): CampaignAnalyticsExportAllWorkbookResult {
+    this.lastInput = input
+    return this.real.buildWorkbook(input)
+  }
+}
+
+const VALID_RANGE = { from: "2026-08-26", to: "2026-08-31" }
+
+describe("BackofficeCampaignAnalyticsUseCase.getSummary", () => {
+  it("T-10.5 — compõe totais, taxas e ranking por time a partir dos agregados do repository", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, clicked: 4, bounced: 10, failed: 0 },
+        { teamId: "t2", teamName: "MultiSkill", templateName: "B", dispatches: 1, sent: 1402, delivered: 1300, opened: 275, clicked: 10, bounced: 5, failed: 0 },
+      ]
+      repo.leads = [
+        { teamId: "t1", teamName: "Liber", originChannel: "email_campaign", count: 4 },
+        { teamId: "t1", teamName: "Liber", originChannel: "public_form", count: 2 },
+        { teamId: "t2", teamName: "MultiSkill", originChannel: "public_form", count: 5 },
+      ]
+      repo.funnel = [
+        { formId: "f1", formName: "Form", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
+      ]
+    })
+
+    const output = await useCase.getSummary({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+
+    const result = output.result as {
+      totals: { sent: number; leadsTotal: number; leadsCreated: number; leadsAttached: number }
+      byTeam: Array<{ teamId: string; leads: number; finalScore: number | null }>
+    }
+    expect(result.totals.sent).toBe(1623 + 1402)
+    expect(result.totals.leadsTotal).toBe(11)
+    expect(result.totals.leadsCreated).toBe(1)
+    expect(result.totals.leadsAttached).toBe(1)
+
+    const liber = result.byTeam.find((row) => row.teamId === "t1")
+    expect(liber?.leads).toBe(6)
+    expect(Math.round((liber?.finalScore ?? 0) * 100) / 100).toBe(3.7)
+  })
+
+  it("rejeita período acima de 92 dias com mensagem PT-BR clara (400)", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.getSummary({ from: "2026-05-01", to: "2026-08-31", teamIds: undefined })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("92")
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.getDispatches", () => {
+  it("aplica pageSize padrão e devolve a página do repository", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.dispatchPage = { rows: [], total: 3, page: 1, pageSize: 25 }
+    })
+    const output = await useCase.getDispatches({ ...VALID_RANGE, teamIds: undefined, page: undefined, pageSize: undefined })
+    expect(output.isValid).toBe(true)
+    expect((output.result as DispatchPage).total).toBe(3)
+  })
+
+  it("T-10.12 — rejeita pageSize acima de 100 (limite aplicado no use case, não só na rota)", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.getDispatches({ ...VALID_RANGE, teamIds: undefined, page: 1, pageSize: 500 })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("100")
+  })
+
+  it("rejeita page menor que 1", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.getDispatches({ ...VALID_RANGE, teamIds: undefined, page: 0, pageSize: 25 })
+    expect(output.isValid).toBe(false)
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.getTeamsSeries", () => {
+  it("soma a série total por dia a partir dos pontos por time", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.series = [
+        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 },
+        { day: "2026-08-28", teamId: "t2", teamName: "MultiSkill", sent: 50, delivered: 45, opened: 10, clicked: 0 },
+      ]
+    })
+    const output = await useCase.getTeamsSeries({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+    const result = output.result as {
+      total: Array<{ day: string; sent: number; delivered: number; opened: number; clicked: number }>
+    }
+    expect(result.total).toEqual([{ day: "2026-08-28", sent: 150, delivered: 135, opened: 30, clicked: 1 }])
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.getTemplates", () => {
+  it("T-10.6 — calcula openRate por linha e ordena desc", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+        { teamId: "t3", teamName: "Zero", templateName: "Sem envio", dispatches: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, failed: 0 },
+      ]
+    })
+    const output = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+    const rows = output.result as Array<{ templateName: string; openRate: number | null }>
+    expect(rows.map((row) => row.templateName)).toEqual(["v2 médicos", "Oficinas", "Sem envio"])
+    expect(Math.round((rows[0].openRate ?? 0) * 1000) / 1000).toBeCloseTo(0.37, 2)
+    expect(rows[2].openRate).toBeNull()
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.getFormsFunnel", () => {
+  it("T-10.6/T-10.7 — calcula startRate/closeRate, closeRate null quando starts=0, ordena desc por closeRate", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.funnel = [
+        { formId: "f1", formName: "Liber básico", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
+        { formId: "f2", formName: "Sabrina", teamId: "t2", teamName: "Sabrina", viewed: 227, started: 5, completed: 0, leadCreated: 0, leadAttached: 0 },
+        { formId: "f3", formName: "Kathrein médicos", teamId: "t3", teamName: "Kathrein", viewed: 108, started: 0, completed: 0, leadCreated: 0, leadAttached: 0 },
+      ]
+    })
+    const output = await useCase.getFormsFunnel({ ...VALID_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+    const rows = output.result as Array<{ formId: string; startRate: number | null; closeRate: number | null }>
+
+    const liber = rows.find((row) => row.formId === "f1")
+    expect(Math.round((liber?.closeRate ?? 0) * 100) / 100).toBe(0.83)
+
+    const kathrein = rows.find((row) => row.formId === "f3")
+    expect(kathrein?.startRate).toBe(0)
+    expect(kathrein?.closeRate).toBeNull() // divisor zero (starts=0) -> null, nunca 0 sintético
+
+    const sabrina = rows.find((row) => row.formId === "f2")
+    expect(sabrina?.closeRate).toBe(0) // starts>0 mas completes=0 -> 0 real, não null
+
+    expect(rows.map((row) => row.formId)).toEqual(["f1", "f2", "f3"]) // desc por closeRate, null por último
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
+  it("T-10.9 — rejeita dataset inválido", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "invalido" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("dataset")
+  })
+
+  it("T-10.9 — rejeita range acima de 92 dias", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportCsv({ from: "2026-05-01", to: "2026-08-31", teamIds: undefined, dataset: "templates" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("92")
+  })
+
+  it("T-10.9b — dataset=dispatches: falha explicitamente em vez de truncar silenciosamente quando o total excede o limite de export", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.dispatchPage = {
+        rows: [
+          {
+            id: "d1", teamId: "t1", teamName: "Time", templateName: "T", dispatchedAt: new Date(),
+            status: "completed", totalRecipients: 1, totalSent: 1, totalDelivered: 1, totalOpened: 0,
+            totalClicked: 0, totalBounced: 0, errorMessage: null,
+          },
+        ],
+        total: 0,
+        page: 1,
+        pageSize: 100,
+      }
+      repo.simulatedDispatchTotal = 1_000_000 // muito acima de qualquer 92 dias real
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "dispatches" })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toMatch(/limite|reduza/i)
+    expect(output.result).toBeNull() // nunca devolve um CSV parcial se não pode buscar tudo
+  })
+
+  it("T-10.8 — dataset=templates: BOM, header PT-BR, filename com dataset/from/to", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+      ]
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "templates" })
+    expect(output.isValid).toBe(true)
+    const result = output.result as { csv: string; filename: string }
+    expect(result.csv.startsWith("﻿")).toBe(true)
+    expect(result.csv).toContain(";")
+    expect(result.csv).toContain("Kathrein;v2 médicos")
+    expect(result.filename).toBe(`campanhas_templates_${VALID_RANGE.from}_${VALID_RANGE.to}.csv`)
+  })
+
+  it("T-10.10 — dataset=templates: paridade linha a linha com getTemplates", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+      ]
+    })
+    const jsonOutput = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
+    const jsonRows = jsonOutput.result as Array<{ templateName: string }>
+
+    const csvOutput = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "templates" })
+    const { csv } = csvOutput.result as { csv: string }
+    const dataLines = csv.replace("﻿", "").split("\r\n").filter(Boolean).slice(1)
+
+    expect(dataLines.length).toBe(jsonRows.length)
+    dataLines.forEach((line, index) => {
+      expect(line).toContain(jsonRows[index].templateName)
+    })
+  })
+
+  it("T-10.10 — dataset=forms: closeRate null vira célula vazia no CSV", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.funnel = [
+        { formId: "f3", formName: "Kathrein médicos", teamId: "t3", teamName: "Kathrein", viewed: 108, started: 0, completed: 0, leadCreated: 0, leadAttached: 0 },
+      ]
+    })
+    const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "forms" })
+    const { csv } = output.result as { csv: string }
+    const dataLine = csv.replace("﻿", "").split("\r\n").filter(Boolean)[1]
+    expect(dataLine.endsWith(";")).toBe(true) // última coluna (Taxa de Fechamento) vazia
+  })
+
+  it("T-10.10 — dataset=series: paridade com os pontos de getTeamsSeries", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.series = [
+        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 },
+      ]
+    })
+    const jsonOutput = await useCase.getTeamsSeries({ ...VALID_RANGE, teamIds: undefined })
+    const jsonPoints = (jsonOutput.result as { points: Array<{ day: string }> }).points
+
+    const csvOutput = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "series" })
+    const { csv } = csvOutput.result as { csv: string }
+    const dataLines = csv.replace("﻿", "").split("\r\n").filter(Boolean).slice(1)
+    expect(dataLines.length).toBe(jsonPoints.length)
+  })
+})
+
+describe("BackofficeCampaignAnalyticsUseCase.exportAll", () => {
+  const EXPORT_ALL_RANGE = { from: "2026-08-02", to: "2026-08-31" } // exatamente 30 dias
+
+  it("rejeita range acima de 30 dias com mensagem própria do export completo (teto de 92 continua valendo pra tela)", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportAll({ from: "2026-08-01", to: "2026-08-31", teamIds: undefined }) // 31 dias
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("30")
+    expect(output.errorMessages.join(" ")).toContain("export completo")
+  })
+
+  it("aceita range de exatamente 30 dias", async () => {
+    const { useCase } = buildUseCase()
+    const output = await useCase.exportAll({ ...EXPORT_ALL_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+  })
+
+  it("monta um workbook com as 5 abas na ordem Resumo/Disparos/Templates/Formulários/Série diária, e filename campanhas_completo_<from>_<to>.xlsx", async () => {
+    const exportAllService = new RecordingExportAllService()
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, clicked: 4, bounced: 10, failed: 0 },
+      ]
+      repo.leads = [{ teamId: "t1", teamName: "Liber", originChannel: "public_form", count: 6 }]
+      repo.funnel = [
+        { formId: "f1", formName: "Form", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
+      ]
+      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 }]
+      repo.dispatchPage = {
+        rows: [
+          {
+            id: "d1", teamId: "t1", teamName: "Liber", templateName: "A", dispatchedAt: new Date("2026-08-28T10:00:00Z"),
+            status: "completed", totalRecipients: 2, totalSent: 2, totalDelivered: 2, totalOpened: 1,
+            totalClicked: 0, totalBounced: 0, errorMessage: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+      }
+    }, exportAllService)
+
+    const output = await useCase.exportAll({ ...EXPORT_ALL_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(true)
+
+    const { buffer, filename } = output.result as { buffer: ArrayBuffer; filename: string }
+    expect(filename).toBe(`campanhas_completo_${EXPORT_ALL_RANGE.from}_${EXPORT_ALL_RANGE.to}.xlsx`)
+
+    const workbook = XLSX.read(buffer, { type: "array" })
+    expect(workbook.SheetNames).toEqual(["Resumo", "Disparos", "Templates", "Formulários", "Série diária"])
+
+    const resumo = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Resumo, { header: 1 })
+    const resumoMap = new Map(resumo.slice(1).map((row) => [row[0], row[1]]))
+    expect(resumoMap.get("Disparos")).toBe("1")
+    expect(resumoMap.get("Enviados")).toBe("1623")
+    expect(resumoMap.get("Leads Totais")).toBe("6")
+    expect(resumoMap.get("Nota Final")).toBe(exportAllService.lastInput?.sheets[0]?.rows.find((r) => r[0] === "Nota Final")?.[1])
+
+    const disparos = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Disparos, { header: 1 })
+    expect(disparos[0]).toEqual(["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"])
+    expect(disparos[1]?.[1]).toBe("Liber")
+  })
+
+  it("busca cada agregado do repository só uma vez (Resumo, Templates e Formulários derivam do MESMO fetch, sem query duplicada)", async () => {
+    const { useCase, repo } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 10, delivered: 9, opened: 3, clicked: 1, bounced: 1, failed: 0 },
+      ]
+    })
+
+    await useCase.exportAll({ ...EXPORT_ALL_RANGE, teamIds: undefined })
+
+    expect(repo.aggregateByTemplateCalls).toBe(1)
+    expect(repo.formFunnelCalls).toBe(1)
+    expect(repo.leadsByOriginCalls).toBe(1)
+    expect(repo.dailySeriesCalls).toBe(1)
+  })
+
+  it("paridade: linhas de Templates/Formulários/Série diária no workbook batem com getTemplates/getFormsFunnel/getTeamsSeries", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.templates = [
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+      ]
+      repo.funnel = [
+        { formId: "f1", formName: "Liber básico", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
+      ]
+      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 }]
+    })
+
+    const [templatesOutput, funnelOutput, seriesOutput, exportAllOutput] = await Promise.all([
+      useCase.getTemplates({ ...EXPORT_ALL_RANGE, teamIds: undefined }),
+      useCase.getFormsFunnel({ ...EXPORT_ALL_RANGE, teamIds: undefined }),
+      useCase.getTeamsSeries({ ...EXPORT_ALL_RANGE, teamIds: undefined }),
+      useCase.exportAll({ ...EXPORT_ALL_RANGE, teamIds: undefined }),
+    ])
+
+    const templateRows = templatesOutput.result as Array<{ templateName: string }>
+    const funnelRows = funnelOutput.result as Array<{ formName: string }>
+    const seriesPoints = (seriesOutput.result as { points: Array<{ day: string }> }).points
+
+    const { buffer } = exportAllOutput.result as { buffer: ArrayBuffer }
+    const workbook = XLSX.read(buffer, { type: "array" })
+
+    const templatesSheet = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Templates, { header: 1 }).slice(1)
+    expect(templatesSheet.length).toBe(templateRows.length)
+    templatesSheet.forEach((row, index) => expect(row[1]).toBe(templateRows[index].templateName))
+
+    const formsSheet = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["Formulários"], { header: 1 }).slice(1)
+    expect(formsSheet.length).toBe(funnelRows.length)
+    formsSheet.forEach((row, index) => expect(row[1]).toBe(funnelRows[index].formName))
+
+    const seriesSheet = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["Série diária"], { header: 1 }).slice(1)
+    expect(seriesSheet.length).toBe(seriesPoints.length)
+  })
+
+  it("dispatches acima do limite de segurança: falha explicitamente em vez de gerar workbook parcial", async () => {
+    const { useCase } = buildUseCase((repo) => {
+      repo.dispatchPage = {
+        rows: [
+          {
+            id: "d1", teamId: "t1", teamName: "Time", templateName: "T", dispatchedAt: new Date(),
+            status: "completed", totalRecipients: 1, totalSent: 1, totalDelivered: 1, totalOpened: 0,
+            totalClicked: 0, totalBounced: 0, errorMessage: null,
+          },
+        ],
+        total: 0,
+        page: 1,
+        pageSize: 100,
+      }
+      repo.simulatedDispatchTotal = 1_000_000
+    })
+
+    const output = await useCase.exportAll({ ...EXPORT_ALL_RANGE, teamIds: undefined })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toMatch(/limite|reduza/i)
+    expect(output.result).toBeNull()
+  })
+})

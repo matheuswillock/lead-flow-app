@@ -30,8 +30,20 @@ import {
   validateAnswer,
 } from "@/lib/public-forms/engine"
 import { normalizeThankYouPages, resolveThankYouPage } from "@/lib/public-forms/thank-you-pages"
-import { formatCurrencyBR, formatPhoneBR } from "@/lib/public-forms/masks"
+import { formatCurrencyBR } from "@/lib/public-forms/masks"
+import {
+  findLeadPhoneQuestion,
+  getPhoneFieldInlineError,
+  normalizeAndMaskPhoneInput,
+  shouldBlockFirstPhoneSubmitAttempt,
+} from "@/lib/public-forms/phone-field"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
+import {
+  resolvePrefilledFieldIds,
+  retainPrefilledFieldsWithAnswers,
+  withoutPrefilledField,
+} from "@/lib/public-forms/prefill-indicator"
+import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldIndicator"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
 import { API_CLIENT_BASE } from "@/lib/route-map"
@@ -137,6 +149,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const [started, setStarted] = useState(false)
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
+  // Item A (registro 03/09): ids das perguntas cujo valor atual veio do
+  // prefill de `cs_el` — dirige o indicador visível no campo (Sparkles +
+  // tooltip). Some assim que o visitante edita o campo (ver `onChange`).
+  const [prefilledFieldIds, setPrefilledFieldIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
@@ -146,6 +162,10 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null)
   const previousVisibleIds = useRef<string[]>([])
   const submitLockRef = useRef(false)
+  // Adenda 41-E2 (owner, 01/09): telefone invalido barra o PRIMEIRO clique em
+  // Enviar para o visitante ver o aviso, mas nunca o segundo — a regua de
+  // lead nao vira regua de submissao.
+  const phoneSubmitWarningAcknowledgedRef = useRef(false)
 
   const answerList = useMemo(
     () => Object.entries(answers).map(([questionId, value]) => ({ questionId, value })),
@@ -242,6 +262,14 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         if (!data?.isValid || !data?.result) return
         const { name, email } = data.result
         setAnswers((current) => {
+          const prefilledIds = resolvePrefilledFieldIds({
+            questions: snapshot.questions,
+            prefill: { name, email },
+            currentAnswers: current,
+          })
+          if (prefilledIds.size > 0) {
+            setPrefilledFieldIds((currentIds) => new Set([...currentIds, ...prefilledIds]))
+          }
           const next = { ...current }
           for (const question of snapshot.questions) {
             if (question.mappingKey === "name" && name && !current[question.id]) {
@@ -427,6 +455,16 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     setIndex((current) => Math.min(current, Math.max(0, pages.length - 1)))
   }, [started, track, visibleIds, visibleIdsKey, pages.length])
 
+  /**
+   * A poda de respostas acima (lógica condicional) precisa arrastar o
+   * indicador junto: pergunta prefillada que sumiu e voltou renasce vazia, e
+   * o Sparkles ali mentiria. O helper devolve o mesmo Set quando nada mudou,
+   * então este efeito não re-renderiza no caminho comum.
+   */
+  useEffect(() => {
+    setPrefilledFieldIds((current) => retainPrefilledFieldsWithAnswers(current, answers))
+  }, [answers])
+
   useEffect(() => {
     if (!started || phase !== "form") return
     if (!pageQuestions.some((item) => item.type === "calculation")) return
@@ -462,6 +500,9 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       const question = snapshot.questions.find((item) => item.id === questionId)
       if (question && isLeadNameQuestion(question)) {
         setError(validateAnswer(question, value))
+      }
+      if (question && question.type === "phone") {
+        setError(getPhoneFieldInlineError(value))
       }
     },
     [preview, publicId, sendWithOutbox, session, snapshot.questions],
@@ -550,6 +591,33 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     }
     if (!publicId || !session) return
     if (sending || done || submitLockRef.current) return
+    // O telefone que decide o lead é o mapeado para native_field.phone — um
+    // telefone de recado (custom_field) válido não pode suprimir o aviso.
+    const phoneQuestion = findLeadPhoneQuestion(snapshot.questions)
+    if (phoneQuestion) {
+      const phoneValue = answers[phoneQuestion.id]
+      if (
+        shouldBlockFirstPhoneSubmitAttempt({
+          value: phoneValue,
+          alreadyWarnedOnce: phoneSubmitWarningAcknowledgedRef.current,
+        })
+      ) {
+        phoneSubmitWarningAcknowledgedRef.current = true
+        setError(getPhoneFieldInlineError(phoneValue))
+        // Volta para a página do campo de telefone: quando o submit parte de
+        // uma página posterior (agendamento/resultado do simulador), o aviso
+        // sem navegação apontaria para um campo fora da tela e o visitante
+        // não teria como corrigir antes do segundo clique.
+        const phonePageIndex = pages.findIndex((page) =>
+          page.some((item) => item.id === phoneQuestion.id),
+        )
+        if (phonePageIndex >= 0) {
+          setIndex(phonePageIndex)
+          setPhase("form")
+        }
+        return
+      }
+    }
     submitLockRef.current = true
     track("form_submit_attempted", undefined, {
       ...(currentPageId ? { pageId: currentPageId } : {}),
@@ -908,10 +976,17 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
               <FieldGroup className="gap-8">
                 {pageQuestions.map((item) => (
                   <Field key={item.id}>
-                    <FieldLabel className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-                      {item.title}
-                      {item.required ? <span aria-hidden="true"> *</span> : null}
-                    </FieldLabel>
+                    {/* O indicador fica FORA do <label>: um <button> dentro
+                        de label sem `for` vira o primeiro descendente
+                        rotulável, e clicar no título ativaria o tooltip em
+                        vez de não fazer nada. */}
+                    <div className="flex items-center gap-2">
+                      <FieldLabel className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+                        {item.title}
+                        {item.required ? <span aria-hidden="true"> *</span> : null}
+                      </FieldLabel>
+                      {prefilledFieldIds.has(item.id) ? <PrefillFieldIndicator /> : null}
+                    </div>
                     {item.description ? (
                       <FieldDescription className="text-pretty text-sm">
                         {item.description}
@@ -935,6 +1010,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                               nameValue: value,
                             })
                           })
+                          setPrefilledFieldIds((current) => withoutPrefilledField(current, item.id))
                           setError(null)
                         }}
                         onBlur={sendBlurProgress}
@@ -1189,8 +1265,8 @@ function Question({
         inputMode={auto.inputMode ?? "tel"}
         value={String(value ?? "")}
         placeholder={question.placeholder ?? "(11) 99999-9999"}
-        onChange={(event) => onChange(formatPhoneBR(event.target.value))}
-        onBlur={(event) => onBlur?.(question.id, formatPhoneBR(event.currentTarget.value))}
+        onChange={(event) => onChange(normalizeAndMaskPhoneInput(event.target.value))}
+        onBlur={(event) => onBlur?.(question.id, normalizeAndMaskPhoneInput(event.currentTarget.value))}
         className="h-14 border-input bg-background text-lg"
       />
     )

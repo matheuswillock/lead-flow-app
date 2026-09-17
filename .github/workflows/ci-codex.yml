@@ -1,0 +1,32 @@
+# .github/workflows/ci-codex.yml
+name: CI (codex -> develop)
+
+on:
+  push:
+    branches:
+      - "codex/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-codex-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+  deployments: write
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-branch-reusable.yml
+    with:
+      pr-base: develop
+      concurrency-group: ci-codex
+      automation-marker: ci-codex:automation
+      pr-title-prefix: codex
+      branch-strip-prefixes: codex/
+      branch-prefixes: codex/
+      run-spellcheck: true
+      skip-build-on-github-rebase: true
+    secrets: inherit

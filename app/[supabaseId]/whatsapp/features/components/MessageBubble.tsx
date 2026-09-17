@@ -374,7 +374,7 @@ function MessageBubbleInner({ message, previousMessage = null }: MessageBubblePr
         <div
           className={cn(
             "max-w-[80%] rounded-md bg-muted/70 px-2 py-1 text-xs text-muted-foreground",
-            isOutbound && "bg-primary/15 text-primary-foreground/80"
+            isOutbound && "bg-primary/15 text-foreground/80"
           )}
         >
           <p className="font-medium text-foreground/80">Respondendo a</p>

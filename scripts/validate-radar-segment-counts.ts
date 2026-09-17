@@ -5,6 +5,8 @@
  */
 
 import { radarService } from "@/app/api/services/radar/RadarService"
+import { radarRepository } from "@/app/api/infra/data/repositories/radar/RadarRepository"
+import { countSegmentsLegacyInMemory } from "@/lib/radar/count-segments-legacy"
 import { prisma } from "@/app/api/infra/data/prisma"
 
 async function validateSegmentCounts() {
@@ -40,13 +42,12 @@ async function validateSegmentCounts() {
     }
 
     try {
-      const [sqlResult, legacyResult] = await Promise.all([
+      const [sqlResult, legacyMap] = await Promise.all([
         radarService.countSegments(scope),
-        radarService.countSegmentsLegacy(scope),
+        countSegmentsLegacyInMemory(radarRepository, team.id),
       ])
 
       const sqlMap = new Map(sqlResult.map((s) => [s.slug, s.count]))
-      const legacyMap = new Map(legacyResult.map((s) => [s.slug, s.count]))
 
       let hasDivergence = false
 

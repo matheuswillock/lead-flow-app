@@ -47,6 +47,10 @@ import {
   type DispatchBlockedDateEntry,
 } from "@/lib/email/campaign-dispatch-guards"
 import {
+  isMonthlyQuotaIncidentActive,
+  startOfMonthUtc,
+} from "@/lib/email/resend-quota-incident"
+import {
   countRetriableFailedDispatchLogs,
   countSuccessfulDispatchLogs,
   persistDispatchTerminalFallback,
@@ -67,7 +71,6 @@ import type {
 } from "@/app/api/services/EmailCampaignDispatch/IEmailCampaignDispatchService"
 import { canDispatchEmail } from "@/lib/email/email-rbac"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
-import { emailOrphanEventService } from "@/app/api/services/resend/EmailOrphanEventService"
 import {
   assertCampaignFromIsSendable,
   formatCampaignFromHeader,
@@ -79,6 +82,16 @@ import {
   EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
   isDailyLimitErrorMessage,
 } from "@/lib/email/campaign-limits"
+import {
+  formatDailyCapDeferMessage,
+  formatDispatchWindowDeferMessage,
+  formatTrackingNotReadyDeferMessage,
+} from "@/lib/email/campaign-dispatch-defer-messages"
+import { selectFairDispatchBatch } from "@/lib/email/campaign-dispatch-fair-batch"
+import {
+  loadDispatchAvailabilityForLeafCampaigns,
+  type DispatchAvailability,
+} from "@/lib/email/campaign-dispatch-availability"
 import { notifyCampaignDispatchFailure } from "@/lib/email/notify-campaign-dispatch-failure"
 import { resolveTeamEmailCampaignLimits } from "@/lib/email/resolve-team-email-campaign-limits"
 import {
@@ -144,6 +157,13 @@ import {
 
 const EMAIL_LOG_WRITE_CONCURRENCY_LIMIT = 2
 const DEFAULT_SCHEDULED_BATCH_SIZE = 5
+/**
+ * Janela de candidatas do round-robin = lote × este fator. Cobre o pior caso
+ * observado (caso Kathrein 15/09: 11 partes de um único time na fila) sem
+ * carregar a tabela inteira — partes adiadas por teto mantêm `scheduledAt` e
+ * ficariam eternamente à frente com janela igual ao lote.
+ */
+const SCHEDULED_FAIR_BATCH_CANDIDATE_FACTOR = 5
 const DEFAULT_ORPHAN_RESUME_BATCH_SIZE = 3
 /** Lote máximo de destinatários `queued` processado por invocação do consumer da fila (Fase 4 / PR1). */
 const DISPATCH_QUEUE_BATCH_SIZE = 500
@@ -193,13 +213,29 @@ export const EMAIL_CAMPAIGN_FAILURE_MESSAGES = {
   NO_TEMPLATE:
     "O template vinculado à campanha não está mais disponível. Atualize a campanha antes de disparar",
   NO_CREDITS: "Sem assinatura de créditos de e-mail ativa. Ative um plano em Assinaturas",
-  NO_RADAR_BETA:
-    "Envio de e-mail liberado apenas para o Grupo Beta de Radar no time ativo",
+  /**
+   * Escopo estreito (achado de review, PR #1085): disparo para LISTA de
+   * contatos nunca exige Beta de Radar (Radar e e-mail são features
+   * independentes). Mas disparo para `radarSegmentSlug` LÊ dados do Radar —
+   * `listRadarSegmentEmailRecipients` só filtra por teamId + regras do
+   * segmento, sem checar entitlement. Sem este gate, um time com Radar
+   * revogado ainda conseguiria consultar e disparar para a própria audiência
+   * de Radar antiga.
+   */
+  NO_RADAR_BETA_FOR_SEGMENT:
+    "Envio para segmento de Radar liberado apenas para o Grupo Beta de Radar no time ativo",
   NO_RECIPIENTS_LIST: "Nenhum contato ativo na lista para envio",
   NO_RECIPIENTS_RADAR: "Nenhum perfil apto no segmento Radar",
   STUCK_SENDING: "Disparo interrompido: tempo limite de envio excedido (30 min)",
   MONTHLY_QUOTA:
     "Cota mensal de envio do provedor excedida. O disparo foi interrompido. Tente novamente mais tarde.",
+  /**
+   * Recusa na origem — mensagem diferente da de interrupção de propósito: aqui
+   * nada foi enviado, e dizer "o disparo foi interrompido" faria o usuário
+   * procurar destinatários que nunca existiram.
+   */
+  MONTHLY_QUOTA_ACTIVE:
+    "Cota mensal de envio do provedor esgotada neste mês. Nenhum e-mail foi enfileirado. O envio volta a funcionar na virada do mês.",
   INTERNAL: "Ocorreu um erro ao disparar a campanha",
   RESEND_ZERO: "Nenhum e-mail foi enviado pelo provedor",
   ALL_SUPPRESSED: CAMPAIGN_CANCELED_ALL_SUPPRESSED_MESSAGE,
@@ -1490,6 +1526,47 @@ export class EmailCampaignUseCase {
         failedRetryCandidates
       )
 
+      // Estado honesto do botão "Disparar" da lista (mesmo gap medido na ficha
+      // — adenda E1b, caso Rafael 10/09): só campanhas-folha (sem sub-campanhas)
+      // disparam diretamente daqui. Uma leitura de timezone por request (o
+      // time inteiro é o mesmo dono), não por linha.
+      const leafCampaignsForAvailability = campaigns
+        .filter((campaign) => campaign._count.subCampaigns === 0)
+        .map((campaign) => {
+          const override = leafReconcileOverrides.get(campaign.id)
+          const status = override?.status ?? campaign.status
+          const totalSent = override?.totalSent ?? campaign.totalSent
+          const retryFailedOnly = isCampaignFailedRetry({ status, totalSent })
+          return {
+            id: campaign.id,
+            status,
+            totalRecipients: dynamicRecipientCounts.get(campaign.id) ?? campaign.totalRecipients,
+            totalSent,
+            scheduledAt: campaign.scheduledAt,
+            retryFailedOnly,
+            // Público EXATO do disparo quando já computado neste request
+            // (achado codex P2, PR #1178): retry usa a contagem real dos logs
+            // falhados; envio normal usa a recontagem dinâmica da audiência.
+            exactAdditionalRecipients: retryFailedOnly
+              ? failedRetryCountsByCampaignId.get(campaign.id) ?? null
+              : dynamicRecipientCounts.get(campaign.id) ?? null,
+          }
+        })
+      let dispatchAvailabilityByCampaignId = new Map<string, DispatchAvailability>()
+      if (leafCampaignsForAvailability.length > 0) {
+        const team = await this.db.team.findUnique({
+          where: { id: ctx.teamId },
+          select: { master: { select: { timezone: true } } },
+        })
+        dispatchAvailabilityByCampaignId = await loadDispatchAvailabilityForLeafCampaigns({
+          teamId: ctx.teamId,
+          timezone: resolveTimezone(team?.master?.timezone),
+          now: new Date(),
+          monthlyQuotaActive: await this.isMonthlyQuotaIncidentActive(),
+          campaigns: leafCampaignsForAvailability,
+        })
+      }
+
       const creatorsById = new Map(creators.map((creator) => [creator.id, creator]))
       const templatesById = new Map(templates.map((template) => [template.id, template]))
       const contactListsById = new Map(contactLists.map((contactList) => [contactList.id, contactList]))
@@ -1556,6 +1633,10 @@ export class EmailCampaignUseCase {
             activeDispatch: subCampaignCount === 0 ? leafProgress?.activeDispatch ?? null : null,
             latestDispatch: subCampaignCount === 0 ? leafProgress?.latestDispatch ?? null : null,
             dispatchProgressSummary,
+            dispatchAvailability:
+              subCampaignCount === 0
+                ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
+                : null,
           })
         }),
         total,
@@ -1576,6 +1657,7 @@ export class EmailCampaignUseCase {
         include: {
           template: { select: { id: true, name: true, subject: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
+          team: { select: { master: { select: { timezone: true } } } },
           subCampaigns: {
             select: {
               id: true,
@@ -1759,6 +1841,54 @@ export class EmailCampaignUseCase {
           })
         : []
 
+      // Estado honesto do botão "Disparar" (adenda E1b, caso Rafael 10/09): a
+      // MESMA lógica do cron (dispatchScheduledCampaigns) e do disparo manual
+      // (startManualDispatch) — nunca uma cópia da regra do teto no front.
+      const dispatchAvailabilityNow = new Date()
+      const dispatchAvailabilityTz = resolveTimezone(campaign.team?.master?.timezone)
+      const monthlyQuotaActiveForAvailability = await this.isMonthlyQuotaIncidentActive(
+        dispatchAvailabilityNow
+      )
+      const dispatchAvailabilityByCampaignId = await loadDispatchAvailabilityForLeafCampaigns({
+        teamId: ctx.teamId,
+        timezone: dispatchAvailabilityTz,
+        now: dispatchAvailabilityNow,
+        monthlyQuotaActive: monthlyQuotaActiveForAvailability,
+        campaigns: isParent
+          ? campaign.subCampaigns.map((sub) => ({
+              id: sub.id,
+              status: sub.status,
+              totalRecipients: sub.totalRecipients,
+              totalSent: sub.totalSent,
+              scheduledAt: sub.scheduledAt,
+              retryFailedOnly: isCampaignFailedRetry(sub),
+              // Contagem real dos logs falhados quando é retry (achado codex
+              // P2, PR #1178); envio normal de sub-campanha usa snapshot
+              // persistido mesmo (audiência de parte é congelada na partição).
+              exactAdditionalRecipients: isCampaignFailedRetry(sub)
+                ? subFailedRetryCountById.get(sub.id) ?? null
+                : null,
+            }))
+          : [
+              {
+                id: campaign.id,
+                status: campaign.status,
+                totalRecipients: campaign.totalRecipients,
+                totalSent: campaign.totalSent,
+                scheduledAt: campaign.scheduledAt,
+                retryFailedOnly: isCampaignFailedRetry(campaign),
+                // Público EXATO já computado nesta ficha (achado codex P2,
+                // PR #1178): contagem real dos logs falhados no retry;
+                // recontagem dinâmica da audiência no envio normal.
+                exactAdditionalRecipients: isCampaignFailedRetry(campaign)
+                  ? failedRetryRecipientCount ?? null
+                  : ["draft", "scheduled", "sending"].includes(campaign.status)
+                    ? activeRecipientCount
+                    : null,
+              },
+            ],
+      })
+
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
         sourceContactListIds,
@@ -1782,6 +1912,9 @@ export class EmailCampaignUseCase {
         dispatchProgressSummary: isParent
           ? buildCampaignDispatchProgressSummary(childProgressList)
           : null,
+        dispatchAvailability: !isParent
+          ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
+          : null,
         subCampaigns: campaign.subCampaigns.map((sub) => {
           const subProgress = progressByCampaignId.get(sub.id)
           return {
@@ -1791,6 +1924,7 @@ export class EmailCampaignUseCase {
               : undefined,
             activeDispatch: subProgress?.activeDispatch ?? null,
             latestDispatch: subProgress?.latestDispatch ?? null,
+            dispatchAvailability: dispatchAvailabilityByCampaignId.get(sub.id) ?? null,
           }
         }),
       }))
@@ -2757,6 +2891,15 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Seu perfil não tem permissão para disparar campanhas"], null)
       }
 
+      // Recusa na origem. Com a cota do mês estourada, aceitar o disparo só
+      // cria centenas de logs `failed` mudos e devolve créditos depois — o
+      // usuário fica olhando uma campanha "enviada" que não saiu. Nada é
+      // enfileirado, nenhum crédito é reservado: a recusa acontece antes de
+      // qualquer escrita.
+      if (await this.isMonthlyQuotaIncidentActive()) {
+        return new Output(false, [], [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE], null)
+      }
+
       previousStatus = campaign.status
 
       const publishedTemplate = await this.resolvePublishedTemplate(campaign.templateId, ctx.teamId)
@@ -2789,14 +2932,23 @@ export class EmailCampaignUseCase {
 
       const templateHtml = inlineEmailHtml(publishedTemplate.html)
 
-      const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
-        profileId: ctx.profileId,
-        managerId: ctx.managerId,
-        isMaster: ctx.isMaster,
-        teamId: ctx.teamId,
-      })
-      if (!radarBetaAccess) {
-        return new Output(false, [], [EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA], null)
+      // Escopo estreito: só audiência de Radar exige o Beta — disparo para
+      // lista de contatos nunca passa por aqui (radarSegmentSlug null).
+      if (campaign.radarSegmentSlug) {
+        const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
+          profileId: ctx.profileId,
+          managerId: ctx.managerId,
+          isMaster: ctx.isMaster,
+          teamId: ctx.teamId,
+        })
+        if (!radarBetaAccess) {
+          return new Output(
+            false,
+            [],
+            [EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT],
+            null
+          )
+        }
       }
 
       hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
@@ -3673,6 +3825,19 @@ export class EmailCampaignUseCase {
         `[EmailCampaignUseCase] Cota mensal do Resend excedida: campaignId=${params.campaignId} dispatchId=${params.dispatchId} totalRecipients=${params.totalRecipients}`
       )
     })
+  }
+
+  /**
+   * A cota é da conta no provedor, não do time: um estouro cega todo mundo.
+   * O registro consultável é o `errorMessage` do último disparo abortado no mês
+   * — sem tabela nova, conforme a decisão registrada na SPEC 20 (DA4).
+   */
+  async isMonthlyQuotaIncidentActive(now = new Date()): Promise<boolean> {
+    const lastIncidentAt = await this.repository.findLastMonthlyQuotaIncidentAt({
+      since: startOfMonthUtc(now),
+      quotaFailureMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA,
+    })
+    return isMonthlyQuotaIncidentActive(lastIncidentAt, now)
   }
 
   /**
@@ -4728,7 +4893,12 @@ export class EmailCampaignUseCase {
       console.error("[EmailCampaignUseCase][dispatchScheduled][reclaim]", error)
     })
 
-    const campaigns = await this.db.emailCampaign.findMany({
+    // Janela de candidatas maior que o lote: o adiamento por teto mantém
+    // `scheduledAt`, então as partes adiadas de um time no teto continuam no
+    // topo da fila global — com `take` igual ao lote, elas monopolizavam todos
+    // os ticks e represavam times COM capacidade (achado codex/cursor no
+    // PR #1178). O round-robin abaixo dá no máximo 1 slot por time por rodada.
+    const candidates = await this.db.emailCampaign.findMany({
       where: {
         status: "scheduled",
         scheduledAt: { lte: now },
@@ -4739,16 +4909,72 @@ export class EmailCampaignUseCase {
         contactList: { select: { id: true, name: true } },
         team: { select: { master: { select: { id: true, timezone: true } } } },
       },
-      take: maxCampaigns,
+      // Determinístico e justo: sem isto, a ordem de retorno do Postgres não é
+      // garantida e não necessariamente reflete "a mais antiga primeiro" — o
+      // que a fila de starvation (teto diário disputado por várias partes,
+      // caso Rafael 10/09) precisa para que `queuedAheadCount`
+      // (campaign-dispatch-availability.ts) descreva a fila real.
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      take: maxCampaigns * SCHEDULED_FAIR_BATCH_CANDIDATE_FACTOR,
     })
+    const campaigns = selectFairDispatchBatch(candidates, maxCampaigns)
 
     let dispatched = 0
 
+    // Times que já bateram no teto NESTE tick: as partes seguintes do mesmo
+    // time nem tentam (o teto não libera no meio do tick) — recebem só o
+    // mesmo motivo de adiamento, para a ficha não ficar muda, e o slot do
+    // lote sobra para quem tem capacidade.
+    const capDeferredMessageByTeam = new Map<string, string>()
+
+    // Recusa na origem do caminho agendado. Medido no `EMAIL_AUDIT` §8.2: dos
+    // 429 estouros de cota pós-deploy, **129** vieram de `dispatch-scheduled` —
+    // o maior volume do incidente. Proteger só o botão manual deixaria
+    // justamente o caminho que mais sofreu enfileirando contra uma cota morta.
+    //
+    // A consulta fica FORA do laço: a cota é da conta no provedor, o veredito
+    // vale para todas as campanhas deste tick, e uma ida ao banco por campanha
+    // seria desperdício puro. Nada é travado, nenhum crédito reservado, nenhum
+    // dispatch criado — a recusa acontece antes do lock.
+    if (campaigns.length > 0 && (await this.isMonthlyQuotaIncidentActive(now))) {
+      console.error(
+        "[EmailCampaignUseCase][dispatchScheduled] cota mensal ativa — nenhuma campanha agendada foi disparada",
+        { skipped: campaigns.length }
+      )
+      for (const campaign of campaigns) {
+        // Continua `scheduled`, não vira `failed`: o envio não morreu, foi
+        // adiado até a virada do mês. Marcar como falha faria o usuário recriar
+        // uma campanha que ainda vai sair sozinha.
+        await this.db.emailCampaign.updateMany({
+          where: { id: campaign.id, status: "scheduled" },
+          data: { errorMessage: EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE },
+        })
+      }
+      return new Output(true, [EMAIL_CAMPAIGN_FAILURE_MESSAGES.MONTHLY_QUOTA_ACTIVE], [], {
+        dispatched: 0,
+        skippedByMonthlyQuota: campaigns.length,
+      })
+    }
+
     for (const campaign of campaigns) {
       try {
+        const capDeferMessage = capDeferredMessageByTeam.get(campaign.teamId)
+        if (capDeferMessage) {
+          await this.db.emailCampaign.updateMany({
+            where: { id: campaign.id, status: "scheduled" },
+            data: { errorMessage: capDeferMessage },
+          })
+          continue
+        }
+
         const lockResult = await this.db.emailCampaign.updateMany({
           where: { id: campaign.id, status: "scheduled" },
-          data: { status: "sending" },
+          // `errorMessage: null` espelha o `startManualDispatch`: a ficha da
+          // campanha exibe `errorMessage` sem filtrar por status, e só limpa em
+          // `sent`. Sem zerar aqui, a campanha adiada pela cota dispara normal
+          // na virada do mês mas continua mostrando "cota mensal esgotada" —
+          // erro velho descrevendo um envio que deu certo.
+          data: { status: "sending", errorMessage: null },
         })
 
         if (lockResult.count === 0) {
@@ -4795,7 +5021,10 @@ export class EmailCampaignUseCase {
           if (windowCheck.blocked && windowCheck.defer) {
             await this.db.emailCampaign.update({
               where: { id: campaign.id },
-              data: { status: "scheduled" },
+              data: {
+                status: "scheduled",
+                errorMessage: formatDispatchWindowDeferMessage(windowCheck.reason),
+              },
             })
             console.info(
               `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: ${windowCheck.reason}`
@@ -4820,18 +5049,22 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
-          profileId: masterId,
-          managerId: masterId,
-          isMaster: true,
-          teamId: campaign.teamId,
-        })
-        if (!radarBetaAccess) {
-          await this.markScheduledCampaignFailed(
-            campaign.id,
-            EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA
-          )
-          continue
+        // Escopo estreito: só audiência de Radar exige o Beta — mesmo gate do
+        // disparo manual (ver comentário em startManualDispatch).
+        if (campaign.radarSegmentSlug) {
+          const radarBetaAccess = await featureAccessService.resolveRadarBetaAccess({
+            profileId: masterId,
+            managerId: masterId,
+            isMaster: true,
+            teamId: campaign.teamId,
+          })
+          if (!radarBetaAccess) {
+            await this.markScheduledCampaignFailed(
+              campaign.id,
+              EMAIL_CAMPAIGN_FAILURE_MESSAGES.NO_RADAR_BETA_FOR_SEGMENT
+            )
+            continue
+          }
         }
 
         const hasCampaignsBetaAccess = await featureAccessService.resolveEmailBetaAccess({
@@ -4881,7 +5114,10 @@ export class EmailCampaignUseCase {
         if (!scheduledTrackingGuard.ok) {
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
-            data: { status: "scheduled" },
+            data: {
+              status: "scheduled",
+              errorMessage: formatTrackingNotReadyDeferMessage(scheduledTrackingGuard.message),
+            },
           })
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: ${scheduledTrackingGuard.message}`
@@ -4911,9 +5147,19 @@ export class EmailCampaignUseCase {
           additionalRecipients: recipientCount,
         })
         if (dailyCap.exceeded) {
+          const deferMessage =
+            dailyCap.limit != null
+              ? formatDailyCapDeferMessage(dailyCap.used, dailyCap.limit)
+              : null
+          if (deferMessage) {
+            capDeferredMessageByTeam.set(campaign.teamId, deferMessage)
+          }
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
-            data: { status: "scheduled" },
+            data: {
+              status: "scheduled",
+              errorMessage: deferMessage,
+            },
           })
           console.info(
             `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} adiada: limite diário ${dailyCap.used}/${dailyCap.limit}`
@@ -5008,17 +5254,10 @@ export class EmailCampaignUseCase {
 
     console.info(`[EmailCampaignUseCase][dispatchScheduled] ${dispatched} campanha(s) disparada(s) nesta execução`)
 
-    const orphanResult = await emailOrphanEventService.processPendingBatch().catch((error) => {
-      console.error("[EmailCampaignUseCase][dispatchScheduled][orphanEvents]", error)
-      return { processed: 0, failed: 0, skipped: 0 }
-    })
-    if (orphanResult.processed > 0 || orphanResult.failed > 0) {
-      console.info(
-        `[EmailCampaignUseCase][dispatchScheduled] órfãos: ${orphanResult.processed} processados, ${orphanResult.failed} falharam`
-      )
-    }
-
-    return new Output(true, [`${dispatched} campanhas disparadas`], [], { dispatched, orphanResult })
+    // O dreno de órfãos do Resend saiu daqui: pegava carona no fim do
+    // dispatch, 10 por execução (120/h). Agora é cron próprio,
+    // /api/v1/email/cron/drain-orphan-events, 200 a cada 5 min.
+    return new Output(true, [`${dispatched} campanhas disparadas`], [], { dispatched })
   }
 
   private async hasSiblingDailyCapConflict(params: {

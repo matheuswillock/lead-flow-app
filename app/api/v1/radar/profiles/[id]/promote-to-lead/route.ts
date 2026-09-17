@@ -6,6 +6,19 @@ import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-i
 
 type RouteParams = { params: Promise<{ id: string }> }
 
+/**
+ * Corpo opcional: a promoção sem confirmação continua sendo um POST sem body.
+ * Body ausente ou malformado vira "sem confirmação" — nunca 400.
+ */
+async function readPromotionBody(request: NextRequest): Promise<{ confirmDuplicate?: boolean }> {
+  try {
+    const parsed = (await request.json()) as { confirmDuplicate?: unknown }
+    return { confirmDuplicate: parsed?.confirmDuplicate === true }
+  } catch {
+    return {}
+  }
+}
+
 export async function POST(request: NextRequest, { params }: RouteParams) {
   await connection()
 
@@ -16,19 +29,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params
+    const body = await readPromotionBody(request)
     const output = await promoteRadarProfileToLeadUseCase.execute({
       profileId: id,
       access: radarAccess.access,
       ctx: teamContextFromRadarAccess(radarAccess.access),
+      confirmDuplicate: body.confirmDuplicate,
     })
 
     if (!output.isValid) {
       const message = output.errorMessages.join(" ")
-      const status = message.includes("não encontrado")
-        ? 404
-        : message.includes("já")
-          ? 409
-          : 400
+      const result = output.result as { requiresDuplicateConfirmation?: boolean } | null
+
+      // Duplicata é fluxo, não erro de requisição: 409 com o `result` íntegro
+      // (candidatos incluídos) para o frontend oferecer a confirmação.
+      const status = result?.requiresDuplicateConfirmation
+        ? 409
+        : message.includes("não encontrado")
+          ? 404
+          : message.includes("já")
+            ? 409
+            : 400
       return NextResponse.json(output, { status })
     }
 

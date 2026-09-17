@@ -54,18 +54,37 @@ describe("aggregateTemplateGroups", () => {
 })
 
 describe("rankTopTemplates", () => {
-  const base = {
-    delivered: 0,
-    bounced: 0,
-    complained: 0,
+  /**
+   * `delivered` era 0 nestes fixtures porque o `openRate` se media sobre `sent`
+   * e a coluna nao importava. Com a D6 ela virou o denominador: entrega zero
+   * passa a significar taxa zero, e o ranking perderia o sentido.
+   *
+   * A fabrica assume entrega integral (`delivered = sent`) salvo indicacao
+   * contraria, preservando as proporcoes que cada teste exercita.
+   */
+  function group(input: {
+    versionGroupId: string
+    templateId: string
+    name: string
+    sent: number
+    opened: number
+    clicked: number
+    delivered?: number
+  }) {
+    return {
+      ...input,
+      delivered: input.delivered ?? input.sent,
+      bounced: 0,
+      complained: 0,
+    }
   }
 
   it("retorna top 3 por abertura e por clique", () => {
     const result = rankTopTemplates([
-      { versionGroupId: "1", templateId: "1", name: "Baixo", sent: 100, opened: 10, clicked: 1, ...base },
-      { versionGroupId: "2", templateId: "2", name: "Alto open", sent: 100, opened: 50, clicked: 2, ...base },
-      { versionGroupId: "3", templateId: "3", name: "Alto click", sent: 100, opened: 20, clicked: 30, ...base },
-      { versionGroupId: "4", templateId: "4", name: "Médio", sent: 100, opened: 30, clicked: 10, ...base },
+      group({ versionGroupId: "1", templateId: "1", name: "Baixo", sent: 100, opened: 10, clicked: 1 }),
+      group({ versionGroupId: "2", templateId: "2", name: "Alto open", sent: 100, opened: 50, clicked: 2 }),
+      group({ versionGroupId: "3", templateId: "3", name: "Alto click", sent: 100, opened: 20, clicked: 30 }),
+      group({ versionGroupId: "4", templateId: "4", name: "Médio", sent: 100, opened: 30, clicked: 10 }),
     ])
 
     expect(result.byOpenRate.map((r) => r.versionGroupId)).toEqual(["2", "4", "3"])
@@ -76,9 +95,9 @@ describe("rankTopTemplates", () => {
 
   it("empate de taxa: desempata por volume absoluto, depois nome", () => {
     const result = rankTopTemplates([
-      { versionGroupId: "a", templateId: "a", name: "Zebra", sent: 100, opened: 50, clicked: 0, ...base },
-      { versionGroupId: "b", templateId: "b", name: "Alpha", sent: 200, opened: 100, clicked: 0, ...base },
-      { versionGroupId: "c", templateId: "c", name: "Beta", sent: 100, opened: 50, clicked: 0, ...base },
+      group({ versionGroupId: "a", templateId: "a", name: "Zebra", sent: 100, opened: 50, clicked: 0 }),
+      group({ versionGroupId: "b", templateId: "b", name: "Alpha", sent: 200, opened: 100, clicked: 0 }),
+      group({ versionGroupId: "c", templateId: "c", name: "Beta", sent: 100, opened: 50, clicked: 0 }),
     ])
 
     // Todos com openRate 50; b tem mais opened (100), depois Alpha < Beta < Zebra
@@ -88,33 +107,30 @@ describe("rankTopTemplates", () => {
 
   it("exclui template sem dados suficientes (sent < mínimo)", () => {
     const result = rankTopTemplates([
-      {
+      group({
         versionGroupId: "ok",
         templateId: "ok",
         name: "Com envios",
         sent: TEMPLATE_RANKING_MIN_SENT,
         opened: 5,
         clicked: 0,
-        ...base,
-      },
-      {
+      }),
+      group({
         versionGroupId: "tiny",
         templateId: "tiny",
         name: "Um envio",
         sent: 1,
         opened: 1,
         clicked: 1,
-        ...base,
-      },
-      {
+      }),
+      group({
         versionGroupId: "empty",
         templateId: "empty",
         name: "Sem envios",
         sent: 0,
         opened: 0,
         clicked: 0,
-        ...base,
-      },
+      }),
     ])
 
     expect(result.byOpenRate).toHaveLength(1)
@@ -124,7 +140,7 @@ describe("rankTopTemplates", () => {
 
   it("retorna menos de 3 quando há poucos elegíveis", () => {
     const result = rankTopTemplates([
-      { versionGroupId: "1", templateId: "1", name: "Só um", sent: 10, opened: 5, clicked: 1, ...base },
+      group({ versionGroupId: "1", templateId: "1", name: "Só um", sent: 10, opened: 5, clicked: 1 }),
     ])
 
     expect(result.byOpenRate).toHaveLength(1)
@@ -134,7 +150,7 @@ describe("rankTopTemplates", () => {
 
   it("lista vazia quando ninguém tem dados suficientes", () => {
     const result = rankTopTemplates([
-      { versionGroupId: "x", templateId: "x", name: "Vazio", sent: 0, opened: 0, clicked: 0, ...base },
+      group({ versionGroupId: "x", templateId: "x", name: "Vazio", sent: 0, opened: 0, clicked: 0 }),
     ])
     expect(result.byOpenRate).toEqual([])
     expect(result.byClickRate).toEqual([])

@@ -20,7 +20,7 @@ export function ThemeToggle() {
       variant="outline"
       onClick={toggle}
       aria-label="Alternar tema"
-      className="relative h-8 w-8 p-0 cursor-pointer transition-colors hover:bg-muted dark:hover:bg-muted"
+      className="relative h-8 w-8 max-lg:size-11 p-0 cursor-pointer transition-colors hover:bg-muted dark:hover:bg-muted"
       title={resolvedTheme === "dark" ? "Claro" : "Escuro"}
     >
       <MoonIcon className="h-4 w-4 rotate-0 scale-100 transition-all duration-300 ease-in-out dark:-rotate-90 dark:scale-0" />

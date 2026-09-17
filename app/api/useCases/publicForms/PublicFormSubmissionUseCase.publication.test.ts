@@ -100,6 +100,10 @@ const findFormSubmissionContext = mock(async () => ({
   team: { master: { id: "m1", supabaseId: "s1", timezone: "America/Sao_Paulo" } },
 }))
 const findLeadForSubmission = mock(async () => null)
+const findSubmissionAcceptedAt = mock(async () => ({
+  createdAt: new Date("2026-08-20T22:10:31.000Z"),
+  dispatchAcceptedAt: null as Date | null,
+}))
 // Devolve o lote recebido: `completeSubmission` passou a retornar o que de fato
 // persistiu, e o caller enfileira esse retorno (review #1058).
 const completeSubmission = mock(async (input: { metricEvents: unknown[] }) => input.metricEvents)
@@ -126,6 +130,7 @@ mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository
     createSubmission,
     findFormSubmissionContext,
     findLeadForSubmission,
+    findSubmissionAcceptedAt,
     completeSubmission,
     markSubmissionFailed,
     finalizeProgressSubmission: mock(async () => ({ id: "sub-progress" })),

@@ -4,6 +4,9 @@
 .claude/settings.local.json
 .claude/worktrees/
 
+# JetBrains IDE — local settings (never commit)
+.idea/
+
 # dependencies
 /node_modules
 /.pnp
@@ -62,3 +65,4 @@ next-env.d.ts
 deploy/hostinger/host-pack/dist/
 playwright-report/
 test-results/
+.playwright-mcp/

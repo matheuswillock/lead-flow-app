@@ -136,6 +136,17 @@ export class PublicFormProgressUseCase {
         publicationId,
         origin,
         allowCreate: !sessionLeadId,
+        // SPEC 40 — habilita o claim atômico por submissão dentro do criador
+        // legado (ver `lib/public-forms/lead-sync-claim.ts`). Vem de uma
+        // leitura (`resolvePublicFormPublicationForVisitor`), não de um
+        // upsert: na primeiríssima requisição de uma sessão a linha ainda não
+        // existe (só nasce mais abaixo, em `upsertProgressSubmission`) e fica
+        // `undefined` — nesse caso estreito o criador cai no comportamento
+        // sem claim de sempre. É exatamente o caso observado em produção
+        // (nome respondido, DEPOIS telefone com dois POSTs concorrentes) que
+        // fica coberto: a segunda resposta de identidade já enxerga a
+        // submissão criada pela primeira.
+        submissionId: resolved.sessionSubmission?.id,
       })
       // O descarte NÃO é emitido aqui de propósito (SPEC 40 E2, divergência
       // registrada na nota): `/progress` dispara a cada blur, e a parcial que

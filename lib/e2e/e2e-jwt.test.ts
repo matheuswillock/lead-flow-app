@@ -76,7 +76,7 @@ describe("e2e-jwt", () => {
     expect(await verifyE2eJwt(token)).toBeNull();
   });
 
-  it("recusa claims que não são do usuário master", async () => {
+  it("aceita claims de usuário E2E customizado com assinatura válida", async () => {
     process.env.E2E_JWT_SECRET = SECRET;
     const now = Math.floor(Date.now() / 1000);
     const token = craftJwt({
@@ -85,7 +85,10 @@ describe("e2e-jwt", () => {
       iat: now,
       exp: now + 3600,
     });
-    expect(await verifyE2eJwt(token)).toBeNull();
+    expect(await verifyE2eJwt(token)).toMatchObject({
+      sub: "00000000-0000-4000-8000-000000000000",
+      email: "other@example.com",
+    });
   });
 
   it("lança ao assinar sem E2E_JWT_SECRET", () => {
