@@ -3676,6 +3676,13 @@ model EmailOrphanEvent {
   resendEventType String                 @db.Text
   occurredAt      DateTime               @db.Timestamptz(6)
   tagsHint        Json?
+  /// Classificação de origem (human/bot/unknown) computada no webhook, quando
+  /// o `EmailLog` ainda não existia. Os sinais crus (user-agent, IP) só existem
+  /// no payload do webhook e morrem com ele — sem este carimbo o open/clique
+  /// recuperado pelo dreno voltaria sem origem e ficaria fora de
+  /// `humanOpenedAt`/`totalOpenedHuman` e dos segmentos humanos do Radar.
+  /// O IP **não** é persistido (LGPD): só o resultado da classificação.
+  originHint      Json?
   status          EmailOrphanEventStatus @default(pending)
   attempts        Int                    @default(0)
   lastError       String?                @db.Text

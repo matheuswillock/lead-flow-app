@@ -8,6 +8,7 @@ import {
   PREFETCH_DELIVERY_DELTA_MAX_SECONDS,
   classifyEmailEventOrigin,
   isIpv4InAnyCidr,
+  reinforceOriginWithDeliveryDelta,
 } from "./email-event-origin-classifier"
 
 /**
@@ -221,6 +222,48 @@ describe("isIpv4InAnyCidr — matcher em memória", () => {
     expect(isIpv4InAnyCidr("2607:f8b0::1", GOOGLE_PROXY_IPV4_CIDRS)).toBe(false)
     expect(isIpv4InAnyCidr("", GOOGLE_PROXY_IPV4_CIDRS)).toBe(false)
     expect(isIpv4InAnyCidr(null, GOOGLE_PROXY_IPV4_CIDRS)).toBe(false)
+  })
+})
+
+describe("reinforceOriginWithDeliveryDelta — reforço aplicado depois, no dreno do órfão", () => {
+  const deliveredAt = new Date("2026-09-17T16:04:00.000Z")
+
+  it("rebaixa human para bot/generic quando o evento cai dentro da janela de pré-fetch", () => {
+    const reinforced = reinforceOriginWithDeliveryDelta(
+      { classification: "human", uaFamily: "chrome" },
+      { occurredAt: new Date("2026-09-17T16:04:05.000Z"), deliveredAt }
+    )
+
+    expect(reinforced.classification).toBe("bot")
+    expect(reinforced.botSource).toBe("generic")
+    expect(reinforced.uaFamily).toBe("chrome")
+  })
+
+  it("mantém human quando o evento está fora da janela", () => {
+    const reinforced = reinforceOriginWithDeliveryDelta(
+      { classification: "human", uaFamily: "outlook" },
+      { occurredAt: new Date("2026-09-17T17:39:13.000Z"), deliveredAt }
+    )
+
+    expect(reinforced.classification).toBe("human")
+  })
+
+  it("sem entrega conhecida não há delta: a classificação passa intacta", () => {
+    const reinforced = reinforceOriginWithDeliveryDelta(
+      { classification: "unknown" },
+      { occurredAt: new Date("2026-09-17T16:04:01.000Z"), deliveredAt: null }
+    )
+
+    expect(reinforced.classification).toBe("unknown")
+  })
+
+  it("nunca promove: bot por UA/IP continua com o botSource específico", () => {
+    const reinforced = reinforceOriginWithDeliveryDelta(
+      { classification: "bot", botSource: "gmail-proxy", uaFamily: "gmail-image-proxy" },
+      { occurredAt: new Date("2026-09-17T19:00:00.000Z"), deliveredAt }
+    )
+
+    expect(reinforced.botSource).toBe("gmail-proxy")
   })
 })
 
