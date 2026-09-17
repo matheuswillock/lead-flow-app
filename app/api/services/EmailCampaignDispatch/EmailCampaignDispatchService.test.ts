@@ -948,9 +948,19 @@ describe("EmailCampaignDispatchService — domínio de formulários do time", ()
     }
   }
 
+  const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL
+
   beforeEach(() => {
     batchSendMock.mockClear()
     batchSendMock.mockResolvedValue({ data: [{ id: "re_0" }], error: null })
+    // Env determinística: a troca de host valida o host da plataforma, e o
+    // teste não pode depender do NEXT_PUBLIC_APP_URL da máquina do runner.
+    process.env.NEXT_PUBLIC_APP_URL = "https://www.corretorstudio.com"
+  })
+
+  afterEach(() => {
+    if (ORIGINAL_APP_URL === undefined) delete process.env.NEXT_PUBLIC_APP_URL
+    else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL_APP_URL
   })
 
   it("template antigo com host da plataforma congelado sai com o domínio do time", async () => {
@@ -974,6 +984,35 @@ describe("EmailCampaignDispatchService — domínio de formulários do time", ()
     )
     expect(payload[0]?.html).not.toContain("www.corretorstudio.com/forms/")
     expect(resolver.resolvePublicFormBaseUrl).toHaveBeenCalledWith("team-1")
+  })
+
+  it("CTA dinâmico: só o form nativo é reescrito — ClickUp e Typeform saem byte a byte", async () => {
+    const resolver = makeResolver()
+    const service = new EmailCampaignDispatchService(resolver)
+
+    const nativeCta = `<a href="https://www.corretorstudio.com/forms/${TEAM_FORM_ID}">Simule aqui</a>`
+    // Armadilha real: o host do ClickUp é forms.clickup.com — matcher por
+    // substring "/forms/" ou prefixo "forms." capturaria por engano.
+    const clickupCta = `<a href="https://forms.clickup.com/36148174/f/12abcd-999/XYZ?x=1">ClickUp</a>`
+    const typeformCta = `<a href="https://imobx.typeform.com/to/a1B2c3">Typeform</a>`
+    const html = `<p>Olá {{nome}}</p>${nativeCta}${clickupCta}${typeformCta}`
+
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html,
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    const sentHtml = payload[0]?.html ?? ""
+
+    // Nativo reescrito para o domínio do time.
+    expect(sentHtml).toContain(`${TEAM_DOMAIN_BASE}/forms/${TEAM_FORM_ID}`)
+    expect(sentHtml).not.toContain(`www.corretorstudio.com/forms/${TEAM_FORM_ID}`)
+
+    // Externos idênticos ao original — byte a byte, sem troca de host nem cs_el.
+    expect(sentHtml).toContain(clickupCta)
+    expect(sentHtml).toContain(typeformCta)
   })
 
   it("formulário de OUTRO time mantém o host original", async () => {
