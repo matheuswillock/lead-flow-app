@@ -3421,6 +3421,10 @@ model EmailCampaign {
   totalSent                 Int                 @default(0)
   totalDelivered            Int                 @default(0)
   totalOpened               Int                 @default(0)
+  /// Aberturas classificadas como humanas (exclui proxies/robôs do provedor).
+  /// Paridade com `totalOpened`: sobe no máximo 1 por destinatário, no claim
+  /// atômico de `EmailLog.humanOpenedAt`.
+  totalOpenedHuman          Int                 @default(0)
   totalClicked              Int                 @default(0)
   totalBounced              Int                 @default(0)
   dispatchCount             Int                 @default(0)
@@ -3467,6 +3471,8 @@ model EmailCampaignDispatch {
   totalSent               Int                                 @default(0)
   totalDelivered          Int                                 @default(0)
   totalOpened             Int                                 @default(0)
+  /// Aberturas humanas do disparo — mesma semântica de `EmailCampaign.totalOpenedHuman`.
+  totalOpenedHuman        Int                                 @default(0)
   totalClicked            Int                                 @default(0)
   totalBounced            Int                                 @default(0)
   totalComplained         Int                                 @default(0)
@@ -3518,6 +3524,10 @@ model EmailLog {
   sentAt         DateTime?        @db.Timestamptz(6)
   deliveredAt    DateTime?        @db.Timestamptz(6)
   openedAt       DateTime?        @db.Timestamptz(6)
+  /// Primeiro open classificado como HUMANO (classificador de origem do
+  /// webhook). `openedAt` continua bruto: qualquer open — inclusive proxy do
+  /// provedor — reivindica. Este campo alimenta "Aberturas reais".
+  humanOpenedAt  DateTime?        @db.Timestamptz(6)
   clickedAt      DateTime?        @db.Timestamptz(6)
   bouncedAt      DateTime?        @db.Timestamptz(6)
   complainedAt   DateTime?        @db.Timestamptz(6)
@@ -3547,6 +3557,7 @@ model EmailLog {
   // e o dobro disso quando os deltas carregam o periodo anterior.
   @@index([teamId, deliveredAt], map: "corretor_studio_email_logs_team_delivered_idx")
   @@index([teamId, openedAt], map: "corretor_studio_email_logs_team_opened_idx")
+  @@index([teamId, humanOpenedAt], map: "corretor_studio_email_logs_team_human_opened_idx")
   @@index([teamId, clickedAt], map: "corretor_studio_email_logs_team_clicked_idx")
   @@index([teamId, bouncedAt], map: "corretor_studio_email_logs_team_bounced_idx")
   @@index([teamId, complainedAt], map: "corretor_studio_email_logs_team_complained_idx")

@@ -1,5 +1,13 @@
 export type ResendWebhookPayload = {
   type: string
+  /**
+   * Momento em que o EVENTO aconteceu (topo do payload). Diferente de
+   * `data.created_at`, que é a hora de CRIAÇÃO do e-mail — constante para
+   * todos os eventos da mesma mensagem. Medido em produção (17/09): num
+   * email.opened real, `data.created_at` = 16:03 e `created_at` topo =
+   * `data.open.timestamp` = 17:39.
+   */
+  created_at?: string
   data: {
     email_id?: string
     id?: string
@@ -9,7 +17,9 @@ export type ResendWebhookPayload = {
     created_at: string
     to?: string[]
     tags?: Record<string, string> | Array<{ name: string; value: string }>
-    click?: { link: string; userAgent: string; ipAddress: string }
+    /** Presente em email.opened: sinais crus do fetch do pixel. */
+    open?: { ipAddress?: string; userAgent?: string; timestamp?: string }
+    click?: { link: string; userAgent: string; ipAddress: string; timestamp?: string }
     bounce?: {
       message: string
       type?: string
