@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test"
 import {
-  applySendingHealthReleaseBaseline,
   buildPauseSnapshotFromExisting,
   buildReleaseSnapshotFromExisting,
   classifySendingHealthSeverity,
@@ -9,6 +8,7 @@ import {
   isSendingHealthBlocked,
   parseSendingHealthReleaseBaseline,
   parseSendingHealthSnapshot,
+  resolveActiveReleaseBaseline,
   resolveManualSendingHealthRelease,
   resolveSendingHealthTransition,
   shouldAbortDispatchForBounceSpike,
@@ -316,21 +316,22 @@ describe("baseline de liberação — o incidente não pode ser contado duas vez
     expect(snapshot.pauseHistory).toHaveLength(1)
   })
 
-  it("REGRESSÃO: logo após liberar, a MESMA janela não repausa o time", () => {
+  it("REGRESSÃO: logo após liberar, a MESMA janela (zero eventos desde a liberação) não repausa o time", () => {
     const releasedAt = daysAgo(0.01)
     const parsed = parseSendingHealthSnapshot(releasedSnapshot(releasedAt))
-    const applied = applySendingHealthReleaseBaseline({
-      windows: incidentWindows,
+    const activeBaseline = resolveActiveReleaseBaseline({
       baseline: parsed.releaseBaseline,
       now: NOW,
     })
-    // Janela líquida zerada ⇒ sem volume mínimo ⇒ severidade `ok`.
-    expect(applied.windows.sent7d).toBe(0)
-    expect(applied.windows.hardBounced7d).toBe(0)
+    expect(activeBaseline).not.toBeNull()
+
+    // A consulta "desde a liberação" (getWindowMetricsSince, no repositório)
+    // devolve zero — nada foi enviado depois do release ainda.
+    const windowsSinceRelease = windows({ sent7d: 0, hardBounced7d: 0 })
 
     const transition = resolveSendingHealthTransition({
       current: "warned",
-      rates: computeSendingHealthRates(applied.windows),
+      rates: computeSendingHealthRates(windowsSinceRelease),
       now: NOW,
       belowWarnSince: parsed.belowWarnSince,
       pauseHistory: parsed.pauseHistory,
@@ -343,19 +344,19 @@ describe("baseline de liberação — o incidente não pode ser contado duas vez
   it("envio NOVO e ruim depois da liberação repausa — e suspende (2ª pausa em 30d)", () => {
     const releasedAt = daysAgo(1)
     const parsed = parseSendingHealthSnapshot(releasedSnapshot(releasedAt))
-    // +400 envios novos com 40 hard bounces = 10% na janela líquida.
-    const afterRelease = windows({ sent7d: 1400, hardBounced7d: 120 })
-    const applied = applySendingHealthReleaseBaseline({
-      windows: afterRelease,
+    const activeBaseline = resolveActiveReleaseBaseline({
       baseline: parsed.releaseBaseline,
       now: NOW,
     })
-    expect(applied.windows.sent7d).toBe(400)
-    expect(applied.windows.hardBounced7d).toBe(40)
+    expect(activeBaseline).not.toBeNull()
+
+    // getWindowMetricsSince mediria isso diretamente na base: 400 envios
+    // novos com 40 hard bounces = 10% desde a liberação.
+    const windowsSinceRelease = windows({ sent7d: 400, hardBounced7d: 40 })
 
     const transition = resolveSendingHealthTransition({
       current: "warned",
-      rates: computeSendingHealthRates(applied.windows),
+      rates: computeSendingHealthRates(windowsSinceRelease),
       now: NOW,
       belowWarnSince: null,
       pauseHistory: parsed.pauseHistory,
@@ -363,18 +364,57 @@ describe("baseline de liberação — o incidente não pode ser contado duas vez
     expect(transition.next).toBe("suspended")
   })
 
-  it(`o baseline expira em ${SENDING_HEALTH_RELEASE_BASELINE_DAYS} dias — depois a janela crua volta a valer`, () => {
+  /**
+   * REGRESSÃO do achado P1 do codex (PR #1204): a antiga subtração
+   * (`janela atual − janela na liberação`) zerava esse cenário. 500 envios
+   * antigos (bons, já contados no baseline) saem da janela móvel de 7d no
+   * mesmo período em que 500 envios NOVOS (ruins) entram — a janela atual tem
+   * o mesmo `sent7d` do baseline, a subtração dá zero, e o incidente novo
+   * fica invisível. A consulta direta (`resolveActiveReleaseBaseline` +
+   * `getWindowMetricsSince`) não sofre disso: mede o que realmente aconteceu
+   * depois de `baseline.at`, não uma diferença de agregados que se moveram.
+   */
+  it("REGRESSÃO P1: churn de volume constante não pode mascarar incidente novo", () => {
+    const releasedAt = daysAgo(1)
+    const parsed = parseSendingHealthSnapshot(releasedSnapshot(releasedAt))
+    const activeBaseline = resolveActiveReleaseBaseline({
+      baseline: parsed.releaseBaseline,
+      now: NOW,
+    })
+    expect(activeBaseline).not.toBeNull()
+
+    // A janela CRUA de 7d ficou com o MESMO volume do baseline (churn: 500
+    // saíram, 500 novos ruins entraram) — é exatamente o cenário que a
+    // subtração zerava.
+    const rawWindowStayedFlat = windows({ sent7d: incidentWindows.sent7d, hardBounced7d: 80 })
+    expect(rawWindowStayedFlat.sent7d - (activeBaseline?.windows.sent7d ?? 0)).toBe(0)
+
+    // A consulta direta ao que aconteceu DESDE a liberação enxerga os 500
+    // envios novos, todos ruins (100% de bounce).
+    const windowsSinceRelease = windows({ sent7d: 500, hardBounced7d: 500 })
+    const transition = resolveSendingHealthTransition({
+      current: "warned",
+      rates: computeSendingHealthRates(windowsSinceRelease),
+      now: NOW,
+      belowWarnSince: null,
+      pauseHistory: parsed.pauseHistory,
+    })
+    // O cron CONSEGUE pausar de novo — não fica preso em `ok` por causa do
+    // churn de volume.
+    expect(transition.next === "paused" || transition.next === "suspended").toBe(true)
+  })
+
+  it(`o baseline expira em ${SENDING_HEALTH_RELEASE_BASELINE_DAYS} dias — depois a janela crua volta a valer sem ressalvas`, () => {
     const baseline = {
       at: daysAgo(SENDING_HEALTH_RELEASE_BASELINE_DAYS).toISOString(),
       windows: incidentWindows,
     }
-    const applied = applySendingHealthReleaseBaseline({
-      windows: incidentWindows,
-      baseline,
-      now: NOW,
-    })
-    expect(applied.baseline).toBeNull()
-    expect(applied.windows.sent7d).toBe(1000)
+    expect(resolveActiveReleaseBaseline({ baseline, now: NOW })).toBeNull()
+  })
+
+  it("baseline dentro da janela de 7 dias continua ativo", () => {
+    const baseline = { at: daysAgo(3).toISOString(), windows: incidentWindows }
+    expect(resolveActiveReleaseBaseline({ baseline, now: NOW })).toEqual(baseline)
   })
 
   it("uma pausa nova apaga o baseline anterior", () => {
@@ -382,15 +422,10 @@ describe("baseline de liberação — o incidente não pode ser contado duas vez
     expect(snapshot.releaseBaseline).toBeNull()
   })
 
-  it("JSON sem baseline: parse devolve null e a janela passa intacta", () => {
+  it("JSON sem baseline: parse devolve null e não há baseline ativo", () => {
     expect(parseSendingHealthSnapshot({ pauseHistory: [] }).releaseBaseline).toBeNull()
     expect(parseSendingHealthReleaseBaseline(null)).toBeNull()
     expect(parseSendingHealthReleaseBaseline({ releaseBaseline: { at: "nao-e-data" } })).toBeNull()
-    const applied = applySendingHealthReleaseBaseline({
-      windows: incidentWindows,
-      baseline: null,
-      now: NOW,
-    })
-    expect(applied.windows).toEqual(incidentWindows)
+    expect(resolveActiveReleaseBaseline({ baseline: null, now: NOW })).toBeNull()
   })
 })

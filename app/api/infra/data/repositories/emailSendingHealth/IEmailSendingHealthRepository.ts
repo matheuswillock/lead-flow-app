@@ -55,4 +55,20 @@ export interface IEmailSendingHealthRepository {
 
   /** Enviados × hard bounces de UMA parte (dispatch) — gatilho do abort mid-send. */
   getDispatchBounceStats(dispatchId: string): Promise<DispatchBounceStats>
+
+  /**
+   * Contagem 7d medida DIRETAMENTE desde `since` — usada quando o time tem um
+   * `releaseBaseline` ativo (liberação manual há menos de
+   * `SENDING_HEALTH_RELEASE_BASELINE_DAYS` dias). Substitui a antiga subtração
+   * (janela atual − janela na liberação), que zerava incidentes novos quando o
+   * volume total ficava estável (churn: envios antigos saem da janela na mesma
+   * proporção em que envios novos ruins entram) — achado P1 do codex no
+   * PR #1204. `since` é sempre `releaseBaseline.at`, que por definição de
+   * baseline ativo já está dentro dos últimos 7 dias.
+   */
+  getWindowMetricsSince(
+    teamId: string,
+    since: Date,
+    now: Date
+  ): Promise<Pick<SendingHealthWindowMetrics, "sent7d" | "hardBounced7d" | "complained7d">>
 }
