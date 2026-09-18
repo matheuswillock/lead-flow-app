@@ -24,11 +24,15 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
         where: { asaasCustomerId: { not: null }, asaasAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
       }),
-      // BackofficeClient ainda não tem coluna de conta (nasce em 30-E3):
-      // pré-cutover todos os customers vivem numa conta só, então incluir
-      // sem filtro evita FANTASMA falso; refinar quando a coluna existir.
+      // 30-E3 entregou `BackofficeClient.asaasAccount`, então o ponteiro
+      // deixa de entrar sem filtro (refinamento que o E1 deixou pendente).
+      // Sem ele a execução da conta `legacy` classificaria TODO cliente de
+      // backoffice como ORFAO — o cus_ está no banco e não existe naquela
+      // conta —, e o cron diário de E7
+      // (`AsaasDualAccountReconciliationUseCase`, que reconcilia as duas
+      // contas) alertaria no Sentry uma vez por cliente, todo dia.
       prisma.backofficeClient.findMany({
-        where: { asaasCustomerId: { not: null } },
+        where: { asaasCustomerId: { not: null }, asaasAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
       }),
     ])
@@ -56,8 +60,18 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
   }
 
   async listSubscriptionPointers(account: AsaasAccountId): Promise<DbSubscriptionPointer[]> {
-    // ProfileSubscription não tem coluna própria de conta (nasce em 30-E3);
-    // o dono da conta do sub_ hoje é Profile.asaasSubscriptionAccount.
+    // `ProfileSubscription.asaasSubscriptionAccount` nasceu em 30-E3 e é, no
+    // desenho, o dono certo deste sub_ (o Profile pode apontar outro, do
+    // fluxo legado direto). Mesmo assim o filtro continua indo pela relação
+    // com Profile — de propósito, e o motivo é medível: a coluna nova entrou
+    // como `not null default 'primary'` e NENHUM caminho de escrita a
+    // preenche ainda (nem a migration faz backfill). Filtrar por ela hoje
+    // seria ler um valor constante: a execução `legacy` não devolveria
+    // ponteiro nenhum e toda assinatura viva da conta legada viraria
+    // FANTASMA falso; a execução `primary` puxaria também as assinaturas de
+    // profiles já movidos, virando ORFAO falso. Trocar o filtro para a
+    // coluna própria só passa a ser correto depois que existir writer +
+    // backfill — aí este comentário sai junto com a troca.
     const [profileSubscriptions, fallbackProfiles] = await Promise.all([
       prisma.profileSubscription.findMany({
         where: {

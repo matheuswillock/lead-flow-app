@@ -15,10 +15,13 @@
  * durante a janela dual `cus_`/`sub_` podem colidir entre contas (C33) —
  * por isso os métodos recebem a conta e filtram
  * `Profile.asaasCustomerAccount` / `BackofficeAdhesion.asaasAccount` /
- * `Profile.asaasSubscriptionAccount`. Exceção documentada:
- * `BackofficeClient` ainda não tem coluna de conta (ela nasce em 30-E3) —
- * seus ponteiros entram sem filtro, o que é correto pré-cutover (todos os
- * customers vivem numa conta só) e vira refinamento em E3.
+ * `BackofficeClient.asaasAccount` / `Profile.asaasSubscriptionAccount`.
+ * A exceção do `BackofficeClient` (ponteiro sem filtro enquanto a coluna
+ * não existia) caiu com 30-E3, que entregou `BackofficeClient.asaasAccount`.
+ * Segue de fora `ProfileSubscription.asaasSubscriptionAccount`, também
+ * entregue por E3: a coluna existe mas ainda não tem writer nem backfill, e
+ * o filtro por ela seria constante — ver o comentário em
+ * `BillingInventoryRepository.listSubscriptionPointers`.
  */
 
 import type { AsaasAccountId } from "@/lib/asaas/asaas-account"
