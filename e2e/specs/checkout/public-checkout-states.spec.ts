@@ -10,7 +10,7 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { runResponsiveChecks } from "../../support/responsive";
+import { assertTouchTargets, runResponsiveChecks } from "../../support/responsive";
 
 const OPERATOR_ID = "e2e-operator-pending";
 
@@ -247,5 +247,29 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
     await page.goto("/checkout-return");
     await expect(page.getByRole("heading").first()).toBeVisible();
     await runResponsiveChecks(page);
+  });
+
+  test("operator-confirmed responsivo: os CTAs empilhados também são alvos de toque reais", async ({
+    page,
+  }) => {
+    // Sem `id` a página cai no estado de erro, que é onde os dois CTAs
+    // aparecem juntos. Abaixo de 640px o container é `flex-col`, logo o eixo
+    // principal é a ALTURA: `flex-1` (`flex-basis: 0%`) vencia o `h-11` e os
+    // botões colapsavam para ~20px — exatamente no viewport em que a regra de
+    // 44px importa. O teste de `/checkout-return` acima nunca mediu esta tela.
+    await page.goto("/operator-confirmed");
+    await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ir para o login" })).toBeVisible();
+    await runResponsiveChecks(page);
+
+    // O estado de sucesso usa o mesmo par `flex-col` + `flex-1` num CTA que o
+    // estado de erro não renderiza — medido aqui para não ficar descoberto.
+    await page.route("**/api/q/operators/pending/**", async (route) => {
+      const { status, body } = buildOperatorPayload("confirmed");
+      await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    });
+    await page.goto(`/operator-confirmed?id=${OPERATOR_ID}`);
+    await expect(page.getByRole("button", { name: "Ir para Gerenciar Usuários" })).toBeVisible();
+    await assertTouchTargets(page);
   });
 });

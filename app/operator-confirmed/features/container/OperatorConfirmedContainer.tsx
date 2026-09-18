@@ -145,12 +145,18 @@ export function OperatorConfirmedContainer() {
             </>
           )}
 
+          {/*
+            `min-h-11`, não `h-11`: abaixo de 640px o container é `flex-col`,
+            então o eixo principal é a altura e o `flex-basis: 0%` de `flex-1`
+            sobrescreve `height` — os botões colapsavam para ~20px, abaixo do
+            piso de 44×44. `min-height` não é sobrescrito por flex-basis.
+          */}
           {step === "error" && (
             <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-              <Button onClick={retryFetch} className="h-11 flex-1" size="lg">
+              <Button onClick={retryFetch} className="min-h-11 flex-1" size="lg">
                 Tentar novamente
               </Button>
-              <Button onClick={goToLogin} variant="outline" className="h-11 flex-1" size="lg">
+              <Button onClick={goToLogin} variant="outline" className="min-h-11 flex-1" size="lg">
                 Ir para o login
               </Button>
             </div>
@@ -158,12 +164,12 @@ export function OperatorConfirmedContainer() {
 
           {step === "ready" && operatorData && (
             <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-              <Button onClick={goToDashboard} className="h-11 flex-1" size="lg">
+              <Button onClick={goToDashboard} className="min-h-11 flex-1" size="lg">
                 {operatorData.operatorCreated ? "Ir para Gerenciar Usuários" : "Voltar ao Dashboard"}
               </Button>
 
               {outcome === "failed" && (
-                <Button onClick={goToLogin} variant="outline" className="h-11 flex-1" size="lg">
+                <Button onClick={goToLogin} variant="outline" className="min-h-11 flex-1" size="lg">
                   Ir para o login
                 </Button>
               )}
