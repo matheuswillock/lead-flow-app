@@ -1,11 +1,31 @@
 "use client";
 
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCheckoutReturn } from "../context/CheckoutReturnHook";
 
 export function CheckoutReturnContainer() {
   const { state, goToLogin } = useCheckoutReturn();
+
+  // Falha terminal (recusado, estornado, chargeback, vencido, cancelado) tem
+  // tela própria: dizer "estamos confirmando, avisaremos por e-mail" para uma
+  // cobrança que já acabou é o mesmo tipo de mentira que esta SPEC fecha.
+  if (state.status === "failed") {
+    return (
+      <main className="mx-auto flex min-h-[60vh] w-full max-w-xl flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+        <AlertCircle className="size-16 text-destructive" />
+        <div className="flex flex-col gap-2">
+          <h1 className="text-xl font-semibold">Pagamento não concluído</h1>
+          <p className="text-sm text-muted-foreground">
+            A cobrança foi encerrada sem confirmação de pagamento. Acesse sua conta para tentar de novo ou fale com o suporte.
+          </p>
+        </div>
+        <Button onClick={goToLogin} size="lg" className="h-11">
+          Ir para o login
+        </Button>
+      </main>
+    );
+  }
 
   if (state.status === "confirmed") {
     return (

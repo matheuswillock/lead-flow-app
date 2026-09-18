@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePollingWithCap } from "@/lib/polling/usePollingWithCap";
+import { isOperatorProvisioningTerminal } from "../utils/operatorProvisioning";
 import { operatorConfirmedService } from "../services/OperatorConfirmedService";
 import { initialOperatorConfirmedState, type OperatorConfirmedState, type PendingOperatorData } from "./OperatorConfirmedTypes";
 
@@ -73,7 +74,7 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
 
   const isTerminal = useCallback((outcome: PollOutcome) => {
     if (!outcome.ok) return true;
-    return outcome.data.operatorCreated || outcome.data.paymentStatus !== "PENDING";
+    return isOperatorProvisioningTerminal(outcome.data);
   }, []);
 
   const { capReached, restart } = usePollingWithCap({ enabled: true, poll, isTerminal });

@@ -1,10 +1,6 @@
-const PAID_ASAAS_STATUSES = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "APPROVED"]);
+import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
 
-/** Mesmo vocabulário de status pago usado em `BackofficeAdhesionService.ts` e afins. */
-export function isPaidPaymentStatus(status: string | null | undefined): boolean {
-  if (!status) return false;
-  return PAID_ASAAS_STATUSES.has(status);
-}
+export { isPaidPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
 
 interface SearchParamsLike {
   get(name: string): string | null;
@@ -23,7 +19,7 @@ export function readPaymentReference(searchParams: SearchParamsLike): string | n
   return searchParams.get("payment") ?? searchParams.get("paymentId") ?? searchParams.get("checkoutId");
 }
 
-export type CheckoutReturnStatus = "checking" | "confirmed" | "processing";
+export type CheckoutReturnStatus = "checking" | "confirmed" | "processing" | "failed";
 
 /**
  * Estado inicial nunca é "confirmado" (DA1/P1-3): sem referência, cai direto
@@ -32,4 +28,26 @@ export type CheckoutReturnStatus = "checking" | "confirmed" | "processing";
  */
 export function resolveInitialCheckoutReturnStatus(paymentReference: string | null): CheckoutReturnStatus {
   return paymentReference ? "checking" : "processing";
+}
+
+/**
+ * Traduz o status consultado no Asaas para o estado de tela.
+ *
+ * `null` significa "siga verificando". Falha terminal (recusado, estornado,
+ * chargeback, vencido, cancelado) **MUST** virar `failed` e não ficar rodando
+ * até o teto para então dizer "estamos confirmando, avisaremos por e-mail" —
+ * isso é mentira para um pagamento que já acabou. Achado P2 do Codex na
+ * revisão do PR #1197.
+ */
+export function resolveCheckoutReturnStatusFromPayment(
+  status: string | null | undefined
+): CheckoutReturnStatus | null {
+  switch (classifyPaymentStatus(status)) {
+    case "paid":
+      return "confirmed";
+    case "failed":
+      return "failed";
+    default:
+      return null;
+  }
 }

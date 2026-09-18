@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isPaidPaymentStatus,
   readPaymentReference,
+  resolveCheckoutReturnStatusFromPayment,
   resolveInitialCheckoutReturnStatus,
 } from "./checkoutReturnStatus";
 
@@ -54,5 +55,24 @@ describe("resolveInitialCheckoutReturnStatus", () => {
 
   test("com referência: começa 'checking' — nunca 'confirmed' sem verificação (P1-3)", () => {
     expect(resolveInitialCheckoutReturnStatus("pay_1")).toBe("checking");
+  });
+});
+
+describe("resolveCheckoutReturnStatusFromPayment (achado P2 do Codex no PR #1197)", () => {
+  test("pago vira 'confirmed'", () => {
+    expect(resolveCheckoutReturnStatusFromPayment("CONFIRMED")).toBe("confirmed");
+    expect(resolveCheckoutReturnStatusFromPayment("RECEIVED")).toBe("confirmed");
+  });
+
+  test("falha terminal vira 'failed' — nunca roda até o teto para dizer 'avisaremos por e-mail'", () => {
+    for (const status of ["REFUSED", "REFUNDED", "CHARGEBACK_REQUESTED", "OVERDUE", "CANCELLED"]) {
+      expect(resolveCheckoutReturnStatusFromPayment(status)).toBe("failed");
+    }
+  });
+
+  test("em trânsito devolve null: segue verificando", () => {
+    expect(resolveCheckoutReturnStatusFromPayment("PENDING")).toBeNull();
+    expect(resolveCheckoutReturnStatusFromPayment("BANK_PROCESSING")).toBeNull();
+    expect(resolveCheckoutReturnStatusFromPayment(null)).toBeNull();
   });
 });

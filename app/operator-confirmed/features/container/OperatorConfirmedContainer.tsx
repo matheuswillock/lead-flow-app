@@ -5,14 +5,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
 import { cn } from "@/lib/utils";
 import { useOperatorConfirmed } from "../context/OperatorConfirmedHook";
+import { classifyOperatorProvisioning } from "../utils/operatorProvisioning";
 import type { PendingOperatorData } from "../context/OperatorConfirmedTypes";
 
 function paymentStatusBadgeClassName(paymentStatus: string): string {
-  if (paymentStatus === "CONFIRMED") return "border-success/30 bg-success/10 text-success";
-  if (paymentStatus === "PENDING") return "border-warning/30 bg-warning/10 text-warning";
-  return "border-destructive/30 bg-destructive/10 text-destructive";
+  // Classificado, não comparado: um marcador de provisionamento como
+  // `SUBSCRIPTION_UPDATED` pintava de vermelho de falha no fallback antigo.
+  switch (classifyPaymentStatus(paymentStatus)) {
+    case "paid":
+      return "border-success/30 bg-success/10 text-success";
+    case "failed":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    default:
+      return "border-warning/30 bg-warning/10 text-warning";
+  }
 }
 
 export function OperatorConfirmedContainer() {
@@ -20,6 +29,9 @@ export function OperatorConfirmedContainer() {
   const { step, operatorData, error, pollCapped } = state;
 
   const statusDisplay = getStatusDisplay({ step, operatorData, error, pollCapped });
+  const outcome = operatorData ? classifyOperatorProvisioning(operatorData) : null;
+  /** Pagamento ainda pode virar operador — o polling segue vivo. */
+  const isStillRunning = outcome === "awaiting-payment" || outcome === "provisioning";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-6">
@@ -95,27 +107,35 @@ export function OperatorConfirmedContainer() {
             </>
           )}
 
-          {operatorData?.paymentStatus === "PENDING" && !operatorData.operatorCreated && !pollCapped && (
+          {isStillRunning && !pollCapped && (
             <>
               <Separator />
               <div className="flex flex-col items-center gap-2 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Aguarde alguns instantes. Esta página é atualizada automaticamente quando o pagamento for confirmado.
+                  {outcome === "provisioning"
+                    ? "Aguarde alguns instantes. Esta página é atualizada automaticamente quando o operador for criado."
+                    : "Aguarde alguns instantes. Esta página é atualizada automaticamente quando o pagamento for confirmado."}
                 </p>
                 <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                  <span>Verificando status do pagamento...</span>
+                  <span>
+                    {outcome === "provisioning"
+                      ? "Criando o operador..."
+                      : "Verificando status do pagamento..."}
+                  </span>
                 </div>
               </div>
             </>
           )}
 
-          {pollCapped && (
+          {pollCapped && isStillRunning && (
             <>
               <Separator />
               <div className="flex flex-col items-center gap-3 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Ainda não confirmamos seu pagamento. Você pode verificar novamente ou voltar mais tarde — avisaremos por e-mail assim que confirmarmos.
+                  {outcome === "provisioning"
+                    ? "O pagamento foi aceito, mas a criação do operador ainda não terminou. Você pode verificar novamente ou voltar mais tarde — avisaremos por e-mail assim que concluirmos."
+                    : "Ainda não confirmamos seu pagamento. Você pode verificar novamente ou voltar mais tarde — avisaremos por e-mail assim que confirmarmos."}
                 </p>
                 <Button onClick={retryFetch} variant="outline" size="sm" className="h-11">
                   <RotateCcw data-icon="inline-start" />
@@ -142,7 +162,7 @@ export function OperatorConfirmedContainer() {
                 {operatorData.operatorCreated ? "Ir para Gerenciar Usuários" : "Voltar ao Dashboard"}
               </Button>
 
-              {operatorData.paymentStatus === "FAILED" && (
+              {outcome === "failed" && (
                 <Button onClick={goToLogin} variant="outline" className="h-11 flex-1" size="lg">
                   Ir para o login
                 </Button>
@@ -152,10 +172,8 @@ export function OperatorConfirmedContainer() {
 
           <Separator />
           <div className="text-center text-xs text-muted-foreground">
-            {operatorData?.operatorCreated && <p>Dúvidas? Entre em contato com nosso suporte.</p>}
-            {operatorData?.paymentStatus === "FAILED" && (
-              <p>Se o problema persistir, entre em contato com nosso suporte.</p>
-            )}
+            {outcome === "created" && <p>Dúvidas? Entre em contato com nosso suporte.</p>}
+            {outcome === "failed" && <p>Se o problema persistir, entre em contato com nosso suporte.</p>}
           </div>
         </CardContent>
       </Card>
@@ -205,7 +223,12 @@ function getStatusDisplay({ step, operatorData, error, pollCapped }: StatusDispl
     };
   }
 
-  if (operatorData.operatorCreated) {
+  // Branch pelo desfecho classificado, nunca por comparação crua de status: o
+  // fallback "Pagamento Não Confirmado" engolia `SUBSCRIPTION_UPDATED` (e
+  // qualquer status novo do Asaas) e mentia falha no caminho feliz.
+  const outcome = classifyOperatorProvisioning(operatorData);
+
+  if (outcome === "created") {
     return {
       icon: <CheckCircle2 className="size-20 text-success" />,
       title: "Operador Adicionado com Sucesso!",
@@ -214,7 +237,28 @@ function getStatusDisplay({ step, operatorData, error, pollCapped }: StatusDispl
     };
   }
 
-  if (operatorData.paymentStatus === "CONFIRMED") {
+  if (outcome === "failed") {
+    return {
+      icon: <AlertCircle className="size-20 text-destructive" />,
+      title: "Pagamento Não Confirmado",
+      description: "Não foi possível confirmar o pagamento. Tente novamente ou entre em contato com o suporte.",
+      panelClassName: "bg-destructive/10",
+    };
+  }
+
+  if (pollCapped) {
+    return {
+      icon: <AlertCircle className="size-20 text-warning" />,
+      title: "Ainda Verificando",
+      description:
+        outcome === "provisioning"
+          ? "O pagamento foi aceito, mas a criação do operador ainda não terminou."
+          : "Não confirmamos o pagamento dentro do tempo esperado.",
+      panelClassName: "bg-warning/10",
+    };
+  }
+
+  if (outcome === "provisioning") {
     return {
       icon: <CheckCircle2 className="size-20 text-success" />,
       title: "Pagamento Confirmado!",
@@ -223,28 +267,10 @@ function getStatusDisplay({ step, operatorData, error, pollCapped }: StatusDispl
     };
   }
 
-  if (operatorData.paymentStatus === "PENDING" && pollCapped) {
-    return {
-      icon: <AlertCircle className="size-20 text-warning" />,
-      title: "Ainda Verificando",
-      description: "Não confirmamos o pagamento dentro do tempo esperado.",
-      panelClassName: "bg-warning/10",
-    };
-  }
-
-  if (operatorData.paymentStatus === "PENDING") {
-    return {
-      icon: <Loader2 className="size-20 animate-spin text-warning motion-reduce:animate-none" />,
-      title: "Aguardando Confirmação",
-      description: "O pagamento está sendo processado. O operador será criado assim que confirmarmos o pagamento.",
-      panelClassName: "bg-warning/10",
-    };
-  }
-
   return {
-    icon: <AlertCircle className="size-20 text-destructive" />,
-    title: "Pagamento Não Confirmado",
-    description: "Não foi possível confirmar o pagamento. Tente novamente ou entre em contato com o suporte.",
-    panelClassName: "bg-destructive/10",
+    icon: <Loader2 className="size-20 animate-spin text-warning motion-reduce:animate-none" />,
+    title: "Aguardando Confirmação",
+    description: "O pagamento está sendo processado. O operador será criado assim que confirmarmos o pagamento.",
+    panelClassName: "bg-warning/10",
   };
 }

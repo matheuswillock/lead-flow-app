@@ -14,12 +14,23 @@ import { runResponsiveChecks } from "../../support/responsive";
 
 const OPERATOR_ID = "e2e-operator-pending";
 
-type OperatorMockStatus = "pending" | "confirmed" | "error";
+type OperatorMockStatus = "pending" | "provisioning" | "confirmed" | "error";
 
 interface OperatorMockState {
   requestCount: number;
   respond: OperatorMockStatus;
 }
+
+/**
+ * `provisioning` reproduz o marcador interno `SUBSCRIPTION_UPDATED`, gravado
+ * por `CheckoutAsaasUseCase.processOperatorCheckoutPaid` ANTES de o operador
+ * existir — a janela em que a tela antes parava o polling e mentia falha.
+ */
+const OPERATOR_PAYMENT_STATUS: Record<Exclude<OperatorMockStatus, "error">, string> = {
+  pending: "PENDING",
+  provisioning: "SUBSCRIPTION_UPDATED",
+  confirmed: "CONFIRMED",
+};
 
 function buildOperatorPayload(respond: OperatorMockStatus) {
   if (respond === "error") {
@@ -40,7 +51,7 @@ function buildOperatorPayload(respond: OperatorMockStatus) {
         name: "Operador E2E",
         email: "operador-e2e@example.com",
         paymentId: "pay_e2e_mock_0000000000",
-        paymentStatus: respond === "confirmed" ? "CONFIRMED" : "PENDING",
+        paymentStatus: OPERATOR_PAYMENT_STATUS[respond],
         operatorCreated: respond === "confirmed",
         managerId: "11111111-1111-1111-1111-111111111111",
       },
@@ -172,6 +183,64 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
     await expect(
       page.getByRole("heading", { name: "Ainda estamos confirmando o seu pagamento" })
     ).toBeVisible({ timeout: 60_000 });
+  });
+
+  test("checkout-return com pagamento recusado: estado de falha próprio, nunca 'avisaremos por e-mail' (achado P2 do Codex, PR #1197)", async ({
+    page,
+  }) => {
+    const reference = "pay_e2e_mock_refused";
+
+    await page.route(`**/api/q/payments/${reference}/status**`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          isValid: true,
+          successMessages: [],
+          errorMessages: [],
+          result: { status: "REFUSED" },
+        }),
+      });
+    });
+
+    await page.goto(`/checkout-return?payment=${reference}`);
+    await expect(page.getByRole("heading", { name: "Pagamento não concluído" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const bodyText = await page.locator("body").innerText();
+    expect(bodyText).not.toContain("avisaremos por e-mail");
+    expect(bodyText).not.toContain("Pagamento confirmado");
+    await expect(page.getByRole("button", { name: "Ir para o login" })).toBeVisible();
+  });
+
+  test("operator-confirmed em SUBSCRIPTION_UPDATED: segue polling e nunca mente falha (achado do cursor, PR #1197)", async ({
+    page,
+  }) => {
+    const mock: OperatorMockState = { requestCount: 0, respond: "provisioning" };
+
+    await page.route("**/api/q/operators/pending/**", async (route) => {
+      mock.requestCount += 1;
+      const { status, body } = buildOperatorPayload(mock.respond);
+      await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    });
+
+    await page.goto(`/operator-confirmed?id=${OPERATOR_ID}`);
+
+    // Marcador intermediário: o pagamento foi aceito e o operador está sendo
+    // criado — a tela NÃO pode dizer que o pagamento falhou.
+    await expect(page.getByText("Pagamento Confirmado!", { exact: true })).toBeVisible();
+    const bodyText = await page.locator("body").innerText();
+    expect(bodyText).not.toContain("Pagamento Não Confirmado");
+
+    // E o polling continua vivo nesse estado (antes ele parava aqui).
+    const initialCount = mock.requestCount;
+    await expect.poll(() => mock.requestCount, { timeout: 20_000 }).toBeGreaterThan(initialCount);
+
+    mock.respond = "confirmed";
+    await expect(page.getByText("Operador Adicionado com Sucesso!", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({ page }) => {

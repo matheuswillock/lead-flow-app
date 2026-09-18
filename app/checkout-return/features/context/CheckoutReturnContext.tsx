@@ -4,19 +4,22 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePollingWithCap } from "@/lib/polling/usePollingWithCap";
 import { checkoutReturnService } from "../services/CheckoutReturnService";
-import { isPaidPaymentStatus, readPaymentReference, resolveInitialCheckoutReturnStatus } from "../utils/checkoutReturnStatus";
+import {
+  readPaymentReference,
+  resolveCheckoutReturnStatusFromPayment,
+  resolveInitialCheckoutReturnStatus,
+  type CheckoutReturnStatus,
+} from "../utils/checkoutReturnStatus";
 import type { CheckoutReturnState } from "./CheckoutReturnTypes";
 
 type PollOutcome = { status: string | null } | null;
 
-type Action = { type: "SET_CONFIRMED" } | { type: "SET_PROCESSING" };
+type Action = { type: "SET_STATUS"; payload: CheckoutReturnStatus };
 
 function reducer(state: CheckoutReturnState, action: Action): CheckoutReturnState {
   switch (action.type) {
-    case "SET_CONFIRMED":
-      return { status: "confirmed" };
-    case "SET_PROCESSING":
-      return { status: "processing" };
+    case "SET_STATUS":
+      return { status: action.payload };
     default:
       return state;
   }
@@ -42,15 +45,14 @@ export function CheckoutReturnProvider({ children }: { children: ReactNode }) {
   );
 
   // DA1/P1-3: nunca afirma "confirmado" sem consultar — `checking` só sai
-  // desse estado quando o poll efetivamente responde pago.
+  // desse estado quando o poll efetivamente resolve pago ou falha terminal.
   const poll = useCallback(async (): Promise<PollOutcome> => {
     if (!paymentReference || fetchInflightRef.current) return null;
     fetchInflightRef.current = true;
     try {
       const lookup = await checkoutReturnService.getPaymentStatus(paymentReference);
-      if (isPaidPaymentStatus(lookup.status)) {
-        dispatch({ type: "SET_CONFIRMED" });
-      }
+      const resolved = resolveCheckoutReturnStatusFromPayment(lookup.status);
+      if (resolved) dispatch({ type: "SET_STATUS", payload: resolved });
       return lookup;
     } catch {
       return null;
@@ -59,14 +61,17 @@ export function CheckoutReturnProvider({ children }: { children: ReactNode }) {
     }
   }, [paymentReference]);
 
-  const isTerminal = useCallback((outcome: PollOutcome) => isPaidPaymentStatus(outcome?.status), []);
+  const isTerminal = useCallback(
+    (outcome: PollOutcome) => resolveCheckoutReturnStatusFromPayment(outcome?.status) !== null,
+    []
+  );
 
   const { capReached } = usePollingWithCap({ enabled: state.status === "checking", poll, isTerminal });
 
   useEffect(() => {
-    // Teto sem confirmação (DA3): sai de "verificando" para o honesto
+    // Teto sem desfecho (DA3): sai de "verificando" para o honesto
     // "processando" — nunca spinner eterno, nunca "confirmado" inventado.
-    if (capReached) dispatch({ type: "SET_PROCESSING" });
+    if (capReached) dispatch({ type: "SET_STATUS", payload: "processing" });
   }, [capReached]);
 
   const goToLogin = useCallback(() => {
