@@ -325,6 +325,15 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  async findPublicIdsOwnedByTeam(teamId: string, publicIds: string[]): Promise<string[]> {
+    if (publicIds.length === 0) return []
+    const forms = await prisma.publicForm.findMany({
+      where: { teamId, publicId: { in: publicIds } },
+      select: { publicId: true },
+    })
+    return forms.map((form) => form.publicId)
+  }
+
   async list(teamId: string, filters: PublicFormListFilters) {
     const where: Prisma.PublicFormWhereInput = {
       teamId,

@@ -95,8 +95,8 @@ describe("BackofficeCampaignAnalyticsUseCase.getSummary", () => {
   it("T-10.5 — compõe totais, taxas e ranking por time a partir dos agregados do repository", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, clicked: 4, bounced: 10, failed: 0 },
-        { teamId: "t2", teamName: "MultiSkill", templateName: "B", dispatches: 1, sent: 1402, delivered: 1300, opened: 275, clicked: 10, bounced: 5, failed: 0 },
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, openedHuman: 120, clicked: 4, bounced: 10, failed: 0 },
+        { teamId: "t2", teamName: "MultiSkill", templateName: "B", dispatches: 1, sent: 1402, delivered: 1300, opened: 275, openedHuman: 80, clicked: 10, bounced: 5, failed: 0 },
       ]
       repo.leads = [
         { teamId: "t1", teamName: "Liber", originChannel: "email_campaign", count: 4 },
@@ -161,16 +161,18 @@ describe("BackofficeCampaignAnalyticsUseCase.getTeamsSeries", () => {
   it("soma a série total por dia a partir dos pontos por time", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.series = [
-        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 },
-        { day: "2026-08-28", teamId: "t2", teamName: "MultiSkill", sent: 50, delivered: 45, opened: 10, clicked: 0 },
+        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, openedHuman: 6, clicked: 1 },
+        { day: "2026-08-28", teamId: "t2", teamName: "MultiSkill", sent: 50, delivered: 45, opened: 10, openedHuman: 3, clicked: 0 },
       ]
     })
     const output = await useCase.getTeamsSeries({ ...VALID_RANGE, teamIds: undefined })
     expect(output.isValid).toBe(true)
     const result = output.result as {
-      total: Array<{ day: string; sent: number; delivered: number; opened: number; clicked: number }>
+      total: Array<{ day: string; sent: number; delivered: number; opened: number; openedHuman: number; clicked: number }>
     }
-    expect(result.total).toEqual([{ day: "2026-08-28", sent: 150, delivered: 135, opened: 30, clicked: 1 }])
+    expect(result.total).toEqual([
+      { day: "2026-08-28", sent: 150, delivered: 135, opened: 30, openedHuman: 9, clicked: 1 },
+    ])
   })
 })
 
@@ -178,9 +180,9 @@ describe("BackofficeCampaignAnalyticsUseCase.getTemplates", () => {
   it("T-10.6 — calcula openRate por linha e ordena desc", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
-        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
-        { teamId: "t3", teamName: "Zero", templateName: "Sem envio", dispatches: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, failed: 0 },
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, openedHuman: 700, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, openedHuman: 30, clicked: 0, bounced: 40, failed: 0 },
+        { teamId: "t3", teamName: "Zero", templateName: "Sem envio", dispatches: 0, sent: 0, delivered: 0, opened: 0, openedHuman: 0, clicked: 0, bounced: 0, failed: 0 },
       ]
     })
     const output = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
@@ -241,7 +243,7 @@ describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
           {
             id: "d1", teamId: "t1", teamName: "Time", templateName: "T", dispatchedAt: new Date(),
             status: "completed", totalRecipients: 1, totalSent: 1, totalDelivered: 1, totalOpened: 0,
-            totalClicked: 0, totalBounced: 0, errorMessage: null,
+            totalOpenedHuman: 0, totalClicked: 0, totalBounced: 0, errorMessage: null,
           },
         ],
         total: 0,
@@ -259,7 +261,7 @@ describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
   it("T-10.8 — dataset=templates: BOM, header PT-BR, filename com dataset/from/to", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, openedHuman: 700, clicked: 4, bounced: 27, failed: 0 },
       ]
     })
     const output = await useCase.exportCsv({ ...VALID_RANGE, teamIds: undefined, dataset: "templates" })
@@ -274,8 +276,8 @@ describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
   it("T-10.10 — dataset=templates: paridade linha a linha com getTemplates", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
-        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, openedHuman: 700, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, openedHuman: 30, clicked: 0, bounced: 40, failed: 0 },
       ]
     })
     const jsonOutput = await useCase.getTemplates({ ...VALID_RANGE, teamIds: undefined })
@@ -306,7 +308,7 @@ describe("BackofficeCampaignAnalyticsUseCase.exportCsv", () => {
   it("T-10.10 — dataset=series: paridade com os pontos de getTeamsSeries", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.series = [
-        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 },
+        { day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, openedHuman: 6, clicked: 1 },
       ]
     })
     const jsonOutput = await useCase.getTeamsSeries({ ...VALID_RANGE, teamIds: undefined })
@@ -340,19 +342,19 @@ describe("BackofficeCampaignAnalyticsUseCase.exportAll", () => {
     const exportAllService = new RecordingExportAllService()
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, clicked: 4, bounced: 10, failed: 0 },
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 1623, delivered: 1400, opened: 459, openedHuman: 120, clicked: 4, bounced: 10, failed: 0 },
       ]
       repo.leads = [{ teamId: "t1", teamName: "Liber", originChannel: "public_form", count: 6 }]
       repo.funnel = [
         { formId: "f1", formName: "Form", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
       ]
-      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 }]
+      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, openedHuman: 6, clicked: 1 }]
       repo.dispatchPage = {
         rows: [
           {
             id: "d1", teamId: "t1", teamName: "Liber", templateName: "A", dispatchedAt: new Date("2026-08-28T10:00:00Z"),
             status: "completed", totalRecipients: 2, totalSent: 2, totalDelivered: 2, totalOpened: 1,
-            totalClicked: 0, totalBounced: 0, errorMessage: null,
+            totalOpenedHuman: 1, totalClicked: 0, totalBounced: 0, errorMessage: null,
           },
         ],
         total: 1,
@@ -378,14 +380,14 @@ describe("BackofficeCampaignAnalyticsUseCase.exportAll", () => {
     expect(resumoMap.get("Nota Final")).toBe(exportAllService.lastInput?.sheets[0]?.rows.find((r) => r[0] === "Nota Final")?.[1])
 
     const disparos = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Disparos, { header: 1 })
-    expect(disparos[0]).toEqual(["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"])
+    expect(disparos[0]).toEqual(["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Aberturas reais", "Abertos (bruto)", "Cliques", "Bounces", "Erro"])
     expect(disparos[1]?.[1]).toBe("Liber")
   })
 
   it("busca cada agregado do repository só uma vez (Resumo, Templates e Formulários derivam do MESMO fetch, sem query duplicada)", async () => {
     const { useCase, repo } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 10, delivered: 9, opened: 3, clicked: 1, bounced: 1, failed: 0 },
+        { teamId: "t1", teamName: "Liber", templateName: "A", dispatches: 1, sent: 10, delivered: 9, opened: 3, openedHuman: 1, clicked: 1, bounced: 1, failed: 0 },
       ]
     })
 
@@ -400,13 +402,13 @@ describe("BackofficeCampaignAnalyticsUseCase.exportAll", () => {
   it("paridade: linhas de Templates/Formulários/Série diária no workbook batem com getTemplates/getFormsFunnel/getTeamsSeries", async () => {
     const { useCase } = buildUseCase((repo) => {
       repo.templates = [
-        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, clicked: 4, bounced: 27, failed: 0 },
-        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, clicked: 0, bounced: 40, failed: 0 },
+        { teamId: "t1", teamName: "Kathrein", templateName: "v2 médicos", dispatches: 1, sent: 6739, delivered: 6671, opened: 2494, openedHuman: 700, clicked: 4, bounced: 27, failed: 0 },
+        { teamId: "t2", teamName: "Evous", templateName: "Oficinas", dispatches: 1, sent: 3768, delivered: 3391, opened: 121, openedHuman: 30, clicked: 0, bounced: 40, failed: 0 },
       ]
       repo.funnel = [
         { formId: "f1", formName: "Liber básico", teamId: "t1", teamName: "Liber", viewed: 67, started: 12, completed: 10, leadCreated: 1, leadAttached: 1 },
       ]
-      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, clicked: 1 }]
+      repo.series = [{ day: "2026-08-28", teamId: "t1", teamName: "Liber", sent: 100, delivered: 90, opened: 20, openedHuman: 6, clicked: 1 }]
     })
 
     const [templatesOutput, funnelOutput, seriesOutput, exportAllOutput] = await Promise.all([
@@ -442,7 +444,7 @@ describe("BackofficeCampaignAnalyticsUseCase.exportAll", () => {
           {
             id: "d1", teamId: "t1", teamName: "Time", templateName: "T", dispatchedAt: new Date(),
             status: "completed", totalRecipients: 1, totalSent: 1, totalDelivered: 1, totalOpened: 0,
-            totalClicked: 0, totalBounced: 0, errorMessage: null,
+            totalOpenedHuman: 0, totalClicked: 0, totalBounced: 0, errorMessage: null,
           },
         ],
         total: 0,

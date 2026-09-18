@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Output } from "@/lib/output"
 import { resolvePublicFormPrefillUseCase } from "@/app/api/useCases/publicForms/ResolvePublicFormPrefillUseCase"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 import { consumePublicFormRateLimit, publicFormRequestFingerprint } from "@/lib/public-forms/rate-limit"
 import { EMAIL_LOG_FORM_QUERY_PARAM } from "@/lib/email/append-email-log-to-form-urls"
 
@@ -14,6 +15,9 @@ export async function GET(
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
   }
+
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
 
   const rate = await consumePublicFormRateLimit(
     `prefill:${publicId}:${publicFormRequestFingerprint(request)}`,

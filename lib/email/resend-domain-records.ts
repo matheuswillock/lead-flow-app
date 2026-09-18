@@ -89,3 +89,40 @@ export function deriveSendingDnsVerified(
   )
   return snapshotIsComplete ? true : undefined
 }
+
+/**
+ * Propósitos de TRACKING nos registros do Resend. `Tracking` é o CNAME
+ * (`links.<domínio>`) por onde passam o pixel de abertura e o redirecionador
+ * de clique; `TrackingCAA` só aparece quando o provedor exige CAA para emitir
+ * o certificado do subdomínio.
+ */
+const TRACKING_RECORD_PURPOSE = "Tracking"
+const TRACKING_RECORD_PURPOSES = [TRACKING_RECORD_PURPOSE, "TrackingCAA"] as const
+
+/**
+ * O DNS de TRACKING está verificado?
+ *
+ * Mesmo modelo de três respostas de `deriveSendingDnsVerified`:
+ * - `true`  — o CNAME `Tracking` está presente e todo registro de tracking
+ *   presente está verificado.
+ * - `false` — algum registro de tracking presente não está verificado.
+ * - `undefined` — não dá para saber (lista vazia/sem rótulo/sem o `Tracking`).
+ *
+ * Quem consome é o gate do toggle de click tracking: ligar o rewrite sem o
+ * CNAME resolvendo produziria links quebrados no e-mail entregue, então o
+ * gate só libera com `true` — `false` e `undefined` bloqueiam com aviso.
+ */
+export function deriveTrackingDnsVerified(
+  records: ResendDomainRecordLike[] | null | undefined
+): boolean | undefined {
+  const trackingRecords = (records ?? []).filter((record) =>
+    TRACKING_RECORD_PURPOSES.some((purpose) => purpose === (record.record?.trim() ?? ""))
+  )
+
+  if (trackingRecords.some((record) => record.status !== "verified")) return false
+
+  const hasTrackingCname = trackingRecords.some(
+    (record) => record.record?.trim() === TRACKING_RECORD_PURPOSE
+  )
+  return hasTrackingCname ? true : undefined
+}

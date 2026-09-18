@@ -95,20 +95,49 @@ async function resolveE2eTeamId(): Promise<string> {
   return profile.activeTeamId
 }
 
-async function seedConnectedDomain(): Promise<void> {
+async function seedConnectedDomain(status: "pending" | "verified" = "pending"): Promise<void> {
   const teamId = await resolveE2eTeamId()
   const domainFields = {
     resendDomainId: DOMAIN_ID,
     resendDomainName: DOMAIN_NAME,
-    resendDomainStatus: "pending",
+    resendDomainStatus: status,
     resendDomainRegion: "us-east-1",
     resendDomainConnectedAt: new Date(),
+    resendOpenTracking: status === "verified",
+    resendClickTracking: false,
   }
   await getPrisma().emailTeamSettings.upsert({
     where: { teamId },
     update: domainFields,
     create: { teamId, ...domainFields },
   })
+}
+
+/** Registros todos verificados — o estado que destrava o toggle de cliques. */
+const VERIFIED_DNS_RECORDS = MOCK_DNS_RECORDS.map((record) => ({
+  ...record,
+  status: "verified",
+}))
+
+function verifiedDomainRecordsPayload() {
+  return {
+    isValid: true,
+    successMessages: [],
+    errorMessages: [],
+    result: {
+      domainId: DOMAIN_ID,
+      domainName: DOMAIN_NAME,
+      status: "verified",
+      region: "us-east-1",
+      dnsProvider: MOCK_DNS_PROVIDER,
+      connectedAt: new Date().toISOString(),
+      openTracking: true,
+      clickTracking: false,
+      trackingSubdomain: "links",
+      records: VERIFIED_DNS_RECORDS,
+      events: [],
+    },
+  }
 }
 
 async function clearConnectedDomain(): Promise<void> {
@@ -418,6 +447,327 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(
         page.getByRole("heading", { name: "Enviar instruções por e-mail" })
       ).toHaveCount(0)
+    })
+
+    test("toggle de cliques fica BLOQUEADO enquanto o CNAME de Tracking não verifica", async ({
+      page,
+    }) => {
+      await mockDomainRecordsRoute(page)
+      await gotoEmailSettings(page)
+
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
+      await page.getByRole("button", { name: "Configurar" }).click()
+
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toBeVisible()
+
+      const clickSwitch = page.locator("#click-tracking-switch")
+      await expect(clickSwitch).toBeDisabled()
+      await expect(clickSwitch).not.toBeChecked()
+      await expect(
+        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
+          exact: false,
+        })
+      ).toBeVisible()
+    })
+  })
+
+  test.describe("com domínio verificado e CNAME de Tracking resolvendo", () => {
+    test.beforeEach(async () => {
+      await seedConnectedDomain("verified")
+    })
+
+    test.afterEach(async () => {
+      await clearConnectedDomain()
+    })
+
+    test("liga o rastreio de cliques e envia clickTracking: true para a rota de tracking", async ({
+      page,
+    }) => {
+      await page.route("**/email/settings/domain/records**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(verifiedDomainRecordsPayload()),
+        })
+      )
+
+      const trackingRequests: Array<Record<string, unknown>> = []
+      await page.route("**/email/settings/domain/tracking**", (route) => {
+        trackingRequests.push(route.request().postDataJSON() as Record<string, unknown>)
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: ["Métricas de tracking configuradas."],
+            errorMessages: [],
+            result: {
+              domainId: DOMAIN_ID,
+              domainName: DOMAIN_NAME,
+              status: "verified",
+              region: "us-east-1",
+              openTracking: true,
+              clickTracking: true,
+              trackingSubdomain: "links",
+              records: VERIFIED_DNS_RECORDS,
+            },
+          }),
+        })
+      })
+
+      await gotoEmailSettings(page)
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
+      await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
+
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toBeVisible()
+
+      const clickSwitch = page.locator("#click-tracking-switch")
+      await expect(clickSwitch).toBeEnabled()
+      await clickSwitch.click()
+      await expect(clickSwitch).toBeChecked()
+
+      await page.getByRole("button", { name: "Salvar" }).click()
+      await expect(
+        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+      ).toHaveCount(0)
+
+      // O corpo enviado é o contrato: clickTracking respeitado, não descartado.
+      expect(trackingRequests).toHaveLength(1)
+      expect(trackingRequests[0]).toEqual({
+        trackingSubdomain: "links",
+        openTracking: true,
+        clickTracking: true,
+      })
+    })
+  })
+
+  /**
+   * Frente C — Deliverability: domínio próprio do time para servir /forms/*.
+   * GET form-domain, records (fallback CNAME sem VERCEL_TOKEN) e DELETE rodam
+   * pela rota REAL contra o banco; POST connect e verify são interceptados
+   * porque dependem da Vercel API (mesmo padrão dos mocks de records acima).
+   */
+  test.describe("Domínio dos formulários", () => {
+    const FORM_DOMAIN_HOSTNAME = "forms.e2e-corretor.com.br"
+
+    async function seedFormDomain(status: "pending" | "verified" | "failed"): Promise<void> {
+      const teamId = await resolveE2eTeamId()
+      await getPrisma().teamFormDomain.upsert({
+        where: { teamId },
+        update: {
+          hostname: FORM_DOMAIN_HOSTNAME,
+          status,
+          verifiedAt: status === "verified" ? new Date() : null,
+        },
+        create: {
+          teamId,
+          hostname: FORM_DOMAIN_HOSTNAME,
+          status,
+          verifiedAt: status === "verified" ? new Date() : null,
+        },
+      })
+    }
+
+    async function clearFormDomain(): Promise<void> {
+      const teamId = await resolveE2eTeamId()
+      await getPrisma().teamFormDomain.deleteMany({ where: { teamId } })
+    }
+
+    test.beforeEach(async () => {
+      await clearFormDomain()
+    })
+
+    test.afterEach(async () => {
+      await clearFormDomain()
+      await clearConnectedDomain()
+    })
+
+    test("sugere forms.<dominio-do-time> quando há domínio de envio verificado", async ({
+      page,
+    }) => {
+      await seedConnectedDomain("verified")
+      await mockDomainRecordsRoute(page)
+      await gotoEmailSettings(page)
+
+      const input = page.getByLabel("Subdomínio dos formulários")
+      await expect(input).toBeVisible({ timeout: 30_000 })
+      await expect(input).toHaveValue("forms.e2e-corretor.com.br")
+    })
+
+    test("conecta o subdomínio e mostra o registro CNAME retornado", async ({ page }) => {
+      let connected = false
+      await page.route("**/email/settings/form-domain", (route) => {
+        if (route.request().method() === "POST") {
+          connected = true
+          return route.fulfill({
+            status: 201,
+            contentType: "application/json",
+            body: JSON.stringify({
+              isValid: true,
+              successMessages: ["Domínio de formulários conectado. Crie o registro DNS para ativar."],
+              errorMessages: [],
+              result: {
+                formDomain: {
+                  hostname: FORM_DOMAIN_HOSTNAME,
+                  status: "pending",
+                  verifiedAt: null,
+                  lastCheckedAt: null,
+                  createdAt: new Date().toISOString(),
+                },
+                records: [
+                  {
+                    record: "CNAME",
+                    type: "CNAME",
+                    name: "forms",
+                    value: "cname.vercel-dns.com",
+                    ttl: "Auto",
+                    status: "pending",
+                  },
+                ],
+              },
+            }),
+          })
+        }
+        if (route.request().method() === "GET" && connected) {
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              isValid: true,
+              successMessages: [],
+              errorMessages: [],
+              result: {
+                formDomain: {
+                  hostname: FORM_DOMAIN_HOSTNAME,
+                  status: "pending",
+                  verifiedAt: null,
+                  lastCheckedAt: null,
+                  createdAt: new Date().toISOString(),
+                },
+              },
+            }),
+          })
+        }
+        return route.continue()
+      })
+
+      await gotoEmailSettings(page)
+
+      const input = page.getByLabel("Subdomínio dos formulários")
+      await expect(input).toBeVisible({ timeout: 30_000 })
+      await input.fill(FORM_DOMAIN_HOSTNAME)
+      await page.getByRole("button", { name: "Conectar subdomínio" }).click()
+
+      await expect(
+        page.getByText("Domínio de formulários conectado. Crie o registro DNS para ativar.")
+      ).toBeVisible()
+      await expect(page.getByText("cname.vercel-dns.com").first()).toBeVisible()
+    })
+
+    test("domínio pendente mostra o CNAME real (fallback sem integração) e badge do tamanho do texto", async ({
+      page,
+    }) => {
+      await seedFormDomain("pending")
+      await gotoEmailSettings(page)
+
+      // Rota REAL de records: sem VERCEL_TOKEN o servidor devolve o CNAME padrão.
+      await expect(page.getByText("cname.vercel-dns.com").first()).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(
+        page.getByText("Crie o registro CNAME na hospedagem do seu domínio para ativar.")
+      ).toBeVisible()
+
+      const statusBadge = page.getByTestId("form-domain-status-badge")
+      await expect(statusBadge).toBeVisible()
+      await expect(statusBadge).toHaveText("Pendente")
+
+      // Medido, não julgado: badge não estica além do próprio conteúdo.
+      const badgeBox = await statusBadge.boundingBox()
+      const badgeContentWidth = await statusBadge.evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        const style = getComputedStyle(element)
+        const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+        const border = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
+        return range.getBoundingClientRect().width + padding + border
+      })
+      expect(badgeBox, "badge de status sem caixa renderizada").not.toBeNull()
+      expect(badgeBox!.width).toBeLessThanOrEqual(badgeContentWidth + 1)
+    })
+
+    test("verifica agora e mostra o aviso de que os links de campanha usarão o domínio", async ({
+      page,
+    }) => {
+      await seedFormDomain("pending")
+      await page.route("**/email/settings/form-domain/verify**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: [
+              "Domínio verificado! Os novos disparos de campanha usarão este domínio nos links de formulário.",
+            ],
+            errorMessages: [],
+            result: {
+              formDomain: {
+                hostname: FORM_DOMAIN_HOSTNAME,
+                status: "verified",
+                verifiedAt: new Date().toISOString(),
+                lastCheckedAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+              },
+            },
+          }),
+        })
+      )
+
+      await gotoEmailSettings(page)
+      await expect(page.getByText(FORM_DOMAIN_HOSTNAME, { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
+
+      await page.getByRole("button", { name: "Verificar agora" }).click()
+
+      await expect(
+        page.getByText(
+          "Domínio verificado! Os novos disparos de campanha usarão este domínio nos links de formulário."
+        )
+      ).toBeVisible()
+      await expect(
+        page.getByText("Os novos links de campanha usarão este domínio.")
+      ).toBeVisible()
+    })
+
+    test("remove o domínio com confirmação em AlertDialog (rota real)", async ({ page }) => {
+      await seedFormDomain("verified")
+      await gotoEmailSettings(page)
+
+      await expect(page.getByText(FORM_DOMAIN_HOSTNAME, { exact: true })).toBeVisible({
+        timeout: 30_000,
+      })
+
+      await page.getByRole("button", { name: "Ações do domínio de formulários" }).click()
+      await page.getByRole("menuitem", { name: "Remover domínio" }).click()
+
+      await expect(
+        page.getByRole("heading", { name: "Remover domínio de formulários?" })
+      ).toBeVisible()
+      await page.getByRole("button", { name: "Remover", exact: true }).click()
+
+      await expect(page.getByText("Domínio de formulários removido")).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByLabel("Subdomínio dos formulários")).toBeVisible()
+
+      const teamId = await resolveE2eTeamId()
+      const remaining = await getPrisma().teamFormDomain.count({ where: { teamId } })
+      expect(remaining).toBe(0)
     })
   })
 })

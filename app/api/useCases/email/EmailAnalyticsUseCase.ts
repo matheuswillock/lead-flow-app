@@ -26,6 +26,11 @@ import {
   getResendDomainDispatchWarnings,
   isResendDomainTrackingCapable,
 } from "@/lib/email/campaign-dispatch-guards"
+import {
+  formatSendingHealthBlockMessage,
+  isSendingHealthBlocked,
+  type EmailSendingHealthStatusValue,
+} from "@/lib/email/sending-health"
 
 /**
  * Distingue "campanha não existe" de "a consulta explodiu".
@@ -123,6 +128,7 @@ export class EmailAnalyticsUseCase {
       total,
       delivered,
       opened,
+      openedHuman,
       clicked,
       bounced,
       complained,
@@ -138,6 +144,7 @@ export class EmailAnalyticsUseCase {
       this.repository.countLogs(logWhere),
       this.repository.countLogs(logWhere, "delivered"),
       this.repository.countLogs(logWhere, "opened"),
+      this.repository.countLogs(logWhere, "openedHuman"),
       this.repository.countLogs(logWhere, "clicked"),
       this.repository.countLogs(logWhere, "bounced"),
       this.repository.countLogs(logWhere, "complained"),
@@ -161,6 +168,7 @@ export class EmailAnalyticsUseCase {
       sent: total,
       delivered,
       opened,
+      openedHuman,
       clicked,
       bounced,
       complained,
@@ -199,14 +207,16 @@ export class EmailAnalyticsUseCase {
     logWhere: EmailAnalyticsLogWhere,
     totals: AnalyticsTotalsForDelta,
   ) {
-    const [delivered, opened, openedOnSent, clicked, bounced, complained] = await Promise.all([
-      this.repository.countCohortLogs(logWhere, "delivered"),
-      this.repository.countCohortLogs(logWhere, "opened"),
-      this.repository.countCohortLogs(logWhere, "openedOnSent"),
-      this.repository.countCohortLogs(logWhere, "clicked"),
-      this.repository.countCohortLogs(logWhere, "bounced"),
-      this.repository.countCohortLogs(logWhere, "complained"),
-    ])
+    const [delivered, opened, openedHuman, openedOnSent, clicked, bounced, complained] =
+      await Promise.all([
+        this.repository.countCohortLogs(logWhere, "delivered"),
+        this.repository.countCohortLogs(logWhere, "opened"),
+        this.repository.countCohortLogs(logWhere, "openedHuman"),
+        this.repository.countCohortLogs(logWhere, "openedOnSent"),
+        this.repository.countCohortLogs(logWhere, "clicked"),
+        this.repository.countCohortLogs(logWhere, "bounced"),
+        this.repository.countCohortLogs(logWhere, "complained"),
+      ])
 
     return {
       sent: totals.sent,
@@ -215,6 +225,7 @@ export class EmailAnalyticsUseCase {
       deliveredCohort: totals.delivered,
       delivered,
       opened,
+      openedHuman,
       openedOnSent,
       clicked,
       bounced,
@@ -250,12 +261,28 @@ export class EmailAnalyticsUseCase {
 
   private async resolveTrackingMeta(teamId: string) {
     const snapshot = await this.repository.findResendDomainTracking(teamId)
+    const sendingHealthBlocked = isSendingHealthBlocked(
+      snapshot.sendingHealthStatus as EmailSendingHealthStatusValue
+    )
+    const sendingHealthWarnings = sendingHealthBlocked
+      ? [
+          formatSendingHealthBlockMessage({
+            status: snapshot.sendingHealthStatus as EmailSendingHealthStatusValue,
+            reason: snapshot.sendingHealthReason,
+          }),
+        ]
+      : []
     return {
       resendDomainTrackingCapable: isResendDomainTrackingCapable(snapshot.domainStatus),
       // O alerta da tela precisa saber se o gate travou de verdade. Deduzir isso
       // de "existe aviso" ficou errado quando aviso deixou de implicar bloqueio.
       trackingDispatchBlocked: !assertResendDomainTrackingReady(snapshot).ok,
-      trackingWarnings: getResendDomainDispatchWarnings(snapshot),
+      // A trava de reputação entra na MESMA lista de avisos do banner da tela
+      // de campanhas, com flag próprio para a UI distinguir do bloqueio de DNS.
+      trackingWarnings: [...sendingHealthWarnings, ...getResendDomainDispatchWarnings(snapshot)],
+      sendingHealthStatus: snapshot.sendingHealthStatus,
+      sendingHealthBlocked,
+      sendingHealthReason: snapshot.sendingHealthReason,
     }
   }
 
@@ -311,6 +338,7 @@ export class EmailAnalyticsUseCase {
             sent: dispatch.totalSent,
             delivered: dispatch.totalDelivered,
             opened: dispatch.totalOpened,
+            openedHuman: dispatch.totalOpenedHuman,
             clicked: dispatch.totalClicked,
             bounced: dispatch.totalBounced,
             complained: dispatch.totalComplained,

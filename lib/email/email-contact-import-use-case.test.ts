@@ -59,14 +59,52 @@ let claimedJob: {
   status: string
 } | null = null
 
-const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = {
+/**
+ * Estado observável das escritas TRANSACIONAIS do finalize. O commit só é
+ * aplicado quando o callback resolve — como no Postgres. É isso que permite
+ * afirmar que status terminal do job e quarentena são atômicos: se a segunda
+ * escrita falha, a primeira não fica.
+ */
+let importDbState = { jobStatus: "processing", quarantinedListIds: [] as string[] }
+
+const txJobUpdateMock = mock(async (_args: { data?: { status?: string } }) => ({}))
+const txListUpdateManyMock = mock(
+  async (_args: { where?: { id?: { in?: string[] } } }) => ({ count: 0 })
+)
+
+/** Tx client completo: claim (findFirst/updateMany) + finalize (update/quarentena). */
+function makeTxClient(staged: Array<() => void>) {
+  return {
     emailImportJob: {
       findFirst: mock(async () => claimedJob),
       updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
+      update: async (args: { data?: { status?: string } }) => {
+        const result = await txJobUpdateMock(args)
+        const nextStatus = args?.data?.status
+        if (nextStatus) staged.push(() => (importDbState.jobStatus = nextStatus))
+        return result
+      },
+    },
+    emailContact: prismaStub.emailContact,
+    emailContactList: {
+      ...prismaStub.emailContactList,
+      updateMany: async (args: { where?: { id?: { in?: string[] } } }) => {
+        const result = await txListUpdateManyMock(args)
+        const ids = args?.where?.id?.in ?? []
+        staged.push(() => {
+          importDbState.quarantinedListIds = [...importDbState.quarantinedListIds, ...ids]
+        })
+        return result
+      },
     },
   }
-  return fn(tx)
+}
+
+const transactionMock = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
+  const staged: Array<() => void> = []
+  const result = await fn(makeTxClient(staged))
+  for (const apply of staged) apply()
+  return result
 })
 
 const prismaStub = {
@@ -189,16 +227,18 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
     updateManyMock.mockClear()
     updateManyMock.mockImplementation(async () => ({ count: 0 }))
     transactionMock.mockClear()
+    importDbState = { jobStatus: "processing", quarantinedListIds: [] }
+    txJobUpdateMock.mockClear()
+    txJobUpdateMock.mockImplementation(async () => ({}))
+    txListUpdateManyMock.mockClear()
+    txListUpdateManyMock.mockImplementation(async (args) => ({
+      count: args?.where?.id?.in?.length ?? 0,
+    }))
     transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = {
-        emailImportJob: {
-          findFirst: mock(async () => claimedJob),
-          updateMany: mock(async () => ({ count: claimedJob ? 1 : 0 })),
-        },
-        emailContact: prismaStub.emailContact,
-        emailContactList: prismaStub.emailContactList,
-      }
-      return fn(tx)
+      const staged: Array<() => void> = []
+      const result = await fn(makeTxClient(staged))
+      for (const apply of staged) apply()
+      return result
     })
     jobUpdateMock.mockClear()
     jobUpdateMock.mockImplementation(async () => ({}))
@@ -499,20 +539,19 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
 
     transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       if (transactionMock.mock.calls.length === 1) throw p2028()
-      const tx = {
-        emailImportJob: {
-          findFirst: mock(async () => claimedJob),
-          updateMany: mock(async () => ({ count: 1 })),
-        },
-      }
-      return fn(tx)
+      const staged: Array<() => void> = []
+      const result = await fn(makeTxClient(staged))
+      for (const apply of staged) apply()
+      return result
     })
 
     const useCase = new EmailContactImportUseCase()
     const output = await useCase.processPendingJobs()
 
     expect(output.isValid).toBe(true)
-    expect(transactionMock).toHaveBeenCalledTimes(2)
+    // 1 claim que estoura P2028 + 1 claim bem-sucedido + 1 finalize (status
+    // terminal e quarentena commitam juntos).
+    expect(transactionMock).toHaveBeenCalledTimes(3)
   })
 
   it("T2: esgota retries de P2028 e retorna mensagem com code", async () => {
@@ -726,5 +765,163 @@ describe("EmailContactImportUseCase.processPendingJobs", () => {
       .map((call) => call[0].data)
       .find((d) => d.processedRows === 2)
     expect(checkpoint?.processedRows).toBe(2)
+  })
+})
+
+// =============================================================================
+// Gate de importação — quarentena de risco ALTO (alcance + atomicidade)
+// =============================================================================
+
+describe("EmailContactImportUseCase — quarentena do veredito de risco ALTO", () => {
+  /**
+   * Dois contratos, os dois de efeito colateral:
+   *
+   * 1. ALCANCE — a quarentena precisa pegar TAMBÉM a cópia do fan-out. Quando
+   *    o destino não é a lista padrão, `importContactsBatch` replica cada
+   *    contato aceito em "Todos contatos". Marcar só `job.listId` deixava a
+   *    mesma audiência de risco ALTO enviável escolhendo a lista padrão no
+   *    seletor — `findQuarantinedLists` só bloqueia `isQuarantined: true`.
+   *
+   * 2. ATOMICIDADE — status terminal do job e quarentena no MESMO commit. Job
+   *    `completed` antes da quarentena sai de `pending`/`processing`: nenhum
+   *    retry o reclama, e uma falha na segunda escrita deixa a lista perigosa
+   *    sendável para sempre, em silêncio.
+   */
+  const HIGH_RISK_ROWS = [
+    { email: "bloqueado1@example.com" },
+    { email: "bloqueado2@example.com" },
+    { email: "bloqueado3@example.com" },
+    { email: "livre@example.com" },
+  ]
+
+  function arrangeHighRiskImport(listIsSystemDefault: boolean) {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: listIsSystemDefault ? "list-1" : "default-list-id",
+      isSystemDefault: listIsSystemDefault,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({ rows: HIGH_RISK_ROWS })
+    )
+    // 3 de 4 linhas recusadas por blocklist = 75% ≥ 20% ⇒ risco ALTO.
+    emailContactFindManyMock.mockImplementation(async (args) => {
+      if (args?.where?.list?.isBlocklist) {
+        return HIGH_RISK_ROWS.slice(0, 3).map((row) => ({ email: row.email }))
+      }
+      return []
+    })
+  }
+
+  beforeEach(() => {
+    claimedJob = null
+    importDbState = { jobStatus: "processing", quarantinedListIds: [] }
+    for (const m of [
+      transactionMock,
+      txJobUpdateMock,
+      txListUpdateManyMock,
+      jobUpdateMock,
+      emailContactFindManyMock,
+      emailContactCreateManyMock,
+      emailContactCountMock,
+      emailContactListFindFirstMock,
+      emailContactListUpdateMock,
+      createSystemNotificationMock,
+      downloadPayloadMock,
+      teamHasRadarFeatureMock,
+      countMock,
+    ]) {
+      m.mockClear()
+    }
+    transactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const staged: Array<() => void> = []
+      const result = await fn(makeTxClient(staged))
+      for (const apply of staged) apply()
+      return result
+    })
+    txJobUpdateMock.mockImplementation(async () => ({}))
+    txListUpdateManyMock.mockImplementation(async (args) => ({
+      count: args?.where?.id?.in?.length ?? 0,
+    }))
+    jobUpdateMock.mockImplementation(async () => ({}))
+    emailContactCreateManyMock.mockImplementation(async (args?: { data?: unknown[] }) => ({
+      count: args?.data?.length ?? 0,
+    }))
+    emailContactCountMock.mockImplementation(async () => 1)
+    emailContactListUpdateMock.mockImplementation(async () => ({}))
+    teamHasRadarFeatureMock.mockImplementation(async () => false)
+    countMock.mockImplementation(async () => 0)
+  })
+
+  it("REGRESSÃO (alcance): quarentena a lista de destino E a cópia do fan-out", async () => {
+    arrangeHighRiskImport(false)
+
+    const output = await new EmailContactImportUseCase().processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(importDbState.jobStatus).toBe("completed")
+    // A lista de destino do job e a lista padrão que recebeu o fan-out.
+    expect(importDbState.quarantinedListIds).toContain("list-1")
+    expect(importDbState.quarantinedListIds).toContain("default-list-id")
+  })
+
+  it("destino já É a lista padrão: sem fan-out, quarentena só ela", async () => {
+    arrangeHighRiskImport(true)
+
+    const output = await new EmailContactImportUseCase().processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(importDbState.quarantinedListIds).toEqual(["list-1"])
+  })
+
+  it("importação limpa (risco baixo): nenhuma lista sai de circulação", async () => {
+    claimedJob = makeJob()
+    emailContactListFindFirstMock.mockImplementation(async () => ({
+      id: "list-1",
+      isSystemDefault: false,
+    }))
+    downloadPayloadMock.mockImplementation(async () =>
+      JSON.stringify({ rows: HIGH_RISK_ROWS })
+    )
+    emailContactFindManyMock.mockImplementation(async () => [])
+
+    const output = await new EmailContactImportUseCase().processPendingJobs()
+
+    expect(output.isValid).toBe(true)
+    expect(importDbState.jobStatus).toBe("completed")
+    expect(importDbState.quarantinedListIds).toEqual([])
+    expect(txListUpdateManyMock).not.toHaveBeenCalled()
+  })
+
+  it("REGRESSÃO (atomicidade): quarentena que falha NÃO deixa o job concluído", async () => {
+    arrangeHighRiskImport(false)
+    txListUpdateManyMock.mockImplementation(async () => {
+      throw new Error("update de quarentena falhou")
+    })
+
+    const output = await new EmailContactImportUseCase().processPendingJobs()
+
+    // O job continua reclamável por `reclaimStuckJobs`; a lista de risco ALTO
+    // não fica "concluída e enviável".
+    expect(output.isValid).toBe(false)
+    expect(importDbState.jobStatus).toBe("processing")
+    expect(importDbState.quarantinedListIds).toEqual([])
+    // E o status terminal NÃO pode ter escapado por fora da transação.
+    const terminalOutsideTx = (
+      jobUpdateMock.mock.calls as unknown as Array<[{ data: { status?: string } }]>
+    ).some((call) => call[0]?.data?.status != null)
+    expect(terminalOutsideTx).toBe(false)
+  })
+
+  it("status terminal e quarentena saem na MESMA transação", async () => {
+    arrangeHighRiskImport(false)
+
+    await new EmailContactImportUseCase().processPendingJobs()
+
+    expect(txJobUpdateMock).toHaveBeenCalledTimes(1)
+    expect(txListUpdateManyMock).toHaveBeenCalledTimes(1)
+    const terminalOutsideTx = (
+      jobUpdateMock.mock.calls as unknown as Array<[{ data: { status?: string } }]>
+    ).some((call) => call[0]?.data?.status != null)
+    expect(terminalOutsideTx).toBe(false)
   })
 })

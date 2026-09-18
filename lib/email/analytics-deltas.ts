@@ -16,6 +16,8 @@ export type AnalyticsTotalsForDelta = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas humanas ("Aberturas reais") — exclui robôs/proxies do provedor. */
+  openedHuman: number
   clicked: number
   bounced: number
   complained: number
@@ -63,6 +65,9 @@ export function attachRateDeltas(
       isRate: true,
     }),
     openRate: calcMetricDelta(current.openRate, previous.openRate, { isRate: true }),
+    openRateHuman: calcMetricDelta(current.openRateHuman, previous.openRateHuman, {
+      isRate: true,
+    }),
     openRateOnSent: calcMetricDelta(current.openRateOnSent, previous.openRateOnSent, {
       isRate: true,
     }),
@@ -81,6 +86,7 @@ export function attachTotalDeltas(
     sent: calcMetricDelta(current.sent, previous.sent),
     delivered: calcMetricDelta(current.delivered, previous.delivered),
     opened: calcMetricDelta(current.opened, previous.opened),
+    openedHuman: calcMetricDelta(current.openedHuman, previous.openedHuman),
     clicked: calcMetricDelta(current.clicked, previous.clicked),
     bounced: calcMetricDelta(current.bounced, previous.bounced),
     complained: calcMetricDelta(current.complained, previous.complained),

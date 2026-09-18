@@ -42,25 +42,26 @@ export function CampanhasAnalyticsTemplatesTable() {
                 <TableHead className="text-right">Disparos</TableHead>
                 <TableHead className="text-right">Enviados</TableHead>
                 <TableHead className="text-right">Entregues</TableHead>
-                <TableHead className="text-right">Abertos</TableHead>
+                <TableHead className="text-right">Aberturas reais</TableHead>
+                <TableHead className="text-right">Abertos (bruto)</TableHead>
                 <TableHead className="text-right">Cliques</TableHead>
                 <TableHead className="text-right">Bounces</TableHead>
                 <TableHead className="text-right">Falhas</TableHead>
-                <TableHead className="text-right">Abertura</TableHead>
+                <TableHead className="text-right">Abertura (bruta)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isUpdating || templatesError ? (
                 Array.from({ length: 4 }).map((_, index) => (
                   <TableRow key={`campanhas-analytics-templates-skeleton-${index}`}>
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={11}>
                       <Skeleton className="h-6 w-full" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : !templates || templates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
                     Nenhum template disparado no período selecionado.
                   </TableCell>
                 </TableRow>
@@ -74,7 +75,12 @@ export function CampanhasAnalyticsTemplatesTable() {
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.dispatches)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.sent)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.delivered)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.opened)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {formatCampaignAnalyticsInteger(row.openedHuman ?? null)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {formatCampaignAnalyticsInteger(row.opened)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.clicked)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.bounced)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatCampaignAnalyticsInteger(row.failed)}</TableCell>

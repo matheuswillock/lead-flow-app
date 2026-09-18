@@ -27,6 +27,8 @@ export type CampaignCounters = {
   totalSent: number
   totalDelivered: number
   totalOpened: number
+  /** Aberturas humanas (claim de `EmailLog.humanOpenedAt`) — cache como os demais. */
+  totalOpenedHuman: number
   totalClicked: number
   totalBounced: number
   totalComplained: number

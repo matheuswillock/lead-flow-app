@@ -1,4 +1,5 @@
 import type { EmailEventType, EmailLogCategory } from "@prisma/client"
+import type { EmailEventOrigin } from "@/lib/email/email-event-origin-classifier"
 
 export type EmailLogWebhookRecord = {
   id: string
@@ -21,6 +22,14 @@ export type ApplyEmailLogWebhookInput = {
   occurredAt: Date
   metadata: Record<string, unknown>
   eventId: string
+  /**
+   * Classificação de origem do evento (opened/clicked vindos do webhook).
+   * `classification === "human"` em um `opened` reivindica
+   * `EmailLog.humanOpenedAt` e incrementa `totalOpenedHuman` — com a mesma
+   * semântica exatamente-uma-vez do `openedAt` bruto. Ausente nos caminhos
+   * que não classificam (first-party click, tipos sem sinal).
+   */
+  origin?: EmailEventOrigin
 }
 
 export type CreateTeamEmailLogInput = {

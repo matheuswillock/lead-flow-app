@@ -3,16 +3,15 @@
  * Query param: `cs_el` (Corretor Studio Email Log) — análogo a PID de atribuição.
  */
 
-export const EMAIL_LOG_FORM_QUERY_PARAM = "cs_el"
+import { createFormHrefPattern } from "@/lib/email/form-links-in-html"
 
-const FORM_HREF_PATTERN =
-  /(href\s*=\s*)(["'])([^"']*?\/forms\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[^"']*)\2/gi
+export const EMAIL_LOG_FORM_QUERY_PARAM = "cs_el"
 
 export function appendEmailLogIdToFormUrls(html: string, emailLogId: string): string {
   const token = emailLogId.trim()
   if (!token || !html.includes("/forms/")) return html
 
-  return html.replace(FORM_HREF_PATTERN, (_match, prefix: string, quote: string, rawUrl: string) => {
+  return html.replace(createFormHrefPattern(), (_match, prefix: string, quote: string, rawUrl: string) => {
     const nextUrl = appendQueryParam(rawUrl, EMAIL_LOG_FORM_QUERY_PARAM, token)
     return `${prefix}${quote}${nextUrl}${quote}`
   })

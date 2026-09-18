@@ -56,6 +56,8 @@ type EmailImportProgressJob = {
   skippedCount: number
   failedBatches: unknown
   batchSize: number
+  validationCounts: unknown
+  riskLevel: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -74,6 +76,10 @@ type ContactListActiveImportProgress = {
   totalBatches: number
   pendingRadarSync: number
   failedRadarSync: number
+  /** Veredito do gate de importação: contagens por categoria de remoção. */
+  validationCounts: Record<string, number> | null
+  /** low | medium | high — high quarentena a lista alvo. */
+  riskLevel: string | null
   updatedAt: string
 }
 
@@ -127,8 +133,21 @@ export class EmailContactListUseCase {
       totalBatches,
       pendingRadarSync,
       failedRadarSync,
+      validationCounts: this.parseValidationCounts(job.validationCounts),
+      riskLevel: job.riskLevel,
       updatedAt: job.updatedAt.toISOString(),
     }
+  }
+
+  private parseValidationCounts(value: unknown): Record<string, number> | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null
+    const counts: Record<string, number> = {}
+    for (const [category, count] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof count === "number" && Number.isFinite(count) && count > 0) {
+        counts[category] = count
+      }
+    }
+    return Object.keys(counts).length > 0 ? counts : null
   }
 
   private async loadImportProgressByListId(
@@ -174,6 +193,8 @@ export class EmailContactListUseCase {
         skippedCount: true,
         failedBatches: true,
         batchSize: true,
+        validationCounts: true,
+        riskLevel: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -349,6 +370,9 @@ export class EmailContactListUseCase {
           totalContacts: true,
           isSystemDefault: true,
           isBlocklist: true,
+          isQuarantined: true,
+          quarantinedAt: true,
+          quarantineReason: true,
           managedByBackofficeUserId: true,
           radarSegmentId: true,
           radarSegment: { select: { name: true } },
@@ -425,6 +449,9 @@ export class EmailContactListUseCase {
                 : (activeCountsByListId.get(list.id) ?? 0),
             isSystemDefault: isDefault,
             isBlocklist,
+            isQuarantined: list.isQuarantined,
+            quarantinedAt: list.quarantinedAt ? list.quarantinedAt.toISOString() : null,
+            quarantineReason: list.quarantineReason,
             activeImport: isBlocklist ? null : (activeImportByListId.get(list.id) ?? null),
             managedByCorretorStudio: Boolean(list.managedByBackofficeUserId),
           })

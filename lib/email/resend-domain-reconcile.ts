@@ -1,5 +1,6 @@
 import type { ResendDomainSnapshot } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
 import { deriveSendingDnsVerified } from "@/lib/email/resend-domain-records"
+import { PLATFORM_ROOT_DOMAIN } from "@/lib/email/resolve-campaign-from"
 
 /** Returns true when persisted status matches the remote Resend API status. */
 export function isResendDomainStatusInSync(
@@ -10,24 +11,43 @@ export function isResendDomainStatusInSync(
 }
 
 /**
- * Política de tracking vigente desde o cutover de 23/08: abertura ligada,
- * clique desligado.
+ * Política de tracking (revisada em 17/09; reverte parcialmente a decisão de
+ * 01/09 registrada na nota 03 da rodada CDP):
  *
- * Clique desligado porque o clique passou a ser first-party — a reescrita de
- * link do provedor media scanner, não pessoa. Abertura ligada porque é o único
- * sinal de engajamento que sobrou, e foi exatamente ela que estava OFF em
- * `corretorstudio.com.br` e `mail.libercorretora.com.br`, apagando as aberturas
- * desses domínios do funil sem nenhum aviso.
- *
- * Não existe override por time a respeitar: `configureDomainTracking` recusa
- * `openTracking: false` na entrada e força `clickTracking: false` na saída — o
- * produto nunca ofereceu como desligar abertura de propósito. (Resolve a open
- * question 1 da SPEC 20 por evidência no código, não por suposição.)
+ * - Abertura SEMPRE ligada — não é escolha do time. Foi a abertura desligada
+ *   em `corretorstudio.com.br` e `mail.libercorretora.com.br` que apagou as
+ *   aberturas desses domínios do funil sem aviso (caso C6 da auditoria).
+ * - Clique passa a ser POR TIME (`EmailTeamSettings.resendClickTracking`),
+ *   com default OFF em domínio recém-conectado. A alegação de 01/09 de que o
+ *   rewrite "quebra o cs_el" nunca foi medida; os cliques do provedor agora
+ *   passam pelo classificador de origem (scanner vira bot/scanner) e convivem
+ *   com o clique first-party do formulário (`cs_el`).
+ * - O domínio compartilhado da plataforma segue com clique SEMPRE OFF — o
+ *   redirecionador passaria por subdomínio de `corretorstudio.com`, ver
+ *   `isClickTrackingEligibleDomain`.
  */
 export const RESEND_TRACKING_POLICY = {
   openTracking: true,
-  clickTracking: false,
+  /** Default para domínio recém-conectado; opt-in por time depois. */
+  defaultClickTracking: false,
 } as const
+
+/**
+ * Clique do provedor NUNCA pode ser ligado para o domínio compartilhado da
+ * plataforma (ou qualquer subdomínio dele): o redirecionador herdaria a
+ * reputação já manchada de `corretorstudio.com`. Guard explícito exigido pela
+ * decisão de 17/09.
+ */
+export const CLICK_TRACKING_LOCKED_ROOT_DOMAIN = PLATFORM_ROOT_DOMAIN
+
+export function isClickTrackingEligibleDomain(domainName: string | null | undefined): boolean {
+  const normalized = domainName?.trim().toLowerCase() ?? ""
+  if (!normalized) return false
+  return (
+    normalized !== CLICK_TRACKING_LOCKED_ROOT_DOMAIN &&
+    !normalized.endsWith(`.${CLICK_TRACKING_LOCKED_ROOT_DOMAIN}`)
+  )
+}
 
 export type ResendTrackingPolicyDrift = {
   needsUpdate: boolean
@@ -35,19 +55,30 @@ export type ResendTrackingPolicyDrift = {
   clickTracking: boolean
 }
 
-/** Compara o tracking remoto com a política e devolve o alvo a aplicar. */
+/**
+ * Compara o tracking remoto com a política e devolve o alvo a aplicar.
+ *
+ * `teamClickTracking` é o estado desejado do time
+ * (`EmailTeamSettings.resendClickTracking`); a abertura continua inegociável.
+ * Domínio inelegível (plataforma) tem o clique forçado a OFF aqui também —
+ * defesa em profundidade caso alguém o ligue direto no painel do provedor.
+ */
 export function resolveResendTrackingPolicyDrift(
-  remote: ResendDomainSnapshot
+  remote: ResendDomainSnapshot,
+  options: { teamClickTracking: boolean; domainName?: string | null }
 ): ResendTrackingPolicyDrift {
   const remoteOpenTracking = Boolean(remote.openTracking ?? remote.open_tracking)
   const remoteClickTracking = Boolean(remote.clickTracking ?? remote.click_tracking)
 
+  const eligible = isClickTrackingEligibleDomain(options.domainName ?? remote.name)
+  const desiredClickTracking = eligible ? options.teamClickTracking : false
+
   return {
     needsUpdate:
       remoteOpenTracking !== RESEND_TRACKING_POLICY.openTracking ||
-      remoteClickTracking !== RESEND_TRACKING_POLICY.clickTracking,
+      remoteClickTracking !== desiredClickTracking,
     openTracking: RESEND_TRACKING_POLICY.openTracking,
-    clickTracking: RESEND_TRACKING_POLICY.clickTracking,
+    clickTracking: desiredClickTracking,
   }
 }
 

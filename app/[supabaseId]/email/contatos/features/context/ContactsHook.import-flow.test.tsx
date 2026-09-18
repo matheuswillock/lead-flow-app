@@ -58,7 +58,7 @@ function makeState(
     selectedListId: "list-1",
     page: 1,
     search: "",
-    lastProgressKey: "list-1:import-1:500:processing:0",
+    lastProgressKey: "list-1:import-1:500:processing:0:0",
     isFetchingContacts: false,
     pendingRefresh: null,
     ...overrides,
@@ -90,7 +90,7 @@ describe("ContactsHook import flow — regressão integrada", () => {
       force: true,
     })
     expect(result.nextState.lastProgressKey).toBe(
-      "list-1:import-1:1000:processing:0"
+      "list-1:import-1:1000:processing:0:0"
     )
   })
 
@@ -124,7 +124,7 @@ describe("ContactsHook import flow — regressão integrada", () => {
     expect(shouldPollContactLists(lists)).toBe(false)
 
     const state = makeState({
-      lastProgressKey: "list-1:import-old:1500:completed:0",
+      lastProgressKey: "list-1:import-old:1500:completed:0:0",
     })
     const result = onContactListsPolled(state, lists)
     expect(result.action).toBe("none")
@@ -164,7 +164,7 @@ describe("ContactsHook import flow — regressão integrada", () => {
   it("mudança só em lista não selecionada não força refresh da tabela atual", () => {
     const selectedImport = makeActiveImport({ processedRows: 500 })
     const state = makeState({
-      lastProgressKey: "list-1:import-1:500:processing:0",
+      lastProgressKey: "list-1:import-1:500:processing:0:0",
     })
     const listsAfterPoll = [
       makeList("list-1", selectedImport),

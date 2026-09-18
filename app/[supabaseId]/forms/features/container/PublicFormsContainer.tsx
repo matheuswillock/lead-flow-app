@@ -80,6 +80,7 @@ import { publicFormsClientService } from "../services/PublicFormsService"
 import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
+import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -94,6 +95,11 @@ type Member = { profileId: string; name: string; functions: string[] }
 export function PublicFormsContainer() {
   const params = useParams<{ supabaseId: string }>()
   const forms = usePublicForms()
+  // Domínio de formulários VERIFICADO do time ATIVO (Frente C): copiar
+  // link/iframe usa o mesmo host que o disparo de campanha vai usar. O teamId
+  // entra na chave do cache — sem ele, trocar de time devolvia o domínio do
+  // time anterior e gerava link que a guarda de tenancy responde 404.
+  const shareBaseUrl = usePublicFormShareBaseUrl(forms.ids?.teamId ?? null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [analyticsId, setAnalyticsId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<PublicFormListItem | null>(null)
@@ -354,7 +360,7 @@ export function PublicFormsContainer() {
                             <DropdownMenuItem
                               onClick={() =>
                                 void navigator.clipboard
-                                  .writeText(`${window.location.origin}/forms/${item.publicId}`)
+                                  .writeText(`${shareBaseUrl}/forms/${item.publicId}`)
                                   .then(() => toast.success("Link copiado"))
                               }
                             >
@@ -364,7 +370,7 @@ export function PublicFormsContainer() {
                               onClick={() =>
                                 void navigator.clipboard
                                   .writeText(
-                                    `<iframe src="${window.location.origin}/forms/${item.publicId}" width="100%" height="720" frameborder="0"></iframe>`,
+                                    `<iframe src="${shareBaseUrl}/forms/${item.publicId}" width="100%" height="720" frameborder="0"></iframe>`,
                                   )
                                   .then(() => toast.success("Iframe copiado"))
                               }

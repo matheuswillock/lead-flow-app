@@ -4,6 +4,7 @@ import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLea
 import { parseDateKeyAndTimeToUtc } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +13,9 @@ export async function GET(
   await connection();
 
   const { publicId } = await params
+  const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
+  if (foreignHost) return foreignHost
+
   const date = request.nextUrl.searchParams.get("date")
   if (!date) {
     return NextResponse.json(new Output(false, [], ["Informe a data"], null), {
