@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -34,7 +35,7 @@ import { useBackofficePayments } from "../context/BackofficePaymentsContext"
 import type { CreatePaymentFormData } from "../services/IBackofficePaymentsService"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
-import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -161,8 +162,13 @@ export function BackofficePaymentsContainer() {
         })
       }
     } catch (err) {
-      console.error("[BackofficePaymentsContainer][handleSubmit]", err)
-      toast.error(toUserToastMessage(err))
+      // `toastUserError` só manda para o console o que NÃO é ApiRequestError.
+      // Rejeição 4xx de negócio (cliente sem Asaas, acesso negado, valor
+      // inválido) é resultado esperado: com o Sentry
+      // `consoleLoggingIntegration({levels:["warn","error"]})` ligado em
+      // `instrumentation-client.ts`, um console.error incondicional mandaria
+      // toda validação de rotina para a telemetria de erro.
+      toastUserError(err)
     } finally {
       submitLock.current = false
     }
@@ -180,16 +186,26 @@ export function BackofficePaymentsContainer() {
         )}
       </div>
 
+      {/*
+        `Alert` do shadcn em vez de div própria: ele já traz `role="alert"`,
+        então o leitor de tela anuncia a falha de carregamento, que chega de
+        forma assíncrona depois da página montada.
+      */}
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive flex items-center justify-between">
-          <span className="inline-flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            {error}
-          </span>
-          <Button size="sm" variant="outline" onClick={() => fetchPayments()}>
-            Tentar novamente
-          </Button>
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>{error}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="max-lg:h-11"
+              onClick={() => fetchPayments()}
+            >
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="rounded-md border">

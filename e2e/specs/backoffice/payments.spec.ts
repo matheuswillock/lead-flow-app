@@ -121,6 +121,10 @@ test.describe("app/backoffice/(app)/payments", () => {
     await page.goto("/backoffice/payments");
 
     await expect(page.getByText("Erro ao carregar cobranças")).toBeVisible({ timeout: 30_000 });
+    // A falha chega DEPOIS da página montada: sem live region o leitor de
+    // tela não anuncia nada. O `Alert` do shadcn fornece role="alert".
+    const alertBanner = page.getByRole("alert").filter({ hasText: "Erro ao carregar cobranças" });
+    await expect(alertBanner).toBeVisible();
     await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
     await expect(page.getByText("Nenhuma cobrança encontrada")).not.toBeVisible();
     expect(getCount).toBeGreaterThan(0);
