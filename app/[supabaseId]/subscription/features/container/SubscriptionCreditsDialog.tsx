@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Separator } from '@/components/ui/separator';
 import type { SubscriptionData, UpdateSubscriptionCreditsDTO } from '../types/subscription.types';
 import { formatCurrency } from './subscription-format';
+import { resolveCreditUnitPrice } from '../utils/subscription-billing-breakdown';
+import { isCreditQuantityInvalid, parseCreditQuantityInput } from '../utils/subscription-credit-quantity';
 
 interface SubscriptionCreditsDialogProps {
   open: boolean;
@@ -34,12 +36,23 @@ export function SubscriptionCreditsDialog({
 
   const summary = subscription.billingSummary;
   const maxRemovable = resource === 'team' ? summary?.removableTeamSlots ?? 0 : summary?.removableUserSlots ?? 0;
-  const unitPrice = resource === 'team' ? 29.9 : 19.9;
-  const quantityIsInvalid = quantity < 1 || (action === 'remove' && quantity > maxRemovable);
+  const unitPrice = resolveCreditUnitPrice({
+    resource,
+    contractedExtra: resource === 'team' ? summary?.contractedExtraTeams ?? 0 : summary?.contractedExtraUsers ?? 0,
+    extraPrice: resource === 'team' ? summary?.extraTeamsPrice : summary?.extraUsersPrice,
+    onFallback: (kind, fallback) =>
+      console.error(
+        `[SubscriptionCreditsDialog] billingSummary sem taxa derivável para "${kind}" — usando fallback local ${fallback}`
+      ),
+  });
+  const quantityIsInvalid = isCreditQuantityInvalid({ quantity, action, maxRemovable });
 
   const impactText = useMemo(() => {
     if (hasUnlimitedUsers && resource === 'user') {
       return 'Plano anual com usuários ilimitados: não é necessário gerenciar créditos de usuários.';
+    }
+    if (!Number.isInteger(quantity)) {
+      return 'Informe uma quantidade válida.';
     }
     const label = resource === 'team' ? 'times' : 'usuários';
     if (action === 'remove') {
@@ -113,8 +126,8 @@ export function SubscriptionCreditsDialog({
                   type="number"
                   min={1}
                   max={action === 'remove' ? maxRemovable : undefined}
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
+                  value={Number.isNaN(quantity) ? '' : quantity}
+                  onChange={(event) => setQuantity(parseCreditQuantityInput(event.target.value))}
                   aria-invalid={quantityIsInvalid}
                 />
               </div>
@@ -142,7 +155,7 @@ export function SubscriptionCreditsDialog({
             <div className="rounded-md border bg-surface-1 p-4 text-sm">
               <div className="flex flex-col gap-2">
                 <span className="font-medium">{impactText}</span>
-                {action === 'add' && (
+                {action === 'add' && Number.isInteger(quantity) && (
                   <span className="text-muted-foreground">
                     Impacto mensal estimado: {formatCurrency(quantity * unitPrice)}
                   </span>

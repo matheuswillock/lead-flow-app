@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type {
   ISubscriptionContext,
   UseSubscriptionHookProps,
@@ -9,17 +9,24 @@ import type {
   UpdatePaymentMethodDTO
 } from '../types/subscription.types';
 import { toUserToastMessage } from "@/lib/ui/to-user-toast-message";
+import {
+  readLastSeenSubscriptionAt,
+  resolveSubscriptionEmptyStateReason,
+  writeLastSeenSubscriptionAt,
+} from '../utils/subscription-empty-state';
 
 export function useSubscriptionHook({
   supabaseId,
   service
 }: UseSubscriptionHookProps): UseSubscriptionHookReturn {
-  
+
   const [state, setState] = useState<ISubscriptionContext>({
     subscription: null,
     invoices: [],
     isLoading: true,
     error: null,
+    emptyStateReason: null,
+    invoicesError: null,
     fetchSubscription: async () => {},
     fetchInvoices: async () => {},
     syncSubscription: async () => {},
@@ -29,30 +36,78 @@ export function useSubscriptionHook({
     retryPayment: async () => {}
   });
 
+  // Disciplina de effect (E6): chave estável de request + in-flight guard,
+  // copiando o modelo interno já correto de EmailCreditsCard.tsx (que também
+  // não usa AbortController real — o fetch da API não aceita `signal` hoje).
+  // `key` identifica a chamada mais recente (troca de `supabaseId` "aborta"
+  // a anterior ao fazer a resposta tardia ser ignorada); `inFlight` evita 2
+  // requests simultâneos para a MESMA chave (StrictMode dev dispara
+  // mount/unmount/mount).
+  const subscriptionRequestRef = useRef<{ key: string; inFlight: boolean } | null>(null);
+  const invoicesRequestRef = useRef<{ key: string; inFlight: boolean } | null>(null);
+
   const fetchSubscription = useCallback(async () => {
+    const requestKey = `subscription:${supabaseId}`;
+    if (subscriptionRequestRef.current?.key === requestKey && subscriptionRequestRef.current.inFlight) {
+      return;
+    }
+    subscriptionRequestRef.current = { key: requestKey, inFlight: true };
+
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
       const subscription = await service.getSubscription(supabaseId);
-      setState(prev => ({ 
-        ...prev, 
-        subscription, 
-        isLoading: false 
+      if (subscriptionRequestRef.current?.key !== requestKey) return; // supabaseId mudou — resposta obsoleta
+
+      if (subscription) {
+        writeLastSeenSubscriptionAt(supabaseId);
+      }
+      const emptyStateReason = subscription
+        ? null
+        : resolveSubscriptionEmptyStateReason({
+            lastSeenSubscriptionAt: readLastSeenSubscriptionAt(supabaseId),
+          });
+
+      setState(prev => ({
+        ...prev,
+        subscription,
+        emptyStateReason,
+        isLoading: false
       }));
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        error: toUserToastMessage(error), 
-        isLoading: false 
+      if (subscriptionRequestRef.current?.key !== requestKey) return;
+      setState(prev => ({
+        ...prev,
+        error: toUserToastMessage(error),
+        isLoading: false
       }));
+    } finally {
+      if (subscriptionRequestRef.current?.key === requestKey) {
+        subscriptionRequestRef.current.inFlight = false;
+      }
     }
   }, [service, supabaseId]);
 
   const fetchInvoices = useCallback(async () => {
+    const requestKey = `invoices:${supabaseId}`;
+    if (invoicesRequestRef.current?.key === requestKey && invoicesRequestRef.current.inFlight) {
+      return;
+    }
+    invoicesRequestRef.current = { key: requestKey, inFlight: true };
+
     try {
       const invoices = await service.getInvoices(supabaseId);
-      setState(prev => ({ ...prev, invoices }));
+      if (invoicesRequestRef.current?.key !== requestKey) return;
+      setState(prev => ({ ...prev, invoices, invoicesError: null }));
     } catch (error) {
+      if (invoicesRequestRef.current?.key !== requestKey) return;
+      // DA3: falha ao carregar faturas vira estado de erro dedicado — nunca
+      // aparece como "Nenhuma fatura encontrada" (empty state real).
       console.error('Erro ao buscar faturas:', error);
+      setState(prev => ({ ...prev, invoicesError: toUserToastMessage(error) }));
+    } finally {
+      if (invoicesRequestRef.current?.key === requestKey) {
+        invoicesRequestRef.current.inFlight = false;
+      }
     }
   }, [service, supabaseId]);
 
@@ -62,8 +117,8 @@ export function useSubscriptionHook({
       await service.cancelSubscription(supabaseId);
       await fetchSubscription(); // Recarregar dados
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         error: toUserToastMessage(error),
         isLoading: false
       }));
@@ -72,19 +127,14 @@ export function useSubscriptionHook({
   }, [service, supabaseId, fetchSubscription]);
 
   const syncSubscription = useCallback(async () => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    try {
-      await service.syncSubscription(supabaseId);
-      await fetchSubscription();
-      await fetchInvoices();
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: toUserToastMessage(error),
-        isLoading: false
-      }));
-      throw error;
-    }
+    // E2 (item 5): sync é uma ação de refresh acionada pelo usuário, não o
+    // load inicial da página — uma falha aqui NÃO pode trocar o container
+    // inteiro por `SubscriptionError` e apagar dados já renderizados. O
+    // chamador (`SubscriptionContainer.handleSync`) decide como avisar o
+    // usuário (toast) e mantém a tela como estava.
+    await service.syncSubscription(supabaseId);
+    await fetchSubscription();
+    await fetchInvoices();
   }, [service, supabaseId, fetchSubscription, fetchInvoices]);
 
   const updateCredits = useCallback(async (data: UpdateSubscriptionCreditsDTO) => {
@@ -102,8 +152,8 @@ export function useSubscriptionHook({
       await service.updatePaymentMethod(supabaseId, cardData);
       await fetchSubscription(); // Recarregar dados
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         error: toUserToastMessage(error),
         isLoading: false
       }));

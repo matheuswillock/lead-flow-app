@@ -5,16 +5,44 @@ import { Separator } from '@/components/ui/separator';
 import { Receipt } from 'lucide-react';
 import type { SubscriptionData } from '../types/subscription.types';
 import { formatCurrency } from './subscription-format';
+import { resolveExtraUnitPrice } from '../utils/subscription-billing-breakdown';
 
 interface SubscriptionBillingBreakdownCardProps {
   subscription: SubscriptionData;
 }
 
+/**
+ * DA4: preço exibido vem do backend (`billingSummary`); a constante local é
+ * só um último fallback logado — nunca a fonte silenciosa de divergência com
+ * o que o Asaas efetivamente cobra ([[01 — Auditoria]] §3.1).
+ */
+function logMissingBillingSummary(field: string, value: number): number {
+  console.error(
+    `[SubscriptionBillingBreakdownCard] billingSummary sem dado para "${field}" — usando fallback local ${value}`
+  );
+  return value;
+}
+
 export function SubscriptionBillingBreakdownCard({ subscription }: SubscriptionBillingBreakdownCardProps) {
   const summary = subscription.billingSummary;
-  const extraTeamUnitPrice = summary?.contractedExtraTeams ? summary.extraTeamsPrice / summary.billableTeams : 29.9;
-  const extraUserUnitPrice = summary?.contractedExtraUsers ? summary.extraUsersPrice / summary.billableUsers : 19.9;
+  const contractedExtraTeams = summary?.contractedExtraTeams ?? 0;
+  const contractedExtraUsers = summary?.contractedExtraUsers ?? 0;
   const hasUnlimitedUsers = summary?.hasUnlimitedUsers === true;
+
+  const extraTeamUnitPrice = resolveExtraUnitPrice({
+    contractedExtra: contractedExtraTeams,
+    extraPrice: summary?.extraTeamsPrice,
+    fallback: 29.9,
+    onFallback: (fallback) => logMissingBillingSummary('extraTeamUnitPrice', fallback),
+  });
+  const extraUserUnitPrice = resolveExtraUnitPrice({
+    contractedExtra: contractedExtraUsers,
+    extraPrice: summary?.extraUsersPrice,
+    fallback: 19.9,
+    onFallback: (fallback) => logMissingBillingSummary('extraUserUnitPrice', fallback),
+  });
+
+  const basePrice = summary?.basePrice ?? logMissingBillingSummary('basePrice', 59.9);
 
   return (
     <Card>
@@ -28,12 +56,12 @@ export function SubscriptionBillingBreakdownCard({ subscription }: SubscriptionB
       <CardContent className="flex flex-col gap-3 text-sm">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Base (1 time + 1 usuário)</span>
-          <span className="font-medium">{formatCurrency(summary?.basePrice ?? 59.9)}</span>
+          <span className="font-medium">{formatCurrency(basePrice)}</span>
         </div>
-        {(summary?.contractedExtraTeams ?? 0) > 0 && (
+        {contractedExtraTeams > 0 && (
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">
-              Times adicionais ({summary?.contractedExtraTeams} × {formatCurrency(extraTeamUnitPrice)})
+              Times adicionais ({contractedExtraTeams} × {formatCurrency(extraTeamUnitPrice)})
             </span>
             <span className="font-medium">{formatCurrency(summary?.extraTeamsPrice)}</span>
           </div>
@@ -44,10 +72,10 @@ export function SubscriptionBillingBreakdownCard({ subscription }: SubscriptionB
             <span className="font-medium">Ilimitados</span>
           </div>
         )}
-        {!hasUnlimitedUsers && (summary?.contractedExtraUsers ?? 0) > 0 && (
+        {!hasUnlimitedUsers && contractedExtraUsers > 0 && (
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">
-              Usuários adicionais ({summary?.contractedExtraUsers} × {formatCurrency(extraUserUnitPrice)})
+              Usuários adicionais ({contractedExtraUsers} × {formatCurrency(extraUserUnitPrice)})
             </span>
             <span className="font-medium">{formatCurrency(summary?.extraUsersPrice)}</span>
           </div>

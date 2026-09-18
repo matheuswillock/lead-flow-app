@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +57,7 @@ export function EmailCreditsCard() {
   const { teams, activeTeam, activeTeamId, setActiveTeamId, isTeamMaster } = useTeamContext()
   const { showsBetaLabel } = useFeatureAccess()
   const [status, setStatus] = useState<EmailCreditsStatus | null>(null)
+  const [statusError, setStatusError] = useState(false)
   const [loading, setLoading] = useState(true)
   const [subscribing, setSubscribing] = useState<EmailCreditPlanId | null>(null)
   const [canceling, setCanceling] = useState(false)
@@ -69,6 +71,7 @@ export function EmailCreditsCard() {
   })
   const showPurchasePlans = shouldShowEmailCreditsPurchasePlans({
     isBetaExempt: status?.isBetaExempt === true,
+    hasError: statusError,
   })
   const hasRadarBeta = showsBetaLabel(FEATURE_SLUGS.RADAR)
 
@@ -78,10 +81,21 @@ export function EmailCreditsCard() {
     inFlightRef.current = true
     try {
       const result = await emailCreditsService.getStatus()
-      setStatus(result)
-      lastSuccessKeyRef.current = requestKey
+      if (result.ok) {
+        setStatus(result.status)
+        setStatusError(false)
+        lastSuccessKeyRef.current = requestKey
+      } else {
+        // DA3: falha de fetch NUNCA vira "sem plano" — card de erro dedicado
+        // com retry, e `showPurchasePlans` escondido para não convidar a um
+        // segundo checkout enquanto o status real é desconhecido.
+        setStatus(null)
+        setStatusError(true)
+      }
     } catch (err) {
       console.error("[EmailCreditsCard] fetchStatus error", err)
+      setStatus(null)
+      setStatusError(true)
     } finally {
       inFlightRef.current = false
       setLoading(false)
@@ -178,6 +192,17 @@ export function EmailCreditsCard() {
             </div>
           ) : null}
 
+          {!loading && statusError ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-semantic-danger-border bg-semantic-danger-surface p-4">
+              <span className="text-sm font-medium text-semantic-danger">
+                Não foi possível carregar os planos de créditos de e-mail agora.
+              </span>
+              <Button variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : null}
+
           {showPurchasePlans ? (
             <div className="grid gap-3 sm:grid-cols-2">
               {EMAIL_CREDIT_PLAN_CATALOG.map((plan) => {
@@ -249,6 +274,15 @@ export function EmailCreditsCard() {
             <strong>Status dos créditos</strong>
             {loading ? (
               <Skeleton className="h-4 w-56" />
+            ) : statusError ? (
+              <div className="flex flex-col gap-3 rounded-lg border border-semantic-danger-border bg-semantic-danger-surface p-4">
+                <span className="text-sm font-medium text-semantic-danger">
+                  Não foi possível carregar o status dos créditos.
+                </span>
+                <Button variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+                  Tentar novamente
+                </Button>
+              </div>
             ) : status?.isBetaExempt ? (
               <div className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/10 p-4">
                 <div className="flex items-center gap-2">
@@ -264,7 +298,7 @@ export function EmailCreditsCard() {
               <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <CheckCircle2 className="size-4 text-semantic-success" />
                     <span className="font-medium">
                       Plano {getEmailCreditPlanLabel(status.plan)} ativo
                     </span>
@@ -279,19 +313,16 @@ export function EmailCreditsCard() {
                       {status.monthlyCredits.toLocaleString("pt-BR")}
                     </span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-border">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          status.monthlyCredits > 0
-                            ? (status.creditsUsed / status.monthlyCredits) * 100
-                            : 0
-                        )}%`,
-                      }}
-                    />
-                  </div>
+                  <Progress
+                    value={Math.min(
+                      100,
+                      status.monthlyCredits > 0
+                        ? (status.creditsUsed / status.monthlyCredits) * 100
+                        : 0
+                    )}
+                    className="h-2"
+                    aria-label="Créditos de e-mail usados no ciclo atual"
+                  />
                 </div>
                 {status.currentPeriodEnd ? (
                   <p className="text-xs text-muted-foreground">
