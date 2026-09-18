@@ -166,7 +166,13 @@ test.describe("app/[supabaseId]/subscription", () => {
 
     await expect(page.getByRole("heading", { name: "Assinatura" }).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Plano Manager + 2 times extras")).toBeVisible();
-    await expect(page.getByText("R$ 139,60")).toBeVisible();
+
+    // O valor aparece no hero E no "Total mensal" do card de Cobrança — os
+    // dois são legítimos, então o assert é escopado no hero em vez de um
+    // `getByText` solto, que viola o strict mode do Playwright. Assertir os
+    // dois é melhor que escolher um: eles têm de bater entre si.
+    await expect(page.locator(".text-4xl").filter({ hasText: "R$ 139,60" })).toBeVisible();
+    await expect(page.getByText("Total mensal").locator("xpath=following-sibling::*[1]")).toHaveText("R$ 139,60");
     await expect(page.getByText(/mensal/i).first()).toBeVisible();
 
     const bodyText = await page.locator("body").innerText();

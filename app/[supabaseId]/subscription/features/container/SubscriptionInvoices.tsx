@@ -127,7 +127,7 @@ export function SubscriptionInvoices({ invoices, error, onRetry }: SubscriptionI
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="w-fit" onClick={onRetry}>
+          <Button variant="outline" size="sm" className="w-fit max-lg:h-11" onClick={onRetry}>
             Tentar novamente
           </Button>
         </CardContent>
@@ -220,7 +220,7 @@ export function SubscriptionInvoices({ invoices, error, onRetry }: SubscriptionI
                   <span className="text-lg font-bold">{formatCurrency(invoice.value)}</span>
 
                   {isPayable && invoice.invoiceUrl && (
-                    <Button size="sm" asChild>
+                    <Button size="sm" className="max-lg:h-11" asChild>
                       <a href={invoice.invoiceUrl} target="_blank" rel="noopener noreferrer">
                         <CreditCard data-icon="inline-start" />
                         Pagar fatura
@@ -229,7 +229,7 @@ export function SubscriptionInvoices({ invoices, error, onRetry }: SubscriptionI
                   )}
 
                   {invoice.bankSlipUrl && (
-                    <Button variant="outline" size="sm" asChild>
+                    <Button variant="outline" size="sm" className="max-lg:h-11" asChild>
                       <a href={invoice.bankSlipUrl} target="_blank" rel="noopener noreferrer">
                         <Download data-icon="inline-start" />
                         Baixar
@@ -238,7 +238,7 @@ export function SubscriptionInvoices({ invoices, error, onRetry }: SubscriptionI
                   )}
 
                   {!isPayable && !invoice.bankSlipUrl && invoice.invoiceUrl && (
-                    <Button variant="outline" size="sm" asChild>
+                    <Button variant="outline" size="sm" className="max-lg:h-11" asChild>
                       <a href={invoice.invoiceUrl} target="_blank" rel="noopener noreferrer">
                         <Download data-icon="inline-start" />
                         Baixar

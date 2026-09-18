@@ -133,6 +133,7 @@ export function SubscriptionContainer() {
             <CardContent className="flex flex-col items-center gap-4">
               <Button
                 size="lg"
+                className="max-lg:h-11"
                 onClick={() => {
                   fetchSubscription();
                   fetchInvoices();
@@ -164,6 +165,7 @@ export function SubscriptionContainer() {
             </p>
             <Button
               size="lg"
+              className="max-lg:h-11"
               onClick={() => router.push(`/${supabaseId}/account`)}
             >
               Ir para Minha Conta
@@ -193,7 +195,7 @@ export function SubscriptionContainer() {
               variant="outline"
               size="sm"
               onClick={handleReactivate}
-              className="w-fit"
+              className="w-fit max-lg:h-11"
             >
               <RefreshCw data-icon="inline-start" />
               Reativar Assinatura
@@ -214,7 +216,7 @@ export function SubscriptionContainer() {
               variant="outline"
               size="sm"
               onClick={() => setActiveTab('faturas')}
-              className="w-fit"
+              className="w-fit max-lg:h-11"
             >
               Ver faturas
             </Button>
@@ -227,7 +229,7 @@ export function SubscriptionContainer() {
           <TabsTrigger
             value="resumo"
             className={cn(
-              "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+              "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
               "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
             )}
           >
@@ -237,7 +239,7 @@ export function SubscriptionContainer() {
             <TabsTrigger
               value="creditos-email"
               className={cn(
-                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
                 "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
               )}
             >
@@ -248,7 +250,7 @@ export function SubscriptionContainer() {
             <TabsTrigger
               value="faturas"
               className={cn(
-                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
                 "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
               )}
             >
@@ -300,7 +302,7 @@ export function SubscriptionContainer() {
                     <CardDescription>Adicione ou remova capacidade disponível.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button className="w-full" onClick={() => setCreditsOpen(true)}>
+                    <Button className="w-full max-lg:h-11" onClick={() => setCreditsOpen(true)}>
                       Atualizar créditos
                     </Button>
                   </CardContent>

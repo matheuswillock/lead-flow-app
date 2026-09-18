@@ -197,7 +197,7 @@ export function EmailCreditsCard() {
               <span className="text-sm font-medium text-semantic-danger">
                 Não foi possível carregar os planos de créditos de e-mail agora.
               </span>
-              <Button variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+              <Button variant="outline" size="sm" className="w-fit max-lg:h-11" onClick={() => void load()}>
                 Tentar novamente
               </Button>
             </div>
@@ -231,7 +231,7 @@ export function EmailCreditsCard() {
                     {!isCurrent ? (
                       <Button
                         size="sm"
-                        className="w-full"
+                        className="w-full max-lg:h-11"
                         disabled={isLoading || subscribing !== null}
                         onClick={() => void handleSubscribe(plan.id)}
                       >
@@ -279,7 +279,7 @@ export function EmailCreditsCard() {
                 <span className="text-sm font-medium text-semantic-danger">
                   Não foi possível carregar o status dos créditos.
                 </span>
-                <Button variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+                <Button variant="outline" size="sm" className="w-fit max-lg:h-11" onClick={() => void load()}>
                   Tentar novamente
                 </Button>
               </div>
@@ -334,7 +334,7 @@ export function EmailCreditsCard() {
                   size="sm"
                   onClick={() => setCancelDialogOpen(true)}
                   disabled={canceling}
-                  className="text-destructive hover:text-destructive"
+                  className="text-destructive hover:text-destructive max-lg:h-11"
                 >
                   Cancelar créditos
                 </Button>

@@ -256,7 +256,7 @@ export function ReactivateSubscriptionDialog({
           ) : profileLoadFailed || !managerData ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center text-muted-foreground">
               <span>Erro ao carregar dados do perfil</span>
-              <Button variant="outline" size="sm" onClick={() => void loadManagerProfile()}>
+              <Button variant="outline" size="sm" className="max-lg:h-11" onClick={() => void loadManagerProfile()}>
                 Tentar novamente
               </Button>
             </div>
@@ -273,6 +273,7 @@ export function ReactivateSubscriptionDialog({
                       <Button
                         variant="outline"
                         size="icon"
+                        className="max-lg:size-11"
                         aria-label="Diminuir número de operadores"
                         onClick={() => setOperatorCount(Math.max(0, operatorCount - 1))}
                         disabled={operatorCount <= 0}
@@ -285,6 +286,7 @@ export function ReactivateSubscriptionDialog({
                       <Button
                         variant="outline"
                         size="icon"
+                        className="max-lg:size-11"
                         aria-label="Aumentar número de operadores"
                         onClick={() => setOperatorCount(operatorCount + 1)}
                       >
@@ -424,6 +426,7 @@ export function ReactivateSubscriptionDialog({
                               type="button"
                               variant="outline"
                               size="icon"
+                              className="max-lg:size-11"
                               aria-label="Copiar código PIX"
                               onClick={handleCopyPixCode}
                             >
@@ -470,7 +473,7 @@ export function ReactivateSubscriptionDialog({
                             O pagamento não foi confirmado. Tente novamente.
                           </p>
                         </div>
-                        <Button onClick={() => {
+                        <Button className="max-lg:h-11" onClick={() => {
                           setPaymentData(null);
                           setPollingStatus('idle');
                         }}>
@@ -495,6 +498,7 @@ export function ReactivateSubscriptionDialog({
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
+                            className="max-lg:h-11"
                             onClick={() => {
                               setPaymentData(null);
                               setPollingStatus('idle');
@@ -502,7 +506,7 @@ export function ReactivateSubscriptionDialog({
                           >
                             Gerar novo QR Code
                           </Button>
-                          <Button onClick={() => onOpenChange(false)}>Fechar</Button>
+                          <Button className="max-lg:h-11" onClick={() => onOpenChange(false)}>Fechar</Button>
                         </div>
                       </div>
                     )}

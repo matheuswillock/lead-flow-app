@@ -21,7 +21,7 @@ export function SubscriptionError({ error, onRetry }: SubscriptionErrorProps) {
           <CardDescription>{error}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={onRetry} className="w-full">
+          <Button onClick={onRetry} className="w-full max-lg:h-11">
             Tentar Novamente
           </Button>
         </CardContent>

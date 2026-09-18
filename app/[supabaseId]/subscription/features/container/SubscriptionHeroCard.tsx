@@ -38,7 +38,7 @@ export function SubscriptionHeroCard({ subscription, onOpenDetails }: Subscripti
             <CardDescription>Assinatura e capacidade contratada da conta</CardDescription>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={onOpenDetails}>
+        <Button variant="outline" size="sm" className="max-lg:h-11" onClick={onOpenDetails}>
           <FileText data-icon="inline-start" />
           Detalhes
         </Button>

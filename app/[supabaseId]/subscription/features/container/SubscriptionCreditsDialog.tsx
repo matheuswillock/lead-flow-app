@@ -175,10 +175,10 @@ export function SubscriptionCreditsDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+          <Button variant="outline" className="max-lg:h-11" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={isSubmitting || quantityIsInvalid}>
+          <Button className="max-lg:h-11" onClick={() => void handleSubmit()} disabled={isSubmitting || quantityIsInvalid}>
             {isSubmitting ? 'Processando...' : action === 'add' ? 'Ir para checkout' : 'Remover créditos'}
           </Button>
         </DialogFooter>
