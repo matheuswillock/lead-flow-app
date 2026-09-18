@@ -102,11 +102,17 @@ export function classifySendingHealthSeverity(rates: SendingHealthRates): Sendin
  * MESMOS eventos, empilha uma 2ª pausa e o time cai em `suspended` minutos
  * depois de ter sido liberado.
  *
- * Com o baseline, o cron mede a janela LÍQUIDA (janela atual − janela no
- * instante da liberação): logo após liberar, zero envios líquidos ⇒ sem
- * volume mínimo ⇒ severidade `ok`. Só envio NOVO reconta — o que é um
- * incidente novo, não o mesmo duas vezes. Dano agudo continua coberto pelo
- * abort mid-send, que não passa por esta máquina.
+ * O cron mede a janela LÍQUIDA consultando diretamente os eventos com
+ * `occurredAt`/`sentAt` >= `releaseBaseline.at` (`getWindowMetricsSince` no
+ * repositório) — NÃO subtraindo `janela atual − janela na liberação`. A
+ * subtração parecia equivalente e passou a bateria de testes original, mas
+ * quebra sob CHURN de volume: se 500 envios antigos saem da janela móvel de
+ * 7d no mesmo período em que 500 envios novos (ruins) entram, a janela atual
+ * tem o mesmo tamanho da janela na liberação e a subtração dá zero — o
+ * incidente novo fica invisível e o cron não consegue pausar o time de novo
+ * (achado P1 do codex no PR #1204). Consultar "desde `at`" mede o que
+ * realmente aconteceu depois da liberação, não uma diferença de agregados de
+ * janelas que se moveram no tempo.
  */
 export type SendingHealthReleaseBaseline = {
   at: string
@@ -172,37 +178,22 @@ export function parseSendingHealthReleaseBaseline(
 }
 
 /**
- * Janela LÍQUIDA pós-liberação. Devolve também o baseline que deve continuar
- * persistido: `null` depois de `SENDING_HEALTH_RELEASE_BASELINE_DAYS`, quando
- * a janela crua já não contém nenhum evento pré-liberação.
+ * `null` quando não há baseline ou quando ele já expirou
+ * (`SENDING_HEALTH_RELEASE_BASELINE_DAYS` dias desde a liberação) — nesse
+ * caso a janela crua de 7d volta a valer sem ressalvas. Baseline ativo
+ * significa: quem chama deve medir a janela de 7d consultando eventos com
+ * `occurredAt`/`sentAt` >= `baseline.at` (`getWindowMetricsSince` no
+ * repositório), não a janela crua de 7d completa.
  */
-export function applySendingHealthReleaseBaseline(params: {
-  windows: SendingHealthWindowMetrics
+export function resolveActiveReleaseBaseline(params: {
   baseline: SendingHealthReleaseBaseline | null
   now: Date
-}): { windows: SendingHealthWindowMetrics; baseline: SendingHealthReleaseBaseline | null } {
-  const { baseline } = params
-  if (!baseline) return { windows: params.windows, baseline: null }
+}): SendingHealthReleaseBaseline | null {
+  const { baseline, now } = params
+  if (!baseline) return null
 
   const expiresAt = Date.parse(baseline.at) + SENDING_HEALTH_RELEASE_BASELINE_DAYS * DAY_MS
-  if (params.now.getTime() >= expiresAt) {
-    return { windows: params.windows, baseline: null }
-  }
-
-  const net = (key: keyof SendingHealthWindowMetrics): number =>
-    Math.max(0, params.windows[key] - baseline.windows[key])
-
-  return {
-    windows: {
-      sent7d: net("sent7d"),
-      hardBounced7d: net("hardBounced7d"),
-      complained7d: net("complained7d"),
-      sent30d: net("sent30d"),
-      hardBounced30d: net("hardBounced30d"),
-      complained30d: net("complained30d"),
-    },
-    baseline,
-  }
+  return now.getTime() >= expiresAt ? null : baseline
 }
 
 export function parseSendingHealthSnapshot(value: unknown): {
