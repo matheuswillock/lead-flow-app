@@ -225,6 +225,20 @@ export class TeamFormDomainUseCase {
 
       const outcome = await checkFormDomainVerification(this.vercelGateway, domain.hostname)
       const checkedAt = this.now()
+
+      // `inconclusive` = falha de transporte consultando a Vercel, não um
+      // veredito sobre o domínio. Persistir isso como status derrubaria um
+      // domínio `verified` por uma instabilidade passageira da API (achado
+      // P1 do codex no PR #1204) — só `lastCheckedAt` avança, o status e o
+      // `verifiedAt` anteriores ficam intactos.
+      if (outcome.status === "inconclusive") {
+        const unchanged = await this.repository.saveCheckResult(domain.id, {
+          status: domain.status,
+          lastCheckedAt: checkedAt,
+        })
+        return new Output(true, [outcome.reason], [], { formDomain: toDto(unchanged) })
+      }
+
       const updated = await this.repository.saveCheckResult(domain.id, {
         status: outcome.status,
         lastCheckedAt: checkedAt,

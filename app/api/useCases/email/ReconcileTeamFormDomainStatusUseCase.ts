@@ -46,7 +46,15 @@ export class ReconcileTeamFormDomainStatusUseCase {
           true,
           ["Integração de domínio de formulários não configurada — nada a reconciliar"],
           [],
-          { scanned: 0, verified: 0, stillPending: 0, failed: 0, downgraded: 0, errors: 0 },
+          {
+            scanned: 0,
+            verified: 0,
+            stillPending: 0,
+            failed: 0,
+            downgraded: 0,
+            errors: 0,
+            inconclusive: 0,
+          },
         )
       }
 
@@ -57,11 +65,26 @@ export class ReconcileTeamFormDomainStatusUseCase {
       let failed = 0
       let errors = 0
       let downgraded = 0
+      let inconclusive = 0
 
       for (const domain of domains) {
         try {
           const outcome = await checkFormDomainVerification(this.vercelGateway, domain.hostname)
           const checkedAt = this.now()
+
+          // `inconclusive` = falha de transporte consultando a Vercel, não
+          // veredito sobre o domínio. Sem esta ramificação, uma indisponi-
+          // bilidade passageira da API rebaixava TODO domínio `verified` no
+          // lote — 404 continua indo pelo caminho normal (`failed`), esse
+          // sim um veredito real (achado P1 do codex no PR #1204).
+          if (outcome.status === "inconclusive") {
+            inconclusive += 1
+            await this.repository.saveCheckResult(domain.id, {
+              status: domain.status,
+              lastCheckedAt: checkedAt,
+            })
+            continue
+          }
 
           await this.repository.saveCheckResult(domain.id, {
             status: outcome.status,
@@ -102,6 +125,7 @@ export class ReconcileTeamFormDomainStatusUseCase {
         failed,
         downgraded,
         errors,
+        inconclusive,
       }
 
       console.info("[ReconcileTeamFormDomainStatusUseCase] Reconciliação concluída", summary)
