@@ -1530,7 +1530,12 @@ describe("EmailCampaignUseCase.send", () => {
 
     // dispatchBatch chamado 4× (lotes de 500 no consumer)
     expect(dispatchBatchMock).toHaveBeenCalledTimes(4)
-  })
+    // Teto de tempo explícito: 2000 destinatários em 4 lotes de 500 rodam em
+    // ~1,8s numa máquina ociosa, mas levaram 7,9s no runner compartilhado da
+    // VPS e estouraram o limite padrão de 5s. Nenhuma asserção acima foi
+    // afrouxada — o que muda é só o teto, que ali media a CPU do runner e não
+    // o comportamento do código.
+  }, 30_000)
 
   // ---------------------------------------------------------------------------
   // C2 — 2000 e-mails: chunk 4 falha → 1900 sent, 100 failed
