@@ -52,6 +52,15 @@ function buildDefaultDeps(): AsaasDualAccountReconciliationDeps {
   }
 }
 
+/**
+ * Distingue "conta ainda não provisionada" (esperado pré-cutover, benigno)
+ * de falha real de rede/banco. A mensagem vem de `resolveAsaasAccount`
+ * (`lib/asaas/asaas-account.ts`), que lança citando a env ausente.
+ */
+function isAccountNotProvisionedError(error: string): boolean {
+  return error.includes("ASAAS_LEGACY_API_KEY")
+}
+
 function toStaleRow(row: AsaasAccountMigration, now: Date): AsaasStaleLedgerRow {
   const ageMs = now.getTime() - row.updatedAt.getTime()
   return {
@@ -139,19 +148,47 @@ export class AsaasDualAccountReconciliationUseCase {
       report.byAccount[account].divergences.map((c) => ({ account, ...c }))
     )
 
+    // Achado da revisão (codex, P1): antes, uma conta que falhou inteira
+    // devolvia `divergences: []` + `error`, e a condição só olhava
+    // divergências/ledger — ou seja, Asaas fora do ar ou banco indisponível
+    // produzia SILÊNCIO, exatamente a falha silenciosa que E7 existe para
+    // impedir (X3). Erro de reconciliação agora é alerta de primeira classe.
+    // Exceção deliberada: pré-cutover a conta legacy legitimamente não está
+    // provisionada (`resolveAsaasAccount("legacy")` lança) — alertar nisso
+    // todo dia seria ruído garantido, então esse caso específico não conta.
+    const failures = RECONCILED_ACCOUNTS.map((account) => ({
+      account,
+      error: report.byAccount[account].error,
+    })).filter(
+      (entry): entry is { account: AsaasAccountId; error: string } =>
+        entry.error !== null && !isAccountNotProvisionedError(entry.error)
+    )
+
     // "Ledger todo terminal -> sem alerta" (T-30.25): silêncio absoluto
     // quando não há nada a reportar — alerta é sinal, não ruído de rotina.
-    if (namedDivergences.length === 0 && report.staleLedgerRows.length === 0) {
+    if (
+      namedDivergences.length === 0 &&
+      report.staleLedgerRows.length === 0 &&
+      failures.length === 0
+    ) {
       return
     }
 
-    Sentry.captureMessage("[AsaasDualAccountReconciliation] divergências encontradas", {
-      level: "warning",
+    // Reconciliação que não rodou é pior que divergência encontrada: não se
+    // sabe o que há de errado. Por isso a falha escala a severidade.
+    const message =
+      failures.length > 0
+        ? "[AsaasDualAccountReconciliation] reconciliação falhou — janela dual sem verificação"
+        : "[AsaasDualAccountReconciliation] divergências encontradas"
+
+    Sentry.captureMessage(message, {
+      level: failures.length > 0 ? "error" : "warning",
       tags: { route: "AsaasDualAccountReconciliationCron" },
       extra: {
         divergenceCount: namedDivergences.length,
         divergences: namedDivergences,
         staleLedgerRows: report.staleLedgerRows,
+        failures,
       },
     })
   }

@@ -48,6 +48,23 @@ export type InventoryDumpShape = {
 }
 
 /**
+ * Achado da revisão (cursor + codex, P1): E2 silencia a conta ANTIGA. Nada
+ * no fluxo exigia `account === "legacy"`, e o inventário E1 sabe gerar dump
+ * `primary` — logo `--apply` sobre um dump da conta nova desligaria a
+ * notificação dos clientes ativos, que é justamente o canal de cobrança
+ * legítimo hoje. O escopo do estágio é a conta legada; qualquer outra conta
+ * é recusada antes de o gateway de escrita existir.
+ */
+export function assertLegacyAccountDump(dump: InventoryDumpShape): void {
+  if (dump.account !== "legacy") {
+    throw new Error(
+      `Recusado: E2 silencia apenas a conta "legacy", mas o dump informado é da conta "${dump.account}". ` +
+        "Silenciar a conta nova desligaria a notificação de cobrança dos clientes ativos."
+    )
+  }
+}
+
+/**
  * T-30.6: candidatos ao silenciamento = customers com notificação LIGADA
  * e não deletados. Vem do JSON do inventário (C7), nunca de lista embutida.
  */

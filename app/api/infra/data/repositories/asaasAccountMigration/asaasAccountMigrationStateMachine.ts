@@ -38,6 +38,27 @@ export class InvalidAsaasAccountMigrationTransitionError extends Error {
   }
 }
 
+/**
+ * Transição recusada porque o estado mudou entre a leitura e a escrita
+ * (compare-and-swap perdeu). Distinta de
+ * `InvalidAsaasAccountMigrationTransitionError`: lá a transição é ilegal
+ * por desenho; aqui ela era legal para o estado lido, mas outro worker
+ * chegou primeiro. O chamador pode reler e decidir — nunca reescrever cego.
+ */
+export class ConcurrentAsaasAccountMigrationUpdateError extends Error {
+  constructor(
+    readonly legacyCustomerId: string,
+    readonly expectedStatus: AsaasAccountMigrationStatus,
+    readonly toStatus: AsaasAccountMigrationStatus
+  ) {
+    super(
+      `Transição concorrente no ledger de migração Asaas (legacyCustomerId=${legacyCustomerId}): ` +
+        `esperava status "${expectedStatus}" para aplicar "${toStatus}", mas outra execução alterou a linha antes.`
+    )
+    this.name = "ConcurrentAsaasAccountMigrationUpdateError"
+  }
+}
+
 export function isValidAsaasAccountMigrationTransition(
   fromStatus: AsaasAccountMigrationStatus,
   toStatus: AsaasAccountMigrationStatus

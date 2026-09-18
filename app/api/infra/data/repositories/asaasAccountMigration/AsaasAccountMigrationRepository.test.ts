@@ -25,9 +25,23 @@ mock.module("@/app/api/infra/data/prisma", () => ({
 }))
 
 const { AsaasAccountMigrationRepository } = await import("./AsaasAccountMigrationRepository")
-const { InvalidAsaasAccountMigrationTransitionError } = await import(
-  "./asaasAccountMigrationStateMachine"
-)
+const { InvalidAsaasAccountMigrationTransitionError, ConcurrentAsaasAccountMigrationUpdateError } =
+  await import("./asaasAccountMigrationStateMachine")
+
+/**
+ * A transição virou compare-and-swap (achado codex P1): `updateMany` com o
+ * status observado no `where`, e um `findUnique` depois para devolver a
+ * linha. Este helper arma os dois lados: a leitura inicial devolve `current`
+ * e a releitura pós-escrita devolve `current` com o status novo.
+ */
+function armTransition(current: Record<string, unknown>, affectedRows = 1) {
+  let reads = 0
+  findUniqueMock.mockImplementation(async () => {
+    reads += 1
+    return reads === 1 ? current : { ...current, status: "any" }
+  })
+  updateManyMock.mockImplementation(async () => ({ count: affectedRows }))
+}
 
 function baseSnapshot() {
   return {
@@ -100,14 +114,14 @@ describe("AsaasAccountMigrationRepository", () => {
 
   describe("transition (T-30.11) — máquina de estados §9.4", () => {
     it("pending -> customer_created é uma transição válida", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_1",
         status: "pending",
         primaryCustomerId: null,
         primarySubscriptionId: null,
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
       await repo.transition({
@@ -116,9 +130,12 @@ describe("AsaasAccountMigrationRepository", () => {
         primaryCustomerId: "cus_new_1",
       })
 
-      expect(updateMock).toHaveBeenCalledWith(
+      // O `where` carrega o status OBSERVADO além do id: é o
+      // compare-and-swap que impede dois workers de aplicarem transições
+      // concorrentes sobre o mesmo estado lido (achado codex P1).
+      expect(updateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { legacyCustomerId: "cus_1" },
+          where: { legacyCustomerId: "cus_1", status: "pending" },
           data: expect.objectContaining({
             status: "customer_created",
             attemptCount: { increment: 1 },
@@ -128,15 +145,35 @@ describe("AsaasAccountMigrationRepository", () => {
       )
     })
 
+    it("compare-and-swap: 0 linhas afetadas (outro worker mudou o estado) lança e não reescreve cego", async () => {
+      armTransition(
+        {
+          legacyCustomerId: "cus_race",
+          status: "pending",
+          primaryCustomerId: null,
+          primarySubscriptionId: null,
+          anomalyNotes: null,
+          migratedAt: null,
+        },
+        0 // updateMany não encontrou a linha com o status esperado
+      )
+
+      const repo = new AsaasAccountMigrationRepository()
+
+      await expect(
+        repo.transition({ legacyCustomerId: "cus_race", toStatus: "customer_created" })
+      ).rejects.toThrow(ConcurrentAsaasAccountMigrationUpdateError)
+    })
+
     it("transição inválida pending -> legacy_deactivated (pulando etapas) é recusada e NÃO escreve no banco", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_2",
         status: "pending",
         primaryCustomerId: null,
         primarySubscriptionId: null,
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
 
@@ -144,41 +181,41 @@ describe("AsaasAccountMigrationRepository", () => {
         repo.transition({ legacyCustomerId: "cus_2", toStatus: "legacy_deactivated" })
       ).rejects.toThrow(InvalidAsaasAccountMigrationTransitionError)
 
-      expect(updateMock).not.toHaveBeenCalled()
+      expect(updateManyMock).not.toHaveBeenCalled()
     })
 
     it("subscription_created -> legacy_deactivated só avança com o novo confirmado (invariante 1) — subscription_created -> done direto é recusado", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_3",
         status: "subscription_created",
         primaryCustomerId: "cus_new_3",
         primarySubscriptionId: null,
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
 
       await expect(
         repo.transition({ legacyCustomerId: "cus_3", toStatus: "done" })
       ).rejects.toThrow(InvalidAsaasAccountMigrationTransitionError)
-      expect(updateMock).not.toHaveBeenCalled()
+      expect(updateManyMock).not.toHaveBeenCalled()
     })
 
     it("failed -> pending é o único retry permitido a partir de failed", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_4",
         status: "failed",
         primaryCustomerId: null,
         primarySubscriptionId: null,
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
       await repo.transition({ legacyCustomerId: "cus_4", toStatus: "pending" })
 
-      expect(updateMock).toHaveBeenCalledWith(
+      expect(updateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: "pending", lastError: null }),
         })
@@ -186,14 +223,14 @@ describe("AsaasAccountMigrationRepository", () => {
     })
 
     it("transição para failed grava lastError; transição de saída de failed limpa lastError", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_5",
         status: "pending",
         primaryCustomerId: null,
         primarySubscriptionId: null,
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
       await repo.transition({
@@ -202,7 +239,7 @@ describe("AsaasAccountMigrationRepository", () => {
         lastError: "Asaas 500",
       })
 
-      expect(updateMock).toHaveBeenCalledWith(
+      expect(updateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: "failed", lastError: "Asaas 500" }),
         })
@@ -210,19 +247,19 @@ describe("AsaasAccountMigrationRepository", () => {
     })
 
     it("legacy_deactivated -> done grava migratedAt", async () => {
-      findUniqueMock.mockImplementation(async () => ({
+      armTransition({
         legacyCustomerId: "cus_6",
         status: "legacy_deactivated",
         primaryCustomerId: "cus_new_6",
         primarySubscriptionId: "sub_new_6",
         anomalyNotes: null,
         migratedAt: null,
-      }))
+      })
 
       const repo = new AsaasAccountMigrationRepository()
       await repo.transition({ legacyCustomerId: "cus_6", toStatus: "done" })
 
-      const call = updateMock.mock.calls[0]?.[0] as { data: { migratedAt: Date } }
+      const call = updateManyMock.mock.calls[0]?.[0] as { data: { migratedAt: Date } }
       expect(call.data.migratedAt).toBeInstanceOf(Date)
     })
 
@@ -234,7 +271,7 @@ describe("AsaasAccountMigrationRepository", () => {
       await expect(
         repo.transition({ legacyCustomerId: "cus_inexistente", toStatus: "customer_created" })
       ).rejects.toThrow(/não encontrado/)
-      expect(updateMock).not.toHaveBeenCalled()
+      expect(updateManyMock).not.toHaveBeenCalled()
     })
   })
 

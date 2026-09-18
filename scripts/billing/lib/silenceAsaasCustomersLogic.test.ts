@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   assertApplyAuthorized,
+  assertLegacyAccountDump,
   parseSilenceArgs,
   selectCustomersToSilence,
   summarizeSilenceRun,
@@ -58,6 +59,20 @@ describe("assertApplyAuthorized (T-30.5)", () => {
         { ASAAS_SILENCE_CUSTOMERS_APPLY: "true" }
       )
     ).toThrow(/ASAAS_SILENCE_CUSTOMERS_APPLY/)
+  })
+})
+
+describe("assertLegacyAccountDump (achado P1 da revisão — cursor + codex)", () => {
+  it("dump legacy passa — é o escopo do estágio E2", () => {
+    expect(() =>
+      assertLegacyAccountDump({ account: "legacy", customers: { data: [] } })
+    ).not.toThrow()
+  })
+
+  it("dump primary é RECUSADO: silenciar a conta nova desligaria a cobrança dos clientes ativos", () => {
+    expect(() =>
+      assertLegacyAccountDump({ account: "primary", customers: { data: [] } })
+    ).toThrow(/apenas a conta "legacy"/)
   })
 })
 

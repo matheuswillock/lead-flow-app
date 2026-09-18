@@ -34,6 +34,7 @@ import {
 } from "./lib/asaasCustomerSilencingGateway"
 import {
   assertApplyAuthorized,
+  assertLegacyAccountDump,
   parseSilenceArgs,
   selectCustomersToSilence,
   summarizeSilenceRun,
@@ -104,6 +105,8 @@ async function main() {
   assertApplyAuthorized(args, process.env)
 
   const dump = loadInventoryDump(args.input)
+  // Antes de qualquer coisa que possa escrever: E2 é da conta legada.
+  assertLegacyAccountDump(dump)
   const candidates = selectCustomersToSilence(dump)
 
   logInfo(
@@ -125,6 +128,14 @@ async function main() {
   const summary = summarizeSilenceRun(dump.account, args.apply, results)
   process.stdout.write(JSON.stringify(summary, null, 2) + "\n")
   printSummary(summary)
+
+  // Achado da revisão (codex, P2): silenciamento parcial saía com exit 0 e
+  // um orquestrador leria "sucesso" com N customers ainda notificando. O
+  // relatório já nomeia cada falha; o exit code passa a refletir isso.
+  if (summary.failed > 0) {
+    logInfo(`[silence] ${summary.failed} customer(s) falharam — exit 1`)
+    process.exitCode = 1
+  }
 }
 
 main()

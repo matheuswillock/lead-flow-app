@@ -1460,11 +1460,17 @@ model BackofficeClient {
   phone              String?      @db.Text
   cpfCnpj            String?      @map("cpfCnpj") @db.Text
   notes              String?      @db.Text
-  asaasCustomerId    String?      @unique @map("asaasCustomerId") @db.Text
+  // Não é mais @unique isolado: durante a janela dual o mesmo `cus_` pode
+  // colidir entre as duas contas Asaas (C33) — a unicidade real é o par
+  // (asaasCustomerId, asaasAccount), ver @@unique abaixo. Mesmo tratamento
+  // que BackofficePayment.asaasPaymentId já recebeu (achado codex P2).
+  asaasCustomerId    String?      @map("asaasCustomerId") @db.Text
   // Conta Asaas dona do asaasCustomerId acima — 30 — Migração de Conta
-  // (execução) E3 (M2.2, §9.2). Default primary — mesmo motivo de
-  // ProfileSubscription.asaasSubscriptionAccount (achado cursor[bot] PR
-  // #1100), consistente com as demais colunas de conta já entregues.
+  // (execução) E3 (M2.2, §9.2). Nasce `primary` por ser o default do enum,
+  // mas as linhas que já existiam apontam para a conta ANTIGA e são
+  // relabeladas para `legacy` pela migration de backfill que acompanha esta
+  // coluna (achado codex/cursor P1: o cutover de 2026-08-31 já relabelara
+  // Profile/Adhesion/Payment, e esta coluna não existia naquele momento).
   asaasAccount       AsaasAccount @default(primary) @map("asaasAccount")
   isActive           Boolean      @default(true) @map("isActive")
   createdByProfileId String?      @map("createdByProfileId") @db.Uuid
@@ -1475,6 +1481,7 @@ model BackofficeClient {
   payments  BackofficePayment[]
   contracts BackofficeContract[]
 
+  @@unique([asaasCustomerId, asaasAccount], map: "backoffice_clients_asaas_customer_account_key")
   @@index([email], map: "backoffice_clients_email_idx")
   @@index([cpfCnpj], map: "backoffice_clients_cpf_cnpj_idx")
   @@index([isActive], map: "backoffice_clients_is_active_idx")

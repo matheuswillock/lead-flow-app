@@ -175,4 +175,39 @@ describe("AsaasDualAccountReconciliationUseCase (T-30.25 — E7/X3)", () => {
     expect(report.byAccount.primary.error).toMatch(/não provisionada/)
     expect(report.byAccount.legacy.error).toMatch(/não provisionada/)
   })
+
+  it("achado P1 (codex): falha de reconciliação NÃO pode ser silenciosa — alerta com level error", async () => {
+    fetchAllPagesMock.mockImplementation(async () => {
+      throw new Error("Asaas 503 Service Unavailable")
+    })
+
+    const useCase = new AsaasDualAccountReconciliationUseCase(buildDeps())
+    await useCase.execute()
+
+    expect(captureMessageMock).toHaveBeenCalledTimes(1)
+    const [message, context] = captureMessageMock.mock.calls[0] as [
+      string,
+      { level: string; extra: { failures: Array<{ account: string; error: string }> } },
+    ]
+    expect(message).toMatch(/reconciliação falhou/)
+    // Falha escala acima de "warning": a janela dual ficou sem verificação.
+    expect(context.level).toBe("error")
+    expect(context.extra.failures).toHaveLength(2)
+  })
+
+  it("conta legacy ainda não provisionada (pré-cutover) NÃO alerta — seria ruído diário garantido", async () => {
+    fetchAllPagesMock.mockImplementation(async (gateway: FakeGateway) => {
+      if (gateway.accountId === "legacy") {
+        throw new Error(
+          "Conta Asaas 'legacy' solicitada, mas ASAAS_LEGACY_API_KEY não está configurada"
+        )
+      }
+      return []
+    })
+
+    const useCase = new AsaasDualAccountReconciliationUseCase(buildDeps())
+    await useCase.execute()
+
+    expect(captureMessageMock).not.toHaveBeenCalled()
+  })
 })

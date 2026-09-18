@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   ASAAS_ACCOUNT_MIGRATION_TRANSITIONS,
+  ConcurrentAsaasAccountMigrationUpdateError,
   InvalidAsaasAccountMigrationTransitionError,
 } from "./asaasAccountMigrationStateMachine"
 import type {
@@ -62,8 +63,16 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
       )
     }
 
-    return prisma.asaasAccountMigration.update({
-      where: { legacyCustomerId: input.legacyCustomerId },
+    // Achado da revisão (codex, P1): o par read-then-update casava só por
+    // `legacyCustomerId`, então dois workers podiam ler o MESMO `status`,
+    // ambos validar a transição e ambos escrever — o segundo aplicando uma
+    // transição que já não era válida para o estado real. Numa máquina de
+    // estados que governa "desativar o legado" (invariante 1), essa é
+    // exatamente a corrida que não pode existir. O update vira
+    // compare-and-swap: o `where` exige o status observado, e 0 linhas
+    // afetadas significa que alguém mudou o estado no meio do caminho.
+    const updated = await prisma.asaasAccountMigration.updateMany({
+      where: { legacyCustomerId: input.legacyCustomerId, status: current.status },
       data: {
         status: input.toStatus,
         attemptCount: { increment: 1 },
@@ -77,6 +86,24 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
           input.toStatus === "done" ? (input.migratedAt ?? new Date()) : current.migratedAt,
       },
     })
+
+    if (updated.count === 0) {
+      throw new ConcurrentAsaasAccountMigrationUpdateError(
+        input.legacyCustomerId,
+        current.status,
+        input.toStatus
+      )
+    }
+
+    const refreshed = await prisma.asaasAccountMigration.findUnique({
+      where: { legacyCustomerId: input.legacyCustomerId },
+    })
+    if (!refreshed) {
+      throw new Error(
+        `AsaasAccountMigration desapareceu após a transição (legacyCustomerId=${input.legacyCustomerId})`
+      )
+    }
+    return refreshed
   }
 
   async countAll() {
