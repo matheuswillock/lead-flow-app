@@ -140,8 +140,23 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
 
   test("checkout-return com referência: só confirma depois de consultar o status (DA1)", async ({ page }) => {
     const reference = "pay_e2e_mock_confirmed";
+    let statusRequestCount = 0;
 
+    // Asserção anterior verificava a UI transitória "Recebemos seu retorno"
+    // (estado `checking`) antes de "Pagamento confirmado". Com um mock que
+    // resolve na mesma volta de rede (sem latência real), o primeiro poll já
+    // resolve terminal e o React troca de `checking` para `confirmed` antes
+    // de qualquer snapshot do Playwright capturar o intermediário — não é
+    // regressão, é o componente confirmando o mais rápido possível depois de
+    // já ter consultado (ver `error-context.md` da falha: o DOM já chega com
+    // "Pagamento confirmado" na primeira leitura). `resolveInitialCheckoutReturnStatus`
+    // (checkoutReturnStatus.ts) garante que o estado inicial com referência é
+    // sempre `checking`, nunca `confirmed` direto — o invariante real do DA1
+    // ("só confirma depois de consultar") é contado pela rede, não pela UI
+    // efêmera: por isso o teste agora prova que a rota de status foi
+    // realmente chamada antes de aceitar o heading final.
     await page.route(`**/api/q/payments/${reference}/status**`, async (route) => {
+      statusRequestCount += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -155,8 +170,8 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
     });
 
     await page.goto(`/checkout-return?payment=${reference}`);
-    await expect(page.getByRole("heading", { name: "Recebemos seu retorno" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Pagamento confirmado" })).toBeVisible({ timeout: 10_000 });
+    expect(statusRequestCount, "confirmou sem nunca ter consultado o status do pagamento").toBeGreaterThan(0);
   });
 
   test("checkout-return com referência que nunca confirma: teto com saída honesta, nunca spinner eterno (DA3)", async ({
