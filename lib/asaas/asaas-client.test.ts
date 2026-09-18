@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import { createAsaasClient } from "./asaas-client"
+
+const addBreadcrumbMock = mock((_breadcrumb: Record<string, unknown>) => {})
+const captureMessageMock = mock((_message: string, _context?: Record<string, unknown>) => "")
+
+mock.module("@sentry/nextjs", () => ({
+  addBreadcrumb: addBreadcrumbMock,
+  captureMessage: captureMessageMock,
+}))
+
+const { createAsaasClient } = await import("./asaas-client")
 
 const ENV_KEYS = [
   "ASAAS_ENV",
@@ -17,6 +26,8 @@ beforeEach(() => {
     snapshot[key] = process.env[key]
     delete process.env[key]
   }
+  addBreadcrumbMock.mockClear()
+  captureMessageMock.mockClear()
 })
 
 afterEach(() => {
@@ -108,5 +119,80 @@ describe("createAsaasClient", () => {
     await expect(client.request(client.endpoints.customers)).rejects.toThrow(
       "ASAAS_API_KEY não configurada"
     )
+  })
+
+  describe("T-30.23 (E7/X3): observabilidade por conta", () => {
+    it("toda chamada carrega a tag de conta via breadcrumb, sucesso ou erro", async () => {
+      process.env.ASAAS_ENV = "sandbox"
+      process.env.ASAAS_API_KEY = "aact_primary_key"
+      const fetchMock = mock(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      // @ts-expect-error override global fetch for the test
+      globalThis.fetch = fetchMock
+
+      const client = createAsaasClient("primary")
+      await client.request(client.endpoints.customers)
+
+      expect(addBreadcrumbMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "asaas",
+          data: expect.objectContaining({ asaasAccount: "primary", entityIdPrefix: null }),
+        })
+      )
+    })
+
+    it("404 em cus_/sub_/pay_ na conta legacy dispara alerta com fingerprint dedicado", async () => {
+      process.env.ASAAS_ENV = "sandbox"
+      process.env.ASAAS_LEGACY_API_KEY = "aact_legacy_key"
+      const fetchMock = mock(
+        async () => new Response(JSON.stringify({ errors: [] }), { status: 404 })
+      )
+      // @ts-expect-error override global fetch for the test
+      globalThis.fetch = fetchMock
+
+      const client = createAsaasClient("legacy")
+
+      await expect(
+        client.request(`${client.endpoints.customers}/cus_dead`)
+      ).rejects.toThrow()
+
+      expect(captureMessageMock).toHaveBeenCalledTimes(1)
+      const [, context] = captureMessageMock.mock.calls[0] as [
+        string,
+        { fingerprint: string[] },
+      ]
+      expect(context.fingerprint).toEqual(["asaas-legacy-404", "cus"])
+    })
+
+    it("404 na conta primary NÃO dispara o alerta de legado (só faz sentido na conta legacy)", async () => {
+      process.env.ASAAS_ENV = "sandbox"
+      process.env.ASAAS_API_KEY = "aact_primary_key"
+      const fetchMock = mock(
+        async () => new Response(JSON.stringify({ errors: [] }), { status: 404 })
+      )
+      // @ts-expect-error override global fetch for the test
+      globalThis.fetch = fetchMock
+
+      const client = createAsaasClient("primary")
+
+      await expect(client.request(`${client.endpoints.customers}/cus_dead`)).rejects.toThrow()
+
+      expect(captureMessageMock).not.toHaveBeenCalled()
+    })
+
+    it("404 num endpoint sem prefixo de ID (listagem) NÃO dispara o alerta de legado", async () => {
+      process.env.ASAAS_ENV = "sandbox"
+      process.env.ASAAS_LEGACY_API_KEY = "aact_legacy_key"
+      const fetchMock = mock(
+        async () => new Response(JSON.stringify({ errors: [] }), { status: 404 })
+      )
+      // @ts-expect-error override global fetch for the test
+      globalThis.fetch = fetchMock
+
+      const client = createAsaasClient("legacy")
+
+      await expect(client.request(client.endpoints.customers)).rejects.toThrow()
+
+      expect(captureMessageMock).not.toHaveBeenCalled()
+    })
   })
 })

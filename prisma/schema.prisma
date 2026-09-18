@@ -178,6 +178,23 @@ enum AsaasAccount {
   @@map("asaas_account")
 }
 
+/// Estados do ledger de migração de conta Asaas — 30 — Migração de Conta
+/// (execução) E3 (M2.1, §9.4). Máquina de estados linear com retry manual
+/// (`failed -> pending`); `legacy_deactivated` é o passo intermediário entre
+/// confirmar a assinatura nova e gravar `done` — nunca pulado (invariante 1:
+/// o legado só é desativado depois do novo confirmado).
+enum AsaasAccountMigrationStatus {
+  pending
+  customer_created
+  subscription_created
+  legacy_deactivated
+  done
+  requires_card_reauth
+  failed
+
+  @@map("asaas_account_migration_status")
+}
+
 enum BackofficeWebhookTokenStatus {
   active
   replaced
@@ -1437,17 +1454,22 @@ model GoogleOAuthConnection {
 }
 
 model BackofficeClient {
-  id                 String   @id @default(uuid()) @db.Uuid
-  fullName           String   @map("fullName") @db.Text
-  email              String?  @db.Text
-  phone              String?  @db.Text
-  cpfCnpj            String?  @map("cpfCnpj") @db.Text
-  notes              String?  @db.Text
-  asaasCustomerId    String?  @unique @map("asaasCustomerId") @db.Text
-  isActive           Boolean  @default(true) @map("isActive")
-  createdByProfileId String?  @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  id                 String       @id @default(uuid()) @db.Uuid
+  fullName           String       @map("fullName") @db.Text
+  email              String?      @db.Text
+  phone              String?      @db.Text
+  cpfCnpj            String?      @map("cpfCnpj") @db.Text
+  notes              String?      @db.Text
+  asaasCustomerId    String?      @unique @map("asaasCustomerId") @db.Text
+  // Conta Asaas dona do asaasCustomerId acima — 30 — Migração de Conta
+  // (execução) E3 (M2.2, §9.2). Default primary — mesmo motivo de
+  // ProfileSubscription.asaasSubscriptionAccount (achado cursor[bot] PR
+  // #1100), consistente com as demais colunas de conta já entregues.
+  asaasAccount       AsaasAccount @default(primary) @map("asaasAccount")
+  isActive           Boolean      @default(true) @map("isActive")
+  createdByProfileId String?      @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime     @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
   creator   Profile?             @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   payments  BackofficePayment[]
@@ -4172,6 +4194,17 @@ model ProfileSubscription {
   adhesionId               String?             @unique @db.Uuid
   productId                String?             @db.Uuid
   asaasSubscriptionId      String?             @db.Text
+  // Conta Asaas dona do asaasSubscriptionId acima — 30 — Migração de Conta
+  // (execução) E3 (M2.2, §9.2). Coluna própria porque este pointer é
+  // distinto de Profile.asaasSubscriptionId (fluxo de adesão a produto via
+  // BackofficeAdhesion, não a assinatura legada direta no Profile).
+  // Default primary, não legacy como o desenho original de §9.2 propunha —
+  // mesma razão documentada em Profile.asaasCustomerAccount (achado
+  // cursor[bot] PR #1100): pré-cutover só existe o token/chave "primary", e
+  // uma linha nascendo "legacy" nunca bateria com a conta resolvida hoje.
+  // Consistência com as 5 colunas irmãs já entregues por [[10 — Fundações
+  // Multi-conta — Backend]] E4, todas @default(primary) pelo mesmo motivo.
+  asaasSubscriptionAccount AsaasAccount        @default(primary)
   asaasInstallmentId       String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
   subscriptionPlan         SubscriptionPlan?
@@ -4238,6 +4271,49 @@ model SubscriptionStateSnapshot {
   @@index([profileId], map: "subscription_state_snapshots_profile_id_idx")
   @@index([capturedAt], map: "subscription_state_snapshots_captured_at_idx")
   @@map("corretor_studio_subscription_state_snapshots")
+}
+
+/// Ledger da migração de conta Asaas — 30 — Migração de Conta (execução) E3
+/// (M2.3, §9.3, DA2/DA4). Trilha de auditoria auto-suficiente e fonte da
+/// tabela de controle: uma linha por customer legado, `legacyCustomerId`
+/// @unique garante idempotência por construção (rodar o populate duas vezes
+/// não duplica linha). `clientName`/`clientEmail` são congelados aqui de
+/// propósito — o relatório não pode depender de join com Profile, que pode
+/// ser deletado (implicação de retenção/LGPD tratada em E8/X1, não aqui).
+///
+/// S4 parcial (DA2, C3): a migration manual que cria esta tabela também cria
+/// um trigger que bloqueia DELETE sempre e bloqueia UPDATE nas colunas de
+/// snapshot do legado (legacy_customer_id, legacy_subscription_id,
+/// billing_type, cycle, value, next_due_date) uma vez preenchidas — mas
+/// deixa livres as colunas operacionais (status, attempt_count, last_error,
+/// primary_*, migrated_at, notifications_disabled, anomaly_notes), porque a
+/// máquina de estados precisa de retry `failed -> pending`. REVOKE total
+/// inviabilizaria esse retry — ver supabase/migrations por
+/// "protect-asaas-account-migrations-ledger".
+model AsaasAccountMigration {
+  id                    String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId             String                      @map("profile_id") @db.Uuid
+  clientName            String                      @map("client_name") @db.Text
+  clientEmail           String                      @map("client_email") @db.Text
+  legacyCustomerId      String                      @unique @map("legacy_customer_id") @db.Text
+  legacySubscriptionId  String?                     @map("legacy_subscription_id") @db.Text
+  primaryCustomerId     String?                     @map("primary_customer_id") @db.Text
+  primarySubscriptionId String?                     @map("primary_subscription_id") @db.Text
+  billingType           String?                     @map("billing_type") @db.Text
+  cycle                 String?                     @db.Text
+  value                 Decimal?                    @db.Decimal(12, 2)
+  nextDueDate           DateTime?                   @map("next_due_date") @db.Timestamptz(6)
+  notificationsDisabled Boolean                     @default(false) @map("notifications_disabled")
+  anomalyNotes          String?                     @map("anomaly_notes") @db.Text
+  status                AsaasAccountMigrationStatus @default(pending)
+  attemptCount          Int                         @default(0) @map("attempt_count")
+  lastError             String?                     @map("last_error") @db.Text
+  migratedAt            DateTime?                   @map("migrated_at") @db.Timestamptz(6)
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status], map: "corretor_studio_asaas_account_migrations_status_idx")
+  @@map("corretor_studio_asaas_account_migrations")
 }
 
 model ProfileSubscriptionCapacity {

@@ -232,6 +232,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/v1/billing/cron/asaas-dual-account-reconciliation",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/v1/backoffice/cron/provision-live-campaign",
       "schedule": "0 16 * * 4"
     },
