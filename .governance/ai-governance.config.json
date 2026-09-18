@@ -129,7 +129,6 @@
       "app/(auth)/sign-in",
       "app/auth/callback",
       "app/cookies",
-      "app/operator-confirmed",
       "app/pix-confirmed",
       "app/privacy-policy",
       "app/set-password",
@@ -390,7 +389,6 @@
       "app/backoffice/(app)/users/page.tsx",
       "app/backoffice/(app)/whatsapp/page.tsx",
       "app/backoffice/sign-in/page.tsx",
-      "app/checkout-return/page.tsx",
       "app/contrato/[token]/page.tsx",
       "app/cookies/page.tsx",
       "app/documentos/[token]/page.tsx",
@@ -399,9 +397,7 @@
       "app/lead-form/[supabaseId]/[teamId]/page.tsx",
       "app/lead-form/[supabaseId]/page.tsx",
       "app/oferta/[token]/page.tsx",
-      "app/operator-confirmed/page.tsx",
       "app/page.tsx",
-      "app/pix-confirmed/page.tsx",
       "app/prime/page.tsx",
       "app/privacy-policy/page.tsx",
       "app/recursos/[slug]/page.tsx",
@@ -428,6 +424,9 @@
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/checkout-return/page.tsx": "e2e/specs/checkout/public-checkout-states.spec.ts",
+      "app/operator-confirmed/page.tsx": "e2e/specs/checkout/public-checkout-states.spec.ts",
+      "app/pix-confirmed/page.tsx": "e2e/specs/checkout/public-checkout-states.spec.ts",
       "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
     }
   }
