@@ -60,7 +60,12 @@ export interface EmailBetaAccessContext {
 
 export interface IFeatureAccessRepository {
   listActiveFeatures(): Promise<ActiveFeatureRecord[]>
-  findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
+  findOwnerProfile(
+    ownerProfileId: string
+  ): Promise<Pick<
+    Profile,
+    "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+  > | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
     (Pick<
       ProfileSubscription,

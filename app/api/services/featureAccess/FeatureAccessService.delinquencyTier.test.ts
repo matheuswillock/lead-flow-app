@@ -64,6 +64,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   currentUserRole = makeUserRole()
   ownerSubscriptionStatus: SubscriptionStatus | null = "past_due"
   ownerSubscriptionNextDueDate: Date | null = null
+  ownerProfileNextDueDate: Date | null = null
   ownerHasPermanentSubscription = false
 
   async listActiveFeatures() {
@@ -71,7 +72,11 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 
   async findOwnerProfile() {
-    return { hasPermanentSubscription: false, subscriptionStatus: this.ownerSubscriptionStatus }
+    return {
+      hasPermanentSubscription: false,
+      subscriptionStatus: this.ownerSubscriptionStatus,
+      subscriptionNextDueDate: this.ownerProfileNextDueDate,
+    }
   }
 
   async findOwnerProfileSubscription() {
@@ -113,6 +118,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
     repository = new FakeFeatureAccessRepository()
     repository.features = [
       makeFeature({ id: "feature-crm", slug: "crm", productSlug: null }),
+      makeFeature({ id: "feature-crm-automations", slug: "crm-automations", productSlug: null }),
       makeFeature({ id: "feature-email", slug: "email", productSlug: "email" }),
       makeFeature({ id: "feature-whatsapp", slug: "whatsapp", productSlug: "whatsapp" }),
     ]
@@ -185,6 +191,48 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
     })
 
     expect(access.slugs).toContain("crm")
+    expect(access.slugs).toContain("email")
+    expect(access.slugs).toContain("whatsapp")
+  })
+
+  it("crm_only preserva crm-automations (ausente de FEATURE_PRODUCT_SLUG_MAP) — achado cursor PR #1198", async () => {
+    repository.ownerSubscriptionNextDueDate = daysAgo(10)
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).toContain("crm-automations")
+    expect(access.slugs).not.toContain("email")
+  })
+
+  it("due date só no Profile (webhook não sincronizou a ProfileSubscription) → degrau aplica mesmo assim", async () => {
+    repository.ownerSubscriptionNextDueDate = null
+    repository.ownerProfileNextDueDate = daysAgo(10)
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).not.toContain("email")
+  })
+
+  it("ProfileSubscription velha e Profile fresca → NÃO degrada (usa a data mais recente)", async () => {
+    repository.ownerSubscriptionNextDueDate = daysAgo(40)
+    repository.ownerProfileNextDueDate = daysAgo(1)
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
     expect(access.slugs).toContain("email")
     expect(access.slugs).toContain("whatsapp")
   })

@@ -10,7 +10,11 @@ import type {
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
-import { resolveDelinquencyTier } from "@/lib/billing/delinquency-tier"
+import {
+  isAllowedUnderCrmOnly,
+  resolveDelinquencyTier,
+  resolveEffectiveNextDueDate,
+} from "@/lib/billing/delinquency-tier"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
 
@@ -168,7 +172,10 @@ export class FeatureAccessService implements IFeatureAccessService {
     // mesmo resultado do gate de assinatura inativa acima.
     const delinquencyTier = resolveDelinquencyTier({
       subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus,
-      subscriptionNextDueDate: ownerProfileSubscription?.subscriptionNextDueDate ?? null,
+      subscriptionNextDueDate: resolveEffectiveNextDueDate(
+        ownerProfileSubscription?.subscriptionNextDueDate,
+        ownerProfile?.subscriptionNextDueDate,
+      ),
       hasPermanentSubscription: hasPermanentAccess,
     })
 
@@ -333,7 +340,7 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     if (delinquencyTier === "crm_only") {
       for (const slug of Array.from(allowedSlugs)) {
-        if (FEATURE_PRODUCT_SLUG_MAP[slug] !== "crm") {
+        if (!isAllowedUnderCrmOnly(slug)) {
           allowedSlugs.delete(slug)
         }
       }

@@ -16,18 +16,21 @@ mock.module("@/lib/services/EmailService", () => ({
   }),
 }))
 
-const findPastDueSubscriptionsForDunningMock = mock(async () => [] as unknown[])
-const hasDelinquencyNoticeSinceMock = mock(async () => false)
+const findPastDueSubscriptionsForDunningMock = mock(
+  async (_params: { take: number; notBefore: Date }) => [] as unknown[]
+)
+const hasDelinquencyNoticeSinceMock = mock(
+  async (_params: { profileId: string; eventType: string; changeType: string; since: Date }) => false
+)
+const recordDelinquencyNoticeMock = mock(
+  async (_input: { profileId: string; eventType: string; [key: string]: unknown }) => {}
+)
 mock.module("@/app/api/infra/data/repositories/billing/BillingEngineRepository", () => ({
   billingEngineRepository: {
     findPastDueSubscriptionsForDunning: findPastDueSubscriptionsForDunningMock,
     hasDelinquencyNoticeSince: hasDelinquencyNoticeSinceMock,
+    recordDelinquencyNotice: recordDelinquencyNoticeMock,
   },
-}))
-
-const logSubscriptionChangeMock = mock(async (_input: { profileId: string; eventType?: string | null; [key: string]: unknown }) => {})
-mock.module("@/lib/billing/logSubscriptionChange", () => ({
-  logSubscriptionChange: logSubscriptionChangeMock,
 }))
 
 const { OverdueReminderUseCase } = await import("./OverdueReminderUseCase")
@@ -47,6 +50,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
       fullName: "Cliente Exemplo",
       supabaseId: "supabase-1",
       timezone: "America/Sao_Paulo",
+      subscriptionNextDueDate: null,
     },
     ...overrides,
   }
@@ -63,8 +67,8 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
       success: true,
       error: undefined,
     }))
-    logSubscriptionChangeMock.mockReset()
-    logSubscriptionChangeMock.mockImplementation(async () => {})
+    recordDelinquencyNoticeMock.mockReset()
+    recordDelinquencyNoticeMock.mockImplementation(async () => {})
   })
 
   it("dia 10 (crm_only) sem aviso prévio → envia e-mail com tier crm_only e loga eventType reduced", async () => {
@@ -79,8 +83,8 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
       userEmail: "cliente@example.com",
       tier: "crm_only",
     })
-    expect(logSubscriptionChangeMock).toHaveBeenCalledTimes(1)
-    expect(logSubscriptionChangeMock.mock.calls[0][0]).toMatchObject({
+    expect(recordDelinquencyNoticeMock).toHaveBeenCalledTimes(1)
+    expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
       profileId: "profile-1",
       eventType: "reduced",
     })
@@ -95,7 +99,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     await useCase.processOverdueReminders()
 
     expect(sendDelinquencyReminderEmailMock.mock.calls[0][0]).toMatchObject({ tier: "cut_off" })
-    expect(logSubscriptionChangeMock.mock.calls[0][0]).toMatchObject({ eventType: "cut" })
+    expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({ eventType: "cut" })
   })
 
   it("dia 2 (dentro da tolerância, full_access) → não envia nenhum e-mail", async () => {
@@ -118,7 +122,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     const output = await useCase.processOverdueReminders()
 
     expect(sendDelinquencyReminderEmailMock).not.toHaveBeenCalled()
-    expect(logSubscriptionChangeMock).not.toHaveBeenCalled()
+    expect(recordDelinquencyNoticeMock).not.toHaveBeenCalled()
     expect(output.result).toMatchObject({ sent: 0, deduped: 1 })
   })
 
@@ -132,7 +136,40 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    expect(logSubscriptionChangeMock).not.toHaveBeenCalled()
+    expect(recordDelinquencyNoticeMock).not.toHaveBeenCalled()
     expect(output.result).toMatchObject({ failed: 1 })
+  })
+
+  it("query recebe notBefore = hoje - 5 dias: o SQL já exclui a janela de tolerância (achado cursor/codex PR #1198)", async () => {
+    const useCase = new OverdueReminderUseCase()
+    await useCase.processOverdueReminders()
+
+    const params = findPastDueSubscriptionsForDunningMock.mock.calls[0][0]
+    const cutoffDaysAgo = (Date.now() - params.notBefore.getTime()) / (24 * 60 * 60 * 1000)
+    expect(cutoffDaysAgo).toBeGreaterThan(4.9)
+    expect(cutoffDaysAgo).toBeLessThan(5.1)
+  })
+
+  it("dedupe é restrito ao changeType do lembrete — evento reduced/cut do PaymentValidationService não conta (achado codex P2)", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
+
+    const useCase = new OverdueReminderUseCase()
+    await useCase.processOverdueReminders()
+
+    expect(hasDelinquencyNoticeSinceMock.mock.calls[0][0]).toMatchObject({
+      changeType: "delinquency_tier_reminder",
+    })
+  })
+
+  it("falha ao gravar a marca de dedupe é contada e visível — não vira 'enviado' silencioso (achado codex P2)", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
+    recordDelinquencyNoticeMock.mockImplementation(async () => {
+      throw new Error("db down")
+    })
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect(output.result).toMatchObject({ sent: 1, noticeLogFailed: 1 })
   })
 })
