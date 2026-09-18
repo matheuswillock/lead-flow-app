@@ -244,6 +244,13 @@ test.describe("app/backoffice/(app)/pricing", () => {
     });
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
-    await runResponsiveChecks(page);
+    // `ignoreSelector`: esse passo recarrega e mede enquanto o fetch ainda
+    // corre, então o spinner de loading global (`components/global-loading.tsx`,
+    // Lucide Loader2 com `animate-spin`) ainda está montado. É o "spinner
+    // legítimo de loading" que a própria opção documenta — indicador de
+    // progresso, não animação decorativa.
+    await runResponsiveChecks(page, {
+      reducedMotion: { ignoreSelector: ".lucide-loader-circle" },
+    });
   });
 });

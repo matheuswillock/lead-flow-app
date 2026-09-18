@@ -22,7 +22,7 @@ export function BackofficePricingContainer() {
           </p>
         </div>
         {canManage && (
-          <Button type="button" onClick={openCreateDialog}>
+          <Button type="button" onClick={openCreateDialog} className="max-lg:h-11">
             <Plus data-icon="inline-start" />
             Nova precificação
           </Button>
