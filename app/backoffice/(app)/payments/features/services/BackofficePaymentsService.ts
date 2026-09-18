@@ -5,6 +5,7 @@ import type {
 } from "./IBackofficePaymentsService"
 import type { BackofficeClientItem } from "./IBackofficePaymentsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -13,14 +14,22 @@ interface OutputResponse<T> {
   result?: T
 }
 
-export class BackofficePaymentsRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly isValidationError: boolean
-  ) {
-    super(message)
+/**
+ * Estende `ApiRequestError` de propósito: `toUserToastMessage` só repassa a
+ * mensagem intacta quando `isApiRequestError(error)` é true. Herdando de
+ * `Error` puro, a copy de produto caía na heurística de acento/marcador e
+ * mensagem legítima sem acento virava "Ocorreu um erro." — medido nas rotas
+ * reais de payments: `Acesso negado` (403 do `getBackofficeAccess`) e
+ * `Valor deve ser maior que zero` (400 do UseCase). Numa tela de dinheiro,
+ * trocar falha silenciosa por falha vaga não é conserto.
+ */
+export class BackofficePaymentsRequestError extends ApiRequestError {
+  readonly isValidationError: boolean
+
+  constructor(message: string, status: number, isValidationError: boolean) {
+    super(message, status)
     this.name = "BackofficePaymentsRequestError"
+    this.isValidationError = isValidationError
   }
 }
 

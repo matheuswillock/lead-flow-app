@@ -57,6 +57,41 @@ describe("BackofficePaymentsService (T-51.3)", () => {
     )
   })
 
+  it("mensagem de negócio SEM acento chega intacta ao toast (não vira 'Ocorreu um erro.')", async () => {
+    // Regressão do review do PR #1200: `toUserToastMessage` só repassa a copy
+    // quando `isApiRequestError(error)` é true. Com o erro herdando de `Error`
+    // puro, estas duas mensagens REAIS das rotas de payments caíam na
+    // heurística de acento/marcador e viravam a genérica — trocando a falha
+    // silenciosa por uma falha vaga justamente na tela onde o operador decide
+    // se cobra de novo.
+    const semAcento = [
+      { message: "Acesso negado", status: 403 }, // getBackofficeAccess
+      { message: "Valor deve ser maior que zero", status: 400 }, // BackofficePaymentUseCase
+    ]
+
+    for (const { message, status } of semAcento) {
+      const fetchMock = mock(async () =>
+        Response.json({ isValid: false, errorMessages: [message] }, { status })
+      )
+      ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+      const { BackofficePaymentsService } = await import("./BackofficePaymentsService")
+      const { isApiRequestError } = await import("@/lib/http/api-request-error")
+      const { toUserToastMessage } = await import("@/lib/ui/to-user-toast-message")
+      const service = new BackofficePaymentsService()
+
+      let caught: unknown
+      try {
+        await service.create({ clientId: "client-1", amount: 0 })
+      } catch (err) {
+        caught = err
+      }
+
+      expect(isApiRequestError(caught)).toBe(true)
+      expect(toUserToastMessage(caught)).toBe(message)
+    }
+  })
+
   it("sucesso preserva o result intacto (create resolve com o item criado)", async () => {
     const createdPayment = {
       id: "payment-1",
