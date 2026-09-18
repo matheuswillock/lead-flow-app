@@ -194,10 +194,17 @@ describe("BillingInventoryRepository — escopo por conta", () => {
   })
 
   describe("listSubscriptionPointers", () => {
-    it("continua escopando pelo Profile, não pela coluna própria sem writer", async () => {
-      // Cenário que o banco produz hoje: a coluna de 30-E3 nasceu com
-      // `default 'primary'` e ninguém a escreve, enquanto o Profile já foi
-      // movido para legacy. Filtrar pela coluna própria perderia esta linha.
+    it("escopa pela coluna própria da assinatura, não mais pelo Profile", async () => {
+      // A versão anterior deste teste fixava o filtro pela relação com
+      // Profile, sob a premissa de que a coluna de 30-E3 nascia
+      // `default 'primary'` e ninguém a escrevia. Essa premissa caiu com
+      // 20260918150645_backfill-legacy-account-new-pointer-columns.sql
+      // (achado P1 da revisão), que relabela para 'legacy' todo ponteiro
+      // anterior ao cutover — a coluna passou a carregar a verdade.
+      //
+      // O cenário abaixo é o que a janela dual produz por desenho e que o
+      // proxy via Profile erra: o customer do perfil já foi movido para a
+      // conta nova enquanto ESTA assinatura ainda drena na antiga.
       subscriptionRows = [
         {
           id: "ps-1",
@@ -205,8 +212,8 @@ describe("BillingInventoryRepository — escopo por conta", () => {
           asaasSubscriptionId: "sub_1",
           subscriptionStatus: "active",
           subscriptionEndDate: null,
-          asaasSubscriptionAccount: "primary",
-          profile: { asaasSubscriptionAccount: "legacy" },
+          asaasSubscriptionAccount: "legacy",
+          profile: { asaasSubscriptionAccount: "primary" },
         },
       ]
       const repo = new BillingInventoryRepository()
@@ -218,7 +225,7 @@ describe("BillingInventoryRepository — escopo por conta", () => {
         expect.objectContaining({
           where: {
             asaasSubscriptionId: { not: null },
-            profile: { asaasSubscriptionAccount: "legacy" },
+            asaasSubscriptionAccount: "legacy",
           },
         })
       )

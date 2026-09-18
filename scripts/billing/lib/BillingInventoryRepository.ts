@@ -60,23 +60,23 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
   }
 
   async listSubscriptionPointers(account: AsaasAccountId): Promise<DbSubscriptionPointer[]> {
-    // `ProfileSubscription.asaasSubscriptionAccount` nasceu em 30-E3 e é, no
-    // desenho, o dono certo deste sub_ (o Profile pode apontar outro, do
-    // fluxo legado direto). Mesmo assim o filtro continua indo pela relação
-    // com Profile — de propósito, e o motivo é medível: a coluna nova entrou
-    // como `not null default 'primary'` e NENHUM caminho de escrita a
-    // preenche ainda (nem a migration faz backfill). Filtrar por ela hoje
-    // seria ler um valor constante: a execução `legacy` não devolveria
-    // ponteiro nenhum e toda assinatura viva da conta legada viraria
-    // FANTASMA falso; a execução `primary` puxaria também as assinaturas de
-    // profiles já movidos, virando ORFAO falso. Trocar o filtro para a
-    // coluna própria só passa a ser correto depois que existir writer +
-    // backfill — aí este comentário sai junto com a troca.
+    // `ProfileSubscription.asaasSubscriptionAccount` (30-E3) é o dono certo
+    // deste `sub_` — o Profile pode apontar outro, do fluxo legado direto.
+    // O filtro agora vai na coluna própria, e não mais pela relação com
+    // Profile. A ressalva que segurava essa troca era a ausência de
+    // backfill: a coluna nasceu `not null default 'primary'`, então ler por
+    // ela devolvia valor constante. Isso deixou de valer com
+    // 20260918150645_backfill-legacy-account-new-pointer-columns.sql, que
+    // relabela para 'legacy' todo ponteiro anterior ao cutover (achado P1 da
+    // revisão). Usar Profile como proxy era aproximação boa só enquanto as
+    // duas contas coincidiam por perfil — na janela dual elas divergem por
+    // desenho (customer já migrado, assinatura ainda drenando na antiga), e
+    // é justamente aí que o inventário precisa acertar.
     const [profileSubscriptions, fallbackProfiles] = await Promise.all([
       prisma.profileSubscription.findMany({
         where: {
           asaasSubscriptionId: { not: null },
-          profile: { asaasSubscriptionAccount: account },
+          asaasSubscriptionAccount: account,
         },
         select: {
           id: true,
