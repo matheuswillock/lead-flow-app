@@ -18,6 +18,25 @@ describe("parseCreditQuantityInput / isCreditQuantityInvalid (T-21.11, regressã
     expect(isCreditQuantityInvalid({ quantity: Number.NaN, action: "add", maxRemovable: 10 })).toBe(true)
   })
 
+  it("fracionário '1.5' é REJEITADO, nunca truncado para 1 (achado P2 do Codex, PR #1199)", () => {
+    // Com `Number.parseInt` isto virava 1, `Number.isInteger(1)` passava, e o
+    // checkout saía com uma quantidade diferente da que o usuário digitou.
+    const quantity = parseCreditQuantityInput("1.5")
+    expect(quantity).toBe(1.5)
+    expect(isCreditQuantityInvalid({ quantity, action: "add", maxRemovable: 10 })).toBe(true)
+  })
+
+  it("notação científica '1e2' vale 100 (valor completo preservado, não truncado para 1)", () => {
+    const quantity = parseCreditQuantityInput("1e2")
+    expect(quantity).toBe(100)
+    expect(isCreditQuantityInvalid({ quantity, action: "add", maxRemovable: 0 })).toBe(false)
+  })
+
+  it("campo em branco vira NaN de propósito — Number('') seria 0 e escaparia da checagem de inteiro", () => {
+    expect(Number("")).toBe(0)
+    expect(Number.isNaN(parseCreditQuantityInput("   "))).toBe(true)
+  })
+
   it("texto não numérico → NaN → inválido", () => {
     const quantity = parseCreditQuantityInput("abc")
     expect(Number.isNaN(quantity)).toBe(true)

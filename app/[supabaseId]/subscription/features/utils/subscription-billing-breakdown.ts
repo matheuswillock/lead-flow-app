@@ -1,10 +1,24 @@
 /**
  * E4 (SPEC 21): o valor unitário exibido ("N × R$ X") tem que ser sempre
- * finito. O bug original dividia o preço total pela quantidade FATURÁVEL
- * (`billableTeams`/`billableUsers`), que pode ser 0 quando o cliente comprou
- * créditos extras e ainda não os usou — produzindo `Infinity` ("R$ ∞").
- * A correção divide pela quantidade CONTRATADA (a mesma que já aparece no
- * rótulo "N ×"), que é sempre > 0 quando este cálculo roda.
+ * finito E bater com a taxa que o backend realmente cobra.
+ *
+ * A fonte da verdade é `buildBillingSummary` (`app/api/shared/billing/billingSummary.ts`):
+ *
+ *   billableTeams   = Math.max(rawExtraTeams, contractedExtraTeams)
+ *   extraTeamsPrice = billableTeams * BILLING_PRICES.extraTeam
+ *
+ * Duas consequências que definem este módulo:
+ *
+ * 1. `extraPrice` é derivado da quantidade **faturável**, não da contratada.
+ *    Dividir por `contractedExtra` infla o unitário sempre que o uso real
+ *    passa dos créditos contratados (2 times faturáveis / 1 contratado
+ *    mostraria R$ 59,80/unidade quando o backend cobra R$ 29,90). O divisor
+ *    correto — e o multiplicando honesto no rótulo — é a quantidade
+ *    faturável. (Achado P1 do Codex no PR #1199.)
+ * 2. Como `billableTeams >= contractedExtraTeams`, usar a faturável também
+ *    fecha o bug original do "R$ ∞": o divisor é > 0 sempre que a linha é
+ *    renderizada, e a guarda abaixo cobre o resto (`hasUnlimitedUsers` zera
+ *    `billableUsers`, payload corrompido, etc.).
  */
 export type CreditResourceKind = 'team' | 'user';
 
@@ -14,48 +28,46 @@ const CREDIT_UNIT_PRICE_FALLBACK: Record<CreditResourceKind, number> = {
 };
 
 /**
- * DA4 (SubscriptionCreditsDialog): o valor unitário estimado para uma nova
- * compra de créditos usa a MESMA taxa já cobrada pelos créditos contratados
- * atuais (`extraPrice / contractedExtra`, derivado do backend) em vez de uma
- * constante fixa. Só cai no fallback local — sempre logado — quando o
- * backend ainda não tem nenhum crédito contratado desse tipo para derivar a
- * taxa (ex.: primeira compra de time extra).
+ * Taxa unitária efetiva = preço total do recurso / quantidade faturável.
+ * Nunca retorna `Infinity`/`NaN`: divisor <= 0 ou preço não finito caem no
+ * fallback local, que é sempre sinalizado via `onFallback` (DA4 — constante
+ * no bundle só como último recurso, e logada).
+ */
+export function resolveExtraUnitPrice(input: {
+  billableQuantity: number;
+  extraPrice: number | null | undefined;
+  fallback: number;
+  onFallback?: (fallback: number) => void;
+}): number {
+  if (
+    input.billableQuantity > 0 &&
+    typeof input.extraPrice === 'number' &&
+    Number.isFinite(input.extraPrice)
+  ) {
+    return input.extraPrice / input.billableQuantity;
+  }
+  input.onFallback?.(input.fallback);
+  return input.fallback;
+}
+
+/**
+ * DA4 (SubscriptionCreditsDialog): o custo estimado de uma compra nova usa a
+ * taxa marginal que o backend já aplica hoje — `extraPrice / billableQuantity`
+ * é exatamente `BILLING_PRICES.extraTeam`/`extraUser`. Só cai no fallback
+ * local (logado) quando não há quantidade faturável para derivar a taxa
+ * (ex.: primeira compra de time extra, ou plano com usuários ilimitados).
  */
 export function resolveCreditUnitPrice(input: {
   resource: CreditResourceKind;
-  contractedExtra: number;
+  billableQuantity: number;
   extraPrice: number | null | undefined;
   onFallback?: (resource: CreditResourceKind, fallback: number) => void;
 }): number {
   const fallback = CREDIT_UNIT_PRICE_FALLBACK[input.resource];
-  if (
-    input.contractedExtra > 0 &&
-    typeof input.extraPrice === 'number' &&
-    Number.isFinite(input.extraPrice)
-  ) {
-    return input.extraPrice / input.contractedExtra;
-  }
-  input.onFallback?.(input.resource, fallback);
-  return fallback;
-}
-
-export function resolveExtraUnitPrice(input: {
-  contractedExtra: number;
-  extraPrice: number | null | undefined;
-  fallback: number;
-  /**
-   * DA4: chamado só quando havia quantidade contratada mas o backend não
-   * mandou o preço (dado genuinamente faltando) — nunca no caso comum de
-   * "0 extras contratados", que não é erro e não deve virar ruído no console.
-   */
-  onFallback?: (fallback: number) => void;
-}): number {
-  if (input.contractedExtra <= 0) {
-    return input.fallback;
-  }
-  if (typeof input.extraPrice === 'number' && Number.isFinite(input.extraPrice)) {
-    return input.extraPrice / input.contractedExtra;
-  }
-  input.onFallback?.(input.fallback);
-  return input.fallback;
+  return resolveExtraUnitPrice({
+    billableQuantity: input.billableQuantity,
+    extraPrice: input.extraPrice,
+    fallback,
+    onFallback: () => input.onFallback?.(input.resource, fallback),
+  });
 }
