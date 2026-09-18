@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { prismaModuleMock, registerPrismaModuleMock } from "@/test/support/prisma-module-mock"
 import type { AsaasAccountId } from "@/lib/asaas/asaas-account"
 
 type ClientRow = {
@@ -94,14 +95,16 @@ const profileSubscriptionFindMany = mock(async (args: { where: Record<string, un
   )
 })
 
-mock.module("@/app/api/infra/data/prisma", () => ({
-  prisma: {
-    profile: { findMany: profileFindMany },
-    backofficeAdhesion: { findMany: backofficeAdhesionFindMany },
-    backofficeClient: { findMany: backofficeClientFindMany },
-    profileSubscription: { findMany: profileSubscriptionFindMany },
-  },
-}))
+// Fábrica compartilhada, nunca uma própria: `mock.module` é global do
+// processo e uma fábrica parcial congela o namespace incompleto, derrubando
+// o arquivo de teste VIZINHO (ver test/support/prisma-module-mock.ts).
+registerPrismaModuleMock()
+Object.assign(prismaModuleMock, {
+  profile: { findMany: profileFindMany },
+  backofficeAdhesion: { findMany: backofficeAdhesionFindMany },
+  backofficeClient: { findMany: backofficeClientFindMany },
+  profileSubscription: { findMany: profileSubscriptionFindMany },
+})
 
 const { BillingInventoryRepository } = await import("./BillingInventoryRepository")
 
