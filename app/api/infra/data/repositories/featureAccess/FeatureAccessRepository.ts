@@ -69,7 +69,10 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
   async findOwnerProfileSubscription(
     ownerProfileId: string
   ): Promise<
-    (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
+    (Pick<
+      ProfileSubscription,
+      "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+    > & {
       product: { featureSlugs: string[] } | null
     }) | null
   > {
@@ -78,6 +81,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
+        subscriptionNextDueDate: true,
         product: { select: { featureSlugs: true } },
       },
     })

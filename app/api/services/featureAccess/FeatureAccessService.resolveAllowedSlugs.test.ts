@@ -74,6 +74,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
     return {
       hasPermanentSubscription: false,
       subscriptionStatus: "active" as const,
+      subscriptionNextDueDate: null,
       product: null,
     }
   }

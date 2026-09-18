@@ -14,6 +14,19 @@ export type PastDueSubscriptionRow = {
   };
 };
 
+export type PastDueSubscriptionForDunningRow = {
+  profileId: string;
+  asaasSubscriptionId: string | null;
+  subscriptionStartDate: Date | null;
+  subscriptionNextDueDate: Date | null;
+  profile: {
+    email: string;
+    fullName: string | null;
+    supabaseId: string | null;
+    timezone: string;
+  };
+};
+
 class BillingEngineRepository {
   async findPastDueSubscriptions(params: {
     windowStart: Date;
@@ -36,6 +49,58 @@ class BillingEngineRepository {
       },
       take: params.take,
     });
+  }
+
+  /**
+   * 20 — Assinaturas — Backend E9 (Fase 4, T-20.28). Ao contrário de
+   * `findPastDueSubscriptions` (filtra por `updatedAt`, que ignora quem está
+   * em atraso há mais de PAST_DUE_INACTIVE_AFTER_DAYS — o bug citado na
+   * SPEC), esta busca todos os `past_due` com due date conhecida; o degrau
+   * (full_access/crm_only/cut_off) é resolvido em memória por
+   * `resolveDelinquencyTier`, não pela query.
+   */
+  async findPastDueSubscriptionsForDunning(params: {
+    take: number;
+  }): Promise<PastDueSubscriptionForDunningRow[]> {
+    return prisma.profileSubscription.findMany({
+      where: {
+        subscriptionStatus: "past_due",
+        hasPermanentSubscription: false,
+        subscriptionNextDueDate: { not: null },
+      },
+      select: {
+        profileId: true,
+        asaasSubscriptionId: true,
+        subscriptionStartDate: true,
+        subscriptionNextDueDate: true,
+        profile: {
+          select: { email: true, fullName: true, supabaseId: true, timezone: true },
+        },
+      },
+      take: params.take,
+    });
+  }
+
+  /**
+   * Dedupe do lembrete de inadimplência (T-20.28): já existe um evento
+   * `reduced`/`cut` na timeline (SubscriptionChangeLog, append-only) para
+   * este perfil desde o início do ciclo de atraso atual? Evita reenviar o
+   * mesmo aviso a cada execução do cron.
+   */
+  async hasDelinquencyNoticeSince(params: {
+    profileId: string;
+    eventType: "reduced" | "cut";
+    since: Date;
+  }): Promise<boolean> {
+    const found = await prisma.subscriptionChangeLog.findFirst({
+      where: {
+        profileId: params.profileId,
+        eventType: params.eventType,
+        createdAt: { gte: params.since },
+      },
+      select: { id: true },
+    });
+    return found !== null;
   }
 
   async findProfileSubscriptionForPastDue(profileId: string) {

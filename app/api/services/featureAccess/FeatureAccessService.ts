@@ -10,6 +10,7 @@ import type {
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import { resolveDelinquencyTier } from "@/lib/billing/delinquency-tier"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
 
@@ -156,6 +157,22 @@ export class FeatureAccessService implements IFeatureAccessService {
     // ownerProfile + ownerProfileSubscription já foram buscados acima.
     const accountSubscriptionActive = hasPermanentAccess || hasActiveMainSubscription
     if (!accountSubscriptionActive || ownerBanned) {
+      return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
+    }
+
+    // 20 — Assinaturas — Backend E9 (Fase 4 do plano: "Inadimplência em
+    // degraus", T-20.28). `past_due` continua "ativa" para o gate binário
+    // acima (Diagnóstico §7.5 — mudar isso quebraria o cancelamento/retry
+    // durante o atraso curto), mas a partir do dia 5 sem pagar a conta perde
+    // acesso a tudo que não seja CRM, e a partir do dia 15 perde tudo — o
+    // mesmo resultado do gate de assinatura inativa acima.
+    const delinquencyTier = resolveDelinquencyTier({
+      subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus,
+      subscriptionNextDueDate: ownerProfileSubscription?.subscriptionNextDueDate ?? null,
+      hasPermanentSubscription: hasPermanentAccess,
+    })
+
+    if (delinquencyTier === "cut_off") {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
 
@@ -311,6 +328,14 @@ export class FeatureAccessService implements IFeatureAccessService {
 
       if (hasAccess) {
         allowedSlugs.add(feature.slug)
+      }
+    }
+
+    if (delinquencyTier === "crm_only") {
+      for (const slug of Array.from(allowedSlugs)) {
+        if (FEATURE_PRODUCT_SLUG_MAP[slug] !== "crm") {
+          allowedSlugs.delete(slug)
+        }
       }
     }
 
