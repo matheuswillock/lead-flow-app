@@ -1,10 +1,22 @@
+import { getDomain } from "tldts"
+
 /**
  * Validação do hostname do domínio de formulários do time.
  *
  * Aceita apenas um SUBDOMÍNIO lowercase de domínio válido (ex.:
  * forms.imobiliariax.com.br) — sem esquema, porta, path ou credenciais.
- * O apex (imobiliariax.com) é rejeitado: apex não aceita CNAME, e o fluxo de
- * instruções DNS entrega exatamente um CNAME.
+ * O apex é rejeitado: apex não aceita CNAME, e o fluxo de instruções DNS
+ * entrega exatamente um CNAME.
+ *
+ * A contagem de labels (`MIN_SUBDOMAIN_LABELS`) sozinha não basta: um apex
+ * brasileiro como `imobiliariax.com.br` já tem 3 labels e passaria como se
+ * fosse um subdomínio válido — o CNAME emitido apontaria
+ * `imobiliariax` → `imobiliariax.imobiliariax.com.br`, que nunca resolve, e a
+ * verificação fica eternamente pendente (achado P2 do codex no PR #1204). Por
+ * isso o veredito final usa `tldts#getDomain`, que conhece a Public Suffix
+ * List (inclui `.com.br`, `.net.br`, `.adv.br`, `.eng.br` etc.): quando o
+ * domínio registrável devolvido é igual ao input inteiro, o input É o apex,
+ * não importa quantos labels o sufixo público tenha.
  */
 
 export type FormDomainHostnameValidation =
@@ -60,6 +72,18 @@ export function validateFormDomainHostname(rawInput: string): FormDomainHostname
   const tld = labels[labels.length - 1]
   if (!/^[a-z]{2,}$/.test(tld)) {
     return { ok: false, error: "Subdomínio inválido (ex. válido: forms.suaempresa.com.br)" }
+  }
+
+  // Rejeita o apex mesmo quando o sufixo público tem mais de um label
+  // (`.com.br`, `.net.br`, `.adv.br`, `.eng.br`...) — ver nota no topo do
+  // arquivo. `getDomain` devolve o próprio input quando ele já é o domínio
+  // registrável, isto é, não sobra nenhum label de subdomínio real.
+  const registrableDomain = getDomain(input)
+  if (!registrableDomain || registrableDomain === input) {
+    return {
+      ok: false,
+      error: "Use um subdomínio do seu domínio (ex.: forms.suaempresa.com.br), não o domínio raiz",
+    }
   }
 
   return { ok: true, hostname: input }
