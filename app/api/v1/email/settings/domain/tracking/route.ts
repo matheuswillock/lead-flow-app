@@ -17,11 +17,10 @@ const trackingSchema = z
         "Use apenas letras minúsculas, números e hífen (ex.: links)"
       ),
     openTracking: z.boolean(),
-    // Aceito e descartado. O rastreio de cliques do Resend reescreve os links do
-    // e-mail para o subdomínio de tracking, e provedores marcam a mensagem como
-    // suspeita; os cliques já vêm do first-party do formulário. A UI não oferece
-    // mais o controle — a rota também não obedece a ele, senão a garantia
-    // dependeria só do cliente.
+    // Escolha por time desde 17/09 (antes era aceito e DESCARTADO). O use case
+    // é quem faz o gate: domínio próprio verificado + CNAME de Tracking
+    // resolvendo; o domínio compartilhado da plataforma permanece travado OFF.
+    // Ausente = preserva a escolha persistida do time.
     clickTracking: z.boolean().optional(),
   })
 
@@ -55,6 +54,7 @@ export async function PATCH(request: NextRequest) {
       {
         trackingSubdomain: validation.data.trackingSubdomain,
         openTracking: validation.data.openTracking,
+        clickTracking: validation.data.clickTracking,
       },
       teamAccess.access
     )

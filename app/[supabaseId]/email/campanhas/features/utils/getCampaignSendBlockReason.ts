@@ -92,6 +92,16 @@ export function getCampaignSendBlockReason(params: {
   )
   if (availabilityBlockReason) return availabilityBlockReason
 
+  // Trava de reputação: decidida no servidor (mesma fonte dos guards de
+  // create/disparo). Vem antes do gate de tracking — pausa de reputação não é
+  // problema de DNS e a orientação é outra (higienizar listas/liberar envio).
+  if (credits?.sendingHealthBlocked) {
+    return (
+      credits.sendingHealthBlockReason ??
+      "O envio de campanhas deste time está pausado pela trava de reputação."
+    )
+  }
+
   if (credits?.trackingDispatchBlocked) {
     return credits.trackingDispatchBlockReason ?? RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE
   }

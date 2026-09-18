@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  isHumanEmailEngagementEvent,
   profileClickedNotClosedInWindow,
   profileEngagedNoLeadInWindow,
   profileMatchesRadarSegment,
@@ -8,6 +9,10 @@ import {
 
 const NOW = new Date("2026-06-01T12:00:00.000Z").getTime()
 const RECENT_MS = 60 * 24 * 60 * 60 * 1000
+
+/** Engajamento de e-mail só conta com origem humana (17/09). */
+const HUMAN_ORIGIN = { origin: { classification: "human" } }
+const BOT_ORIGIN = { origin: { classification: "bot", botSource: "gmail-proxy" } }
 
 function daysAgo(days: number): Date {
   return new Date(NOW - days * 24 * 60 * 60 * 1000)
@@ -19,7 +24,51 @@ describe("profileOpenedNotClickedInWindow", () => {
       {
         eventType: "email.opened",
         occurredAt: daysAgo(5),
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
+      },
+    ]
+
+    expect(profileOpenedNotClickedInWindow(events, NOW, RECENT_MS)).toBe(true)
+  })
+
+  it("abertura de robô (proxy do provedor) não coloca o perfil no segmento", () => {
+    const events = [
+      {
+        eventType: "email.opened",
+        occurredAt: daysAgo(5),
+        metadata: { campaignId: "camp-a", ...BOT_ORIGIN },
+      },
+    ]
+
+    expect(profileOpenedNotClickedInWindow(events, NOW, RECENT_MS)).toBe(false)
+  })
+
+  it("abertura sem classificação de origem (histórico) não conta como engajamento", () => {
+    const events = [
+      {
+        eventType: "email.opened",
+        occurredAt: daysAgo(5),
         metadata: { campaignId: "camp-a" },
+      },
+    ]
+
+    expect(profileOpenedNotClickedInWindow(events, NOW, RECENT_MS)).toBe(false)
+  })
+
+  it("clique de scanner não 'apaga' a abertura humana do segmento abriu-sem-clicar", () => {
+    const events = [
+      {
+        eventType: "email.opened",
+        occurredAt: daysAgo(5),
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
+      },
+      {
+        eventType: "email.clicked",
+        occurredAt: daysAgo(4),
+        metadata: {
+          campaignId: "camp-a",
+          origin: { classification: "bot", botSource: "scanner" },
+        },
       },
     ]
 
@@ -31,12 +80,12 @@ describe("profileOpenedNotClickedInWindow", () => {
       {
         eventType: "email.opened",
         occurredAt: daysAgo(5),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
       {
         eventType: "email.clicked",
         occurredAt: daysAgo(4),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
     ]
 
@@ -48,12 +97,12 @@ describe("profileOpenedNotClickedInWindow", () => {
       {
         eventType: "email.opened",
         occurredAt: daysAgo(10),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
       {
         eventType: "email.clicked",
         occurredAt: daysAgo(8),
-        metadata: { campaignId: "camp-b" },
+        metadata: { campaignId: "camp-b", ...HUMAN_ORIGIN },
       },
     ]
 
@@ -65,7 +114,7 @@ describe("profileOpenedNotClickedInWindow", () => {
       {
         eventType: "email.opened",
         occurredAt: daysAgo(90),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
     ]
 
@@ -88,11 +137,26 @@ describe("profileClickedNotClosedInWindow", () => {
       {
         eventType: "email.clicked",
         occurredAt: daysAgo(3),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
     ]
 
     expect(profileClickedNotClosedInWindow(events, false, NOW, RECENT_MS)).toBe(true)
+  })
+
+  it("clique de robô/scanner não conta como clique de campanha", () => {
+    const events = [
+      {
+        eventType: "email.clicked",
+        occurredAt: daysAgo(3),
+        metadata: {
+          campaignId: "camp-a",
+          origin: { classification: "bot", botSource: "scanner" },
+        },
+      },
+    ]
+
+    expect(profileClickedNotClosedInWindow(events, false, NOW, RECENT_MS)).toBe(false)
   })
 
   it("não entra quando perfil está fechado", () => {
@@ -100,11 +164,39 @@ describe("profileClickedNotClosedInWindow", () => {
       {
         eventType: "email.clicked",
         occurredAt: daysAgo(3),
-        metadata: { campaignId: "camp-a" },
+        metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
       },
     ]
 
     expect(profileClickedNotClosedInWindow(events, true, NOW, RECENT_MS)).toBe(false)
+  })
+})
+
+describe("isHumanEmailEngagementEvent", () => {
+  it("form.* não passa pelo filtro de origem (first-party por construção)", () => {
+    expect(
+      isHumanEmailEngagementEvent({ eventType: "form.viewed", occurredAt: daysAgo(1) })
+    ).toBe(true)
+  })
+
+  it("email.* exige classificação humana; unknown e ausente não contam", () => {
+    expect(
+      isHumanEmailEngagementEvent({
+        eventType: "email.opened",
+        occurredAt: daysAgo(1),
+        metadata: HUMAN_ORIGIN,
+      })
+    ).toBe(true)
+    expect(
+      isHumanEmailEngagementEvent({
+        eventType: "email.opened",
+        occurredAt: daysAgo(1),
+        metadata: { origin: { classification: "unknown" } },
+      })
+    ).toBe(false)
+    expect(
+      isHumanEmailEngagementEvent({ eventType: "email.opened", occurredAt: daysAgo(1) })
+    ).toBe(false)
   })
 })
 
@@ -124,7 +216,7 @@ describe("profileMatchesRadarSegment", () => {
         {
           eventType: "email.opened",
           occurredAt: daysAgo(2),
-          metadata: { campaignId: "camp-a" },
+          metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
         },
       ],
     }
@@ -141,7 +233,7 @@ describe("profileMatchesRadarSegment", () => {
         {
           eventType: "email.clicked",
           occurredAt: daysAgo(2),
-          metadata: { campaignId: "camp-a" },
+          metadata: { campaignId: "camp-a", ...HUMAN_ORIGIN },
         },
       ],
     }
@@ -193,7 +285,9 @@ describe("profileEngagedNoLeadInWindow (G1)", () => {
   it("inclui perfil com evento de engajamento e sem lead_id", () => {
     const profile = {
       ...baseProfile,
-      events: [{ eventType: "email.opened", occurredAt: daysAgo(2) }],
+      events: [
+        { eventType: "email.opened", occurredAt: daysAgo(2), metadata: HUMAN_ORIGIN },
+      ],
     }
 
     expect(profileEngagedNoLeadInWindow(profile, NOW, RECENT_MS)).toBe(true)

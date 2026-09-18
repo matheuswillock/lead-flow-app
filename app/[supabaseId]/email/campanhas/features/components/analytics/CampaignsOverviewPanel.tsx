@@ -82,7 +82,7 @@ export function CampaignsOverviewPanel() {
     <div className="flex flex-col gap-4">
       <TrackingDegradedAlert
         warnings={data.trackingWarnings}
-        blocked={data.trackingDispatchBlocked}
+        blocked={data.trackingDispatchBlocked || data.sendingHealthBlocked}
       />
       <div className="grid gap-4 md:grid-cols-3">
         <OverviewMetric
@@ -97,11 +97,11 @@ export function CampaignsOverviewPanel() {
           isRate
         />
         <OverviewMetric
-          title="Taxa de Abertura (hoje)"
-          tooltip="Abertura medida pelo provedor; Apple/Gmail podem inflar — use o clique como sinal de intenção."
-          value={`${rates.openRate.toFixed(1)}%`}
-          subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
-          delta={deltas?.rates.openRate}
+          title="Aberturas reais (hoje)"
+          tooltip="Aberturas classificadas como humanas. A taxa bruta ao lado inclui robôs/proxies do provedor (Gmail, Apple, scanners)."
+          value={`${(rates.openRateHuman ?? 0).toFixed(1)}%`}
+          subtitle={`${(totals.openedHuman ?? 0).toLocaleString("pt-BR")} humanas · ${rates.openRate.toFixed(1)}% bruta`}
+          delta={deltas?.rates.openRateHuman}
           isRate
         />
         <OverviewMetric

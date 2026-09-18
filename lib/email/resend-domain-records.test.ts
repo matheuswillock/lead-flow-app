@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { deriveSendingDnsVerified, isSendingDnsRecord } from "./resend-domain-records"
+import {
+  deriveSendingDnsVerified,
+  deriveTrackingDnsVerified,
+  isSendingDnsRecord,
+} from "./resend-domain-records"
 
 describe("isSendingDnsRecord", () => {
   it("reconhece os registros que entregam e-mail", () => {
@@ -163,5 +167,46 @@ describe("deriveSendingDnsVerified", () => {
     // A assimetria que sustenta o desenho: ignorar o desconhecido nunca produz
     // `true` — liberar exige DKIM/SPF explicitamente verificados.
     expect(deriveSendingDnsVerified([{ record: "QualquerCoisa", status: "verified" }])).toBeUndefined()
+  })
+})
+
+describe("deriveTrackingDnsVerified — gate do click tracking", () => {
+  it("true quando o CNAME Tracking está presente e verificado", () => {
+    expect(
+      deriveTrackingDnsVerified([
+        { record: "DKIM", status: "verified" },
+        { record: "SPF", status: "verified" },
+        { record: "Tracking", status: "verified" },
+      ])
+    ).toBe(true)
+  })
+
+  it("false quando o Tracking existe mas não está verificado — bloqueia o toggle", () => {
+    expect(
+      deriveTrackingDnsVerified([
+        { record: "DKIM", status: "verified" },
+        { record: "Tracking", status: "pending" },
+      ])
+    ).toBe(false)
+  })
+
+  it("false quando o TrackingCAA presente reprova, mesmo com o CNAME ok", () => {
+    expect(
+      deriveTrackingDnsVerified([
+        { record: "Tracking", status: "verified" },
+        { record: "TrackingCAA", status: "failed" },
+      ])
+    ).toBe(false)
+  })
+
+  it("undefined quando o snapshot não traz o registro de Tracking — também bloqueia", () => {
+    expect(
+      deriveTrackingDnsVerified([
+        { record: "DKIM", status: "verified" },
+        { record: "SPF", status: "verified" },
+      ])
+    ).toBeUndefined()
+    expect(deriveTrackingDnsVerified([])).toBeUndefined()
+    expect(deriveTrackingDnsVerified(null)).toBeUndefined()
   })
 })

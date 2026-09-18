@@ -139,6 +139,15 @@ export type CreditStatus = {
   }
   trackingDispatchBlocked?: boolean
   trackingDispatchBlockReason?: string
+  /** Trava de reputação por time — decidida no servidor (EmailCreditUseCase). */
+  sendingHealthStatus?: string
+  sendingHealthBlocked?: boolean
+  sendingHealthBlockReason?: string
+  /**
+   * Só o master do time, e só em `paused`. `suspended` sai apenas pelo
+   * backoffice — a UI não pode oferecer ação que a API vai recusar.
+   */
+  canReleaseSendingHealth?: boolean
 }
 
 export type Template = {
@@ -235,6 +244,9 @@ export type CampanhasState = {
   loading: boolean
   credits: CreditStatus | null
   loadingCredits: boolean
+  /** Liberação manual da trava de reputação (owner, `paused`). */
+  releasingSendingHealth: boolean
+  releaseSendingHealth: () => Promise<boolean>
   pageSize: number
   nameFilter: string
   dateFrom: string

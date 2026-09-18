@@ -1,10 +1,42 @@
 import type { ContactListActiveImport } from "../context/ContatosTypes"
+import {
+  formatImportVerdictSummary,
+  IMPORT_RISK_LEVEL_LABELS,
+  type EmailImportRiskLevelValue,
+  type ImportValidationCounts,
+} from "@/lib/email/import-verdict-labels"
 
 export type ContactImportStatusView = {
   label: string
   secondaryLabel: string | null
   compact: boolean
   variant: "outline" | "secondary" | "destructive"
+}
+
+/**
+ * Linha do veredito no relatório de importação, só em job terminal com
+ * veredito persistido. Ex.:
+ * `1.240 válidos · 87 removidos (43 supressão (bounce), 22 sem MX) · risco: MÉDIO`.
+ */
+export function resolveImportVerdictLine(
+  activeImport: ContactListActiveImport
+): string | null {
+  const isTerminal =
+    activeImport.status === "completed" ||
+    activeImport.status === "completed_with_errors"
+  if (!isTerminal) return null
+
+  const counts = (activeImport.validationCounts ?? null) as ImportValidationCounts | null
+  const riskLevel = (activeImport.riskLevel ?? null) as EmailImportRiskLevelValue | null
+  if (!counts && !riskLevel) return null
+
+  const validCount = activeImport.importedCount + activeImport.updatedCount
+  const parts = [`${validCount.toLocaleString("pt-BR")} válidos`]
+  if (counts) parts.push(formatImportVerdictSummary(counts))
+  if (riskLevel && IMPORT_RISK_LEVEL_LABELS[riskLevel]) {
+    parts.push(`risco: ${IMPORT_RISK_LEVEL_LABELS[riskLevel]}`)
+  }
+  return parts.join(" · ")
 }
 
 export function resolveContactImportProgressLabel(

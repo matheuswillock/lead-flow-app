@@ -200,7 +200,13 @@ export class ReconcileResendDomainStatusUseCase {
     remote: ResendDomainSnapshot,
     tracking: TrackingTally
   ): Promise<ResendDomainSnapshot> {
-    const drift = resolveResendTrackingPolicyDrift(remote)
+    // Clique é escolha do time (persistida em `resendClickTracking`); abertura
+    // continua política fixa. O drift corrige o provedor nas duas direções —
+    // religa clique desligado por fora e desliga clique que o time não pediu.
+    const drift = resolveResendTrackingPolicyDrift(remote, {
+      teamClickTracking: team.resendClickTracking,
+      domainName: team.resendDomainName,
+    })
     if (!drift.needsUpdate) return remote
 
     const { error } = await this.updateTracking({

@@ -16,6 +16,10 @@ import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook
 import {
   resendDomainWebhookUseCase,
 } from "@/app/api/useCases/resendWebhook/ResendDomainWebhookUseCase"
+import {
+  classifyEmailEventOrigin,
+  type EmailEventOrigin,
+} from "@/lib/email/email-event-origin-classifier"
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
 
@@ -44,6 +48,32 @@ export class ResendWebhookUseCase {
     ) => Promise<{ messageId: string | null }> = defaultPublishRadarEvent
   ) {}
 
+  /**
+   * Origem de `opened`/`clicked` a partir dos sinais crus do payload. Os
+   * demais tipos não têm origem — devolve `undefined`.
+   *
+   * `deliveredAt` é opcional de propósito: no caminho órfão o `EmailLog` ainda
+   * não existe e a janela de pré-fetch não pode ser avaliada aqui; ela é
+   * reaplicada no dreno (`reinforceOriginWithDeliveryDelta`).
+   */
+  private classifyEventOrigin(input: {
+    event: ResendWebhookPayload
+    eventType: EmailEventType
+    occurredAt: Date
+    deliveredAt: Date | null
+  }): EmailEventOrigin | undefined {
+    const { event, eventType, occurredAt, deliveredAt } = input
+    if (eventType !== "opened" && eventType !== "clicked") return undefined
+
+    const rawSignals = eventType === "opened" ? event.data.open : event.data.click
+    return classifyEmailEventOrigin({
+      userAgent: rawSignals?.userAgent ?? null,
+      ipAddress: rawSignals?.ipAddress ?? null,
+      occurredAt,
+      deliveredAt,
+    })
+  }
+
   async handle(input: HandleResendWebhookInput): Promise<Output> {
     const { event, svixId } = input
 
@@ -60,13 +90,18 @@ export class ResendWebhookUseCase {
       return new Output(true, [], [], { handled: false, reason: "missing_email_id" })
     }
 
-    const occurredAt = event.data.created_at ? new Date(event.data.created_at) : new Date()
+    // Abertura/clique usam o timestamp REAL do evento (open/click.timestamp).
+    // Com `data.created_at` (hora de criação do e-mail, constante por
+    // mensagem), toda repetição de open colidia no dedupe por
+    // (logId, type, occurredAt) e sumia — ver ResendWebhookService.resolveOccurredAt.
+    const occurredAt = this.webhookService.resolveOccurredAt(event)
 
     const metadata: Record<string, unknown> = {}
     if (event.data.click) {
       metadata.link = event.data.click.link
       metadata.userAgent = event.data.click.userAgent
-      metadata.ipAddress = event.data.click.ipAddress
+      // `ipAddress` NÃO é persistido (LGPD): o IP entra só no classificador de
+      // origem, em memória, e vira `metadata.origin` — nunca o valor cru.
     }
     if (event.data.bounce) {
       metadata.bounceMessage = event.data.bounce.message
@@ -96,12 +131,30 @@ export class ResendWebhookUseCase {
             resendEventType: event.type,
             occurredAt,
             tagsHint,
+            // Os sinais crus de origem só existem NESTE payload: o dreno roda
+            // minutos depois, sem user-agent nem IP. Sem o carimbo aqui, todo
+            // open/clique recuperado voltaria sem origem e ficaria fora de
+            // `humanOpenedAt` e dos segmentos humanos do Radar. A janela de
+            // pré-fetch é reavaliada no dreno, quando a entrega é conhecida.
+            originHint: this.classifyEventOrigin({ event, eventType, occurredAt, deliveredAt: null }),
           })
         }
         log = await emailLogRepository.findByResendEmailId(resendEmailId)
       }
 
       if (log) {
+        // Classifica a origem de opened/clicked ANTES de persistir: proxies do
+        // provedor (Gmail image proxy, Apple MPP) e scanners não contam como
+        // engajamento humano. Decisão do owner (17/09): origem não-humana NÃO
+        // conta nas métricas de "Aberturas reais".
+        const origin = this.classifyEventOrigin({
+          event,
+          eventType,
+          occurredAt,
+          deliveredAt: log.deliveredAt,
+        })
+        if (origin) metadata.origin = origin
+
         await this.webhookService.processEmailLogWebhook({
           log,
           eventType,
@@ -109,6 +162,7 @@ export class ResendWebhookUseCase {
           metadata,
           resendEventType: event.type,
           svixId,
+          origin,
         })
 
         if (eventType === "bounced") {

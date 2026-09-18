@@ -77,12 +77,16 @@ export type StudioEmailAnalytics = {
     sent: number
     delivered: number
     opened: number
+    /** Aberturas humanas ("Aberturas reais"). */
+    openedHuman?: number
     clicked: number
     bounced: number
   }
   rates: {
     deliverabilityRate: number
     openRate: number
+    /** Taxa de aberturas humanas — a headline. */
+    openRateHuman?: number
     clickRate: number
     bounceRate: number
   }

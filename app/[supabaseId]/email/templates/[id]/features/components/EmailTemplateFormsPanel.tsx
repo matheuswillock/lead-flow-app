@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { buildPublicFormLinkEmailSnippet } from "@/lib/email/public-form-link-embed"
 import { isApiRequestError } from "@/lib/http/api-request-error"
+import { usePublicFormShareBaseUrlInfo } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
 import { publicFormsClientService } from "@/app/[supabaseId]/forms/features/services/PublicFormsService"
 import type { PublicFormListItem } from "@/app/[supabaseId]/forms/features/context/PublicFormsTypes"
 
@@ -76,7 +77,15 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
   }, [activeTeamId, supabaseId])
 
   const selected = forms.find((item) => item.id === selectedId) ?? null
-  const formUrl = selected ? `${window.location.origin}/forms/${selected.publicId}` : ""
+  // Domínio de formulários VERIFICADO do time ATIVO quando existir (Frente C)
+  // — alinha o link copiado com o host que o disparo vai usar de fato. O
+  // teamId entra na chave do cache: sem ele, trocar de time devolvia o domínio
+  // do time anterior e gerava link que a guarda de tenancy responde 404.
+  // `teamDomainHostname` é o que permite ao painel DIZER por onde os links
+  // sairão, em vez de trocar de host em silêncio.
+  const { baseUrl: shareBaseUrl, teamDomainHostname } =
+    usePublicFormShareBaseUrlInfo(activeTeamId)
+  const formUrl = selected ? `${shareBaseUrl}/forms/${selected.publicId}` : ""
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {
@@ -94,6 +103,13 @@ export function EmailTemplateFormsPanel({ embedded = false }: { embedded?: boole
         <p className="text-xs text-muted-foreground">
           Escolha um formulário publicado para copiar o link ou o botão HTML.
         </p>
+        {teamDomainHostname ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="forms-share-domain-hint">
+            Os links sairão em{" "}
+            <span className="font-medium text-foreground">{teamDomainHostname}</span>, o domínio de
+            formulários do seu time.
+          </p>
+        ) : null}
       </div>
 
       {loading ? (

@@ -13,6 +13,7 @@ import {
   resolveAttributionDisplayName,
 } from "@/lib/public-forms/email-campaign-attribution"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
+import type { EmailEventOrigin } from "@/lib/email/email-event-origin-classifier"
 
 export type ResolveEmailCampaignFormAttributionInput = {
   teamId: string
@@ -200,7 +201,15 @@ class ResolveEmailCampaignFormAttributionUseCase {
       log: record,
       eventType: "clicked",
       occurredAt: params.occurredAt,
-      metadata: { source: FIRST_PARTY_CLICK_SOURCE, formPublicId: params.formPublicId },
+      metadata: {
+        source: FIRST_PARTY_CLICK_SOURCE,
+        formPublicId: params.formPublicId,
+        // Clique first-party só existe porque um navegador humano carregou a
+        // página do formulário com o `cs_el` — é o sinal humano mais confiável
+        // que temos. Sem este carimbo ele cairia fora dos segmentos de
+        // engajamento, que desde 17/09 exigem `origin.classification`.
+        origin: { classification: "human" } satisfies EmailEventOrigin,
+      },
       eventId: randomUUID(),
     })
   }

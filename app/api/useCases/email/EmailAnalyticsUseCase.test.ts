@@ -24,6 +24,9 @@ function buildRepo(overrides: Partial<IEmailAnalyticsRepository> = {}): IEmailAn
       domainStatus: null,
       openTracking: false,
       clickTracking: false,
+      sendingDnsVerified: false,
+      sendingHealthStatus: "healthy",
+      sendingHealthReason: null,
     })),
     ...overrides,
   } as IEmailAnalyticsRepository
@@ -212,6 +215,8 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         clickTracking: false,
         // DNS de envio íntegro: o domínio despacha, só não mede abertura.
         sendingDnsVerified: true,
+        sendingHealthStatus: "healthy",
+        sendingHealthReason: null,
       })),
     })
     const uc = new EmailAnalyticsUseCase(repo)
@@ -241,6 +246,7 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         totalSent: 100,
         totalDelivered: 90,
         totalOpened: 40,
+        totalOpenedHuman: 12,
         totalClicked: 10,
         totalBounced: 5,
         totalComplained: 1,
@@ -302,6 +308,7 @@ describe("EmailAnalyticsUseCase.getAnalytics", () => {
         totalSent: 5031,
         totalDelivered: 4900,
         totalOpened: 1200,
+        totalOpenedHuman: 350,
         totalClicked: 300,
         totalBounced: 50,
         totalComplained: 2,

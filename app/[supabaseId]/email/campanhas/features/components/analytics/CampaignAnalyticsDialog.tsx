@@ -109,7 +109,7 @@ export function CampaignAnalyticsDialog({
       ) : null}
       <TrackingDegradedAlert
         warnings={data?.trackingWarnings}
-        blocked={data?.trackingDispatchBlocked}
+        blocked={data?.trackingDispatchBlocked || data?.sendingHealthBlocked}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-1">

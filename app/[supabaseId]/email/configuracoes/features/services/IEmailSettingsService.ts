@@ -7,10 +7,26 @@ import type {
   EmailSettings,
   EmailVariableType,
   EmailVariableValueSource,
+  FormDomain,
+  FormDomainRecordsResult,
+  FormDomainResult,
+  FormDomainStatus,
   ResendDomainStatus,
 } from "../context/EmailSettingsTypes"
 
-export type { EmailSettings, BlockedDateRange, DomainConnectResult, DomainRecord, EmailSender, EmailGlobalVariable, ResendDomainStatus }
+export type {
+  EmailSettings,
+  BlockedDateRange,
+  DomainConnectResult,
+  DomainRecord,
+  EmailSender,
+  EmailGlobalVariable,
+  ResendDomainStatus,
+  FormDomain,
+  FormDomainResult,
+  FormDomainRecordsResult,
+  FormDomainStatus,
+}
 
 export interface UpsertEmailVariableData {
   key: string
@@ -59,6 +75,12 @@ export interface IEmailSettingsService {
   getDomainRecords(): Promise<DomainConnectResult>
   configureDomainTracking(data: ConfigureDomainTrackingData): Promise<DomainConnectResult>
   sendDomainDnsInstructions(recipientEmail: string): Promise<void>
+  getFormDomain(): Promise<FormDomainResult>
+  connectFormDomain(hostname: string): Promise<FormDomainResult>
+  disconnectFormDomain(): Promise<void>
+  verifyFormDomain(): Promise<FormDomainResult>
+  getFormDomainRecords(): Promise<FormDomainRecordsResult>
+  sendFormDomainDnsInstructions(recipientEmail: string): Promise<void>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: UpsertEmailVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: UpsertEmailVariableData): Promise<EmailGlobalVariable>

@@ -184,7 +184,11 @@ export function DispatchAccordionTable({
                           <p className="col-span-full text-xs font-medium text-muted-foreground">
                             Engajamento
                           </p>
-                          <MetricCell label="Abertos" value={dispatch.totalOpened} />
+                          <MetricCell
+                            label="Aberturas reais"
+                            value={dispatch.totalOpenedHuman ?? 0}
+                          />
+                          <MetricCell label="Abertos (bruto)" value={dispatch.totalOpened} />
                           <MetricCell label="Cliques" value={dispatch.totalClicked} />
                           <MetricCell
                             label="Taxa de cliques"
