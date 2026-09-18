@@ -135,6 +135,10 @@ export async function assertNoHorizontalOverflow(
 /**
  * Alvos de toque visíveis ≥ 44×44 no viewport mobile (360px). Elementos
  * `display: inline` no fluxo de texto e elementos sem área são dispensados.
+ * Skip links (`.sr-only focus:not-sr-only`, ex.: "Pular para o conteúdo" do
+ * shell do backoffice) também são dispensados: por design só ficam visíveis
+ * e tocáveis quando recebem foco de teclado — nunca fazem parte do fluxo de
+ * toque em repouso, então medi-los como alvo de toque é falso positivo.
  */
 export async function assertTouchTargets(
   page: Page,
@@ -158,6 +162,7 @@ export async function assertTouchTargets(
           .filter((element) => {
             const style = window.getComputedStyle(element);
             if (style.display === "inline" || style.visibility === "hidden") return false;
+            if (element.classList.contains("sr-only")) return false;
             const rect = element.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return false;
             return rect.width < minTargetSize || rect.height < minTargetSize;

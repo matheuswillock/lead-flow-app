@@ -6,30 +6,65 @@ import type {
 import type { BackofficeClientItem } from "./IBackofficePaymentsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
+interface OutputResponse<T> {
+  isValid: boolean
+  successMessages?: string[]
+  errorMessages?: string[]
+  result?: T
+}
+
+export class BackofficePaymentsRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly isValidationError: boolean
+  ) {
+    super(message)
+    this.name = "BackofficePaymentsRequestError"
+  }
+}
+
+async function parseOutput<T>(response: Response): Promise<T> {
+  let data: OutputResponse<T>
+  try {
+    data = (await response.json()) as OutputResponse<T>
+  } catch {
+    throw new BackofficePaymentsRequestError(
+      "Resposta inesperada do servidor",
+      response.status,
+      false
+    )
+  }
+  if (!response.ok || !data.isValid || data.result === undefined) {
+    throw new BackofficePaymentsRequestError(
+      data.errorMessages?.[0] ?? "Erro ao processar cobrança",
+      response.status,
+      response.status >= 400 && response.status < 500
+    )
+  }
+  return data.result
+}
+
 export class BackofficePaymentsService implements IBackofficePaymentsService {
   async list(clientId?: string): Promise<BackofficePaymentItem[]> {
     const url = clientId
       ? `${API_CLIENT_BASE}/backoffice/payments?clientId=${clientId}`
       : `${API_CLIENT_BASE}/backoffice/payments`
     const res = await fetch(url, { cache: "no-store" })
-    const data = await res.json()
-    if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao buscar cobranças")
-    return data.result ?? []
+    return parseOutput<BackofficePaymentItem[]>(res)
   }
 
-  async create(body: CreatePaymentFormData) {
+  async create(body: CreatePaymentFormData): Promise<BackofficePaymentItem> {
     const res = await fetch(`${API_CLIENT_BASE}/backoffice/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    return res.json()
+    return parseOutput<BackofficePaymentItem>(res)
   }
 
   async listClients(): Promise<BackofficeClientItem[]> {
     const res = await fetch(`${API_CLIENT_BASE}/backoffice/clients`, { cache: "no-store" })
-    const data = await res.json()
-    if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao buscar clientes")
-    return data.result ?? []
+    return parseOutput<BackofficeClientItem[]>(res)
   }
 }

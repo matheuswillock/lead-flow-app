@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { toast } from "sonner"
-import { Plus, ExternalLink } from "lucide-react"
+import { AlertCircle, Plus, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -34,6 +34,7 @@ import { useBackofficePayments } from "../context/BackofficePaymentsContext"
 import type { CreatePaymentFormData } from "../services/IBackofficePaymentsService"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
+import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -117,7 +118,8 @@ const initialForm: CreatePaymentFormData = {
 }
 
 export function BackofficePaymentsContainer() {
-  const { payments, clients, isLoading, isCreating, canManage, createPayment } = useBackofficePayments()
+  const { payments, clients, isLoading, isCreating, error, canManage, createPayment, fetchPayments } =
+    useBackofficePayments()
   const { tz } = useTimezone()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
@@ -126,6 +128,7 @@ export function BackofficePaymentsContainer() {
     pixQrCode: string | null
     pixPayload: string | null
   }>({ open: false, pixQrCode: null, pixPayload: null })
+  const submitLock = useRef(false)
 
   function handleChange(field: keyof CreatePaymentFormData, value: string | number) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -133,6 +136,7 @@ export function BackofficePaymentsContainer() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (submitLock.current) return
     if (!form.clientId) {
       toast.error("Selecione um cliente")
       return
@@ -142,21 +146,25 @@ export function BackofficePaymentsContainer() {
       return
     }
 
-    const result = await createPayment({ ...form, amount: Number(form.amount) })
-    if (result.isValid) {
+    submitLock.current = true
+    try {
+      const created = await createPayment({ ...form, amount: Number(form.amount) })
       toast.success("Cobrança criada com sucesso")
       setOpen(false)
       setForm(initialForm)
 
-      if (form.billingType === "PIX" && result.result?.pixQrCode) {
+      if (form.billingType === "PIX" && created.pixQrCode) {
         setPixDialog({
           open: true,
-          pixQrCode: result.result.pixQrCode,
-          pixPayload: result.result.pixPayload ?? null,
+          pixQrCode: created.pixQrCode,
+          pixPayload: created.pixPayload ?? null,
         })
       }
-    } else {
-      toast.error(result.errorMessages?.[0] ?? "Erro ao criar cobrança")
+    } catch (err) {
+      console.error("[BackofficePaymentsContainer][handleSubmit]", err)
+      toast.error(toUserToastMessage(err))
+    } finally {
+      submitLock.current = false
     }
   }
 
@@ -165,12 +173,24 @@ export function BackofficePaymentsContainer() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Pagamentos</h1>
         {canManage && (
-          <Button size="sm" onClick={() => setOpen(true)}>
+          <Button size="sm" className="max-lg:h-11" onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4 mr-1" />
             Nova Cobrança
           </Button>
         )}
       </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive flex items-center justify-between">
+          <span className="inline-flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => fetchPayments()}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
 
       <div className="rounded-md border">
         <Table>
@@ -195,7 +215,7 @@ export function BackofficePaymentsContainer() {
                   ))}
                 </TableRow>
               ))
-            ) : payments.length === 0 ? (
+            ) : payments.length === 0 && !error ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                   Nenhuma cobrança encontrada

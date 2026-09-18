@@ -376,7 +376,6 @@
       "app/backoffice/(app)/integracoes/page.tsx",
       "app/backoffice/(app)/lead-quick-entry/page.tsx",
       "app/backoffice/(app)/page.tsx",
-      "app/backoffice/(app)/payments/page.tsx",
       "app/backoffice/(app)/radar/engajamento/page.tsx",
       "app/backoffice/(app)/radar/outbox/page.tsx",
       "app/backoffice/(app)/regras-transicao/page.tsx",
