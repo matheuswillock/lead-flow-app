@@ -1,5 +1,7 @@
 import type {
   DomainConnectResult,
+  FormDomainRecordsResult,
+  FormDomainResult,
   IEmailSettingsService,
   ResendDomainStatus,
   UpdateEmailSettingsData,
@@ -152,6 +154,44 @@ export class EmailSettingsService implements IEmailSettingsService {
     if (!res.ok || !json.isValid) {
       throw new Error(json.errorMessages?.join(", ") ?? `HTTP ${res.status}`)
     }
+  }
+
+  async getFormDomain(): Promise<FormDomainResult> {
+    const res = await fetch(`${this.base}/form-domain`)
+    return parseEmailSettingsOutput<FormDomainResult>(res)
+  }
+
+  async connectFormDomain(hostname: string): Promise<FormDomainResult> {
+    const res = await fetch(`${this.base}/form-domain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostname }),
+    })
+    return parseEmailSettingsOutput<FormDomainResult>(res)
+  }
+
+  async disconnectFormDomain(): Promise<void> {
+    const res = await fetch(`${this.base}/form-domain`, { method: "DELETE" })
+    await parseEmailSettingsOutput<null>(res)
+  }
+
+  async verifyFormDomain(): Promise<FormDomainResult> {
+    const res = await fetch(`${this.base}/form-domain/verify`, { method: "POST" })
+    return parseEmailSettingsOutput<FormDomainResult>(res)
+  }
+
+  async getFormDomainRecords(): Promise<FormDomainRecordsResult> {
+    const res = await fetch(`${this.base}/form-domain/records`)
+    return parseEmailSettingsOutput<FormDomainRecordsResult>(res)
+  }
+
+  async sendFormDomainDnsInstructions(recipientEmail: string): Promise<void> {
+    const res = await fetch(`${this.base}/form-domain/send-dns-instructions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipientEmail }),
+    })
+    await parseEmailSettingsOutput<unknown>(res)
   }
 
   async getVariables(): Promise<EmailGlobalVariable[]> {

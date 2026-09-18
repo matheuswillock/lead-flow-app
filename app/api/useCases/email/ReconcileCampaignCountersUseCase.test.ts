@@ -15,6 +15,7 @@ function campaignCounters(overrides: Partial<CampaignCounters> = {}): CampaignCo
     totalSent: 100,
     totalDelivered: 90,
     totalOpened: 40,
+    totalOpenedHuman: 12,
     totalClicked: 10,
     totalBounced: 5,
     totalComplained: 1,

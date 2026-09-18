@@ -108,6 +108,15 @@ export function invalidatePublicFormBootstrapCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.publicFormBootstrap(input.teamId)]);
 }
 
+/**
+ * Invalida a resolucao de dominio de formularios por hostname. Chamado nas
+ * mutacoes de connect/disconnect/verify e no cron de reconciliacao — o serving
+ * publico (app/forms/[publicId]) le esse cache para a guarda de tenancy.
+ */
+export function invalidateTeamFormDomainCache(input: { hostname: string }) {
+  revalidateDefinedTags([cacheTags.teamFormDomain(input.hostname)]);
+}
+
 export function invalidateHealthPlansCache() {
   revalidateDefinedTags([cacheTags.healthPlans()]);
 }

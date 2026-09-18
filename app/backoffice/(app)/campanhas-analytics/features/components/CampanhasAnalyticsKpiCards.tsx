@@ -28,7 +28,11 @@ function buildKpis(summary: CampaignAnalyticsSummary): KpiDefinition[] {
     { key: "failed", label: "Falhas", value: formatCampaignAnalyticsInteger(summary.totals.failed), base: "disparos com erro" },
     { key: "sent", label: "Enviados", value: formatCampaignAnalyticsInteger(summary.totals.sent), base: "e-mails enviados" },
     { key: "delivered", label: "Entregues", value: formatCampaignAnalyticsInteger(summary.totals.delivered), base: "e-mails entregues" },
-    { key: "openRate", label: "Abertura", value: formatCampaignAnalyticsRate(summary.rates.openRate), base: "aberturas ÷ enviados" },
+    // Sem `?? 0`: ausência de dado humano é "—", não "0,0%". Zero sintético na
+    // tela é proibido pela rodada Analytics — `formatCampaignAnalyticsRate` já
+    // trata `null`.
+    { key: "openRateHuman", label: "Aberturas reais", value: formatCampaignAnalyticsRate(summary.rates.openRateHuman ?? null), base: "aberturas humanas ÷ enviados" },
+    { key: "openRate", label: "Abertura (bruta)", value: formatCampaignAnalyticsRate(summary.rates.openRate), base: "inclui robôs/proxies do provedor" },
     { key: "clicked", label: "Cliques", value: formatCampaignAnalyticsInteger(summary.totals.clicked), base: "cliques totais" },
     { key: "bounced", label: "Bounces", value: formatCampaignAnalyticsInteger(summary.totals.bounced), base: "e-mails rejeitados" },
     { key: "finalScore", label: "Nota Final", value: formatCampaignAnalyticsScore(summary.rates.finalScore), base: "leads por 1.000 enviados" },

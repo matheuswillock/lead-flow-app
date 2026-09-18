@@ -311,8 +311,6 @@
       "app/[supabaseId]/carteira/page.tsx",
       "app/[supabaseId]/crm/page.tsx",
       "app/[supabaseId]/docs/page.tsx",
-      "app/[supabaseId]/email/campanhas/page.tsx",
-      "app/[supabaseId]/email/contatos/page.tsx",
       "app/[supabaseId]/email/descadastro/page.tsx",
       "app/[supabaseId]/email/historico/page.tsx",
       "app/[supabaseId]/email/templates/[id]/page.tsx",
@@ -425,6 +423,8 @@
   },
   "e2ePageCoverage": {
     "coveredBy": {
+      "app/[supabaseId]/email/campanhas/page.tsx": "e2e/specs/product/email-campanhas.spec.ts",
+      "app/[supabaseId]/email/contatos/page.tsx": "e2e/specs/product/email-contatos.spec.ts",
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",

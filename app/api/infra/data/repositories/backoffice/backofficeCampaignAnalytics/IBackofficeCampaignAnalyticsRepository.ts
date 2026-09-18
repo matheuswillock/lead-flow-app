@@ -33,6 +33,8 @@ export type DispatchRecord = {
   totalSent: number
   totalDelivered: number
   totalOpened: number
+  /** Aberturas humanas ("Aberturas reais") — exclui robôs/proxies do provedor. */
+  totalOpenedHuman: number
   totalClicked: number
   totalBounced: number
   errorMessage: string | null
@@ -53,6 +55,8 @@ export type TemplateAggregate = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas humanas — soma de `totalOpenedHuman` dos disparos. */
+  openedHuman: number
   clicked: number
   bounced: number
   failed: number
@@ -65,6 +69,8 @@ export type DailySeriesPoint = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas humanas do dia. */
+  openedHuman: number
   clicked: number
 }
 

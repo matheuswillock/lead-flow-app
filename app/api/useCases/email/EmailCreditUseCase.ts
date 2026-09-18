@@ -20,6 +20,10 @@ import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAc
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 import { resolveTimezone } from "@/lib/dates"
 import { assertResendDomainTrackingReady } from "@/lib/email/campaign-dispatch-guards"
+import {
+  formatSendingHealthBlockMessage,
+  isSendingHealthBlocked,
+} from "@/lib/email/sending-health"
 
 export class EmailCreditUseCase {
   constructor(
@@ -50,7 +54,7 @@ export class EmailCreditUseCase {
     }
   }
 
-  private async buildTrackingDispatchGate(teamId: string) {
+  private async buildTrackingDispatchGate(teamId: string, isTeamMaster = false) {
     const settings = await prisma.emailTeamSettings.findUnique({
       where: { teamId },
       select: {
@@ -59,6 +63,8 @@ export class EmailCreditUseCase {
         resendOpenTracking: true,
         resendClickTracking: true,
         resendSendingDnsVerified: true,
+        sendingHealthStatus: true,
+        sendingHealthReason: true,
       },
     })
     const tracking = assertResendDomainTrackingReady({
@@ -68,9 +74,30 @@ export class EmailCreditUseCase {
       clickTracking: settings?.resendClickTracking,
       sendingDnsVerified: settings?.resendSendingDnsVerified,
     })
+
+    // Trava de reputação: mesma fonte dos guards do backend
+    // (create/startManualDispatch/dispatchScheduled) — o front só exibe.
+    const sendingHealthStatus = settings?.sendingHealthStatus ?? "healthy"
+    const sendingHealthBlocked = isSendingHealthBlocked(sendingHealthStatus)
+
     return {
       trackingDispatchBlocked: !tracking.ok,
       ...(tracking.ok ? {} : { trackingDispatchBlockReason: tracking.message }),
+      sendingHealthStatus,
+      sendingHealthBlocked,
+      // A copy do bloqueio manda o owner "liberar o envio" — então a UI
+      // precisa saber quando a ação REALMENTE existe para quem está olhando.
+      // `suspended` fica de fora de propósito: só o backoffice desfaz
+      // (`resolveManualSendingHealthRelease`).
+      canReleaseSendingHealth: isTeamMaster && sendingHealthStatus === "paused",
+      ...(sendingHealthBlocked
+        ? {
+            sendingHealthBlockReason: formatSendingHealthBlockMessage({
+              status: sendingHealthStatus,
+              reason: settings?.sendingHealthReason,
+            }),
+          }
+        : {}),
     }
   }
 
@@ -166,7 +193,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
 
@@ -186,7 +213,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-          ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+          ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
 
@@ -203,7 +230,7 @@ export class EmailCreditUseCase {
         pricePerMonth: status.plan ? PLAN_PRICES[status.plan] : null,
         availablePlans: this.getAvailablePlans(),
         dailyDispatch: await this.buildDailyDispatchStatus(ctx),
-        ...(await this.buildTrackingDispatchGate(ctx.teamId)),
+        ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
       })
     } catch (error) {
       console.error("[EmailCreditUseCase][getStatus]", error)

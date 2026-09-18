@@ -292,12 +292,20 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/v1/email/cron/reconcile-form-domain-status",
+      "schedule": "15 * * * *"
+    },
+    {
       "path": "/api/v1/email/cron/reconcile-campaign-counters",
       "schedule": "0 5 * * *"
     },
     {
       "path": "/api/v1/email/cron/expire-stale-queued-logs",
       "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/v1/email/cron/evaluate-sending-health",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/v1/public-forms/cron/retry-queue-event-failures",

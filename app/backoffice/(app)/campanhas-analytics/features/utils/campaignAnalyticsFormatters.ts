@@ -3,7 +3,9 @@
 
 const INTEGER_FORMATTER = new Intl.NumberFormat("pt-BR")
 
-export function formatCampaignAnalyticsInteger(value: number): string {
+/** Ausência de contador vira "—", nunca "0" — zero sintético é proibido. */
+export function formatCampaignAnalyticsInteger(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—"
   return INTEGER_FORMATTER.format(Math.round(value))
 }
 

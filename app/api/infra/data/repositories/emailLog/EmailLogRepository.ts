@@ -89,7 +89,7 @@ export class EmailLogRepository implements IEmailLogRepository {
   }
 
   async applyWebhookEvent(input: ApplyEmailLogWebhookInput): Promise<void> {
-    const { log, eventType, occurredAt, metadata, eventId } = input
+    const { log, eventType, occurredAt, metadata, eventId, origin } = input
 
     const timestampField: Partial<Record<EmailEventType, string>> = {
       delivered: "deliveredAt",
@@ -103,12 +103,33 @@ export class EmailLogRepository implements IEmailLogRepository {
       ? { [timestampField[eventType]!]: occurredAt }
       : {}
 
+    // Clique de origem NÃO-HUMANA não é engajamento: o scanner corporativo
+    // (Safe Links, Proofpoint) segue todo link do e-mail antes do destinatário
+    // ler. Sem este corte, `clickedAt` + `totalClicked` afirmavam que a pessoa
+    // clicou — a mesma mentira que o filtro de robôs existe para desfazer.
+    //
+    // Assimetria proposital com `opened`: o bruto `openedAt` continua sendo
+    // reivindicado por qualquer open (a UI mostra as duas camadas, "Aberturas
+    // reais" e bruto), enquanto o clique tem uma camada só. Excluir aqui é o
+    // que mantém `totalClicked` coerente com o que a tela promete.
+    //
+    // O `EmailEvent` continua gravado com `metadata.origin.classification =
+    // 'bot'`: a trilha do clique do robô não se perde, ela só não conta. Um
+    // clique humano posterior ainda encontra `clickedAt` nulo e reivindica.
+    //
+    // Só `bot` CLASSIFICADO é excluído — `unknown` e ausência de classificação
+    // (clique first-party, histórico pré-classificador) continuam contando.
+    const isBotOriginClick = eventType === "clicked" && origin?.classification === "bot"
+
     const statusPriority: string[] = [
       "complained", "bounced", "suppressed", "failed", "clicked", "opened", "delivered", "sent", "queued",
     ]
     const currentStatusIdx = statusPriority.indexOf(log.status as EmailEventType)
     const newStatusIdx = statusPriority.indexOf(eventType)
-    const shouldUpdateStatus = newStatusIdx !== -1 && (currentStatusIdx === -1 || newStatusIdx < currentStatusIdx)
+    const shouldUpdateStatus =
+      !isBotOriginClick &&
+      newStatusIdx !== -1 &&
+      (currentStatusIdx === -1 || newStatusIdx < currentStatusIdx)
 
     try {
       await withDeadlockRetry(async () => {
@@ -146,7 +167,9 @@ export class EmailLogRepository implements IEmailLogRepository {
           // ou duas visualizações do mesmo formulário — leem `null` juntos e
           // ambos incrementam o contador. A unique do EmailEvent não segura,
           // porque ela inclui `occurredAt` e os dois carimbos diferem.
-          const timestampFieldName = timestampField[eventType]
+          // `undefined` no clique de robô: sem campo para reivindicar, não há
+          // claim, não há promoção de status e nenhum contador sobe.
+          const timestampFieldName = isBotOriginClick ? undefined : timestampField[eventType]
           const statusUpdate = shouldUpdateStatus
             ? { status: eventType as never }
             : {}
@@ -162,6 +185,21 @@ export class EmailLogRepository implements IEmailLogRepository {
             // Tipos sem timestamp próprio (sent, failed, suppressed, …) não têm
             // contador de campanha; só a promoção de status.
             await tx.emailLog.update({ where: { id: log.id }, data: statusUpdate })
+          }
+
+          // Segunda camada da métrica de abertura: `humanOpenedAt` só é
+          // reivindicado por open classificado como HUMANO — mesmo claim
+          // atômico do `openedAt` bruto, que continua intocado acima (qualquer
+          // open, inclusive proxy do provedor, reivindica o bruto). Um open
+          // humano tardio ainda conta aqui mesmo com o bruto já reivindicado
+          // pelo pré-fetch.
+          let claimedFirstHumanOpen = false
+          if (eventType === "opened" && origin?.classification === "human") {
+            const humanClaim = await tx.emailLog.updateMany({
+              where: { id: log.id, humanOpenedAt: null },
+              data: { humanOpenedAt: occurredAt },
+            })
+            claimedFirstHumanOpen = humanClaim.count === 1
           }
 
           // Bounce é GLOBAL de propósito, ao contrário de `complained` logo
@@ -233,15 +271,21 @@ export class EmailLogRepository implements IEmailLogRepository {
             }
           }
 
-          // `claimedFirstEvent` — e não a leitura pré-transação — é o que
-          // garante que cada contador sobe no máximo uma vez por destinatário.
-          if (log.campaignId && claimedFirstEvent) {
+          // `claimedFirstEvent` / `claimedFirstHumanOpen` — e não a leitura
+          // pré-transação — é o que garante que cada contador sobe no máximo
+          // uma vez por destinatário. Os dois claims são independentes: o open
+          // humano que chega DEPOIS de um pré-fetch já ter reivindicado o
+          // bruto ainda precisa subir `totalOpenedHuman`.
+          if (log.campaignId && (claimedFirstEvent || claimedFirstHumanOpen)) {
             const campaignIncrements: Record<string, number> = {}
-            if (eventType === "delivered") campaignIncrements.totalDelivered = 1
-            if (eventType === "opened") campaignIncrements.totalOpened = 1
-            if (eventType === "clicked") campaignIncrements.totalClicked = 1
-            if (eventType === "bounced") campaignIncrements.totalBounced = 1
-            if (eventType === "complained") campaignIncrements.totalComplained = 1
+            if (claimedFirstEvent) {
+              if (eventType === "delivered") campaignIncrements.totalDelivered = 1
+              if (eventType === "opened") campaignIncrements.totalOpened = 1
+              if (eventType === "clicked") campaignIncrements.totalClicked = 1
+              if (eventType === "bounced") campaignIncrements.totalBounced = 1
+              if (eventType === "complained") campaignIncrements.totalComplained = 1
+            }
+            if (claimedFirstHumanOpen) campaignIncrements.totalOpenedHuman = 1
 
             if (Object.keys(campaignIncrements).length > 0) {
               // lock order: campaign then dispatch (must match EmailCampaignUseCase completion)

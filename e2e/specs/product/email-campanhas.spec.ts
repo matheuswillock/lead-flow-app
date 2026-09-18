@@ -6,12 +6,14 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { Prisma } from "@prisma/client"
 import { expect, test, type Page, type Request } from "@playwright/test"
 import { formatPermanentBounceAlert } from "@/lib/email/campaign-audience-copy"
 import {
   CAMPAIGN_CANCEL_SENDING_ACCEPTED_COPY,
   CAMPAIGN_CANCEL_SENDING_UNSENT_COPY,
 } from "@/lib/email/campaign-dispatch-copy"
+import { formatSendingHealthDeferMessage } from "@/lib/email/campaign-dispatch-defer-messages"
 import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
@@ -48,6 +50,23 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeVisible()
 
     await runResponsiveChecks(page)
+  })
+
+  test("aba Analytics tem 'Aberturas reais' como manchete e o bruto como secundário", async ({
+    page,
+  }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas?tab=analytics`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    // Headline da decisão de 17/09: abertura humana vira a manchete; a taxa
+    // bruta (inclui robôs/proxies do provedor) permanece visível no subtítulo.
+    await expect(page.getByText(/Aberturas reais/).first()).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText(/% bruta/).first()).toBeVisible()
+    // A manchete antiga não pode continuar ocupando o tile do overview.
+    await expect(page.getByText("Taxa de Abertura (hoje)", { exact: true })).toHaveCount(0)
   })
 
   test("AlertDialog de cancelar envio avisa que não enviados não saem", async ({ page }) => {
@@ -731,5 +750,279 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       const hits = await countCampaignPolls(page, 12_000)
       expect(hits, `esperado no máximo 1 hit em 12s, veio ${hits}`).toBeLessThanOrEqual(1)
     })
+  })
+})
+
+test.describe("app/[supabaseId]/email/campanhas — trava de reputação", () => {
+  test.setTimeout(60_000)
+
+  test.beforeEach(async ({ context }) => {
+    const profile = await findE2eMasterProfile()
+    expect(profile, "Seed E2E ausente — rode `bun run db:seed:e2e`").not.toBeNull()
+    await injectE2eAuthCookie(context)
+    await context.addInitScript(
+      ({ supabaseId, version }: { supabaseId: string; version: string }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true")
+      },
+      { supabaseId: E2E_MASTER_SUPABASE_ID, version: WHATS_NEW_VERSION }
+    )
+  })
+
+  test.afterAll(async () => {
+    await disconnectPrisma()
+  })
+
+  test("time pausado: banner com o motivo e criação de campanha bloqueada", async ({ page }) => {
+    const profile = await findE2eMasterProfile()
+    if (!profile?.activeTeamId) {
+      throw new Error("Seed E2E sem time ativo")
+    }
+    const prisma = getPrisma()
+    const teamId = profile.activeTeamId
+    const pauseReason =
+      "Envio pausado automaticamente: bounce 6,5% (limiar 5%) · reclamações 0% (limiar 0,3%) na janela de 7 dias."
+
+    await prisma.emailTeamSettings.upsert({
+      where: { teamId },
+      update: {
+        sendingHealthStatus: "paused",
+        sendingHealthReason: pauseReason,
+        sendingHealthChangedAt: new Date(),
+      },
+      create: {
+        teamId,
+        sendingHealthStatus: "paused",
+        sendingHealthReason: pauseReason,
+        sendingHealthChangedAt: new Date(),
+      },
+    })
+
+    try {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.locator("h1.text-2xl", { hasText: "Campanhas" })).toBeVisible({
+        timeout: 30_000,
+      })
+
+      // Banner do overview lista o motivo da trava (vem do servidor).
+      await expect(page.getByText(/trava de reputação/).first()).toBeVisible({
+        timeout: 30_000,
+      })
+
+      // Criar/agendar bloqueado enquanto pausado.
+      await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeDisabled({
+        timeout: 30_000,
+      })
+
+      // A copy manda "liberar o envio" — a ação TEM que existir aqui para o
+      // master. Antes o endpoint existia sem nenhum consumidor de produto e o
+      // owner ficava sem autoatendimento.
+      await expect(page.getByTestId("sending-health-block-alert")).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByTestId("release-sending-health-button")).toBeVisible({
+        timeout: 30_000,
+      })
+    } finally {
+      await prisma.emailTeamSettings
+        .update({
+          where: { teamId },
+          data: {
+            sendingHealthStatus: "healthy",
+            sendingHealthReason: null,
+            sendingHealthChangedAt: new Date(),
+          },
+        })
+        .catch(() => {})
+    }
+  })
+
+  test("owner libera o envio pela UI e o baseline impede recontar o incidente", async ({
+    page,
+  }) => {
+    const profile = await findE2eMasterProfile()
+    if (!profile?.activeTeamId) {
+      throw new Error("Seed E2E sem time ativo")
+    }
+    const prisma = getPrisma()
+    const teamId = profile.activeTeamId
+    // Janela com o incidente já dentro dela: é exatamente o cenário em que a
+    // liberação virava armadilha (o cron repausava e suspendia em minutos).
+    const incidentWindows = {
+      sent7d: 1000,
+      hardBounced7d: 80,
+      complained7d: 0,
+      sent30d: 4000,
+      hardBounced30d: 80,
+      complained30d: 0,
+    }
+
+    await prisma.emailTeamSettings.upsert({
+      where: { teamId },
+      update: {
+        sendingHealthStatus: "paused",
+        sendingHealthReason: "Envio pausado automaticamente: bounce 8% na janela de 7 dias.",
+        sendingHealthChangedAt: new Date(),
+        sendingHealthMetrics: {
+          computedAt: new Date().toISOString(),
+          windows: incidentWindows,
+          rates: { hardBounceRate7d: 0.08, complaintRate7d: 0, hasMinimumVolume: true },
+          belowWarnSince: null,
+          pauseHistory: [new Date().toISOString()],
+          releaseBaseline: null,
+        },
+      },
+      create: {
+        teamId,
+        sendingHealthStatus: "paused",
+        sendingHealthReason: "Envio pausado automaticamente: bounce 8% na janela de 7 dias.",
+        sendingHealthChangedAt: new Date(),
+      },
+    })
+
+    try {
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.locator("h1.text-2xl", { hasText: "Campanhas" })).toBeVisible({
+        timeout: 30_000,
+      })
+
+      const releaseButton = page.getByTestId("release-sending-health-button")
+      await expect(releaseButton).toBeVisible({ timeout: 30_000 })
+      await releaseButton.click()
+
+      // Estado no BANCO, não só o toast.
+      await expect
+        .poll(
+          async () => {
+            const settings = await prisma.emailTeamSettings.findUnique({
+              where: { teamId },
+              select: { sendingHealthStatus: true, sendingHealthMetrics: true },
+            })
+            const metrics = settings?.sendingHealthMetrics as {
+              releaseBaseline?: { at?: string; windows?: { hardBounced7d?: number } }
+            } | null
+            return {
+              status: settings?.sendingHealthStatus ?? null,
+              baselineBounces: metrics?.releaseBaseline?.windows?.hardBounced7d ?? null,
+            }
+          },
+          { timeout: 30_000 }
+        )
+        .toEqual({ status: "warned", baselineBounces: 80 })
+
+      // Com o bloqueio levantado, criar campanha volta a ser possível.
+      await expect(page.getByRole("button", { name: /Nova Campanha/i })).toBeEnabled({
+        timeout: 30_000,
+      })
+      await expect(page.getByTestId("sending-health-block-alert")).toHaveCount(0)
+    } finally {
+      await prisma.emailTeamSettings
+        .update({
+          where: { teamId },
+          data: {
+            sendingHealthStatus: "healthy",
+            sendingHealthReason: null,
+            sendingHealthMetrics: Prisma.JsonNull,
+            sendingHealthChangedAt: new Date(),
+          },
+        })
+        .catch(() => {})
+    }
+  })
+
+  test("parte adiada pela trava aparece como 'Adiada' com motivo, sem virar failed", async ({
+    page,
+  }) => {
+    const profile = await findE2eMasterProfile()
+    if (!profile?.activeTeamId) {
+      throw new Error("Seed E2E sem time ativo")
+    }
+    const prisma = getPrisma()
+    const teamId = profile.activeTeamId
+    const templateId = randomUUID()
+    const parentId = randomUUID()
+    const subId = randomUUID()
+    const parentName = `E2E Trava Reputação ${subId.slice(0, 6)}`
+    const deferMessage = formatSendingHealthDeferMessage({
+      status: "paused",
+      reason: "bounce 6,5% na janela de 7 dias",
+    })
+
+    await prisma.emailTemplate.create({
+      data: {
+        id: templateId,
+        versionGroupId: templateId,
+        teamId,
+        createdBy: profile.id,
+        name: "E2E template trava",
+        subject: "Assunto trava",
+        html: "<p>Olá</p>",
+        status: "published",
+        isCurrentPublished: true,
+        approvalStatus: "approved",
+        publishedAt: new Date(),
+        versionNumber: 1,
+      },
+    })
+    await prisma.emailCampaign.create({
+      data: {
+        id: parentId,
+        teamId,
+        createdBy: profile.id,
+        name: parentName,
+        templateId,
+        status: "scheduled",
+        totalRecipients: 10,
+      },
+    })
+    // Semântica interna do adiamento (v0.305.0): status continua `scheduled`
+    // e o motivo vive em errorMessage — a UI apresenta como "Adiada".
+    await prisma.emailCampaign.create({
+      data: {
+        id: subId,
+        teamId,
+        createdBy: profile.id,
+        name: `${parentName} 1/1`,
+        templateId,
+        parentCampaignId: parentId,
+        subCampaignIndex: 1,
+        status: "scheduled",
+        scheduledAt: new Date(Date.now() - 60 * 60 * 1000),
+        errorMessage: deferMessage,
+        totalRecipients: 10,
+      },
+    })
+
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
+        waitUntil: "domcontentloaded",
+      })
+      const campaignRow = page.getByRole("row").filter({ hasText: parentName }).first()
+      await expect(campaignRow).toBeVisible({ timeout: 30_000 })
+      const menuButton = campaignRow.getByRole("button", { name: "Abrir menu" })
+      await menuButton.scrollIntoViewIfNeeded()
+      await menuButton.click()
+      await page.getByRole("menuitem", { name: "Visualizar" }).click()
+
+      // Chip destrutivo "Adiada" na parte — apresentação de falha com status
+      // interno scheduled (o cron retoma sozinho após a liberação).
+      await expect(page.getByText("Adiada").first()).toBeVisible({ timeout: 30_000 })
+
+      // Banco: a parte NÃO virou failed — segue scheduled com o motivo.
+      const subAfter = await prisma.emailCampaign.findUnique({
+        where: { id: subId },
+        select: { status: true, errorMessage: true },
+      })
+      expect(subAfter?.status).toBe("scheduled")
+      expect(subAfter?.errorMessage).toContain("trava de reputação")
+    } finally {
+      await prisma.emailCampaign.delete({ where: { id: subId } }).catch(() => {})
+      await prisma.emailCampaign.delete({ where: { id: parentId } }).catch(() => {})
+      await prisma.emailTemplate.delete({ where: { id: templateId } }).catch(() => {})
+    }
   })
 })

@@ -75,18 +75,19 @@ class CampaignAnalyticsExportTooLargeError extends Error {
   }
 }
 
-function sumTemplateTotals(templates: { sent: number; delivered: number; opened: number; clicked: number; bounced: number; failed: number; dispatches: number }[]) {
+function sumTemplateTotals(templates: { sent: number; delivered: number; opened: number; openedHuman: number; clicked: number; bounced: number; failed: number; dispatches: number }[]) {
   return templates.reduce(
     (acc, row) => ({
       dispatches: acc.dispatches + row.dispatches,
       sent: acc.sent + row.sent,
       delivered: acc.delivered + row.delivered,
       opened: acc.opened + row.opened,
+      openedHuman: acc.openedHuman + row.openedHuman,
       clicked: acc.clicked + row.clicked,
       bounced: acc.bounced + row.bounced,
       failed: acc.failed + row.failed,
     }),
-    { dispatches: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, failed: 0 }
+    { dispatches: 0, sent: 0, delivered: 0, opened: 0, openedHuman: 0, clicked: 0, bounced: 0, failed: 0 }
   )
 }
 
@@ -164,16 +165,18 @@ export class BackofficeCampaignAnalyticsUseCase {
     const leadsCreated = funnel.reduce((sum, row) => sum + row.leadCreated, 0)
     const leadsAttached = funnel.reduce((sum, row) => sum + row.leadAttached, 0)
 
-    const teamSentByTeamId = new Map<string, { teamId: string; teamName: string; sent: number; opened: number }>()
+    const teamSentByTeamId = new Map<string, { teamId: string; teamName: string; sent: number; opened: number; openedHuman: number }>()
     for (const row of templates) {
       const existing = teamSentByTeamId.get(row.teamId) ?? {
         teamId: row.teamId,
         teamName: row.teamName,
         sent: 0,
         opened: 0,
+        openedHuman: 0,
       }
       existing.sent += row.sent
       existing.opened += row.opened
+      existing.openedHuman += row.openedHuman
       teamSentByTeamId.set(row.teamId, existing)
     }
 
@@ -191,6 +194,7 @@ export class BackofficeCampaignAnalyticsUseCase {
         leads: teamLeads,
         finalScore: finalScore(teamLeads, team.sent),
         openRate: openRate(team.opened, team.sent),
+        openRateHuman: openRate(team.openedHuman, team.sent),
       }
     })
 
@@ -198,6 +202,9 @@ export class BackofficeCampaignAnalyticsUseCase {
       period: { from: range.from.toISOString(), to: range.to.toISOString() },
       totals: { ...totals, leadsCreated, leadsAttached, leadsTotal },
       rates: {
+        // Headline "Aberturas reais": só opens humanos. O bruto segue exposto
+        // como secundário — inclui robôs/proxies do provedor.
+        openRateHuman: openRate(totals.openedHuman, totals.sent),
         openRate: openRate(totals.opened, totals.sent),
         finalScore: finalScore(leadsTotal, totals.sent),
       },
@@ -220,7 +227,9 @@ export class BackofficeCampaignAnalyticsUseCase {
         ["Falhas", formatCsvInteger(summary.totals.failed)],
         ["Enviados", formatCsvInteger(summary.totals.sent)],
         ["Entregues", formatCsvInteger(summary.totals.delivered)],
-        ["Taxa de Abertura", formatCsvRate(summary.rates.openRate)],
+        ["Aberturas reais", formatCsvInteger(summary.totals.openedHuman)],
+        ["Taxa de Aberturas reais", formatCsvRate(summary.rates.openRateHuman)],
+        ["Taxa de Abertura (bruta)", formatCsvRate(summary.rates.openRate)],
         ["Cliques", formatCsvInteger(summary.totals.clicked)],
         ["Bounces", formatCsvInteger(summary.totals.bounced)],
         ["Nota Final", formatCsvScore(summary.rates.finalScore)],
@@ -233,7 +242,7 @@ export class BackofficeCampaignAnalyticsUseCase {
 
   private dispatchesTable(rows: DispatchRecord[]): { headers: string[]; rows: string[][] } {
     return {
-      headers: ["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Erro"],
+      headers: ["Data", "Time", "Template", "Status", "Enviados", "Entregues", "Aberturas reais", "Abertos (bruto)", "Cliques", "Bounces", "Erro"],
       rows: rows.map((row) => [
         formatCsvDateTime(row.dispatchedAt),
         row.teamName,
@@ -241,6 +250,7 @@ export class BackofficeCampaignAnalyticsUseCase {
         row.status,
         formatCsvInteger(row.totalSent),
         formatCsvInteger(row.totalDelivered),
+        formatCsvInteger(row.totalOpenedHuman),
         formatCsvInteger(row.totalOpened),
         formatCsvInteger(row.totalClicked),
         formatCsvInteger(row.totalBounced),
@@ -254,13 +264,14 @@ export class BackofficeCampaignAnalyticsUseCase {
     rows: string[][]
   } {
     return {
-      headers: ["Time", "Template", "Disparos", "Enviados", "Entregues", "Abertos", "Cliques", "Bounces", "Falhas", "Taxa de Abertura"],
+      headers: ["Time", "Template", "Disparos", "Enviados", "Entregues", "Aberturas reais", "Abertos (bruto)", "Cliques", "Bounces", "Falhas", "Taxa de Abertura (bruta)"],
       rows: rows.map((row) => [
         row.teamName,
         row.templateName,
         formatCsvInteger(row.dispatches),
         formatCsvInteger(row.sent),
         formatCsvInteger(row.delivered),
+        formatCsvInteger(row.openedHuman),
         formatCsvInteger(row.opened),
         formatCsvInteger(row.clicked),
         formatCsvInteger(row.bounced),
@@ -292,12 +303,13 @@ export class BackofficeCampaignAnalyticsUseCase {
 
   private seriesTable(points: DailySeriesPoint[]): { headers: string[]; rows: string[][] } {
     return {
-      headers: ["Dia", "Time", "Enviados", "Entregues", "Abertos", "Cliques"],
+      headers: ["Dia", "Time", "Enviados", "Entregues", "Aberturas reais", "Abertos (bruto)", "Cliques"],
       rows: points.map((row) => [
         row.day,
         row.teamName,
         formatCsvInteger(row.sent),
         formatCsvInteger(row.delivered),
+        formatCsvInteger(row.openedHuman),
         formatCsvInteger(row.opened),
         formatCsvInteger(row.clicked),
       ]),
@@ -336,12 +348,13 @@ export class BackofficeCampaignAnalyticsUseCase {
       const filter = { from: range.value.from, to: range.value.to, teamIds: input.teamIds }
       const points = await this.repository.dailySeries(filter)
 
-      const totalByDay = new Map<string, { day: string; sent: number; delivered: number; opened: number; clicked: number }>()
+      const totalByDay = new Map<string, { day: string; sent: number; delivered: number; opened: number; openedHuman: number; clicked: number }>()
       for (const point of points) {
-        const existing = totalByDay.get(point.day) ?? { day: point.day, sent: 0, delivered: 0, opened: 0, clicked: 0 }
+        const existing = totalByDay.get(point.day) ?? { day: point.day, sent: 0, delivered: 0, opened: 0, openedHuman: 0, clicked: 0 }
         existing.sent += point.sent
         existing.delivered += point.delivered
         existing.opened += point.opened
+        existing.openedHuman += point.openedHuman
         existing.clicked += point.clicked
         totalByDay.set(point.day, existing)
       }

@@ -12,6 +12,10 @@ export type ContactListActiveImport = {
   totalBatches: number
   pendingRadarSync: number
   failedRadarSync: number
+  /** Veredito do gate de importação: contagens por categoria de remoção. */
+  validationCounts?: Record<string, number> | null
+  /** low | medium | high — high quarentena a lista alvo. */
+  riskLevel?: string | null
   updatedAt: string
 }
 
@@ -23,6 +27,10 @@ export type ContactList = {
   isSystemDefault: boolean
   isBlocklist: boolean
   isArchived: boolean
+  /** Quarentena do gate de importação — lista fora de audiência até liberação. */
+  isQuarantined?: boolean
+  quarantinedAt?: string | null
+  quarantineReason?: string | null
   radarSegmentId: string | null
   radarSegment: { name: string } | null
   createdAt: string

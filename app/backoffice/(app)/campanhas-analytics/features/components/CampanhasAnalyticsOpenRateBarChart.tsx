@@ -10,8 +10,12 @@ import { useCampanhasAnalytics } from "../context/useCampanhasAnalyticsHook"
 import { useReducedMotionPreference } from "../hooks/useReducedMotionPreference"
 import { formatCampaignAnalyticsRate } from "../utils/campaignAnalyticsFormatters"
 
+// Rótulo explícito: esta série é a taxa BRUTA (inclui robôs/proxies do
+// provedor). O KPI acima já mostra "Aberturas reais" e o CSV exporta as duas —
+// sem o "(bruta)" aqui, o mesmo painel apresentava dois números diferentes
+// para "abertura" sem dizer qual era qual.
 export const openRateChartConfig = {
-  openRate: { label: "Abertura", color: "var(--chart-2)" },
+  openRate: { label: "Abertura (bruta)", color: "var(--chart-2)" },
 } satisfies ChartConfig
 
 export function CampanhasAnalyticsOpenRateBarChart() {
@@ -22,7 +26,7 @@ export function CampanhasAnalyticsOpenRateBarChart() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Abertura por time</CardTitle>
+          <CardTitle>Abertura (bruta) por time</CardTitle>
         </CardHeader>
         <CardContent>
           <div
@@ -46,7 +50,7 @@ export function CampanhasAnalyticsOpenRateBarChart() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Abertura por time</CardTitle>
+          <CardTitle>Abertura (bruta) por time</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-62.5 w-full" />
@@ -62,7 +66,7 @@ export function CampanhasAnalyticsOpenRateBarChart() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Abertura por time</CardTitle>
+          <CardTitle>Abertura (bruta) por time</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="py-10 text-center text-sm text-muted-foreground">
@@ -80,7 +84,7 @@ export function CampanhasAnalyticsOpenRateBarChart() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Abertura por time</CardTitle>
+        <CardTitle>Abertura (bruta) por time</CardTitle>
         <CardDescription>Taxa de abertura (aberturas ÷ enviados) por time filtrado</CardDescription>
       </CardHeader>
       <CardContent>
