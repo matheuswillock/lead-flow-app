@@ -134,7 +134,13 @@ export async function assertNoHorizontalOverflow(
 
 /**
  * Alvos de toque visíveis ≥ 44×44 no viewport mobile (360px). Elementos
- * `display: inline` no fluxo de texto e elementos sem área são dispensados.
+ * `display: inline` no fluxo de texto e elementos sem área são dispensados,
+ * assim como os visualmente escondidos no idioma `sr-only` (skip link de
+ * acessibilidade): `position: absolute` + 1×1 + `overflow: hidden`. Um
+ * skip link só vira alvo real quando recebe foco (`focus:not-sr-only`), e
+ * aí já nasce com padding de CTA — medi-lo escondido reprovaria toda página
+ * que faz a coisa certa de acessibilidade. A assinatura é estreita de
+ * propósito: um botão real nunca é 1×1 absoluto com overflow hidden.
  */
 export async function assertTouchTargets(
   page: Page,
@@ -160,6 +166,13 @@ export async function assertTouchTargets(
             if (style.display === "inline" || style.visibility === "hidden") return false;
             const rect = element.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return false;
+            // Idioma `sr-only`: visualmente escondido, não é alvo de toque.
+            const isVisuallyHidden =
+              style.position === "absolute" &&
+              style.overflow === "hidden" &&
+              rect.width <= 1 &&
+              rect.height <= 1;
+            if (isVisuallyHidden) return false;
             return rect.width < minTargetSize || rect.height < minTargetSize;
           })
           .map((element) => {

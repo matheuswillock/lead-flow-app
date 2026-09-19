@@ -129,6 +129,15 @@ export interface SubscriptionConfirmationData {
   timezone?: string | null;
 }
 
+/** 20 — Assinaturas — Backend E9 (Fase 4, T-20.28). */
+export interface DelinquencyReminderEmailData {
+  userName: string;
+  userEmail: string;
+  tier: "crm_only" | "cut_off";
+  manageUrl?: string;
+  idempotencyKey?: string;
+}
+
 export interface AdhesionCompletedEmailData {
   userName: string;
   userEmail: string;
@@ -1074,6 +1083,85 @@ export class EmailService {
       to: [data.userEmail],
       subject: 'Corretor Studio — Assinatura confirmada',
       html,
+    });
+  }
+
+  /**
+   * 20 — Assinaturas — Backend E9 (Fase 4, "Inadimplência em degraus", E2 do
+   * plano). Template próprio de dunning — antes o `OverdueReminderUseCase`
+   * reaproveitava `sendSubscriptionConfirmationEmail` com `value: 0`, uma
+   * confirmação de pagamento disfarçada de aviso de atraso. `idempotencyKey`
+   * evita reenvio duplicado pelo provedor (Resend, janela de 24h); o dedupe
+   * de "já avisei este degrau neste ciclo" é responsabilidade do chamador
+   * (SubscriptionChangeLog eventType reduced/cut).
+   */
+  async sendDelinquencyReminderEmail(data: DelinquencyReminderEmailData) {
+    const appUrl = getAppUrl({ removeTrailingSlash: true });
+    const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
+
+    const isCutOff = data.tier === 'cut_off';
+    const subject = isCutOff
+      ? 'Corretor Studio — Acesso suspenso por falta de pagamento'
+      : 'Corretor Studio — Acesso reduzido por falta de pagamento';
+    const headline = isCutOff ? 'Seu acesso foi suspenso' : 'Seu acesso foi reduzido';
+    const bodyText = isCutOff
+      ? 'Sua assinatura está em atraso há mais de 15 dias e o acesso à plataforma foi totalmente suspenso. Regularize o pagamento para voltar a usar o Corretor Studio.'
+      : 'Sua assinatura está em atraso há mais de 5 dias. Enquanto isso, o acesso fica limitado ao CRM — os demais módulos (E-mail, WhatsApp, Radar) ficam pausados até a regularização.';
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600; text-align: center;">${headline}</h2>
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Olá <strong>${data.userName}</strong>, ${bodyText}
+                    </p>
+                    <div style="text-align: center; margin: 32px 0;">
+                      <a href="${manageUrl}"
+                         style="display: inline-block; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                        Regularizar pagamento
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0 0 8px 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      © ${new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmailUntracked({
+      to: [data.userEmail],
+      subject,
+      html,
+      idempotencyKey: data.idempotencyKey,
     });
   }
 

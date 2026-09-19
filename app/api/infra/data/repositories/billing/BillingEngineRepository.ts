@@ -14,6 +14,20 @@ export type PastDueSubscriptionRow = {
   };
 };
 
+export type PastDueSubscriptionForDunningRow = {
+  profileId: string;
+  asaasSubscriptionId: string | null;
+  subscriptionStartDate: Date | null;
+  subscriptionNextDueDate: Date | null;
+  profile: {
+    email: string;
+    fullName: string | null;
+    supabaseId: string | null;
+    timezone: string;
+    subscriptionNextDueDate: Date | null;
+  };
+};
+
 class BillingEngineRepository {
   async findPastDueSubscriptions(params: {
     windowStart: Date;
@@ -35,6 +49,109 @@ class BillingEngineRepository {
         },
       },
       take: params.take,
+    });
+  }
+
+  /**
+   * 20 — Assinaturas — Backend E9 (Fase 4, T-20.28). Ao contrário de
+   * `findPastDueSubscriptions` (filtra por `updatedAt`, que ignora quem está
+   * em atraso há mais de PAST_DUE_INACTIVE_AFTER_DAYS — o bug citado na
+   * SPEC), esta só traz quem já passou da janela de tolerância (`notBefore`
+   * = hoje − 5 dias) e ordena pelo mais atrasado. Sem esse filtro + ORDER BY,
+   * `take` era gasto em contas ainda em D0–D4 e o Postgres podia devolver
+   * sempre o mesmo recorte, deixando contas em D5+/D15+ permanentemente sem
+   * aviso (achado cursor/codex no PR #1198). O degrau exato
+   * (crm_only/cut_off) continua resolvido em memória por
+   * `resolveDelinquencyTier`, sobre a data efetiva.
+   */
+  async findPastDueSubscriptionsForDunning(params: {
+    take: number;
+    notBefore: Date;
+  }): Promise<PastDueSubscriptionForDunningRow[]> {
+    return prisma.profileSubscription.findMany({
+      where: {
+        subscriptionStatus: "past_due",
+        hasPermanentSubscription: false,
+        // A data efetiva pode vir da ProfileSubscription OU do Profile (o
+        // webhook do Asaas grava só no Profile) — ver
+        // `resolveEffectiveNextDueDate`.
+        OR: [
+          { subscriptionNextDueDate: { lte: params.notBefore } },
+          {
+            subscriptionNextDueDate: null,
+            profile: { subscriptionNextDueDate: { lte: params.notBefore } },
+          },
+        ],
+      },
+      select: {
+        profileId: true,
+        asaasSubscriptionId: true,
+        subscriptionStartDate: true,
+        subscriptionNextDueDate: true,
+        profile: {
+          select: {
+            email: true,
+            fullName: true,
+            supabaseId: true,
+            timezone: true,
+            subscriptionNextDueDate: true,
+          },
+        },
+      },
+      orderBy: { subscriptionNextDueDate: "asc" },
+      take: params.take,
+    });
+  }
+
+  /**
+   * Dedupe do lembrete de inadimplência (T-20.28): já existe um aviso deste
+   * degrau na timeline (SubscriptionChangeLog, append-only) desde o
+   * vencimento atual? Filtra por `changeType` além do `eventType` porque
+   * `reduced`/`cut` também são gravados pelo `PaymentValidationService` em
+   * transições suspended/canceled (`lifecycleEventFromSubscriptionStatus`) —
+   * sem o `changeType` um ciclo de atraso posterior pularia o e-mail
+   * obrigatório (achado codex P2 no PR #1198).
+   */
+  async hasDelinquencyNoticeSince(params: {
+    profileId: string;
+    eventType: "reduced" | "cut";
+    changeType: string;
+    since: Date;
+  }): Promise<boolean> {
+    const found = await prisma.subscriptionChangeLog.findFirst({
+      where: {
+        profileId: params.profileId,
+        eventType: params.eventType,
+        changeType: params.changeType,
+        createdAt: { gte: params.since },
+      },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  /**
+   * Marca de dedupe do lembrete. Diferente de `logSubscriptionChange`, que
+   * engole o erro num `catch` e só faz `console.error`: aqui a falha
+   * **propaga**, senão o e-mail sai, a marca não é gravada e o cron reenvia
+   * o mesmo aviso todo dia depois da janela de idempotência de 24h do
+   * provedor (achado codex P2 no PR #1198).
+   */
+  async recordDelinquencyNotice(input: {
+    profileId: string;
+    eventType: "reduced" | "cut";
+    changeType: string;
+    source: string;
+    metadata: Prisma.InputJsonValue;
+  }): Promise<void> {
+    await prisma.subscriptionChangeLog.create({
+      data: {
+        profile: { connect: { id: input.profileId } },
+        source: input.source,
+        changeType: input.changeType,
+        eventType: input.eventType,
+        metadata: input.metadata,
+      },
     });
   }
 

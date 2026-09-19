@@ -414,7 +414,6 @@
       "e2e/specs/backoffice/clients/adhesions.spec.ts",
       "e2e/specs/backoffice/clients/member-team-permissions.spec.ts",
       "e2e/specs/backoffice/member-access-copy-link.spec.ts",
-      "e2e/specs/backoffice/pricing.spec.ts",
       "e2e/specs/product/radar.spec.ts",
       "e2e/specs/public/adquirir/creditos.spec.ts",
       "e2e/specs/public/home.spec.ts",
