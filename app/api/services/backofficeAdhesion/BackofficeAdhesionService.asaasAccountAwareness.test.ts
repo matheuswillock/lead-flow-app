@@ -10,10 +10,14 @@ import type {
 // fixo na primary. Uma adesão legacy (pré-migration) teria a cobrança
 // criada/cancelada na conta errada (achado cursor[bot] no PR #1100,
 // RUN_ID bc-7d02ec64).
-const requestMock = mock(async (_endpoint: string, _init?: RequestInit) => ({
-  id: "pay_new",
-  invoiceUrl: "https://sandbox.asaas.com/i/pay_new",
-}))
+type AsaasResponse = Record<string, unknown>
+
+const requestMock = mock(
+  async (_endpoint: string, _init?: RequestInit): Promise<AsaasResponse> => ({
+    id: "pay_new",
+    invoiceUrl: "https://sandbox.asaas.com/i/pay_new",
+  })
+)
 const createAsaasClientMock = mock((accountId: string) => ({
   endpoints: {
     payments: `https://asaas.test/${accountId}/payments`,
@@ -100,10 +104,69 @@ describe("BackofficeAdhesionService — writers de cobrança usam a conta da ade
     }
   })
 
-  // T-40.17 (E5/C21): DELETE não pode mais engolir todo erro — 404 segue
-  // (já cancelada), erro real propaga (senão a cobrança legada fica viva
-  // sem cancelamento registrado, o modo exato de dupla cobrança).
-  it("T-40.17: 404 na conta correta → segue sem lançar (já cancelada)", async () => {
+  // T-40.17 (E5/C21) + T-30.26 (E8/DA5/C31): o DELETE não pode engolir erro
+  // nenhum. Um 404 só é aceitável quando a PRÓPRIA conta confirma que a
+  // cobrança existe ali e já está removida (`deleted: true` no
+  // `GET /payments/{id}`). 404 sem essa confirmação significa "a cobrança
+  // não está nesta conta" — num mundo multi-conta ela provavelmente vive na
+  // outra e segue pagável: dupla cobrança, o risco que o DA5 manda bloquear.
+  it("T-40.17/T-30.26: 404 no DELETE + conta confirma deleted:true → segue sem lançar", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async (_endpoint: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        const error = new Error("not found")
+        ;(error as { statusCode?: number }).statusCode = 404
+        throw error
+      }
+      return { id: "pay_ja_cancelado", deleted: true, status: "PENDING" }
+    })
+
+    await expect(
+      (service as any).cancelAsaasPayments(["pay_ja_cancelado"], "legacy")
+    ).resolves.toBeUndefined()
+  })
+
+  it("T-30.26: 404 no DELETE + cobrança inexistente nesta conta → bloqueia com mensagem operacional", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async () => {
+      const error = new Error("not found")
+      ;(error as { statusCode?: number }).statusCode = 404
+      throw error
+    })
+
+    let caught: Error | null = null
+    try {
+      await (service as any).cancelAsaasPayments(["pay_legado"], "legacy")
+    } catch (error) {
+      caught = error as Error
+    }
+
+    expect(caught).not.toBeNull()
+    expect(caught?.message).toMatch(/Falha ao cancelar/)
+    expect(caught?.message).toContain("pay_legado")
+    expect(caught?.message).toMatch(/painel Asaas/)
+  })
+
+  it("T-30.26: 404 no DELETE + cobrança ainda viva na conta → bloqueia (segue pagável)", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async (_endpoint: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        const error = new Error("not found")
+        ;(error as { statusCode?: number }).statusCode = 404
+        throw error
+      }
+      return { id: "pay_viva", deleted: false, status: "PENDING" }
+    })
+
+    await expect(
+      (service as any).cancelAsaasPayments(["pay_viva"], "legacy")
+    ).rejects.toThrow(/Falha ao cancelar/)
+  })
+
+  it("T-30.26: 404 numa adesão legacy não toca a conta primary", async () => {
     const repo = {} as unknown as IBackofficeAdhesionRepository
     const service = new BackofficeAdhesionService(repo)
     requestMock.mockImplementation(async () => {
@@ -113,8 +176,43 @@ describe("BackofficeAdhesionService — writers de cobrança usam a conta da ade
     })
 
     await expect(
-      (service as any).cancelAsaasPayments(["pay_ja_cancelado"], "legacy")
-    ).resolves.toBeUndefined()
+      (service as any).cancelAsaasPayments(["pay_legado"], "legacy")
+    ).rejects.toThrow(/Falha ao cancelar/)
+
+    expect(createAsaasClientMock).not.toHaveBeenCalledWith("primary")
+    for (const call of requestMock.mock.calls) {
+      expect(call[0]).toContain("/legacy/payments")
+    }
+  })
+
+  it("T-30.26: lote misto → cancela o que existe e ainda assim falha citando só o id não confirmado", async () => {
+    const repo = {} as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+    requestMock.mockImplementation(async (endpoint: string, init?: RequestInit) => {
+      if (endpoint.endsWith("/pay_ok") && init?.method === "DELETE") {
+        return { id: "pay_ok", deleted: true }
+      }
+      const error = new Error("not found")
+      ;(error as { statusCode?: number }).statusCode = 404
+      throw error
+    })
+
+    let caught: Error | null = null
+    try {
+      await (service as any).cancelAsaasPayments(["pay_ok", "pay_sumido"], "legacy")
+    } catch (error) {
+      caught = error as Error
+    }
+
+    expect(caught?.message).toContain("pay_sumido")
+    expect(caught?.message).not.toContain("pay_ok")
+    expect(
+      requestMock.mock.calls.some(
+        (call) =>
+          String(call[0]).endsWith("/pay_ok") &&
+          (call[1] as RequestInit | undefined)?.method === "DELETE"
+      )
+    ).toBe(true)
   })
 
   it("T-40.17: erro != 404 propaga (não engole)", async () => {
