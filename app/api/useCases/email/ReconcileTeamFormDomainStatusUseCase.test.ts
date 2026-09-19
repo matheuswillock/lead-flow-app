@@ -116,6 +116,40 @@ describe("ReconcileTeamFormDomainStatusUseCase", () => {
     expect((output.result as { verified: number }).verified).toBe(1)
   })
 
+  /**
+   * Regressão do achado P1 do codex (PR #1204): falha de TRANSPORTE
+   * (429/500/timeout) consultando a Vercel não é veredito sobre o domínio.
+   * Antes, isso virava `pending` e o cron rebaixava TODO domínio `verified`
+   * cuja consulta desse erro transitório — derrubando os formulários
+   * públicos daquele domínio até a próxima passada do cron. 404 (domínio
+   * removido de fato) continua rebaixando normalmente — só o erro de
+   * transporte deve ser preservado.
+   */
+  it("preserva domínio verificado quando a consulta à Vercel falha transitoriamente (500)", async () => {
+    const verifiedAt = new Date("2026-01-01T00:00:00.000Z")
+    const { repository, saved } = makeRepository([
+      makeDomain({ status: "verified", verifiedAt }),
+    ])
+    const invalidated: string[] = []
+    const useCase = new ReconcileTeamFormDomainStatusUseCase({
+      repository,
+      vercelGateway: makeGateway({ ok: false, status: 500, errorMessage: "internal error" }),
+      invalidateCache: ({ hostname }) => invalidated.push(hostname),
+    })
+
+    const output = await useCase.execute()
+
+    expect(saved).toHaveLength(1)
+    // Status preservado — não rebaixa para `pending` por instabilidade da API.
+    expect(saved[0]?.input.status).toBe("verified")
+    // `verifiedAt` não é tocado (nem enviado no input) — continua "verificado em".
+    expect(saved[0]?.input.verifiedAt).toBeUndefined()
+    // Status não mudou: nada de cache stampede por instabilidade transitória.
+    expect(invalidated).toEqual([])
+    expect((output.result as { downgraded: number }).downgraded).toBe(0)
+    expect((output.result as { inconclusive: number }).inconclusive).toBe(1)
+  })
+
   it("promove domínio pendente que passou a resolver", async () => {
     const { repository, saved } = makeRepository([
       makeDomain({ status: "pending", verifiedAt: null }),
