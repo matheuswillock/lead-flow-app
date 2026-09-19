@@ -38,24 +38,62 @@ export function isBackofficeAdhesionStatusValue(
   )
 }
 
-const EXPECTED_CREATE_ERROR_MESSAGES = new Set([
-  "Lead não está elegível para nova adesão",
-  "Lead já possui uma adesão vinculada",
-  "Já existe uma conta cadastrada com este e-mail",
+/**
+ * Copy de negócio que `BackofficeAdhesionService`/`BackofficeAdhesionUseCase` lançam
+ * deliberadamente como `Error` com mensagem pronta para o usuário final do backoffice.
+ *
+ * `BackofficeAdhesionsRequestError` (client, `BackofficeAdhesionsService.ts`) estende
+ * `ApiRequestError` — e `toUserToastMessage` deixa qualquer `ApiRequestError` passar
+ * intacto para o toast, pulando o filtro de sinal técnico (`hasTechnicalErrorSignal`).
+ * Sem este allowlist, uma falha inesperada de Prisma/Supabase Admin/SDK do Asaas que
+ * escapasse do try/catch destes métodos chegaria crua ao usuário — achado P2 do
+ * PR #1203, thread PRRT_kwDOPrEc6s6jyVkp: "Keep untrusted backend errors out of
+ * user toasts".
+ *
+ * Mensagem fora deste conjunto (driver, provider, exceção inesperada) é substituída
+ * pelo fallback genérico do próprio método via `getSafeErrorMessage` — nunca repassada
+ * crua. Isso é intencionalmente conservador: uma copy de negócio legítima mas rara,
+ * fora do allowlist, degrada para o fallback genérico em vez de vazar; o allowlist só
+ * cresce quando o método realmente precisa que aquela mensagem específica chegue ao
+ * usuário.
+ */
+const KNOWN_SAFE_ADHESION_ERROR_MESSAGES = new Set([
+  // create / update — validação comercial (normalizeCommercialInput)
   "Nome completo deve ter pelo menos 2 caracteres",
   "Celular deve conter 10 ou 11 dígitos",
   "E-mail inválido",
   "CPF/CNPJ inválido",
   "E-mail é obrigatório para pagamento por fora",
-  "Convite só pode ser reenviado para adesões pagas",
-  "Adesão paga sem e-mail para reenvio de convite",
-  "Adesão paga sem e-mail para envio de convite",
+  // create — elegibilidade de lead / conta
+  "Lead não está elegível para nova adesão",
+  "Lead já possui uma adesão vinculada",
+  "Já existe uma conta cadastrada com este e-mail",
+  // create — Member PRO
   "Informe a data de expiração do acesso Member PRO",
   "Data de expiração do acesso Member PRO inválida",
   "O acesso Member PRO deve ter validade de no mínimo 1 dia",
   "O acesso Member PRO deve ter validade de no máximo 1 ano",
+  // create — patrocinador
   "Patrocinador não autorizado",
   "Patrocinador inválido",
+  // update / resend / resendInvite / getPendingInvoiceUrls / getPublicUrl /
+  // deletePending — estado da adesão
+  "Adesão não encontrada",
+  "Adesões pagas não podem ser editadas",
+  "Adesões pagas não podem ser reenviadas",
+  "Somente adesões pendentes podem ser excluídas",
+  "Não foi possível excluir a adesão pendente",
+  "Assinatura já ativada. Use o link de fatura das parcelas pendentes para cobrança.",
+  "Convite disponível apenas após ativação da conta ou pagamento externo",
+  "Adesão sem e-mail para reenvio de convite",
+  "Adesão paga sem e-mail para envio de convite",
+  "Checkout de fatura disponível apenas para assinaturas já ativadas",
+  "Não há parcelas pendentes para cobrança",
+  "Cliente Asaas não configurado para esta adesão",
+  "E-mail não configurado para esta adesão",
+  "Nenhuma fatura pendente com link de pagamento disponível",
+  "Link não disponível. Reenvie a adesão para gerar um novo link.",
+  "Link expirado. Reenvie a adesão para gerar um novo link.",
 ])
 
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
@@ -85,12 +123,17 @@ function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undef
   }
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
+function isKnownSafeAdhesionError(error: unknown): boolean {
+  return error instanceof Error && KNOWN_SAFE_ADHESION_ERROR_MESSAGES.has(error.message)
 }
 
-function isExpectedCreateError(error: unknown): boolean {
-  return error instanceof Error && EXPECTED_CREATE_ERROR_MESSAGES.has(error.message)
+/**
+ * Só repassa `error.message` ao usuário quando ela está no allowlist de copy de
+ * negócio conhecida (`KNOWN_SAFE_ADHESION_ERROR_MESSAGES`). Qualquer outra coisa —
+ * driver, provider, exceção inesperada — vira o fallback genérico do próprio método.
+ */
+function getSafeErrorMessage(error: unknown, fallback: string): string {
+  return isKnownSafeAdhesionError(error) ? (error as Error).message : fallback
 }
 
 export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
@@ -159,13 +202,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
           : result.publicUrl
       return new Output(true, ["Nova adesão gerada com sucesso"], [], { ...result, publicUrl })
     } catch (error) {
-      if (!isExpectedCreateError(error)) {
+      if (!isKnownSafeAdhesionError(error)) {
         console.error("[BackofficeAdhesionUseCase][create]", error)
       }
       return new Output(
         false,
         [],
-        [getErrorMessage(error, "Erro ao gerar adesão")],
+        [getSafeErrorMessage(error, "Erro ao gerar adesão")],
         null
       )
     }
@@ -176,11 +219,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       const result = await this.service.update(id, input)
       return new Output(true, ["Adesão atualizada com sucesso"], [], result)
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][update]", error)
+      if (!isKnownSafeAdhesionError(error)) {
+        console.error("[BackofficeAdhesionUseCase][update]", error)
+      }
       return new Output(
         false,
         [],
-        [error instanceof Error ? error.message : "Erro ao atualizar adesão"],
+        [getSafeErrorMessage(error, "Erro ao atualizar adesão")],
         null
       )
     }
@@ -191,8 +236,10 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       await this.service.deletePending(id)
       return new Output(true, ["Adesão excluída com sucesso"], [], { deleted: true })
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][deletePending]", error)
-      return new Output(false, [], [getErrorMessage(error, "Erro ao excluir adesão")], null)
+      if (!isKnownSafeAdhesionError(error)) {
+        console.error("[BackofficeAdhesionUseCase][deletePending]", error)
+      }
+      return new Output(false, [], [getSafeErrorMessage(error, "Erro ao excluir adesão")], null)
     }
   }
 
@@ -207,11 +254,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
         : result.publicUrl
       return new Output(true, ["Link de adesão gerado com sucesso"], [], { ...result, publicUrl })
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][resend]", error)
+      if (!isKnownSafeAdhesionError(error)) {
+        console.error("[BackofficeAdhesionUseCase][resend]", error)
+      }
       return new Output(
         false,
         [],
-        [error instanceof Error ? error.message : "Erro ao reenviar adesão"],
+        [getSafeErrorMessage(error, "Erro ao reenviar adesão")],
         null
       )
     }
@@ -222,13 +271,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       const result = await this.service.resendInvite(id)
       return new Output(true, ["Convite reenviado com sucesso"], [], result)
     } catch (error) {
-      if (!isExpectedCreateError(error)) {
+      if (!isKnownSafeAdhesionError(error)) {
         console.error("[BackofficeAdhesionUseCase][resendInvite]", error)
       }
       return new Output(
         false,
         [],
-        [error instanceof Error ? error.message : "Erro ao reenviar convite"],
+        [getSafeErrorMessage(error, "Erro ao reenviar convite")],
         null
       )
     }
@@ -239,11 +288,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       const result = await this.service.getPendingInvoiceUrls(id)
       return new Output(true, [], [], result)
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][getPendingInvoiceUrls]", error)
+      if (!isKnownSafeAdhesionError(error)) {
+        console.error("[BackofficeAdhesionUseCase][getPendingInvoiceUrls]", error)
+      }
       return new Output(
         false,
         [],
-        [error instanceof Error ? error.message : "Erro ao obter link de fatura"],
+        [getSafeErrorMessage(error, "Erro ao obter link de fatura")],
         null
       )
     }
@@ -258,8 +309,10 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       })
       return new Output(true, [], [], { ...result, publicUrl })
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][getPublicUrl]", error)
-      return new Output(false, [], [getErrorMessage(error, "Erro ao copiar link")], null)
+      if (!isKnownSafeAdhesionError(error)) {
+        console.error("[BackofficeAdhesionUseCase][getPublicUrl]", error)
+      }
+      return new Output(false, [], [getSafeErrorMessage(error, "Erro ao copiar link")], null)
     }
   }
 
