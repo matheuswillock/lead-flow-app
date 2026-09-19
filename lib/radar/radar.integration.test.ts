@@ -3,6 +3,14 @@ import { randomUUID } from "crypto"
 import type { WhatsAppConversationSelect } from "@/app/api/infra/data/repositories/whatsapp/IWhatsAppRepository"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 
+/**
+ * Engajamento de e-mail só conta com origem humana (decisão de 17/09): o
+ * pixel buscado pelo proxy do provedor não é leitura. Os seeds abaixo
+ * representam abertura/clique de gente, então carimbam a classificação —
+ * sem isso o segmento sai vazio e o teste mede o classificador, não a regra.
+ */
+const HUMAN_EMAIL_ORIGIN = { classification: "human" } as const
+
 const RUN_INTEGRATION = process.env.RADAR_INTEGRATION_TEST === "1" && Boolean(process.env.DATABASE_URL)
 
 /**
@@ -1398,7 +1406,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
           sourceType: "email_log",
           sourceId: randomUUID(),
           occurredAt: new Date(),
-          metadata: { campaignId },
+          metadata: { campaignId, origin: HUMAN_EMAIL_ORIGIN },
         },
       ],
     })
@@ -1418,7 +1426,7 @@ describe.skipIf(!RUN_INTEGRATION)("CustomerDataPlatform integration", () => {
             {
               eventType: "email.opened",
               occurredAt: new Date(),
-              metadata: { campaignId },
+              metadata: { campaignId, origin: HUMAN_EMAIL_ORIGIN },
             },
           ],
         },
@@ -2315,7 +2323,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
         sourceType: "email_campaign",
         sourceId: `${campaignId}:open`,
         occurredAt: recent,
-        metadata: { campaignId },
+        metadata: { campaignId, origin: HUMAN_EMAIL_ORIGIN },
       },
     })
 
@@ -2335,7 +2343,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
         sourceType: "email_campaign",
         sourceId: `${campaignId}:click`,
         occurredAt: recent,
-        metadata: { campaignId },
+        metadata: { campaignId, origin: HUMAN_EMAIL_ORIGIN },
       },
     })
 
@@ -2422,7 +2430,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
         sourceType: "email_campaign",
         sourceId: `${randomUUID()}:open`,
         occurredAt: recent,
-        metadata: { campaignId: randomUUID() },
+        metadata: { campaignId: randomUUID(), origin: HUMAN_EMAIL_ORIGIN },
       },
     })
 
@@ -2442,7 +2450,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG — uma verdade por segmento de sistema
         sourceType: "email_campaign",
         sourceId: `${randomUUID()}:sent`,
         occurredAt: recent,
-        metadata: { campaignId: randomUUID() },
+        metadata: { campaignId: randomUUID(), origin: HUMAN_EMAIL_ORIGIN },
       },
     })
 
@@ -2724,7 +2732,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-SEG.8 — segmento campaign:{id} de campanh
         sourceType: "email_campaign",
         sourceId: `${randomUUID()}:open`,
         occurredAt: new Date(),
-        metadata: { campaignId: randomUUID() },
+        metadata: { campaignId: randomUUID(), origin: HUMAN_EMAIL_ORIGIN },
       },
     })
   })
@@ -2848,7 +2856,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-R2.3 — lote agregado === cálculo unitár
             sourceType: "email_campaign",
             sourceId: `${randomUUID()}:${event}`,
             occurredAt: new Date(now - event * 24 * 60 * 60 * 1000),
-            metadata: { campaignId: randomUUID() },
+            metadata: { campaignId: randomUUID(), origin: HUMAN_EMAIL_ORIGIN },
           },
         })
       }
@@ -2927,7 +2935,7 @@ describe.skipIf(!RUN_INTEGRATION)("T-R2.3 — lote agregado === cálculo unitár
         sourceType: "email_campaign",
         sourceId: `${randomUUID()}:cross-team`,
         occurredAt: new Date(),
-        metadata: { campaignId: randomUUID() },
+        metadata: { campaignId: randomUUID(), origin: HUMAN_EMAIL_ORIGIN },
       },
     })
 

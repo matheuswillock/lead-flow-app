@@ -39,6 +39,18 @@ mock.module("@/lib/public-forms/rate-limit", () => ({
   publicFormRequestFingerprint: () => "fp-1",
 }))
 
+/**
+ * Guarda de tenancy por hostname (`server-only`, consulta banco). Por padrão
+ * libera; um teste específico faz ela recusar para provar que a recusa vem
+ * ANTES do UseCase — nenhum lead do time B pode nascer no domínio do time A.
+ * O caminho completo com Host forjado é medido em
+ * e2e/specs/public/forms-host-routing-api.spec.ts.
+ */
+const foreignHostGuardMock = mock(async (): Promise<unknown | null> => null)
+mock.module("@/lib/public-forms/public-form-host-tenancy-guard", () => ({
+  rejectPublicFormRequestOnForeignHost: foreignHostGuardMock,
+}))
+
 const { POST } = await import("./route")
 
 const BACKGROUND_JOB = {
@@ -78,6 +90,8 @@ function resetMocks() {
   queueForBackgroundProcessingMock.mockResolvedValue(undefined)
   consumePublicFormRateLimitMock.mockReset()
   consumePublicFormRateLimitMock.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 })
+  foreignHostGuardMock.mockReset()
+  foreignHostGuardMock.mockResolvedValue(null)
 }
 
 /**
@@ -97,6 +111,22 @@ describe("Public form submissions route — guard de origem (T-F6.2)", () => {
   afterAll(() => {
     if (previousAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL
     else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl
+  })
+
+  it("host de outro time → resposta da guarda, sem chamar o UseCase", async () => {
+    resetMocks()
+    const guardResponse = { status: 404, body: { isValid: false } }
+    foreignHostGuardMock.mockResolvedValue(guardResponse)
+
+    const response = await POST(makeRequest(VALID_BODY), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response).toBe(guardResponse as never)
+    expect(acceptMock).not.toHaveBeenCalled()
+    expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
+    // Recusa antes do rate limit: POST forjado não consome cota do visitante.
+    expect(consumePublicFormRateLimitMock).not.toHaveBeenCalled()
   })
 
   it("origem externa → 400, sem chamar o UseCase", async () => {

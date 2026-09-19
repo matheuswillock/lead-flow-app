@@ -498,4 +498,78 @@ describe("proxy", () => {
     expect(response.status).toBe(308)
     expect(response.headers.get("location")).toBe(`${BASE_URL}/${USER_A}/radar?tab=segments`)
   })
+
+  describe("host de formulários (domínio do time)", () => {
+    const CUSTOM_HOST = "forms.imobiliariax.com.br"
+    const FORM_ID = "22222222-2222-4222-8222-222222222222"
+    let restoreEnv: (() => void) | undefined
+
+    beforeEach(() => {
+      const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL
+      process.env.NEXT_PUBLIC_APP_URL = BASE_URL
+      restoreEnv = () => {
+        if (previousAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL
+        else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl
+      }
+    })
+
+    afterEach(() => {
+      restoreEnv?.()
+    })
+
+    it("serve /forms/* em host custom sem tocar sessão e com noindex", async () => {
+      const response = await proxy(
+        makeRequest(`/forms/${FORM_ID}`, { headers: { host: CUSTOM_HOST } }),
+      )
+
+      expect(updateSessionSpy).not.toHaveBeenCalled()
+      expect(response.status).toBe(200)
+      expect(response.headers.get("x-robots-tag")).toBe("noindex")
+    })
+
+    it("reescreve /api/q/public-forms/* para /api/v1 em host custom sem sessão", async () => {
+      const response = await proxy(
+        makeRequest(`/api/q/public-forms/${FORM_ID}/submissions`, {
+          headers: { host: CUSTOM_HOST, ...uniqueApiQHeaders() },
+        }),
+      )
+
+      expect(updateSessionSpy).not.toHaveBeenCalled()
+      expect(response.headers.get("x-middleware-rewrite")).toContain(
+        `/api/v1/public-forms/${FORM_ID}/submissions`,
+      )
+    })
+
+    it("redireciona 307 rota fora de /forms/* em host custom para a plataforma", async () => {
+      const response = await proxy(
+        makeRequest(`/${USER_A}/crm`, { headers: { host: CUSTOM_HOST } }),
+      )
+
+      expect(updateSessionSpy).not.toHaveBeenCalled()
+      expect(response.status).toBe(307)
+      expect(response.headers.get("location")).toBe(`${BASE_URL}/${USER_A}/crm`)
+    })
+
+    it("redireciona API fora do formulário em host custom", async () => {
+      const response = await proxy(
+        makeRequest("/api/q/leads", {
+          headers: { host: CUSTOM_HOST, ...uniqueApiQHeaders() },
+        }),
+      )
+
+      expect(response.status).toBe(307)
+      expect(response.headers.get("location")).toBe(`${BASE_URL}/api/q/leads`)
+    })
+
+    it("host da plataforma segue o fluxo normal (sem branch de forms host)", async () => {
+      updateSessionSpy.mockResolvedValue(makeSession(null))
+
+      const response = await proxy(
+        makeRequest("/sign-in", { headers: { host: "localhost:3000" } }),
+      )
+
+      expect(updateSessionSpy).toHaveBeenCalled()
+      expect(response.status).toBe(200)
+    })
+  })
 })

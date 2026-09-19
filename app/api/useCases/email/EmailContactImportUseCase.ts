@@ -14,8 +14,24 @@ import { generateEmailImportId } from "@/lib/email/generate-import-id"
 import {
   AUDIENCE_REASON_BLOCKLISTED,
   AUDIENCE_REASON_BOUNCED,
+  AUDIENCE_REASON_NO_MX,
   evaluateEmailForAudience,
+  splitAudienceEmailParts,
 } from "@/lib/email/audience-prevalidation"
+import { DomainMailDnsCache } from "@/lib/email/domain-mx-check"
+import {
+  addToImportValidationCounts,
+  classifyImportSkipReason,
+  computeImportRiskLevel,
+  countRemovalsRelevantForRisk,
+  formatImportVerdictSummary,
+  IMPORT_RISK_LEVEL_LABELS,
+  mergeImportValidationCounts,
+  pickVolatileImportValidationCounts,
+  type EmailImportRiskLevelValue,
+  type ImportValidationCounts,
+} from "@/lib/email/import-validation-verdict"
+import { withConcurrencyLimit } from "@/lib/async/with-concurrency-limit"
 import {
   BLOCK_REASON_IMPORT,
   blockTeamEmailsBulk,
@@ -35,6 +51,15 @@ const MAX_BATCH_ATTEMPTS = 3
 const MAX_PROCESSING_MS = 45_000
 const SKIPPED_ISSUES_PERSIST_LIMIT = 100
 const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000
+
+/** Lookups DoH simultâneos por lote — acima disso os resolvers começam a atrasar o job. */
+const MAIL_DNS_LOOKUP_CONCURRENCY = 8
+/**
+ * Orçamento de DNS por LOTE. Estourou (resolvers lentos/fora), o restante do
+ * lote passa sem veredito — fail-open: indisponibilidade de resolver não pode
+ * recusar contato nem estourar o `maxDuration` do cron.
+ */
+const MAIL_DNS_BATCH_BUDGET_MS = 20_000
 
 type ImportRow = {
   line?: number
@@ -307,7 +332,8 @@ export class EmailContactImportUseCase {
    */
   private async partitionBatchBySuppression(
     batch: ImportRow[],
-    teamId: string
+    teamId: string,
+    mailDnsCache: DomainMailDnsCache
   ): Promise<{ allowed: ImportRow[]; skippedIssues: SkippedImportIssue[] }> {
     if (batch.length === 0) return { allowed: [], skippedIssues: [] }
 
@@ -338,6 +364,55 @@ export class EmailContactImportUseCase {
         email: row.email,
         reason: AUDIENCE_REASON_BLOCKLISTED,
       })
+    }
+
+    // MX/DNS por último — só nos sobreviventes, poupando lookup de quem já
+    // caiu por bounce/blocklist. É porta VOLÁTIL de propósito: DNS é estado
+    // externo e resolver pode falhar; a porta estável precisa continuar pura
+    // (offset posicional entre claims).
+    const mailDns = await this.partitionBatchByMailDns(allowed, mailDnsCache)
+    skippedIssues.push(...mailDns.skippedIssues)
+
+    return { allowed: mailDns.allowed, skippedIssues }
+  }
+
+  /**
+   * Rejeita domínio SEM servidor de e-mail (nem MX, nem A — bounce garantido).
+   * `unknown` (resolver indisponível/orçamento estourado) passa: fail-open.
+   */
+  private async partitionBatchByMailDns(
+    rows: ImportRow[],
+    mailDnsCache: DomainMailDnsCache
+  ): Promise<{ allowed: ImportRow[]; skippedIssues: SkippedImportIssue[] }> {
+    if (rows.length === 0) return { allowed: [], skippedIssues: [] }
+
+    const domains = [
+      ...new Set(
+        rows
+          .map((row) => splitAudienceEmailParts(row.email).domain)
+          .filter((domain) => domain.length > 0)
+      ),
+    ]
+
+    const deadline = Date.now() + MAIL_DNS_BATCH_BUDGET_MS
+    const verdictByDomain = new Map<string, Awaited<ReturnType<DomainMailDnsCache["resolve"]>>>()
+    await withConcurrencyLimit(domains, MAIL_DNS_LOOKUP_CONCURRENCY, async (domain) => {
+      if (Date.now() > deadline) {
+        verdictByDomain.set(domain, "unknown")
+        return
+      }
+      verdictByDomain.set(domain, await mailDnsCache.resolve(domain))
+    })
+
+    const allowed: ImportRow[] = []
+    const skippedIssues: SkippedImportIssue[] = []
+    for (const row of rows) {
+      const domain = splitAudienceEmailParts(row.email).domain
+      if (verdictByDomain.get(domain) === "undeliverable") {
+        skippedIssues.push({ line: row.line, email: row.email, reason: AUDIENCE_REASON_NO_MX })
+        continue
+      }
+      allowed.push(row)
     }
 
     return { allowed, skippedIssues }
@@ -439,15 +514,15 @@ export class EmailContactImportUseCase {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
-      let contacts: ReturnType<EmailContactListService["parseCsv"]>
+      let parsed: ReturnType<EmailContactListService["parseCsvWithIssues"]>
       try {
-        contacts = this.contactListService.parseCsv(csvContent)
+        parsed = this.contactListService.parseCsvWithIssues(csvContent)
       } catch (parseError: unknown) {
         const message = parseError instanceof Error ? parseError.message : "Erro ao processar CSV"
         return new Output(false, [], [message], null)
       }
 
-      if (contacts.length === 0) {
+      if (parsed.contacts.length === 0) {
         return new Output(false, [], ["Nenhum contato válido encontrado no CSV"], null)
       }
 
@@ -465,7 +540,10 @@ export class EmailContactImportUseCase {
         ctx,
         sourceFormat: "csv",
         storagePath,
-        totalRows: contacts.length,
+        // Linhas de DADOS do arquivo (com e sem e-mail): o denominador do
+        // veredito de risco e a barra de progresso partem do arquivo real,
+        // não do que sobrou depois do parser.
+        totalRows: parsed.contacts.length + parsed.issues.length,
       })
 
       return new Output(true, ["Importação enfileirada"], [], { importId: job.importId })
@@ -475,23 +553,37 @@ export class EmailContactImportUseCase {
     }
   }
 
+  /**
+   * Linha inválida do CSV NÃO é mais descartada em silêncio: o parser devolve
+   * cada linha sem e-mail como issue (com a linha REAL do arquivo), e linhas
+   * com e-mail sintaticamente inválido seguem no fluxo para o gate estável
+   * classificar e reportar — as duas acabam em `skippedIssues` como as demais.
+   */
   private async parseStoredRows(
     sourceFormat: string,
     storagePath: string
-  ): Promise<ImportRow[]> {
+  ): Promise<{ rows: ImportRow[]; parserIssues: SkippedImportIssue[] }> {
     const raw = await downloadEmailImportPayload(storagePath)
 
     if (sourceFormat === "csv") {
-      return this.contactListService.parseCsv(raw).map((row, index) => ({
-        line: index + 1,
-        email: row.email,
-        name: row.name,
-        customFields: row.customFields as Record<string, string> | undefined,
-      }))
+      const parsed = this.contactListService.parseCsvWithIssues(raw)
+      return {
+        rows: parsed.contacts.map((row) => ({
+          line: row.line,
+          email: row.email,
+          name: row.name,
+          customFields: row.customFields,
+        })),
+        parserIssues: parsed.issues.map((issue) => ({
+          line: issue.line,
+          email: issue.email,
+          reason: issue.reason,
+        })),
+      }
     }
 
     const parsed = JSON.parse(raw) as { rows?: ImportRow[] }
-    return parsed.rows ?? []
+    return { rows: parsed.rows ?? [], parserIssues: [] }
   }
 
   private parseFailedBatches(value: Prisma.JsonValue | null): FailedBatchEntry[] {
@@ -538,7 +630,12 @@ export class EmailContactImportUseCase {
     },
     listIsSystemDefault: boolean,
     ctx: TeamContext,
-    hasRadarFeature: boolean
+    hasRadarFeature: boolean,
+    verdict: {
+      counts: ImportValidationCounts
+      riskLevel: EmailImportRiskLevelValue
+      listName: string
+    } | null = null
   ): Promise<void> {
     const totalCount = await this.db.emailContact.count({ where: { listId: job.listId } })
     await this.db.emailContactList.update({
@@ -546,8 +643,13 @@ export class EmailContactImportUseCase {
       data: { totalContacts: totalCount },
     })
 
+    // `!listIsSystemDefault` é exatamente a condição de `fanOutToDefaultList`
+    // em `importContactsBatch`: quando ela vale, os MESMOS contatos também
+    // foram replicados na lista padrão ("Todos contatos").
+    let fanOutListId: string | null = null
     if (!listIsSystemDefault) {
       const defaultList = await this.ensureDefaultList(ctx)
+      fanOutListId = defaultList.id
       const defaultTotalCount = await this.db.emailContact.count({
         where: { listId: defaultList.id },
       })
@@ -564,10 +666,49 @@ export class EmailContactImportUseCase {
     const status =
       failedBatches.length > 0 ? "completed_with_errors" : "completed"
 
-    await this.db.emailImportJob.update({
-      where: { id: job.id },
-      data: { status },
+    // Quarentena: risco ALTO tira a lista de circulação — ela não entra em
+    // audiência de campanha até liberação explícita (manager/owner) no
+    // relatório de importação.
+    //
+    // A CÓPIA DO FAN-OUT ENTRA JUNTO. Quarentenar só `job.listId` deixava a
+    // mesma audiência de risco ALTO enviável por "Todos contatos":
+    // `findQuarantinedLists` só bloqueia lista com `isQuarantined: true`, e a
+    // lista padrão não era marcada — o gate inteiro ficava contornável
+    // escolhendo outra lista no seletor de audiência.
+    const quarantineListIds =
+      verdict?.riskLevel === "high" ? [job.listId, ...(fanOutListId ? [fanOutListId] : [])] : []
+    const quarantined = quarantineListIds.length > 0
+    const quarantineReason = `Importação ${job.importId} com risco ALTO — ${formatImportVerdictSummary(verdict?.counts ?? {})}.`
+
+    // ATOMICIDADE: status terminal do job e quarentena no MESMO commit. Marcar
+    // `completed` antes e quarentenar depois deixava uma janela permanente —
+    // job fora de `pending`/`processing` (nenhum retry o reclama) com a lista
+    // de risco ALTO ainda enviável se a segunda escrita falhasse.
+    await this.db.$transaction(async (tx) => {
+      await tx.emailImportJob.update({
+        where: { id: job.id },
+        data: {
+          status,
+          ...(verdict
+            ? {
+                validationCounts: verdict.counts as Prisma.InputJsonValue,
+                riskLevel: verdict.riskLevel,
+              }
+            : {}),
+        },
+      })
+      await emailContactListRepository.quarantineListsWithin(tx, {
+        listIds: quarantineListIds,
+        reason: quarantineReason,
+        now: new Date(),
+      })
     })
+
+    if (quarantined) {
+      console.info(
+        `[EmailContactImport][${job.importId}] Lista(s) ${quarantineListIds.join(", ")} quarentenada(s) — risco ALTO`
+      )
+    }
 
     const failedBatchCount = failedBatches.length
     const pendingRadarSync = hasRadarFeature
@@ -577,8 +718,22 @@ export class EmailContactImportUseCase {
       pendingRadarSync > 0
         ? ` ${pendingRadarSync} contato(s) aguardando sincronização com o Radar.`
         : ""
+    const verdictSuffix = verdict
+      ? ` Veredito: ${formatImportVerdictSummary(verdict.counts)} · risco ${IMPORT_RISK_LEVEL_LABELS[verdict.riskLevel]}.`
+      : ""
+    // A cópia do fan-out também é declarada: sem isso o usuário não entende
+    // por que "Todos contatos" parou de aparecer na audiência.
+    const fanOutQuarantineNote =
+      quarantined && fanOutListId
+        ? ` A lista padrão "${DEFAULT_LIST_NAME}" recebeu os mesmos contatos e também entrou em quarentena.`
+        : ""
+    const quarantineSuffix = quarantined
+      ? ` A lista "${verdict?.listName ?? ""}" foi colocada em quarentena e não entra em campanhas até liberação explícita.${fanOutQuarantineNote}`
+      : ""
     const message =
       `Importação concluída: ${job.importedCount} importados, ${job.skippedCount} recusados, ${job.updatedCount} atualizados, ${failedBatchCount} lote(s) com falha.` +
+      verdictSuffix +
+      quarantineSuffix +
       this.formatSkippedNotificationSuffix(job.skippedCount, skippedIssues) +
       radarSyncSuffix
 
@@ -597,6 +752,14 @@ export class EmailContactImportUseCase {
         skippedIssues,
         failedBatches: failedBatchCount,
         pendingRadarSync,
+        ...(verdict
+          ? {
+              validationCounts: verdict.counts,
+              riskLevel: verdict.riskLevel,
+              quarantined,
+              quarantinedListIds: quarantineListIds,
+            }
+          : {}),
       },
     })
 
@@ -634,7 +797,7 @@ export class EmailContactImportUseCase {
 
       const list = await this.db.emailContactList.findFirst({
         where: { id: claimed.listId, teamId: claimed.teamId },
-        select: { id: true, isSystemDefault: true, isBlocklist: true },
+        select: { id: true, name: true, isSystemDefault: true, isBlocklist: true },
       })
       if (!list) {
         await this.db.emailImportJob.update({
@@ -649,17 +812,49 @@ export class EmailContactImportUseCase {
         teamId: claimed.teamId,
       } as TeamContext
 
-      const allRows = await this.parseStoredRows(claimed.sourceFormat, claimed.storagePath)
+      const { rows: allRows, parserIssues } = await this.parseStoredRows(
+        claimed.sourceFormat,
+        claimed.storagePath
+      )
       // Import cujo destino é a blocklist não passa pelas portas de descarte:
       // typo de domínio, provedor morto e bounce anterior são exatamente o que
       // se quer bloquear. Só linhas sem e-mail são recusadas.
-      const {
-        validRows,
-        skipped: initialSkipped,
-        skippedIssues: initialSkippedIssues,
-      } = list.isBlocklist
+      const gate = list.isBlocklist
         ? this.collectRowsWithEmail(allRows)
         : this.collectAudienceValidRows(allRows)
+      const { validRows } = gate
+      // As issues do parser (linha sem e-mail no CSV) são tão estáveis quanto
+      // as da pré-validação: derivam só do arquivo. Entram na parcela ATRIBUÍDA.
+      const initialSkipped = gate.skipped + parserIssues.length
+      const initialSkippedIssues = [...parserIssues, ...gate.skippedIssues]
+
+      // Veredito por categoria — só para import de audiência (blocklist não
+      // tem risco: bloquear lixo é o objetivo, não um sintoma).
+      // Estáveis: recomputadas do arquivo a cada claim (atribuídas).
+      // Voláteis: recuperadas do JSON persistido e acumuladas por lote.
+      const stableCounts: ImportValidationCounts = {}
+      const volatileCounts: ImportValidationCounts = list.isBlocklist
+        ? {}
+        : pickVolatileImportValidationCounts(claimed.validationCounts)
+      const totalDataRows = allRows.length + parserIssues.length
+      if (!list.isBlocklist) {
+        for (const issue of initialSkippedIssues) {
+          addToImportValidationCounts(stableCounts, classifyImportSkipReason(issue.reason))
+        }
+        // Duplicados no arquivo: contam no veredito (não somam audiência) mas
+        // NÃO viram skippedIssues — o upsert continua tratando como update.
+        const uniqueValidEmails = new Set(validRows.map((row) => row.email))
+        addToImportValidationCounts(
+          stableCounts,
+          "duplicate",
+          validRows.length - uniqueValidEmails.size
+        )
+      }
+      const buildVerdictCounts = (): ImportValidationCounts | null =>
+        list.isBlocklist ? null : mergeImportValidationCounts(stableCounts, volatileCounts)
+
+      // Cache DoH por domínio para a vida DESTE claim do job.
+      const mailDnsCache = new DomainMailDnsCache()
 
       let processedRows = claimed.processedRows
       let importedCount = claimed.importedCount
@@ -691,6 +886,7 @@ export class EmailContactImportUseCase {
 
       while (batchIndex < totalBatches) {
         if (Date.now() - startedAt > MAX_PROCESSING_MS) {
+          const timeoutVerdictCounts = buildVerdictCounts()
           await this.db.emailImportJob.update({
             where: { id: claimed.id },
             data: {
@@ -705,6 +901,9 @@ export class EmailContactImportUseCase {
               ) as unknown as Prisma.InputJsonValue,
               failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
               attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
+              ...(timeoutVerdictCounts
+                ? { validationCounts: timeoutVerdictCounts as Prisma.InputJsonValue }
+                : {}),
             },
           })
           console.info(
@@ -730,6 +929,9 @@ export class EmailContactImportUseCase {
           if (stagedSkipped.length === 0) return
           suppressedSkippedCount += stagedSkipped.length
           skippedIssues.push(...stagedSkipped)
+          for (const issue of stagedSkipped) {
+            addToImportValidationCounts(volatileCounts, classifyImportSkipReason(issue.reason))
+          }
           stagedSkipped = []
         }
 
@@ -754,7 +956,7 @@ export class EmailContactImportUseCase {
             // `validRows`: mantém os índices estáveis entre claims e ainda
             // enxerga bloqueios feitos durante o import.
             const { allowed, skippedIssues: batchSkipped } =
-              await this.partitionBatchBySuppression(batch, claimed.teamId)
+              await this.partitionBatchBySuppression(batch, claimed.teamId, mailDnsCache)
             stagedSkipped = batchSkipped
 
             const batchResult = await this.importContactsBatch({
@@ -801,6 +1003,7 @@ export class EmailContactImportUseCase {
           }
         }
 
+        const checkpointVerdictCounts = buildVerdictCounts()
         await this.db.emailImportJob.update({
           where: { id: claimed.id },
           data: {
@@ -814,11 +1017,26 @@ export class EmailContactImportUseCase {
             ) as unknown as Prisma.InputJsonValue,
             failedBatches: failedBatches as unknown as Prisma.InputJsonValue,
             attemptsByBatch: attemptsByBatch as unknown as Prisma.InputJsonValue,
+            ...(checkpointVerdictCounts
+              ? { validationCounts: checkpointVerdictCounts as Prisma.InputJsonValue }
+              : {}),
           },
         })
       }
 
       const skippedCount = initialSkipped + suppressedSkippedCount
+
+      const finalVerdictCounts = buildVerdictCounts()
+      const verdict = finalVerdictCounts
+        ? {
+            counts: finalVerdictCounts,
+            riskLevel: computeImportRiskLevel({
+              removedCount: countRemovalsRelevantForRisk(finalVerdictCounts),
+              totalRows: totalDataRows,
+            }),
+            listName: list.name,
+          }
+        : null
 
       await this.finalizeJob(
         {
@@ -838,7 +1056,8 @@ export class EmailContactImportUseCase {
         },
         list.isSystemDefault,
         ctx,
-        hasRadarFeature
+        hasRadarFeature,
+        verdict
       )
 
       return new Output(true, ["Job processado"], [], {
@@ -847,6 +1066,9 @@ export class EmailContactImportUseCase {
         updated: updatedCount,
         skipped: skippedCount,
         failedBatches: failedBatches.length,
+        ...(verdict
+          ? { riskLevel: verdict.riskLevel, validationCounts: verdict.counts }
+          : {}),
       })
     } catch (error) {
       console.error("[EmailContactImportUseCase][processPendingJobs]", error)

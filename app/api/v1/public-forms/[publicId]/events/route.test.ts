@@ -18,6 +18,13 @@ mock.module("@/app/api/useCases/publicForms/PublicFormsUseCase", () => ({
   publicFormsUseCase: { recordMetric },
 }))
 
+// Guarda de tenancy por hostname: aqui sempre libera (é `server-only` e
+// consulta banco). O isolamento entre times é medido de ponta a ponta em
+// e2e/specs/public/forms-host-routing-api.spec.ts, com Host forjado.
+mock.module("@/lib/public-forms/public-form-host-tenancy-guard", () => ({
+  rejectPublicFormRequestOnForeignHost: mock(async () => null),
+}))
+
 const { POST } = await import("./route")
 
 const VALID_PUBLIC_ID = "11111111-1111-4111-8111-111111111111"

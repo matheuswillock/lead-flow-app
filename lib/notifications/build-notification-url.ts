@@ -57,7 +57,10 @@ export function buildNotificationPath(input: NotificationLinkInput): string {
     return `/${input.supabaseId}/board`;
   }
 
-  if (input.type === "EMAIL_CAMPAIGN_DISPATCH_FAILED") {
+  if (
+    input.type === "EMAIL_CAMPAIGN_DISPATCH_FAILED" ||
+    input.type === "EMAIL_SENDING_HEALTH_CHANGED"
+  ) {
     return `/${input.supabaseId}/email/campanhas`;
   }
 

@@ -925,3 +925,146 @@ describe("EmailCampaignDispatchService.dispatchBatch — EMAIL_DISPATCH_CHUNK_CO
     ])
   })
 })
+
+// ---------- Frente C — host dos links /forms/{uuid} no disparo ----------
+
+describe("EmailCampaignDispatchService — domínio de formulários do time", () => {
+  const TEAM_FORM_ID = "22222222-2222-4222-8222-222222222222"
+  const OTHER_TEAM_FORM_ID = "33333333-3333-4333-8333-333333333333"
+  const TEAM_DOMAIN_BASE = "https://forms.imobiliariax.com.br"
+
+  function makeResolver(overrides?: {
+    baseUrl?: string | null
+    source?: "team-domain" | "fallback-env" | "platform"
+  }) {
+    return {
+      resolvePublicFormBaseUrl: mock(async () => ({
+        baseUrl: overrides?.baseUrl === undefined ? TEAM_DOMAIN_BASE : overrides.baseUrl,
+        source: overrides?.source ?? ("team-domain" as const),
+      })),
+      filterFormPublicIdsOwnedByTeam: mock(async (_teamId: string, publicIds: string[]) => {
+        return new Set(publicIds.filter((id) => id === TEAM_FORM_ID))
+      }),
+    }
+  }
+
+  const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL
+
+  beforeEach(() => {
+    batchSendMock.mockClear()
+    batchSendMock.mockResolvedValue({ data: [{ id: "re_0" }], error: null })
+    // Env determinística: a troca de host valida o host da plataforma, e o
+    // teste não pode depender do NEXT_PUBLIC_APP_URL da máquina do runner.
+    process.env.NEXT_PUBLIC_APP_URL = "https://www.corretorstudio.com"
+  })
+
+  afterEach(() => {
+    if (ORIGINAL_APP_URL === undefined) delete process.env.NEXT_PUBLIC_APP_URL
+    else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL_APP_URL
+  })
+
+  it("template antigo com host da plataforma congelado sai com o domínio do time", async () => {
+    const resolver = makeResolver()
+    const service = new EmailCampaignDispatchService(resolver)
+
+    const frozenHtml =
+      `<p>Olá</p>` +
+      `<a href="https://www.corretorstudio.com/forms/${TEAM_FORM_ID}?utm_source=email">Simule</a>`
+
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html: frozenHtml,
+      logIdByEmail: { "r0@test.com": "11111111-1111-4111-8111-111111111111" },
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    expect(payload[0]?.html).toContain(
+      `${TEAM_DOMAIN_BASE}/forms/${TEAM_FORM_ID}?utm_source=email&cs_el=11111111-1111-4111-8111-111111111111`,
+    )
+    expect(payload[0]?.html).not.toContain("www.corretorstudio.com/forms/")
+    expect(resolver.resolvePublicFormBaseUrl).toHaveBeenCalledWith("team-1")
+  })
+
+  it("CTA dinâmico: só o form nativo é reescrito — ClickUp e Typeform saem byte a byte", async () => {
+    const resolver = makeResolver()
+    const service = new EmailCampaignDispatchService(resolver)
+
+    const nativeCta = `<a href="https://www.corretorstudio.com/forms/${TEAM_FORM_ID}">Simule aqui</a>`
+    // Armadilha real: o host do ClickUp é forms.clickup.com — matcher por
+    // substring "/forms/" ou prefixo "forms." capturaria por engano.
+    const clickupCta = `<a href="https://forms.clickup.com/36148174/f/12abcd-999/XYZ?x=1">ClickUp</a>`
+    const typeformCta = `<a href="https://imobx.typeform.com/to/a1B2c3">Typeform</a>`
+    const html = `<p>Olá {{nome}}</p>${nativeCta}${clickupCta}${typeformCta}`
+
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html,
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    const sentHtml = payload[0]?.html ?? ""
+
+    // Nativo reescrito para o domínio do time.
+    expect(sentHtml).toContain(`${TEAM_DOMAIN_BASE}/forms/${TEAM_FORM_ID}`)
+    expect(sentHtml).not.toContain(`www.corretorstudio.com/forms/${TEAM_FORM_ID}`)
+
+    // Externos idênticos ao original — byte a byte, sem troca de host nem cs_el.
+    expect(sentHtml).toContain(clickupCta)
+    expect(sentHtml).toContain(typeformCta)
+  })
+
+  it("formulário de OUTRO time mantém o host original", async () => {
+    const service = new EmailCampaignDispatchService(makeResolver())
+
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html: `<a href="https://www.corretorstudio.com/forms/${OTHER_TEAM_FORM_ID}">Outro</a>`,
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    expect(payload[0]?.html).toContain(
+      `https://www.corretorstudio.com/forms/${OTHER_TEAM_FORM_ID}`,
+    )
+  })
+
+  it("sem domínio verificado e sem env de fallback (source=platform), HTML sai intocado", async () => {
+    const resolver = makeResolver({ baseUrl: "https://www.corretorstudio.com", source: "platform" })
+    const service = new EmailCampaignDispatchService(resolver)
+
+    const html = `<a href="https://www.corretorstudio.com/forms/${TEAM_FORM_ID}">Simule</a>`
+    await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html,
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    expect(payload[0]?.html).toContain(`https://www.corretorstudio.com/forms/${TEAM_FORM_ID}`)
+    expect(resolver.filterFormPublicIdsOwnedByTeam).not.toHaveBeenCalled()
+  })
+
+  it("falha do resolver nunca bloqueia o disparo — HTML original mantido", async () => {
+    const resolver = {
+      resolvePublicFormBaseUrl: mock(async () => {
+        throw new Error("banco indisponível")
+      }),
+      filterFormPublicIdsOwnedByTeam: mock(async () => new Set<string>()),
+    }
+    const service = new EmailCampaignDispatchService(resolver)
+
+    const html = `<a href="/forms/${TEAM_FORM_ID}">Simule</a>`
+    const result = await service.dispatchBatch({
+      ...makeBaseParams(makeRecipients(1)),
+      html,
+      onChunkDispatched: mock(async () => {}),
+    })
+
+    expect(result.sent).toBe(1)
+    const payload = (batchSendMock.mock.calls[0] as unknown[][])[0] as Array<{ html: string }>
+    expect(payload[0]?.html).toContain(`/forms/${TEAM_FORM_ID}`)
+    expect(payload[0]?.html).not.toContain(TEAM_DOMAIN_BASE)
+  })
+})

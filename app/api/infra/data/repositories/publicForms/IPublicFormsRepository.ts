@@ -203,6 +203,11 @@ export type PublicFormCompleteSubmissionInput<
 
 export interface IPublicFormsRepository {
   listPublishedOptions(teamId: string): Promise<PublicFormPublishedOption[]>
+  /**
+   * publicIds (dentre os informados) cujo formulário pertence ao time —
+   * usado pela troca de host dos links de formulário no disparo (Frente C).
+   */
+  findPublicIdsOwnedByTeam(teamId: string, publicIds: string[]): Promise<string[]>
   list(
     teamId: string,
     filters: PublicFormListFilters,

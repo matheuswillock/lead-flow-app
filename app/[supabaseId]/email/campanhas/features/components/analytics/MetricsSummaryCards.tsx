@@ -99,11 +99,11 @@ export function MetricsSummaryCards({ data, loading }: MetricsSummaryCardsProps)
         isRate
       />
       <MetricCard
-        title="Taxa de Abertura"
-        tooltip="Abertura medida pelo provedor; Apple/Gmail podem inflar — use o clique como sinal de intenção."
-        value={`${rates.openRate.toFixed(1)}%`}
-        subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
-        delta={deltas?.rates.openRate}
+        title="Aberturas reais"
+        tooltip="Aberturas classificadas como humanas. A taxa bruta abaixo inclui robôs/proxies do provedor (Gmail, Apple, scanners) e por isso deixa de ser a manchete."
+        value={`${(rates.openRateHuman ?? 0).toFixed(1)}%`}
+        subtitle={`${(totals.openedHuman ?? 0).toLocaleString("pt-BR")} aberturas humanas · ${rates.openRate.toFixed(1)}% bruta (${totals.opened.toLocaleString("pt-BR")})`}
+        delta={deltas?.rates.openRateHuman}
         isRate
       />
       <MetricCard
