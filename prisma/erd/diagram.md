@@ -162,6 +162,18 @@ legacy legacy
     
 
 
+        asaas_account_migration_status {
+            pending pending
+customer_created customer_created
+subscription_created subscription_created
+legacy_deactivated legacy_deactivated
+done done
+requires_card_reauth requires_card_reauth
+failed failed
+        }
+    
+
+
         backoffice_webhook_token_status {
             active active
 replaced replaced
@@ -1772,6 +1784,7 @@ completed completed
     String cpfCnpj "❓"
     String notes "❓"
     String asaasCustomerId "❓"
+    AsaasAccount asaasAccount 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -3235,6 +3248,7 @@ completed completed
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
     String asaasSubscriptionId "❓"
+    AsaasAccount asaasSubscriptionAccount 
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
@@ -3268,6 +3282,30 @@ completed completed
     DateTime capturedAt 
     String schemaVersion 
     Json payload 
+    }
+  
+
+  "corretor_studio_asaas_account_migrations" {
+    String id "🗝️"
+    String profile_id 
+    String client_name 
+    String client_email 
+    String legacy_customer_id 
+    String legacy_subscription_id "❓"
+    String primary_customer_id "❓"
+    String primary_subscription_id "❓"
+    String billing_type "❓"
+    String cycle "❓"
+    Decimal value "❓"
+    DateTime next_due_date "❓"
+    Boolean notifications_disabled 
+    String anomaly_notes "❓"
+    AsaasAccountMigrationStatus status 
+    Int attempt_count 
+    String last_error "❓"
+    DateTime migrated_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
     }
   
 
@@ -4404,6 +4442,7 @@ completed completed
     "backoffice_team_email_limit_grants" }o--|| corretor_studio_profiles : "grantedBy"
     "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
+    "backoffice_clients" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -4709,6 +4748,7 @@ completed completed
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "corretor_studio_profile_subscriptions" |o--|| "AsaasAccount" : "enum:asaasSubscriptionAccount"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
@@ -4717,6 +4757,7 @@ completed completed
     "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
+    "corretor_studio_asaas_account_migrations" |o--|| "AsaasAccountMigrationStatus" : "enum:status"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| "EmailSendingHealthStatus" : "enum:sendingHealthStatus"
     "email_team_settings" |o--|| corretor_studio_teams : "team"

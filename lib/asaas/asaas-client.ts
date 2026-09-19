@@ -1,5 +1,10 @@
 import { resolveAsaasAccount, type AsaasAccountId } from "./asaas-account"
 import { buildAsaasEndpoints, type AsaasEndpoints } from "./asaas-endpoints"
+import {
+  extractAsaasEntityIdPrefix,
+  recordAsaasRequestBreadcrumb,
+  reportAsaasLegacy404,
+} from "./asaas-observability"
 
 export type AsaasClient = {
   endpoints: AsaasEndpoints
@@ -18,6 +23,12 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
   const endpoints = buildAsaasEndpoints(account.baseUrl)
 
   async function request(endpoint: string, options?: RequestInit): Promise<any> {
+    // E7 (X3, T-30.23): toda chamada carrega a tag de conta — breadcrumb
+    // emitido antes do fetch, então acompanha qualquer erro capturado a
+    // seguir (inclusive os que o try/catch abaixo relança sem tratar).
+    const entityIdPrefix = extractAsaasEntityIdPrefix(endpoint)
+    recordAsaasRequestBreadcrumb({ asaasAccount: accountId, entityIdPrefix, endpoint })
+
     if (!account.apiKey) {
       throw new Error("ASAAS_API_KEY não configurada")
     }
@@ -34,6 +45,13 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
       })
 
       if (!response.ok) {
+        // E7 (X3, T-30.23): 404 num recurso legado (cus_/sub_/pay_) é o
+        // sintoma de ponteiro morto pós-cutover (C14/C28) — alerta com
+        // fingerprint próprio, nunca se mistura com 404 genérico.
+        if (response.status === 404 && entityIdPrefix && accountId === "legacy") {
+          reportAsaasLegacy404({ entityIdPrefix, endpoint })
+        }
+
         const error = await response.json().catch(() => ({ errors: [] }))
         const errorMessage =
           error.errors?.[0]?.description || `Erro na API Asaas: ${response.status}`
