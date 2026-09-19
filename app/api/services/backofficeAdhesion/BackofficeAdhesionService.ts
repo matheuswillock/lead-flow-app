@@ -67,6 +67,27 @@ function isE2eOrCiBypass(): boolean {
   return isE2eTestMode() || process.env.CI === "true" || process.env.APP_ENV === "test"
 }
 
+/**
+ * Falha do cancelamento de cobrança Asaas (DA5/C31). A `message` é
+ * deliberadamente operacional — cita id de cobrança, conta Asaas e ledger de
+ * migração — porque o destinatário é quem opera a migração, pelo
+ * `console.error` e pelo Sentry.
+ *
+ * O tipo existe para que essa copy **não** seja confundida com copy de negócio
+ * ao atravessar o UseCase: `cancelAsaasPayments` só é alcançado por
+ * `createCheckout`, que é a rota **pública** do token de adesão
+ * (`app/api/v1/public-adhesions/[token]/checkout/route.ts`). Sem o marcador, o
+ * cliente que troca de forma de pagamento leria "cancele manualmente no painel
+ * Asaas e registre a exceção no ledger" num toast. Ver
+ * `BackofficeAdhesionUseCase.createCheckout`.
+ */
+export class AsaasPaymentCancellationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "AsaasPaymentCancellationError"
+  }
+}
+
 const CRM_MODULES = ["crm"]
 const CRM_PRODUCT_SLUG = "crm"
 const EXTRA_TEAM_PRODUCT_SLUG = "extra-team"
@@ -2280,7 +2301,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     if (failures.length > 0) {
-      throw new Error(
+      throw new AsaasPaymentCancellationError(
         `Falha ao cancelar ${failures.length} cobrança(s) Asaas (conta ${account}): ` +
           failures.join(" | ")
       )
@@ -2358,7 +2379,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     paymentId: string
   ): Promise<{ deleted?: boolean; status?: string } | null> {
     try {
-      return await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`)
+      // O 404 aqui é um resultado esperado da sonda, não um ponteiro morto —
+      // sem o opt-out ele dobraria a contagem do alerta `asaas-legacy-404` de
+      // E7/X3 (o DELETE que originou a sonda já alertou).
+      return await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
+        suppressLegacy404Alert: true,
+      })
     } catch {
       // 404 (não existe nesta conta) ou indisponibilidade: em ambos os casos a
       // remoção não pôde ser confirmada, e não confirmar é bloquear.

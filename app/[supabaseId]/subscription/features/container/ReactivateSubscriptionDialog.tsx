@@ -14,6 +14,7 @@ import { CreditCardForm, type CreditCardFormData } from "@/app/[supabaseId]/mana
 import Image from "next/image";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { cn } from "@/lib/utils";
+import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
 import { buildReactivationPayload, extractPixPaymentId } from "../utils/reactivate-subscription";
 
 interface ReactivateSubscriptionDialogProps {
@@ -129,16 +130,22 @@ export function ReactivateSubscriptionDialog({
 
         if (result.isValid && result.result) {
           setPollTransientError(false);
-          const status = result.result.status;
+          // Classificação pelo vocabulário compartilhado (SPEC 41 E2,
+          // `lib/billing/payment-status-vocabulary`) em vez de dois conjuntos
+          // literais locais: o par CONFIRMED/RECEIVED perdia
+          // RECEIVED_IN_CASH/APPROVED, e o par OVERDUE/REFUNDED perdia REFUSED,
+          // CANCELLED/CANCELED, CHARGEBACK_*, REFUND_REQUESTED e FAILED — um PIX
+          // recusado caía em "em trânsito" e girava os ~10 min até o timeout.
+          const outcome = classifyPaymentStatus(result.result.status);
 
-          if (status === 'CONFIRMED' || status === 'RECEIVED') {
+          if (outcome === 'paid') {
             setPollingStatus('confirmed');
             toast.success('Pagamento confirmado!');
             onReactivationSuccess();
             setTimeout(() => {
               onOpenChange(false);
             }, 2000);
-          } else if (status === 'OVERDUE' || status === 'REFUNDED') {
+          } else if (outcome === 'failed') {
             setPollingStatus('failed');
             toast.error('Pagamento não foi confirmado');
           }

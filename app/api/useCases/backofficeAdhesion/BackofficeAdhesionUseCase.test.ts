@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { BackofficeAdhesionUseCase } from "./BackofficeAdhesionUseCase"
+import { AsaasPaymentCancellationError } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
 import type { IBackofficeAdhesionService } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import type { IBackofficeSponsorAuthorizationService } from "@/app/api/services/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationService"
 
@@ -221,5 +222,53 @@ describe("BackofficeAdhesionUseCase — sanitiza erro inesperado antes de expor 
     expect(output.errorMessages).toEqual([
       "O ciclo quarterly não está disponível na precificação selecionada",
     ])
+  })
+})
+
+/**
+ * Achado de integração do lote unificado da rodada Pagamentos: `createCheckout`
+ * é o **único** catch do UseCase que repassa `error.message` cru — e é também o
+ * único cujo leitor é o cliente final, pela rota pública
+ * `app/api/v1/public-adhesions/[token]/checkout/route.ts`. O PR #1196 passou a
+ * lançar dali uma mensagem operacional do DA5 (painel Asaas, ledger de
+ * migração) endereçada a quem opera a migração. Isoladamente nenhum dos dois
+ * PRs erra; juntos, o pagador lê instrução de painel interno.
+ */
+describe("BackofficeAdhesionUseCase.createCheckout — copy operacional do DA5 não vaza para o pagador", () => {
+  it("troca a mensagem operacional do cancelamento por copy de cliente final", async () => {
+    const operationalMessage =
+      'Falha ao cancelar 1 cobrança(s) Asaas (conta legacy): pay_123: DELETE retornou 404 e a conta "legacy" ' +
+      "não confirma a remoção — o cancelamento NÃO aconteceu. Cancele manualmente no painel Asaas da conta " +
+      "correta, registre a exceção operacional no ledger de migração e só então repita a operação."
+
+    const service = {
+      createCheckout: async () => {
+        throw new AsaasPaymentCancellationError(operationalMessage)
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.createCheckout("token-1", {} as never)
+
+    expect(output.isValid).toBe(false)
+    const message = output.errorMessages.join(" ")
+    expect(message).not.toContain("painel Asaas")
+    expect(message).not.toContain("ledger de migração")
+    expect(message).not.toContain("pay_123")
+    expect(message).toContain("pagar duas vezes")
+  })
+
+  it("erro de negócio comum do checkout continua chegando intacto ao pagador", async () => {
+    const service = {
+      createCheckout: async () => {
+        throw new Error("Já existe uma conta cadastrada com este e-mail")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.createCheckout("token-1", {} as never)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Já existe uma conta cadastrada com este e-mail"])
   })
 })

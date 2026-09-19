@@ -18,10 +18,19 @@
  * `BackofficeClient.asaasAccount` / `Profile.asaasSubscriptionAccount`.
  * A exceção do `BackofficeClient` (ponteiro sem filtro enquanto a coluna
  * não existia) caiu com 30-E3, que entregou `BackofficeClient.asaasAccount`.
- * Segue de fora `ProfileSubscription.asaasSubscriptionAccount`, também
- * entregue por E3: a coluna existe mas ainda não tem writer nem backfill, e
- * o filtro por ela seria constante — ver o comentário em
+ * `ProfileSubscription.asaasSubscriptionAccount` **também entrou no filtro**
+ * depois que `20260918150645_backfill-legacy-account-new-pointer-columns.sql`
+ * parou de deixar a coluna constante — ver o comentário em
  * `BillingInventoryRepository.listSubscriptionPointers`.
+ *
+ * Ressalva viva (não é débito de estilo): nenhum writer de
+ * `profileSubscription` grava `asaasSubscriptionAccount` hoje — a coluna vem
+ * do default e do backfill. `ProfileSubscription.profileId` é `@unique`, então
+ * a linha é reescrita no lugar quando o cliente migra de conta; enquanto o
+ * writer não existir, o ponteiro migrado continua rotulado `legacy` e vira
+ * ORFAO/FANTASMA falso na reconciliação diária de E7. O padrão a seguir é o de
+ * `ProfileRepository.updateAsaasCustomerId` / `BillingRepository.
+ * updateAsaasCustomerId`, que gravam a conta junto do id.
  */
 
 import type { AsaasAccountId } from "@/lib/asaas/asaas-account"

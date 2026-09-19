@@ -1,6 +1,10 @@
 /**
- * Vocabulário compartilhado de status de pagamento do Asaas para as telas
- * públicas de confirmação (SPEC 41 E2).
+ * Vocabulário compartilhado de status de pagamento do Asaas. Nasceu nas telas
+ * públicas de confirmação (SPEC 41 E2) e é o dono único da classificação para
+ * qualquer polling de pagamento do produto — inclusive o do dialog de
+ * reativação de assinatura (SPEC 21 E3). Conjunto literal local de status é o
+ * bug que este módulo existe para impedir: ele sempre nasce incompleto e
+ * deixa um desfecho terminal parecendo "em trânsito".
  *
  * Existe porque "parou de mentir" depende de três categorias distintas, e
  * tratar as duas últimas como uma só foi exatamente o achado das revisões do

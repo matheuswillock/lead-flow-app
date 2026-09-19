@@ -2,6 +2,7 @@ import type { BackofficeAdhesionStatus } from "@prisma/client"
 import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import {
+  AsaasPaymentCancellationError,
   backofficeAdhesionService,
   BackofficeAdhesionService,
 } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
@@ -363,6 +364,22 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       return new Output(true, ["Pagamento gerado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][createCheckout]", error)
+      // `createCheckout` é a rota pública do token de adesão: o leitor deste
+      // toast é o cliente pagando, não o operador. A copy operacional do DA5
+      // (painel Asaas, ledger de migração, id de cobrança) só faz sentido no
+      // log acima — ver `AsaasPaymentCancellationError`.
+      if (error instanceof AsaasPaymentCancellationError) {
+        return new Output(
+          false,
+          [],
+          [
+            "Não foi possível trocar a forma de pagamento agora. " +
+              "A cobrança anterior ainda está sendo encerrada — fale com o suporte antes de pagar, " +
+              "para não correr o risco de pagar duas vezes.",
+          ],
+          null
+        )
+      }
       return new Output(
         false,
         [],

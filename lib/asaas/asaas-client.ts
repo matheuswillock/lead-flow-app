@@ -6,9 +6,21 @@ import {
   reportAsaasLegacy404,
 } from "./asaas-observability"
 
+/**
+ * `suppressLegacy404Alert` desliga o alerta de ponteiro morto (E7/X3) **só**
+ * para a chamada em que o 404 é o resultado esperado, não um sintoma. Hoje o
+ * único caso é a sonda de confirmação do DA5/C31
+ * (`BackofficeAdhesionService.findAsaasPaymentOrNull`), que pergunta de
+ * propósito "esta cobrança existe nesta conta?" — sem o opt-out, uma cobrança
+ * bloqueada emite dois `asaas-legacy-404` (o do DELETE, legítimo, e o da
+ * sonda) e a contagem do alerta passa a mentir. Não é um mute global: o 404 do
+ * DELETE que originou a sonda continua alertando.
+ */
+export type AsaasRequestOptions = RequestInit & { suppressLegacy404Alert?: boolean }
+
 export type AsaasClient = {
   endpoints: AsaasEndpoints
-  request(endpoint: string, options?: RequestInit): Promise<any>
+  request(endpoint: string, options?: AsaasRequestOptions): Promise<any>
 }
 
 /**
@@ -22,7 +34,8 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
   const account = resolveAsaasAccount(accountId)
   const endpoints = buildAsaasEndpoints(account.baseUrl)
 
-  async function request(endpoint: string, options?: RequestInit): Promise<any> {
+  async function request(endpoint: string, options?: AsaasRequestOptions): Promise<any> {
+    const { suppressLegacy404Alert = false, ...fetchOptions } = options ?? {}
     // E7 (X3, T-30.23): toda chamada carrega a tag de conta — breadcrumb
     // emitido antes do fetch, então acompanha qualquer erro capturado a
     // seguir (inclusive os que o try/catch abaixo relança sem tratar).
@@ -35,11 +48,11 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
 
     try {
       const response = await fetch(endpoint, {
-        ...options,
+        ...fetchOptions,
         headers: {
           "Content-Type": "application/json",
           access_token: `$${account.apiKey}`,
-          ...options?.headers,
+          ...fetchOptions.headers,
         },
         cache: "no-store",
       })
@@ -48,7 +61,12 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
         // E7 (X3, T-30.23): 404 num recurso legado (cus_/sub_/pay_) é o
         // sintoma de ponteiro morto pós-cutover (C14/C28) — alerta com
         // fingerprint próprio, nunca se mistura com 404 genérico.
-        if (response.status === 404 && entityIdPrefix && accountId === "legacy") {
+        if (
+          response.status === 404 &&
+          entityIdPrefix &&
+          accountId === "legacy" &&
+          !suppressLegacy404Alert
+        ) {
           reportAsaasLegacy404({ entityIdPrefix, endpoint })
         }
 
