@@ -3,12 +3,13 @@ import { notifySendingHealthChanged } from "@/lib/email/notify-sending-health-ch
 import { emailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository"
 import type { IEmailSendingHealthRepository } from "@/app/api/infra/data/repositories/emailSendingHealth/IEmailSendingHealthRepository"
 import {
-  applySendingHealthReleaseBaseline,
   buildSendingHealthSnapshot,
   computeSendingHealthRates,
   parseSendingHealthSnapshot,
+  resolveActiveReleaseBaseline,
   resolveSendingHealthTransition,
   type EmailSendingHealthStatusValue,
+  type SendingHealthWindowMetrics,
 } from "@/lib/email/sending-health"
 
 /**
@@ -51,15 +52,30 @@ export class EvaluateTeamSendingHealthUseCase {
       for (const team of teams) {
         try {
           const parsedSnapshot = parseSendingHealthSnapshot(team.metricsJson)
-          // Janela LÍQUIDA: depois de uma liberação manual, só conta o que foi
-          // enviado DEPOIS dela. Sem isso o mesmo incidente reclassifica
-          // `pause` no tick seguinte e a liberação vira suspensão imediata.
-          const { windows: netWindows, baseline } = applySendingHealthReleaseBaseline({
-            windows: team.windows,
+          const activeBaseline = resolveActiveReleaseBaseline({
             baseline: parsedSnapshot.releaseBaseline,
             now,
           })
-          const rates = computeSendingHealthRates(netWindows)
+
+          // Janela LÍQUIDA: depois de uma liberação manual, só conta o que foi
+          // enviado DEPOIS dela. Consulta DIRETA "desde a liberação", não
+          // subtração de janelas agregadas — subtrair (janela atual − janela
+          // na liberação) zera quando o volume novo ruim substitui volume
+          // antigo que sai da janela no mesmo ritmo (achado P1 do codex no
+          // PR #1204). Sem essa correção, o mesmo incidente reclassificaria
+          // `pause` no tick seguinte e a liberação viraria suspensão imediata
+          // — e um incidente NOVO ficaria invisível sob churn de volume.
+          const windows: SendingHealthWindowMetrics = activeBaseline
+            ? {
+                ...team.windows,
+                ...(await this.repository.getWindowMetricsSince(
+                  team.teamId,
+                  new Date(activeBaseline.at),
+                  now
+                )),
+              }
+            : team.windows
+          const rates = computeSendingHealthRates(windows)
           const transition = resolveSendingHealthTransition({
             current: team.status as EmailSendingHealthStatusValue,
             rates,
@@ -76,7 +92,9 @@ export class EvaluateTeamSendingHealthUseCase {
             pauseHistory: transition.pauseHistory,
             // Uma pausa nova reabre o ciclo: o baseline antigo não vale mais.
             releaseBaseline:
-              transition.next === "paused" || transition.next === "suspended" ? null : baseline,
+              transition.next === "paused" || transition.next === "suspended"
+                ? null
+                : activeBaseline,
           })
 
           await this.repository.updateTeamSendingHealth({

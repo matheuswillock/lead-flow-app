@@ -217,6 +217,50 @@ export class EmailSendingHealthRepository implements IEmailSendingHealthReposito
     })
   }
 
+  /**
+   * Contagem 7d "desde `since`" (`since` = `releaseBaseline.at`) — ver
+   * doc em `IEmailSendingHealthRepository`. Consulta direta, não agregado
+   * batelado: só chamada para os poucos times com liberação manual recente,
+   * então o custo de N pequenas consultas por tick de cron é aceitável frente
+   * à correção (a subtração de janelas agregadas mascarava incidente novo sob
+   * churn de volume constante).
+   */
+  async getWindowMetricsSince(
+    teamId: string,
+    since: Date,
+    now: Date
+  ): Promise<Pick<SendingHealthWindowMetrics, "sent7d" | "hardBounced7d" | "complained7d">> {
+    const [sentCount, bounceEvents, complaintEvents] = await Promise.all([
+      prisma.emailLog.count({ where: { teamId, sentAt: { gte: since, lte: now } } }),
+      prisma.emailEvent.findMany({
+        where: { type: "bounced", occurredAt: { gte: since, lte: now }, log: { teamId } },
+        select: { logId: true, metadata: true },
+      }),
+      prisma.emailEvent.findMany({
+        where: { type: "complained", occurredAt: { gte: since, lte: now }, log: { teamId } },
+        select: { logId: true },
+      }),
+    ])
+
+    const countedBounceLogIds = new Set<string>()
+    let hardBounced7d = 0
+    for (const event of bounceEvents) {
+      if (countedBounceLogIds.has(event.logId)) continue
+      countedBounceLogIds.add(event.logId)
+      if (isPermanentBounce({ type: extractBounceType(event.metadata) })) hardBounced7d += 1
+    }
+
+    const countedComplaintLogIds = new Set<string>()
+    let complained7d = 0
+    for (const event of complaintEvents) {
+      if (countedComplaintLogIds.has(event.logId)) continue
+      countedComplaintLogIds.add(event.logId)
+      complained7d += 1
+    }
+
+    return { sent7d: sentCount, hardBounced7d, complained7d }
+  }
+
   async getDispatchBounceStats(dispatchId: string): Promise<DispatchBounceStats> {
     const [sentCount, bounceEvents] = await Promise.all([
       prisma.emailLog.count({ where: { dispatchId, sentAt: { not: null } } }),
