@@ -37,7 +37,10 @@ describe("resolveExtraUnitPrice (T-21.12)", () => {
     expect(price).toBe(29.9)
     expect(Number.isFinite(price)).toBe(true)
     expect(price).not.toBe(Infinity)
-    expect(onFallback).toHaveBeenCalledTimes(1)
+    // Achado P2 da revisão do lote unificado (PR #1207): quantidade zero é a
+    // assinatura base sem extras — a linha nem é renderizada. Sinalizar ali
+    // fazia `console.error` (capturado pelo Sentry) em toda visita normal.
+    expect(onFallback).not.toHaveBeenCalled()
   })
 
   it("backend sem preço → fallback E loga (dado genuinamente faltando)", () => {
@@ -67,16 +70,21 @@ describe("resolveCreditUnitPrice (T-21.13 / DA4)", () => {
     expect(price).toBeCloseTo(29.9, 10)
   })
 
-  it("sem quantidade faturável → fallback logado (não há taxa do backend para derivar)", () => {
+  it("sem quantidade faturável → fallback SEM log (é a primeira compra, não lacuna de dado)", () => {
     const onFallback = mock(() => {})
     const price = resolveCreditUnitPrice({ resource: "team", billableQuantity: 0, extraPrice: undefined, onFallback })
     expect(price).toBe(29.9)
-    expect(onFallback).toHaveBeenCalledWith("team", 29.9)
+    expect(onFallback).not.toHaveBeenCalled()
   })
 
   it("resource 'user' usa o fallback de usuário (19.9), não o de time", () => {
+    const price = resolveCreditUnitPrice({ resource: "user", billableQuantity: 0, extraPrice: undefined })
+    expect(price).toBe(19.9)
+  })
+
+  it("com quantidade faturável e preço ausente, o log continua acontecendo", () => {
     const onFallback = mock(() => {})
-    const price = resolveCreditUnitPrice({ resource: "user", billableQuantity: 0, extraPrice: undefined, onFallback })
+    const price = resolveCreditUnitPrice({ resource: "user", billableQuantity: 2, extraPrice: undefined, onFallback })
     expect(price).toBe(19.9)
     expect(onFallback).toHaveBeenCalledWith("user", 19.9)
   })

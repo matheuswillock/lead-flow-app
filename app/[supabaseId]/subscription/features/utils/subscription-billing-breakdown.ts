@@ -30,8 +30,14 @@ const CREDIT_UNIT_PRICE_FALLBACK: Record<CreditResourceKind, number> = {
 /**
  * Taxa unitária efetiva = preço total do recurso / quantidade faturável.
  * Nunca retorna `Infinity`/`NaN`: divisor <= 0 ou preço não finito caem no
- * fallback local, que é sempre sinalizado via `onFallback` (DA4 — constante
- * no bundle só como último recurso, e logada).
+ * fallback local.
+ *
+ * `onFallback` só dispara quando o fallback denuncia **dado faltando**: há
+ * quantidade faturável (a linha vai ser renderizada) e mesmo assim o
+ * backend não mandou o preço. Quantidade zero não é lacuna — é a assinatura
+ * base sem extras, o caso normal. Sinalizar ali fazia toda visita de cliente
+ * sem extras virar `console.error` capturado pelo Sentry como erro de
+ * cobrança falso (achado P2 da revisão do lote unificado, PR #1207).
  */
 export function resolveExtraUnitPrice(input: {
   billableQuantity: number;
@@ -39,11 +45,10 @@ export function resolveExtraUnitPrice(input: {
   fallback: number;
   onFallback?: (fallback: number) => void;
 }): number {
-  if (
-    input.billableQuantity > 0 &&
-    typeof input.extraPrice === 'number' &&
-    Number.isFinite(input.extraPrice)
-  ) {
+  if (input.billableQuantity <= 0) {
+    return input.fallback;
+  }
+  if (typeof input.extraPrice === 'number' && Number.isFinite(input.extraPrice)) {
     return input.extraPrice / input.billableQuantity;
   }
   input.onFallback?.(input.fallback);
@@ -53,9 +58,10 @@ export function resolveExtraUnitPrice(input: {
 /**
  * DA4 (SubscriptionCreditsDialog): o custo estimado de uma compra nova usa a
  * taxa marginal que o backend já aplica hoje — `extraPrice / billableQuantity`
- * é exatamente `BILLING_PRICES.extraTeam`/`extraUser`. Só cai no fallback
- * local (logado) quando não há quantidade faturável para derivar a taxa
- * (ex.: primeira compra de time extra, ou plano com usuários ilimitados).
+ * é exatamente `BILLING_PRICES.extraTeam`/`extraUser`. Cai no fallback local
+ * quando não há quantidade faturável para derivar a taxa (ex.: primeira
+ * compra de time extra, ou plano com usuários ilimitados) — caso normal, que
+ * **não** dispara `onFallback`; só dado realmente faltando dispara.
  */
 export function resolveCreditUnitPrice(input: {
   resource: CreditResourceKind;

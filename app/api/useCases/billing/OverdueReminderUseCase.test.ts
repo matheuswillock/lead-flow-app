@@ -17,7 +17,7 @@ mock.module("@/lib/services/EmailService", () => ({
 }))
 
 const findPastDueSubscriptionsForDunningMock = mock(
-  async (_params: { take: number; notBefore: Date }) => [] as unknown[]
+  async (_params: { take: number; notBefore: Date; skip?: number }) => [] as unknown[]
 )
 const hasDelinquencyNoticeSinceMock = mock(
   async (_params: { profileId: string; eventType: string; changeType: string; since: Date }) => false
@@ -172,4 +172,39 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
 
     expect(output.result).toMatchObject({ sent: 1, noticeLogFailed: 1 })
   })
+
+  /**
+   * Achado P1 da revisão do lote unificado (PR #1207): o dedupe só acontece
+   * depois da query, então com mais inadimplentes que o tamanho da página as
+   * mesmas linhas já avisadas ocupavam o lote todo dia e ninguém novo recebia
+   * aviso. A paginação tem de atravessar a página inteira de já avisados.
+   */
+  it("pagina por cima de uma página inteira de já avisados e alcança quem entrou depois", async () => {
+    const PAGE_SIZE = 200
+    const notifiedPage = Array.from({ length: PAGE_SIZE }, (_, index) =>
+      makeRow({ profileId: `ja-avisado-${index}`, subscriptionNextDueDate: daysAgo(40) }),
+    )
+    const freshRow = makeRow({ profileId: "novo-inadimplente", subscriptionNextDueDate: daysAgo(10) })
+
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) => {
+      expect(params.take).toBe(PAGE_SIZE)
+      return (params.skip ?? 0) === 0 ? notifiedPage : [freshRow]
+    })
+    hasDelinquencyNoticeSinceMock.mockImplementation(
+      async (params: { profileId: string }) => params.profileId !== "novo-inadimplente",
+    )
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    const result = output.result as { sent: number; deduped: number; scanned: number }
+    expect(result.sent).toBe(1)
+    expect(result.deduped).toBe(PAGE_SIZE)
+    expect(result.scanned).toBe(PAGE_SIZE + 1)
+    expect(sendDelinquencyReminderEmailMock.mock.calls).toHaveLength(1)
+    expect(sendDelinquencyReminderEmailMock.mock.calls[0][0]).toMatchObject({
+      userEmail: "cliente@example.com",
+    })
+  })
+
 })

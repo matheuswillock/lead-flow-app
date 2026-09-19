@@ -497,21 +497,30 @@ export function ReactivateSubscriptionDialog({
                         <div>
                           <h3 className="text-lg font-semibold">Não conseguimos confirmar ainda</h3>
                           <p className="text-sm text-muted-foreground">
-                            Se você já pagou, confira em Faturas em alguns minutos — a confirmação
-                            pode chegar mesmo depois deste aviso. Se ainda não pagou, gere um novo
-                            QR Code.
+                            O QR Code acima continua válido. Se você já pagou, a confirmação pode
+                            chegar depois deste aviso — verifique novamente ou confira em Faturas
+                            em alguns minutos.
                           </p>
                         </div>
                         <div className="flex gap-2">
+                          {/*
+                            Achado P1 da revisão do lote unificado (PR #1207, codex + cursor):
+                            aqui havia "Gerar novo QR Code", que zerava `paymentData` e devolvia o
+                            footer de submit. O próximo submit chama
+                            `POST /subscriptions/reactivate`, que **cancela a assinatura recém-criada
+                            e abre outra** com nova cobrança PIX — quem pagou o primeiro PIX depois
+                            dos ~10 min (ou cujo webhook atrasou) seria cobrado duas vezes. O
+                            timeout é falta de confirmação, não desfecho: a cobrança segue
+                            pendente. Por isso a saída preserva o `paymentId` e só retoma o poll.
+                            Desfecho terminal de verdade cai no estado `failed`, que aí sim libera
+                            gerar outra cobrança.
+                          */}
                           <Button
                             variant="outline"
                             className="max-lg:h-11"
-                            onClick={() => {
-                              setPaymentData(null);
-                              setPollingStatus('idle');
-                            }}
+                            onClick={() => setPollingStatus('polling')}
                           >
-                            Gerar novo QR Code
+                            Verificar novamente
                           </Button>
                           <Button className="max-lg:h-11" onClick={() => onOpenChange(false)}>Fechar</Button>
                         </div>

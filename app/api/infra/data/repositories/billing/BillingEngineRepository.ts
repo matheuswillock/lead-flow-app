@@ -63,10 +63,20 @@ class BillingEngineRepository {
    * aviso (achado cursor/codex no PR #1198). O degrau exato
    * (crm_only/cut_off) continua resolvido em memória por
    * `resolveDelinquencyTier`, sobre a data efetiva.
+   *
+   * `skip` existe porque o dedupe (`hasDelinquencyNoticeSince`) só pode
+   * acontecer **depois** desta query: a marca na timeline é comparada contra
+   * a data de vencimento efetiva de cada linha, que pode vir do Profile, e
+   * Prisma não compara duas colunas de relações diferentes no `where`. Sem
+   * paginação, passando de `take` inadimplentes as mesmas linhas mais
+   * antigas — já avisadas — ocupariam o lote para sempre e quem veio depois
+   * nunca receberia aviso nenhum (achado P1 da revisão do lote unificado,
+   * PR #1207). O chamador pagina até gastar o orçamento de e-mails.
    */
   async findPastDueSubscriptionsForDunning(params: {
     take: number;
     notBefore: Date;
+    skip?: number;
   }): Promise<PastDueSubscriptionForDunningRow[]> {
     return prisma.profileSubscription.findMany({
       where: {
@@ -98,8 +108,12 @@ class BillingEngineRepository {
           },
         },
       },
-      orderBy: { subscriptionNextDueDate: "asc" },
+      // `profileId` como desempate: sem ele o Postgres não garante ordem
+      // estável entre linhas de mesma data, e a paginação por `skip` do
+      // chamador poderia pular ou repetir uma linha entre páginas.
+      orderBy: [{ subscriptionNextDueDate: "asc" }, { profileId: "asc" }],
       take: params.take,
+      skip: params.skip,
     });
   }
 
