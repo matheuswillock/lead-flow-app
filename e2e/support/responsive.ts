@@ -134,13 +134,24 @@ export async function assertNoHorizontalOverflow(
 
 /**
  * Alvos de toque visíveis ≥ 44×44 no viewport mobile (360px). Elementos
- * `display: inline` no fluxo de texto e elementos sem área são dispensados,
- * assim como os visualmente escondidos no idioma `sr-only` (skip link de
- * acessibilidade): `position: absolute` + 1×1 + `overflow: hidden`. Um
- * skip link só vira alvo real quando recebe foco (`focus:not-sr-only`), e
- * aí já nasce com padding de CTA — medi-lo escondido reprovaria toda página
- * que faz a coisa certa de acessibilidade. A assinatura é estreita de
- * propósito: um botão real nunca é 1×1 absoluto com overflow hidden.
+ * `display: inline` no fluxo de texto e elementos sem área são dispensados.
+ *
+ * Elementos no idioma `sr-only` também são dispensados, por **dois**
+ * critérios somados — a classe e a geometria:
+ *
+ * 1. `classList.contains("sr-only")` — o caso declarado, como o skip link
+ *    "Pular para o conteúdo" do shell do backoffice
+ *    (`.sr-only focus:not-sr-only`). Por design ele só fica visível e
+ *    tocável quando recebe foco de teclado; nunca faz parte do fluxo de
+ *    toque em repouso, então medi-lo é falso positivo.
+ * 2. A assinatura geométrica do idioma: `position: absolute` +
+ *    `overflow: hidden` + caixa ≤ 1×1. Pega o mesmo padrão quando ele vem
+ *    de CSS próprio em vez da classe utilitária. É estreita de propósito —
+ *    um botão real nunca é 1×1 absoluto com overflow hidden.
+ *
+ * Um skip link só vira alvo real quando recebe foco, e aí já nasce com
+ * padding de CTA; medi-lo escondido reprovaria toda página que faz a coisa
+ * certa de acessibilidade.
  */
 export async function assertTouchTargets(
   page: Page,
@@ -164,6 +175,7 @@ export async function assertTouchTargets(
           .filter((element) => {
             const style = window.getComputedStyle(element);
             if (style.display === "inline" || style.visibility === "hidden") return false;
+            if (element.classList.contains("sr-only")) return false;
             const rect = element.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return false;
             // Idioma `sr-only`: visualmente escondido, não é alvo de toque.
