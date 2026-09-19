@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CreditCard, Minus, Plus, QrCode, CheckCircle2, XCircle, Copy } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, CreditCard, Minus, Plus, QrCode, CheckCircle2, XCircle, Copy, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CreditCardForm, type CreditCardFormData } from "@/app/[supabaseId]/manager-users/features/container/CreditCardForm";
 import Image from "next/image";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { cn } from "@/lib/utils";
+import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
+import { buildReactivationPayload, extractPixPaymentId } from "../utils/reactivate-subscription";
 
 interface ReactivateSubscriptionDialogProps {
   open: boolean;
@@ -20,6 +24,15 @@ interface ReactivateSubscriptionDialogProps {
   supabaseId: string;
   onReactivationSuccess: () => void;
 }
+
+type ManagerData = { id: string; name: string; email: string };
+type PaymentData = { paymentId: string; pixQrCode?: string; pixCopyPaste?: string };
+type PollingStatus = "idle" | "polling" | "confirmed" | "failed" | "timeout";
+
+// E3: ~10 minutos de espera (5s por tentativa) antes de assumir um estado
+// terminal — nenhum polling PIX fica esperando para sempre.
+const POLL_INTERVAL_MS = 5000;
+const MAX_POLL_ATTEMPTS = 120;
 
 export function ReactivateSubscriptionDialog({
   open,
@@ -32,53 +45,53 @@ export function ReactivateSubscriptionDialog({
   const [paymentMethod, setPaymentMethod] = useState<"PIX" | "CREDIT_CARD">("CREDIT_CARD");
   const [loading, setLoading] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [managerData, setManagerData] = useState<{
-    id: string;
-    name: string;
-    email: string;
-  } | null>(null);
-  
+  const [profileLoadFailed, setProfileLoadFailed] = useState(false);
+  const [managerData, setManagerData] = useState<ManagerData | null>(null);
+
   // Dados do formulário de cartão de crédito
   const [creditCardFormData, setCreditCardFormData] = useState<CreditCardFormData | null>(null);
   const [isCreditCardFormValid, setIsCreditCardFormValid] = useState(false);
 
   // Estados para PIX
-  const [paymentData, setPaymentData] = useState<{
-    paymentId: string;
-    pixQrCode?: string;
-    pixCopyPaste?: string;
-  } | null>(null);
-  const [pollingStatus, setPollingStatus] = useState<'idle' | 'polling' | 'confirmed' | 'failed'>('idle');
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<PollingStatus>("idle");
+  const [pollTransientError, setPollTransientError] = useState(false);
+  const pollAttemptsRef = useRef(0);
 
   // Calcular valores
   const BASE_PRICE = 59.90;
   const OPERATOR_PRICE = 19.90;
   const totalValue = BASE_PRICE + (OPERATOR_PRICE * operatorCount);
 
+  const loadManagerProfile = useCallback(async () => {
+    setLoadingProfile(true);
+    setProfileLoadFailed(false);
+    try {
+      const res = await fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`);
+      const result = await res.json();
+      if (result.isValid && result.result) {
+        setManagerData({
+          id: result.result.id,
+          name: result.result.name,
+          email: result.result.email
+        });
+      } else {
+        setProfileLoadFailed(true);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar profile:', error);
+      setProfileLoadFailed(true);
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [supabaseId]);
+
   // Buscar dados do manager quando abrir o dialog
   useEffect(() => {
     if (open && supabaseId) {
-      setLoadingProfile(true);
-      fetch(`${API_CLIENT_BASE}/profiles/${supabaseId}`)
-        .then(res => res.json())
-        .then(result => {
-          if (result.isValid && result.result) {
-            setManagerData({
-              id: result.result.id,
-              name: result.result.name,
-              email: result.result.email
-            });
-          }
-        })
-        .catch(error => {
-          console.error('Erro ao buscar profile:', error);
-          toast.error('Erro ao carregar dados do perfil');
-        })
-        .finally(() => {
-          setLoadingProfile(false);
-        });
+      void loadManagerProfile();
     }
-  }, [open, supabaseId]);
+  }, [open, supabaseId, loadManagerProfile]);
 
   // Resetar estado quando fechar
   useEffect(() => {
@@ -89,39 +102,62 @@ export function ReactivateSubscriptionDialog({
       setIsCreditCardFormValid(false);
       setPaymentData(null);
       setPollingStatus('idle');
+      setPollTransientError(false);
     } else {
       setOperatorCount(currentOperatorCount);
     }
   }, [open, currentOperatorCount]);
 
-  // Polling para verificar status do pagamento PIX
+  // Polling para verificar status do pagamento PIX — com timeout (E3): depois
+  // de MAX_POLL_ATTEMPTS (~10 min), o estado vira 'timeout' com orientação
+  // para a aba Faturas em vez de "Aguardando pagamento..." eterno.
   useEffect(() => {
     if (pollingStatus !== 'polling' || !paymentData?.paymentId) return;
 
+    pollAttemptsRef.current = 0;
+    setPollTransientError(false);
+
     const interval = setInterval(async () => {
+      pollAttemptsRef.current += 1;
+      if (pollAttemptsRef.current > MAX_POLL_ATTEMPTS) {
+        setPollingStatus('timeout');
+        return;
+      }
+
       try {
         const response = await fetch(`${API_CLIENT_BASE}/subscriptions/payment-status/${paymentData.paymentId}`);
         const result = await response.json();
 
         if (result.isValid && result.result) {
-          const status = result.result.status;
+          setPollTransientError(false);
+          // Classificação pelo vocabulário compartilhado (SPEC 41 E2,
+          // `lib/billing/payment-status-vocabulary`) em vez de dois conjuntos
+          // literais locais: o par CONFIRMED/RECEIVED perdia
+          // RECEIVED_IN_CASH/APPROVED, e o par OVERDUE/REFUNDED perdia REFUSED,
+          // CANCELLED/CANCELED, CHARGEBACK_*, REFUND_REQUESTED e FAILED — um PIX
+          // recusado caía em "em trânsito" e girava os ~10 min até o timeout.
+          const outcome = classifyPaymentStatus(result.result.status);
 
-          if (status === 'CONFIRMED' || status === 'RECEIVED') {
+          if (outcome === 'paid') {
             setPollingStatus('confirmed');
             toast.success('Pagamento confirmado!');
             onReactivationSuccess();
             setTimeout(() => {
               onOpenChange(false);
             }, 2000);
-          } else if (status === 'OVERDUE' || status === 'REFUNDED') {
+          } else if (outcome === 'failed') {
             setPollingStatus('failed');
             toast.error('Pagamento não foi confirmado');
           }
         }
       } catch (error) {
+        // E3: o catch não é mais silencioso — vira um aviso visível inline
+        // (sem spam de toast a cada 5s) enquanto o polling continua tentando
+        // até o timeout.
         console.error('Erro ao verificar status:', error);
+        setPollTransientError(true);
       }
-    }, 5000); // Verificar a cada 5 segundos
+    }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [pollingStatus, paymentData, onReactivationSuccess, onOpenChange]);
@@ -141,36 +177,20 @@ export function ReactivateSubscriptionDialog({
 
     setLoading(true);
     try {
-      // Criar nova assinatura do manager
-      const payload: any = {
+      // Criar nova assinatura do manager. E3: `buildReactivationPayload`
+      // nunca inclui `remoteIp` forjado — dado falso enviado ao antifraude
+      // de cartão (removido; o backend captura o IP real do request).
+      const payload = buildReactivationPayload({
         supabaseId,
         operatorCount,
-        paymentMethod
-      };
-
-      if (paymentMethod === 'CREDIT_CARD' && creditCardFormData) {
-        payload.creditCard = {
-          holderName: creditCardFormData.holderName,
-          number: creditCardFormData.number,
-          expiryMonth: creditCardFormData.expiryMonth,
-          expiryYear: creditCardFormData.expiryYear,
-          ccv: creditCardFormData.ccv
-        };
-        payload.creditCardHolderInfo = {
-          name: creditCardFormData.name,
-          email: managerData.email,
-          cpfCnpj: creditCardFormData.cpfCnpj,
-          postalCode: creditCardFormData.postalCode,
-          addressNumber: creditCardFormData.addressNumber,
-          phone: creditCardFormData.phone || creditCardFormData.mobilePhone,
-          mobilePhone: creditCardFormData.mobilePhone
-        };
-        payload.remoteIp = '127.0.0.1';
-      }
+        paymentMethod,
+        managerEmail: managerData.email,
+        creditCardFormData,
+      });
 
       const response = await fetch(`${API_CLIENT_BASE}/subscriptions/reactivate`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -178,12 +198,19 @@ export function ReactivateSubscriptionDialog({
       });
 
       const result = await response.json();
-      
+
       if (result.isValid && result.result) {
         if (paymentMethod === 'PIX') {
-          // Armazenar dados do PIX e iniciar polling
+          const paymentId = extractPixPaymentId(result.result);
+          if (!paymentId) {
+            // E3: sem fallback para `subscriptionId` — consultar
+            // `/subscriptions/payment-status/{id}` com um id que não é de
+            // pagamento nunca confirma, mesmo com o PIX pago.
+            toast.error('Não recebemos o identificador do pagamento PIX. Tente novamente.');
+            return;
+          }
           setPaymentData({
-            paymentId: result.result.paymentId || result.result.subscriptionId,
+            paymentId,
             pixQrCode: result.result.pixQrCode,
             pixCopyPaste: result.result.pixCopyPaste
           });
@@ -216,9 +243,11 @@ export function ReactivateSubscriptionDialog({
     }
   };
 
+  const showSubmitFooter = !loadingProfile && !profileLoadFailed && managerData && !paymentData;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle>Reativar Assinatura</DialogTitle>
           <DialogDescription>
@@ -226,249 +255,305 @@ export function ReactivateSubscriptionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {loadingProfile ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : !managerData ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Erro ao carregar dados do perfil
-          </div>
-        ) : (
-          <div className="space-y-6">
-          {/* Seleção de operadores */}
-          <Card>
-            <CardContent className="pt-6">
-              <h3 className="font-semibold mb-4">Quantos operadores você deseja?</h3>
-              
-              <div className="flex items-center justify-between mb-4">
-                <Label className="text-base">Número de Operadores</Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setOperatorCount(Math.max(0, operatorCount - 1))}
-                    disabled={operatorCount <= 0}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <div className="w-16 text-center">
-                    <span className="text-2xl font-bold">{operatorCount}</span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setOperatorCount(operatorCount + 1)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="text-sm space-y-2 text-muted-foreground border-t pt-4">
-                <div className="flex justify-between">
-                  <span>Plano Manager Base:</span>
-                  <span className="font-medium text-foreground">
-                    R$ {BASE_PRICE.toFixed(2).replace('.', ',')}
-                  </span>
-                </div>
-                {operatorCount > 0 && (
-                  <div className="flex justify-between">
-                    <span>{operatorCount} Operador{operatorCount > 1 ? 'es' : ''} × R$ {OPERATOR_PRICE.toFixed(2).replace('.', ',')}:</span>
-                    <span className="font-medium text-foreground">
-                      R$ {(OPERATOR_PRICE * operatorCount).toFixed(2).replace('.', ',')}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t pt-2 mt-2">
-                  <span className="font-semibold">Valor Total Mensal:</span>
-                  <span className="font-semibold text-foreground text-lg">
-                    R$ {totalValue.toFixed(2).replace('.', ',')}/mês
-                  </span>
-                </div>
-              </div>
-
-              {currentOperatorCount > operatorCount && (
-                <div className="mt-4 p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm">
-                  ⚠️ <strong>Atenção:</strong> Você está reduzindo de {currentOperatorCount} para {operatorCount} operador{operatorCount !== 1 ? 'es' : ''}. 
-                  Os operadores excedentes serão desativados.
-                </div>
-              )}
-
-              {operatorCount > currentOperatorCount && (
-                <div className="mt-4 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm">
-                  ℹ️ Você está aumentando para {operatorCount} operador{operatorCount !== 1 ? 'es' : ''}. 
-                  Você poderá adicionar os novos operadores após a reativação.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Método de pagamento */}
-          {!paymentData && (
-            <div>
-              <Label className="text-base font-semibold mb-3 block">Método de Pagamento</Label>
-              <RadioGroup value={paymentMethod} onValueChange={(v: string) => setPaymentMethod(v as "PIX" | "CREDIT_CARD")}>
-                <Card className={paymentMethod === 'PIX' ? 'ring-2 ring-primary' : ''}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start space-x-3">
-                      <RadioGroupItem value="PIX" id="pix" className="mt-1" />
-                      <Label htmlFor="pix" className="flex-1 cursor-pointer">
-                        <div className="flex items-center gap-2 mb-1">
-                          <QrCode className="h-5 w-5" />
-                          <span className="font-semibold">PIX</span>
-                          <Badge variant="secondary" className="text-xs">Pagamento Manual</Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Pague via QR Code ou Copia e Cola • Confirmação em até 5 minutos
-                        </p>
-                      </Label>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className={paymentMethod === 'CREDIT_CARD' ? 'ring-2 ring-primary' : ''}>
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex items-start space-x-3">
-                      <RadioGroupItem value="CREDIT_CARD" id="card" className="mt-1" />
-                      <Label htmlFor="card" className="flex-1 cursor-pointer">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CreditCard className="h-5 w-5" />
-                          <span className="font-semibold">Cartão de Crédito</span>
-                          <Badge variant="secondary" className="text-xs">Reativação Imediata</Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Processamento imediato • Assinatura recorrente mensal
-                        </p>
-                      </Label>
-                    </div>
-                  </CardContent>
-                </Card>
-              </RadioGroup>
+        <div className="flex-1 overflow-y-auto pr-1">
+          {loadingProfile ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="size-8 animate-spin text-muted-foreground" />
             </div>
-          )}
+          ) : profileLoadFailed || !managerData ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center text-muted-foreground">
+              <span>Erro ao carregar dados do perfil</span>
+              <Button variant="outline" size="sm" className="max-lg:h-11" onClick={() => void loadManagerProfile()}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {/* Seleção de operadores */}
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="mb-4 font-semibold">Quantos operadores você deseja?</h3>
 
-          {/* Formulário de Cartão de Crédito */}
-          {!paymentData && paymentMethod === 'CREDIT_CARD' && (
-            <CreditCardForm
-              initialData={{
-                name: managerData.name,
-              }}
-              onFormChange={(data, isValid) => {
-                setCreditCardFormData(data);
-                setIsCreditCardFormValid(isValid);
-              }}
-            />
-          )}
+                  <div className="mb-4 flex items-center justify-between">
+                    <Label className="text-base">Número de Operadores</Label>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="max-lg:size-11"
+                        aria-label="Diminuir número de operadores"
+                        onClick={() => setOperatorCount(Math.max(0, operatorCount - 1))}
+                        disabled={operatorCount <= 0}
+                      >
+                        <Minus className="size-4" />
+                      </Button>
+                      <div className="w-16 text-center">
+                        <span className="text-2xl font-bold">{operatorCount}</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="max-lg:size-11"
+                        aria-label="Aumentar número de operadores"
+                        onClick={() => setOperatorCount(operatorCount + 1)}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
 
-          {/* Display PIX QR Code */}
-          {paymentData && paymentMethod === 'PIX' && (
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                {pollingStatus === 'polling' && (
-                  <>
-                    <div className="text-center space-y-4">
-                      <div className="flex justify-center">
-                        {paymentData.pixQrCode && (
-                          <Image
-                            src={paymentData.pixQrCode}
-                            alt="QR Code PIX"
-                            width={200}
-                            height={200}
-                            className="border rounded-lg"
-                          />
+                  <Separator className="my-4" />
+                  <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Plano Manager Base:</span>
+                      <span className="font-medium text-foreground">
+                        R$ {BASE_PRICE.toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
+                    {operatorCount > 0 && (
+                      <div className="flex justify-between">
+                        <span>{operatorCount} Operador{operatorCount > 1 ? 'es' : ''} × R$ {OPERATOR_PRICE.toFixed(2).replace('.', ',')}:</span>
+                        <span className="font-medium text-foreground">
+                          R$ {(OPERATOR_PRICE * operatorCount).toFixed(2).replace('.', ',')}
+                        </span>
+                      </div>
+                    )}
+                    <Separator className="my-2" />
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Valor Total Mensal:</span>
+                      <span className="text-lg font-semibold text-foreground">
+                        R$ {totalValue.toFixed(2).replace('.', ',')}/mês
+                      </span>
+                    </div>
+                  </div>
+
+                  {currentOperatorCount > operatorCount && (
+                    <div className="mt-4 flex items-start gap-2 rounded-lg border border-semantic-warning-border bg-semantic-warning-surface p-3 text-sm text-semantic-warning">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        <strong>Atenção:</strong> Você está reduzindo de {currentOperatorCount} para {operatorCount} operador{operatorCount !== 1 ? 'es' : ''}.
+                        Os operadores excedentes serão desativados.
+                      </span>
+                    </div>
+                  )}
+
+                  {operatorCount > currentOperatorCount && (
+                    <div className="mt-4 rounded-lg border border-semantic-info-border bg-semantic-info-surface p-3 text-sm text-semantic-info">
+                      Você está aumentando para {operatorCount} operador{operatorCount !== 1 ? 'es' : ''}.
+                      Você poderá adicionar os novos operadores após a reativação.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Método de pagamento */}
+              {!paymentData && (
+                <div className="flex flex-col gap-3">
+                  <Label className="text-base font-semibold">Método de Pagamento</Label>
+                  <RadioGroup value={paymentMethod} onValueChange={(v: string) => setPaymentMethod(v as "PIX" | "CREDIT_CARD")}>
+                    <Card className={cn(paymentMethod === 'PIX' && 'ring-2 ring-primary')}>
+                      <CardContent className="flex items-start gap-3 pb-4 pt-4">
+                        <RadioGroupItem value="PIX" id="pix" className="mt-1" />
+                        <Label htmlFor="pix" className="flex-1 cursor-pointer">
+                          <div className="mb-1 flex items-center gap-2">
+                            <QrCode className="size-5" />
+                            <span className="font-semibold">PIX</span>
+                            <Badge variant="secondary" className="text-xs">Pagamento Manual</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Pague via QR Code ou Copia e Cola • Confirmação em até 5 minutos
+                          </p>
+                        </Label>
+                      </CardContent>
+                    </Card>
+
+                    <Card className={cn(paymentMethod === 'CREDIT_CARD' && 'ring-2 ring-primary')}>
+                      <CardContent className="flex items-start gap-3 pb-4 pt-4">
+                        <RadioGroupItem value="CREDIT_CARD" id="card" className="mt-1" />
+                        <Label htmlFor="card" className="flex-1 cursor-pointer">
+                          <div className="mb-1 flex items-center gap-2">
+                            <CreditCard className="size-5" />
+                            <span className="font-semibold">Cartão de Crédito</span>
+                            <Badge variant="secondary" className="text-xs">Reativação Imediata</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Processamento imediato • Assinatura recorrente mensal
+                          </p>
+                        </Label>
+                      </CardContent>
+                    </Card>
+                  </RadioGroup>
+                </div>
+              )}
+
+              {/* Formulário de Cartão de Crédito */}
+              {!paymentData && paymentMethod === 'CREDIT_CARD' && (
+                <CreditCardForm
+                  initialData={{
+                    name: managerData.name,
+                  }}
+                  onFormChange={(data, isValid) => {
+                    setCreditCardFormData(data);
+                    setIsCreditCardFormValid(isValid);
+                  }}
+                />
+              )}
+
+              {/* Display PIX QR Code */}
+              {paymentData && paymentMethod === 'PIX' && (
+                <Card>
+                  <CardContent className="flex flex-col gap-4 pt-6">
+                    {pollingStatus === 'polling' && (
+                      <div className="flex flex-col items-center gap-4 text-center">
+                        <div className="flex justify-center">
+                          {paymentData.pixQrCode && (
+                            <Image
+                              src={paymentData.pixQrCode}
+                              alt="QR Code PIX"
+                              width={200}
+                              height={200}
+                              className="rounded-lg border"
+                            />
+                          )}
+                        </div>
+
+                        <div className="w-full">
+                          <Label htmlFor="reactivate-pix-copy-paste" className="text-sm font-medium">
+                            Código PIX Copia e Cola
+                          </Label>
+                          <div className="mt-2 flex gap-2">
+                            <input
+                              id="reactivate-pix-copy-paste"
+                              type="text"
+                              readOnly
+                              value={paymentData.pixCopyPaste || ''}
+                              className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="max-lg:size-11"
+                              aria-label="Copiar código PIX"
+                              onClick={handleCopyPixCode}
+                            >
+                              <Copy className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                          <span>Aguardando pagamento...</span>
+                        </div>
+
+                        {pollTransientError && (
+                          <p className="text-xs text-muted-foreground">
+                            Não conseguimos verificar o status agora — tentando novamente...
+                          </p>
                         )}
                       </div>
-                      
-                      <div>
-                        <Label className="text-sm font-medium">Código PIX Copia e Cola</Label>
-                        <div className="flex gap-2 mt-2">
-                          <input
-                            type="text"
-                            readOnly
-                            value={paymentData.pixCopyPaste || ''}
-                            className="flex-1 px-3 py-2 text-sm border rounded-md bg-muted"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={handleCopyPixCode}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
+                    )}
+
+                    {pollingStatus === 'confirmed' && (
+                      <div className="flex flex-col items-center gap-4 text-center">
+                        <div className="flex justify-center">
+                          <CheckCircle2 className="size-16 text-semantic-success" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold">Pagamento Confirmado!</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Sua assinatura foi reativada com sucesso
+                          </p>
                         </div>
                       </div>
+                    )}
 
-                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Aguardando pagamento...</span>
+                    {pollingStatus === 'failed' && (
+                      <div className="flex flex-col items-center gap-4 text-center">
+                        <div className="flex justify-center">
+                          <XCircle className="size-16 text-destructive" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold">Pagamento Não Confirmado</h3>
+                          <p className="text-sm text-muted-foreground">
+                            O pagamento não foi confirmado. Tente novamente.
+                          </p>
+                        </div>
+                        <Button className="max-lg:h-11" onClick={() => {
+                          setPaymentData(null);
+                          setPollingStatus('idle');
+                        }}>
+                          Tentar Novamente
+                        </Button>
                       </div>
-                    </div>
-                  </>
-                )}
+                    )}
 
-                {pollingStatus === 'confirmed' && (
-                  <div className="text-center space-y-4">
-                    <div className="flex justify-center">
-                      <CheckCircle2 className="h-16 w-16 text-green-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg">Pagamento Confirmado!</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Sua assinatura foi reativada com sucesso
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {pollingStatus === 'failed' && (
-                  <div className="text-center space-y-4">
-                    <div className="flex justify-center">
-                      <XCircle className="h-16 w-16 text-destructive" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg">Pagamento Não Confirmado</h3>
-                      <p className="text-sm text-muted-foreground">
-                        O pagamento não foi confirmado. Tente novamente.
-                      </p>
-                    </div>
-                    <Button onClick={() => {
-                      setPaymentData(null);
-                      setPollingStatus('idle');
-                    }}>
-                      Tentar Novamente
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Botão de reativar */}
-          {!paymentData && (
-            <div className="space-y-3">
-              <Button 
-                onClick={handleReactivate} 
-                disabled={
-                  loading || 
-                  (paymentMethod === 'CREDIT_CARD' && !isCreditCardFormValid)
-                } 
-                className="w-full h-11"
-                size="lg"
-              >
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {paymentMethod === 'PIX' ? 'Gerar QR Code PIX' : 'Reativar Assinatura'}
-              </Button>
-
-              <p className="text-xs text-center text-muted-foreground">
-                Ao reativar, sua assinatura anterior será cancelada e uma nova será criada
-                com os parâmetros selecionados. 
-                {paymentMethod === 'CREDIT_CARD' ? ' A primeira cobrança será processada imediatamente.' : ' Após o pagamento do PIX, sua assinatura será ativada.'}
-              </p>
+                    {pollingStatus === 'timeout' && (
+                      <div className="flex flex-col items-center gap-4 text-center">
+                        <div className="flex justify-center">
+                          <AlertTriangle className="size-16 text-semantic-warning" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold">Não conseguimos confirmar ainda</h3>
+                          <p className="text-sm text-muted-foreground">
+                            O QR Code acima continua válido. Se você já pagou, a confirmação pode
+                            chegar depois deste aviso — verifique novamente ou confira em Faturas
+                            em alguns minutos.
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {/*
+                            Achado P1 da revisão do lote unificado (PR #1207, codex + cursor):
+                            aqui havia "Gerar novo QR Code", que zerava `paymentData` e devolvia o
+                            footer de submit. O próximo submit chama
+                            `POST /subscriptions/reactivate`, que **cancela a assinatura recém-criada
+                            e abre outra** com nova cobrança PIX — quem pagou o primeiro PIX depois
+                            dos ~10 min (ou cujo webhook atrasou) seria cobrado duas vezes. O
+                            timeout é falta de confirmação, não desfecho: a cobrança segue
+                            pendente. Por isso a saída preserva o `paymentId` e só retoma o poll.
+                            Desfecho terminal de verdade cai no estado `failed`, que aí sim libera
+                            gerar outra cobrança.
+                          */}
+                          <Button
+                            variant="outline"
+                            className="max-lg:h-11"
+                            onClick={() => setPollingStatus('polling')}
+                          >
+                            Verificar novamente
+                          </Button>
+                          <Button className="max-lg:h-11" onClick={() => onOpenChange(false)}>Fechar</Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </div>
+
+        {showSubmitFooter && (
+          <DialogFooter className="flex-col items-stretch gap-2 sm:flex-col sm:space-x-0">
+            <Button
+              onClick={handleReactivate}
+              disabled={
+                loading ||
+                (paymentMethod === 'CREDIT_CARD' && !isCreditCardFormValid)
+              }
+              className="h-11 w-full"
+              size="lg"
+            >
+              {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {paymentMethod === 'PIX' ? 'Gerar QR Code PIX' : 'Reativar Assinatura'}
+            </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              Ao reativar, sua assinatura anterior será cancelada e uma nova será criada
+              com os parâmetros selecionados.
+              {paymentMethod === 'CREDIT_CARD' ? ' A primeira cobrança será processada imediatamente.' : ' Após o pagamento do PIX, sua assinatura será ativada.'}
+            </p>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>

@@ -15,13 +15,13 @@ export function SubscriptionError({ error, onRetry }: SubscriptionErrorProps) {
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-destructive" />
+            <AlertCircle className="size-5 text-destructive" />
             <CardTitle>Erro ao Carregar Assinatura</CardTitle>
           </div>
           <CardDescription>{error}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={onRetry} className="w-full">
+          <Button onClick={onRetry} className="w-full max-lg:h-11">
             Tentar Novamente
           </Button>
         </CardContent>

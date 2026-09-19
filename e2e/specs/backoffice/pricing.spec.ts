@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { disconnectPrisma, getPrisma } from "../../support/db";
+import { runResponsiveChecks } from "../../support/responsive";
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}@example.com`;
@@ -232,5 +233,24 @@ test.describe("app/backoffice/(app)/pricing", () => {
     for (const rule of saved?.paymentRules ?? []) {
       expect(Number(rule.price)).toBe(12345.67);
     }
+  });
+
+  test("responsividade mobile-first (360/375, alvo de toque, reduced-motion)", async ({
+    page,
+  }) => {
+    await page.goto("/backoffice/pricing");
+    await expect(page.getByRole("heading", { name: "Precificação" })).toBeVisible({
+      timeout: 60_000,
+    });
+
+    // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
+    // `ignoreSelector`: esse passo recarrega e mede enquanto o fetch ainda
+    // corre, então o spinner de loading global (`components/global-loading.tsx`,
+    // Lucide Loader2 com `animate-spin`) ainda está montado. É o "spinner
+    // legítimo de loading" que a própria opção documenta — indicador de
+    // progresso, não animação decorativa.
+    await runResponsiveChecks(page, {
+      reducedMotion: { ignoreSelector: ".lucide-loader-circle" },
+    });
   });
 });

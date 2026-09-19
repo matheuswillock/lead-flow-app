@@ -15,10 +15,22 @@
  * durante a janela dual `cus_`/`sub_` podem colidir entre contas (C33) —
  * por isso os métodos recebem a conta e filtram
  * `Profile.asaasCustomerAccount` / `BackofficeAdhesion.asaasAccount` /
- * `Profile.asaasSubscriptionAccount`. Exceção documentada:
- * `BackofficeClient` ainda não tem coluna de conta (ela nasce em 30-E3) —
- * seus ponteiros entram sem filtro, o que é correto pré-cutover (todos os
- * customers vivem numa conta só) e vira refinamento em E3.
+ * `BackofficeClient.asaasAccount` / `Profile.asaasSubscriptionAccount`.
+ * A exceção do `BackofficeClient` (ponteiro sem filtro enquanto a coluna
+ * não existia) caiu com 30-E3, que entregou `BackofficeClient.asaasAccount`.
+ * `ProfileSubscription.asaasSubscriptionAccount` **também entrou no filtro**
+ * depois que `20260918150645_backfill-legacy-account-new-pointer-columns.sql`
+ * parou de deixar a coluna constante — ver o comentário em
+ * `BillingInventoryRepository.listSubscriptionPointers`.
+ *
+ * Ressalva viva (não é débito de estilo): nenhum writer de
+ * `profileSubscription` grava `asaasSubscriptionAccount` hoje — a coluna vem
+ * do default e do backfill. `ProfileSubscription.profileId` é `@unique`, então
+ * a linha é reescrita no lugar quando o cliente migra de conta; enquanto o
+ * writer não existir, o ponteiro migrado continua rotulado `legacy` e vira
+ * ORFAO/FANTASMA falso na reconciliação diária de E7. O padrão a seguir é o de
+ * `ProfileRepository.updateAsaasCustomerId` / `BillingRepository.
+ * updateAsaasCustomerId`, que gravam a conta junto do id.
  */
 
 import type { AsaasAccountId } from "@/lib/asaas/asaas-account"
