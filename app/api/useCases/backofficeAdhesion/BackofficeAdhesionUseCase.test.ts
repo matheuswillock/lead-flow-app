@@ -147,4 +147,79 @@ describe("BackofficeAdhesionUseCase — sanitiza erro inesperado antes de expor 
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toEqual(["Não há parcelas pendentes para cobrança"])
   })
+
+  /**
+   * Regressão apontada pela revisão do cursor[bot] na 1ª versão deste fix: o
+   * allowlist inicial só cobria as mensagens literais já existentes em
+   * `EXPECTED_CREATE_ERROR_MESSAGES` e não incluía toda a copy de validação que
+   * `BackofficeAdhesionService.create`/`update` ainda lançam de propósito — o
+   * operador perdia o motivo acionável (e-mail do guest, CPF/CNPJ, produto/ciclo)
+   * e via só o fallback genérico.
+   */
+  it("create: e-mail obrigatório para conta Convidado chega intacta ao toast", async () => {
+    const service = {
+      create: async () => {
+        throw new Error("E-mail é obrigatório para conta Convidado")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    // userType "common" evita o early-return de patrocinador do UseCase (guest/
+    // associate) — o objetivo aqui é isolar a sanitização de `service.create`,
+    // não reproduzir a regra de negócio completa de conta convidado.
+    const output = await useCase.create(
+      { leadId: "lead-1", userType: "common", cycle: "monthly", extraTeams: 0, extraUsers: 0, fullName: "Guest" },
+      null
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["E-mail é obrigatório para conta Convidado"])
+  })
+
+  it("update: CPF/CNPJ inválido para pagamento por fora chega intacta ao toast", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("CPF/CNPJ inválido para pagamento por fora")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["CPF/CNPJ inválido para pagamento por fora"])
+  })
+
+  it("create: produto obrigatório indisponível (mensagem template) chega intacta ao toast", async () => {
+    const service = {
+      create: async () => {
+        throw new Error("Produto obrigatório indisponível: crm")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.create(
+      { leadId: "lead-1", cycle: "monthly", extraTeams: 0, extraUsers: 0, fullName: "Lead" },
+      null
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Produto obrigatório indisponível: crm"])
+  })
+
+  it("update: ciclo indisponível na precificação (mensagem template) chega intacta ao toast", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("O ciclo quarterly não está disponível na precificação selecionada")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual([
+      "O ciclo quarterly não está disponível na precificação selecionada",
+    ])
+  })
 })

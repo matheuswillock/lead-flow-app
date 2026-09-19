@@ -64,10 +64,12 @@ const KNOWN_SAFE_ADHESION_ERROR_MESSAGES = new Set([
   "E-mail inválido",
   "CPF/CNPJ inválido",
   "E-mail é obrigatório para pagamento por fora",
-  // create — elegibilidade de lead / conta
+  "CPF/CNPJ inválido para pagamento por fora",
+  // create — elegibilidade de lead / conta / guest
   "Lead não está elegível para nova adesão",
   "Lead já possui uma adesão vinculada",
   "Já existe uma conta cadastrada com este e-mail",
+  "E-mail é obrigatório para conta Convidado",
   // create — Member PRO
   "Informe a data de expiração do acesso Member PRO",
   "Data de expiração do acesso Member PRO inválida",
@@ -95,6 +97,22 @@ const KNOWN_SAFE_ADHESION_ERROR_MESSAGES = new Set([
   "Link não disponível. Reenvie a adesão para gerar um novo link.",
   "Link expirado. Reenvie a adesão para gerar um novo link.",
 ])
+
+/**
+ * Copy de negócio "template" de `create`/`update` (via `getProductForAdhesion` e
+ * `resolvePrices` em `BackofficeAdhesionService`) — a interpolação é sempre um slug
+ * de produto interno (`CRM_PRODUCT_SLUG`, `EXTRA_TEAM_PRODUCT_SLUG`,
+ * `EXTRA_USER_PRODUCT_SLUG`) ou um `BackofficeAdhesionBillingCycle` (enum fechado),
+ * nunca texto livre vindo do usuário — por isso são seguras mesmo sem match exato
+ * de string. `Set.has` não serve aqui porque o valor interpolado varia.
+ */
+const KNOWN_SAFE_ADHESION_ERROR_PATTERNS: readonly RegExp[] = [
+  /^Produto obrigatório indisponível: .+$/,
+  /^Variante de produto inválida para .+$/,
+  /^O ciclo .+ não está disponível na precificação selecionada$/,
+  /^Times adicionais não estão disponíveis para o ciclo .+$/,
+  /^Usuários adicionais não estão disponíveis para o ciclo .+$/,
+]
 
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
 const MEMBER_PRO_MIN_ACCESS_DAYS = 1
@@ -124,7 +142,11 @@ function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undef
 }
 
 function isKnownSafeAdhesionError(error: unknown): boolean {
-  return error instanceof Error && KNOWN_SAFE_ADHESION_ERROR_MESSAGES.has(error.message)
+  if (!(error instanceof Error)) return false
+  return (
+    KNOWN_SAFE_ADHESION_ERROR_MESSAGES.has(error.message) ||
+    KNOWN_SAFE_ADHESION_ERROR_PATTERNS.some((pattern) => pattern.test(error.message))
+  )
 }
 
 /**
