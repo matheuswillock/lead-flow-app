@@ -4,8 +4,8 @@
  * O kill de plataforma (timeout, OOM, deploy) não passa pelo `catch` do
  * `withCronAudit`: a linha fica `running` para sempre. O watchdog marca essas
  * execuções como `failed`, mas o teto precisa ser **por cronKey** — há crons
- * legitimamente longos (`database-backup` ~5min, `radar-sync-email-contacts`
- * p95 104s) que um teto global marcaria como órfãos por engano.
+ * legitimamente longos (`radar-sync-email-contacts` p95 104s, além de outros
+ * com `maxDuration` de 300s) que um teto global marcaria como órfãos por engano.
  *
  * Cada entrada é o `maxDuration` (em segundos) declarado na rota do cron.
  * Quando a rota não declara, vale o default da plataforma.
@@ -34,7 +34,6 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "asaas-webhook-retry": 60,
   "backoffice-email-import": 60,
   "cleanup-orphan-media": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
-  "database-backup": 300,
   "dispatch-email-campaigns": 60,
   "dispatch-scheduled": 60,
   "document-request-reminders": VERCEL_DEFAULT_MAX_DURATION_SECONDS,

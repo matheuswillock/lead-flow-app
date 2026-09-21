@@ -3,6 +3,16 @@
 Encaminhamento do achado T-Q5.3 da SPEC 50 (CDP 2026-08). **Não é problema de
 funil CDP — é continuidade de negócio**, e por isso vive fora daquela SPEC.
 
+> **Atualização 2026-09-21:** o agendamento diário (`0 8 * * *`) foi **removido
+> do `vercel.json`**. O snapshot completo do banco (5,01 GB) rodando todo dia
+> consumia ~60% da quota mensal de egress do Supabase e a organização entrou
+> em grace period. A rota `/api/v1/backoffice/cron/database-backup` continua
+> existindo para disparo manual, mas não há mais execução automática — o
+> conteúdo abaixo (medições, incidentes e tabela de "execuções seguidas")
+> descreve o comportamento de quando o cron ainda era automático. Continuidade
+> hoje é o dump manual (`bun run db:backup -- <pasta>`) mais o backup
+> gerenciado do Supabase (retenção de 7 dias).
+
 ## Estado medido em 2026-08-24
 
 `backoffice_cron_executions` para `cronKey = 'database-backup'` (schedule

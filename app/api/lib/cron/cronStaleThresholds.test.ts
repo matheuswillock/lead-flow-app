@@ -50,7 +50,9 @@ describe("cronStaleThresholds", () => {
   })
 
   it("aplica o multiplicador sobre o maxDuration do cronKey", () => {
-    expect(resolveStaleThresholdMs("database-backup")).toBe(300 * STALE_THRESHOLD_MULTIPLIER * 1000)
+    expect(resolveStaleThresholdMs("radar-sync-email-contacts")).toBe(
+      300 * STALE_THRESHOLD_MULTIPLIER * 1000,
+    )
     expect(resolveStaleThresholdMs("dispatch-scheduled")).toBe(60 * STALE_THRESHOLD_MULTIPLIER * 1000)
   })
 
