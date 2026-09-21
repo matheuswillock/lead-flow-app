@@ -1,6 +1,7 @@
 // app/api/infra/data/repositories/payment/IPaymentRepository.ts
 
 import { Profile } from '@prisma/client';
+import type { AsaasAccountId } from '@/lib/asaas';
 
 export interface IPaymentRepository {
   /**
@@ -48,6 +49,16 @@ export interface IPaymentRepository {
     data: {
       asaasCustomerId?: string;
       subscriptionId?: string;
+      /**
+       * Conta Asaas dona do `subscriptionId` acima. Achado P1 da revisão do
+       * PR #1207 (thread PRRT_...YP_y): sem ela o upsert de
+       * ProfileSubscription cai no `@default(primary)` do schema mesmo
+       * quando o webhook veio da conta legacy, e a reconciliação de 30-E7
+       * passa a procurar o `sub_` na conta errada. Informe sempre que
+       * `subscriptionId` for informado; omita nos updates que só mexem em
+       * status (PAYMENT_OVERDUE, refund), que não tocam o ponteiro.
+       */
+      subscriptionAccount?: AsaasAccountId;
       subscriptionPlan?: string;
       subscriptionStatus?: string;
       subscriptionStartDate?: Date;

@@ -143,14 +143,23 @@ export class OverdueReminderUseCase {
       });
 
       hasMorePages = page.length === DUNNING_PAGE_SIZE;
-      skip += page.length;
-      scanned += page.length;
-      totals.candidates += page.length;
 
+      // Achado P1 da 3ª rodada (thread PRRT_...YP_m): o cursor avança pelas
+      // linhas efetivamente PROCESSADAS, não pela página inteira. Quando o
+      // orçamento de e-mails corta a página no meio, avançar pelo
+      // `page.length` cheio pularia as linhas restantes — elas só voltariam
+      // a ser vistas depois de uma volta completa do cursor, que é
+      // exatamente a inanição que o cursor veio resolver.
+      let processedInPage = 0;
       for (const row of page) {
         if (totals.sent + totals.failed >= DUNNING_EMAIL_BUDGET) break;
         await this.processRow(row, context, totals);
+        processedInPage += 1;
       }
+
+      skip += processedInPage;
+      scanned += processedInPage;
+      totals.candidates += processedInPage;
     }
 
     // Achado P1 (thread PRRT_...CUk5): chegou ao fim de verdade (última

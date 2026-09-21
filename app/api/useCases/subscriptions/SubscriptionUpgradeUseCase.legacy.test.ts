@@ -2,17 +2,21 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 // T-20.8 de [[20 — Assinaturas — Backend]] E3 (C15 🔴, C27, DA2).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
-const profileUpdateMock = mock(async () => ({}))
-// Achado P1 da revisão do PR #1207 (chatgpt-codex-connector, thread
-// PRRT_...CUk2): ProfileSubscription é ponteiro irmão que precisa
-// acompanhar o Profile quando a migração de upgrade troca o sub_ — ver
-// SubscriptionUpgradeUseCase.ts.
-const profileSubscriptionUpdateManyMock = mock(async () => ({ count: 0 }))
+const profileUpdateMock = mock(async (_args?: { data?: Record<string, unknown> }) => ({}))
 const prismaMock = {
   profile: { findUnique: findUniqueMock, update: profileUpdateMock },
-  profileSubscription: { updateMany: profileSubscriptionUpdateManyMock },
 }
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
+
+// Achados P1 da revisão do PR #1207 (chatgpt-codex-connector, threads
+// PRRT_...CUk2 e PRRT_...YP_r): ProfileSubscription é ponteiro irmão que
+// precisa acompanhar o Profile quando a migração de upgrade troca o sub_,
+// e as duas escritas têm de ser atômicas — por isso saíram do UseCase para
+// um repository transacional.
+const migrateSubscriptionPointersMock = mock(async (_input: Record<string, unknown>) => {})
+mock.module("@/app/api/infra/data/repositories/subscriptions/SubscriptionPointerRepository", () => ({
+  subscriptionPointerRepository: { migrateSubscriptionPointers: migrateSubscriptionPointersMock },
+}))
 
 const createSubscriptionMock = mock(async (_data: unknown, accountId?: string) => ({
   success: true,
@@ -84,7 +88,8 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
   beforeEach(() => {
     findUniqueMock.mockClear()
     profileUpdateMock.mockClear()
-    profileSubscriptionUpdateManyMock.mockClear()
+    migrateSubscriptionPointersMock.mockClear()
+    migrateSubscriptionPointersMock.mockImplementation(async () => {})
     createSubscriptionMock.mockClear()
     updateSubscriptionMock.mockClear()
     cancelSubscriptionMock.mockClear()
@@ -159,43 +164,58 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
     expect(result.isValid).toBe(true)
     // O backfill (20260918150645) só sabe relabelar a ProfileSubscription
     // quando ela ainda aponta para o MESMO sub_ que o Profile tinha antes
-    // da migração — por isso o updateMany filtra pelo id ANTIGO
-    // ("sub_legacy_1", capturado antes do profile.update rodar).
-    expect(profileSubscriptionUpdateManyMock).toHaveBeenCalledWith({
-      where: { profileId: "manager-legacy-1", asaasSubscriptionId: "sub_legacy_1" },
-      data: { asaasSubscriptionId: "sub_primary_new", asaasSubscriptionAccount: "primary" },
+    // da migração — por isso o repository recebe o id ANTIGO
+    // ("sub_legacy_1") como `previousSubscriptionId`.
+    expect(migrateSubscriptionPointersMock).toHaveBeenCalledWith({
+      profileId: "manager-legacy-1",
+      previousSubscriptionId: "sub_legacy_1",
+      newSubscriptionId: "sub_primary_new",
+      account: "primary",
+      subscriptionNextDueDate: new Date("2026-11-01"),
+      operatorCount: 1,
     })
+    // Achado P1 PRRT_...YP_r: o UseCase não escreve mais o PONTEIRO de
+    // assinatura solto — quem garante atomicidade é o repository
+    // transacional. (O `profile.update` que sobra é o do `asaasCustomerId`
+    // recém-criado na primary, outra escrita e outro campo.)
+    const pointerWrites = profileUpdateMock.mock.calls.filter(
+      (call) => call[0]?.data !== undefined && "asaasSubscriptionId" in call[0].data
+    )
+    expect(pointerWrites).toHaveLength(0)
   })
 
   it("controle negativo: ProfileSubscription de um produto distinto (id diferente do Profile) não é tocada pela migração", async () => {
     // Cenário do comentário do schema (ProfileSubscription:4204): esta
     // coluna também serve o fluxo de adesão a produto, com um sub_
     // totalmente diferente da assinatura direta do Profile. A migração de
-    // upgrade não pode sobrescrever esse ponteiro alheio — o `where` do
-    // updateMany já garante isso (asaasSubscriptionId = valor antigo do
-    // Profile), então mesmo com o mock devolvendo `count: 0` (nenhuma
-    // linha bateu o filtro), o Profile.update segue intacto.
+    // upgrade não pode sobrescrever esse ponteiro alheio — a proteção é o
+    // `previousSubscriptionId`, que o repository usa como filtro: nunca
+    // manda profileId sozinho, que atingiria qualquer ProfileSubscription
+    // do profile.
     findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
-    profileSubscriptionUpdateManyMock.mockImplementationOnce(async () => ({ count: 0 }))
 
     const useCase = new SubscriptionUpgradeUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
-    expect(profileUpdateMock).toHaveBeenCalledWith({
-      where: { id: "manager-legacy-1" },
-      data: expect.objectContaining({
-        asaasSubscriptionId: "sub_primary_new",
-        asaasSubscriptionAccount: "primary",
-      }),
-    })
-    // O filtro por id antigo é a própria proteção: nunca manda profileId
-    // sozinho, que sobrescreveria qualquer ProfileSubscription do profile.
-    expect(profileSubscriptionUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ asaasSubscriptionId: "sub_legacy_1" }),
-      })
+    expect(migrateSubscriptionPointersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ previousSubscriptionId: "sub_legacy_1" })
     )
+  })
+
+  it("achado P1 PRRT_...YP_r: falha na escrita atômica dos ponteiros não é engolida — o upgrade reporta erro", async () => {
+    // Se a transação falhar, o UseCase não pode devolver sucesso: o
+    // cliente ficaria achando que migrou enquanto os dois ponteiros
+    // seguem no estado antigo.
+    findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
+    migrateSubscriptionPointersMock.mockImplementationOnce(async () => {
+      throw new Error("db down")
+    })
+
+    const useCase = new SubscriptionUpgradeUseCase()
+    const result = await useCase.updateManagerSubscription("manager-legacy-1")
+
+    expect(result.isValid).toBe(false)
   })
 
   it("assinatura já na primary → mantém fluxo cancela-depois-cria (compat), roteado pela conta primary", async () => {

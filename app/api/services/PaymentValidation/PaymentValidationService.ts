@@ -5,7 +5,7 @@ import { IPaymentRepository } from '../../infra/data/repositories/payment/IPayme
 import type { AsaasPayment, AsaasSubscription } from './AsaasWebhookTypes';
 import { isAsaasPayment, isAsaasSubscription } from './AsaasWebhookTypes';
 import { createEmailService } from '@/lib/services/EmailService';
-import { asaasApi, asaasFetch } from '@/lib/asaas';
+import { asaasApi, asaasFetch, type AsaasAccountId } from '@/lib/asaas';
 import { getAppUrl } from '@/lib/utils/app-url';
 import {
   isAsaasRealSubscriptionEvent,
@@ -53,7 +53,9 @@ export class PaymentValidationService implements IPaymentValidationService {
         // Atualizar profile se pagamento confirmado
         const profileUpdated = await this.updateProfileStatus(
           payment.customer,
-          payment.subscription
+          payment.subscription,
+          // A conta em que o pagamento foi efetivamente encontrado.
+          lookup.account
         );
 
         return {
@@ -83,7 +85,8 @@ export class PaymentValidationService implements IPaymentValidationService {
 
   async processWebhook(
     event: string,
-    paymentData: unknown
+    paymentData: unknown,
+    account: AsaasAccountId
   ): Promise<PaymentValidationResult> {
     try {
       console.info(`🔔 [PaymentValidationService] Processando webhook: ${event}`);
@@ -140,6 +143,10 @@ export class PaymentValidationService implements IPaymentValidationService {
         await this.paymentRepository.updateSubscriptionData(profile.id, {
           asaasCustomerId: sub.customer,
           subscriptionId: sub.id,
+          // Achado P1 (thread PRRT_...YP_y): a conta do evento anda junto
+          // do sub_ — sem ela um SUBSCRIPTION_* da conta legacy gravaria o
+          // ponteiro rotulado `primary` pelo default do schema.
+          subscriptionAccount: account,
           subscriptionPlan: preservedPlan,
           subscriptionStatus: mappedStatus,
           subscriptionStartDate: startDate,
@@ -341,7 +348,7 @@ export class PaymentValidationService implements IPaymentValidationService {
       console.info('✅ [PaymentValidationService] Pagamento CONFIRMADO! Atualizando profile...');
 
   // Atualizar profile com dados completos de assinatura
-      const profileUpdated = await this.updateProfileStatus(payment.customer, payment.subscription);
+      const profileUpdated = await this.updateProfileStatus(payment.customer, payment.subscription, account);
 
       // Disparar e-mail de confirmação de assinatura (PIX confirmado ou cartão aprovado)
       try {
@@ -417,7 +424,11 @@ export class PaymentValidationService implements IPaymentValidationService {
 
   private async updateProfileStatus(
     asaasCustomerId: string,
-    subscriptionId?: string
+    subscriptionId: string | undefined,
+    // Achado P1 (thread PRRT_...YP_y): a conta do `sub_` que este método
+    // grava. Quem chama sempre sabe — do webhook (`processWebhook`) ou do
+    // lookup com fallback (`validatePayment`).
+    account: AsaasAccountId
   ): Promise<boolean> {
     try {
       let profile;
@@ -462,6 +473,9 @@ export class PaymentValidationService implements IPaymentValidationService {
       await this.paymentRepository.updateSubscriptionData(profile.id, {
         asaasCustomerId,
         subscriptionId,
+        // Só rotula a conta quando há ponteiro para rotular (achado P1,
+        // thread PRRT_...YP_y).
+        subscriptionAccount: subscriptionId ? account : undefined,
         subscriptionPlan: preservedPlan,
         subscriptionStatus: 'active',
         subscriptionStartDate: new Date(),

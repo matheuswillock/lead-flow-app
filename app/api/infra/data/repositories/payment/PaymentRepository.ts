@@ -1,6 +1,7 @@
 // app/api/infra/data/repositories/payment/PaymentRepository.ts
 
 import { Profile, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
+import type { AsaasAccountId } from '@/lib/asaas';
 import { IPaymentRepository } from './IPaymentRepository';
 import prisma from '../../prisma';
 
@@ -59,6 +60,7 @@ export class PaymentRepository implements IPaymentRepository {
     data: {
       asaasCustomerId?: string;
       subscriptionId?: string;
+      subscriptionAccount?: AsaasAccountId;
       subscriptionPlan?: string;
       subscriptionStatus?: string;
       subscriptionStartDate?: Date;
@@ -76,6 +78,13 @@ export class PaymentRepository implements IPaymentRepository {
     // Subscription fields go to ProfileSubscription
     const subData: any = {};
     if (data.subscriptionId !== undefined) subData.asaasSubscriptionId = data.subscriptionId;
+    // Achado P1 da revisão do PR #1207 (thread PRRT_...YP_y): a conta anda
+    // junto do id, nunca sozinha. Quando o caller só muda status
+    // (PAYMENT_OVERDUE, refund) o ponteiro não é tocado e a conta também
+    // não — rotular aqui sobrescreveria a conta correta por um default.
+    if (data.subscriptionAccount !== undefined) {
+      subData.asaasSubscriptionAccount = data.subscriptionAccount;
+    }
     if (data.subscriptionPlan !== undefined) subData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) subData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) subData.subscriptionStartDate = data.subscriptionStartDate;
@@ -91,6 +100,9 @@ export class PaymentRepository implements IPaymentRepository {
 
     // Keep Profile in sync for legacy compatibility
     const profileData: any = {};
+    if (data.subscriptionAccount !== undefined) {
+      profileData.asaasSubscriptionAccount = data.subscriptionAccount;
+    }
     if (data.subscriptionPlan !== undefined) profileData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) profileData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) profileData.subscriptionStartDate = data.subscriptionStartDate;
