@@ -18,13 +18,22 @@ CREATE TABLE IF NOT EXISTS "public"."email_team_senders" (
 CREATE INDEX IF NOT EXISTS "email_team_senders_teamId_isDefault_idx"
 ON "public"."email_team_senders" ("teamId", "isDefault");
 
-INSERT INTO "public"."email_team_senders" ("teamId", "name", "email", "replyTo", "isDefault")
+-- "id"/"createdAt"/"updatedAt" vêm explícitos de propósito: prisma/schema.prisma
+-- declara `EmailTeamSender.id` como `@default(uuid())` e `updatedAt` como
+-- `@updatedAt` sozinho — os dois são resolvidos no Prisma Client, não no banco.
+-- Um `prisma db push` derruba o default físico que o CREATE TABLE acima criou
+-- (docs/audits/prisma-migrations-drift-2026-08-23.md §3) e, a partir daí, o
+-- replay viola NOT NULL com SQLSTATE 23502 — a mesma falha do PR #1208.
+INSERT INTO "public"."email_team_senders" ("id", "teamId", "name", "email", "replyTo", "isDefault", "createdAt", "updatedAt")
 SELECT
+  gen_random_uuid(),
   ets."teamId",
   ets."fromName",
   ets."fromEmail",
   ets."replyTo",
-  TRUE
+  TRUE,
+  now(),
+  now()
 FROM "public"."email_team_settings" ets
 WHERE NOT EXISTS (
   SELECT 1
