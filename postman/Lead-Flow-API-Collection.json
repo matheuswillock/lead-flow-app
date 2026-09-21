@@ -15222,7 +15222,7 @@
                     "backups"
                   ]
                 },
-                "description": "Lista metadados de backups diários (cron e manuais)."
+                "description": "Lista metadados dos backups já gerados (source=cron e manuais). Não há mais backup diário automático desde 2026-09-21."
               }
             },
             {

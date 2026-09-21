@@ -51,10 +51,10 @@ function makeRepository(
 
 describe("MarkStaleCronExecutionsUseCase", () => {
   it("T-Q1.1 — marca apenas execuções além do teto do próprio cronKey", async () => {
-    // engagement-backfill: maxDuration 300s → teto 600s. 8min ainda é execução legítima.
+    // database-backup: maxDuration 300s → teto 600s. 8min ainda é execução legítima.
     const backupEmAndamento = makeRunningExecution({
       id: "backup-ok",
-      cronKey: "engagement-backfill",
+      cronKey: "database-backup",
       startedAt: minutesAgo(8),
     })
     // dispatch-scheduled: maxDuration 60s → teto 120s. 8min é órfã.
@@ -87,7 +87,7 @@ describe("MarkStaleCronExecutionsUseCase", () => {
     )
   })
 
-  it("T-Q1.1 — respeita o teto longo de radar-sync-email-contacts e engagement-backfill", async () => {
+  it("T-Q1.1 — respeita o teto longo de radar-sync-email-contacts e database-backup", async () => {
     const candidatos = [
       makeRunningExecution({
         id: "radar-sync",
@@ -96,7 +96,7 @@ describe("MarkStaleCronExecutionsUseCase", () => {
       }),
       makeRunningExecution({
         id: "backup",
-        cronKey: "engagement-backfill",
+        cronKey: "database-backup",
         startedAt: minutesAgo(9),
       }),
     ]
