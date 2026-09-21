@@ -18,7 +18,14 @@ CREATE TABLE "backoffice_bot_ai_configurations" (
   "updatedAt" TIMESTAMPTZ(6) NOT NULL DEFAULT now()
 );
 
-INSERT INTO "backoffice_bot_ai_configurations" ("id") VALUES (true)
+-- "createdAt"/"updatedAt" vêm explícitos de propósito: prisma/schema.prisma
+-- declara `updatedAt` como `@updatedAt` sozinho, sem `@default(now())` — o valor
+-- é resolvido no Prisma Client, não no banco. Um `prisma db push` derruba o
+-- default físico que o CREATE TABLE acima criou
+-- (docs/audits/prisma-migrations-drift-2026-08-23.md §3) e, a partir daí, o
+-- replay viola NOT NULL com SQLSTATE 23502 — a mesma falha do PR #1208.
+INSERT INTO "backoffice_bot_ai_configurations" ("id", "createdAt", "updatedAt")
+VALUES (true, now(), now())
 ON CONFLICT ("id") DO NOTHING;
 
 CREATE TABLE "backoffice_bot_ai_interactions" (
