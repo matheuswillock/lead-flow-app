@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   CRON_MAX_DURATION_SECONDS,
+  MANUALLY_TRIGGERED_CRON_KEYS,
   resolveMinimumStaleThresholdMs,
   resolveStaleThresholdMs,
   STALE_THRESHOLD_MULTIPLIER,
@@ -26,6 +27,26 @@ function readCronKeyFromRoute(cronPath: string): string | null {
   return /cronKey:\s*"([^"]+)"/.exec(source)?.[1] ?? null
 }
 
+/** Todo `cronKey` declarado por alguma `route.ts` viva sob `app/`. */
+function collectCronKeysDeclaredByRoutes(): Set<string> {
+  const found = new Set<string>()
+
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(fullPath)
+      } else if (entry.name === "route.ts") {
+        const cronKey = /cronKey:\s*"([^"]+)"/.exec(readFileSync(fullPath, "utf8"))?.[1]
+        if (cronKey) found.add(cronKey)
+      }
+    }
+  }
+
+  walk(join(process.cwd(), "app"))
+  return found
+}
+
 describe("cronStaleThresholds", () => {
   it("cobre todos os cronKeys registrados no vercel.json", () => {
     const missing = readVercelCronPaths()
@@ -35,7 +56,7 @@ describe("cronStaleThresholds", () => {
     expect(missing).toEqual([])
   })
 
-  it("não guarda teto para cronKey que não existe mais no vercel.json", () => {
+  it("não guarda teto para cronKey que não é cron agendado nem rota de disparo manual", () => {
     const declaredKeys = new Set(
       readVercelCronPaths()
         .map(readCronKeyFromRoute)
@@ -43,14 +64,49 @@ describe("cronStaleThresholds", () => {
     )
 
     const orphanKeys = Object.keys(CRON_MAX_DURATION_SECONDS).filter(
-      (cronKey) => !declaredKeys.has(cronKey),
+      (cronKey) => !declaredKeys.has(cronKey) && !MANUALLY_TRIGGERED_CRON_KEYS.has(cronKey),
     )
 
     expect(orphanKeys).toEqual([])
   })
 
-  it("aplica o multiplicador sobre o maxDuration do cronKey", () => {
+  it("só aceita cronKey de disparo manual cuja rota ainda existe no repositório", () => {
+    const routeCronKeys = collectCronKeysDeclaredByRoutes()
+
+    const semRota = [...MANUALLY_TRIGGERED_CRON_KEYS].filter(
+      (cronKey) => !routeCronKeys.has(cronKey),
+    )
+
+    expect(semRota).toEqual([])
+  })
+
+  it("exige teto explícito para todo cronKey de disparo manual", () => {
+    const semTeto = [...MANUALLY_TRIGGERED_CRON_KEYS].filter(
+      (cronKey) => !(cronKey in CRON_MAX_DURATION_SECONDS),
+    )
+
+    expect(semTeto).toEqual([])
+  })
+
+  it("mantém database-backup com teto de 600s mesmo sem agendamento no vercel.json", () => {
+    const agendados = new Set(
+      readVercelCronPaths()
+        .map(readCronKeyFromRoute)
+        .filter((cronKey): cronKey is string => Boolean(cronKey)),
+    )
+
+    expect(agendados.has("database-backup")).toBe(false)
+    expect(MANUALLY_TRIGGERED_CRON_KEYS.has("database-backup")).toBe(true)
     expect(resolveStaleThresholdMs("database-backup")).toBe(300 * STALE_THRESHOLD_MULTIPLIER * 1000)
+    expect(resolveStaleThresholdMs("database-backup")).toBeLessThan(
+      UNKNOWN_CRON_MAX_DURATION_SECONDS * STALE_THRESHOLD_MULTIPLIER * 1000,
+    )
+  })
+
+  it("aplica o multiplicador sobre o maxDuration do cronKey", () => {
+    expect(resolveStaleThresholdMs("radar-sync-email-contacts")).toBe(
+      300 * STALE_THRESHOLD_MULTIPLIER * 1000,
+    )
     expect(resolveStaleThresholdMs("dispatch-scheduled")).toBe(60 * STALE_THRESHOLD_MULTIPLIER * 1000)
   })
 
