@@ -57,13 +57,22 @@ CREATE POLICY "backoffice_lead_status_transition_field_rules_service_role_all"
     WITH CHECK (true);
 
 -- Default Cotação rules: idade, plano e hospital (sem tratamento em andamento)
+--
+-- "createdAt"/"updatedAt" vêm explícitos de propósito: prisma/schema.prisma
+-- declara `updatedAt` como `@updatedAt` sozinho, sem `@default(now())` — o valor
+-- é resolvido no Prisma Client, não no banco. Um `prisma db push` derruba o
+-- default físico que o CREATE TABLE acima criou
+-- (docs/audits/prisma-migrations-drift-2026-08-23.md §3) e, a partir daí, o
+-- replay viola NOT NULL com SQLSTATE 23502 — a mesma falha do PR #1208.
 INSERT INTO "backoffice_lead_status_transition_field_rules"
-    ("targetStatus", "fieldKey", "isEnabled", "updatedByProfileId")
+    ("targetStatus", "fieldKey", "isEnabled", "updatedByProfileId", "createdAt", "updatedAt")
 SELECT
     'pricingRequest'::"LeadStatus",
     seed.field_key::"BackofficeLeadTransitionFieldKey",
     true,
-    profile.id
+    profile.id,
+    now(),
+    now()
 FROM (
     VALUES
         ('age'),

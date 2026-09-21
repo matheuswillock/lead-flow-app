@@ -36,20 +36,32 @@ create index if not exists backoffice_users_google_connection_id_idx
 create index if not exists backoffice_users_linked_profile_id_idx
   on public.backoffice_users ("linkedCorretorStudioProfileId");
 
+-- "id"/"createdAt"/"updatedAt" vêm explícitos de propósito: prisma/schema.prisma
+-- declara `GoogleOAuthConnection.id` como `@default(uuid())` e `updatedAt` como
+-- `@updatedAt` sozinho — os dois são resolvidos no Prisma Client, não no banco.
+-- Um `prisma db push` derruba o default físico que o CREATE TABLE acima criou
+-- (docs/audits/prisma-migrations-drift-2026-08-23.md §3) e, a partir daí, o
+-- replay viola NOT NULL com SQLSTATE 23502 — a mesma falha do PR #1208.
 with profile_upsert as (
   insert into public.google_oauth_connections (
+    "id",
     "googleEmail",
     "accessToken",
     "refreshToken",
     "tokenExpiresAt",
-    "ownerProfileId"
+    "ownerProfileId",
+    "createdAt",
+    "updatedAt"
   )
   select
+    gen_random_uuid(),
     p."googleEmail",
     p."googleAccessToken",
     p."googleRefreshToken",
     p."googleTokenExpiresAt",
-    p.id
+    p.id,
+    now(),
+    now()
   from public.corretor_studio_profiles p
   where p."googleCalendarConnected" = true
     and p."googleRefreshToken" is not null
@@ -70,17 +82,24 @@ where p."googleCalendarConnected" = true
   and p."googleEmail" is not null
   and p."googleEmail" = c."googleEmail";
 
+-- Mesma blindagem de "id"/"createdAt"/"updatedAt" do INSERT acima.
 insert into public.google_oauth_connections (
+  "id",
   "googleEmail",
   "accessToken",
   "refreshToken",
-  "tokenExpiresAt"
+  "tokenExpiresAt",
+  "createdAt",
+  "updatedAt"
 )
 select
+  gen_random_uuid(),
   b."googleEmail",
   b."googleAccessToken",
   b."googleRefreshToken",
-  b."googleTokenExpiresAt"
+  b."googleTokenExpiresAt",
+  now(),
+  now()
 from public.backoffice_users b
 where b."googleCalendarConnected" = true
   and b."googleRefreshToken" is not null
