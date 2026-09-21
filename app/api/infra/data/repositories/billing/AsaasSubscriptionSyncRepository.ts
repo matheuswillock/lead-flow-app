@@ -4,8 +4,12 @@ import { prisma } from "@/app/api/infra/data/prisma";
 export interface AsaasSubscriptionSyncSnapshot {
   asaasSubscriptionId: string | null;
   hasPermanentSubscription: boolean;
-  // DA2 (20 — Assinaturas — Backend E4): só existe em Profile — ProfileSubscription
-  // não tem coluna de conta própria.
+  // DA2 (20 — Assinaturas — Backend E4). Resolvida a partir do Profile
+  // (fonte confiável de qual conta o sync acabou de consultar) e gravada
+  // de volta no ProfileSubscription por `saveSyncData` — achado P1 da
+  // revisão do PR #1207 (thread PRRT_...CUk4): antes desta correção, o
+  // `asaasSubscriptionId` era gravado sem a conta e o upsert caía no
+  // `@default(primary)` do schema mesmo quando o pointer é legacy.
   asaasSubscriptionAccount: AsaasAccount;
 }
 
@@ -48,15 +52,25 @@ class PrismaAsaasSubscriptionSyncRepository {
     };
   }
 
-  async saveSyncData(profileId: string, asaasSubscriptionId: string, data: AsaasSubscriptionSyncData): Promise<void> {
+  async saveSyncData(
+    profileId: string,
+    asaasSubscriptionId: string,
+    asaasSubscriptionAccount: AsaasAccount,
+    data: AsaasSubscriptionSyncData
+  ): Promise<void> {
     await prisma.profileSubscription.upsert({
       where: { profileId },
       create: {
         profileId,
         asaasSubscriptionId,
+        asaasSubscriptionAccount,
         ...data,
       },
-      update: data,
+      // Regrava a conta a cada sync — auto-corretivo: já sabemos a conta
+      // certa (é a que acabou de responder a este GET) e não custa nada
+      // reforçá-la, inclusive em cima de uma linha mal rotulada por um
+      // backfill antigo.
+      update: { asaasSubscriptionAccount, ...data },
     });
 
     await prisma.profile.update({

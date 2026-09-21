@@ -36,10 +36,33 @@
 --     O discriminador correto é o ponteiro irmão: `corretor_studio_profiles.
 --     asaasSubscriptionId` + `asaasSubscriptionAccount`, que o flip de 31/08
 --     já rotulou. Quando os dois ponteiros são o MESMO `sub_` e o Profile
---     diz `legacy`, a linha é legada. Quando divergem, o ponteiro da
---     ProfileSubscription é mais novo que o do Profile e **não** é
---     relabelado. O corte por tempo fica só como fallback para o caso em que
---     não há ponteiro no Profile para comparar.
+--     diz `legacy`, a linha é legada.
+--
+--     ACHADO P1 DA REVISÃO DO PR #1207 (2ª rodada, thread PRRT_...CUk2):
+--     quando os dois ponteiros DIVERGEM, a versão anterior deste comentário
+--     assumia "o ponteiro da ProfileSubscription é mais novo que o do
+--     Profile e não é relabelado" — falso em geral. `SubscriptionUpgradeUseCase`
+--     (migração de upgrade, DA2) substitui só o ponteiro do Profile pelo
+--     sub_ novo da primary; a ProfileSubscription espelhada (quando existe)
+--     fica com o sub_ ANTIGO até esse mesmo commit passar a sincronizá-la
+--     também — histórico anterior a essa correção pode ter ficado com os
+--     ponteiros divergentes e a ProfileSubscription ainda `primary` por
+--     default, quando na verdade guarda o sub_ legado recém-inativado.
+--     Não existe ledger populado hoje (`AsaasAccountMigration` nasce vazio —
+--     a Fase 5 de execução real segue bloqueada em [[90 — Decisões em
+--     aberto (owner)]]) capaz de arbitrar essa divergência caso a caso, então
+--     o discriminador vira o mesmo corte por tempo já aceito para o caso
+--     "sem ponteiro no Profile": ponteiros DIFERENTES (ou Profile nulo) +
+--     `ProfileSubscription.createdAt < cutover` também relabela. É seguro
+--     porque, neste código-base, toda escrita que troca o
+--     `asaasSubscriptionId` de uma ProfileSubscription sincroniza o mesmo
+--     valor no Profile no mesmo golpe (`BillingRepository.
+--     updateSubscriptionData`, "Keep Profile in sync") — não existe hoje um
+--     caminho que grave um sub_ NOVO só na ProfileSubscription mantendo
+--     `createdAt` intocado, então uma linha pré-cutover com ponteiros
+--     divergentes só pode ser o cenário acima (Profile avançou, sibling
+--     ficou para trás), nunca um pointer novo legítimo mascarado por
+--     `createdAt` velho.
 --
 -- A condição de ponteiro não-nulo segue o mesmo cuidado que o flip de 31/08
 -- aplicou a backoffice_adhesions: linha sem identificador Asaas nunca tocou
@@ -71,9 +94,11 @@ begin
         p."asaasSubscriptionId" = ps."asaasSubscriptionId"
         and p."asaasSubscriptionAccount" = 'legacy'
       )
-      -- sem ponteiro no Profile para comparar: cai no discriminador de tempo
+      -- sem ponteiro no Profile para comparar, OU ponteiro do Profile já
+      -- avançou para outra assinatura (SubscriptionUpgradeUseCase DA2
+      -- migra só o ponteiro do Profile) — cai no discriminador de tempo
       or (
-        p."asaasSubscriptionId" is null
+        (p."asaasSubscriptionId" is null or p."asaasSubscriptionId" != ps."asaasSubscriptionId")
         and ps."createdAt" < cutover_at
       )
     );

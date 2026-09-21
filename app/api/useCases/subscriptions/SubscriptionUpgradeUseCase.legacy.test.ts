@@ -3,8 +3,14 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 // T-20.8 de [[20 — Assinaturas — Backend]] E3 (C15 🔴, C27, DA2).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
 const profileUpdateMock = mock(async () => ({}))
+// Achado P1 da revisão do PR #1207 (chatgpt-codex-connector, thread
+// PRRT_...CUk2): ProfileSubscription é ponteiro irmão que precisa
+// acompanhar o Profile quando a migração de upgrade troca o sub_ — ver
+// SubscriptionUpgradeUseCase.ts.
+const profileSubscriptionUpdateManyMock = mock(async () => ({ count: 0 }))
 const prismaMock = {
   profile: { findUnique: findUniqueMock, update: profileUpdateMock },
+  profileSubscription: { updateMany: profileSubscriptionUpdateManyMock },
 }
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
 
@@ -78,6 +84,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
   beforeEach(() => {
     findUniqueMock.mockClear()
     profileUpdateMock.mockClear()
+    profileSubscriptionUpdateManyMock.mockClear()
     createSubscriptionMock.mockClear()
     updateSubscriptionMock.mockClear()
     cancelSubscriptionMock.mockClear()
@@ -140,6 +147,54 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
     expect(createSubscriptionMock).toHaveBeenCalledWith(
       expect.objectContaining({ customer: "cus_already_primary" }),
       "primary",
+    )
+  })
+
+  it("achado P1 PRRT_...CUk2: mirror em ProfileSubscription (mesmo sub_ antigo) é atualizado junto do Profile", async () => {
+    findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
+
+    const useCase = new SubscriptionUpgradeUseCase()
+    const result = await useCase.updateManagerSubscription("manager-legacy-1")
+
+    expect(result.isValid).toBe(true)
+    // O backfill (20260918150645) só sabe relabelar a ProfileSubscription
+    // quando ela ainda aponta para o MESMO sub_ que o Profile tinha antes
+    // da migração — por isso o updateMany filtra pelo id ANTIGO
+    // ("sub_legacy_1", capturado antes do profile.update rodar).
+    expect(profileSubscriptionUpdateManyMock).toHaveBeenCalledWith({
+      where: { profileId: "manager-legacy-1", asaasSubscriptionId: "sub_legacy_1" },
+      data: { asaasSubscriptionId: "sub_primary_new", asaasSubscriptionAccount: "primary" },
+    })
+  })
+
+  it("controle negativo: ProfileSubscription de um produto distinto (id diferente do Profile) não é tocada pela migração", async () => {
+    // Cenário do comentário do schema (ProfileSubscription:4204): esta
+    // coluna também serve o fluxo de adesão a produto, com um sub_
+    // totalmente diferente da assinatura direta do Profile. A migração de
+    // upgrade não pode sobrescrever esse ponteiro alheio — o `where` do
+    // updateMany já garante isso (asaasSubscriptionId = valor antigo do
+    // Profile), então mesmo com o mock devolvendo `count: 0` (nenhuma
+    // linha bateu o filtro), o Profile.update segue intacto.
+    findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
+    profileSubscriptionUpdateManyMock.mockImplementationOnce(async () => ({ count: 0 }))
+
+    const useCase = new SubscriptionUpgradeUseCase()
+    const result = await useCase.updateManagerSubscription("manager-legacy-1")
+
+    expect(result.isValid).toBe(true)
+    expect(profileUpdateMock).toHaveBeenCalledWith({
+      where: { id: "manager-legacy-1" },
+      data: expect.objectContaining({
+        asaasSubscriptionId: "sub_primary_new",
+        asaasSubscriptionAccount: "primary",
+      }),
+    })
+    // O filtro por id antigo é a própria proteção: nunca manda profileId
+    // sozinho, que sobrescreveria qualquer ProfileSubscription do profile.
+    expect(profileSubscriptionUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ asaasSubscriptionId: "sub_legacy_1" }),
+      })
     )
   })
 

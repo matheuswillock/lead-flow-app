@@ -1324,6 +1324,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           }
         }
 
+        const oldSubscriptionId = manager.asaasSubscriptionId;
+
         await prisma.profile.update({
           where: { id: manager.id },
           data: {
@@ -1332,6 +1334,26 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
             operatorCount: manager.operators.length,
           }
+        });
+
+        // Achado P1 da revisão do PR #1207 (chatgpt-codex-connector, thread
+        // PRRT_...CUk2): ProfileSubscription é ponteiro irmão (30 —
+        // Migração de Conta E3) e, quando mirrora o MESMO sub_ do Profile
+        // (fluxo em que os dois eram sincronizados por
+        // BillingRepository.updateSubscriptionData), fica órfão apontando
+        // para a assinatura legada recém-inativada se não acompanhar essa
+        // troca — o backfill 20260918150645 não tem como descobrir a
+        // migração depois do fato, porque o ponteiro do Profile já mudou.
+        // Filtra pelo id ANTIGO: nunca sobrescreve uma ProfileSubscription
+        // de produto/adesão distinta (schema.prisma:4204) que porventura
+        // exista para este profile — só relabela quando é literalmente o
+        // mesmo ponteiro que acabou de ser substituído.
+        await prisma.profileSubscription.updateMany({
+          where: { profileId: manager.id, asaasSubscriptionId: oldSubscriptionId },
+          data: {
+            asaasSubscriptionId: newSubscription.subscriptionId,
+            asaasSubscriptionAccount: 'primary',
+          },
         });
 
         return new Output(

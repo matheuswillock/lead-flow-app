@@ -22,6 +22,11 @@ export async function GET(request: NextRequest) {
 
     const output = await withCronAudit(
       {
+        // Literal — `app/api/lib/cron/cronAuditCoverage.test.ts` faz
+        // parsing estático de `cronKey:\s*"[^"]+"` no source desta rota,
+        // então não pode virar referência de símbolo. Precisa bater com
+        // `DUNNING_CRON_KEY` em `OverdueReminderUseCase.ts` (achado P1,
+        // thread PRRT_...CUk5) — mesmo cronKey que `resolveStartCursor` lê.
         cronKey: "overdue-reminder",
         cronPath: "/api/v1/billing/cron/overdue-reminder",
       },

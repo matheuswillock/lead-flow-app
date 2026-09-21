@@ -67,12 +67,26 @@ const profileFindMany = mock(async (args: { where: Record<string, unknown> }) =>
   // listCustomerPointers e fallback legado em listSubscriptionPointers.
   if ("asaasSubscriptionId" in args.where) {
     const account = args.where.asaasSubscriptionAccount as AsaasAccountId | undefined
-    return subscriptionProfileRows.filter(
-      (row) =>
-        row.asaasSubscriptionId !== null &&
-        (account === undefined || row.asaasSubscriptionAccount === account) &&
-        (row.subscription === null || row.subscription.asaasSubscriptionId === null)
-    )
+    // Interpreta o `where.OR` literal recebido — não hardcoda a regra nova
+    // nem a antiga, para o teste continuar valendo como trava de regressão
+    // dos dois lados (achado P2, thread PRRT_...CUk8): antes do fix o
+    // código manda o OR restritivo abaixo; depois do fix ele some do
+    // `where` e este mock simplesmente para de filtrar por ele.
+    const orClauses = args.where.OR as
+      | Array<{ subscription?: null | { asaasSubscriptionId: null } }>
+      | undefined
+    return subscriptionProfileRows.filter((row) => {
+      if (row.asaasSubscriptionId === null) return false
+      if (account !== undefined && row.asaasSubscriptionAccount !== account) return false
+      if (!orClauses) return true
+      return orClauses.some((clause) => {
+        if (clause.subscription === null) return row.subscription === null
+        if (clause.subscription && "asaasSubscriptionId" in clause.subscription) {
+          return row.subscription !== null && row.subscription.asaasSubscriptionId === null
+        }
+        return false
+      })
+    })
   }
 
   const account = args.where.asaasCustomerAccount as AsaasAccountId | undefined
@@ -275,6 +289,78 @@ describe("BillingInventoryRepository — escopo por conta", () => {
 
       expect(pointers.map((p) => p.refId)).toEqual(["profile-fallback"])
       expect(pointers[0]?.source).toBe("profileFallback")
+    })
+
+    it("conta dupla: ponteiro do Profile entra mesmo com ProfileSubscription não-nulo e distinto (achado P2 PRRT_...CUk8)", async () => {
+      // Cenário documentado no achado: customer já migrado, mas o Profile
+      // ainda tem seu PRÓPRIO sub_ na legacy, distinto do sub_ que
+      // ProfileSubscription guarda (produto/adesão) já na primary. A
+      // varredura da conta legacy precisa achar o sub_ do Profile — sem
+      // isso, a reconciliação vê o sub_ real no Asaas legacy e não acha
+      // ninguém no banco: FANTASMA falso.
+      subscriptionProfileRows = [
+        {
+          id: "profile-dual",
+          asaasSubscriptionId: "sub_legacy_dual",
+          asaasSubscriptionAccount: "legacy",
+          subscriptionStatus: "active",
+          subscriptionEndDate: null,
+          subscription: { asaasSubscriptionId: "sub_primary_dual" },
+        },
+      ]
+      subscriptionRows = [
+        {
+          id: "ps-dual",
+          profileId: "profile-dual",
+          asaasSubscriptionId: "sub_primary_dual",
+          subscriptionStatus: "active",
+          subscriptionEndDate: null,
+          asaasSubscriptionAccount: "primary",
+          profile: { asaasSubscriptionAccount: "legacy" },
+        },
+      ]
+      const repo = new BillingInventoryRepository()
+
+      const legacyPointers = await repo.listSubscriptionPointers("legacy")
+      const primaryPointers = await repo.listSubscriptionPointers("primary")
+
+      expect(legacyPointers.map((p) => p.asaasSubscriptionId)).toEqual(["sub_legacy_dual"])
+      expect(legacyPointers[0]?.source).toBe("profileFallback")
+      expect(primaryPointers.map((p) => p.asaasSubscriptionId)).toEqual(["sub_primary_dual"])
+      expect(primaryPointers[0]?.source).toBe("profileSubscription")
+    })
+
+    it("controle negativo: ponteiro espelhado (mesmo sub_ nas duas colunas) não duplica no inventário", async () => {
+      // Caso comum (não dual-conta): ProfileSubscription mirrora o mesmo
+      // sub_ do Profile. Remover o filtro de "subscription nula" não pode
+      // fazer esse perfil aparecer duas vezes no inventário.
+      subscriptionProfileRows = [
+        {
+          id: "profile-mirror",
+          asaasSubscriptionId: "sub_mirror",
+          asaasSubscriptionAccount: "legacy",
+          subscriptionStatus: "active",
+          subscriptionEndDate: null,
+          subscription: { asaasSubscriptionId: "sub_mirror" },
+        },
+      ]
+      subscriptionRows = [
+        {
+          id: "ps-mirror",
+          profileId: "profile-mirror",
+          asaasSubscriptionId: "sub_mirror",
+          subscriptionStatus: "active",
+          subscriptionEndDate: null,
+          asaasSubscriptionAccount: "legacy",
+          profile: { asaasSubscriptionAccount: "legacy" },
+        },
+      ]
+      const repo = new BillingInventoryRepository()
+
+      const pointers = await repo.listSubscriptionPointers("legacy")
+
+      expect(pointers).toHaveLength(1)
+      expect(pointers[0]?.source).toBe("profileSubscription")
     })
   })
 })

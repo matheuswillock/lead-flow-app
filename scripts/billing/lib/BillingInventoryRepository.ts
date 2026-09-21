@@ -88,13 +88,23 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
       }),
       // Fallback legado (mesmo padrão de AsaasSubscriptionSyncRepository.
       // getSyncSnapshot): Profile.asaasSubscriptionId ainda vale quando a
-      // linha de ProfileSubscription não existe ou não tem sub_. Sem ele,
-      // assinatura viva apontada só pelo Profile viraria FANTASMA falso.
+      // linha de ProfileSubscription não existe, não tem sub_, ou tem um
+      // sub_ DIFERENTE do Profile — achado P2 da revisão (chatgpt-codex-
+      // connector, thread PRRT_...CUk8). O filtro anterior só liberava o
+      // fallback quando `subscription` era nulo/sem id, então a conta dupla
+      // (os dois ponteiros não-nulos e distintos — Profile numa conta,
+      // ProfileSubscription noutra) escondia o sub_ do Profile: a
+      // reconciliação via API achava a assinatura real na conta certa e não
+      // encontrava ninguém no banco, reportando FANTASMA falso. Sem o `OR`
+      // aqui, todo profile com pointer próprio na conta pedida entra —
+      // Prisma não compara duas colunas de relações diferentes no `where`
+      // (mesma limitação documentada no achado do `OverdueReminderUseCase`),
+      // então o dedupe por `asaasSubscriptionId` abaixo é quem evita
+      // duplicata quando os dois ponteiros coincidem.
       prisma.profile.findMany({
         where: {
           asaasSubscriptionId: { not: null },
           asaasSubscriptionAccount: account,
-          OR: [{ subscription: null }, { subscription: { asaasSubscriptionId: null } }],
         },
         select: {
           id: true,

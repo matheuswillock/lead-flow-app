@@ -5,6 +5,8 @@ import {
   billingEngineRepository,
   type PastDueSubscriptionForDunningRow,
 } from "@/app/api/infra/data/repositories/billing/BillingEngineRepository";
+import { backofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/BackofficeCronExecutionRepository";
+import type { IBackofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/IBackofficeCronExecutionRepository";
 import type { EmailService } from "@/lib/services/EmailService";
 import {
   DELINQUENCY_CRM_ONLY_AFTER_DAYS,
@@ -12,6 +14,14 @@ import {
   resolveEffectiveNextDueDate,
   type DelinquencyTier,
 } from "@/lib/billing/delinquency-tier";
+
+/**
+ * Chave deste cron no `BackofficeCronExecution` — MESMA usada pela rota
+ * (`app/api/v1/billing/cron/overdue-reminder/route.ts`, `withCronAudit`).
+ * Fonte única aqui para o `resolveStartCursor` (achado P1, thread
+ * PRRT_...CUk5) nunca divergir da chave que a rota realmente audita.
+ */
+export const DUNNING_CRON_KEY = "overdue-reminder";
 
 const DELINQUENCY_EVENT_TYPE_BY_TIER: Record<"crm_only" | "cut_off", "reduced" | "cut"> = {
   crm_only: "reduced",
@@ -56,6 +66,39 @@ type DunningRunTotals = {
  * `changeType` do lembrete) — um aviso por degrau por ciclo de atraso.
  */
 export class OverdueReminderUseCase {
+  constructor(
+    private readonly cronExecutionRepository: IBackofficeCronExecutionRepository = backofficeCronExecutionRepository,
+  ) {}
+
+  /**
+   * Achado P1 da revisão do PR #1207, 2ª rodada (chatgpt-codex-connector,
+   * thread PRRT_...CUk5): sem cursor persistido, `skip` sempre começa em 0
+   * e o teto de `DUNNING_MAX_SCAN` vira um prefixo ESTÁVEL — as mesmas
+   * linhas mais antigas (já avisadas) são revisitadas todo dia, e quem está
+   * depois da linha `DUNNING_MAX_SCAN` nunca é alcançado. Reaproveita o
+   * `metadata` que `withCronAudit`/`markSuccess` já grava a cada execução
+   * bem-sucedida (nenhuma tabela nova) — lê a última execução COM SUCESSO
+   * deste cron e retoma de onde ela parou.
+   */
+  private async resolveStartCursor(): Promise<number> {
+    try {
+      const [lastSuccess] = await this.cronExecutionRepository.findMany({
+        cronKey: DUNNING_CRON_KEY,
+        status: "success",
+        limit: 1,
+      });
+      const metadata = lastSuccess?.metadata as { nextDunningScanCursor?: unknown } | null | undefined;
+      const cursor = metadata?.nextDunningScanCursor;
+      return typeof cursor === "number" && Number.isFinite(cursor) && cursor > 0 ? cursor : 0;
+    } catch (error) {
+      console.error(
+        "[OverdueReminderUseCase] falha ao resolver cursor persistido — reiniciando do zero",
+        error,
+      );
+      return 0;
+    }
+  }
+
   async processOverdueReminders(): Promise<Output> {
     // O SQL já descarta a janela de tolerância (D0–D4): sem isso o `take`
     // era gasto em quem não recebe aviso nenhum.
@@ -83,6 +126,8 @@ export class OverdueReminderUseCase {
     // orçamento de **e-mails**, não de linhas lidas: paginamos por cima dos
     // já avisados até gastar o orçamento, com teto de varredura para o cron
     // não virar scan sem fim.
+    const startCursor = await this.resolveStartCursor();
+    let skip = startCursor;
     let scanned = 0;
     let hasMorePages = true;
 
@@ -94,10 +139,11 @@ export class OverdueReminderUseCase {
       const page = await billingEngineRepository.findPastDueSubscriptionsForDunning({
         take: DUNNING_PAGE_SIZE,
         notBefore,
-        skip: scanned,
+        skip,
       });
 
       hasMorePages = page.length === DUNNING_PAGE_SIZE;
+      skip += page.length;
       scanned += page.length;
       totals.candidates += page.length;
 
@@ -107,9 +153,33 @@ export class OverdueReminderUseCase {
       }
     }
 
-    console.info("[OverdueReminderUseCase] done", { ...totals, scanned });
+    // Achado P1 (thread PRRT_...CUk5): chegou ao fim de verdade (última
+    // página veio incompleta) → fecha a volta e recomeça do zero amanhã.
+    // Parou por teto/orçamento com mais páginas pela frente → continua
+    // exatamente daqui na próxima execução, nunca relendo o mesmo prefixo.
+    const nextDunningScanCursor = hasMorePages ? skip : 0;
 
-    return new Output(true, ["Cron overdue-reminder executado"], [], { ...totals, scanned });
+    console.info("[OverdueReminderUseCase] done", { ...totals, scanned, nextDunningScanCursor });
+
+    // Achado P1 (thread PRRT_...CUk6): quando o envio deu certo mas a marca
+    // de dedupe não gravou, o run PRECISA sair inválido — senão
+    // `withCronAudit` registra sucesso e nunca aciona o callback de falha
+    // (Slack), e a idempotência do Resend (24h) deixa a porta aberta para
+    // o mesmo e-mail de cobrança sair de novo amanhã sem ninguém saber que
+    // a marca falhou.
+    const hasUnrecordedNotices = totals.noticeLogFailed > 0;
+
+    return new Output(
+      !hasUnrecordedNotices,
+      ["Cron overdue-reminder executado"],
+      hasUnrecordedNotices
+        ? [
+            `${totals.noticeLogFailed} marca(s) de dedupe não gravada(s) após envio — ` +
+              "e-mail pode ser reenviado nas próximas execuções (idempotência do Resend expira em 24h)",
+          ]
+        : [],
+      { ...totals, scanned, nextDunningScanCursor },
+    );
   }
 
   /** Um inadimplente: resolve o degrau, deduplica, envia e registra a marca. */

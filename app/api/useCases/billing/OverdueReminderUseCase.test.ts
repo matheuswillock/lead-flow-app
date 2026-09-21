@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 
 mock.module("@/lib/utils/app-url", () => ({
   getAppUrl: () => "https://app.example.test",
@@ -19,6 +21,19 @@ mock.module("@/lib/services/EmailService", () => ({
 const findPastDueSubscriptionsForDunningMock = mock(
   async (_params: { take: number; notBefore: Date; skip?: number }) => [] as unknown[]
 )
+// Achado P1 (chatgpt-codex-connector, thread PRRT_...CUk5): resolveStartCursor
+// lê a última execução COM SUCESSO deste cron para retomar de onde parou —
+// sem isso, o teto fixo de varredura sempre relê o mesmo prefixo antigo.
+const cronExecutionFindManyMock = mock(
+  async (_params: { cronKey?: string; status?: string; limit?: number }) =>
+    [] as Array<{ metadata: unknown }>
+)
+mock.module(
+  "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/BackofficeCronExecutionRepository",
+  () => ({
+    backofficeCronExecutionRepository: { findMany: cronExecutionFindManyMock },
+  })
+)
 const hasDelinquencyNoticeSinceMock = mock(
   async (_params: { profileId: string; eventType: string; changeType: string; since: Date }) => false
 )
@@ -33,7 +48,7 @@ mock.module("@/app/api/infra/data/repositories/billing/BillingEngineRepository",
   },
 }))
 
-const { OverdueReminderUseCase } = await import("./OverdueReminderUseCase")
+const { OverdueReminderUseCase, DUNNING_CRON_KEY } = await import("./OverdueReminderUseCase")
 
 function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
@@ -69,6 +84,8 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     }))
     recordDelinquencyNoticeMock.mockReset()
     recordDelinquencyNoticeMock.mockImplementation(async () => {})
+    cronExecutionFindManyMock.mockReset()
+    cronExecutionFindManyMock.mockImplementation(async () => [])
   })
 
   it("dia 10 (crm_only) sem aviso prévio → envia e-mail com tier crm_only e loga eventType reduced", async () => {
@@ -174,6 +191,42 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
   })
 
   /**
+   * Achado P1 da revisão do PR #1207, 2ª rodada (chatgpt-codex-connector,
+   * thread PRRT_...CUk6): quando o envio dá certo mas recordDelinquencyNotice
+   * falha, o catch só incrementava o contador e o use case ainda devolvia um
+   * Output válido — `withCronAudit` marcava o cron como sucesso e nunca
+   * chamava o callback de falha (Slack). Como a idempotência do Resend dura
+   * só 24h, o cliente sem marca pode receber o MESMO e-mail de cobrança de
+   * novo no dia seguinte, sem ninguém ser avisado do problema real (a marca
+   * não gravou).
+   */
+  it("achado P1 PRRT_...CUk6: falha ao gravar a marca invalida o Output — withCronAudit precisa marcar falha e alertar", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
+    recordDelinquencyNoticeMock.mockImplementation(async () => {
+      throw new Error("db down")
+    })
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages.join(" ")).toContain("1")
+    // O e-mail FOI enviado — a falha é só na marca. O resultado continua
+    // relatando o que aconteceu de fato, não devolve `result: null`.
+    expect(output.result).toMatchObject({ sent: 1, noticeLogFailed: 1 })
+  })
+
+  it("controle negativo: marca gravada com sucesso mantém isValid=true (não regride o caminho feliz)", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toMatchObject({ sent: 1, noticeLogFailed: 0 })
+  })
+
+  /**
    * Achado P1 da revisão do lote unificado (PR #1207): o dedupe só acontece
    * depois da query, então com mais inadimplentes que o tamanho da página as
    * mesmas linhas já avisadas ocupavam o lote todo dia e ninguém novo recebia
@@ -205,6 +258,93 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     expect(sendDelinquencyReminderEmailMock.mock.calls[0][0]).toMatchObject({
       userEmail: "cliente@example.com",
     })
+  })
+
+  /**
+   * Achado P1 da revisão do PR #1207, 2ª rodada (chatgpt-codex-connector,
+   * thread PRRT_...CUk5): "fresh evidence": DUNNING_MAX_SCAN=2000 é um teto
+   * FIXO por execução — quando o backlog de já avisados excede 2000, toda
+   * execução diária varre o MESMO prefixo estável (sempre skip:0..2000),
+   * deduplica tudo e nunca alcança quem está depois da linha 2000. É a
+   * mesma inanição de uma revisão anterior, só que com limiar maior.
+   */
+  it("controle negativo: sem execução anterior bem-sucedida, começa do zero (comportamento do dia 1 preservado)", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
+
+    const useCase = new OverdueReminderUseCase()
+    await useCase.processOverdueReminders()
+
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 0 })
+  })
+
+  it("bate no teto de varredura sem chegar ao fim da lista → persiste o cursor onde parou, não zera", async () => {
+    // Backlog "infinito": toda página vem cheia (200) e sempre já avisada,
+    // não importa o skip — simula mais de 2000 inadimplentes antigos.
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params: { skip?: number }) =>
+      Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `antigo-${params.skip}-${i}` }))
+    )
+    hasDelinquencyNoticeSinceMock.mockImplementation(async () => true)
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    const result = output.result as { scanned: number; deduped: number; nextDunningScanCursor: number }
+    expect(result.scanned).toBe(2000)
+    expect(result.deduped).toBe(2000)
+    // Não é o mesmo prefixo de novo amanhã — a próxima execução retoma daqui.
+    expect(result.nextDunningScanCursor).toBe(2000)
+  })
+
+  it("achado P1 PRRT_...CUk5: cursor persistido da execução anterior é usado como skip inicial — não relê o prefixo já varrido", async () => {
+    cronExecutionFindManyMock.mockImplementation(async () => [
+      { metadata: { nextDunningScanCursor: 2000 } },
+    ])
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
+
+    const useCase = new OverdueReminderUseCase()
+    await useCase.processOverdueReminders()
+
+    expect(cronExecutionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "success", limit: 1 })
+    )
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 2000 })
+  })
+
+  it("chega ao fim da lista antes do teto → cursor reseta para 0 (fecha a volta e recomeça do início amanhã)", async () => {
+    cronExecutionFindManyMock.mockImplementation(async () => [
+      { metadata: { nextDunningScanCursor: 2000 } },
+    ])
+    // Página curta (< 200) = fim de lista alcançado nesta execução.
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect((output.result as { nextDunningScanCursor: number }).nextDunningScanCursor).toBe(0)
+  })
+
+  it("cursor persistido inválido (não numérico) é ignorado com segurança — não trava o cron", async () => {
+    cronExecutionFindManyMock.mockImplementation(async () => [{ metadata: { foo: "bar" } }])
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect(output.isValid).toBe(true)
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 0 })
+  })
+
+  it("DUNNING_CRON_KEY bate com o cronKey literal da rota — resolveStartCursor não pode ler a execução do cron errado", () => {
+    // cronAuditCoverage.test.ts exige `cronKey: "..."` literal na rota (regex
+    // estática), então a rota não pode importar esta constante — o teste
+    // aqui é quem trava os dois lados não divergirem silenciosamente.
+    const routeSource = readFileSync(
+      join(process.cwd(), "app/api/v1/billing/cron/overdue-reminder/route.ts"),
+      "utf8",
+    )
+    const literalCronKey = /cronKey:\s*"([^"]+)"/.exec(routeSource)?.[1]
+
+    expect(literalCronKey).toBe(DUNNING_CRON_KEY)
   })
 
 })

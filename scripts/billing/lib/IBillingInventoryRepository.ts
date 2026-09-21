@@ -23,14 +23,14 @@
  * parou de deixar a coluna constante — ver o comentário em
  * `BillingInventoryRepository.listSubscriptionPointers`.
  *
- * Ressalva viva (não é débito de estilo): nenhum writer de
- * `profileSubscription` grava `asaasSubscriptionAccount` hoje — a coluna vem
- * do default e do backfill. `ProfileSubscription.profileId` é `@unique`, então
- * a linha é reescrita no lugar quando o cliente migra de conta; enquanto o
- * writer não existir, o ponteiro migrado continua rotulado `legacy` e vira
- * ORFAO/FANTASMA falso na reconciliação diária de E7. O padrão a seguir é o de
- * `ProfileRepository.updateAsaasCustomerId` / `BillingRepository.
- * updateAsaasCustomerId`, que gravam a conta junto do id.
+ * Writers de `asaasSubscriptionAccount` (achado P1 da revisão do PR #1207,
+ * thread PRRT_...CUk4 — fechado): `AsaasSubscriptionSyncRepository.
+ * saveSyncData` e `BillingRepository.updateSubscriptionData` gravam a conta
+ * junto do id em todo write site, no mesmo padrão de `BillingRepository.
+ * updateAsaasCustomerId`. `SubscriptionUpgradeUseCase` (migração de upgrade,
+ * DA2) também sincroniza o `ProfileSubscription` espelhado quando existe.
+ * `20260918150645_backfill-legacy-account-new-pointer-columns.sql` cobre o
+ * histórico anterior a estes writers.
  */
 
 import type { AsaasAccountId } from "@/lib/asaas/asaas-account"
