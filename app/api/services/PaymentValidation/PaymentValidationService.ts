@@ -193,10 +193,10 @@ export class PaymentValidationService implements IPaymentValidationService {
         try {
           let profile: Awaited<ReturnType<IPaymentRepository['findBySubscriptionId']>> = null;
           if (payment.subscription) {
-            profile = await this.paymentRepository.findBySubscriptionId(payment.subscription);
+            profile = await this.paymentRepository.findBySubscriptionId(payment.subscription, account);
           }
           if (!profile) {
-            profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
+            profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer, account);
           }
           if (profile) {
             // Avaliar limiar de past_due prolongado ANTES do update (updatedAt seria resetado).
@@ -251,10 +251,10 @@ export class PaymentValidationService implements IPaymentValidationService {
     try {
       let profile: Awaited<ReturnType<IPaymentRepository['findBySubscriptionId']>> = null;
       if (payment.subscription) {
-        profile = await this.paymentRepository.findBySubscriptionId(payment.subscription);
+        profile = await this.paymentRepository.findBySubscriptionId(payment.subscription, account);
       }
       if (!profile) {
-        profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
+        profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer, account);
       }
 
       const isPartial = event === 'PAYMENT_PARTIALLY_REFUNDED';
@@ -355,10 +355,10 @@ export class PaymentValidationService implements IPaymentValidationService {
         // Encontrar o profile para obter email/nome
         let profile = null as Awaited<ReturnType<IPaymentRepository['findBySubscriptionId']>>;
         if (payment.subscription) {
-          profile = await this.paymentRepository.findBySubscriptionId(payment.subscription);
+          profile = await this.paymentRepository.findBySubscriptionId(payment.subscription, account);
         }
         if (!profile) {
-          profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
+          profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer, account);
         }
 
         // Fallback: se não encontrar profile, tentar usar externalReference como email
@@ -433,20 +433,27 @@ export class PaymentValidationService implements IPaymentValidationService {
     try {
       let profile;
 
-      // Buscar por subscriptionId primeiro
+      // Buscar por subscriptionId primeiro. Achado P1 (thread
+      // PRRT_...fFct): `sub_`/`cus_` são escopados por conta — resolver o
+      // dono sem filtrar pela conta do evento podia marcar como ativo o
+      // profile da OUTRA conta com id homônimo.
       if (subscriptionId) {
         profile = await this.paymentRepository.findBySubscriptionId(
-          subscriptionId
+          subscriptionId,
+          account
         );
         console.info(
           `[PaymentValidationService] Profile por subscriptionId: ${profile?.id || 'não encontrado'}`
         );
       }
 
-      // Se não encontrar, buscar por asaasCustomerId
+      // Se não encontrar, buscar por asaasCustomerId — é aqui que a colisão
+      // entre contas erra com mais facilidade, porque o `cus_` sozinho não
+      // diz de qual conta veio.
       if (!profile) {
         profile = await this.paymentRepository.findByAsaasCustomerId(
-          asaasCustomerId
+          asaasCustomerId,
+          account
         );
         console.info(
           `[PaymentValidationService] Profile por asaasCustomerId: ${profile?.id || 'não encontrado'}`

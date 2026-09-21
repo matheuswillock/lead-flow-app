@@ -15,7 +15,11 @@ import Image from "next/image";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { cn } from "@/lib/utils";
 import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
-import { buildReactivationPayload, extractPixPaymentId } from "../utils/reactivate-subscription";
+import {
+  buildReactivationPayload,
+  extractPixPaymentId,
+  shouldPreservePaymentOnClose,
+} from "../utils/reactivate-subscription";
 
 interface ReactivateSubscriptionDialogProps {
   open: boolean;
@@ -93,10 +97,33 @@ export function ReactivateSubscriptionDialog({
     }
   }, [open, supabaseId, loadManagerProfile]);
 
-  // Resetar estado quando fechar
+  // Resetar estado quando fechar.
+  //
+  // Achado P1 da revisão do PR #1207 (thread PRRT_...fFck): fechar o diálogo
+  // NÃO pode descartar uma cobrança pendente. `showSubmitFooter` depende de
+  // `!paymentData`, então zerar o pagamento aqui fazia a reabertura mostrar
+  // o formulário de submit de novo — e o próximo submit chama
+  // `POST /subscriptions/reactivate`, que cancela a assinatura recém-criada
+  // e abre OUTRA cobrança, enquanto o primeiro QR Code segue pagável. É a
+  // mesma dupla cobrança que o CTA de timeout já tinha causado, por outra
+  // porta: o botão "Fechar" daquele mesmo estado.
+  //
+  // Enquanto houver cobrança em aberto (existe `paymentData` e o desfecho
+  // não é terminal), o estado de pagamento é preservado: reabrir mostra o
+  // QR Code e o "Verificar novamente", nunca o submit. Desfecho terminal
+  // (`confirmed`, que já fecha sozinho, ou `failed`) libera o reset.
+  const paymentStateRef = useRef({ paymentData, pollingStatus });
+  paymentStateRef.current = { paymentData, pollingStatus };
+
   useEffect(() => {
     if (!open) {
+      const { paymentData: pending, pollingStatus: status } = paymentStateRef.current;
+
       setOperatorCount(currentOperatorCount);
+      if (shouldPreservePaymentOnClose({ hasPaymentData: Boolean(pending), pollingStatus: status })) {
+        return;
+      }
+
       setPaymentMethod("CREDIT_CARD");
       setCreditCardFormData(null);
       setIsCreditCardFormValid(false);

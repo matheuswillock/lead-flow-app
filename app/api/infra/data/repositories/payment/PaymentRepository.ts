@@ -6,21 +6,47 @@ import { IPaymentRepository } from './IPaymentRepository';
 import prisma from '../../prisma';
 
 export class PaymentRepository implements IPaymentRepository {
-  async findBySubscriptionId(subscriptionId: string): Promise<Profile | null> {
+  /**
+   * Achado P1 da revisão do PR #1207 (thread PRRT_...fFct): `sub_` e `cus_`
+   * são escopados por CONTA no Asaas — o mesmo id pode existir na legacy e
+   * na primary apontando para clientes diferentes. Sem filtrar pela conta
+   * do evento, o webhook podia resolver o profile da conta errada e marcar
+   * como ativo quem não pagou. `account` é opcional só para não quebrar
+   * chamadas antigas sem contexto de conta; quando informado, é filtro.
+   */
+  async findBySubscriptionId(
+    subscriptionId: string,
+    account?: AsaasAccountId
+  ): Promise<Profile | null> {
     // Look in ProfileSubscription (new table) first
     const sub = await prisma.profileSubscription.findFirst({
-      where: { asaasSubscriptionId: subscriptionId },
+      where: {
+        asaasSubscriptionId: subscriptionId,
+        ...(account ? { asaasSubscriptionAccount: account } : {}),
+      },
       include: { profile: true },
     });
     if (sub) return sub.profile;
     // Legacy fallback for profiles that still have subscriptionId on the Profile row
-    return prisma.profile.findFirst({ where: { subscriptionId } });
+    return prisma.profile.findFirst({
+      where: {
+        subscriptionId,
+        ...(account ? { asaasSubscriptionAccount: account } : {}),
+      },
+    });
   }
 
-  async findByAsaasCustomerId(asaasCustomerId: string): Promise<Profile | null> {
+  async findByAsaasCustomerId(
+    asaasCustomerId: string,
+    account?: AsaasAccountId
+  ): Promise<Profile | null> {
     return prisma.profile.findFirst({
       where: {
         asaasCustomerId,
+        // Mesmo motivo do método acima (thread PRRT_...fFct): este é o
+        // FALLBACK do webhook, o caminho em que a colisão de `cus_` entre
+        // contas escolhe o profile errado com mais facilidade.
+        ...(account ? { asaasCustomerAccount: account } : {}),
       },
     });
   }

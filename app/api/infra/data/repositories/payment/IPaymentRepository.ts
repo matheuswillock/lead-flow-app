@@ -9,14 +9,14 @@ export interface IPaymentRepository {
    * @param subscriptionId - ID da assinatura no Asaas
    * @returns Profile ou null se não encontrado
    */
-  findBySubscriptionId(subscriptionId: string): Promise<Profile | null>;
+  findBySubscriptionId(subscriptionId: string, account?: AsaasAccountId): Promise<Profile | null>;
 
   /**
    * Busca um Profile pelo ID do customer do Asaas
    * @param asaasCustomerId - ID do customer no Asaas
    * @returns Profile ou null se não encontrado
    */
-  findByAsaasCustomerId(asaasCustomerId: string): Promise<Profile | null>;
+  findByAsaasCustomerId(asaasCustomerId: string, account?: AsaasAccountId): Promise<Profile | null>;
 
   /**
    * Busca um Profile pelo email

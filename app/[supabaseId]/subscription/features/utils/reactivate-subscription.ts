@@ -58,3 +58,29 @@ export function buildReactivationPayload(input: {
 
   return payload;
 }
+
+/** Estados do polling PIX do diálogo de reativação. */
+export type ReactivatePollingStatus = "idle" | "polling" | "confirmed" | "failed" | "timeout";
+
+/**
+ * Decide se fechar o diálogo pode descartar o estado de pagamento.
+ *
+ * Achado P1 da revisão do PR #1207 (thread PRRT_...fFck): o efeito de reset
+ * zerava `paymentData` em TODO fechamento. Como `showSubmitFooter` depende
+ * de `!paymentData`, reabrir o diálogo voltava a mostrar o formulário de
+ * submit — e o próximo submit chama `POST /subscriptions/reactivate`, que
+ * cancela a assinatura recém-criada e abre OUTRA cobrança, enquanto o
+ * primeiro QR Code segue pagável. É a mesma dupla cobrança que o CTA de
+ * timeout já havia causado, agora pelo botão "Fechar" do mesmo estado.
+ *
+ * Cobrança em aberto = existe pagamento e o desfecho ainda não é terminal.
+ * `confirmed` fecha o diálogo sozinho; `failed` é desfecho de verdade e aí
+ * gerar nova cobrança é o comportamento correto.
+ */
+export function shouldPreservePaymentOnClose(input: {
+  hasPaymentData: boolean;
+  pollingStatus: ReactivatePollingStatus;
+}): boolean {
+  if (!input.hasPaymentData) return false;
+  return input.pollingStatus !== "confirmed" && input.pollingStatus !== "failed";
+}

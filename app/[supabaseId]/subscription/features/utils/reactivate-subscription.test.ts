@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { buildReactivationPayload, extractPixPaymentId } from "./reactivate-subscription"
+import {
+  buildReactivationPayload,
+  extractPixPaymentId,
+  shouldPreservePaymentOnClose,
+} from "./reactivate-subscription"
 
 describe("extractPixPaymentId (T-21.8)", () => {
   it("paymentId presente → retorna o paymentId", () => {
@@ -79,5 +83,37 @@ describe("buildReactivationPayload (T-21.10)", () => {
     expect(payload).not.toHaveProperty("creditCard")
     expect(payload).not.toHaveProperty("creditCardHolderInfo")
     expect(payload).not.toHaveProperty("remoteIp")
+  })
+})
+
+describe("shouldPreservePaymentOnClose — achado P1 PRRT_...fFck", () => {
+  it("cobrança pendente (polling) sobrevive ao fechar — reabrir não pode mostrar o submit de novo", () => {
+    expect(
+      shouldPreservePaymentOnClose({ hasPaymentData: true, pollingStatus: "polling" })
+    ).toBe(true)
+  })
+
+  it("timeout também preserva: falta de confirmação não é desfecho, o QR segue pagável", () => {
+    expect(
+      shouldPreservePaymentOnClose({ hasPaymentData: true, pollingStatus: "timeout" })
+    ).toBe(true)
+  })
+
+  it("controle negativo: desfecho terminal `failed` libera o reset — aí gerar nova cobrança é correto", () => {
+    expect(
+      shouldPreservePaymentOnClose({ hasPaymentData: true, pollingStatus: "failed" })
+    ).toBe(false)
+  })
+
+  it("controle negativo: `confirmed` libera o reset (o diálogo já fecha sozinho no sucesso)", () => {
+    expect(
+      shouldPreservePaymentOnClose({ hasPaymentData: true, pollingStatus: "confirmed" })
+    ).toBe(false)
+  })
+
+  it("controle negativo: sem pagamento nenhum, fechar reseta normalmente", () => {
+    expect(
+      shouldPreservePaymentOnClose({ hasPaymentData: false, pollingStatus: "idle" })
+    ).toBe(false)
   })
 })

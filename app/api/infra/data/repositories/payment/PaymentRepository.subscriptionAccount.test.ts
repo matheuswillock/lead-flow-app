@@ -166,3 +166,77 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
     expect(profileUpdateManyMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Achado P1 da 8ª rodada (chatgpt-codex-connector, thread PRRT_...fFct):
+ * `sub_` e `cus_` são escopados por CONTA no Asaas. Resolver o dono do
+ * webhook sem filtrar pela conta do evento podia selecionar o profile da
+ * outra conta com id homônimo e marcá-lo como ativo sem ele ter pago.
+ */
+describe("lookups do webhook são escopados por conta (achado P1 PRRT_...fFct)", () => {
+  const profileSubscriptionFindFirstMock = mock(async (_args?: { where?: Record<string, unknown> }) => null)
+  const profileFindFirstMock = mock(async (_args?: { where?: Record<string, unknown> }) => null)
+
+  Object.assign(prismaModuleMock, {
+    profileSubscription: {
+      upsert: profileSubscriptionUpsertMock,
+      findFirst: profileSubscriptionFindFirstMock,
+    },
+    profile: {
+      update: profileUpdateMock,
+      updateMany: profileUpdateManyMock,
+      findUniqueOrThrow: profileFindUniqueOrThrowMock,
+      findFirst: profileFindFirstMock,
+    },
+  })
+
+  beforeEach(() => {
+    profileSubscriptionFindFirstMock.mockClear()
+    profileFindFirstMock.mockClear()
+  })
+
+  it("findBySubscriptionId com conta filtra asaasSubscriptionAccount nas duas queries", async () => {
+    const repo = new PaymentRepository()
+
+    await repo.findBySubscriptionId("sub_colidente", "legacy")
+
+    expect(profileSubscriptionFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          asaasSubscriptionId: "sub_colidente",
+          asaasSubscriptionAccount: "legacy",
+        }),
+      })
+    )
+    // Fallback legado no Profile também escopado.
+    expect(profileFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ asaasSubscriptionAccount: "legacy" }),
+      })
+    )
+  })
+
+  it("findByAsaasCustomerId com conta filtra asaasCustomerAccount", async () => {
+    const repo = new PaymentRepository()
+
+    await repo.findByAsaasCustomerId("cus_colidente", "primary")
+
+    expect(profileFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          asaasCustomerId: "cus_colidente",
+          asaasCustomerAccount: "primary",
+        }),
+      })
+    )
+  })
+
+  it("controle negativo: sem conta informada, nenhum filtro de conta é adicionado (compat com chamadas sem contexto)", async () => {
+    const repo = new PaymentRepository()
+
+    await repo.findByAsaasCustomerId("cus_sem_conta")
+
+    const where = profileFindFirstMock.mock.calls[0]?.[0]?.where as Record<string, unknown>
+    expect(where).toEqual({ asaasCustomerId: "cus_sem_conta" })
+  })
+})
