@@ -65,38 +65,33 @@ export function assertLegacyAccountDump(dump: InventoryDumpShape): void {
 }
 
 /**
- * T-30.6: candidatos ao silenciamento = customers não deletados cujo
- * backfill ainda não foi CONCLUÍDO. Vem do JSON do inventário (C7), nunca
- * de lista embutida.
+ * T-30.6: candidatos ao silenciamento = TODO customer não deletado do dump.
+ * Vem do JSON do inventário (C7), nunca de lista embutida.
  *
- * Achado P2 da revisão do PR #1207 (thread PRRT_...dNdO): filtrar só por
- * `!notificationDisabled` excluía permanentemente quem falhou no MEIO do
- * processo. O silenciamento tem duas fases — `disableCustomerNotifications`
- * (flag do customer) e depois listar/desligar os canais. Se a primeira
- * passa e a segunda falha, o próximo dump traz `notificationDisabled: true`
- * e o cliente nunca mais é selecionado, com os canais ainda ligados: M0.5
- * fica incompleto e invisível.
+ * Por que não filtrar por `notificationDisabled` (achado P2 da revisão do
+ * PR #1207, thread PRRT_...dNdO): o silenciamento tem duas fases —
+ * `disableCustomerNotifications` (flag do customer) e depois listar e
+ * desligar os canais. Se a primeira passa e a segunda falha, o dump
+ * seguinte traz `notificationDisabled: true` e o cliente sairia da seleção
+ * PARA SEMPRE, com os canais ainda ligados: M0.5 incompleto e invisível.
  *
- * O sinal de conclusão correto é o ledger (`AsaasNotificationBackfill`),
- * que `markCompleted`/`markFailed` já mantêm por customer — não a flag do
- * Asaas, que reflete só a primeira fase. Reprocessar quem foi silenciado
- * mas não concluiu é seguro: as duas chamadas do gateway são idempotentes.
+ * Por que também não filtrar pelo ledger `AsaasNotificationBackfill`
+ * (achado P2, thread PRRT_...deDvF): ele é chaveado só por
+ * `asaasCustomerId`, sem conta. Como `cus_` é escopado por conta no Asaas,
+ * uma conclusão gravada para a conta primary pode colidir com um customer
+ * legacy homônimo e excluí-lo — o mesmo erro, por outro caminho. Scopá-lo
+ * exigiria migration numa tabela já aplicada em produção, para um script
+ * cujo `--apply` sequer foi autorizado.
  *
- * `completedCustomerIds` ausente (ledger indisponível) degrada para o
- * comportamento anterior — só quem tem notificação ligada —, que é o
- * correto quando não há histórico para consultar.
+ * A saída correta é não pular ninguém: as duas chamadas do gateway são
+ * idempotentes (desligar o que já está desligado é no-op), a população é de
+ * dezenas de customers, e este é um script de migração de uso único. Pular
+ * é otimização; processar todo mundo é o que garante que M0.5 fecha. Os
+ * dois modos de erro possíveis aqui eram ambos "cliente pulado por engano"
+ * — este desenho elimina os dois.
  */
-export function selectCustomersToSilence(
-  dump: InventoryDumpShape,
-  completedCustomerIds?: ReadonlySet<string>
-): AsaasCustomer[] {
-  return dump.customers.data.filter((customer) => {
-    if (customer.deleted) return false
-    if (!completedCustomerIds) return !customer.notificationDisabled
-    // Com ledger: concluído sai; silenciado-mas-não-concluído continua
-    // elegível para o retry da fase de canais.
-    return !completedCustomerIds.has(customer.id)
-  })
+export function selectCustomersToSilence(dump: InventoryDumpShape): AsaasCustomer[] {
+  return dump.customers.data.filter((customer) => !customer.deleted)
 }
 
 export type SilenceCustomerResult = {

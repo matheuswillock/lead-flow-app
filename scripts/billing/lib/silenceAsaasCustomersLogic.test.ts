@@ -77,12 +77,22 @@ describe("assertLegacyAccountDump (achado P1 da revisão — cursor + codex)", (
 })
 
 describe("selectCustomersToSilence (T-30.6 — C7)", () => {
-  it("seleciona só quem tem notificação LIGADA e não está deletado", () => {
+  /**
+   * Achados P2 da revisão do PR #1207 (threads PRRT_...dNdO e ...eDvF): a
+   * seleção não pula ninguém. Filtrar por `notificationDisabled` excluía
+   * para sempre quem falhou na 2ª fase (canais) depois da 1ª ter passado;
+   * filtrar pelo ledger `AsaasNotificationBackfill` reintroduz o mesmo erro
+   * por outro caminho, porque ele é chaveado só por `asaasCustomerId` e
+   * `cus_` é escopado por conta no Asaas. As chamadas do gateway são
+   * idempotentes, então processar todo mundo é o desenho seguro.
+   */
+  it("achados P2 dNdO/eDvF: seleciona TODO customer não deletado, inclusive o já silenciado", () => {
     const dump: InventoryDumpShape = {
       account: "legacy",
       customers: {
         data: [
           customer({ id: "cus_ligado", notificationDisabled: false }),
+          // 1ª fase concluída, 2ª pode ter falhado — continua elegível.
           customer({ id: "cus_ja_silenciado", notificationDisabled: true }),
           customer({ id: "cus_deletado", notificationDisabled: false, deleted: true }),
         ],
@@ -91,72 +101,21 @@ describe("selectCustomersToSilence (T-30.6 — C7)", () => {
 
     const selected = selectCustomersToSilence(dump)
 
-    expect(selected.map((c) => c.id)).toEqual(["cus_ligado"])
+    expect(selected.map((c) => c.id)).toEqual(["cus_ligado", "cus_ja_silenciado"])
   })
 
-  /**
-   * Achado P2 da revisão do PR #1207 (thread PRRT_...dNdO): o silenciamento
-   * tem duas fases (flag do customer, depois os canais). Se a primeira passa
-   * e a segunda falha, o dump seguinte traz `notificationDisabled: true` e o
-   * filtro antigo excluía o cliente PARA SEMPRE — canais ligados, M0.5
-   * incompleto e invisível. O sinal de conclusão é o ledger, não a flag.
-   */
-  it("achado P2 PRRT_...dNdO: silenciado mas com backfill incompleto continua elegível ao retry", () => {
+  it("controle negativo: deletado nunca entra", () => {
     const dump: InventoryDumpShape = {
       account: "legacy",
       customers: {
         data: [
-          // Fase 1 concluída, fase 2 falhou → não está no ledger completo.
-          customer({ id: "cus_meio_caminho", notificationDisabled: true }),
-          customer({ id: "cus_concluido", notificationDisabled: true }),
+          customer({ id: "cus_deletado_a", notificationDisabled: false, deleted: true }),
+          customer({ id: "cus_deletado_b", notificationDisabled: true, deleted: true }),
         ],
       },
     }
 
-    const selected = selectCustomersToSilence(dump, new Set(["cus_concluido"]))
-
-    expect(selected.map((c) => c.id)).toEqual(["cus_meio_caminho"])
-  })
-
-  it("controle negativo: quem está no ledger como concluído NÃO é reprocessado", () => {
-    const dump: InventoryDumpShape = {
-      account: "legacy",
-      customers: {
-        data: [
-          customer({ id: "cus_a", notificationDisabled: true }),
-          customer({ id: "cus_b", notificationDisabled: false }),
-        ],
-      },
-    }
-
-    const selected = selectCustomersToSilence(dump, new Set(["cus_a", "cus_b"]))
-
-    expect(selected).toEqual([])
-  })
-
-  it("controle negativo: deletado nunca entra, nem com ledger presente", () => {
-    const dump: InventoryDumpShape = {
-      account: "legacy",
-      customers: {
-        data: [customer({ id: "cus_deletado", notificationDisabled: false, deleted: true })],
-      },
-    }
-
-    expect(selectCustomersToSilence(dump, new Set())).toEqual([])
-  })
-
-  it("controle negativo: sem ledger disponível, degrada para o comportamento anterior (só flag)", () => {
-    const dump: InventoryDumpShape = {
-      account: "legacy",
-      customers: {
-        data: [
-          customer({ id: "cus_ligado", notificationDisabled: false }),
-          customer({ id: "cus_silenciado", notificationDisabled: true }),
-        ],
-      },
-    }
-
-    expect(selectCustomersToSilence(dump, undefined).map((c) => c.id)).toEqual(["cus_ligado"])
+    expect(selectCustomersToSilence(dump)).toEqual([])
   })
 
   it("dump vazio -> lista vazia (nunca lança)", () => {
