@@ -98,24 +98,27 @@ export class PaymentRepository implements IPaymentRepository {
       });
     }
 
+    // Achado P1 da revisão do PR #1207 (threads PRRT_...ZZPj e
+    // PRRT_...aTIu): este método nunca grava `asaasSubscriptionId` no
+    // Profile — só no ProfileSubscription. Copiar a conta pra lá quando o
+    // ponteiro do Profile é OUTRA assinatura montaria um par inconsistente
+    // `(id de uma, conta de outra)`, que é exatamente o que
+    // `getSyncSnapshot` e o roteamento por conta consomem.
+    //
+    // O guard é um `updateMany` CONDICIONAL, não um read-then-write: entre
+    // um `findUnique` e o `update` incondicional cabia um upgrade trocando
+    // o `asaasSubscriptionId` do Profile, e a conta do webhook acabaria
+    // colada na assinatura nova — recriando o par inconsistente por corrida.
+    // Aqui a condição está no próprio `where`, avaliada pelo Postgres.
+    if (data.subscriptionAccount !== undefined && data.subscriptionId !== undefined) {
+      await prisma.profile.updateMany({
+        where: { id: profileId, asaasSubscriptionId: data.subscriptionId },
+        data: { asaasSubscriptionAccount: data.subscriptionAccount },
+      });
+    }
+
     // Keep Profile in sync for legacy compatibility
     const profileData: any = {};
-    // Achado P1 da revisão do PR #1207 (thread PRRT_...ZZPj): este método
-    // nunca grava `asaasSubscriptionId` no Profile — só no
-    // ProfileSubscription. Copiar a conta pra cá quando o ponteiro do
-    // Profile é OUTRA assinatura montaria um par inconsistente
-    // `(id de uma, conta de outra)`, que é exatamente o que
-    // `getSyncSnapshot` e o roteamento por conta consomem. Só rotula
-    // quando o Profile aponta para a MESMA assinatura do evento.
-    if (data.subscriptionAccount !== undefined && data.subscriptionId !== undefined) {
-      const currentProfilePointer = await prisma.profile.findUnique({
-        where: { id: profileId },
-        select: { asaasSubscriptionId: true },
-      });
-      if (currentProfilePointer?.asaasSubscriptionId === data.subscriptionId) {
-        profileData.asaasSubscriptionAccount = data.subscriptionAccount;
-      }
-    }
     if (data.subscriptionPlan !== undefined) profileData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) profileData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) profileData.subscriptionStartDate = data.subscriptionStartDate;

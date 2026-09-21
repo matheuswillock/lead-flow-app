@@ -49,6 +49,12 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
 
   const [state, dispatch] = useReducer(reducer, initialOperatorConfirmedState);
   const fetchInflightRef = useRef(false);
+  /**
+   * Última mensagem de falha transitória. Guardada sem entrar no estado
+   * (achado P2, thread PRRT_...aTI8) para só virar erro visível quando o
+   * polling esgotar o teto — até lá a tela não deve acusar falha.
+   */
+  const lastTransientErrorRef = useRef<string | null>(null);
 
   const poll = useCallback(async (): Promise<PollOutcome> => {
     if (!pendingOperatorId) {
@@ -64,13 +70,14 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
       dispatch({ type: "SET_DATA", payload: data });
       return { ok: true, data };
     } catch (error) {
-      dispatch({
-        type: "SET_ERROR",
-        payload: error instanceof Error ? error.message : "Erro ao buscar informações do operador",
-      });
-      // Achado P2 da revisão do PR #1207 (thread PRRT_...ZZPv): rede caída
-      // ou 5xx passageiro não é desfecho — o polling com teto tenta de novo
-      // antes de empurrar o usuário para o erro manual.
+      // Achado P2 da revisão do PR #1207 (threads PRRT_...ZZPv e
+      // PRRT_...aTI8): rede caída ou 5xx passageiro não é desfecho — e
+      // também não pode PINTAR a tela de erro enquanto o polling ainda
+      // está tentando. O `SET_ERROR` daqui saiu: a mensagem só aparece
+      // quando o teto é atingido (ver o efeito de `capReached` abaixo),
+      // até lá a tela segue em loading/último estado bom.
+      lastTransientErrorRef.current =
+        error instanceof Error ? error.message : "Erro ao buscar informações do operador";
       return { ok: false, reason: "transient" };
     } finally {
       fetchInflightRef.current = false;
@@ -86,9 +93,17 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     dispatch({ type: "SET_POLL_CAPPED", payload: capReached });
-  }, [capReached]);
+    // Achado P2 (thread PRRT_...aTI8): esgotou o teto e a última tentativa
+    // foi uma falha transitória? Só AGORA a falha vira erro visível — e
+    // apenas se não houver dados bons na tela, para não trocar um estado
+    // útil por uma mensagem de erro.
+    if (capReached && lastTransientErrorRef.current && !state.operatorData) {
+      dispatch({ type: "SET_ERROR", payload: lastTransientErrorRef.current });
+    }
+  }, [capReached, state.operatorData]);
 
   const retryFetch = useCallback(() => {
+    lastTransientErrorRef.current = null;
     dispatch({ type: "SET_LOADING" });
     restart();
   }, [restart]);

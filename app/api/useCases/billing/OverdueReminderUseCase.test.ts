@@ -18,9 +18,35 @@ mock.module("@/lib/services/EmailService", () => ({
   }),
 }))
 
+type DunningCursor = { subscriptionNextDueDate: Date | null; profileId: string }
 const findPastDueSubscriptionsForDunningMock = mock(
-  async (_params: { take: number; notBefore: Date; skip?: number }) => [] as unknown[]
+  async (_params: { take: number; notBefore: Date; after?: DunningCursor }) => [] as unknown[]
 )
+
+/**
+ * Simula paginação por KEYSET sobre um dataset fixo, como o Postgres faria
+ * (achado P1 PRRT_...aTIo: o cursor deixou de ser offset numérico). Ordena
+ * por `(subscriptionNextDueDate asc nulls last, profileId asc)` e devolve as
+ * `take` linhas estritamente APÓS a chave recebida.
+ */
+function keysetPage(rows: ReturnType<typeof makeRow>[], params: { take: number; after?: DunningCursor }) {
+  const key = (r: { subscriptionNextDueDate: Date | null; profileId: string }) => [
+    r.subscriptionNextDueDate === null ? 1 : 0,
+    r.subscriptionNextDueDate === null ? 0 : r.subscriptionNextDueDate.getTime(),
+    r.profileId,
+  ]
+  const cmp = (a: ReturnType<typeof key>, b: ReturnType<typeof key>) => {
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] < b[i]) return -1
+      if (a[i] > b[i]) return 1
+    }
+    return 0
+  }
+  const sorted = [...rows].sort((a, b) => cmp(key(a), key(b)))
+  const start = params.after ? sorted.findIndex((r) => cmp(key(r), key(params.after!)) > 0) : 0
+  if (start === -1) return []
+  return sorted.slice(start, start + params.take)
+}
 // Achado P1 (chatgpt-codex-connector, thread PRRT_...CUk5): resolveStartCursor
 // lê a última execução COM SUCESSO deste cron para retomar de onde parou —
 // sem isso, o teto fixo de varredura sempre relê o mesmo prefixo antigo.
@@ -239,9 +265,12 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     )
     const freshRow = makeRow({ profileId: "novo-inadimplente", subscriptionNextDueDate: daysAgo(10) })
 
+    // `notifiedPage` é toda de 40 dias atrás e `freshRow` de 10 — o keyset
+    // ordena por data, então as avisadas vêm primeiro e a nova depois.
+    const dataset = [...notifiedPage, freshRow]
     findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) => {
       expect(params.take).toBe(PAGE_SIZE)
-      return (params.skip ?? 0) === 0 ? notifiedPage : [freshRow]
+      return keysetPage(dataset, params)
     })
     hasDelinquencyNoticeSinceMock.mockImplementation(
       async (params: { profileId: string }) => params.profileId !== "novo-inadimplente",
@@ -268,36 +297,47 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
    * deduplica tudo e nunca alcança quem está depois da linha 2000. É a
    * mesma inanição de uma revisão anterior, só que com limiar maior.
    */
-  it("controle negativo: sem execução anterior bem-sucedida, começa do zero (comportamento do dia 1 preservado)", async () => {
+  it("controle negativo: sem execução anterior bem-sucedida, começa do começo (comportamento do dia 1 preservado)", async () => {
     findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
 
     const useCase = new OverdueReminderUseCase()
     await useCase.processOverdueReminders()
 
-    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 0 })
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0].after).toBeUndefined()
   })
 
-  it("bate no teto de varredura sem chegar ao fim da lista → persiste o cursor onde parou, não zera", async () => {
-    // Backlog "infinito": toda página vem cheia (200) e sempre já avisada,
-    // não importa o skip — simula mais de 2000 inadimplentes antigos.
-    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params: { skip?: number }) =>
-      Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `antigo-${params.skip}-${i}` }))
+  it("bate no teto de varredura sem chegar ao fim da lista → persiste a chave onde parou, não zera", async () => {
+    // Backlog "infinito": 3000 linhas antigas, todas já avisadas.
+    const dataset = Array.from({ length: 3000 }, (_, i) =>
+      makeRow({
+        profileId: `antigo-${String(i).padStart(4, "0")}`,
+        subscriptionNextDueDate: daysAgo(40),
+      })
+    )
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(dataset, params)
     )
     hasDelinquencyNoticeSinceMock.mockImplementation(async () => true)
 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    const result = output.result as { scanned: number; deduped: number; nextDunningScanCursor: number }
+    const result = output.result as {
+      scanned: number
+      deduped: number
+      nextDunningScanCursor: DunningCursor | null
+    }
     expect(result.scanned).toBe(2000)
     expect(result.deduped).toBe(2000)
-    // Não é o mesmo prefixo de novo amanhã — a próxima execução retoma daqui.
-    expect(result.nextDunningScanCursor).toBe(2000)
+    // Não é o mesmo prefixo de novo amanhã — a próxima execução retoma da
+    // CHAVE da última linha processada (a 2000ª, índice 1999).
+    expect(result.nextDunningScanCursor).toMatchObject({ profileId: "antigo-1999" })
   })
 
-  it("achado P1 PRRT_...CUk5: cursor persistido da execução anterior é usado como skip inicial — não relê o prefixo já varrido", async () => {
+  it("achado P1 PRRT_...CUk5: chave persistida da execução anterior vira o `after` inicial — não relê o prefixo já varrido", async () => {
+    const persisted = { profileId: "antigo-1999", subscriptionNextDueDate: daysAgo(40).toISOString() }
     cronExecutionFindManyMock.mockImplementation(async () => [
-      { metadata: { nextDunningScanCursor: 2000 } },
+      { metadata: { nextDunningScanCursor: persisted } },
     ])
     findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
 
@@ -307,12 +347,56 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     expect(cronExecutionFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ status: "success", limit: 1 })
     )
-    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 2000 })
+    const after = findPastDueSubscriptionsForDunningMock.mock.calls[0][0].after
+    expect(after?.profileId).toBe("antigo-1999")
+    // JSON devolve string ISO; o use case reidrata para Date.
+    expect(after?.subscriptionNextDueDate).toBeInstanceOf(Date)
   })
 
-  it("chega ao fim da lista antes do teto → cursor reseta para 0 (fecha a volta e recomeça do início amanhã)", async () => {
+  /**
+   * Achado P1 da 5ª rodada (chatgpt-codex-connector, thread PRRT_...aTIo):
+   * o cursor era um OFFSET numérico contra um conjunto mutável. Se quem
+   * estava antes do offset paga entre execuções, as linhas seguintes
+   * deslizam para a esquerda e o offset do dia seguinte pula gente que
+   * nunca foi avisada. A chave de ordenação é imune a isso.
+   */
+  it("achado P1 PRRT_...aTIo: linhas que saem da fila entre execuções não fazem o cursor pular ninguém", async () => {
+    // Dia 1 processou até `antigo-0004`. Entre as execuções, as 3 primeiras
+    // linhas pagam e somem da query. Com offset (skip: 5) o dia 2 começaria
+    // em `antigo-0007`, pulando 0005 e 0006 — que nunca foram avisados.
+    const persisted = {
+      profileId: "antigo-0004",
+      subscriptionNextDueDate: daysAgo(40).toISOString(),
+    }
     cronExecutionFindManyMock.mockImplementation(async () => [
-      { metadata: { nextDunningScanCursor: 2000 } },
+      { metadata: { nextDunningScanCursor: persisted } },
+    ])
+    const remaining = Array.from({ length: 10 }, (_, i) =>
+      makeRow({
+        profileId: `antigo-${String(i).padStart(4, "0")}`,
+        subscriptionNextDueDate: daysAgo(40),
+      })
+      // as 3 primeiras pagaram e saíram do conjunto
+    ).slice(3)
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(remaining, params)
+    )
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    // Retoma exatamente após a chave: 0005 em diante, ninguém pulado.
+    expect((output.result as { sent: number }).sent).toBe(5)
+    expect(sendDelinquencyReminderEmailMock.mock.calls).toHaveLength(5)
+  })
+
+  it("chega ao fim da lista antes do teto → cursor reseta para null (fecha a volta e recomeça do início amanhã)", async () => {
+    cronExecutionFindManyMock.mockImplementation(async () => [
+      {
+        metadata: {
+          nextDunningScanCursor: { profileId: "x", subscriptionNextDueDate: daysAgo(40).toISOString() },
+        },
+      },
     ])
     // Página curta (< 200) = fim de lista alcançado nesta execução.
     findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRow()])
@@ -320,10 +404,10 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    expect((output.result as { nextDunningScanCursor: number }).nextDunningScanCursor).toBe(0)
+    expect((output.result as { nextDunningScanCursor: unknown }).nextDunningScanCursor).toBeNull()
   })
 
-  it("cursor persistido inválido (não numérico) é ignorado com segurança — não trava o cron", async () => {
+  it("cursor persistido inválido é ignorado com segurança — não trava o cron", async () => {
     cronExecutionFindManyMock.mockImplementation(async () => [{ metadata: { foo: "bar" } }])
     findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
 
@@ -331,7 +415,22 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     const output = await useCase.processOverdueReminders()
 
     expect(output.isValid).toBe(true)
-    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0]).toMatchObject({ skip: 0 })
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0].after).toBeUndefined()
+  })
+
+  it("cursor persistido no formato antigo (número) é descartado — migração sem travar o cron", async () => {
+    // Uma execução gravada antes desta mudança tem `nextDunningScanCursor`
+    // numérico. Não pode virar chave inválida nem parar o cron: reinicia.
+    cronExecutionFindManyMock.mockImplementation(async () => [
+      { metadata: { nextDunningScanCursor: 2000 } },
+    ])
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    expect(output.isValid).toBe(true)
+    expect(findPastDueSubscriptionsForDunningMock.mock.calls[0][0].after).toBeUndefined()
   })
 
   /**
@@ -343,15 +442,17 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
    * efetivamente PROCESSADAS.
    */
   it("achado P1 PRRT_...YP_m: orçamento parcialmente gasto não faz o cursor pular as linhas não processadas", async () => {
-    // Toda página tem 200 linhas. As 50 primeiras do backlog já foram
-    // avisadas (dedupe não gasta orçamento); o resto envia. Orçamento = 200.
-    // Página 1 (skip 0): 50 deduped + 150 enviados → processa as 200.
-    // Página 2 (skip 200): o orçamento permite só mais 50 envios → o laço
-    // para depois de 50 linhas. Cursor tem de ficar em 250, não 400.
-    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params: { skip?: number }) => {
-      const base = params.skip ?? 0
-      return Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `linha-${base + i}` }))
-    })
+    // Dataset de 400 linhas. As 50 primeiras já foram avisadas (dedupe não
+    // gasta orçamento); o resto envia. Orçamento = 200.
+    // Página 1: 50 deduped + 150 enviados → processa as 200.
+    // Página 2: o orçamento permite só mais 50 envios → o laço para depois
+    // de 50 linhas. A chave tem de ser a da linha 250, não a da 400.
+    const dataset = Array.from({ length: 400 }, (_, i) =>
+      makeRow({ profileId: `linha-${String(i).padStart(4, "0")}`, subscriptionNextDueDate: daysAgo(40) })
+    )
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(dataset, params)
+    )
     hasDelinquencyNoticeSinceMock.mockImplementation(async (params: { profileId: string }) => {
       const index = Number(params.profileId.replace("linha-", ""))
       return index < 50
@@ -364,31 +465,36 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
       sent: number
       deduped: number
       scanned: number
-      nextDunningScanCursor: number
+      nextDunningScanCursor: DunningCursor | null
     }
     expect(result.deduped).toBe(50)
     expect(result.sent).toBe(200)
-    // 200 da página 1 + 50 efetivamente processadas da página 2.
-    expect(result.nextDunningScanCursor).toBe(250)
+    // 200 da página 1 + 50 efetivamente processadas da página 2 → a chave
+    // é a da 250ª linha (índice 249), não a da última linha da página.
+    expect(result.nextDunningScanCursor).toMatchObject({ profileId: "linha-0249" })
     expect(result.scanned).toBe(250)
   })
 
   it("controle negativo: página consumida por inteiro (sem corte de orçamento) avança o cursor pela página toda", async () => {
     // Sem truncamento: todas já avisadas, dedupe não gasta orçamento, então
-    // as 200 linhas de cada página são processadas e o cursor avança 200 por
-    // página até o teto de varredura — comportamento anterior, que continua
-    // correto quando não há corte no meio da página.
-    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params: { skip?: number }) =>
-      Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `antigo-${params.skip}-${i}` }))
+    // as 200 linhas de cada página são processadas até o teto de varredura.
+    const dataset = Array.from({ length: 3000 }, (_, i) =>
+      makeRow({
+        profileId: `antigo-${String(i).padStart(4, "0")}`,
+        subscriptionNextDueDate: daysAgo(40),
+      })
+    )
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(dataset, params)
     )
     hasDelinquencyNoticeSinceMock.mockImplementation(async () => true)
 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    const result = output.result as { scanned: number; nextDunningScanCursor: number }
+    const result = output.result as { scanned: number; nextDunningScanCursor: DunningCursor | null }
     expect(result.scanned).toBe(2000)
-    expect(result.nextDunningScanCursor).toBe(2000)
+    expect(result.nextDunningScanCursor).toMatchObject({ profileId: "antigo-1999" })
   })
 
   /**
@@ -401,52 +507,47 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
    * acontecer quando TODAS as linhas buscadas foram processadas.
    */
   it("achado P1 PRRT_...ZZPo: página curta truncada pelo orçamento preserva o cursor em vez de resetar", async () => {
-    // Página 1 cheia (200) toda enviada → gasta 200 de orçamento? Não:
-    // usamos 199 enviados + 1 deduped para sobrar exatamente 1 de
-    // orçamento, e então uma página CURTA (10 linhas) que envia.
-    // Só 1 das 10 é processada → o cursor não pode zerar.
-    let call = 0
-    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => {
-      call += 1
-      if (call === 1) {
-        return Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `p1-${i}` }))
-      }
-      return Array.from({ length: 10 }, (_, i) => makeRow({ profileId: `curta-${i}` }))
-    })
+    // 210 linhas: página 1 leva 200 (1 deduped + 199 enviados, sobra 1 de
+    // orçamento) e a página 2 é CURTA (10). Só 1 das 10 cabe no orçamento
+    // → o cursor não pode zerar e esquecer as outras 9.
+    const dataset = Array.from({ length: 210 }, (_, i) =>
+      makeRow({ profileId: `p-${String(i).padStart(4, "0")}`, subscriptionNextDueDate: daysAgo(40) })
+    )
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(dataset, params)
+    )
     hasDelinquencyNoticeSinceMock.mockImplementation(
-      async (params: { profileId: string }) => params.profileId === "p1-0"
+      async (params: { profileId: string }) => params.profileId === "p-0000"
     )
 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    const result = output.result as { sent: number; nextDunningScanCursor: number }
+    const result = output.result as { sent: number; nextDunningScanCursor: DunningCursor | null }
     expect(result.sent).toBe(200)
-    // 200 da página 1 + 1 processada da página curta = 201. Zerar aqui
-    // esqueceria as outras 9 linhas por uma volta inteira.
-    expect(result.nextDunningScanCursor).toBe(201)
+    // 201 linhas processadas → chave da 201ª (índice 200). Zerar aqui
+    // esqueceria as outras 9 por uma volta inteira.
+    expect(result.nextDunningScanCursor).toMatchObject({ profileId: "p-0200" })
   })
 
   it("controle negativo: página curta CONSUMIDA POR INTEIRO reseta o cursor (fim de lista real)", async () => {
     // Sem truncamento: a página curta cabe inteira no orçamento, então é
-    // fim de lista de verdade e o cursor fecha a volta em 0.
-    let call = 0
-    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => {
-      call += 1
-      if (call === 1) {
-        return Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `q1-${i}` }))
-      }
-      return Array.from({ length: 10 }, (_, i) => makeRow({ profileId: `q2-${i}` }))
-    })
+    // fim de lista de verdade e o cursor fecha a volta em null.
+    const dataset = Array.from({ length: 210 }, (_, i) =>
+      makeRow({ profileId: `q-${String(i).padStart(4, "0")}`, subscriptionNextDueDate: daysAgo(40) })
+    )
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async (params) =>
+      keysetPage(dataset, params)
+    )
     // Tudo deduped: não gasta orçamento, as duas páginas passam inteiras.
     hasDelinquencyNoticeSinceMock.mockImplementation(async () => true)
 
     const useCase = new OverdueReminderUseCase()
     const output = await useCase.processOverdueReminders()
 
-    const result = output.result as { scanned: number; nextDunningScanCursor: number }
+    const result = output.result as { scanned: number; nextDunningScanCursor: unknown }
     expect(result.scanned).toBe(210)
-    expect(result.nextDunningScanCursor).toBe(0)
+    expect(result.nextDunningScanCursor).toBeNull()
   })
 
   it("DUNNING_CRON_KEY bate com o cronKey literal da rota — resolveStartCursor não pode ler a execução do cron errado", () => {

@@ -3,6 +3,7 @@ import { createEmailService } from "@/lib/services/EmailService";
 import { getAppUrl } from "@/lib/utils/app-url";
 import {
   billingEngineRepository,
+  type DunningKeysetCursor,
   type PastDueSubscriptionForDunningRow,
 } from "@/app/api/infra/data/repositories/billing/BillingEngineRepository";
 import { backofficeCronExecutionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeCronExecution/BackofficeCronExecutionRepository";
@@ -80,22 +81,40 @@ export class OverdueReminderUseCase {
    * bem-sucedida (nenhuma tabela nova) — lê a última execução COM SUCESSO
    * deste cron e retoma de onde ela parou.
    */
-  private async resolveStartCursor(): Promise<number> {
+  private async resolveStartCursor(): Promise<DunningKeysetCursor | undefined> {
     try {
       const [lastSuccess] = await this.cronExecutionRepository.findMany({
         cronKey: DUNNING_CRON_KEY,
         status: "success",
         limit: 1,
       });
-      const metadata = lastSuccess?.metadata as { nextDunningScanCursor?: unknown } | null | undefined;
+      const metadata = lastSuccess?.metadata as
+        | { nextDunningScanCursor?: unknown }
+        | null
+        | undefined;
       const cursor = metadata?.nextDunningScanCursor;
-      return typeof cursor === "number" && Number.isFinite(cursor) && cursor > 0 ? cursor : 0;
+      if (!cursor || typeof cursor !== "object") return undefined;
+
+      const { profileId, subscriptionNextDueDate } = cursor as {
+        profileId?: unknown;
+        subscriptionNextDueDate?: unknown;
+      };
+      if (typeof profileId !== "string" || profileId.length === 0) return undefined;
+
+      // O metadata é JSON: a data volta como string ISO, não como Date.
+      if (subscriptionNextDueDate === null || subscriptionNextDueDate === undefined) {
+        return { profileId, subscriptionNextDueDate: null };
+      }
+      if (typeof subscriptionNextDueDate !== "string") return undefined;
+      const parsed = new Date(subscriptionNextDueDate);
+      if (Number.isNaN(parsed.getTime())) return undefined;
+      return { profileId, subscriptionNextDueDate: parsed };
     } catch (error) {
       console.error(
         "[OverdueReminderUseCase] falha ao resolver cursor persistido — reiniciando do zero",
         error,
       );
-      return 0;
+      return undefined;
     }
   }
 
@@ -126,8 +145,7 @@ export class OverdueReminderUseCase {
     // orçamento de **e-mails**, não de linhas lidas: paginamos por cima dos
     // já avisados até gastar o orçamento, com teto de varredura para o cron
     // não virar scan sem fim.
-    const startCursor = await this.resolveStartCursor();
-    let skip = startCursor;
+    let cursor = await this.resolveStartCursor();
     let scanned = 0;
     let hasMorePages = true;
     // Achado P1 da 4ª rodada (thread PRRT_...ZZPo): só é "fim de lista" se
@@ -143,39 +161,48 @@ export class OverdueReminderUseCase {
       const page = await billingEngineRepository.findPastDueSubscriptionsForDunning({
         take: DUNNING_PAGE_SIZE,
         notBefore,
-        skip,
+        after: cursor,
       });
 
       hasMorePages = page.length === DUNNING_PAGE_SIZE;
 
       // Achado P1 da 3ª rodada (thread PRRT_...YP_m): o cursor avança pelas
       // linhas efetivamente PROCESSADAS, não pela página inteira. Quando o
-      // orçamento de e-mails corta a página no meio, avançar pelo
-      // `page.length` cheio pularia as linhas restantes — elas só voltariam
-      // a ser vistas depois de uma volta completa do cursor, que é
-      // exatamente a inanição que o cursor veio resolver.
+      // orçamento de e-mails corta a página no meio, avançar pela página
+      // cheia pularia as linhas restantes — elas só voltariam a ser vistas
+      // depois de uma volta completa, que é a inanição que o cursor veio
+      // resolver.
       let processedInPage = 0;
       for (const row of page) {
         if (totals.sent + totals.failed >= DUNNING_EMAIL_BUDGET) break;
         await this.processRow(row, context, totals);
         processedInPage += 1;
+        // Achado P1 da 5ª rodada (thread PRRT_...aTIo): a chave é a da
+        // ÚLTIMA linha processada, nunca um contador — offset contra um
+        // conjunto mutável pula quem ficou para trás quando alguém paga.
+        cursor = {
+          subscriptionNextDueDate: row.subscriptionNextDueDate,
+          profileId: row.profileId,
+        };
       }
 
-      skip += processedInPage;
       scanned += processedInPage;
       totals.candidates += processedInPage;
       lastPageFullyProcessed = processedInPage === page.length;
+
+      // Página vazia com `hasMorePages` ainda true é impossível (só ocorre
+      // se take === 0), mas sem esta guarda um zero-progress viraria laço
+      // infinito — o cursor não avançaria e a query devolveria o mesmo.
+      if (processedInPage === 0) break;
     }
 
     // Achado P1 (threads PRRT_...CUk5 e PRRT_...ZZPo): só fecha a volta
     // quando chegou ao fim de verdade — última página incompleta E
     // inteiramente processada. Se o orçamento cortou a página no meio
     // (mesmo sendo uma página curta, "última" pelo tamanho), sobra sufixo
-    // não processado e o cursor tem de persistir onde parou; zerar ali
-    // adiaria essas linhas por uma volta inteira, que é a inanição que o
-    // cursor veio resolver.
+    // não processado e o cursor tem de persistir onde parou.
     const reachedEndOfList = !hasMorePages && lastPageFullyProcessed;
-    const nextDunningScanCursor = reachedEndOfList ? 0 : skip;
+    const nextDunningScanCursor = reachedEndOfList ? null : (cursor ?? null);
 
     console.info("[OverdueReminderUseCase] done", { ...totals, scanned, nextDunningScanCursor });
 

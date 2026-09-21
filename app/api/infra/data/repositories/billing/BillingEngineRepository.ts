@@ -28,6 +28,17 @@ export type PastDueSubscriptionForDunningRow = {
   };
 };
 
+/**
+ * Chave de ordenação estável do dunning — espelha o `orderBy` de
+ * `findPastDueSubscriptionsForDunning`. Substitui o offset numérico que a
+ * revisão do PR #1207 apontou como instável contra um conjunto mutável
+ * (thread PRRT_...aTIo).
+ */
+export type DunningKeysetCursor = {
+  subscriptionNextDueDate: Date | null;
+  profileId: string;
+};
+
 class BillingEngineRepository {
   async findPastDueSubscriptions(params: {
     windowStart: Date;
@@ -76,21 +87,53 @@ class BillingEngineRepository {
   async findPastDueSubscriptionsForDunning(params: {
     take: number;
     notBefore: Date;
-    skip?: number;
+    /**
+     * Keyset: retoma DEPOIS desta chave de ordenação. Achado P1 da revisão
+     * do PR #1207 (thread PRRT_...aTIo): um `skip` numérico é offset contra
+     * um conjunto MUTÁVEL — quem paga entre execuções sai da query, as
+     * linhas seguintes deslizam para a esquerda, e o offset do dia seguinte
+     * pula gente que nunca foi avisada. A chave `(subscriptionNextDueDate,
+     * profileId)` é a mesma do `orderBy` e é imune a isso.
+     */
+    after?: DunningKeysetCursor;
   }): Promise<PastDueSubscriptionForDunningRow[]> {
+    // Linhas sem data própria usam a do Profile e vão para o FIM do
+    // `orderBy` (`nulls: "last"`). O keyset respeita essas duas fases:
+    // enquanto a chave tem data, ainda podem restar datadas à frente E
+    // todas as sem-data; quando a chave já é sem-data, só restam sem-data.
+    const keysetFilter = params.after
+      ? params.after.subscriptionNextDueDate !== null
+        ? {
+            OR: [
+              { subscriptionNextDueDate: { gt: params.after.subscriptionNextDueDate } },
+              {
+                subscriptionNextDueDate: params.after.subscriptionNextDueDate,
+                profileId: { gt: params.after.profileId },
+              },
+              { subscriptionNextDueDate: null },
+            ],
+          }
+        : { subscriptionNextDueDate: null, profileId: { gt: params.after.profileId } }
+      : null;
+
     return prisma.profileSubscription.findMany({
       where: {
         subscriptionStatus: "past_due",
         hasPermanentSubscription: false,
-        // A data efetiva pode vir da ProfileSubscription OU do Profile (o
-        // webhook do Asaas grava só no Profile) — ver
-        // `resolveEffectiveNextDueDate`.
-        OR: [
-          { subscriptionNextDueDate: { lte: params.notBefore } },
+        AND: [
+          // A data efetiva pode vir da ProfileSubscription OU do Profile (o
+          // webhook do Asaas grava só no Profile) — ver
+          // `resolveEffectiveNextDueDate`.
           {
-            subscriptionNextDueDate: null,
-            profile: { subscriptionNextDueDate: { lte: params.notBefore } },
+            OR: [
+              { subscriptionNextDueDate: { lte: params.notBefore } },
+              {
+                subscriptionNextDueDate: null,
+                profile: { subscriptionNextDueDate: { lte: params.notBefore } },
+              },
+            ],
           },
+          ...(keysetFilter ? [keysetFilter] : []),
         ],
       },
       select: {
@@ -109,11 +152,14 @@ class BillingEngineRepository {
         },
       },
       // `profileId` como desempate: sem ele o Postgres não garante ordem
-      // estável entre linhas de mesma data, e a paginação por `skip` do
-      // chamador poderia pular ou repetir uma linha entre páginas.
-      orderBy: [{ subscriptionNextDueDate: "asc" }, { profileId: "asc" }],
+      // estável entre linhas de mesma data, e o keyset do chamador poderia
+      // pular ou repetir uma linha entre páginas. `nulls: "last"` explícito
+      // porque o keyset depende dessa posição (ver `keysetFilter` acima).
+      orderBy: [
+        { subscriptionNextDueDate: { sort: "asc", nulls: "last" } },
+        { profileId: "asc" },
+      ],
       take: params.take,
-      skip: params.skip,
     });
   }
 

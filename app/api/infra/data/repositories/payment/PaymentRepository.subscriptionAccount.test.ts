@@ -15,18 +15,23 @@ const profileUpdateMock = mock(async (_args?: { data?: Record<string, unknown> }
   id: "profile-1",
 }))
 const profileFindUniqueOrThrowMock = mock(async (_args: unknown) => ({ id: "profile-1" }))
-/** Ponteiro atual do Profile — decide se a conta pode ser copiada pra lá. */
-const profileFindUniqueMock = mock(
-  async (_args: unknown) => ({ asaasSubscriptionId: null }) as { asaasSubscriptionId: string | null } | null
-)
+/**
+ * Guard condicional do ponteiro do Profile. Achado P1 PRRT_...aTIu: tem de
+ * ser um `updateMany` com a condição no `where` (avaliada pelo Postgres),
+ * não um read-then-write — senão um upgrade concorrente troca o
+ * `asaasSubscriptionId` entre a leitura e a escrita.
+ */
+const profileUpdateManyMock = mock(async (_args?: { where?: Record<string, unknown> }) => ({
+  count: 1,
+}))
 
 registerPrismaModuleMock()
 Object.assign(prismaModuleMock, {
   profileSubscription: { upsert: profileSubscriptionUpsertMock },
   profile: {
     update: profileUpdateMock,
+    updateMany: profileUpdateManyMock,
     findUniqueOrThrow: profileFindUniqueOrThrowMock,
-    findUnique: profileFindUniqueMock,
   },
 })
 
@@ -36,12 +41,7 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
   beforeEach(() => {
     profileSubscriptionUpsertMock.mockClear()
     profileUpdateMock.mockClear()
-    profileFindUniqueMock.mockReset()
-    // Default: o Profile aponta para a MESMA assinatura do evento, então
-    // copiar a conta pra lá é correto.
-    profileFindUniqueMock.mockImplementation(async () => ({
-      asaasSubscriptionId: "sub_legacy_webhook",
-    }))
+    profileUpdateManyMock.mockClear()
   })
 
   it("evento da conta legacy grava asaasSubscriptionAccount='legacy' no upsert e no Profile", async () => {
@@ -66,26 +66,22 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
         }),
       })
     )
-    expect(profileUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ asaasSubscriptionAccount: "legacy" }),
-      })
-    )
+    expect(profileUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: "profile-1", asaasSubscriptionId: "sub_legacy_webhook" },
+      data: { asaasSubscriptionAccount: "legacy" },
+    })
   })
 
   /**
-   * Achado P1 da 4ª rodada (chatgpt-codex-connector, thread PRRT_...ZZPj):
-   * este método nunca grava `asaasSubscriptionId` no Profile — só no
-   * ProfileSubscription. Copiar a conta pra lá quando o ponteiro do Profile
-   * é OUTRA assinatura monta um par inconsistente `(id primary, conta
-   * legacy)`, e as operações roteadas por conta passam a bater na conta
-   * errada. Cenário real: pagar uma assinatura de produto legada enquanto o
-   * Profile aponta para a assinatura primária.
+   * Achados P1 da 4ª e 5ª rodadas (chatgpt-codex-connector, threads
+   * PRRT_...ZZPj e PRRT_...aTIu): este método nunca grava
+   * `asaasSubscriptionId` no Profile — só no ProfileSubscription. Copiar a
+   * conta pra lá quando o ponteiro do Profile é OUTRA assinatura monta um
+   * par inconsistente `(id primary, conta legacy)`. E o guard tem de ser
+   * condicional NO BANCO: um read-then-write deixa a janela para um upgrade
+   * concorrente trocar o ponteiro entre a leitura e a escrita.
    */
-  it("achado P1 PRRT_...ZZPj: conta NÃO é copiada para o Profile quando o ponteiro dele é outra assinatura", async () => {
-    profileFindUniqueMock.mockImplementation(async () => ({
-      asaasSubscriptionId: "sub_profile_primary",
-    }))
+  it("achados P1 PRRT_...ZZPj/aTIu: o guard é um updateMany condicional — a condição vai no where, não num read-then-write", async () => {
     const repo = new PaymentRepository()
 
     await repo.updateSubscriptionData("profile-dual", {
@@ -100,15 +96,22 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
         update: expect.objectContaining({ asaasSubscriptionAccount: "legacy" }),
       })
     )
-    // ...mas o Profile, que aponta para outra assinatura, não é rotulado.
-    const profileWrites = profileUpdateMock.mock.calls.filter(
+    // ...e o Profile só é rotulado pelo `where` casando os DOIS campos, o
+    // que o Postgres avalia atomicamente. Se o ponteiro for outro, o
+    // updateMany simplesmente não acha linha (count: 0).
+    expect(profileUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: "profile-dual", asaasSubscriptionId: "sub_produto_legacy" },
+      data: { asaasSubscriptionAccount: "legacy" },
+    })
+    // O `update` incondicional de compatibilidade nunca carrega a conta.
+    const unconditionalAccountWrites = profileUpdateMock.mock.calls.filter(
       (call) => call[0]?.data !== undefined && "asaasSubscriptionAccount" in call[0].data
     )
-    expect(profileWrites).toHaveLength(0)
+    expect(unconditionalAccountWrites).toHaveLength(0)
   })
 
-  it("controle negativo: Profile sem ponteiro próprio também não é rotulado", async () => {
-    profileFindUniqueMock.mockImplementation(async () => ({ asaasSubscriptionId: null }))
+  it("controle negativo: ponteiro divergente não rotula o Profile (updateMany não casa nenhuma linha)", async () => {
+    profileUpdateManyMock.mockImplementationOnce(async () => ({ count: 0 }))
     const repo = new PaymentRepository()
 
     await repo.updateSubscriptionData("profile-sem-ponteiro", {
@@ -117,16 +120,20 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
       subscriptionStatus: "active",
     })
 
-    const profileWrites = profileUpdateMock.mock.calls.filter(
+    // A condição está no where — nenhuma linha atingida, nenhum par
+    // inconsistente criado, e o fluxo segue sem erro.
+    expect(profileUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ asaasSubscriptionId: "sub_qualquer" }),
+      })
+    )
+    const unconditionalAccountWrites = profileUpdateMock.mock.calls.filter(
       (call) => call[0]?.data !== undefined && "asaasSubscriptionAccount" in call[0].data
     )
-    expect(profileWrites).toHaveLength(0)
+    expect(unconditionalAccountWrites).toHaveLength(0)
   })
 
   it("controle negativo: evento da conta primary continua gravando primary", async () => {
-    profileFindUniqueMock.mockImplementation(async () => ({
-      asaasSubscriptionId: "sub_primary_webhook",
-    }))
     const repo = new PaymentRepository()
 
     await repo.updateSubscriptionData("profile-2", {
@@ -155,5 +162,7 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
       | undefined
     expect(upsertArgs?.update).not.toHaveProperty("asaasSubscriptionAccount")
     expect(upsertArgs?.update).not.toHaveProperty("asaasSubscriptionId")
+    // Sem `subscriptionId`, o guard condicional nem é acionado.
+    expect(profileUpdateManyMock).not.toHaveBeenCalled()
   })
 })
