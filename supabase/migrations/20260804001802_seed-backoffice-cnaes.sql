@@ -1,4 +1,20 @@
-INSERT INTO "public"."backoffice_cnaes" ("code", "name") VALUES
+-- "createdAt"/"updatedAt" vêm explícitos no INSERT de propósito.
+--
+-- `prisma/schema.prisma` declara `BackofficeCnae.updatedAt` como `@updatedAt`
+-- sozinho, sem `@default(now())` — o valor é resolvido no Prisma Client, não no
+-- banco. Hoje a coluna ainda tem `DEFAULT now()` porque
+-- `20260804001747_backoffice-cnae-table.sql` a criou assim, mas esse default é
+-- justamente o que um `prisma db push` derruba
+-- (docs/audits/prisma-migrations-drift-2026-08-23.md §3). Sem a coluna na lista,
+-- um replay depois desse push viola a constraint NOT NULL (SQLSTATE 23502)
+-- antes mesmo de avaliar o ON CONFLICT — mesma falha do PR #1208 na tabela
+-- `backoffice_lead_status_transition_gates`.
+--
+-- O `SELECT ... FROM (VALUES ...)` evita repetir `now(), now()` em cada uma das
+-- ~330 linhas do catálogo; a lista de CNAEs abaixo continua intacta.
+INSERT INTO "public"."backoffice_cnaes" ("code", "name", "createdAt", "updatedAt")
+SELECT seed."code", seed."name", now(), now()
+FROM (VALUES
 -- Agricultura e Pecuária
 ('0111301', 'Cultivo de arroz'),
 ('0111302', 'Cultivo de milho'),
@@ -335,4 +351,5 @@ INSERT INTO "public"."backoffice_cnaes" ("code", "name") VALUES
 ('9609207', 'Alojamento de animais domésticos'),
 ('9609208', 'Higiene e embelezamento de animais domésticos'),
 ('9609299', 'Outras atividades de serviços pessoais não especificadas anteriormente')
+) AS seed("code", "name")
 ON CONFLICT ("code") DO NOTHING;
