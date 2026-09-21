@@ -95,6 +95,10 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
   });
 
   test("operator-confirmed: erro de busca mostra retry real, sem beco sem saída (T-41.8/P2-7)", async ({ page }) => {
+    // Este teste espera o teto de polling esgotar de verdade (~34s de
+    // backoff) antes de o estado manual de erro aparecer — ver comentário
+    // abaixo. O default de 90s fica apertado com o retry no fim.
+    test.setTimeout(150_000);
     const mock: OperatorMockState = { requestCount: 0, respond: "error" };
 
     await page.route("**/api/q/operators/pending/**", async (route) => {
@@ -104,7 +108,21 @@ test.describe("checkout — telas de confirmação param de mentir (SPEC 41 E2)"
     });
 
     await page.goto(`/operator-confirmed?id=${OPERATOR_ID}`);
-    await expect(page.getByText("Erro", { exact: true })).toBeVisible();
+
+    // Achado P2 da revisão do PR #1207 (threads PRRT_...ZZPv e
+    // PRRT_...aTI8): falha transitória de fetch NÃO pode pintar a tela de
+    // erro manual enquanto o polling ainda está tentando. A pessoa acabou
+    // de pagar e o sistema segue trabalhando — acusar falha ali é a tela
+    // mentindo, que é justamente o que esta SPEC existe para eliminar.
+    // Esta spec afirmava o comportamento ANTIGO (erro no primeiro 5xx);
+    // agora trava o contrato novo, sem perder o espírito do teste: o
+    // usuário nunca fica sem caminho de recuperação.
+    await expect.poll(() => mock.requestCount, { timeout: 15_000 }).toBeGreaterThan(1);
+    await expect(page.getByText("Erro", { exact: true })).toBeHidden();
+
+    // Esgotado o teto (POLLING_MAX_ATTEMPTS = 6, backoff 5→8s ≈ 34s), aí
+    // sim a saída manual aparece — sem beco sem saída.
+    await expect(page.getByText("Erro", { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Ir para o login" })).toBeVisible();
 
