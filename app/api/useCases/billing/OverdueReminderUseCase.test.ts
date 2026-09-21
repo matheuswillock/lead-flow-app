@@ -391,6 +391,64 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     expect(result.nextDunningScanCursor).toBe(2000)
   })
 
+  /**
+   * Achado P1 da 4ª rodada (chatgpt-codex-connector, thread PRRT_...ZZPo):
+   * o último caso de página parcial. `hasMorePages` sai de `page.length`
+   * ANTES do laço, então uma página curta (< PAGE_SIZE, logo "última") que
+   * ainda assim tenha mais linhas do que o orçamento restante era
+   * processada só no prefixo — e o cursor resetava para 0 mesmo assim,
+   * adiando o sufixo não processado por uma volta inteira. O reset só pode
+   * acontecer quando TODAS as linhas buscadas foram processadas.
+   */
+  it("achado P1 PRRT_...ZZPo: página curta truncada pelo orçamento preserva o cursor em vez de resetar", async () => {
+    // Página 1 cheia (200) toda enviada → gasta 200 de orçamento? Não:
+    // usamos 199 enviados + 1 deduped para sobrar exatamente 1 de
+    // orçamento, e então uma página CURTA (10 linhas) que envia.
+    // Só 1 das 10 é processada → o cursor não pode zerar.
+    let call = 0
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => {
+      call += 1
+      if (call === 1) {
+        return Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `p1-${i}` }))
+      }
+      return Array.from({ length: 10 }, (_, i) => makeRow({ profileId: `curta-${i}` }))
+    })
+    hasDelinquencyNoticeSinceMock.mockImplementation(
+      async (params: { profileId: string }) => params.profileId === "p1-0"
+    )
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    const result = output.result as { sent: number; nextDunningScanCursor: number }
+    expect(result.sent).toBe(200)
+    // 200 da página 1 + 1 processada da página curta = 201. Zerar aqui
+    // esqueceria as outras 9 linhas por uma volta inteira.
+    expect(result.nextDunningScanCursor).toBe(201)
+  })
+
+  it("controle negativo: página curta CONSUMIDA POR INTEIRO reseta o cursor (fim de lista real)", async () => {
+    // Sem truncamento: a página curta cabe inteira no orçamento, então é
+    // fim de lista de verdade e o cursor fecha a volta em 0.
+    let call = 0
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => {
+      call += 1
+      if (call === 1) {
+        return Array.from({ length: 200 }, (_, i) => makeRow({ profileId: `q1-${i}` }))
+      }
+      return Array.from({ length: 10 }, (_, i) => makeRow({ profileId: `q2-${i}` }))
+    })
+    // Tudo deduped: não gasta orçamento, as duas páginas passam inteiras.
+    hasDelinquencyNoticeSinceMock.mockImplementation(async () => true)
+
+    const useCase = new OverdueReminderUseCase()
+    const output = await useCase.processOverdueReminders()
+
+    const result = output.result as { scanned: number; nextDunningScanCursor: number }
+    expect(result.scanned).toBe(210)
+    expect(result.nextDunningScanCursor).toBe(0)
+  })
+
   it("DUNNING_CRON_KEY bate com o cronKey literal da rota — resolveStartCursor não pode ler a execução do cron errado", () => {
     // cronAuditCoverage.test.ts exige `cronKey: "..."` literal na rota (regex
     // estática), então a rota não pode importar esta constante — o teste

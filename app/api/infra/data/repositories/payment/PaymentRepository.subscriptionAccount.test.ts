@@ -11,13 +11,23 @@ import { prismaModuleMock, registerPrismaModuleMock } from "@/test/support/prism
 // atravessar DTO → UseCase → Service → Repository.
 
 const profileSubscriptionUpsertMock = mock(async (_args: unknown) => ({}))
-const profileUpdateMock = mock(async (_args: unknown) => ({ id: "profile-1" }))
+const profileUpdateMock = mock(async (_args?: { data?: Record<string, unknown> }) => ({
+  id: "profile-1",
+}))
 const profileFindUniqueOrThrowMock = mock(async (_args: unknown) => ({ id: "profile-1" }))
+/** Ponteiro atual do Profile — decide se a conta pode ser copiada pra lá. */
+const profileFindUniqueMock = mock(
+  async (_args: unknown) => ({ asaasSubscriptionId: null }) as { asaasSubscriptionId: string | null } | null
+)
 
 registerPrismaModuleMock()
 Object.assign(prismaModuleMock, {
   profileSubscription: { upsert: profileSubscriptionUpsertMock },
-  profile: { update: profileUpdateMock, findUniqueOrThrow: profileFindUniqueOrThrowMock },
+  profile: {
+    update: profileUpdateMock,
+    findUniqueOrThrow: profileFindUniqueOrThrowMock,
+    findUnique: profileFindUniqueMock,
+  },
 })
 
 const { PaymentRepository } = await import("./PaymentRepository")
@@ -26,6 +36,12 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
   beforeEach(() => {
     profileSubscriptionUpsertMock.mockClear()
     profileUpdateMock.mockClear()
+    profileFindUniqueMock.mockReset()
+    // Default: o Profile aponta para a MESMA assinatura do evento, então
+    // copiar a conta pra lá é correto.
+    profileFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_legacy_webhook",
+    }))
   })
 
   it("evento da conta legacy grava asaasSubscriptionAccount='legacy' no upsert e no Profile", async () => {
@@ -57,7 +73,60 @@ describe("PaymentRepository.updateSubscriptionData — conta junto do id (achado
     )
   })
 
+  /**
+   * Achado P1 da 4ª rodada (chatgpt-codex-connector, thread PRRT_...ZZPj):
+   * este método nunca grava `asaasSubscriptionId` no Profile — só no
+   * ProfileSubscription. Copiar a conta pra lá quando o ponteiro do Profile
+   * é OUTRA assinatura monta um par inconsistente `(id primary, conta
+   * legacy)`, e as operações roteadas por conta passam a bater na conta
+   * errada. Cenário real: pagar uma assinatura de produto legada enquanto o
+   * Profile aponta para a assinatura primária.
+   */
+  it("achado P1 PRRT_...ZZPj: conta NÃO é copiada para o Profile quando o ponteiro dele é outra assinatura", async () => {
+    profileFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_profile_primary",
+    }))
+    const repo = new PaymentRepository()
+
+    await repo.updateSubscriptionData("profile-dual", {
+      subscriptionId: "sub_produto_legacy",
+      subscriptionAccount: "legacy",
+      subscriptionStatus: "active",
+    })
+
+    // A linha da assinatura recebe a conta correta...
+    expect(profileSubscriptionUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ asaasSubscriptionAccount: "legacy" }),
+      })
+    )
+    // ...mas o Profile, que aponta para outra assinatura, não é rotulado.
+    const profileWrites = profileUpdateMock.mock.calls.filter(
+      (call) => call[0]?.data !== undefined && "asaasSubscriptionAccount" in call[0].data
+    )
+    expect(profileWrites).toHaveLength(0)
+  })
+
+  it("controle negativo: Profile sem ponteiro próprio também não é rotulado", async () => {
+    profileFindUniqueMock.mockImplementation(async () => ({ asaasSubscriptionId: null }))
+    const repo = new PaymentRepository()
+
+    await repo.updateSubscriptionData("profile-sem-ponteiro", {
+      subscriptionId: "sub_qualquer",
+      subscriptionAccount: "legacy",
+      subscriptionStatus: "active",
+    })
+
+    const profileWrites = profileUpdateMock.mock.calls.filter(
+      (call) => call[0]?.data !== undefined && "asaasSubscriptionAccount" in call[0].data
+    )
+    expect(profileWrites).toHaveLength(0)
+  })
+
   it("controle negativo: evento da conta primary continua gravando primary", async () => {
+    profileFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_primary_webhook",
+    }))
     const repo = new PaymentRepository()
 
     await repo.updateSubscriptionData("profile-2", {

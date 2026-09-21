@@ -130,6 +130,10 @@ export class OverdueReminderUseCase {
     let skip = startCursor;
     let scanned = 0;
     let hasMorePages = true;
+    // Achado P1 da 4ª rodada (thread PRRT_...ZZPo): só é "fim de lista" se
+    // a última página tiver sido consumida INTEIRA. Uma página curta cortada
+    // pelo orçamento deixa sufixo para trás e não pode zerar o cursor.
+    let lastPageFullyProcessed = true;
 
     while (
       hasMorePages &&
@@ -160,13 +164,18 @@ export class OverdueReminderUseCase {
       skip += processedInPage;
       scanned += processedInPage;
       totals.candidates += processedInPage;
+      lastPageFullyProcessed = processedInPage === page.length;
     }
 
-    // Achado P1 (thread PRRT_...CUk5): chegou ao fim de verdade (última
-    // página veio incompleta) → fecha a volta e recomeça do zero amanhã.
-    // Parou por teto/orçamento com mais páginas pela frente → continua
-    // exatamente daqui na próxima execução, nunca relendo o mesmo prefixo.
-    const nextDunningScanCursor = hasMorePages ? skip : 0;
+    // Achado P1 (threads PRRT_...CUk5 e PRRT_...ZZPo): só fecha a volta
+    // quando chegou ao fim de verdade — última página incompleta E
+    // inteiramente processada. Se o orçamento cortou a página no meio
+    // (mesmo sendo uma página curta, "última" pelo tamanho), sobra sufixo
+    // não processado e o cursor tem de persistir onde parou; zerar ali
+    // adiaria essas linhas por uma volta inteira, que é a inanição que o
+    // cursor veio resolver.
+    const reachedEndOfList = !hasMorePages && lastPageFullyProcessed;
+    const nextDunningScanCursor = reachedEndOfList ? 0 : skip;
 
     console.info("[OverdueReminderUseCase] done", { ...totals, scanned, nextDunningScanCursor });
 

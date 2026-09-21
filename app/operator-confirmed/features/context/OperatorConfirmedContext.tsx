@@ -3,11 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePollingWithCap } from "@/lib/polling/usePollingWithCap";
-import { isOperatorProvisioningTerminal } from "../utils/operatorProvisioning";
+import { isOperatorProvisioningTerminal, isPollFailureTerminal, type PollFailureReason } from "../utils/operatorProvisioning";
 import { operatorConfirmedService } from "../services/OperatorConfirmedService";
 import { initialOperatorConfirmedState, type OperatorConfirmedState, type PendingOperatorData } from "./OperatorConfirmedTypes";
 
-type PollOutcome = { ok: true; data: PendingOperatorData } | { ok: false };
+type PollOutcome =
+  | { ok: true; data: PendingOperatorData }
+  | { ok: false; reason: PollFailureReason };
 
 type Action =
   | { type: "SET_LOADING" }
@@ -51,10 +53,10 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
   const poll = useCallback(async (): Promise<PollOutcome> => {
     if (!pendingOperatorId) {
       dispatch({ type: "SET_ERROR", payload: "ID do operador não fornecido" });
-      return { ok: false };
+      return { ok: false, reason: "missing-id" };
     }
 
-    if (fetchInflightRef.current) return { ok: false };
+    if (fetchInflightRef.current) return { ok: false, reason: "in-flight" };
     fetchInflightRef.current = true;
 
     try {
@@ -66,14 +68,17 @@ export function OperatorConfirmedProvider({ children }: { children: ReactNode })
         type: "SET_ERROR",
         payload: error instanceof Error ? error.message : "Erro ao buscar informações do operador",
       });
-      return { ok: false };
+      // Achado P2 da revisão do PR #1207 (thread PRRT_...ZZPv): rede caída
+      // ou 5xx passageiro não é desfecho — o polling com teto tenta de novo
+      // antes de empurrar o usuário para o erro manual.
+      return { ok: false, reason: "transient" };
     } finally {
       fetchInflightRef.current = false;
     }
   }, [pendingOperatorId]);
 
   const isTerminal = useCallback((outcome: PollOutcome) => {
-    if (!outcome.ok) return true;
+    if (!outcome.ok) return isPollFailureTerminal(outcome.reason);
     return isOperatorProvisioningTerminal(outcome.data);
   }, []);
 

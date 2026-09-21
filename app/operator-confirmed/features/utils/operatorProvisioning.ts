@@ -40,3 +40,28 @@ export function isOperatorProvisioningTerminal(input: OperatorProvisioningInput)
   const outcome = classifyOperatorProvisioning(input);
   return outcome === "created" || outcome === "failed";
 }
+
+/** Motivo pelo qual uma tentativa de poll não trouxe dados. */
+export type PollFailureReason =
+  /** Não há o que buscar — sem id na URL. Nenhum retry resolve. */
+  | "missing-id"
+  /** Uma chamada já estava em voo; esta tentativa simplesmente não fez nada. */
+  | "in-flight"
+  /** Rede caiu, 5xx, timeout — o próximo retry pode muito bem funcionar. */
+  | "transient";
+
+/**
+ * Achado P2 da revisão do PR #1207 (chatgpt-codex-connector, thread
+ * PRRT_...ZZPv): a tela tratava QUALQUER `{ ok: false }` como desfecho
+ * terminal, então uma falha de rede ou um 5xx passageiro na primeira
+ * tentativa parava todo o polling automático e jogava o usuário no estado
+ * de erro manual — justamente na tela em que ele acabou de pagar e está
+ * esperando o provisionamento. O teto de tentativas (`usePollingWithCap`)
+ * já limita a insistência; não há razão para desistir na primeira falha
+ * transitória.
+ *
+ * Continua terminal só o que nenhum retry resolve: id ausente.
+ */
+export function isPollFailureTerminal(reason: PollFailureReason): boolean {
+  return reason === "missing-id";
+}

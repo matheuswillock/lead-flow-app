@@ -29,6 +29,9 @@ class PrismaAsaasSubscriptionSyncRepository {
         where: { profileId },
         select: {
           asaasSubscriptionId: true,
+          // Achado P1 da revisão do PR #1207 (thread PRRT_...ZZPb): a conta
+          // TEM de vir da mesma linha que ganhou o id — ver abaixo.
+          asaasSubscriptionAccount: true,
           hasPermanentSubscription: true,
         },
       }),
@@ -44,11 +47,23 @@ class PrismaAsaasSubscriptionSyncRepository {
 
     if (!profile && !profileSubscription) return null;
 
+    // Achado P1 da revisão do PR #1207 (chatgpt-codex-connector, thread
+    // PRRT_...ZZPb): o par (id, conta) tem de sair da MESMA linha. A versão
+    // anterior pegava o id do ProfileSubscription (quando existia) e a conta
+    // sempre do Profile — no caso divergente que a correção do achado CUk2
+    // preserva de propósito (ProfileSubscription de produto/conta distinta
+    // do ponteiro do Profile), isso roteava o GET para a conta errada e
+    // 404ava em série, além de `saveSyncData` regravar essa conta alheia de
+    // volta na linha da assinatura.
+    const subscriptionPointerWins = Boolean(profileSubscription?.asaasSubscriptionId);
+
     return {
       asaasSubscriptionId: profileSubscription?.asaasSubscriptionId ?? profile?.asaasSubscriptionId ?? null,
       hasPermanentSubscription:
         profileSubscription?.hasPermanentSubscription === true || profile?.hasPermanentSubscription === true,
-      asaasSubscriptionAccount: profile?.asaasSubscriptionAccount ?? "primary",
+      asaasSubscriptionAccount: subscriptionPointerWins
+        ? (profileSubscription?.asaasSubscriptionAccount ?? "primary")
+        : (profile?.asaasSubscriptionAccount ?? "primary"),
     };
   }
 

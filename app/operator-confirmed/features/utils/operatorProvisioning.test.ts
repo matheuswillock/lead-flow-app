@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   classifyOperatorProvisioning,
   isOperatorProvisioningTerminal,
+  isPollFailureTerminal,
 } from "./operatorProvisioning";
 
 describe("classifyOperatorProvisioning", () => {
@@ -64,3 +65,17 @@ describe("isOperatorProvisioningTerminal", () => {
     expect(isOperatorProvisioningTerminal({ paymentStatus: "FAILED", operatorCreated: false })).toBe(true);
   });
 });
+
+describe("isPollFailureTerminal — achado P2 PRRT_...ZZPv", () => {
+  it("falha transitória (rede/5xx) NÃO é terminal — o polling com teto precisa poder tentar de novo", () => {
+    expect(isPollFailureTerminal("transient")).toBe(false)
+  })
+
+  it("chamada já em voo não é terminal — só significa que esta tentativa não fez nada", () => {
+    expect(isPollFailureTerminal("in-flight")).toBe(false)
+  })
+
+  it("controle negativo: id ausente continua terminal — nenhum retry inventa um id", () => {
+    expect(isPollFailureTerminal("missing-id")).toBe(true)
+  })
+})

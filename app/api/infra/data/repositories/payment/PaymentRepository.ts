@@ -100,8 +100,21 @@ export class PaymentRepository implements IPaymentRepository {
 
     // Keep Profile in sync for legacy compatibility
     const profileData: any = {};
-    if (data.subscriptionAccount !== undefined) {
-      profileData.asaasSubscriptionAccount = data.subscriptionAccount;
+    // Achado P1 da revisão do PR #1207 (thread PRRT_...ZZPj): este método
+    // nunca grava `asaasSubscriptionId` no Profile — só no
+    // ProfileSubscription. Copiar a conta pra cá quando o ponteiro do
+    // Profile é OUTRA assinatura montaria um par inconsistente
+    // `(id de uma, conta de outra)`, que é exatamente o que
+    // `getSyncSnapshot` e o roteamento por conta consomem. Só rotula
+    // quando o Profile aponta para a MESMA assinatura do evento.
+    if (data.subscriptionAccount !== undefined && data.subscriptionId !== undefined) {
+      const currentProfilePointer = await prisma.profile.findUnique({
+        where: { id: profileId },
+        select: { asaasSubscriptionId: true },
+      });
+      if (currentProfilePointer?.asaasSubscriptionId === data.subscriptionId) {
+        profileData.asaasSubscriptionAccount = data.subscriptionAccount;
+      }
     }
     if (data.subscriptionPlan !== undefined) profileData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) profileData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
