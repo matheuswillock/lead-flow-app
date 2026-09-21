@@ -1,12 +1,14 @@
-import type { TaskAssigneeStatus, TaskType } from "@prisma/client";
+import type { Prisma, TaskAssigneeStatus, TaskType } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { isTeamScopeVisibilityEmpty } from "@/lib/teams/teamScopeVisibility";
+import { buildTaskTeamScopeWhere } from "./taskTeamScopeWhere";
 import type {
   ITaskRepository,
   TaskWithRelations,
   CreateTaskDTO,
   CreateActivityDTO,
-  TaskByDateFilter,
+  TaskTeamScopeDateFilter,
   AssigneeWithGoogleSync,
 } from "./ITaskRepository";
 
@@ -18,7 +20,9 @@ const ASSIGNEE_PROFILE_SELECT = {
 } as const;
 
 const TASK_INCLUDE = {
-  lead: { select: { id: true, name: true, leadCode: true } },
+  // `teamId` vai no payload porque o Calendario lista tarefa de varios times e
+  // as acoes do card sao autorizadas contra o time DONO da tarefa.
+  lead: { select: { id: true, name: true, leadCode: true, teamId: true } },
   creator: { select: ASSIGNEE_PROFILE_SELECT },
   assignees: {
     include: { profile: { select: ASSIGNEE_PROFILE_SELECT } },
@@ -83,28 +87,36 @@ class TaskRepository implements ITaskRepository {
     return task as TaskWithRelations;
   }
 
-  async findByTeamAndDateRange(filter: TaskByDateFilter): Promise<TaskWithRelations[]> {
-    const where: Record<string, unknown> = {
-      lead: { teamId: filter.teamId },
-    };
+  async findByTeamScopeAndDateRange(
+    filter: TaskTeamScopeDateFilter
+  ): Promise<TaskWithRelations[]> {
+    if (isTeamScopeVisibilityEmpty(filter.visibility)) {
+      return [];
+    }
+
+    // O escopo e o intervalo de datas sao dois `OR` independentes: sob a mesma
+    // chave `where.OR` um sobrescreveria o outro, entao vao em `AND`.
+    const conditions: Prisma.TaskWhereInput[] = [buildTaskTeamScopeWhere(filter.visibility)];
 
     if (filter.leadId) {
-      where.leadId = filter.leadId;
+      conditions.push({ leadId: filter.leadId });
     }
 
     if (filter.dateFrom || filter.dateTo) {
-      const dateFilter: Record<string, unknown> = {};
+      const dateFilter: Prisma.DateTimeNullableFilter = {};
       if (filter.dateFrom) dateFilter.gte = filter.dateFrom;
       if (filter.dateTo) dateFilter.lte = filter.dateTo;
-      where.OR = [
-        { startAt: dateFilter },
-        { endAt: dateFilter },
-        { startAt: null, createdAt: dateFilter },
-      ];
+      conditions.push({
+        OR: [
+          { startAt: dateFilter },
+          { endAt: dateFilter },
+          { startAt: null, createdAt: dateFilter as Prisma.DateTimeFilter },
+        ],
+      });
     }
 
     const tasks = await prisma.task.findMany({
-      where,
+      where: { AND: conditions },
       include: TASK_INCLUDE,
       orderBy: [{ startAt: "asc" }, { createdAt: "asc" }],
     });
@@ -147,8 +159,15 @@ class TaskRepository implements ITaskRepository {
     });
     const taskWithRelations = updatedTask as TaskWithRelations;
 
+    // `Task.activityId` é opcional (`onDelete: SetNull`): sem atividade vinculada
+    // não há payload para sincronizar. Mandar "" para uma coluna uuid quebra com
+    // P2023 e derruba o PATCH da tarefa com 500.
+    if (!taskWithRelations.activityId) {
+      return taskWithRelations;
+    }
+
     await prisma.leadActivity.updateMany({
-      where: { id: taskWithRelations.activityId ?? "" },
+      where: { id: taskWithRelations.activityId },
       data: {
         body: input.body.trim(),
         payload: {

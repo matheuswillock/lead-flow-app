@@ -5,6 +5,8 @@ export type SendDnsInstructionsEmailInput = {
   recipientEmail: string
   domainName: string
   records: CustomDomainDnsRecord[]
+  /** Hospedagem de DNS identificada pelos nameservers; ausente mantém o texto genérico. */
+  providerName?: string | null
 }
 
 export type SendDnsInstructionsEmailResult = {

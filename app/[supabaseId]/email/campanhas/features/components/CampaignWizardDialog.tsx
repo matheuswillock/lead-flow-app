@@ -63,6 +63,7 @@ import {
   EMAIL_CAMPAIGN_MAX_RECIPIENTS_PER_SUB,
   type WizardTabId,
 } from "../validation/campaignWizardSchema"
+import { useScheduleFloor } from "../hooks/useScheduleFloor"
 import { CampaignWizardBrowserTabs, type WizardTabState } from "./CampaignWizardBrowserTabs"
 import { CampaignWizardSummaryPanel } from "./CampaignWizardSummaryPanel"
 import { CampaignListStrategyDialog } from "./CampaignListStrategyDialog"
@@ -145,7 +146,7 @@ function HoldToConfirmButton({
   return (
     <Button
       type="button"
-      className="relative w-full min-w-0 overflow-hidden sm:w-auto sm:min-w-52"
+      className="relative w-full min-w-0 overflow-hidden max-lg:h-11 sm:w-auto sm:min-w-52"
       onPointerDown={startHold}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
@@ -230,6 +231,9 @@ export function CampaignWizardDialog() {
     handleMaterializeRadarSegment,
     materializingSegment,
   } = useCampanhasContext()
+
+  /** Piso "agora" dos pickers de agendamento, renovado com o wizard aberto. */
+  const scheduleFloor = useScheduleFloor(wizardOpen)
 
   const [strategyDialogOpen, setStrategyDialogOpen] = useState(false)
   const [pendingListSelection, setPendingListSelection] = useState<string[]>([])
@@ -384,6 +388,17 @@ export function CampaignWizardDialog() {
     submitParse,
     subcampanhasParseSuccess,
   ])
+
+  /**
+   * Motivos que ainda travam a confirmação, deduplicados por mensagem.
+   *
+   * Sem isto a Revisão só mostrava (!) e o botão apagado — o usuário não tinha
+   * como descobrir que o agendamento havia vencido. `submitParse` é refeito a
+   * cada render, então memoizar aqui não pouparia trabalho.
+   */
+  const submitBlockReasons = submitParse.success
+    ? []
+    : Array.from(new Set(submitParse.error.issues.map((issue) => issue.message)))
 
   useEffect(() => {
     if (!wizardOpen) return
@@ -835,6 +850,7 @@ export function CampaignWizardDialog() {
                           }
                           disabled={formDisabled}
                           disablePastDates
+                          minDateTime={scheduleFloor}
                           tz={tz}
                         />
                         {previewSubCount > 1 && wizardUniformSchedule ? (
@@ -976,6 +992,7 @@ export function CampaignWizardDialog() {
                                         label=""
                                         disabled={formDisabled}
                                         disablePastDates
+                                        minDateTime={scheduleFloor}
                                         tz={tz}
                                       />
                                     </TableCell>
@@ -1073,6 +1090,19 @@ export function CampaignWizardDialog() {
                         </FieldDescription>
                       )}
                     </FieldGroup>
+
+                    {submitBlockReasons.length > 0 ? (
+                      <Alert variant="destructive">
+                        <AlertTitle>Pendências para confirmar</AlertTitle>
+                        <AlertDescription>
+                          <ul className="flex list-disc flex-col gap-1 pl-4">
+                            {submitBlockReasons.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
                   </div>
                 ) : null}
               </>
@@ -1085,7 +1115,7 @@ export function CampaignWizardDialog() {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="w-full sm:w-auto"
+                  className="w-full max-lg:h-11 sm:w-auto"
                   onClick={() => setWizardActiveTab(previousTab)}
                   disabled={formDisabled}
                 >
@@ -1095,7 +1125,7 @@ export function CampaignWizardDialog() {
               {!isRevisao ? (
                 <Button
                   type="button"
-                  className="w-full sm:w-auto"
+                  className="w-full max-lg:h-11 sm:w-auto"
                   onClick={() => {
                     if (nextTab && canGoNext) setWizardActiveTab(nextTab)
                   }}
@@ -1119,7 +1149,7 @@ export function CampaignWizardDialog() {
             </div>
             <Button
               variant="outline"
-              className="order-2 w-full sm:order-1 sm:w-auto"
+              className="order-2 w-full max-lg:h-11 sm:order-1 sm:w-auto"
               onClick={closeWizard}
               disabled={wizardSaving}
             >

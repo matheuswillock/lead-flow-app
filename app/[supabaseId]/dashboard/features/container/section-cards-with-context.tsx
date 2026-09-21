@@ -55,7 +55,7 @@ function InfoTooltip({ text }: { text: string }) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+          className="ml-2 inline-flex size-6 max-lg:size-11 items-center justify-center rounded-full border border-white/10 text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
           aria-label="Ver detalhes do calculo"
         >
           <Info className="h-4 w-4" />
@@ -382,7 +382,7 @@ export function SectionCardsWithContext() {
               size="sm"
               variant={filters.period === period.value && !customDateRange ? "default" : "outline"}
               onClick={() => setPeriod(period.value)}
-              className="text-xs"
+              className="text-xs max-lg:h-11"
             >
               {period.label}
             </Button>
@@ -392,10 +392,15 @@ export function SectionCardsWithContext() {
             value={customDateFilterRange}
             onChange={handleCustomDateRangeChange}
           />
-          <Button size="sm" variant="outline" onClick={clearCustomDateRange} className="text-xs">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={clearCustomDateRange}
+            className="text-xs max-lg:h-11"
+          >
             Limpar
           </Button>
-          <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
+          <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2 max-lg:h-11">
             {isBlurred ? (
               <>
                 <EyeOff className="h-4 w-4" />

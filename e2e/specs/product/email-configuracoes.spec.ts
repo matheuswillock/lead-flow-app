@@ -54,7 +54,19 @@ const MOCK_DNS_RECORDS = [
   },
 ]
 
-function domainRecordsPayload() {
+/**
+ * A hospedagem é resolvida no servidor por DNS-over-HTTPS a partir dos NS do
+ * domínio. Em E2E a resolução entra pelo mesmo ponto que os registros: a rota
+ * de `records` já é interceptada, então o `dnsProvider` do payload é a costura.
+ */
+const MOCK_DNS_PROVIDER = {
+  name: "HostGator",
+  nameservers: ["ns1158.hostgator.com.br", "ns1159.hostgator.com.br"],
+}
+
+function domainRecordsPayload(
+  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER
+) {
   return {
     isValid: true,
     successMessages: [],
@@ -64,6 +76,7 @@ function domainRecordsPayload() {
       domainName: DOMAIN_NAME,
       status: "pending",
       region: "us-east-1",
+      dnsProvider,
       connectedAt: new Date().toISOString(),
       openTracking: false,
       clickTracking: false,
@@ -112,14 +125,31 @@ async function clearConnectedDomain(): Promise<void> {
   })
 }
 
-async function mockDomainRecordsRoute(page: Page): Promise<void> {
+async function mockDomainRecordsRoute(
+  page: Page,
+  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER
+): Promise<void> {
   await page.route("**/email/settings/domain/records**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(domainRecordsPayload()),
+      body: JSON.stringify(domainRecordsPayload(dnsProvider)),
     })
   )
+}
+
+/**
+ * Coluna do grid de resumo do card (Criado / Status / Hospedagem / Região).
+ * Escopado no grid de propósito: "Status" também é cabeçalho da tabela de
+ * registros DNS logo abaixo, e um `getByText` solto casa as duas coisas.
+ */
+function domainField(page: Page, label: string) {
+  return page
+    .locator("div.grid")
+    .filter({ has: page.getByText("Hospedagem", { exact: true }) })
+    .first()
+    .locator("> div")
+    .filter({ has: page.getByText(label, { exact: true }) })
 }
 
 async function gotoEmailSettings(page: Page): Promise<void> {
@@ -235,6 +265,64 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       expect(verifyRequested).toBe(true)
     })
 
+    test("mostra a hospedagem de DNS e mantém o badge de status do tamanho do texto", async ({
+      page,
+    }) => {
+      await mockDomainRecordsRoute(page)
+      await gotoEmailSettings(page)
+
+      const hostingField = domainField(page, "Hospedagem")
+      await expect(hostingField).toContainText("HostGator", { timeout: 30_000 })
+
+      // Medido, não julgado: o badge é filho de `flex flex-col`, que estica por
+      // `align-items: stretch`. A regressão aparece como badge da largura da
+      // coluna inteira, não como texto errado.
+      const statusBadge = domainField(page, "Status").locator("div").first()
+      await expect(statusBadge).toHaveText("Pendente")
+
+      const statusColumn = domainField(page, "Status")
+      const badgeBox = await statusBadge.boundingBox()
+      const columnBox = await statusColumn.boundingBox()
+      expect(badgeBox, "badge de status sem caixa renderizada").not.toBeNull()
+      expect(columnBox, "coluna de status sem caixa renderizada").not.toBeNull()
+      expect(badgeBox!.width).toBeLessThan(columnBox!.width)
+
+      const badgeContentWidth = await statusBadge.evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        const style = getComputedStyle(element)
+        const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+        const border = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
+        return range.getBoundingClientRect().width + padding + border
+      })
+      // Tolerância de 1px: arredondamento de subpixel do layout, não folga.
+      expect(badgeBox!.width).toBeLessThanOrEqual(badgeContentWidth + 1)
+    })
+
+    test("mostra os nameservers crus quando a hospedagem não está no mapa", async ({ page }) => {
+      await mockDomainRecordsRoute(page, {
+        name: null,
+        nameservers: ["ns1.provedor-local.example", "ns2.provedor-local.example"],
+      })
+      await gotoEmailSettings(page)
+
+      const hostingField = domainField(page, "Hospedagem")
+      await expect(hostingField).toContainText("Não identificado", { timeout: 30_000 })
+      await expect(hostingField).toContainText("ns1.provedor-local.example")
+    })
+
+    test("mantém a tela intacta quando a resolução de hospedagem falha", async ({ page }) => {
+      await mockDomainRecordsRoute(page, null)
+      await gotoEmailSettings(page)
+
+      // Degradação silenciosa: o campo mostra "—" e o resto do card segue igual.
+      await expect(domainField(page, "Hospedagem")).toContainText("—", { timeout: 30_000 })
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible()
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Registros de envio (SPF) não encontrados" })
+      ).toBeVisible()
+    })
+
     test("copia instruções em texto puro geradas dos registros reais", async ({
       page,
       context,
@@ -250,6 +338,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       const copiedText = await page.evaluate(() => navigator.clipboard.readText())
       expect(copiedText).toContain(
         `Registros DNS para verificação do domínio ${DOMAIN_NAME} no Corretor Studio`
+      )
+      // Hospedagem identificada entra na narrativa: o operador sabe qual painel abrir.
+      expect(copiedText).toContain(
+        `Cadastre os registros abaixo no painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}:`
       )
       for (const record of MOCK_DNS_RECORDS) {
         expect(copiedText).toContain(record.value)
@@ -271,7 +363,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       const copiedPrompt = await page.evaluate(() => navigator.clipboard.readText())
       expect(copiedPrompt).toContain(
-        `Você tem acesso ao gerenciador de DNS da hospedagem do domínio ${DOMAIN_NAME}.`
+        `Você tem acesso ao painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}.`
       )
       expect(copiedPrompt).toContain("nuvem laranja")
       expect(copiedPrompt).toContain("um a um")

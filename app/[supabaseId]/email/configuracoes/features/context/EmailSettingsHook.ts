@@ -12,6 +12,7 @@ import type {
 import type {
   BlockedDateRange,
   DomainConnectResult,
+  DomainDnsProvider,
   DomainEvent,
   DomainRecord,
   EmailGlobalVariable,
@@ -84,6 +85,7 @@ export type EmailSettingsHookReturn = {
   domainStatus: ResendDomainStatus | null
   domainName: string | null
   domainRegion: string | null
+  domainDnsProvider: DomainDnsProvider | null
   domainConnectedAt: string | null
   domainOpenTracking: boolean
   domainClickTracking: boolean
@@ -151,6 +153,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [domainStatus, setDomainStatus] = useState<ResendDomainStatus | null>(null)
   const [domainName, setDomainName] = useState<string | null>(null)
   const [domainRegion, setDomainRegion] = useState<string | null>(null)
+  const [domainDnsProvider, setDomainDnsProvider] = useState<DomainDnsProvider | null>(null)
   const [domainConnectedAt, setDomainConnectedAt] = useState<string | null>(null)
   const [domainOpenTracking, setDomainOpenTracking] = useState(false)
   const [domainClickTracking, setDomainClickTracking] = useState(false)
@@ -431,6 +434,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainName(result.domainName)
       setDomainStatus(result.status as ResendDomainStatus)
       setDomainRegion(result.region ?? null)
+      setDomainDnsProvider(result.dnsProvider ?? null)
       setDomainConnectedAt(result.connectedAt ?? new Date().toISOString())
       setDomainOpenTracking(result.openTracking ?? true)
       setDomainClickTracking(result.clickTracking ?? true)
@@ -458,6 +462,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainName(null)
       setDomainStatus(null)
       setDomainRegion(null)
+      setDomainDnsProvider(null)
       setDomainConnectedAt(null)
       setDomainOpenTracking(false)
       setDomainClickTracking(false)
@@ -483,6 +488,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       setDomainRecords(result.records)
       setDomainStatus(result.status as ResendDomainStatus)
       setDomainRegion(result.region ?? domainRegion)
+      setDomainDnsProvider(result.dnsProvider ?? null)
       setDomainConnectedAt(result.connectedAt ?? domainConnectedAt)
       setDomainOpenTracking(result.openTracking ?? domainOpenTracking)
       setDomainClickTracking(result.clickTracking ?? domainClickTracking)
@@ -528,7 +534,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       }
       try {
         await navigator.clipboard.writeText(
-          buildArtifact({ domainName, records: domainRecords })
+          buildArtifact({
+            domainName,
+            records: domainRecords,
+            providerName: domainDnsProvider?.name ?? null,
+          })
         )
         toast.success(successMessage)
       } catch (err) {
@@ -536,7 +546,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
         toast.error("Não foi possível copiar")
       }
     },
-    [domainName, domainRecords]
+    [domainName, domainRecords, domainDnsProvider]
   )
 
   const handleCopyDnsInstructions = useCallback(
@@ -646,6 +656,7 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     domainStatus,
     domainName,
     domainRegion,
+    domainDnsProvider,
     domainConnectedAt,
     domainOpenTracking,
     domainClickTracking,
