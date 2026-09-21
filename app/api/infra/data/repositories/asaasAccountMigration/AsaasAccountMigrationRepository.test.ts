@@ -117,6 +117,7 @@ describe("AsaasAccountMigrationRepository", () => {
       armTransition({
         legacyCustomerId: "cus_1",
         status: "pending",
+        attemptCount: 0,
         primaryCustomerId: null,
         primarySubscriptionId: null,
         anomalyNotes: null,
@@ -133,14 +134,57 @@ describe("AsaasAccountMigrationRepository", () => {
       // O `where` carrega o status OBSERVADO além do id: é o
       // compare-and-swap que impede dois workers de aplicarem transições
       // concorrentes sobre o mesmo estado lido (achado codex P1).
+      //
+      // Achado P2 da 6ª rodada (thread PRRT_...dNdV): `status` sozinho não
+      // é CAS completo — a máquina permite `pending → failed → pending`
+      // (ciclo ABA), e um worker pausado no primeiro `pending` acordaria
+      // depois do ciclo, passaria no predicado e sobrescreveria os ids da
+      // tentativa mais nova com valores velhos. `attemptCount` é monotônico
+      // (todo `transition` incrementa) e distingue as duas visitas.
       expect(updateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { legacyCustomerId: "cus_1", status: "pending" },
+          where: { legacyCustomerId: "cus_1", status: "pending", attemptCount: 0 },
           data: expect.objectContaining({
             status: "customer_created",
             attemptCount: { increment: 1 },
             primaryCustomerId: "cus_new_1",
           }),
+        })
+      )
+    })
+
+    it("achado P2 PRRT_...dNdV: o ciclo ABA (pending → failed → pending) não passa no CAS com attemptCount velho", async () => {
+      // O worker leu a linha na 1ª visita a `pending` (attemptCount 0).
+      // Enquanto dormia, houve `pending → failed → pending`, que deixou a
+      // linha de novo em `pending` mas com attemptCount 2. O `where` com o
+      // attemptCount observado não casa mais, e o CAS recusa.
+      armTransition(
+        {
+          legacyCustomerId: "cus_aba",
+          status: "pending",
+          attemptCount: 0,
+          primaryCustomerId: null,
+          primarySubscriptionId: null,
+          anomalyNotes: null,
+          migratedAt: null,
+        },
+        0 // a linha real está em attemptCount 2 — nenhuma linha casa
+      )
+
+      const repo = new AsaasAccountMigrationRepository()
+
+      await expect(
+        repo.transition({
+          legacyCustomerId: "cus_aba",
+          toStatus: "customer_created",
+          primaryCustomerId: "cus_stale",
+        })
+      ).rejects.toThrow(ConcurrentAsaasAccountMigrationUpdateError)
+
+      // A chave do guard: o attemptCount observado entrou no `where`.
+      expect(updateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ attemptCount: 0 }),
         })
       )
     })

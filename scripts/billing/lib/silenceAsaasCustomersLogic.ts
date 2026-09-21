@@ -65,13 +65,38 @@ export function assertLegacyAccountDump(dump: InventoryDumpShape): void {
 }
 
 /**
- * T-30.6: candidatos ao silenciamento = customers com notificação LIGADA
- * e não deletados. Vem do JSON do inventário (C7), nunca de lista embutida.
+ * T-30.6: candidatos ao silenciamento = customers não deletados cujo
+ * backfill ainda não foi CONCLUÍDO. Vem do JSON do inventário (C7), nunca
+ * de lista embutida.
+ *
+ * Achado P2 da revisão do PR #1207 (thread PRRT_...dNdO): filtrar só por
+ * `!notificationDisabled` excluía permanentemente quem falhou no MEIO do
+ * processo. O silenciamento tem duas fases — `disableCustomerNotifications`
+ * (flag do customer) e depois listar/desligar os canais. Se a primeira
+ * passa e a segunda falha, o próximo dump traz `notificationDisabled: true`
+ * e o cliente nunca mais é selecionado, com os canais ainda ligados: M0.5
+ * fica incompleto e invisível.
+ *
+ * O sinal de conclusão correto é o ledger (`AsaasNotificationBackfill`),
+ * que `markCompleted`/`markFailed` já mantêm por customer — não a flag do
+ * Asaas, que reflete só a primeira fase. Reprocessar quem foi silenciado
+ * mas não concluiu é seguro: as duas chamadas do gateway são idempotentes.
+ *
+ * `completedCustomerIds` ausente (ledger indisponível) degrada para o
+ * comportamento anterior — só quem tem notificação ligada —, que é o
+ * correto quando não há histórico para consultar.
  */
-export function selectCustomersToSilence(dump: InventoryDumpShape): AsaasCustomer[] {
-  return dump.customers.data.filter(
-    (customer) => !customer.notificationDisabled && !customer.deleted
-  )
+export function selectCustomersToSilence(
+  dump: InventoryDumpShape,
+  completedCustomerIds?: ReadonlySet<string>
+): AsaasCustomer[] {
+  return dump.customers.data.filter((customer) => {
+    if (customer.deleted) return false
+    if (!completedCustomerIds) return !customer.notificationDisabled
+    // Com ledger: concluído sai; silenciado-mas-não-concluído continua
+    // elegível para o retry da fase de canais.
+    return !completedCustomerIds.has(customer.id)
+  })
 }
 
 export type SilenceCustomerResult = {

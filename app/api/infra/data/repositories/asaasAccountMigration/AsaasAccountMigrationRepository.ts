@@ -69,10 +69,22 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
     // transição que já não era válida para o estado real. Numa máquina de
     // estados que governa "desativar o legado" (invariante 1), essa é
     // exatamente a corrida que não pode existir. O update vira
-    // compare-and-swap: o `where` exige o status observado, e 0 linhas
-    // afetadas significa que alguém mudou o estado no meio do caminho.
+    // compare-and-swap: 0 linhas afetadas significa que alguém mudou o
+    // estado no meio do caminho.
+    //
+    // Achado P2 da 6ª rodada (thread PRRT_...dNdV): `status` sozinho NÃO é
+    // um CAS completo — a máquina permite `pending → failed → pending`, um
+    // ciclo ABA. Um worker pausado depois de ler o primeiro `pending` podia
+    // acordar depois do ciclo, satisfazer o predicado e sobrescrever os ids
+    // primários da tentativa mais nova com valores velhos. `attemptCount` é
+    // monotônico (todo `transition` faz `increment: 1`), então incluí-lo no
+    // `where` distingue as duas visitas ao mesmo status.
     const updated = await prisma.asaasAccountMigration.updateMany({
-      where: { legacyCustomerId: input.legacyCustomerId, status: current.status },
+      where: {
+        legacyCustomerId: input.legacyCustomerId,
+        status: current.status,
+        attemptCount: current.attemptCount,
+      },
       data: {
         status: input.toStatus,
         attemptCount: { increment: 1 },

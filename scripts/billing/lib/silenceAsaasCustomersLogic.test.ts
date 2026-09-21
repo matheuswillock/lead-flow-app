@@ -94,6 +94,71 @@ describe("selectCustomersToSilence (T-30.6 — C7)", () => {
     expect(selected.map((c) => c.id)).toEqual(["cus_ligado"])
   })
 
+  /**
+   * Achado P2 da revisão do PR #1207 (thread PRRT_...dNdO): o silenciamento
+   * tem duas fases (flag do customer, depois os canais). Se a primeira passa
+   * e a segunda falha, o dump seguinte traz `notificationDisabled: true` e o
+   * filtro antigo excluía o cliente PARA SEMPRE — canais ligados, M0.5
+   * incompleto e invisível. O sinal de conclusão é o ledger, não a flag.
+   */
+  it("achado P2 PRRT_...dNdO: silenciado mas com backfill incompleto continua elegível ao retry", () => {
+    const dump: InventoryDumpShape = {
+      account: "legacy",
+      customers: {
+        data: [
+          // Fase 1 concluída, fase 2 falhou → não está no ledger completo.
+          customer({ id: "cus_meio_caminho", notificationDisabled: true }),
+          customer({ id: "cus_concluido", notificationDisabled: true }),
+        ],
+      },
+    }
+
+    const selected = selectCustomersToSilence(dump, new Set(["cus_concluido"]))
+
+    expect(selected.map((c) => c.id)).toEqual(["cus_meio_caminho"])
+  })
+
+  it("controle negativo: quem está no ledger como concluído NÃO é reprocessado", () => {
+    const dump: InventoryDumpShape = {
+      account: "legacy",
+      customers: {
+        data: [
+          customer({ id: "cus_a", notificationDisabled: true }),
+          customer({ id: "cus_b", notificationDisabled: false }),
+        ],
+      },
+    }
+
+    const selected = selectCustomersToSilence(dump, new Set(["cus_a", "cus_b"]))
+
+    expect(selected).toEqual([])
+  })
+
+  it("controle negativo: deletado nunca entra, nem com ledger presente", () => {
+    const dump: InventoryDumpShape = {
+      account: "legacy",
+      customers: {
+        data: [customer({ id: "cus_deletado", notificationDisabled: false, deleted: true })],
+      },
+    }
+
+    expect(selectCustomersToSilence(dump, new Set())).toEqual([])
+  })
+
+  it("controle negativo: sem ledger disponível, degrada para o comportamento anterior (só flag)", () => {
+    const dump: InventoryDumpShape = {
+      account: "legacy",
+      customers: {
+        data: [
+          customer({ id: "cus_ligado", notificationDisabled: false }),
+          customer({ id: "cus_silenciado", notificationDisabled: true }),
+        ],
+      },
+    }
+
+    expect(selectCustomersToSilence(dump, undefined).map((c) => c.id)).toEqual(["cus_ligado"])
+  })
+
   it("dump vazio -> lista vazia (nunca lança)", () => {
     const dump: InventoryDumpShape = { account: "legacy", customers: { data: [] } }
     expect(selectCustomersToSilence(dump)).toEqual([])

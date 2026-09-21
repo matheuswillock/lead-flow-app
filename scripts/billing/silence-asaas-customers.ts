@@ -107,7 +107,24 @@ async function main() {
   const dump = loadInventoryDump(args.input)
   // Antes de qualquer coisa que possa escrever: E2 é da conta legada.
   assertLegacyAccountDump(dump)
-  const candidates = selectCustomersToSilence(dump)
+
+  // Achado P2 (thread PRRT_...dNdO): o sinal de "já terminou" é o ledger,
+  // não a flag do Asaas — quem falhou na fase de canais tem a flag ligada
+  // e o backfill incompleto, e precisa continuar elegível ao retry. Se o
+  // ledger não puder ser lido, seguimos sem ele (degrada para a flag).
+  const completedCustomerIds = await asaasNotificationBackfillRepository
+    .listCompletedCustomerIds()
+    .then((ids) => new Set(ids))
+    .catch((error) => {
+      logInfo(
+        `[silence] aviso: ledger de backfill indisponível (${
+          error instanceof Error ? error.message : String(error)
+        }) — caindo para a flag notificationDisabled do dump.`
+      )
+      return undefined
+    })
+
+  const candidates = selectCustomersToSilence(dump, completedCustomerIds)
 
   logInfo(
     `[silence] conta=${dump.account} candidatos=${candidates.length} modo=${args.apply ? "APPLY" : "dry-run"}`

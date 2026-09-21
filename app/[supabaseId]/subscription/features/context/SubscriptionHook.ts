@@ -44,7 +44,16 @@ export function useSubscriptionHook({
   // requests simultâneos para a MESMA chave (StrictMode dev dispara
   // mount/unmount/mount).
   const subscriptionRequestRef = useRef<{ key: string; inFlight: boolean } | null>(null);
-  const invoicesRequestRef = useRef<{ key: string; inFlight: boolean } | null>(null);
+  /**
+   * `token` monotônico: identifica a requisição MAIS RECENTE de faturas.
+   * Achado P2 da revisão do PR #1207 (thread PRRT_...dNdY): só a chave não
+   * bastava — depois de uma mutação (`syncSubscription`), o `fetchInvoices`
+   * de follow-up era descartado pelo guard de in-flight e o GET antigo, já
+   * em voo, populava faturas desatualizadas. Com o token, a chamada forçada
+   * invalida a anterior em vez de se descartar.
+   */
+  const invoicesRequestRef = useRef<{ key: string; token: number; inFlight: boolean } | null>(null);
+  const invoicesTokenRef = useRef(0);
 
   const fetchSubscription = useCallback(async () => {
     const requestKey = `subscription:${supabaseId}`;
@@ -87,25 +96,38 @@ export function useSubscriptionHook({
     }
   }, [service, supabaseId]);
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchInvoices = useCallback(async (options?: { force?: boolean }) => {
     const requestKey = `invoices:${supabaseId}`;
-    if (invoicesRequestRef.current?.key === requestKey && invoicesRequestRef.current.inFlight) {
+    const isDuplicateRead =
+      invoicesRequestRef.current?.key === requestKey && invoicesRequestRef.current.inFlight;
+    // Dedupe de leitura continua valendo (StrictMode, efeitos repetidos).
+    // Achado P2 (thread PRRT_...dNdY): follow-up de MUTAÇÃO não pode ser
+    // engolido por esse dedupe — força uma requisição nova, e o token novo
+    // invalida a que estava em voo, cujo resultado já é velho.
+    if (isDuplicateRead && !options?.force) {
       return;
     }
-    invoicesRequestRef.current = { key: requestKey, inFlight: true };
+
+    invoicesTokenRef.current += 1;
+    const requestToken = invoicesTokenRef.current;
+    invoicesRequestRef.current = { key: requestKey, token: requestToken, inFlight: true };
+
+    const isStale = () =>
+      invoicesRequestRef.current?.key !== requestKey ||
+      invoicesRequestRef.current.token !== requestToken;
 
     try {
       const invoices = await service.getInvoices(supabaseId);
-      if (invoicesRequestRef.current?.key !== requestKey) return;
+      if (isStale()) return;
       setState(prev => ({ ...prev, invoices, invoicesError: null }));
     } catch (error) {
-      if (invoicesRequestRef.current?.key !== requestKey) return;
+      if (isStale()) return;
       // DA3: falha ao carregar faturas vira estado de erro dedicado — nunca
       // aparece como "Nenhuma fatura encontrada" (empty state real).
       console.error('Erro ao buscar faturas:', error);
       setState(prev => ({ ...prev, invoicesError: toUserToastMessage(error) }));
     } finally {
-      if (invoicesRequestRef.current?.key === requestKey) {
+      if (!isStale()) {
         invoicesRequestRef.current.inFlight = false;
       }
     }
@@ -134,7 +156,10 @@ export function useSubscriptionHook({
     // usuário (toast) e mantém a tela como estava.
     await service.syncSubscription(supabaseId);
     await fetchSubscription();
-    await fetchInvoices();
+    // `force`: follow-up de mutação (achado P2, thread PRRT_...dNdY) — o
+    // GET inicial de faturas pode ainda estar em voo e traria dado anterior
+    // ao sync.
+    await fetchInvoices({ force: true });
   }, [service, supabaseId, fetchSubscription, fetchInvoices]);
 
   const updateCredits = useCallback(async (data: UpdateSubscriptionCreditsDTO) => {
@@ -164,7 +189,9 @@ export function useSubscriptionHook({
   const retryPayment = useCallback(async (invoiceId: string) => {
     try {
       await service.retryPayment(supabaseId, invoiceId);
-      await fetchInvoices(); // Recarregar faturas
+      // `force`: idem — retry de pagamento é mutação, o refresh não pode
+      // ser engolido pelo dedupe de leitura (achado P2, PRRT_...dNdY).
+      await fetchInvoices({ force: true }); // Recarregar faturas
     } catch (error) {
       console.error('Erro ao retentar pagamento:', error);
       throw error;
