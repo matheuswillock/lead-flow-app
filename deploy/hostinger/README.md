@@ -123,8 +123,13 @@ Decisão de 2026-08-25: **a VPS não faz backup do banco.** O `backup-supabase.s
 os endpoints `/backup/run` e `/backup/download` do agente Ops e o painel
 `backupReadiness` foram removidos.
 
-Os dois caminhos vigentes são o cron `database-backup` da Vercel (export para o
-Google Drive) e o dump manual `bun run db:backup -- <pasta>`.
+Decisão de 2026-09-21: **o cron diário `database-backup` da Vercel também foi
+desativado** — o snapshot completo do banco (5 GB/dia) consumia ~60% da quota
+mensal de egress do Supabase. A rota `/api/v1/backoffice/cron/database-backup`
+continua existindo para disparo manual (export para o Google Drive), mas não
+roda mais sozinha. O caminho vigente de continuidade é o dump manual
+`bun run db:backup -- <pasta>`, somado ao backup gerenciado do Supabase
+(retenção de 7 dias).
 
 Se a VPS ainda tiver um cron chamando o script antigo, remova-o de lá — ele é
 externo ao repositório e continuaria falhando todo dia.

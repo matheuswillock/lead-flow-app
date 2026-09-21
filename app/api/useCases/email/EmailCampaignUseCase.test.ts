@@ -304,6 +304,12 @@ mock.module("@/lib/email/notify-campaign-dispatch-failure", () => ({
   notifyCampaignDispatchFailure: mock(async () => {}),
 }))
 
+// Trava de reputação: mesmo motivo do mock acima — a lib puxa o
+// notificationService, que importa `lib/cache/invalidation` (server-only).
+mock.module("@/lib/email/notify-sending-health-change", () => ({
+  notifySendingHealthChanged: mock(async () => {}),
+}))
+
 // --- Fila email-campaign-dispatch (Fase 4 / PR1) — evita bater no @vercel/queue
 // real (que precisa de OIDC token e só funciona dentro de uma Vercel Function).
 const publishEmailCampaignDispatchWakeMock = mock(async (..._args: unknown[]) => ({
@@ -321,6 +327,8 @@ const findBouncedEmailsMock = mock(async (_emails: string[]) => new Set<string>(
 const createSnapshotListMock = mock(async () => ({ id: "snap-list-1" }))
 const createSnapshotContactsMock = mock(async () => 0)
 const updateSnapshotContactCountMock = mock(async () => {})
+// Gate de importação: nenhuma lista quarentenada por padrão nos cenários.
+const findQuarantinedListsMock = mock(async (_teamId: string, _listIds: string[]) => [])
 mock.module("@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository", () => ({
   emailContactListRepository: {
     findBouncedEmails: findBouncedEmailsMock,
@@ -328,8 +336,31 @@ mock.module("@/app/api/infra/data/repositories/emailContactList/EmailContactList
     createContacts: createSnapshotContactsMock,
     updateContactCount: updateSnapshotContactCountMock,
     findExistingEmailsInList: mock(async () => new Set<string>()),
+    findQuarantinedLists: findQuarantinedListsMock,
   },
 }))
+// Trava de reputação: leituras de métricas do dispatch são fail-open; time
+// saudável por padrão.
+const getDispatchBounceStatsMock = mock(async (_dispatchId: string) => ({
+  sentCount: 0,
+  hardBouncedCount: 0,
+}))
+const getTeamSendingHealthMock = mock(
+  async (_teamId: string) =>
+    null as { status: string; metricsJson: unknown; masterProfileId: string } | null
+)
+const updateTeamSendingHealthMock = mock(async (_input: unknown) => {})
+mock.module(
+  "@/app/api/infra/data/repositories/emailSendingHealth/EmailSendingHealthRepository",
+  () => ({
+    emailSendingHealthRepository: {
+      getDispatchBounceStats: getDispatchBounceStatsMock,
+      getTeamSendingHealth: getTeamSendingHealthMock,
+      updateTeamSendingHealth: updateTeamSendingHealthMock,
+      listTeamsForEvaluation: mock(async () => []),
+    },
+  })
+)
 mock.module(
   "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository",
   () => ({
@@ -708,6 +739,9 @@ const allMocks = [
   createSnapshotListMock,
   createSnapshotContactsMock,
   updateSnapshotContactCountMock,
+  getDispatchBounceStatsMock,
+  getTeamSendingHealthMock,
+  updateTeamSendingHealthMock,
 ]
 
 // =============================================================================
@@ -1496,7 +1530,12 @@ describe("EmailCampaignUseCase.send", () => {
 
     // dispatchBatch chamado 4× (lotes de 500 no consumer)
     expect(dispatchBatchMock).toHaveBeenCalledTimes(4)
-  })
+    // Teto de tempo explícito: 2000 destinatários em 4 lotes de 500 rodam em
+    // ~1,8s numa máquina ociosa, mas levaram 7,9s no runner compartilhado da
+    // VPS e estouraram o limite padrão de 5s. Nenhuma asserção acima foi
+    // afrouxada — o que muda é só o teto, que ali media a CPU do runner e não
+    // o comportamento do código.
+  }, 30_000)
 
   // ---------------------------------------------------------------------------
   // C2 — 2000 e-mails: chunk 4 falha → 1900 sent, 100 failed
@@ -4754,5 +4793,116 @@ describe("EmailCampaignUseCase dispatch progress", () => {
     const uc = new EmailCampaignUseCase()
     await uc.list(teamCtx, { page: 1, pageSize: 20 })
     expect(queryRawMock).toHaveBeenCalled()
+  })
+})
+
+// =============================================================================
+// Abort mid-send por bounce — ORDEM de efeito colateral
+// =============================================================================
+
+describe("EmailCampaignUseCase.processDispatchQueueBatch — abort por bounce", () => {
+  // A ordem aqui é o contrato: a pausa da saúde de envio é o ÚNICO efeito que
+  // segura as partes irmãs no próximo tick (`isSendingHealthBlocked`);
+  // `deferSiblingScheduledPartsAfterAbort` só grava `errorMessage` e mantém o
+  // status `scheduled`. Se a pausa rodasse DEPOIS do finalize e o erro fosse
+  // engolido, a fila receberia "abort ok", ackaria o wake, e as irmãs
+  // continuariam elegíveis — o sangramento que o abort corta seguiria.
+  let sideEffectOrder: string[] = []
+
+  function arrangeAbortScenario() {
+    const recipients = makeRecipients(3)
+    persistDispatchSourceOffset(
+      makeSendingDispatch({ totalRecipients: 3, reservedCredits: 3 })
+    )
+    buildCampaignDispatchInputMock.mockImplementation(async () =>
+      makeDefaultDispatchInput(recipients)
+    )
+    dispatchBatchMock.mockImplementation(
+      autoChunkDispatched({
+        sent: 2,
+        failed: 0,
+        dispatched: recipients.slice(0, 2).map((recipient) => ({
+          email: recipient.email,
+          resendId: `re_${recipient.email}`,
+        })),
+        providerErrors: [],
+      })
+    )
+    // 20/200 = 10% ≥ 8% com ≥100 enviados: gatilho do abort.
+    getDispatchBounceStatsMock.mockImplementation(async () => ({
+      sentCount: 200,
+      hardBouncedCount: 20,
+    }))
+    getTeamSendingHealthMock.mockImplementation(async () => ({
+      status: "healthy",
+      metricsJson: null,
+      masterProfileId: "profile-master",
+    }))
+  }
+
+  beforeEach(() => {
+    for (const m of allMocks) m.mockClear()
+    sideEffectOrder = []
+    emailCampaignDispatchFindFirstMock.mockImplementation(async () => makeSendingDispatch())
+    queryRawUnsafeMock.mockImplementation(async () => [{ acquired: true }])
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pg_try_advisory_lock")) {
+        return { rows: [{ acquired: true }] }
+      }
+      return { rows: [] }
+    })
+    queryRawMock.mockImplementation(async () => [])
+    installQueuedLogStore()
+    emailLogFindManyMock.mockImplementation(async (args: unknown) => queuedLogFindManyImpl(args))
+    emailLogCountMock.mockImplementation(async (args: unknown) => queuedLogCountImpl(args))
+    emailTeamSettingsFindUniqueMock.mockImplementation(async () => null)
+    emailTeamSenderFindFirstMock.mockImplementation(async () => null)
+    setupTemplateMock()
+    restoreRadarRecipientPageMock()
+    findUnresolvedTokensMock.mockImplementation(() => [])
+    listActiveRecipientsMock.mockImplementation(async () => [])
+    findTeamBlocklistedEmailsMock.mockImplementation(async () => new Set<string>())
+
+    updateTeamSendingHealthMock.mockImplementation(async () => {
+      sideEffectOrder.push("pauseTeam")
+    })
+    // Sonda do finalize: `commitDispatchTerminalState` grava o status terminal
+    // da campanha via `emailCampaign.update`.
+    emailCampaignUpdateMock.mockImplementation(async () => {
+      sideEffectOrder.push("finalizeDispatch")
+      return { parentCampaignId: null }
+    })
+  })
+
+  it("pausa a saúde do time ANTES de finalizar a parte abortada", async () => {
+    arrangeAbortScenario()
+
+    const uc = new EmailCampaignUseCase()
+    const output = await uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })
+
+    expect((output.result as { abortedByBounceRate?: boolean } | null)?.abortedByBounceRate).toBe(
+      true
+    )
+    expect(updateTeamSendingHealthMock).toHaveBeenCalled()
+    expect(sideEffectOrder).toContain("finalizeDispatch")
+    expect(sideEffectOrder.indexOf("pauseTeam")).toBeGreaterThanOrEqual(0)
+    expect(sideEffectOrder.indexOf("pauseTeam")).toBeLessThan(
+      sideEffectOrder.indexOf("finalizeDispatch")
+    )
+  })
+
+  it("REGRESSÃO: falha ao pausar NÃO vira ack de abort — propaga para a fila retentar", async () => {
+    arrangeAbortScenario()
+    updateTeamSendingHealthMock.mockImplementation(async () => {
+      sideEffectOrder.push("pauseTeam")
+      throw new Error("upsert da trava falhou")
+    })
+
+    const uc = new EmailCampaignUseCase()
+    await expect(uc.processDispatchQueueBatch("dispatch-1", { batchSize: 2 })).rejects.toThrow(
+      "upsert da trava falhou"
+    )
+    // Nada finalizado: no retry o abort inteiro roda de novo (idempotente).
+    expect(sideEffectOrder).not.toContain("finalizeDispatch")
   })
 })

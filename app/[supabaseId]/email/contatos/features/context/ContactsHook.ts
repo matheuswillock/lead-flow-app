@@ -28,6 +28,7 @@ export type ContactsActions = {
   handlePageChange: (page: number) => void
   refreshSelectedList: () => Promise<void>
   handleSetListSegment: (listId: string, segmentId: string | null) => Promise<void>
+  handleReleaseQuarantine: (listId: string) => Promise<void>
 }
 
 export type ContactsHookReturn = ContactsState & ContactsActions & { supabaseId: string }
@@ -344,6 +345,26 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     [fetchLists]
   );
 
+  const handleReleaseQuarantine = useCallback(
+    async (listId: string) => {
+      console.info("[useContatos] handleReleaseQuarantine", listId);
+      if (!service.releaseQuarantine) {
+        toast.error("Liberação de quarentena indisponível neste modo");
+        return;
+      }
+      try {
+        await service.releaseQuarantine(listId);
+        await fetchLists();
+        toast.success("Lista liberada da quarentena");
+      } catch (error) {
+        console.error("[useContatos] handleReleaseQuarantine error", error);
+        toast.error(toUserToastMessage(error));
+        throw error;
+      }
+    },
+    [fetchLists]
+  );
+
   return {
     supabaseId,
     lists,
@@ -365,5 +386,6 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     handlePageChange,
     refreshSelectedList,
     handleSetListSegment,
+    handleReleaseQuarantine,
   };
 }

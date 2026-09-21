@@ -60,6 +60,27 @@ export type DomainConnectResult = {
   events?: DomainEvent[]
 }
 
+/** Domínio próprio do time para servir formulários públicos (Frente C). */
+export type FormDomainStatus = "pending" | "verified" | "failed"
+
+export type FormDomain = {
+  hostname: string
+  status: FormDomainStatus
+  verifiedAt: string | null
+  lastCheckedAt: string | null
+  createdAt: string
+}
+
+export type FormDomainResult = {
+  formDomain: FormDomain | null
+  records?: DomainRecord[]
+}
+
+export type FormDomainRecordsResult = {
+  formDomain: FormDomain
+  records: DomainRecord[]
+}
+
 export type EmailSender = {
   id: string
   name: string

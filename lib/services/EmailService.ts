@@ -271,6 +271,16 @@ export interface BackofficeAdhesionCheckoutEmailData {
   expiresAt: Date;
 }
 
+/** G2 de [[50 — Backoffice de Cobrança — Backend]] E6 — nunca notificação do Asaas (DA5/§9 do Diagnóstico). */
+export interface SubscriptionChangeOrderPaymentEmailData {
+  masterName: string;
+  masterEmail: string;
+  targetProductName: string;
+  targetCycleLabel: string;
+  chargeAmount: number;
+  invoiceUrl: string;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -2246,6 +2256,31 @@ export class EmailService {
     return this.sendEmailUntracked({
       to: [data.userEmail],
       subject: "Conta encerrada — Corretor Studio",
+      html,
+    });
+  }
+
+  async sendSubscriptionChangeOrderPaymentEmail(data: SubscriptionChangeOrderPaymentEmailData) {
+    const formatCurrency = (value: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+    const html = this.buildCheckoutLinkEmailHtml({
+      title: `Sua assinatura vai mudar para ${data.targetProductName} (${data.targetCycleLabel}). Existe uma cobrança pendente para confirmar a alteração.`,
+      subtitle: "Pagamento pendente para alteração de assinatura",
+      recipientName: data.masterName,
+      checkoutUrl: data.invoiceUrl,
+      expiresAtLabel: "Atenção",
+      expiresAtValue: "A alteração só entra em vigor após a confirmação do pagamento.",
+      details: [
+        { label: "Novo plano", value: data.targetProductName },
+        { label: "Ciclo", value: data.targetCycleLabel },
+        { label: "Valor", value: formatCurrency(data.chargeAmount) },
+      ],
+    });
+
+    return this.sendEmailUntracked({
+      to: [data.masterEmail],
+      subject: "Alteração de assinatura pendente de pagamento — Corretor Studio",
       html,
     });
   }

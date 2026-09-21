@@ -347,7 +347,13 @@ test.describe("api/v1/backoffice/campanhas-analytics", () => {
     const csvText = await csvRes.text();
     expect(csvText.charCodeAt(0)).toBe(0xfeff); // BOM
     const lines = csvText.slice(1).split("\r\n").filter(Boolean);
-    expect(lines[0]).toBe("Time;Template;Disparos;Enviados;Entregues;Abertos;Cliques;Bounces;Falhas;Taxa de Abertura");
+    // Header da rodada Deliverability 2026-09: a abertura HUMANA virou a
+    // manchete e a bruta ficou explicitamente rotulada como bruta, aqui e na
+    // tela. Renomear colunas quebra planilha de cliente — está registrado como
+    // ponto de comunicação no PR da rodada.
+    expect(lines[0]).toBe(
+      "Time;Template;Disparos;Enviados;Entregues;Aberturas reais;Abertos (bruto);Cliques;Bounces;Falhas;Taxa de Abertura (bruta)"
+    );
     expect(lines.length - 1).toBe(jsonBody.result.length); // paridade de linhas (T-10.10)
     expect(lines.some((line) => line.includes("Template E2E"))).toBe(true);
   });

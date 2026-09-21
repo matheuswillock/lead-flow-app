@@ -1,11 +1,28 @@
 import type { LeadStatus } from "@prisma/client"
 import { CRM_CLOSED_STATUSES, RECENT_CAMPAIGN_WINDOW_DAYS, type RadarSegmentSlug } from "@/lib/radar/segment-config"
 import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
+import { readEmailEventOrigin } from "@/lib/email/email-event-origin-classifier"
 
 export type RadarSegmentEvent = {
   eventType: string
   occurredAt: Date
   metadata?: unknown
+}
+
+/**
+ * Engajamento de e-mail só conta com origem HUMANA (decisão de 17/09: proxies
+ * do provedor e scanners não são engajamento). Evento sem `metadata.origin` —
+ * histórico anterior ao classificador — também NÃO conta: sem evidência de
+ * humano, não entra no sinal. Eventos de formulário (form.*) não passam por
+ * aqui: são first-party por construção.
+ */
+export function isHumanEmailEngagementEvent(event: RadarSegmentEvent): boolean {
+  if (!event.eventType.startsWith("email.")) return true
+  const metadata =
+    event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+      ? (event.metadata as Record<string, unknown>)
+      : null
+  return readEmailEventOrigin(metadata)?.classification === "human"
 }
 
 export type RadarSegmentProfileInput = {
@@ -34,7 +51,8 @@ export function profileOpenedNotClickedInWindow(
   const emailEvents = events.filter(
     (event) =>
       event.eventType.startsWith("email.") &&
-      isWithinRecentWindow(event.occurredAt, now, recentMs)
+      isWithinRecentWindow(event.occurredAt, now, recentMs) &&
+      isHumanEmailEngagementEvent(event)
   )
 
   const openedByCampaign = new Map<string, Date>()
@@ -75,6 +93,7 @@ export function profileClickedNotClosedInWindow(
     (event) =>
       event.eventType === "email.clicked" &&
       isWithinRecentWindow(event.occurredAt, now, recentMs) &&
+      isHumanEmailEngagementEvent(event) &&
       Boolean(extractCampaignId(event.metadata))
   )
 }
@@ -97,7 +116,8 @@ export function profileEngagedNoLeadInWindow(
   return profile.events.some(
     (event) =>
       ENGAGEMENT_EVENT_TYPES.has(event.eventType) &&
-      isWithinRecentWindow(event.occurredAt, now, recentMs)
+      isWithinRecentWindow(event.occurredAt, now, recentMs) &&
+      isHumanEmailEngagementEvent(event)
   )
 }
 

@@ -12,6 +12,8 @@ export type CampaignAnalyticsTotals = {
   sent: number
   delivered: number
   opened: number
+  /** Aberturas humanas ("Aberturas reais") — exclui robôs/proxies do provedor. */
+  openedHuman?: number
   clicked: number
   bounced: number
   failed: number
@@ -22,6 +24,8 @@ export type CampaignAnalyticsTotals = {
 
 export type CampaignAnalyticsRates = {
   openRate: number | null
+  /** Headline: taxa de aberturas humanas. */
+  openRateHuman?: number | null
   finalScore: number | null
 }
 
@@ -98,6 +102,12 @@ export type CampaignAnalyticsTemplateRow = {
   sent: number
   delivered: number
   opened: number
+  /**
+   * Aberturas humanas da linha. O CSV desta mesma tabela já exporta a coluna
+   * "Aberturas reais"; sem ela no tipo, a tela mostrava só o bruto e o usuário
+   * encontrava no arquivo uma coluna que não viu na tela.
+   */
+  openedHuman?: number
   clicked: number
   bounced: number
   failed: number

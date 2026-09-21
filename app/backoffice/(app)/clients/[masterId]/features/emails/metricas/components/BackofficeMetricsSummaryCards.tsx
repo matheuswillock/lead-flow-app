@@ -66,9 +66,9 @@ export function BackofficeMetricsSummaryCards({
         subtitle={`${totals.delivered.toLocaleString("pt-BR")} entregues`}
       />
       <MetricCard
-        title="Abertura"
-        value={`${rates.openRate.toFixed(1)}%`}
-        subtitle={`${totals.opened.toLocaleString("pt-BR")} abertos`}
+        title="Aberturas reais"
+        value={`${(rates.openRateHuman ?? 0).toFixed(1)}%`}
+        subtitle={`${(totals.openedHuman ?? 0).toLocaleString("pt-BR")} humanas · ${rates.openRate.toFixed(1)}% bruta`}
       />
       <MetricCard
         title="Cliques"

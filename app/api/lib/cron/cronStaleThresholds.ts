@@ -24,11 +24,38 @@ export const STALE_THRESHOLD_MULTIPLIER = 2
 export const UNKNOWN_CRON_MAX_DURATION_SECONDS = 900
 
 /**
+ * Rotas de cron **vivas, porém sem agendamento** no `vercel.json`: continuam
+ * expostas e são disparadas sob demanda (operador, script, painel), gravando
+ * normalmente em `backoffice_cron_executions` via `withCronAudit`.
+ *
+ * Elas precisam de teto próprio em `CRON_MAX_DURATION_SECONDS` como qualquer
+ * cron agendado — um disparo manual morto pela plataforma trava em `running`
+ * exatamente do mesmo jeito. Sem a entrada, o watchdog cairia no teto de
+ * desconhecido (`UNKNOWN_CRON_MAX_DURATION_SECONDS`, 3× mais folgado) e
+ * demoraria muito mais para marcar a falha e alertar no Slack.
+ *
+ * Por isso o teste de chave órfã **não** pode assumir que "ausente do
+ * `vercel.json` ⇒ rota removida": ele consulta este conjunto antes de acusar.
+ * Só entra aqui cronKey cuja rota ainda existe no repositório. Quando a rota
+ * for de fato removida, tire a chave daqui **e** do mapa de tetos.
+ *
+ * - `database-backup`: agendamento diário removido em 2026-09-21 (o snapshot
+ *   completo consumia ~60% da quota mensal de egress do Supabase). A rota
+ *   `/api/v1/backoffice/cron/database-backup` segue disponível para disparo
+ *   manual, que hoje é a DR externa do projeto.
+ */
+export const MANUALLY_TRIGGERED_CRON_KEYS: ReadonlySet<string> = new Set([
+  "database-backup",
+])
+
+/**
  * `maxDuration` declarado por cada cron do `vercel.json`, indexado pelo
  * `cronKey` que a rota passa ao `withCronAudit`.
  *
  * Mantido em sincronia com as rotas por `cronStaleThresholds.test.ts`, que
- * falha quando um cron novo entra no `vercel.json` sem teto aqui.
+ * falha quando um cron novo entra no `vercel.json` sem teto aqui — e também
+ * quando sobra teto para cronKey que não é cron agendado nem rota de disparo
+ * manual (`MANUALLY_TRIGGERED_CRON_KEYS`).
  */
 export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "asaas-webhook-retry": 60,
@@ -39,10 +66,12 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "dispatch-scheduled": 60,
   "document-request-reminders": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "email-campaign-counters-reconcile": 60,
+  "email-form-domain-status-reconcile": 300,
   "email-import": 60,
   "email-orphan-events-drain": 300,
   "email-resend-domain-status-reconcile": 300,
   "email-resend-webhook-retry": 60,
+  "email-sending-health": 60,
   "email-stale-queued-logs-expire": 60,
   "engagement-backfill": 300,
   "evaluate-idle": VERCEL_DEFAULT_MAX_DURATION_SECONDS,

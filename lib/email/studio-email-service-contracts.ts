@@ -23,6 +23,8 @@ import type {
   EmailSettings,
   EmailVariableType,
   EmailVariableValueSource,
+  FormDomainRecordsResult,
+  FormDomainResult,
   ResendDomainStatus,
 } from "@/app/[supabaseId]/email/configuracoes/features/context/EmailSettingsTypes"
 import type { EmailLog, LogDetail } from "@/app/[supabaseId]/email/historico/features/context/HistoricoTypes"
@@ -125,6 +127,12 @@ export interface StudioEmailCampanhasService {
   deleteDraft(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   archive(supabaseId: string, teamId: string | null | undefined, id: string): Promise<void>
   getCreditStatus(supabaseId: string, teamId: string | null | undefined): Promise<CreditStatus>
+  /**
+   * Liberação manual da trava de reputação pelo owner (`paused` → `warned`).
+   * O host backoffice não expõe a ação: lá a liberação sai pela tela de
+   * limites por time, que também alcança `suspended`.
+   */
+  releaseSendingHealth(supabaseId: string, teamId: string | null | undefined): Promise<void>
   getTemplates(supabaseId: string, teamId: string | null | undefined): Promise<CampaignTemplate[]>
   getContactLists(supabaseId: string, teamId: string | null | undefined): Promise<ContactList[]>
   getCampaignLogs(
@@ -181,6 +189,12 @@ export interface StudioEmailContatosService {
   deleteContact(listId: string, contactId: string): Promise<void>
   addContact(listId: string, email: string, name?: string): Promise<void>
   setListRadarSegment(listId: string, segmentId: string | null): Promise<void>
+  /**
+   * Opcional: liberação da quarentena do gate de importação. O host do
+   * Studio (backoffice) ainda não expõe este fluxo — o hook degrada com
+   * aviso em vez de quebrar o contrato existente.
+   */
+  releaseQuarantine?(listId: string): Promise<void>
 }
 
 export type StudioEmailCreateTemplateData = {
@@ -263,6 +277,18 @@ export interface StudioEmailSettingsService {
    * service não expõe o método (ver `canSendDnsInstructions` no hook).
    */
   sendDomainDnsInstructions?(recipientEmail: string): Promise<void>
+  /**
+   * Opcionais pelo mesmo motivo do envio de instruções: o domínio de
+   * FORMULÁRIOS (Frente C) existe hoje só na superfície do produto. O card
+   * some quando o service do host não expõe os métodos (ver
+   * `canManageFormDomain` no hook).
+   */
+  getFormDomain?(): Promise<FormDomainResult>
+  connectFormDomain?(hostname: string): Promise<FormDomainResult>
+  disconnectFormDomain?(): Promise<void>
+  verifyFormDomain?(): Promise<FormDomainResult>
+  getFormDomainRecords?(): Promise<FormDomainRecordsResult>
+  sendFormDomainDnsInstructions?(recipientEmail: string): Promise<void>
   getVariables(): Promise<EmailGlobalVariable[]>
   createVariable(data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>
   updateVariable(variableId: string, data: StudioEmailUpsertVariableData): Promise<EmailGlobalVariable>

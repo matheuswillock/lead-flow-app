@@ -3,9 +3,12 @@ import { isPublicFormRequestOriginAllowed } from "./request-origin-guard"
 
 const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL
 
-function requestWithOrigin(origin: string | null) {
+function requestWithOrigin(origin: string | null, hostHeaders?: Record<string, string>) {
   const headers = new Headers()
   if (origin) headers.set("origin", origin)
+  for (const [key, value] of Object.entries(hostHeaders ?? {})) {
+    headers.set(key, value)
+  }
   return new Request("https://example.com/api/v1/public-forms/x/progress", {
     method: "POST",
     headers,
@@ -44,5 +47,36 @@ describe("isPublicFormRequestOriginAllowed", () => {
   it("permite (fail-safe) quando NEXT_PUBLIC_APP_URL não está configurada", () => {
     delete process.env.NEXT_PUBLIC_APP_URL
     expect(isPublicFormRequestOriginAllowed(requestWithOrigin("https://qualquer.com"))).toBe(true)
+  })
+
+  it("permite same-origin em domínio de formulários do time (host == origin)", () => {
+    expect(
+      isPublicFormRequestOriginAllowed(
+        requestWithOrigin("https://forms.imobiliariax.com.br", {
+          host: "forms.imobiliariax.com.br",
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it("permite same-origin atrás de proxy (x-forwarded-host)", () => {
+    expect(
+      isPublicFormRequestOriginAllowed(
+        requestWithOrigin("https://forms.imobiliariax.com.br", {
+          host: "127.0.0.1:3000",
+          "x-forwarded-host": "forms.imobiliariax.com.br",
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it("segue bloqueando origem externa mesmo com host custom no request", () => {
+    expect(
+      isPublicFormRequestOriginAllowed(
+        requestWithOrigin("https://malicioso.com", {
+          host: "forms.imobiliariax.com.br",
+        }),
+      ),
+    ).toBe(false)
   })
 })

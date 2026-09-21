@@ -60,6 +60,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
           totalSent: true,
           totalDelivered: true,
           totalOpened: true,
+          totalOpenedHuman: true,
           totalClicked: true,
           totalBounced: true,
           errorMessage: true,
@@ -80,6 +81,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
         totalSent: row.totalSent,
         totalDelivered: row.totalDelivered,
         totalOpened: row.totalOpened,
+        totalOpenedHuman: row.totalOpenedHuman,
         totalClicked: row.totalClicked,
         totalBounced: row.totalBounced,
         errorMessage: row.errorMessage ? row.errorMessage.slice(0, 300) : null,
@@ -102,6 +104,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
           totalSent: true,
           totalDelivered: true,
           totalOpened: true,
+          totalOpenedHuman: true,
           totalClicked: true,
           totalBounced: true,
         },
@@ -124,6 +127,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
       sent: row._sum.totalSent ?? 0,
       delivered: row._sum.totalDelivered ?? 0,
       opened: row._sum.totalOpened ?? 0,
+      openedHuman: row._sum.totalOpenedHuman ?? 0,
       clicked: row._sum.totalClicked ?? 0,
       bounced: row._sum.totalBounced ?? 0,
       failed: failedByKey.get(`${row.teamId}::${row.templateName}`) ?? 0,
@@ -135,13 +139,14 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
       ? Prisma.sql`AND "teamId" = ANY(${filter.teamIds}::uuid[])`
       : Prisma.empty
 
-    const rows = await prisma.$queryRaw<Array<{ day: Date; teamId: string; sent: number; delivered: number; opened: number; clicked: number }>>(Prisma.sql`
+    const rows = await prisma.$queryRaw<Array<{ day: Date; teamId: string; sent: number; delivered: number; opened: number; openedHuman: number; clicked: number }>>(Prisma.sql`
       SELECT
         date_trunc('day', "dispatchedAt") AS day,
         "teamId" AS "teamId",
         SUM("totalSent")::int AS sent,
         SUM("totalDelivered")::int AS delivered,
         SUM("totalOpened")::int AS opened,
+        SUM("totalOpenedHuman")::int AS "openedHuman",
         SUM("totalClicked")::int AS clicked
       FROM "corretor_studio_email_campaign_dispatches"
       WHERE "dispatchedAt" >= ${filter.from} AND "dispatchedAt" < ${filter.to}
@@ -160,6 +165,7 @@ export class BackofficeCampaignAnalyticsRepository implements IBackofficeCampaig
       sent: Number(row.sent),
       delivered: Number(row.delivered),
       opened: Number(row.opened),
+      openedHuman: Number(row.openedHuman),
       clicked: Number(row.clicked),
     }))
   }

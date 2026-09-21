@@ -101,10 +101,22 @@ function isClosed(teamId: string): Prisma.Sql {
 }
 
 /**
+ * Engajamento de e-mail exige origem HUMANA (decisão de 17/09): proxy do
+ * provedor buscando o pixel e scanner clicando link não são engajamento.
+ * Evento sem `metadata.origin` (histórico pré-classificador) NÃO conta —
+ * mesma regra de `isHumanEmailEngagementEvent` em lib/radar/segment-rules.ts.
+ * O alias da tabela entra por parâmetro porque cada predicado usa o seu.
+ */
+function humanEmailOriginSql(alias: string): Prisma.Sql {
+  return Prisma.sql`${Prisma.raw(`"${alias}"`)}."metadata"->'origin'->>'classification' = 'human'`
+}
+
+/**
  * Abriu alguma campanha e NÃO clicou naquela mesma campanha.
  *
  * O pareamento é por `campaignId`: quem abriu a campanha A e clicou na B
- * continua no segmento por causa de A.
+ * continua no segmento por causa de A. Abertura e clique contam só com
+ * origem humana — ver `humanEmailOriginSql`.
  */
 function openedWithoutClickInSameCampaign(teamId: string, recentThreshold: Date): Prisma.Sql {
   return Prisma.sql`EXISTS(
@@ -112,12 +124,14 @@ function openedWithoutClickInSameCampaign(teamId: string, recentThreshold: Date)
     WHERE o."profileId" = p.id AND o."teamId" = ${teamId}::uuid
       AND o."eventType" = 'email.opened'
       AND o."occurredAt" >= ${recentThreshold}
+      AND ${humanEmailOriginSql("o")}
       AND o."metadata"->>'campaignId' IS NOT NULL
       AND NOT EXISTS(
         SELECT 1 FROM "corretor_studio_radar_events" cl
         WHERE cl."profileId" = p.id AND cl."teamId" = ${teamId}::uuid
           AND cl."eventType" = 'email.clicked'
           AND cl."occurredAt" >= ${recentThreshold}
+          AND ${humanEmailOriginSql("cl")}
           AND cl."metadata"->>'campaignId' = o."metadata"->>'campaignId'
       )
   )`
@@ -129,6 +143,7 @@ function clickedAnyCampaign(teamId: string, recentThreshold: Date): Prisma.Sql {
     WHERE cl."profileId" = p.id AND cl."teamId" = ${teamId}::uuid
       AND cl."eventType" = 'email.clicked'
       AND cl."occurredAt" >= ${recentThreshold}
+      AND ${humanEmailOriginSql("cl")}
       AND cl."metadata"->>'campaignId' IS NOT NULL
   )`
 }
@@ -140,6 +155,7 @@ function hasRecentEngagement(teamId: string, recentThreshold: Date): Prisma.Sql 
       WHERE e."profileId" = p.id AND e."teamId" = ${teamId}::uuid
         AND e."eventType" IN ('email.opened', 'email.clicked')
         AND e."occurredAt" >= ${recentThreshold}
+        AND ${humanEmailOriginSql("e")}
     )
     OR EXISTS(
       SELECT 1 FROM "corretor_studio_radar_events" e

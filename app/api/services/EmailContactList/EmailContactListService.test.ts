@@ -44,3 +44,67 @@ describe("EmailContactListService.parseCsv — validação Resend", () => {
     expect(service.parseCsv(csv).map((contact) => contact.email)).toEqual(["ana@terra.com.br"])
   })
 })
+
+describe("EmailContactListService.parseCsvWithIssues — drop silencioso corrigido", () => {
+  const service = new EmailContactListService()
+
+  it("linha sem e-mail vira issue com a linha REAL do arquivo, nunca descarte mudo", () => {
+    const csv = [
+      "email,nome",
+      "ok@example.com,Ok",
+      ",SemEmail",
+      "outro@example.com,Outro",
+    ].join("\n")
+
+    const parsed = service.parseCsvWithIssues(csv)
+
+    expect(parsed.contacts.map((contact) => contact.email)).toEqual([
+      "ok@example.com",
+      "outro@example.com",
+    ])
+    // Header é a linha 1; a linha vazia é a 3ª do arquivo.
+    expect(parsed.issues).toEqual([
+      { line: 3, email: "(vazio)", reason: "E-mail ausente na linha" },
+    ])
+    expect(parsed.contacts[0]?.line).toBe(2)
+    expect(parsed.contacts[1]?.line).toBe(4)
+  })
+
+  it("e-mail sintaticamente inválido SEGUE no fluxo — classificação é papel do gate", () => {
+    const csv = [
+      "email,nome",
+      "carol@gmail.com|hugo@gmail.com,Carol",
+      "ok@example.com,Ok",
+    ].join("\n")
+
+    const parsed = service.parseCsvWithIssues(csv)
+
+    // O parser não descarta: o gate de importação classifica e reporta.
+    expect(parsed.contacts.map((contact) => contact.email)).toEqual([
+      "carol@gmail.com|hugo@gmail.com",
+      "ok@example.com",
+    ])
+    expect(parsed.issues).toEqual([])
+  })
+
+  it("continua exigindo a coluna de e-mail", () => {
+    expect(() => service.parseCsvWithIssues("nome\nAna")).toThrow(
+      "CSV deve conter uma coluna de email"
+    )
+  })
+
+  it("preserva customFields e nome no shape com linhas", () => {
+    const csv = ["email,nome,cidade", "ana@example.com,Ana,Recife"].join("\n")
+
+    const parsed = service.parseCsvWithIssues(csv)
+
+    expect(parsed.contacts).toEqual([
+      {
+        line: 2,
+        email: "ana@example.com",
+        name: "Ana",
+        customFields: { cidade: "Recife" },
+      },
+    ])
+  })
+})

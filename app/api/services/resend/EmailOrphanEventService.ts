@@ -11,6 +11,11 @@ import { resendWebhookService } from "@/app/api/services/resend/ResendWebhookSer
 import { radarService } from "@/app/api/services/radar/RadarService"
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookRadarEventPayload } from "@/lib/queues/resend-webhook-radar-events"
+import {
+  readEmailEventOrigin,
+  reinforceOriginWithDeliveryDelta,
+  type EmailEventOrigin,
+} from "@/lib/email/email-event-origin-classifier"
 
 const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
   "resend_webhook_radar_queue_publish_failed"
@@ -71,6 +76,12 @@ export class EmailOrphanEventService {
     resendEventType: string
     occurredAt: Date
     tagsHint?: ResendTrackingTagsInput
+    /**
+     * Classificação de origem já computada no webhook (opened/clicked). Os
+     * sinais crus — user-agent e IP — não sobrevivem ao enfileiramento, então
+     * só o RESULTADO viaja. O IP nunca é persistido (LGPD).
+     */
+    originHint?: EmailEventOrigin
   }): Promise<void> {
     if (isBackofficeResendTags(input.tagsHint ?? null)) {
       return
@@ -92,6 +103,7 @@ export class EmailOrphanEventService {
         resendEventType: input.resendEventType,
         occurredAt: input.occurredAt,
         tagsHint: input.tagsHint ?? undefined,
+        originHint: input.originHint ?? undefined,
         status: "pending",
       },
       update: {},
@@ -151,13 +163,17 @@ export class EmailOrphanEventService {
     const eventType = resendWebhookService.mapEventType(event.resendEventType)
     if (!eventType) return
 
+    const origin = this.resolveOriginForReplay(log, event)
+    const metadata: Record<string, unknown> = origin ? { origin } : {}
+
     await resendWebhookService.processEmailLogWebhook({
       log,
       eventType,
       occurredAt: event.occurredAt,
-      metadata: {},
+      metadata,
       resendEventType: event.resendEventType,
       svixId: null,
+      origin,
     })
 
     // Espelha o ResendWebhookUseCase: sem isto, uma reclamação que chegou antes
@@ -179,7 +195,7 @@ export class EmailOrphanEventService {
         campaignId: log.campaignId,
         eventType,
         occurredAt: event.occurredAt.toISOString(),
-        metadata: {},
+        metadata,
         emailOrphanEventId: event.id,
       })
     } catch (publishError) {
@@ -196,12 +212,33 @@ export class EmailOrphanEventService {
           campaignId: log.campaignId,
           eventType,
           occurredAt: event.occurredAt,
-          metadata: {},
+          metadata,
         })
       } catch (radarError) {
         console.error("[EmailOrphanEventService][radar]", radarError)
       }
     }
+  }
+
+  /**
+   * Origem do evento recuperado: o carimbo feito no webhook
+   * (`originHint`), reavaliado agora que a entrega é conhecida.
+   *
+   * No webhook o `EmailLog` não existia, então a regra de delta
+   * entrega→evento não pôde ser aplicada — é aqui que ela entra. Linha
+   * enfileirada antes deste carimbo existir devolve `undefined` e segue com o
+   * comportamento antigo (sem origem), em vez de inventar classificação.
+   */
+  private resolveOriginForReplay(
+    log: ExistingEmailLog,
+    event: ClaimedOrphanEvent
+  ): EmailEventOrigin | undefined {
+    const hint = readEmailEventOrigin({ origin: event.originHint })
+    if (!hint) return undefined
+    return reinforceOriginWithDeliveryDelta(hint, {
+      occurredAt: event.occurredAt,
+      deliveredAt: log.deliveredAt,
+    })
   }
 
   /** Cria o `EmailLog` a partir da API do Resend, com backoff próprio. */

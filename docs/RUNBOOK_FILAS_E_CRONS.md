@@ -65,8 +65,8 @@ presas em `running`. O kill de plataforma (timeout, OOM, deploy) não passa pelo
 sempre e o alerta de falha nunca dispara.
 
 O teto é **por `cronKey`** (`app/api/lib/cron/cronStaleThresholds.ts`), nunca
-global: `database-backup` (~5min) e `radar-sync-email-contacts` (p95 104s) são
-legitimamente longos. Teto = 2× o `maxDuration` declarado na rota.
+global: `radar-sync-email-contacts` (p95 104s) e outros crons com `maxDuration`
+de 300s são legitimamente longos. Teto = 2× o `maxDuration` declarado na rota.
 
 Execuções encerradas pelo watchdog recebem
 `errorSummary = 'stale_running_timeout'` e disparam o alerta Slack de falha de

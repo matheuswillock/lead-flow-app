@@ -174,12 +174,14 @@ type CounterDriftRow = {
   currentTotalSent: number
   currentTotalDelivered: number
   currentTotalOpened: number
+  currentTotalOpenedHuman: number
   currentTotalClicked: number
   currentTotalBounced: number
   currentTotalComplained: number
   computedTotalSent: number
   computedTotalDelivered: number
   computedTotalOpened: number
+  computedTotalOpenedHuman: number
   computedTotalClicked: number
   computedTotalBounced: number
   computedTotalComplained: number
@@ -192,6 +194,7 @@ function toCounterSnapshot(row: CounterDriftRow): CounterSnapshot<CampaignCounte
       totalSent: Number(row.currentTotalSent),
       totalDelivered: Number(row.currentTotalDelivered),
       totalOpened: Number(row.currentTotalOpened),
+      totalOpenedHuman: Number(row.currentTotalOpenedHuman),
       totalClicked: Number(row.currentTotalClicked),
       totalBounced: Number(row.currentTotalBounced),
       totalComplained: Number(row.currentTotalComplained),
@@ -200,6 +203,7 @@ function toCounterSnapshot(row: CounterDriftRow): CounterSnapshot<CampaignCounte
       totalSent: Number(row.computedTotalSent),
       totalDelivered: Number(row.computedTotalDelivered),
       totalOpened: Number(row.computedTotalOpened),
+      totalOpenedHuman: Number(row.computedTotalOpenedHuman),
       totalClicked: Number(row.computedTotalClicked),
       totalBounced: Number(row.computedTotalBounced),
       totalComplained: Number(row.computedTotalComplained),
@@ -302,6 +306,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
           COUNT(*) FILTER (WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL)::int AS "totalSent",
           COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS "totalDelivered",
           COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS "totalOpened",
+          COUNT(*) FILTER (WHERE "humanOpenedAt" IS NOT NULL)::int AS "totalOpenedHuman",
           COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS "totalClicked",
           COUNT(*) FILTER (WHERE "bouncedAt" IS NOT NULL)::int AS "totalBounced",
           COUNT(*) FILTER (WHERE "complainedAt" IS NOT NULL)::int AS "totalComplained"
@@ -314,12 +319,14 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         c."totalSent" AS "currentTotalSent",
         c."totalDelivered" AS "currentTotalDelivered",
         c."totalOpened" AS "currentTotalOpened",
+        c."totalOpenedHuman" AS "currentTotalOpenedHuman",
         c."totalClicked" AS "currentTotalClicked",
         c."totalBounced" AS "currentTotalBounced",
         c."totalComplained" AS "currentTotalComplained",
         a."totalSent" AS "computedTotalSent",
         a."totalDelivered" AS "computedTotalDelivered",
         a."totalOpened" AS "computedTotalOpened",
+        a."totalOpenedHuman" AS "computedTotalOpenedHuman",
         a."totalClicked" AS "computedTotalClicked",
         a."totalBounced" AS "computedTotalBounced",
         a."totalComplained" AS "computedTotalComplained"
@@ -340,6 +347,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
               c."totalSent" <> a."totalSent"
               OR c."totalDelivered" <> a."totalDelivered"
               OR c."totalOpened" <> a."totalOpened"
+              OR c."totalOpenedHuman" <> a."totalOpenedHuman"
               OR c."totalClicked" <> a."totalClicked"
               OR c."totalBounced" <> a."totalBounced"
               OR c."totalComplained" <> a."totalComplained"
@@ -361,6 +369,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
           COUNT(*) FILTER (WHERE "sentAt" IS NOT NULL OR "resendEmailId" IS NOT NULL)::int AS "totalSent",
           COUNT(*) FILTER (WHERE "deliveredAt" IS NOT NULL)::int AS "totalDelivered",
           COUNT(*) FILTER (WHERE "openedAt" IS NOT NULL)::int AS "totalOpened",
+          COUNT(*) FILTER (WHERE "humanOpenedAt" IS NOT NULL)::int AS "totalOpenedHuman",
           COUNT(*) FILTER (WHERE "clickedAt" IS NOT NULL)::int AS "totalClicked",
           COUNT(*) FILTER (WHERE "bouncedAt" IS NOT NULL)::int AS "totalBounced",
           COUNT(*) FILTER (WHERE "complainedAt" IS NOT NULL)::int AS "totalComplained"
@@ -373,12 +382,14 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
         d."totalSent" AS "currentTotalSent",
         d."totalDelivered" AS "currentTotalDelivered",
         d."totalOpened" AS "currentTotalOpened",
+        d."totalOpenedHuman" AS "currentTotalOpenedHuman",
         d."totalClicked" AS "currentTotalClicked",
         d."totalBounced" AS "currentTotalBounced",
         d."totalComplained" AS "currentTotalComplained",
         a."totalSent" AS "computedTotalSent",
         a."totalDelivered" AS "computedTotalDelivered",
         a."totalOpened" AS "computedTotalOpened",
+        a."totalOpenedHuman" AS "computedTotalOpenedHuman",
         a."totalClicked" AS "computedTotalClicked",
         a."totalBounced" AS "computedTotalBounced",
         a."totalComplained" AS "computedTotalComplained"
@@ -392,6 +403,7 @@ export class EmailCampaignRepository implements IEmailCampaignRepository {
               d."totalSent" <> a."totalSent"
               OR d."totalDelivered" <> a."totalDelivered"
               OR d."totalOpened" <> a."totalOpened"
+              OR d."totalOpenedHuman" <> a."totalOpenedHuman"
               OR d."totalClicked" <> a."totalClicked"
               OR d."totalBounced" <> a."totalBounced"
               OR d."totalComplained" <> a."totalComplained"
