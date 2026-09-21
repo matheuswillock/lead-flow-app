@@ -18,6 +18,7 @@ import { getScheduleShareExpiry } from "@/lib/schedule-share";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import { resolveCloserCalendarTransfer } from "./resolveCloserCalendarTransfer";
+import { resolveBestEffortCalendarFailure } from "./resolveBestEffortCalendarFailure";
 import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
@@ -340,6 +341,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     let calendarResult: CalendarEventResult | null = null;
+    let calendarSyncWarning: string | null = null;
     let googleDispatchError: string | null = null;
 
     let inviteDispatchStatus: InviteDispatchStatus = "failed";
@@ -651,15 +653,28 @@ export class LeadScheduleService implements ILeadScheduleService {
             meetingFormatLabel,
           });
         } catch (calendarError) {
+          const calendarFailure = resolveBestEffortCalendarFailure({
+            existingGoogleEventId: existingSchedule?.googleEventId,
+            errorMessage: getErrorMessage(calendarError, "erro desconhecido"),
+          });
           console.warn(
             `${LOG_PREFIX} Falha ao criar evento pessoal no Google Calendar do closer para ${meetingFormatLabel} — agendamento continua`,
             {
               leadId,
               scheduleId,
-              error: getErrorMessage(calendarError, "erro desconhecido"),
+              error: calendarFailure.payload.error,
+              staleEventId: calendarFailure.payload.staleEventId,
             }
           );
           calendarResult = null;
+          inviteDispatchLastError = calendarFailure.lastError;
+          inviteDispatchLastPayload = {
+            ...(inviteDispatchLastPayload && typeof inviteDispatchLastPayload === "object"
+              ? inviteDispatchLastPayload
+              : {}),
+            calendarSync: calendarFailure.payload,
+          };
+          calendarSyncWarning = calendarFailure.warning;
         }
       }
     }
@@ -859,6 +874,9 @@ export class LeadScheduleService implements ILeadScheduleService {
     });
 
     const scheduleWarnings: string[] = [];
+    if (calendarSyncWarning) {
+      scheduleWarnings.push(calendarSyncWarning);
+    }
     if (inviteDispatchStatus !== "failed") {
       try {
         const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);

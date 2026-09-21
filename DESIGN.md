@@ -50,9 +50,8 @@ Token namespaces:
 - `--btn-primary-*` for the primary button pair (decoupled from `--primary`, which must not change).
 - `--motion-*` for timing/easing.
 
-Reference artifacts (source of the values below, kept at repo root):
+Reference artifact (source of the values below, kept at repo root):
 - `UI-Kit.html` — colors, typography, buttons, badges, toggle, stage palette.
-- `CRM_(2).html` — CRM table/kanban mockup; reference for the lead status badge style only (hues come from the UI Kit).
 
 Compatibility:
 - Existing core tokens remain supported (`--primary`, `--background`, etc.).
@@ -101,7 +100,8 @@ Buttons:
 - `pill-cta`: conversion-focused pill allowed only in hero/pricing/checkout hotspots.
 - `utility-chip`: compact contextual pills for filters/status.
 
-Lead status badge (`components/lead-status-badge.tsx`, class `.lead-status-badge`; style from `CRM_(2).html .badge`, hues from §12):
+Lead status badge (`components/lead-status-badge.tsx`, class `.lead-status-badge`; tinted-pill style from the owner's CRM mockup, hues from §12):
+- Composed on the shadcn `Badge` (`variant="outline"`). The `.lead-status-badge` rule lives **outside** any `@layer`: the variant injects the `text-foreground` utility, and utilities beat anything in `@layer components` — only unlayered CSS wins over them.
 - Pill (`rounded-full`), `px-3 py-1`, `text-xs`, `font-bold`, **no dot** — label only.
 - Background `color-mix(in srgb, var(--stage-color) 16%, transparent)`, border `45%`.
 - Text `color-mix(in oklab, var(--stage-color) var(--stage-foreground-mix), var(--foreground))` — the hue darkens in light (55%) and lightens in dark (60%); the pure hue as text does not reach 4.5:1 on light tints (ceiling ≈3.6:1 for `#5b86d4`).

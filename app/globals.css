@@ -372,6 +372,18 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 
+/* Badge de status do lead (pílula tingida do mockup de CRM do dono, hues do UI Kit
+   stage-grid), aplicado sobre o Badge do shadcn (variant outline). Fica FORA de
+   @layer de propósito: o variant injeta a utility text-foreground, e utilities
+   vencem qualquer regra em @layer components — só CSS sem layer ganha delas.
+   Texto = hue misturado com --foreground: no light escurece até passar 4.5:1,
+   no dark clareia (tom 300 do mockup). */
+.lead-status-badge {
+  background: color-mix(in srgb, var(--stage-color) 16%, transparent);
+  border-color: color-mix(in srgb, var(--stage-color) 45%, transparent);
+  color: color-mix(in oklab, var(--stage-color) var(--stage-foreground-mix), var(--foreground));
+}
+
 @layer components {
   .btn-primary-accessible {
     background: var(--btn-primary-bg);
@@ -388,15 +400,6 @@ h1, h2, h3, h4, h5, h6 {
   .btn-primary-accessible:disabled {
     box-shadow: none;
     transform: none;
-  }
-
-  /* Badge de status do lead (estilo CRM_(2).html .badge, hues do UI Kit
-     stage-grid). Texto = hue misturado com --foreground: no light escurece até
-     passar 4.5:1, no dark clareia (tom 300 do mockup). */
-  .lead-status-badge {
-    background: color-mix(in srgb, var(--stage-color) 16%, transparent);
-    border-color: color-mix(in srgb, var(--stage-color) 45%, transparent);
-    color: color-mix(in oklab, var(--stage-color) var(--stage-foreground-mix), var(--foreground));
   }
 
   /* Cabeçalho de coluna do Kanban (UI Kit .kb-col-head). Tinta escura em vez de

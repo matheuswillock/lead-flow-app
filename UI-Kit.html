@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corretor Studio — UI Kit</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary:     #ff6900;
+  --primary-dim: color-mix(in oklab, #ff6900 12%, white);
+  --bg:          #f4f4f6;
+  --surface:     #ffffff;
+  --fg:          #17171c;
+  --fg-2:        #70707a;
+  --border:      #e4e4e8;
+  --muted:       #f4f4f6;
+  --sidebar:     #fafafa;
+  --success:        #3faa8a; --success-surface: #f0f9f5; --success-border: #c4e5d8;
+  --warning:        #c99530; --warning-surface: #fdf8ee; --warning-border: #e8d9a8;
+  --danger:         #c96060; --danger-surface:  #fdf4f4; --danger-border:  #e8c0c0;
+  --info:           #5b86d4; --info-surface:    #f2f6fc; --info-border:    #c8d8ef;
+  /* categoria (multicolor) */
+  --c-orange:#FF6900; --c-violet:#8B3FC7; --c-blue:#0670DB; --c-green:#1E9E63; --c-pink:#D14B60; --c-amber:#C77F13;
+  --surface-2: #f4f4f6; --border-2: #dadae0; --fg-3: #a0a0aa;
+  --font-d: 'Poppins', system-ui, sans-serif;
+  --font-b: 'Inter', system-ui, sans-serif;
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 4px 16px -4px rgba(0,0,0,0.07);
+  --shadow-btn:  0 10px 24px -6px color-mix(in oklab, #ff6900 55%, transparent);
+}
+* , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-b); -webkit-font-smoothing: antialiased; padding: 56px; }
+
+/* ── Page frame ── */
+.kit { max-width: 1180px; margin: 0 auto; }
+.kit-head { margin-bottom: 44px; }
+.kit-logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.kit-logo { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg,#ff6900,#e57082 55%,#cd6cdd); display: flex; align-items: center; justify-content: center; color: white; font-family: var(--font-d); font-size: 15px; font-weight: 700; }
+.kit-title { font-family: var(--font-d); font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.kit-sub { font-size: 15px; color: var(--fg-2); margin-top: 6px; max-width: 640px; line-height: 1.5; }
+
+/* ── Sections ── */
+.sec { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 30px 32px 34px; box-shadow: var(--shadow-card); margin-bottom: 26px; }
+.sec-title { font-family: var(--font-d); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-2); margin-bottom: 22px; display: flex; align-items: center; gap: 9px; }
+.sec-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.grp { margin-bottom: 26px; }
+.grp:last-child { margin-bottom: 0; }
+.grp-lbl { font-size: 12.5px; font-weight: 600; color: var(--fg-2); margin-bottom: 13px; }
+
+/* ── Color swatches ── */
+.swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.swatch { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.swatch-chip { height: 68px; }
+.swatch-meta { padding: 9px 11px; }
+.swatch-name { font-size: 12.5px; font-weight: 600; }
+.swatch-hex { font-size: 11.5px; color: var(--fg-2); font-family: ui-monospace, 'SF Mono', Menlo, monospace; margin-top: 2px; }
+
+/* ── Typography ── */
+.type-row { display: flex; align-items: baseline; gap: 20px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+.type-row:last-child { border-bottom: none; }
+.type-spec { width: 190px; flex-shrink: 0; font-size: 12px; color: var(--fg-2); font-family: ui-monospace, monospace; }
+.type-d1 { font-family: var(--font-d); font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.type-d2 { font-family: var(--font-d); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.type-d3 { font-family: var(--font-d); font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.type-b1 { font-size: 15px; }
+.type-b2 { font-size: 13px; }
+.type-b3 { font-size: 12px; color: var(--fg-2); }
+.type-lbl { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-2); }
+
+/* ── Buttons ── */
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-b); font-size: 13px; font-weight: 600; padding: 9px 15px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; transition: all 140ms; }
+.btn svg { width: 15px; height: 15px; }
+.btn-primary { background: var(--primary); color: white; box-shadow: var(--shadow-btn); }
+.btn-primary:hover { filter: brightness(1.04); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-outline { background: var(--surface); border-color: var(--border); color: var(--fg); }
+.btn-outline:hover { background: var(--muted); }
+.btn-ghost { background: transparent; color: var(--fg-2); }
+.btn-ghost:hover { background: var(--muted); color: var(--fg); }
+.btn-sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
+.icon-btn { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 140ms; }
+.icon-btn:hover { background: var(--muted); color: var(--fg); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* ── Pills / badges ── */
+.spill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.spill-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.st-draft     { background: var(--muted);           color: var(--fg-2); }
+.st-draft     .spill-dot { background: #c0c0c8; }
+.st-scheduled { background: var(--info-surface);     color: var(--info); }
+.st-scheduled .spill-dot { background: #5b86d4; }
+.st-sending   { background: var(--warning-surface);  color: var(--warning); }
+.st-sending   .spill-dot { background: #c99530; }
+.st-sent      { background: var(--success-surface);  color: var(--success); }
+.st-sent      .spill-dot { background: #3faa8a; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 7px; font-size: 11px; font-weight: 700; border: 1px solid; }
+.bg-success { background: var(--success-surface); color: var(--success); border-color: var(--success-border); }
+.bg-warning { background: var(--warning-surface); color: var(--warning); border-color: var(--warning-border); }
+.bg-danger  { background: var(--danger-surface);  color: var(--danger);  border-color: var(--danger-border); }
+.bg-info    { background: var(--info-surface);    color: var(--info);    border-color: var(--info-border); }
+
+/* ── Toggle ── */
+.camp-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; border: none; background: var(--border); cursor: pointer; padding: 0; flex-shrink: 0; transition: background 160ms; }
+.camp-switch.on { background: var(--success); }
+.camp-switch-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 160ms; }
+.camp-switch.on .camp-switch-knob { transform: translateX(18px); }
+
+/* ── Form fields ── */
+.fld { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
+.fld label { font-size: 12px; font-weight: 600; color: var(--fg); }
+.field-inp { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; font-family: inherit; color: var(--fg); background: var(--surface); outline: none; transition: border-color 140ms; width: 100%; }
+.field-inp:focus { border-color: var(--primary); }
+.field-inp::placeholder { color: var(--fg-2); }
+select.field-inp { padding-right: 34px; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2370707a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
+.camp-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; background: var(--surface); max-width: 320px; }
+.camp-search svg { width: 15px; height: 15px; color: var(--fg-2); flex-shrink: 0; }
+.camp-search input { border: none; background: transparent; outline: none; font-size: 12.5px; color: var(--fg); width: 100%; font-family: inherit; }
+
+/* ── Cards ── */
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 15px 16px; box-shadow: var(--shadow-card); width: 220px; }
+.stat-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.stat-label { font-size: 11.5px; color: var(--fg-2); font-weight: 600; }
+.stat-ic { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.stat-ic svg { width: 15px; height: 15px; }
+.stat-val { font-family: var(--font-d); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.stat-foot { font-size: 11.5px; color: var(--fg-2); margin-top: 5px; }
+
+/* ── Avatars ── */
+.ava-lg { width: 40px; height: 40px; border-radius: 999px; background: #9ca3af; color: white; font-size: 14px; font-weight: 700; font-family: var(--font-d); display: flex; align-items: center; justify-content: center; }
+.ava-sm { width: 24px; height: 24px; border-radius: 999px; background: #b0b7c3; color: white; font-size: 9px; font-weight: 700; font-family: var(--font-d); display: flex; align-items: center; justify-content: center; }
+
+/* ── Shadows & radii ── */
+.spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.spec-box { height: 84px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: flex; align-items: flex-end; padding: 11px; font-size: 11.5px; color: var(--fg-2); font-family: ui-monospace, monospace; }
+.rad-box { height: 84px; background: var(--primary-dim); border: 1px solid var(--border); display: flex; align-items: flex-end; padding: 11px; font-size: 11.5px; color: var(--primary); font-weight: 600; font-family: ui-monospace, monospace; }
+
+/* ── Icons ── */
+.ico-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }
+.ico-cell { border: 1px solid var(--border); border-radius: 11px; padding: 14px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ico-swatches { display: flex; align-items: center; gap: 6px; }
+.ico-sw { width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+.ico-sw svg { width: 22px; height: 22px; }
+.ico-sw-dark { color: var(--fg); background: var(--muted); }
+.ico-sw-orange { color: var(--primary); background: var(--primary-dim); }
+.ico-sw-white { color: #fff; background: #17171c; }
+.ico-name { font-size: 10.5px; color: var(--fg-2); font-family: ui-monospace, monospace; }
+
+/* ── Dark palette strip ── */
+.dark-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.dk { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+.dk-chip { height: 60px; }
+.dk-meta { padding: 9px 11px; background: #17171F; }
+.dk-name { font-size: 12.5px; font-weight: 600; color: #fff; }
+.dk-hex { font-size: 11px; color: rgba(255,255,255,0.54); font-family: ui-monospace, monospace; margin-top: 2px; }
+
+/* ── Pipeline stage palette ── */
+.stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.stage-cell { border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px; display: flex; align-items: center; gap: 10px; }
+.stage-dot { width: 13px; height: 13px; border-radius: 999px; flex-shrink: 0; }
+.stage-txt { display: flex; flex-direction: column; }
+.stage-name { font-size: 12.5px; font-weight: 600; }
+.stage-hex { font-size: 11px; color: var(--fg-2); font-family: ui-monospace, monospace; margin-top: 1px; }
+
+/* ── Segmented toggle (Pipeline / Kanban) ── */
+.view-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; }
+.view-opt { font-size: 12.5px; font-weight: 600; color: var(--fg-2); }
+.view-opt.on { color: var(--fg); }
+
+/* ── Kanban ── */
+.kanban-demo { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding: 4px 2px 8px; }
+.kb-col { flex-shrink: 0; width: 264px; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #17171F; }
+.kb-col-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: #fff; font-family: var(--font-d); }
+.kb-col-label { font-size: 14px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-col-count { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: rgba(0,0,0,0.25); flex-shrink: 0; }
+.kb-col-body { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+.kb-card { background: #1F1F29; border: 1px solid #2E2E3C; border-radius: 11px; padding: 13px 14px; display: flex; flex-direction: column; gap: 7px; }
+.kb-card-name { font-family: var(--font-d); font-size: 14px; font-weight: 700; color: #fff; line-height: 1.35; }
+.kb-card-entrada { font-size: 12px; color: rgba(255,255,255,0.5); }
+.kb-card-plano { font-size: 12px; color: rgba(255,255,255,0.72); font-weight: 600; }
+.kb-card-valor { font-size: 12.5px; font-weight: 700; color: #fff; }
+.kb-card-foot { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 2px; }
+.kb-card-id { font-size: 12px; color: rgba(255,255,255,0.5); font-family: ui-monospace, monospace; margin-right: auto; }
+.kb-av { width: 24px; height: 24px; border-radius: 999px; background: #9ca3af; color: #fff; font-size: 9px; font-weight: 700; font-family: var(--font-d); display: flex; align-items: center; justify-content: center; }
+.kb-av.alt { background: #b0b7c3; }
+
+/* ── Knowledge base category card (multicolor, fiel à tela) ── */
+.kbcat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kbcat { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.kbcat-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--cc); background: color-mix(in oklab, var(--cc) 16%, transparent); margin-bottom: 12px; }
+.kbcat-ic svg { width: 20px; height: 20px; }
+.kbcat-title { font-family: var(--font-d); font-size: 14.5px; font-weight: 600; }
+.kbcat-desc { font-size: 12.5px; color: var(--fg-2); margin-top: 5px; line-height: 1.5; }
+.kbcat-count { display: inline-block; margin-top: 11px; font-size: 11px; font-weight: 600; color: var(--fg-3); }
+
+/* ── Article row ── */
+.kbart-list { display: flex; flex-direction: column; gap: 8px; }
+.kbart { display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.kbart-ic { width: 34px; height: 34px; border-radius: 9px; background: color-mix(in oklab, var(--cc) 15%, transparent); color: var(--cc); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kbart-ic svg { width: 17px; height: 17px; }
+.kbart-tx { flex: 1; min-width: 0; }
+.kbart-tx b { display: block; font-size: 14px; font-weight: 600; color: var(--fg); }
+.kbart-tx span { font-size: 12px; color: var(--fg-3); }
+.kbart-arr { color: var(--fg-3); display: flex; }
+
+/* ── Callouts ── */
+.kbco-grid { display: flex; flex-direction: column; gap: 10px; }
+.kbco { display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.kbco-ic { flex-shrink: 0; margin-top: 1px; }
+.kbco b { font-size: 13.5px; font-weight: 600; }
+.kbco p { font-size: 13px; line-height: 1.5; color: var(--fg-2); margin-top: 3px; }
+.kbco.info { background: color-mix(in oklab, var(--c-blue) 11%, var(--surface)); border-color: color-mix(in oklab, var(--c-blue) 30%, var(--border)); }
+.kbco.info .kbco-ic { color: var(--c-blue); }
+.kbco.warn { background: color-mix(in oklab, var(--c-amber) 12%, var(--surface)); border-color: color-mix(in oklab, var(--c-amber) 32%, var(--border)); }
+.kbco.warn .kbco-ic { color: var(--c-amber); }
+.kbco.success { background: color-mix(in oklab, var(--c-green) 11%, var(--surface)); border-color: color-mix(in oklab, var(--c-green) 30%, var(--border)); }
+.kbco.success .kbco-ic { color: var(--c-green); }
+
+/* ── Pill badges (multicolor) ── */
+.kbpill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.kbpill { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap; color: var(--cc); background: color-mix(in oklab, var(--cc) 12%, transparent); border-color: color-mix(in oklab, var(--cc) 34%, var(--border)); }
+
+/* ── Hero search (glow) ── */
+.hero-search { position: relative; background: linear-gradient(135deg,#ff6900,#e57082 55%,#cd6cdd); border-radius: 18px; padding: 30px 28px; overflow: hidden; }
+.hero-search h4 { font-family: var(--font-d); font-size: 20px; font-weight: 700; color: #fff; position: relative; z-index: 2; }
+.hero-search-box { position: relative; z-index: 2; margin-top: 16px; display: flex; align-items: center; gap: 11px; background: rgba(255,255,255,0.95); border-radius: 12px; padding: 0 15px; height: 46px; max-width: 460px; }
+.hero-search-box svg { color: var(--fg-2); flex-shrink: 0; }
+.hero-search-box input { border: none; background: transparent; outline: none; font-size: 14px; color: var(--fg); width: 100%; font-family: inherit; }
+.hero-glow { position: absolute; border-radius: 999px; filter: blur(46px); opacity: 0.55; }
+.hero-glow.g1 { width: 220px; height: 220px; background: #fff; top: -90px; right: -40px; }
+.hero-glow.g2 { width: 180px; height: 180px; background: #ffd9b3; bottom: -80px; left: 30%; }
+
+/* ── Attachment / upload card ── */
+.anx-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.anx { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 11px; padding: 12px 14px; background: var(--surface); width: 300px; }
+.anx-ic { width: 36px; height: 36px; border-radius: 9px; background: var(--danger-surface); color: var(--danger); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.anx-ic svg { width: 18px; height: 18px; }
+.anx-meta { flex: 1; min-width: 0; }
+.anx-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anx-size { font-size: 11px; color: var(--fg-2); margin-top: 2px; }
+.anx-dl { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.anx-dl:hover { background: var(--muted); color: var(--fg); }
+.anx-drop { border: 1.5px dashed var(--border); border-radius: 11px; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--fg-2); width: 300px; text-align: center; }
+.anx-drop svg { width: 24px; height: 24px; }
+.anx-drop-txt { font-size: 12.5px; }
+
+/* ── Scrollbar demo ── */
+.scroll-demo { display: flex; gap: 16px; flex-wrap: wrap; }
+.scroll-box { width: 300px; height: 130px; border-radius: 12px; border: 1px solid var(--border); overflow-y: scroll; padding: 12px 14px; }
+.scroll-box p { font-size: 12.5px; line-height: 1.7; }
+.scroll-light { background: var(--surface); color: var(--fg); }
+.scroll-light::-webkit-scrollbar { width: 10px; }
+.scroll-light::-webkit-scrollbar-thumb { background: color-mix(in oklab, #17171c 16%, transparent); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+.scroll-dark { background: #17171F; color: #fff; border-color: #2E2E3C; }
+.scroll-dark::-webkit-scrollbar { width: 10px; }
+.scroll-dark::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+.scroll-cap { font-size: 11px; color: var(--fg-2); font-family: ui-monospace, monospace; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="kit">
+  <div class="kit-head">
+    <div class="kit-logo-row">
+      <div class="kit-logo">CS</div>
+      <div>
+        <div class="kit-title">Corretor Studio — UI Kit</div>
+      </div>
+    </div>
+    <p class="kit-sub">Todos os elementos gráficos usados nas telas do produto: cores, tipografia, botões, badges, campos, cards, ícones, sombras e raios. Pronto para importar no Figma.</p>
+  </div>
+
+  <!-- COLORS -->
+  <div class="sec">
+    <div class="sec-title">Cores · tema claro</div>
+    <div class="grp">
+      <div class="grp-lbl">Marca &amp; superfícies</div>
+      <div class="swatch-grid" id="sw-brand"></div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Texto &amp; bordas</div>
+      <div class="swatch-grid" id="sw-neutral"></div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Semânticas (cor · superfície · borda)</div>
+      <div class="swatch-grid" id="sw-semantic"></div>
+    </div>
+  </div>
+
+  <!-- DARK -->
+  <div class="sec">
+    <div class="sec-title">Cores · tema escuro (CRM)</div>
+    <div class="dark-grid" id="sw-dark"></div>
+  </div>
+
+  <!-- TYPE -->
+  <div class="sec">
+    <div class="sec-title">Tipografia</div>
+    <div class="grp">
+      <div class="grp-lbl">Poppins — display / títulos · &nbsp; Inter — corpo / interface</div>
+      <div class="type-row"><div class="type-spec">Poppins 700 · 30 / -2%</div><div class="type-d1">Corretores fecham mais</div></div>
+      <div class="type-row"><div class="type-spec">Poppins 700 · 22 / -2%</div><div class="type-d2">Título de página</div></div>
+      <div class="type-row"><div class="type-spec">Poppins 600 · 16 / -1%</div><div class="type-d3">Subtítulo de seção</div></div>
+      <div class="type-row"><div class="type-spec">Inter 400 · 15</div><div class="type-b1">Corpo grande — parágrafos e descrições introdutórias.</div></div>
+      <div class="type-row"><div class="type-spec">Inter 400 · 13</div><div class="type-b2">Corpo padrão da interface, usado na maioria das telas.</div></div>
+      <div class="type-row"><div class="type-spec">Inter 400 · 12</div><div class="type-b3">Texto auxiliar / metadados secundários.</div></div>
+      <div class="type-row"><div class="type-spec">Inter 600 · 10 / +6% · CAPS</div><div class="type-lbl">Rótulo de grupo</div></div>
+    </div>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="sec">
+    <div class="sec-title">Botões</div>
+    <div class="grp">
+      <div class="grp-lbl">Variantes</div>
+      <div class="row">
+        <button class="btn btn-primary" id="b1"></button>
+        <button class="btn btn-outline" id="b2"></button>
+        <button class="btn btn-ghost">Ghost</button>
+        <button class="btn btn-primary" disabled>Desabilitado</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Tamanho pequeno &amp; ícone</div>
+      <div class="row">
+        <button class="btn btn-primary btn-sm">Pequeno</button>
+        <button class="btn btn-outline btn-sm">Pequeno</button>
+        <button class="icon-btn" id="ib1"></button>
+        <button class="icon-btn" id="ib2"></button>
+        <button class="icon-btn" id="ib3"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PILLS -->
+  <div class="sec">
+    <div class="sec-title">Status &amp; badges</div>
+    <div class="grp">
+      <div class="grp-lbl">Status de campanha (pill com ponto)</div>
+      <div class="row">
+        <span class="spill st-draft"><span class="spill-dot"></span>Rascunho</span>
+        <span class="spill st-scheduled"><span class="spill-dot"></span>Agendada</span>
+        <span class="spill st-sending"><span class="spill-dot"></span>Enviando</span>
+        <span class="spill st-sent"><span class="spill-dot"></span>Enviada</span>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Badges semânticos</div>
+      <div class="row">
+        <span class="badge bg-success">Ativo</span>
+        <span class="badge bg-warning">Pendente</span>
+        <span class="badge bg-danger">Vencido</span>
+        <span class="badge bg-info">Novo</span>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Toggle (desligado / ligado)</div>
+      <div class="row">
+        <span class="camp-switch"><span class="camp-switch-knob"></span></span>
+        <span class="camp-switch on"><span class="camp-switch-knob"></span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FORM -->
+  <div class="sec">
+    <div class="sec-title">Campos de formulário</div>
+    <div class="row" style="align-items:flex-start;gap:24px">
+      <div class="fld"><label>Texto</label><input class="field-inp" placeholder="Digite aqui…"></div>
+      <div class="fld"><label>Select</label><select class="field-inp"><option>Opção A</option><option>Opção B</option></select></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600">Busca</label><div class="camp-search" id="search-box"><input placeholder="Buscar…"></div></div>
+    </div>
+  </div>
+
+  <!-- CARDS -->
+  <div class="sec">
+    <div class="sec-title">Cards de métrica</div>
+    <div class="row">
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Enviadas</span><span class="stat-ic" style="background:var(--success-surface);color:var(--success)" id="c-ic1"></span></div>
+        <div class="stat-val">2</div>
+        <div class="stat-foot">Campanhas concluídas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Agendadas</span><span class="stat-ic" style="background:var(--info-surface);color:var(--info)" id="c-ic2"></span></div>
+        <div class="stat-val">1</div>
+        <div class="stat-foot">Aguardando disparo</div>
+      </div>
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Abertura média</span><span class="stat-ic" style="background:var(--warning-surface);color:var(--warning)" id="c-ic3"></span></div>
+        <div class="stat-val">75%</div>
+        <div class="stat-foot">Nas campanhas enviadas</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHADOWS / RADII -->
+  <div class="sec">
+    <div class="sec-title">Sombras &amp; raios</div>
+    <div class="grp">
+      <div class="grp-lbl">Sombras</div>
+      <div class="spec-grid">
+        <div class="spec-box" style="box-shadow:var(--shadow-card)">card</div>
+        <div class="spec-box" style="box-shadow:var(--shadow-btn)">btn (laranja)</div>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Raios de canto</div>
+      <div class="spec-grid">
+        <div class="rad-box" style="border-radius:8px">8px</div>
+        <div class="rad-box" style="border-radius:10px">10px</div>
+        <div class="rad-box" style="border-radius:14px">14px</div>
+        <div class="rad-box" style="border-radius:18px">18px</div>
+        <div class="rad-box" style="border-radius:999px">999px</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ICONS -->
+  <div class="sec">
+    <div class="sec-title">Ícones (traço 2px · 24×24) · escuro / laranja / branco</div>
+    <div class="ico-grid" id="ico-grid"></div>
+  </div>
+
+  <!-- PIPELINE STAGE PALETTE -->
+  <div class="sec">
+    <div class="sec-title">Etapas do pipeline · cores</div>
+    <p class="kit-sub" style="margin:-8px 0 20px">Cor de cada etapa do funil de vendas — usada nos cabeçalhos das colunas do Kanban e nos pontos de status do CRM.</p>
+    <div class="stage-grid" id="stage-grid"></div>
+  </div>
+
+  <!-- PIPELINE / KANBAN VIEW TOGGLE -->
+  <div class="sec">
+    <div class="sec-title">Alternador de visualização</div>
+    <div class="grp">
+      <div class="grp-lbl">Pipeline ↔ Kanban (toggle segmentado)</div>
+      <div class="row">
+        <div class="view-toggle">
+          <span class="view-opt on">Pipeline</span>
+          <span class="camp-switch"><span class="camp-switch-knob"></span></span>
+          <span class="view-opt">Kanban</span>
+        </div>
+        <div class="view-toggle">
+          <span class="view-opt">Pipeline</span>
+          <span class="camp-switch on"><span class="camp-switch-knob"></span></span>
+          <span class="view-opt on">Kanban</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KANBAN -->
+  <div class="sec">
+    <div class="sec-title">Kanban · colunas &amp; cards</div>
+    <div class="kanban-demo">
+      <div class="kb-col">
+        <div class="kb-col-head" style="background:#8ac4e0"><span class="kb-col-label">Nova oportunidade</span><span class="kb-col-count">2</span></div>
+        <div class="kb-col-body">
+          <div class="kb-card">
+            <div class="kb-card-name">Construtora Alves</div>
+            <div class="kb-card-entrada">Entrada: 08/07</div>
+            <div class="kb-card-plano">Amil — Empresarial</div>
+            <div class="kb-card-valor">R$ 4.820/mês</div>
+            <div class="kb-card-foot"><span class="kb-card-id">ID: LD-3391</span><span class="kb-av">M</span><span class="kb-av alt">R</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-card-name">Mariana Torres</div>
+            <div class="kb-card-entrada">Entrada: 07/07</div>
+            <div class="kb-card-foot"><span class="kb-card-id">ID: LD-3388</span><span class="kb-av">C</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="kb-col">
+        <div class="kb-col-head" style="background:#a3a8d4"><span class="kb-col-label">Agendado</span><span class="kb-col-count">1</span></div>
+        <div class="kb-col-body">
+          <div class="kb-card">
+            <div class="kb-card-name">Padaria Estrela</div>
+            <div class="kb-card-entrada">Entrada: 05/07</div>
+            <div class="kb-card-plano">Bradesco — PME</div>
+            <div class="kb-card-valor">R$ 2.310/mês</div>
+            <div class="kb-card-foot"><span class="kb-card-id">ID: LD-3370</span><span class="kb-av">A</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="kb-col">
+        <div class="kb-col-head" style="background:#8cc8a0"><span class="kb-col-label">Negócio fechado</span><span class="kb-col-count">1</span></div>
+        <div class="kb-col-body">
+          <div class="kb-card">
+            <div class="kb-card-name">Studio Bem-Estar</div>
+            <div class="kb-card-entrada">Entrada: 01/07</div>
+            <div class="kb-card-plano">SulAmérica — Adesão</div>
+            <div class="kb-card-valor">R$ 6.140/mês</div>
+            <div class="kb-card-foot"><span class="kb-card-id">ID: LD-3352</span><span class="kb-av alt">R</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO SEARCH + KB CATEGORIES -->
+  <div class="sec">
+    <div class="sec-title">Base de conhecimento</div>
+    <div class="grp">
+      <div class="grp-lbl">Cards de categoria (multicolor)</div>
+      <div class="kbcat-grid" id="kbcat-grid"></div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Linha de artigo</div>
+      <div class="kbart-list" id="kbart-list"></div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Callouts (info / aviso / sucesso)</div>
+      <div class="kbco-grid">
+        <div class="kbco info"><span class="kbco-ic" id="co-i"></span><div><b>Dica</b><p>Importe sua base via planilha para começar em minutos.</p></div></div>
+        <div class="kbco warn"><span class="kbco-ic" id="co-w"></span><div><b>Atenção</b><p>A ação de arquivar só fica disponível com a campanha inativa.</p></div></div>
+        <div class="kbco success"><span class="kbco-ic" id="co-s"></span><div><b>Pronto</b><p>Seus contatos foram organizados automaticamente.</p></div></div>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="grp-lbl">Badges de artigo (pill multicolor)</div>
+      <div class="kbpill-row" id="kbpill-row"></div>
+    </div>
+  </div>
+
+  <!-- ATTACHMENTS -->
+  <div class="sec">
+    <div class="sec-title">Anexos &amp; upload</div>
+    <div class="anx-grid">
+      <div class="anx">
+        <span class="anx-ic" id="anx-ic1"></span>
+        <div class="anx-meta"><div class="anx-name">Proposta_Amil_2026.pdf</div><div class="anx-size">248 KB</div></div>
+        <button class="anx-dl" id="anx-dl1"></button>
+      </div>
+      <div class="anx-drop">
+        <span id="anx-up"></span>
+        <div class="anx-drop-txt">Arraste arquivos ou clique para enviar</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCROLLBARS -->
+  <div class="sec">
+    <div class="sec-title">Barras de rolagem · claro / escuro</div>
+    <p class="kit-sub" style="margin:-8px 0 20px">Thumb arredondado de 10px, sem seta, com recuo de 3px. A cor do thumb acompanha o tema: escura no light, clara no dark.</p>
+    <div class="scroll-demo">
+      <div>
+        <div class="scroll-box scroll-light"><p>Rolagem no tema claro.<br><br>Thumb escuro translúcido<br>(16% sobre o texto).<br><br>Trilho transparente,<br>cantos totalmente arredondados.<br><br>Role para ver o comportamento.</p></div>
+        <div class="scroll-cap">tema claro · thumb #17171c 16%</div>
+      </div>
+      <div>
+        <div class="scroll-box scroll-dark"><p>Rolagem no tema escuro.<br><br>Thumb branco translúcido<br>(18% de opacidade).<br><br>Trilho transparente,<br>cantos totalmente arredondados.<br><br>Role para ver o comportamento.</p></div>
+        <div class="scroll-cap">tema escuro · thumb #fff 18%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICONS = {
+  layout:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
+  users:'<circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  barchart:'<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>',
+  calculator:'<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/>',
+  briefcase:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  fileText:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  bookUser:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="12" cy="8" r="2"/><path d="M15 13a3 3 0 1 0-6 0"/>',
+  send:'<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>',
+  users2:'<circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  chevDown:'<polyline points="6 9 12 15 18 9"/>',
+  chevRight:'<polyline points="9 18 15 12 9 6"/>',
+  chevLeft:'<polyline points="15 18 9 12 15 6"/>',
+  check:'<polyline points="20 6 9 17 4 12"/>',
+  checkCircle:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  mail:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+  duplicate:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  pencil:'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  archive:'<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5" rx="1"/><line x1="10" y1="12" x2="14" y2="12"/>',
+  copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  pause:'<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+  moreH:'<circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none"/>',
+  toggleRight:'<rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="16" cy="12" r="3"/>',
+  toggleLeft:'<rect x="1" y="5" width="22" height="14" rx="7"/><circle cx="8" cy="12" r="3"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+  zap:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  inbox:'<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  alert:'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  rows:'<path d="M4 7h16M4 12h16M4 17h10"/>',
+  grid:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/>',
+  team:'<circle cx="9" cy="8" r="3"/><path d="M4 19a5 5 0 0 1 10 0M15 6a3 3 0 0 1 0 6m5 7a5 5 0 0 0-4-4.9"/>',
+  chart:'<path d="M4 19V5m0 14h16M8 15l3-4 3 2 4-6"/>',
+  gear2:'<path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-5.07-2.83 2.83M9.76 14.24l-2.83 2.83m10.14 0-2.83-2.83M9.76 9.76 6.93 6.93"/><circle cx="12" cy="12" r="3"/>',
+  lifebuoy:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>',
+  info:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+  book:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  arrowRight:'<polyline points="9 6 15 12 9 18"/>',
+  sigma:'<path d="M18 7V4H6l6 8-6 8h12v-3"/>'
+};
+function svg(name, size){
+  return '<svg viewBox="0 0 24 24" width="'+(size||16)+'" height="'+(size||16)+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ICONS[name]+'</svg>';
+}
+
+/* color data */
+const brand = [
+  ['Primary','#ff6900'], ['Primary dim','#fff0e6'], ['Background','#f4f4f6'],
+  ['Surface','#ffffff'], ['Sidebar','#fafafa'], ['Muted','#f4f4f6']
+];
+const neutral = [
+  ['Texto','#17171c'], ['Texto 2','#70707a'], ['Borda','#e4e4e8']
+];
+const semantic = [
+  ['Success','#3faa8a'], ['Success surface','#f0f9f5'], ['Success border','#c4e5d8'],
+  ['Warning','#c99530'], ['Warning surface','#fdf8ee'], ['Warning border','#e8d9a8'],
+  ['Danger','#c96060'], ['Danger surface','#fdf4f4'], ['Danger border','#e8c0c0'],
+  ['Info','#5b86d4'], ['Info surface','#f2f6fc'], ['Info border','#c8d8ef']
+];
+const dark = [
+  ['Bg','#0F0F14'], ['Panel','#17171F'], ['Surface','#1F1F29'], ['Surface 2','#272734'], ['Surface 3','#2E2E3C'],
+  ['Primary','#FF6900'], ['Success','#18B47E'], ['Warn','#D97706'], ['Danger','#E0524B'],
+  ['Blue','#3B82F6'], ['Purple','#8B5CF6'], ['Cyan','#06B6D4']
+];
+function swatchHTML(name, hex){
+  const border = ['#ffffff','#fafafa','#f4f4f6','#e6f7f2','#eff4ff','#fef3c7','#fef2f2','#fff0e6'].includes(hex.toLowerCase()) ? 'box-shadow:inset 0 0 0 1px rgba(0,0,0,0.05)' : '';
+  return '<div class="swatch"><div class="swatch-chip" style="background:'+hex+';'+border+'"></div><div class="swatch-meta"><div class="swatch-name">'+name+'</div><div class="swatch-hex">'+hex+'</div></div></div>';
+}
+document.getElementById('sw-brand').innerHTML = brand.map(c=>swatchHTML(c[0],c[1])).join('');
+document.getElementById('sw-neutral').innerHTML = neutral.map(c=>swatchHTML(c[0],c[1])).join('');
+document.getElementById('sw-semantic').innerHTML = semantic.map(c=>swatchHTML(c[0],c[1])).join('');
+document.getElementById('sw-dark').innerHTML = dark.map(c=>'<div class="dk"><div class="dk-chip" style="background:'+c[1]+'"></div><div class="dk-meta"><div class="dk-name">'+c[0]+'</div><div class="dk-hex">'+c[1]+'</div></div></div>').join('');
+
+/* buttons with icons */
+document.getElementById('b1').innerHTML = svg('plus',15)+'Nova campanha';
+document.getElementById('b2').innerHTML = svg('barchart',15)+'Analytics';
+document.getElementById('ib1').innerHTML = svg('pencil',16);
+document.getElementById('ib2').innerHTML = svg('duplicate',16);
+document.getElementById('ib3').innerHTML = svg('trash',16);
+document.getElementById('search-box').insertAdjacentHTML('afterbegin', svg('search',15));
+document.getElementById('c-ic1').innerHTML = svg('checkCircle',15);
+document.getElementById('c-ic2').innerHTML = svg('clock',15);
+document.getElementById('c-ic3').innerHTML = svg('barchart',15);
+
+/* icon grid */
+document.getElementById('ico-grid').innerHTML = Object.keys(ICONS).map(n=>
+  '<div class="ico-cell"><div class="ico-swatches">'+
+    '<span class="ico-sw ico-sw-dark">'+svg(n,22)+'</span>'+
+    '<span class="ico-sw ico-sw-orange">'+svg(n,22)+'</span>'+
+    '<span class="ico-sw ico-sw-white">'+svg(n,22)+'</span>'+
+  '</div><span class="ico-name">'+n+'</span></div>'
+).join('');
+
+/* pipeline stage palette */
+const stages = [
+  ['Nova oportunidade','#5b86d4'], ['Contato feito','#6b93d8'], ['Agendado','#a3a8d4'],
+  ['Reagendado','#b5a8cc'], ['No Show','#d4b084'], ['Cotação','#8ac4e0'],
+  ['Venda Futura','#9b7ec8'], ['Negociação','#b5a8cc'], ['Documentos pendentes','#c99530'],
+  ['Proposta','#5bbcb6'], ['DPS | Contrato','#8ac4e0'], ['Boleto','#c99530'],
+  ['Desqualificado','#c96060'], ['Perdido','#c96060'], ['Negado operadora','#c96060'],
+  ['Negócio fechado','#3faa8a']
+];
+document.getElementById('stage-grid').innerHTML = stages.map(s=>
+  '<div class="stage-cell"><span class="stage-dot" style="background:'+s[1]+'"></span><span class="stage-txt"><span class="stage-name">'+s[0]+'</span><span class="stage-hex">'+s[1]+'</span></span></div>'
+).join('');
+
+/* KB categories (multicolor, fiel à tela) */
+const kbcats = [
+  ['rows','var(--c-orange)','Visão geral','O que é o Corretor Studio, módulos e perfis de acesso.','1 artigo'],
+  ['team','var(--c-violet)','Conta &amp; Acesso','Criar conta, login, senha, perfil e assinatura.','5 artigos'],
+  ['grid','var(--c-green)','CRM &amp; Pipeline','Kanban, ficha do lead, fechamento e calendário.','4 artigos'],
+  ['chart','var(--c-blue)','Dashboard &amp; Métricas','Cards, funil, filtros de período e fórmulas.','1 artigo'],
+  ['users2','var(--c-pink)','Times &amp; Usuários','Níveis de acesso, funções SDR/Closer e convites.','2 artigos'],
+  ['gear2','var(--c-amber)','Integrações','Google Calendar, formulário de captação e webhooks.','2 artigos']
+];
+document.getElementById('kbcat-grid').innerHTML = kbcats.map(c=>
+  '<div class="kbcat" style="--cc:'+c[1]+'"><div class="kbcat-ic">'+svg(c[0],20)+'</div><div class="kbcat-title">'+c[2]+'</div><div class="kbcat-desc">'+c[3]+'</div><div class="kbcat-count">'+c[4]+'</div></div>'
+).join('');
+
+/* KB article rows */
+const kbarts = [
+  ['book','var(--c-orange)','O que é o Corretor Studio?','Visão geral · 3 min de leitura'],
+  ['grid','var(--c-green)','Como funciona o pipeline Kanban','CRM &amp; Pipeline · 5 min de leitura'],
+  ['chart','var(--c-blue)','Entenda as fórmulas do Dashboard','Dashboard &amp; Métricas · 4 min de leitura']
+];
+document.getElementById('kbart-list').innerHTML = kbarts.map(a=>
+  '<div class="kbart" style="--cc:'+a[1]+'"><span class="kbart-ic">'+svg(a[0],17)+'</span><div class="kbart-tx"><b>'+a[2]+'</b><span>'+a[3]+'</span></div><span class="kbart-arr">'+svg('chevRight',18)+'</span></div>'
+).join('');
+
+/* KB callouts */
+document.getElementById('co-i').innerHTML = svg('info',19);
+document.getElementById('co-w').innerHTML = svg('alert',19);
+document.getElementById('co-s').innerHTML = svg('checkCircle',19);
+
+/* KB pill badges */
+const kbpills = [['Novo','var(--c-green)'],['Beta','var(--c-blue)'],['Popular','var(--c-orange)'],['Atualizado','var(--c-violet)'],['Importante','var(--c-pink)'],['Em breve','var(--c-amber)']];
+document.getElementById('kbpill-row').innerHTML = kbpills.map(p=>
+  '<span class="kbpill" style="--cc:'+p[1]+'">'+p[0]+'</span>'
+).join('');
+
+/* attachments + hero */
+document.getElementById('hero-search-box').insertAdjacentHTML('afterbegin', svg('search',17));
+document.getElementById('anx-ic1').innerHTML = svg('fileText',18);
+document.getElementById('anx-dl1').innerHTML = svg('download',15);
+document.getElementById('anx-up').innerHTML = svg('inbox',24);
+</script>
+
+<template id="__bundler_thumbnail">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#ff6900"/><g fill="#fff"><rect x="30" y="30" width="16" height="16" rx="3"/><rect x="54" y="30" width="16" height="16" rx="3"/><rect x="30" y="54" width="16" height="16" rx="3"/><rect x="54" y="54" width="16" height="16" rx="3"/></g></svg>
+</template>
+</body>
+</html>
