@@ -15222,7 +15222,7 @@
                     "backups"
                   ]
                 },
-                "description": "Lista metadados de backups diários (cron e manuais)."
+                "description": "Lista metadados dos backups já gerados (source=cron e manuais). Não há mais backup diário automático desde 2026-09-21."
               }
             },
             {
@@ -15306,7 +15306,7 @@
                     "database-backup"
                   ]
                 },
-                "description": "Cron 05:00 BRT (08:00 UTC) — dispara dump na VPS e grava metadados com source=cron."
+                "description": "Rota do backup do banco. Cron diário desativado em 2026-09-21 (quota de egress do Supabase); disparo agora é manual via este endpoint, gravando metadados com source=cron."
               }
             }
           ]
