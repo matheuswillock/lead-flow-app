@@ -1,5 +1,5 @@
-import { prisma } from "@/app/api/infra/data/prisma";
-import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 
 export type ParticipantDispatchGroups = {
   all: string[];
@@ -29,10 +29,15 @@ export const buildUniqueEmails = (emails: Array<string | null | undefined>) => {
   return unique;
 };
 
-export const resolveParticipantDispatchGroups = async ({
-  teamId,
-  emails,
-}: ResolveParticipantDispatchParams): Promise<ParticipantDispatchGroups> => {
+export const resolveParticipantDispatchGroups = async (
+  { teamId, emails }: ResolveParticipantDispatchParams,
+  // SPEC 13 (Agenda na Criação de Lead), A-E3 — "participantDispatch passa a
+  // ler membros por repositório" (DA9): a leitura direta ao banco (Prisma,
+  // tabela de membros do time) saiu para
+  // `ITeamMembersRepository.findGoogleConnectionStatusByEmails`. O singleton
+  // concreto só como valor padrão preserva os call sites de produção.
+  teamMembersRepo: ITeamMembersRepository = teamMembersRepository
+): Promise<ParticipantDispatchGroups> => {
   const all = buildUniqueEmails(emails);
   if (all.length === 0) {
     return {
@@ -45,43 +50,13 @@ export const resolveParticipantDispatchGroups = async ({
     };
   }
 
-  const teamMembers = await prisma.teamMember.findMany({
-    where: {
-      teamId,
-      profile: {
-        email: {
-          in: all,
-          mode: "insensitive",
-        },
-      },
-    },
-    select: {
-      profile: {
-        select: {
-          email: true,
-          googleConnection: {
-            select: {
-              refreshToken: true,
-              revokedAt: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const teamMembers = await teamMembersRepo.findGoogleConnectionStatusByEmails(teamId, all);
 
-  const memberByEmail = new Map<
-    string,
-    { googleCalendarConnected: boolean; googleRefreshToken: string | null }
-  >();
+  const memberByEmail = new Map<string, { googleCalendarConnected: boolean }>();
   for (const member of teamMembers) {
-    if (!member.profile.email) continue;
-    const key = member.profile.email.trim().toLowerCase();
+    const key = member.email.trim().toLowerCase();
     if (!key || memberByEmail.has(key)) continue;
-    memberByEmail.set(key, {
-      googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
-      googleRefreshToken: member.profile.googleConnection?.refreshToken ?? null,
-    });
+    memberByEmail.set(key, { googleCalendarConnected: member.googleCalendarConnected });
   }
 
   const googleEligible: string[] = [];
@@ -98,8 +73,7 @@ export const resolveParticipantDispatchGroups = async ({
       continue;
     }
 
-    const isConnected = member.googleCalendarConnected && !!member.googleRefreshToken;
-    if (isConnected) {
+    if (member.googleCalendarConnected) {
       googleEligible.push(email);
       internalConnected.push(email);
       continue;
