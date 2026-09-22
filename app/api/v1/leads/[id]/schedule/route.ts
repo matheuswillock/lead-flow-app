@@ -90,12 +90,23 @@ export async function POST(
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
 
+    const resolvedMeetingTypeForRequest =
+      meetingType ??
+      ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+        ? lead.meetingType
+        : null);
+    const isOnlineMeetingForRequest = (resolvedMeetingTypeForRequest ?? "online") === "online";
+
     // SPEC 13 (Agenda na Criação de Lead), A-E1c — a validação precisa vir depois
     // de `existingSchedule` para não quebrar uma reunião já gravada com link
     // `http:` só porque outro campo (data, closer, título…) mudou nesta chamada.
+    // Achado da revisão final (R13-8, mesma raiz do backoffice): o link não é
+    // usado fora de reunião online, então não pode travar telefone/WhatsApp.
     const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
       required: false,
-      allowLegacyHttp: !!meetingLink && meetingLink === existingSchedule?.meetingLink,
+      allowLegacyHttp:
+        !isOnlineMeetingForRequest ||
+        (!!meetingLink && meetingLink === existingSchedule?.meetingLink),
     });
 
     if (!meetingLinkValidation.isValid) {
@@ -213,11 +224,7 @@ export async function POST(
       meetingTitle: meetingTitle || "",
       meetingNotes: notes,
       meetingLink: meetingLinkValidation.normalized,
-      meetingType:
-        meetingType ??
-        ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
-          ? lead.meetingType
-          : null),
+      meetingType: resolvedMeetingTypeForRequest,
       extraGuests,
       createdByProfileId: teamAccess.access.profileId,
       transitionStatusToScheduled,

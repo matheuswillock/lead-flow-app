@@ -76,10 +76,15 @@ export class BackofficeLeadScheduleService
       const existingSchedule = await this.scheduleRepo.findLatestActiveByLeadId(input.leadId)
       const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
       const canUseGoogleCalendar = !!organizer
+      // Achado da revisão final do PR de A-E1c (R13-8): o link não é usado
+      // (nem exibido) fora de reunião online, então um valor herdado
+      // (possivelmente `http:` legado) não pode travar a reserva por
+      // telefone/WhatsApp por conta só do esquema.
       const meetingLinkValidation = validateMeetingLinkValue(input.meetingLink, {
         required: isOnlineMeeting && !canUseGoogleCalendar,
         allowLegacyHttp:
-          !!input.meetingLink && input.meetingLink === existingSchedule?.meetingLink,
+          !isOnlineMeeting ||
+          (!!input.meetingLink && input.meetingLink === existingSchedule?.meetingLink),
       })
 
       if (!meetingLinkValidation.isValid) {
