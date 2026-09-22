@@ -276,7 +276,12 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
         activeTeam.id,
         webhookId
       );
-      applyWebhookToDraft(updated);
+      // Achado da 2ª revisão final (Opus): rotacionar o segredo só muda
+      // signingSecretCipher/signingSecretPreview no servidor — usar applyWebhookToDraft
+      // aqui reconstruía outboundDraft/outboundInitial a partir da resposta e descartava
+      // em silêncio qualquer edição de nome/URL/eventos que o gestor ainda não salvou.
+      // setWebhook basta: signingSecretPreview vem de `webhook`, não do draft.
+      setWebhook(updated);
       setRevealedSigningSecret(updated.signingSecret ?? null);
       toast.success("Segredo de assinatura rotacionado");
     } catch (error) {

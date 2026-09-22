@@ -349,7 +349,7 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     ]);
   });
 
-  it("achado Codex (PR #1220): webhook sem segredo configurado (cifra nunca gravada) nunca chama deliver(), mas NÃO conta para o streak numa tentativa intermediária", async () => {
+  it("achado Codex (PR #1220): webhook sem segredo configurado (cifra nunca gravada) nunca chama deliver(), mas NÃO conta para o streak", async () => {
     const repos = makeRepos({ signingSecretCipher: null });
     const useCase = new ProcessWebhookOutboxUseCase(
       repos.outboxRepository as never,
@@ -360,9 +360,8 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
 
     // achado da revisão final (Opus): produção tem webhooks de saída desde 27/07, todos
     // com signingSecretCipher=null até esta migration. Se este caminho contasse pro
-    // streak/auto-pause na 1ª tentativa (como o caminho de cifra ILEGÍVEL faz), o
-    // primeiro deploy pausaria e cancelaria a fila de TODO webhook legado de uma vez.
-    // Em vez disso, este evento segue o mesmo backoff de uma falha HTTP comum.
+    // streak/auto-pause (como o caminho de cifra ILEGÍVEL faz), o primeiro deploy
+    // pausaria e cancelaria a fila de TODO webhook legado de uma vez.
     const outcome = await (useCase as unknown as {
       processRow: (row: unknown) => Promise<string>;
     }).processRow({
@@ -381,18 +380,18 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     expect(repos.eventLogCreateCalls).toEqual([
       {
         result: "failure",
-        errorMessage: "Segredo de assinatura não configurado — entrega adiada até a rotação",
+        errorMessage: "Segredo de assinatura não configurado — entrega em espera até a rotação",
       },
     ]);
-    // Diferente do achado de cifra ILEGÍVEL: numa tentativa intermediária isto NÃO
-    // conta para o streak nem cancela a fila — só reagenda, como qualquer retry normal.
+    // Diferente do achado de cifra ILEGÍVEL: isto NÃO conta para o streak nem cancela
+    // a fila — só reagenda, indefinidamente, como um estado de configuração da conta.
     expect(repos.incrementFailureStreakCalls).toHaveLength(0);
     expect(repos.markFailedCalls).toEqual([
-      { id: "outbox-no-secret", attemptCount: 1, nextAttemptAt: expect.any(Date) },
+      { id: "outbox-no-secret", attemptCount: 0, nextAttemptAt: expect.any(Date) },
     ]);
   });
 
-  it("achado da revisão final (Opus): webhook sem segredo configurado só conta pro streak quando o EVENTO esgota as tentativas", async () => {
+  it("achado da 2ª revisão final (Opus): webhook sem segredo NUNCA vira dead-letter nem auto-pausa só por falta de segredo, mesmo depois de muitos ciclos", async () => {
     const repos = makeRepos({ signingSecretCipher: null });
     const useCase = new ProcessWebhookOutboxUseCase(
       repos.outboxRepository as never,
@@ -404,18 +403,21 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       useCase as unknown as { processRow: (row: unknown) => Promise<string> }
     ).processRow.bind(useCase);
 
-    // Mesmo controle negativo do T-20.4, agora para o caminho "sem segredo": 5
-    // tentativas reais do mesmo evento devem terminar em exatamente 1 incremento de
-    // failureStreak, nunca 5, e sem nenhuma chamada a deliver().
+    // A 1ª correção (aae73ed0a) reaproveitava o backoff de falha HTTP comum, mas isso
+    // ainda esgotava TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (5) e dead-letterava/auto-pausava
+    // o webhook sozinho ~81min depois do deploy — só adiava o mesmo desastre. Esta
+    // correção NUNCA avança attemptCount nem conta pro streak só por falta de segredo:
+    // simula bem mais que TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS ciclos e confirma que o
+    // evento continua "em espera" (pending, attemptCount sempre igual ao de entrada).
     const outcomes: string[] = [];
-    for (let attemptCount = 0; attemptCount < 5; attemptCount += 1) {
+    for (let cycle = 0; cycle < 10; cycle += 1) {
       const outcome = await processRow({
-        id: "outbox-no-secret-exhausted",
+        id: "outbox-no-secret-many-cycles",
         teamId: "team-1",
         webhookId: "webhook-1",
         eventKey: "lead_created",
         payload: {
-          id: "evt_no_secret_exhausted",
+          id: "evt_no_secret_many_cycles",
           version: 1,
           type: "lead_created",
           created_at: "now",
@@ -423,21 +425,21 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
           data: {},
         },
         status: "processing",
-        attemptCount,
+        attemptCount: 0,
         nextAttemptAt: new Date(),
       });
       outcomes.push(outcome);
     }
 
-    expect(outcomes).toEqual(["failed", "failed", "failed", "failed", "failed"]);
+    expect(outcomes).toEqual(new Array(10).fill("failed"));
     expect(repos.deliverCalls).toHaveLength(0);
-    expect(repos.incrementFailureStreakCalls).toHaveLength(1);
-    expect(repos.markFailedCalls).toEqual([
-      { id: "outbox-no-secret-exhausted", attemptCount: 1, nextAttemptAt: expect.any(Date) },
-      { id: "outbox-no-secret-exhausted", attemptCount: 2, nextAttemptAt: expect.any(Date) },
-      { id: "outbox-no-secret-exhausted", attemptCount: 3, nextAttemptAt: expect.any(Date) },
-      { id: "outbox-no-secret-exhausted", attemptCount: 4, nextAttemptAt: expect.any(Date) },
-      { id: "outbox-no-secret-exhausted", attemptCount: 5, nextAttemptAt: null },
-    ]);
+    expect(repos.incrementFailureStreakCalls).toHaveLength(0);
+    expect(repos.markPausedCalls).toHaveLength(0);
+    // attemptCount nunca avança e nextAttemptAt nunca é null (nunca vira dead-letter).
+    for (const call of repos.markFailedCalls) {
+      expect(call.attemptCount).toBe(0);
+      expect(call.nextAttemptAt).not.toBeNull();
+    }
+    expect(repos.markFailedCalls).toHaveLength(10);
   });
 });

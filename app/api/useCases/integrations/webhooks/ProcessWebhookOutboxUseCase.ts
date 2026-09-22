@@ -19,6 +19,7 @@ import type { OutboundWebhookEnvelope } from "@/lib/webhooks/webhookPayloadPrese
 const BATCH_SIZE = 25;
 const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 16;
+const MISSING_SIGNING_SECRET_RETRY_DELAY_MS = 15 * 60 * 1000;
 
 function resolveTeamWebhookOutboxConcurrency(): number {
   const raw = process.env.TEAM_WEBHOOK_OUTBOX_CONCURRENCY;
@@ -152,18 +153,21 @@ export class ProcessWebhookOutboxUseCase {
       }
 
       if (!signingSecret) {
-        // Achado da revisão final (Opus) sobre o achado do Codex: cifra NUNCA gravada
-        // (`signingSecretCipher` nulo) é o estado de TODO webhook de saída criado antes
-        // desta migration — produção tem webhooks de saída desde 27/07. Bloquear sem
-        // assinatura continua certo, mas tratar isso como o mesmo bug de "cifra
-        // ilegível" (dead-letter imediato + conta pro streak + auto-pausa e cancela a
-        // fila inteira) apagaria os eventos de todo webhook legado no primeiro deploy.
-        // Em vez disso, este evento entra no MESMO caminho de retry/backoff de uma
-        // falha HTTP comum: só conta para o failureStreak quando o evento esgota
-        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (ver DA3/W13 abaixo), dando tempo para o
-        // gestor rotacionar o segredo — visível na tela de detalhe — antes do auto-pause.
+        // Achado da 2ª revisão final (Opus) sobre a 1ª: mesmo reaproveitando o backoff
+        // de falha HTTP comum, o evento ainda esgotava TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS
+        // (~81min) e dead-letterava/auto-pausava um webhook legado sozinho — só adiava
+        // o mesmo desastre do achado anterior, e a UI passou a prometer "não descarta"
+        // sem isso ser verdade. Cifra NUNCA gravada (`signingSecretCipher` nulo, estado
+        // de TODO webhook de saída criado antes desta migration) não é uma falha de
+        // ENTREGA que deva consumir orçamento de tentativas: é um estado de CONFIGURAÇÃO
+        // da conta. Por isso este evento NUNCA conta como tentativa (attemptCount não
+        // avança), NUNCA conta para o failureStreak e NUNCA vira dead-letter só por
+        // falta de segredo — fica reagendado num intervalo fixo, de verdade "em espera",
+        // até o gestor rotacionar o segredo (aviso visível na tela de detalhe). Depois
+        // da rotação, a próxima claim decifra normalmente e a entrega HTTP real volta a
+        // valer o backoff/streak padrão.
         const errorMessage =
-          "Segredo de assinatura não configurado — entrega adiada até a rotação";
+          "Segredo de assinatura não configurado — entrega em espera até a rotação";
         await this.eventLogRepository.create({
           teamId: row.teamId,
           webhookId: row.webhookId,
@@ -178,23 +182,14 @@ export class ProcessWebhookOutboxUseCase {
           errorMessage,
         });
 
-        const attemptCount = row.attemptCount + 1;
-        const willRetry = shouldRetryWebhookOutbox(attemptCount);
-        const nextAttemptAt = willRetry ? computeWebhookOutboxNextAttemptAt(attemptCount) : null;
-
-        let wasPausedForMissingSecret = false;
-        if (!willRetry) {
-          const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
-          if (updated.failureStreak >= updated.failureThreshold) {
-            await this.webhookRepository.markPausedByFailures(row.webhookId);
-            await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
-            await this.notifyAutoPaused(webhook);
-            wasPausedForMissingSecret = true;
-          }
-        }
-
-        await this.outboxRepository.markFailed(row.id, attemptCount, nextAttemptAt, errorMessage);
-        return wasPausedForMissingSecret ? "paused" : "failed";
+        const nextAttemptAt = new Date(Date.now() + MISSING_SIGNING_SECRET_RETRY_DELAY_MS);
+        await this.outboxRepository.markFailed(
+          row.id,
+          row.attemptCount,
+          nextAttemptAt,
+          errorMessage
+        );
+        return "failed";
       }
 
       const result = await this.deliveryService.deliver({
