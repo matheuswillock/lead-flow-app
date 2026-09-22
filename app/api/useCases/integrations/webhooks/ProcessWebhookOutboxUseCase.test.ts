@@ -32,7 +32,6 @@ function makeClaimRow(id: string): TeamWebhookOutboxClaimRow {
     status: "processing",
     attemptCount: 0,
     nextAttemptAt: new Date("2026-08-12T12:00:00.000Z"),
-    createdAt: new Date("2026-08-12T11:59:00.000Z"),
   };
 }
 
@@ -350,7 +349,7 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     ]);
   });
 
-  it("achado Codex (PR #1220): webhook sem segredo configurado (cifra nunca gravada) nunca chama deliver(), mas NÃO conta para o streak", async () => {
+  it("achado Codex (PR #1220): webhook sem segredo configurado (cifra nunca gravada) bloqueia a entrega sem tentar HTTP e conta pro streak, igual à cifra ilegível", async () => {
     const repos = makeRepos({ signingSecretCipher: null });
     const useCase = new ProcessWebhookOutboxUseCase(
       repos.outboxRepository as never,
@@ -359,10 +358,14 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       repos.deliveryService as never
     );
 
-    // achado da revisão final (Opus): produção tem webhooks de saída desde 27/07, todos
-    // com signingSecretCipher=null até esta migration. Se este caminho contasse pro
-    // streak/auto-pause (como o caminho de cifra ILEGÍVEL faz), o primeiro deploy
-    // pausaria e cancelaria a fila de TODO webhook legado de uma vez.
+    // Medido em 09/09 e reconfirmado em 22/09 (select count(*) direto no banco de
+    // produção): 0 webhooks de saída cadastrados hoje — `TeamWebhookService.create()`
+    // e `rotateSigningSecret()` sempre geram um segredo, então este ramo não tem
+    // instância real em produção. Por isso o caminho simples basta: mesmo tratamento
+    // do achado de cifra ILEGÍVEL (R20-6 acima) — bloqueio imediato, conta pro streak,
+    // pode auto-pausar. Sem backoff especial, sem exceção. Ver
+    // `scripts/backfill-outbound-webhook-signing-secrets.ts` para o backfill
+    // defensivo de qualquer linha que viesse a existir sem segredo.
     const outcome = await (useCase as unknown as {
       processRow: (row: unknown) => Promise<string>;
     }).processRow({
@@ -374,7 +377,6 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       status: "processing",
       attemptCount: 0,
       nextAttemptAt: new Date(),
-      createdAt: new Date(),
     });
 
     expect(outcome).toBe("failed");
@@ -382,138 +384,13 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     expect(repos.eventLogCreateCalls).toEqual([
       {
         result: "failure",
-        errorMessage: "Segredo de assinatura não configurado — entrega em espera até a rotação",
+        errorMessage: "Segredo de assinatura não configurado — entrega bloqueada por segurança",
       },
     ]);
-    // Diferente do achado de cifra ILEGÍVEL: isto NÃO conta para o streak nem cancela
-    // a fila — só reagenda, indefinidamente, como um estado de configuração da conta.
-    expect(repos.incrementFailureStreakCalls).toHaveLength(0);
-    expect(repos.markFailedCalls).toHaveLength(1);
-    expect(repos.markFailedCalls[0]?.id).toBe("outbox-no-secret");
-    // attemptCount 0 na entrada → 0 na saída: este ramo NUNCA avança attemptCount.
-    expect(repos.markFailedCalls[0]?.attemptCount).toBe(0);
-    // Evento recém-criado (createdAt=agora) → 1º degrau: reagenda em ~15min
-    // (tolerância de 5s pro tempo de execução do teste).
-    const delayMs = (repos.markFailedCalls[0]?.nextAttemptAt?.getTime() ?? 0) - Date.now();
-    expect(delayMs).toBeGreaterThan(15 * 60 * 1000 - 5000);
-    expect(delayMs).toBeLessThan(15 * 60 * 1000 + 5000);
-  });
-
-  it("achado da 4ª revisão final (Opus): attemptCount fica intocado por falta de segredo — não herda orçamento de tentativas HTTP depois da rotação", async () => {
-    const repos = makeRepos({ signingSecretCipher: null });
-    const useCase = new ProcessWebhookOutboxUseCase(
-      repos.outboxRepository as never,
-      repos.webhookRepository as never,
-      repos.eventLogRepository as never,
-      repos.deliveryService as never
-    );
-
-    // Achado da 4ª revisão: a correção anterior (b86b9cb2a) reaproveitava attemptCount
-    // como contador de adiamentos. Um evento adiado várias vezes por falta de segredo
-    // herdava um attemptCount alto, e um único 5xx real APÓS a rotação já esgotava
-    // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5 — dead-letter e auto-pause sem nenhuma
-    // retentativa de verdade. Aqui simulamos exatamente esse attemptCount "herdado"
-    // (47, bem acima do limite de tentativas HTTP) para provar que este ramo o
-    // ignora e o devolve INTOCADO — nunca soma, nunca lê para decidir o atraso.
-    const outcome = await (useCase as unknown as {
-      processRow: (row: unknown) => Promise<string>;
-    }).processRow({
-      id: "outbox-no-secret-inherited-attempts",
-      teamId: "team-1",
-      webhookId: "webhook-1",
-      eventKey: "lead_created",
-      payload: {
-        id: "evt_no_secret_inherited",
-        version: 1,
-        type: "lead_created",
-        created_at: "now",
-        team_id: "team-1",
-        data: {},
-      },
-      status: "processing",
-      attemptCount: 47,
-      nextAttemptAt: new Date(),
-      createdAt: new Date(),
-    });
-
-    expect(outcome).toBe("failed");
-    expect(repos.deliverCalls).toHaveLength(0);
-    expect(repos.incrementFailureStreakCalls).toHaveLength(0);
-    expect(repos.markPausedCalls).toHaveLength(0);
-    expect(repos.markFailedCalls).toHaveLength(1);
-    // attemptCount devolvido é EXATAMENTE o de entrada — nunca incrementado, nunca
-    // zerado: o orçamento de tentativas HTTP fica limpo para quando o segredo for
-    // rotacionado e a entrega real (fora deste ramo) voltar a valer.
-    expect(repos.markFailedCalls[0]?.attemptCount).toBe(47);
-    expect(repos.markFailedCalls[0]?.nextAttemptAt).not.toBeNull();
-  });
-
-  it("achado da 3ª/4ª revisões finais (Opus): o reagendamento por falta de segredo cresce com o TEMPO real de espera (não com attemptCount), até um teto de 24h", async () => {
-    const repos = makeRepos({ signingSecretCipher: null });
-    const useCase = new ProcessWebhookOutboxUseCase(
-      repos.outboxRepository as never,
-      repos.webhookRepository as never,
-      repos.eventLogRepository as never,
-      repos.deliveryService as never
-    );
-    const processRow = (
-      useCase as unknown as { processRow: (row: unknown) => Promise<string> }
-    ).processRow.bind(useCase);
-
-    // Achado da 3ª revisão: um intervalo FIXO (15min pra sempre) deixava um único
-    // webhook parado monopolizar a capacidade global do cron (a cada 5min,
-    // BATCH_SIZE=25 — vercel.json). Achado da 4ª revisão: crescer esse atraso via
-    // attemptCount persistido quebrava o orçamento de tentativas HTTP após a rotação
-    // (ver teste acima). Por isso o atraso é function de QUANTO TEMPO o evento já
-    // espera (`row.createdAt`), nunca de attemptCount — cada waitingSinceMs abaixo
-    // simula um evento criado há X tempo, sempre com o MESMO attemptCount de entrada
-    // (3, escolhido arbitrariamente para provar que ele nunca é lido nem alterado).
-    const cases: Array<{ waitingSinceMs: number; expectedDelayMinutes: number }> = [
-      { waitingSinceMs: 0, expectedDelayMinutes: 15 }, // recém-criado: 1º degrau
-      { waitingSinceMs: 30 * 60 * 1000, expectedDelayMinutes: 15 }, // 30min: ainda no 1º degrau (<1h)
-      { waitingSinceMs: 90 * 60 * 1000, expectedDelayMinutes: 60 }, // 1h30: 2º degrau (1h-4h)
-      { waitingSinceMs: 5 * 60 * 60 * 1000, expectedDelayMinutes: 240 }, // 5h: 3º degrau (4h-24h)
-      { waitingSinceMs: 25 * 60 * 60 * 1000, expectedDelayMinutes: 1440 }, // 25h: teto (24h)
-      { waitingSinceMs: 200 * 60 * 60 * 1000, expectedDelayMinutes: 1440 }, // 200h: continua no teto
-    ];
-
-    for (const { waitingSinceMs, expectedDelayMinutes } of cases) {
-      const before = Date.now();
-      const outcome = await processRow({
-        id: `outbox-no-secret-${waitingSinceMs}`,
-        teamId: "team-1",
-        webhookId: "webhook-1",
-        eventKey: "lead_created",
-        payload: {
-          id: "evt_no_secret_tier",
-          version: 1,
-          type: "lead_created",
-          created_at: "now",
-          team_id: "team-1",
-          data: {},
-        },
-        status: "processing",
-        attemptCount: 3,
-        nextAttemptAt: new Date(),
-        createdAt: new Date(before - waitingSinceMs),
-      });
-      expect(outcome).toBe("failed");
-      const call = repos.markFailedCalls[repos.markFailedCalls.length - 1];
-      // attemptCount nunca muda, em NENHUM degrau.
-      expect(call?.attemptCount).toBe(3);
-      const observedDelayMs = (call?.nextAttemptAt?.getTime() ?? 0) - before;
-      const expectedDelayMs = expectedDelayMinutes * 60 * 1000;
-      expect(observedDelayMs).toBeGreaterThan(expectedDelayMs - 5000);
-      expect(observedDelayMs).toBeLessThan(expectedDelayMs + 5000);
-    }
-
-    expect(repos.deliverCalls).toHaveLength(0);
-    expect(repos.incrementFailureStreakCalls).toHaveLength(0);
-    expect(repos.markPausedCalls).toHaveLength(0);
-    expect(repos.markFailedCalls).toHaveLength(cases.length);
-    // nextAttemptAt nunca é null em nenhum degrau — nunca vira dead-letter.
-    repos.markFailedCalls.forEach((call) => {
-      expect(call.nextAttemptAt).not.toBeNull();
-    });
+    // Sem retry: dead-letter imediato, e conta para o streak — igual à cifra ilegível.
+    expect(repos.incrementFailureStreakCalls).toHaveLength(1);
+    expect(repos.markFailedCalls).toEqual([
+      { id: "outbox-no-secret", attemptCount: 1, nextAttemptAt: null },
+    ]);
   });
 });

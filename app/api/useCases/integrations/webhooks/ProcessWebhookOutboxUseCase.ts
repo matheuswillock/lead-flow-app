@@ -20,43 +20,6 @@ const BATCH_SIZE = 25;
 const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 16;
 
-/**
- * Achados acumulados de revisões finais (Opus) sobre este mesmo ramo de código:
- * (1) um intervalo FIXO de reagendamento (15min pra sempre) deixava um único webhook
- * parado monopolizar a capacidade global do cron de outbox (`* / 5 * * * *`,
- * `BATCH_SIZE=25` por ciclo — ver `vercel.json`) e atrasar sem teto a entrega de
- * webhooks já assinados de TODAS as contas; (2) a tentativa seguinte de resolver isso
- * reaproveitando `attemptCount` como contador de adiamentos quebrava o orçamento REAL
- * de retentativas HTTP depois que o segredo fosse rotacionado — um evento adiado 4x por
- * falta de segredo herdava `attemptCount=4`, e um único 5xx real após a rotação já o
- * esgotava (`TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5`), disparando dead-letter e auto-pause
- * sem nenhuma retentativa de verdade.
- *
- * Por isso o atraso é calculado a partir do TEMPO REAL de espera (`row.createdAt`), não
- * de um contador persistido — `attemptCount` fica completamente intocado neste ramo, e
- * a entrega HTTP real (depois da rotação) sempre começa com o orçamento de tentativas
- * limpo, exatamente como se o evento nunca tivesse esperado por segredo nenhum.
- */
-const MISSING_SIGNING_SECRET_RETRY_TIERS: ReadonlyArray<{
-  waitingAtLeastMs: number;
-  delayMs: number;
-}> = [
-  { waitingAtLeastMs: 0, delayMs: 15 * 60 * 1000 }, // 0–1h de espera: reagenda a cada 15min
-  { waitingAtLeastMs: 60 * 60 * 1000, delayMs: 60 * 60 * 1000 }, // 1–4h: a cada 1h
-  { waitingAtLeastMs: 4 * 60 * 60 * 1000, delayMs: 4 * 60 * 60 * 1000 }, // 4–24h: a cada 4h
-  { waitingAtLeastMs: 24 * 60 * 60 * 1000, delayMs: 24 * 60 * 60 * 1000 }, // >24h: a cada 24h
-];
-
-function computeMissingSigningSecretRetryDelayMs(waitingSinceMs: number): number {
-  let delayMs = MISSING_SIGNING_SECRET_RETRY_TIERS[0]!.delayMs;
-  for (const tier of MISSING_SIGNING_SECRET_RETRY_TIERS) {
-    if (waitingSinceMs >= tier.waitingAtLeastMs) {
-      delayMs = tier.delayMs;
-    }
-  }
-  return delayMs;
-}
-
 function resolveTeamWebhookOutboxConcurrency(): number {
   const raw = process.env.TEAM_WEBHOOK_OUTBOX_CONCURRENCY;
   if (!raw) return DEFAULT_CONCURRENCY;
@@ -156,12 +119,22 @@ export class ProcessWebhookOutboxUseCase {
         ? decryptWebhookSigningSecret(webhook.signingSecretCipher)
         : null;
 
-      if (webhook.signingSecretCipher && !signingSecret) {
-        // Achado de code review (Codex, PR #1220): cifra PRESENTE mas ilegível (chave de
-        // cifra do servidor trocada, dado corrompido) é um bug de configuração real, não
-        // um estado esperado — nunca sai sem assinatura em silêncio, dead-letter imediato
-        // e conta para o auto-pause, do mesmo jeito que um webhook sem URL de destino.
-        const errorMessage = "Segredo de assinatura ilegível — entrega bloqueada por segurança";
+      if (!signingSecret) {
+        // Achado de code review (Codex, PR #1220), reafirmado após medir o tamanho real
+        // do caso (auditoria 09/09, reconfirmada 22/09: 0 webhooks de saída cadastrados
+        // em produção — `select count(*) ... where direction = 'outbound'`): sem
+        // segredo, seja porque a cifra nunca foi gravada (a migration desta feature só
+        // cria as colunas vazias; `TeamWebhookService.create()`/`rotateSigningSecret()`
+        // sempre gera uma) seja porque está ilegível (bug de configuração real, chave de
+        // cifra do servidor trocada), a entrega NUNCA sai sem assinatura em silêncio.
+        // Como o caso "cifra ausente" não tem instância real em produção hoje, o caminho
+        // simples basta: bloqueia de imediato, loga, conta para o auto-pause — do mesmo
+        // jeito que um webhook sem URL de destino. Não há maquinário especial de
+        // backoff/streak para este caso; ver `scripts/backfill-outbound-webhook-signing-secrets.ts`
+        // para o backfill defensivo de qualquer linha que viesse a existir sem segredo.
+        const errorMessage = webhook.signingSecretCipher
+          ? "Segredo de assinatura ilegível — entrega bloqueada por segurança"
+          : "Segredo de assinatura não configurado — entrega bloqueada por segurança";
         await this.eventLogRepository.create({
           teamId: row.teamId,
           webhookId: row.webhookId,
@@ -186,45 +159,6 @@ export class ProcessWebhookOutboxUseCase {
         }
         await this.outboxRepository.markFailed(row.id, row.attemptCount + 1, null, errorMessage);
         return wasPausedForBadSecret ? "paused" : "failed";
-      }
-
-      if (!signingSecret) {
-        // Cifra NUNCA gravada (`signingSecretCipher` nulo, estado de TODO webhook de
-        // saída criado antes desta migration) não é uma falha de ENTREGA: é um estado
-        // de CONFIGURAÇÃO da conta. Por isso este evento NUNCA conta para o
-        // failureStreak e NUNCA vira dead-letter só por falta de segredo — fica
-        // reagendado (ver MISSING_SIGNING_SECRET_RETRY_TIERS acima) até o gestor
-        // rotacionar o segredo, visível na tela de detalhe. `attemptCount` fica
-        // intocado neste ramo (nunca incrementado, nunca lido para decidir o atraso):
-        // depois da rotação, a próxima falha HTTP real começa com o orçamento de
-        // tentativas limpo, em vez de herdar ciclos gastos só esperando o segredo.
-        const errorMessage =
-          "Segredo de assinatura não configurado — entrega em espera até a rotação";
-        await this.eventLogRepository.create({
-          teamId: row.teamId,
-          webhookId: row.webhookId,
-          direction: "outbound",
-          result: "failure",
-          eventKey: row.eventKey,
-          method: "POST",
-          endpoint: webhook.targetUrl,
-          statusCode: null,
-          requestPayload: body,
-          responsePayload: null,
-          errorMessage,
-        });
-
-        const waitingSinceMs = Date.now() - row.createdAt.getTime();
-        const nextAttemptAt = new Date(
-          Date.now() + computeMissingSigningSecretRetryDelayMs(waitingSinceMs)
-        );
-        await this.outboxRepository.markFailed(
-          row.id,
-          row.attemptCount,
-          nextAttemptAt,
-          errorMessage
-        );
-        return "failed";
       }
 
       const result = await this.deliveryService.deliver({

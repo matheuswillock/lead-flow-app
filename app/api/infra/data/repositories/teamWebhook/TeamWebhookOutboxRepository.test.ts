@@ -43,7 +43,6 @@ describe("TeamWebhookOutboxRepository", () => {
           status: "processing",
           attemptCount: 0,
           nextAttemptAt: new Date("2026-08-12T12:00:00.000Z"),
-          createdAt: new Date("2026-08-12T11:00:00.000Z"),
         },
       ];
     });

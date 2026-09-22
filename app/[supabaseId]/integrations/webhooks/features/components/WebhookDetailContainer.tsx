@@ -437,8 +437,8 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                   {!webhook.signingSecretPreview ? (
                     <p className="flex items-start gap-2 text-sm text-destructive">
                       <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                      Sem segredo configurado, as entregas deste webhook ficam em espera
-                      (não são descartadas) até você rotacionar um segredo.
+                      Sem segredo configurado, as entregas deste webhook falham e não são
+                      reenviadas. Rotacione um segredo para retomar o envio.
                     </p>
                   ) : null}
                   <Button

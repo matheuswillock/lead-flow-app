@@ -16,13 +16,6 @@ export type TeamWebhookOutboxClaimRow = {
   status: TeamWebhookOutboxStatus;
   attemptCount: number;
   nextAttemptAt: Date;
-  /**
-   * Achado da 4ª revisão final (Opus, PR #1220): usado só para calcular o backoff de
-   * "segredo de assinatura não configurado" a partir do tempo real de espera, sem
-   * reaproveitar `attemptCount` — ver `ProcessWebhookOutboxUseCase.processRow`. Coluna
-   * já existente em `TeamWebhookOutbox` (`createdAt`); sem migration nova.
-   */
-  createdAt: Date;
 };
 
 export interface ITeamWebhookOutboxRepository {
