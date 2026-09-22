@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"  
+import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
+import { cn } from "@/lib/utils"
 import {
   LayoutDashboard,
   Users,
@@ -70,6 +71,14 @@ type SidebarItem = {
   status?: "beta" | "comingSoon"
   /** Ignora o rótulo de beta do feature flag e sempre usa `status` (ex.: "Em breve" fixo). */
   forceStatusBadge?: boolean
+  /** Só fica "ativo" com pathname === url, nunca por prefixo (evita casar com subpáginas). */
+  matchExact?: boolean
+  /**
+   * Feature(s) que destravam o item (mostra "Bloqueado" em vez de sumir —
+   * DA3/R15.2), sem afetar `canShowItem`. Qualquer uma da lista já libera
+   * (ex.: Webhooks por `integration` OU `radar` — decisão do owner, R15-3).
+   */
+  lockFeatureSlugs?: string[]
   unreadCount?: number
 }
 
@@ -180,26 +189,36 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     },
   ];
 
+  // As 3 entradas do hub de Integrações (DA3) NÃO usam `featureSlug` no
+  // `canShowItem` — ficam sempre visíveis e mostram "Bloqueado" sem a
+  // feature, em vez de sumir (R15.2/R15-9). O lock em si é calculado abaixo,
+  // no map, via `hasAccess`.
   const integrationsItems: SidebarItem[] = [
     {
       title: "Catálogo de API",
       url: `/${supabaseId}/integrations`,
       icon: Code2,
-      featureSlug: FEATURE_SLUGS.CONFIGURATION,
       status: "comingSoon",
       forceStatusBadge: true,
+      // Aponta pro hub (não existe página própria ainda), mas só fica
+      // "ativo" quando o pathname é exatamente o hub — sem isso, ficava
+      // marcado junto com Webhooks/Pixel em qualquer subpágina (R15-8).
+      matchExact: true,
+      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION],
     },
     {
       title: "Webhooks",
       url: `/${supabaseId}/integrations/webhooks`,
       icon: Webhook,
-      featureSlug: FEATURE_SLUGS.CONFIGURATION,
+      // Decisão do owner (22/09, R15-3): integration OU radar libera —
+      // preserva quem já vê Webhooks só com radar hoje.
+      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR],
     },
     {
       title: "Pixel",
       url: `/${supabaseId}/integrations/pixel`,
       icon: Radio,
-      featureSlug: FEATURE_SLUGS.RADAR,
+      lockFeatureSlugs: [FEATURE_SLUGS.RADAR],
     },
   ];
 
@@ -543,12 +562,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {visibleIntegrationsItems.map((item) => {
-                      const badge = getItemBadge(item)
+                      const locked = Boolean(item.lockFeatureSlugs?.length) && !item.lockFeatureSlugs!.some(hasAccess)
+                      const badge = locked
+                        ? { label: "Bloqueado", className: "bg-muted text-muted-foreground" }
+                        : getItemBadge(item)
+                      const isActive = item.matchExact ? pathname === item.url : isItemActive(item.url)
                       return (
                         <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                          <SidebarMenuButton asChild isActive={isActive}>
                             <Link href={item.url} className="flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-2">
+                              <span className={cn("flex items-center gap-2", locked && "text-muted-foreground")}>
                                 <item.icon className="size-4 shrink-0" />
                                 <span>{item.title}</span>
                               </span>

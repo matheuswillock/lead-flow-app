@@ -430,7 +430,15 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
-  integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
+  // MANAGER também é FULL: as rotas de backend (requireManager em
+  // app/api/v1/integrations/webhooks/route.ts e .../studio-webhook/route.ts)
+  // já exigem role === "manager" para operar Webhooks/Integrações — sem essa
+  // regra, um manager não-master perde acesso ao trocar a lista fixa de
+  // times por essa feature (SPEC 15, achado R15-1).
+  integration: completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
   "public-forms": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },

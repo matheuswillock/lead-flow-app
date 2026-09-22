@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { resolveIntegrationsHubAccess } from "./resolveIntegrationsHubAccess";
 
 // T-15.1 — Time com `integration` -> Catálogo de API e Webhooks liberados;
-// sem `radar` -> Pixel aparece bloqueado (nunca escondido).
+// sem `radar` -> Pixel aparece bloqueado (nunca escondido). Decisão do owner
+// de 22/09 (achado R15-3): Webhooks também é liberado só com `radar` — é o
+// comportamento de hoje (o OR frouxo do extinto `lib/integrationsAccess.ts`),
+// preservado para nenhuma conta perder acesso. Catálogo de API continua só
+// com `integration`; Pixel continua só com `radar`.
 describe("resolveIntegrationsHubAccess", () => {
   test("time com a feature integration mas sem radar: Catálogo e Webhooks liberados, Pixel bloqueado", () => {
     const access = resolveIntegrationsHubAccess({ hasIntegrationAccess: true, hasRadarAccess: false });
@@ -10,6 +14,16 @@ describe("resolveIntegrationsHubAccess", () => {
     expect(access.apiCatalogLocked).toBe(false);
     expect(access.webhooksLocked).toBe(false);
     expect(access.pixelLocked).toBe(true);
+  });
+
+  // Decisão do owner de 22/09 (R15-3): conta só com radar continua vendo
+  // Webhooks — só o Catálogo de API fica bloqueado.
+  test("time só com radar (sem integration): Webhooks e Pixel liberados, Catálogo de API bloqueado", () => {
+    const access = resolveIntegrationsHubAccess({ hasIntegrationAccess: false, hasRadarAccess: true });
+
+    expect(access.apiCatalogLocked).toBe(true);
+    expect(access.webhooksLocked).toBe(false);
+    expect(access.pixelLocked).toBe(false);
   });
 
   test("time sem nenhuma feature: as três entradas aparecem bloqueadas", () => {

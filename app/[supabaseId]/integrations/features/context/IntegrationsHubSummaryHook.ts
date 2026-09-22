@@ -8,9 +8,11 @@ export interface IntegrationsHubWebhooksSummary {
   totalCount: number;
   activeCount: number;
   loading: boolean;
+  /** true quando a chamada falhou (ex.: 403 para quem não é manager) — não confundir com "zero webhooks". */
+  error: boolean;
 }
 
-const EMPTY_SUMMARY: IntegrationsHubWebhooksSummary = { totalCount: 0, activeCount: 0, loading: false };
+const EMPTY_SUMMARY: IntegrationsHubWebhooksSummary = { totalCount: 0, activeCount: 0, loading: false, error: false };
 
 const buildKey = (supabaseId: string, teamId: string) => `${supabaseId}:${teamId}`;
 
@@ -46,7 +48,7 @@ export function useIntegrationsHubWebhooksSummary(
     }
 
     inFlightKeyRef.current = requestKey;
-    setSummary((prev) => ({ ...prev, loading: true }));
+    setSummary((prev) => ({ ...prev, loading: true, error: false }));
 
     try {
       const [inboundTotal, outboundTotal, inboundActive, outboundActive] = await Promise.all([
@@ -62,12 +64,13 @@ export function useIntegrationsHubWebhooksSummary(
         totalCount: (inboundTotal.total ?? 0) + (outboundTotal.total ?? 0),
         activeCount: (inboundActive.total ?? 0) + (outboundActive.total ?? 0),
         loading: false,
+        error: false,
       });
       lastSuccessfulKeyRef.current = requestKey;
-    } catch (error) {
-      console.error("[useIntegrationsHubWebhooksSummary] Erro ao carregar resumo de webhooks:", error);
+    } catch (loadError) {
+      console.error("[useIntegrationsHubWebhooksSummary] Erro ao carregar resumo de webhooks:", loadError);
       if (currentKeyRef.current === requestKey) {
-        setSummary(EMPTY_SUMMARY);
+        setSummary({ ...EMPTY_SUMMARY, error: true });
       }
     } finally {
       if (inFlightKeyRef.current === requestKey) {

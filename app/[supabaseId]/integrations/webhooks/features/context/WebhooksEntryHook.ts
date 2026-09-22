@@ -14,6 +14,7 @@ export function useWebhooksEntry(supabaseId: string): WebhooksEntryState & Webho
   const [inboundSummary, setInboundSummary] = useState<WebhookDirectionSummary>(EMPTY_SUMMARY);
   const [outboundSummary, setOutboundSummary] = useState<WebhookDirectionSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const inFlightKeyRef = useRef<string | null>(null);
   const lastSuccessfulKeyRef = useRef<string | null>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -39,33 +40,38 @@ export function useWebhooksEntry(supabaseId: string): WebhooksEntryState & Webho
 
       inFlightKeyRef.current = requestKey;
       setLoading(true);
+      setError(false);
 
       try {
-        const [inboundTotal, inboundActive, outboundTotal, outboundActive] = await Promise.all([
-          teamWebhooksService.list(supabaseId, activeTeamId, { direction: "inbound", pageSize: 1 }),
-          teamWebhooksService.list(supabaseId, activeTeamId, { direction: "inbound", pageSize: 1, status: "active" }),
-          teamWebhooksService.list(supabaseId, activeTeamId, { direction: "outbound", pageSize: 1 }),
-          teamWebhooksService.list(supabaseId, activeTeamId, { direction: "outbound", pageSize: 1, status: "active" }),
-        ]);
+        const [inboundTotal, inboundActive, inboundPaused, outboundTotal, outboundActive, outboundPaused] =
+          await Promise.all([
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "inbound", pageSize: 1 }),
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "inbound", pageSize: 1, status: "active" }),
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "inbound", pageSize: 1, status: "paused" }),
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "outbound", pageSize: 1 }),
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "outbound", pageSize: 1, status: "active" }),
+            teamWebhooksService.list(supabaseId, activeTeamId, { direction: "outbound", pageSize: 1, status: "paused" }),
+          ]);
 
         if (currentKeyRef.current !== requestKey) return;
 
         setInboundSummary({
           total: inboundTotal.total ?? 0,
           active: inboundActive.total ?? 0,
-          paused: Math.max((inboundTotal.total ?? 0) - (inboundActive.total ?? 0), 0),
+          paused: inboundPaused.total ?? 0,
         });
         setOutboundSummary({
           total: outboundTotal.total ?? 0,
           active: outboundActive.total ?? 0,
-          paused: Math.max((outboundTotal.total ?? 0) - (outboundActive.total ?? 0), 0),
+          paused: outboundPaused.total ?? 0,
         });
         lastSuccessfulKeyRef.current = requestKey;
-      } catch (error) {
-        console.error("[useWebhooksEntry] Erro ao carregar resumo de webhooks:", error);
+      } catch (loadError) {
+        console.error("[useWebhooksEntry] Erro ao carregar resumo de webhooks:", loadError);
         if (currentKeyRef.current === requestKey) {
           setInboundSummary(EMPTY_SUMMARY);
           setOutboundSummary(EMPTY_SUMMARY);
+          setError(true);
         }
       } finally {
         if (currentKeyRef.current === requestKey) {
@@ -88,6 +94,7 @@ export function useWebhooksEntry(supabaseId: string): WebhooksEntryState & Webho
     inboundSummary,
     outboundSummary,
     loading,
+    error,
     reload: () => loadSummary({ force: true }),
   };
 }

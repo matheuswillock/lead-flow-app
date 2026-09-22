@@ -12,9 +12,12 @@ import { useWebhooksEntryContext } from "../context/WebhooksEntryContext";
 import type { WebhookDirectionSummary } from "../context/WebhooksEntryTypes";
 import { WebhooksEntryPageSkeleton } from "../components/WebhooksEntryPageSkeleton";
 
-function directionStateLabel(summary: WebhookDirectionSummary, loading: boolean) {
+function directionStateLabel(summary: WebhookDirectionSummary, loading: boolean, error: boolean) {
   if (loading) {
     return <Skeleton className="h-4 w-40" />;
+  }
+  if (error) {
+    return "Não foi possível carregar";
   }
   if (summary.total === 0) {
     return "Nenhum webhook configurado";
@@ -32,15 +35,19 @@ function directionStateLabel(summary: WebhookDirectionSummary, loading: boolean)
 export function WebhooksEntryContainer() {
   const { isLoading: isTeamLoading } = useTeamContext();
   const { hasAccess } = useFeatureAccess();
-  const { supabaseId, inboundSummary, outboundSummary, loading } = useWebhooksEntryContext();
+  const { supabaseId, inboundSummary, outboundSummary, loading, error } = useWebhooksEntryContext();
 
-  const hasIntegrationAccess = hasAccess(FEATURE_SLUGS.CONFIGURATION);
+  // Decisão do owner (22/09, achado R15-3): Webhooks fica liberado por
+  // `integration` OU `radar` — é o comportamento de hoje (o OR frouxo do
+  // extinto `lib/integrationsAccess.ts`), preservado para não tirar acesso
+  // de nenhuma conta que já vê Webhooks só com `radar`.
+  const hasWebhooksAccess = hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR);
 
   if (isTeamLoading) {
     return <WebhooksEntryPageSkeleton />;
   }
 
-  if (!hasIntegrationAccess) {
+  if (!hasWebhooksAccess) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <div>
@@ -86,7 +93,7 @@ export function WebhooksEntryContainer() {
                 <CardDescription>
                   Receba eventos de sistemas externos e crie leads automaticamente no CRM.
                 </CardDescription>
-                <div className="text-sm text-muted-foreground">{directionStateLabel(inboundSummary, loading)}</div>
+                <div className="text-sm text-muted-foreground">{directionStateLabel(inboundSummary, loading, error)}</div>
               </div>
             </CardHeader>
           </Card>
@@ -109,7 +116,7 @@ export function WebhooksEntryContainer() {
                 <CardDescription>
                   Envie eventos do CRM para Slack, Teams, Zapier ou qualquer URL HTTPS.
                 </CardDescription>
-                <div className="text-sm text-muted-foreground">{directionStateLabel(outboundSummary, loading)}</div>
+                <div className="text-sm text-muted-foreground">{directionStateLabel(outboundSummary, loading, error)}</div>
               </div>
             </CardHeader>
           </Card>

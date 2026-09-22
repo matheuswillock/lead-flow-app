@@ -4,6 +4,7 @@ import { Code2, Radio, Webhook } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IntegrationEntryCard } from "../components/IntegrationEntryCard";
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
+import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
@@ -24,7 +25,7 @@ export function IntegrationsContainer() {
     hasRadarAccess,
   });
 
-  const webhooksSummary = useIntegrationsHubWebhooksSummary(supabaseId, hasIntegrationAccess);
+  const webhooksSummary = useIntegrationsHubWebhooksSummary(supabaseId, !webhooksLocked);
 
   if (isTeamLoading || integrationsBootstrapLoading) {
     return <IntegrationsPageSkeleton />;
@@ -61,9 +62,11 @@ export function IntegrationsContainer() {
           badge={{ label: "Entrada e saída", variant: "secondary" }}
           state={
             webhooksLocked ? (
-              "Fale com seu gerente de conta"
+              "Ver planos disponíveis"
             ) : webhooksSummary.loading ? (
               <Skeleton className="h-4 w-32" />
+            ) : webhooksSummary.error ? (
+              "Não foi possível carregar"
             ) : webhooksSummary.totalCount === 0 ? (
               "Nenhum webhook configurado"
             ) : (
@@ -82,7 +85,7 @@ export function IntegrationsContainer() {
           badge={{ label: "Radar", variant: "secondary" }}
           state={
             pixelLocked ? (
-              "Fale com seu gerente de conta"
+              "Ver planos disponíveis"
             ) : radarPixelLoading ? (
               <Skeleton className="h-4 w-32" />
             ) : radarPixelConfig?.configured ? (
@@ -100,6 +103,13 @@ export function IntegrationsContainer() {
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Outras integrações</h2>
         <LeadFormIntegration />
+
+        {/* Widget legado "Webhook Genérico de Leads" (DA2): some daqui só quando
+            a SPEC 10 A-E1 unificar a tabela legada e o resumo somente-leitura
+            entrar em integrations/webhooks (B-E2). Até lá, continua aqui para
+            não tirar de times que já configuraram o webhook v1 a única forma
+            de ver a URL/token, rotacionar ou ler os logs. */}
+        {!webhooksLocked && <StudioWebhookIntegration />}
       </div>
     </div>
   );

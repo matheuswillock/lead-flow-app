@@ -33,22 +33,22 @@ async function grantRadarBeta(profileId: string) {
 
 /**
  * Ruído de ambiente sem relação com a página: Realtime fica desligado no
- * Postgres local "db-only" (`/api/v1/realtime/auth-token` 401) e o script de
+ * Postgres local "db-only" (`/api/v1/realtime/auth-token` 401), o script de
  * Vercel Analytics não existe fora de um deploy Vercel (`/_vercel/insights`
- * 404). Confirmado via `page.on("response")` antes de filtrar — nenhum dos
- * dois vem de uma chamada da página do Pixel.
+ * 404), e o tunnelRoute do Sentry (`next.config.ts:114`, `/monitoring`, só
+ * ativo em build de produção) devolve 401 com o DSN placeholder do
+ * `.env.test`. São as três únicas origens conhecidas de resposta >= 400
+ * nesta página — qualquer outra é reprovada (achado de revisão R15-10).
  */
-function isKnownEnvironmentNoise(message: string): boolean {
-  // Chromium não expõe a URL na mensagem de console de um recurso que falhou
-  // — confirmado via page.on("response") que as únicas respostas >= 400
-  // nesta página são /api/v1/realtime/auth-token (Realtime desligado no
-  // Postgres local "db-only") e /_vercel/insights/script.js (só existe em
-  // deploy Vercel). Um erro de app de verdade (exceção, rejeição de promise)
-  // não usa esta frase genérica do navegador.
-  return (
-    message.startsWith("Failed to load resource:") ||
-    message.startsWith("Refused to execute script")
-  );
+const KNOWN_NOISE_URL_PATTERNS = ["realtime/auth-token", "_vercel/insights", "/monitoring?"];
+
+function isKnownNoiseUrl(url: string): boolean {
+  return KNOWN_NOISE_URL_PATTERNS.some((pattern) => url.includes(pattern));
+}
+
+/** Mensagem de console que não é o eco genérico de um recurso de rede (esse já é coberto por `page.on("response")`). */
+function isGenericResourceLoadMessage(message: string): boolean {
+  return message.startsWith("Failed to load resource:") || message.startsWith("Refused to execute script");
 }
 
 test.describe("app/[supabaseId]/integrations/pixel", () => {
@@ -73,9 +73,15 @@ test.describe("app/[supabaseId]/integrations/pixel", () => {
 
   test("carrega com o conteúdo atual do Pixel (setup e atividade)", async ({ page }) => {
     const consoleErrors: string[] = [];
+    const unexpectedFailedResponses: string[] = [];
     page.on("console", (msg) => {
-      if (msg.type() === "error" && !isKnownEnvironmentNoise(msg.text())) {
+      if (msg.type() === "error" && !isGenericResourceLoadMessage(msg.text())) {
         consoleErrors.push(msg.text());
+      }
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400 && !isKnownNoiseUrl(response.url())) {
+        unexpectedFailedResponses.push(`${response.status()} ${response.url()}`);
       }
     });
 
@@ -86,6 +92,10 @@ test.describe("app/[supabaseId]/integrations/pixel", () => {
     await expect(page.getByText("Atividade do pixel")).toBeVisible();
 
     expect(consoleErrors, `Erros de console: ${consoleErrors.join(" | ")}`).toEqual([]);
+    expect(
+      unexpectedFailedResponses,
+      `Respostas >= 400 não esperadas: ${unexpectedFailedResponses.join(" | ")}`
+    ).toEqual([]);
   });
 
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({ page }) => {
