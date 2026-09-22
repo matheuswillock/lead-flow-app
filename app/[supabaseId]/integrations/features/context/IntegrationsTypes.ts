@@ -3,6 +3,9 @@ import type { RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIn
 export interface IntegrationsState {
   supabaseId: string;
   leadFormUrl: string;
+  // SPEC 40 B-E2 (W25): destino real por trás do link curto `leadFormUrl`,
+  // mostrado como texto de apoio na tela de Integrações.
+  leadFormFullUrl: string;
   activeTeamId: string | null;
   studioWebhookConfig: {
     configured: boolean;

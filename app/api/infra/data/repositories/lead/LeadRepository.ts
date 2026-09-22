@@ -1503,6 +1503,24 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
+  /**
+   * SPEC 40 R40-17: mesmo escopo do índice único `@@unique([teamId, email])`.
+   * Não usar `findDuplicateByManagerAndEmail` (escopo `managerId`) para achar
+   * o lead que gerou a corrida de unicidade de um time especifico — um master
+   * com dois times pode ter lead com o mesmo e-mail em ambos, e o findFirst
+   * por managerId pode devolver o lead do time errado.
+   */
+  async findEmailConflictInTeam(input: { teamId: string; email: string; excludeLeadId?: string }) {
+    return await prisma.lead.findFirst({
+      where: {
+        teamId: input.teamId,
+        email: input.email,
+        ...(input.excludeLeadId && { NOT: { id: input.excludeLeadId } }),
+      },
+      select: { id: true, leadCode: true, name: true },
+    });
+  }
+
   async findTransferConflictsInTeam(input: {
     targetTeamId: string;
     excludeLeadId: string;

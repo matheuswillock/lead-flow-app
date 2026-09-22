@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
 
 export function LeadFormIntegration() {
-  const { leadFormUrl, copyLeadFormUrl } = useIntegrationsContext();
+  const { leadFormUrl, leadFormFullUrl, copyLeadFormUrl } = useIntegrationsContext();
 
   return (
     <div className="rounded-lg border p-6 space-y-4">
@@ -24,30 +24,39 @@ export function LeadFormIntegration() {
       </div>
 
       {leadFormUrl ? (
-        <div className="flex items-center gap-2">
-          <Input
-            readOnly
-            value={leadFormUrl}
-            className="font-mono text-xs"
-          />
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={copyLeadFormUrl}
-            title="Copiar URL"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            title="Abrir formulário"
-          >
-            <a href={leadFormUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <Input
+              readOnly
+              value={leadFormUrl}
+              className="font-mono text-xs"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={copyLeadFormUrl}
+              title="Copiar URL"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              asChild
+              title="Abrir formulário"
+            >
+              <a href={leadFormUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          </div>
+          {leadFormFullUrl && (
+            // SPEC 40 B-E2 (W25): destino real por trás do link curto — o
+            // link copiado continua sendo o curto acima.
+            <p className="truncate text-xs text-muted-foreground" title={leadFormFullUrl}>
+              Destino: <span className="font-mono">{leadFormFullUrl}</span>
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
