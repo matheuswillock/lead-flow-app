@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { ActivityType, InviteDispatchStatus, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import type { IMeetingRepository } from "@/app/api/infra/data/repositories/meeting/IMeetingRepository";
+import { meetingRepository } from "@/app/api/infra/data/repositories/meeting/MeetingRepository";
 import {
   cancelCalendarEvent,
   upsertCalendarEvent,
@@ -181,6 +183,13 @@ const buildAuthorActivityData = (
       };
 
 export class LeadScheduleService implements ILeadScheduleService {
+  // SPEC 13 (Agenda na Criação de Lead), A-E2 — DIP: depende da interface
+  // `IMeetingRepository`, com o singleton concreto só como valor padrão do
+  // parâmetro, para não quebrar `export const leadScheduleService = new
+  // LeadScheduleService()` (6 call sites de produção usam esse singleton) e
+  // ainda permitir injetar um dublê nos testes.
+  constructor(private readonly meetingRepo: IMeetingRepository = meetingRepository) {}
+
   async createSchedule(params: CreateScheduleParams): Promise<Output> {
     const {
       leadId,
@@ -790,75 +799,16 @@ export class LeadScheduleService implements ILeadScheduleService {
       ? getScheduleShareExpiry(meetingDate)
       : undefined;
 
-    const persisted = await prisma.$transaction(async (tx) => {
-      const inviteDispatchLastPayloadForDb =
-        inviteDispatchLastPayload === null ? Prisma.JsonNull : (inviteDispatchLastPayload ?? undefined);
-
-      const schedule = await tx.leadsSchedule.upsert({
-        where: { leadId },
-        create: {
-          id: scheduleId,
-          leadId,
-          date: meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          notes: meetingNotes,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          extraGuests: extraGuests ?? [],
-          googleEventId: calendarResult?.eventId ?? undefined,
-          googleCalendarId: calendarResult?.calendarId ?? undefined,
-          inviteDispatchStatus,
-          inviteDispatchFallbackUsed,
-          inviteDispatchLastAttemptAt,
-          inviteDispatchLastError,
-          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-          publicShareExpiresAt: refreshedPublicShareExpiresAt,
-        },
-        update: {
-          date: meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          notes: meetingNotes,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          extraGuests: extraGuests ?? existingSchedule?.extraGuests ?? [],
-          googleEventId: calendarResult?.eventId ?? existingSchedule?.googleEventId ?? undefined,
-          googleCalendarId: calendarResult?.calendarId ?? existingSchedule?.googleCalendarId ?? undefined,
-          inviteDispatchStatus,
-          inviteDispatchFallbackUsed,
-          inviteDispatchLastAttemptAt,
-          inviteDispatchLastError,
-          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-          publicShareExpiresAt: refreshedPublicShareExpiresAt,
-          reminder30MinSentAt:
-            existingSchedule?.date?.getTime() !== meetingDate.getTime() ? null : existingSchedule?.reminder30MinSentAt,
-        },
-      });
-
-      const updatedLead = await tx.lead.update({
-        where: { id: leadId },
-        data: {
-          meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          meetingNotes: meetingNotes || null,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          closerId,
-          ...(existingSchedule?.date?.getTime() !== meetingDate.getTime()
-            ? { meetingPresenceConfirmed: false, meetingPresenceConfirmedAt: null }
-            : {}),
-          ...(transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
-        },
-      });
-
-      if (transitionStatusToScheduled === true && leadStatus !== LeadStatus.scheduled) {
-        const fromStatus = leadStatus as LeadStatus;
-        const fromLabel = STATUS_LABELS[fromStatus] ?? fromStatus;
-        const toLabel = STATUS_LABELS[LeadStatus.scheduled];
-
-        await tx.leadActivity.create({
-          data: {
-            leadId,
-            ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
+    // SPEC 13 (Agenda na Criação de Lead), A-E2 — a atividade de mudança de
+    // status é montada aqui (a política de "quando" e o texto/label
+    // continuam no service) e só passada pronta para o repositório inserir.
+    const statusChangeActivity =
+      transitionStatusToScheduled === true && leadStatus !== LeadStatus.scheduled
+        ? (() => {
+            const fromStatus = leadStatus as LeadStatus;
+            const fromLabel = STATUS_LABELS[fromStatus] ?? fromStatus;
+            const toLabel = STATUS_LABELS[LeadStatus.scheduled];
+            return buildAuthorActivityData(authorAsStudio, createdByProfileId, {
               type: ActivityType.status_change,
               body: `Status alterado de ${fromLabel} para ${toLabel}`,
               payload: {
@@ -867,16 +817,50 @@ export class LeadScheduleService implements ILeadScheduleService {
                 fromLabel,
                 toLabel,
               },
-            }),
-          },
-        });
-      }
+            });
+          })()
+        : null;
 
-      return {
-        schedule,
-        lead: updatedLead,
-        message: isReschedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso",
-      };
+    const message = isReschedule
+      ? "Agendamento atualizado com sucesso"
+      : "Agendamento criado com sucesso";
+
+    const persisted = await prisma.$transaction(async (tx) => {
+      const { schedule, lead: updatedLead } = await this.meetingRepo.upsertMeetingWithLeadTransition(
+        tx,
+        {
+          scheduleId,
+          leadId,
+          meetingDate,
+          meetingTitle: resolvedMeetingTitle,
+          meetingNotes,
+          meetingLink: resolvedMeetingLink,
+          meetingType: resolvedMeetingType,
+          extraGuests,
+          closerId,
+          googleEventId: calendarResult?.eventId,
+          googleCalendarId: calendarResult?.calendarId,
+          inviteDispatchStatus,
+          inviteDispatchFallbackUsed,
+          inviteDispatchLastAttemptAt,
+          inviteDispatchLastError,
+          inviteDispatchLastPayload,
+          publicShareExpiresAt: refreshedPublicShareExpiresAt,
+          existingSchedule: existingSchedule
+            ? {
+                date: existingSchedule.date,
+                extraGuests: existingSchedule.extraGuests,
+                googleEventId: existingSchedule.googleEventId,
+                googleCalendarId: existingSchedule.googleCalendarId,
+                reminder30MinSentAt: existingSchedule.reminder30MinSentAt,
+              }
+            : null,
+          transitionStatusToScheduled: transitionStatusToScheduled === true,
+          statusChangeActivity,
+        }
+      );
+
+      return { schedule, lead: updatedLead, message };
     });
 
     const scheduleWarnings: string[] = [];

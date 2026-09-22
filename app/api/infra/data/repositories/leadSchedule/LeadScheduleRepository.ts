@@ -153,6 +153,60 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
   }
 
   /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E2 — mesma lógica de
+   * `upsertByLeadId`, mas usando o `tx` recebido em vez do `prisma` global,
+   * e cobrindo também `meetingType`/`reminder30MinSentAt` (que
+   * `LeadScheduleService.createSchedule` grava desde sempre, mas que
+   * `CreateLeadScheduleDTO`/`upsertByLeadId` não cobriam). Extraído para
+   * `IMeetingRepository.upsertMeetingWithLeadTransition` poder gravar a
+   * reunião dentro da mesma transação que atualiza o lead.
+   */
+  async upsertByLeadIdWithTx(
+    tx: Prisma.TransactionClient,
+    leadId: string,
+    data: CreateLeadScheduleDTO
+  ): Promise<LeadsSchedule> {
+    const parsedData = {
+      date: data.date,
+      meetingTitle: data.meetingTitle,
+      notes: data.notes,
+      // `meetingLink` chega como `null` explícito (reunião por
+      // telefone/WhatsApp) tanto quanto uma string — `?? undefined` apagaria
+      // essa distinção e deixaria de zerar o link ao mudar o tipo da reunião.
+      meetingLink: data.meetingLink,
+      meetingType: data.meetingType ?? undefined,
+      extraGuests: data.extraGuests ?? [],
+      googleEventId: data.googleEventId ?? undefined,
+      googleCalendarId: data.googleCalendarId ?? undefined,
+      inviteDispatchStatus: data.inviteDispatchStatus ?? undefined,
+      inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
+      inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
+      inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+      publicShareTokenHash: data.publicShareTokenHash ?? undefined,
+      publicShareExpiresAt: data.publicShareExpiresAt ?? undefined,
+      // `??` NÃO serve aqui: precisa distinguir "não informado" (undefined,
+      // não mexe no valor gravado) de "limpar o lembrete" (null explícito).
+      // `createSchedule` sempre resolve um dos dois antes de chamar este
+      // método — nunca deixa o campo indefinido de fato.
+      reminder30MinSentAt: data.reminder30MinSentAt,
+      inviteDispatchLastPayload:
+        data.inviteDispatchLastPayload === null
+          ? Prisma.JsonNull
+          : (data.inviteDispatchLastPayload ?? undefined),
+    };
+
+    return await tx.leadsSchedule.upsert({
+      where: { leadId },
+      create: {
+        id: data.id,
+        leadId,
+        ...parsedData,
+      },
+      update: parsedData,
+    });
+  }
+
+  /**
    * Deleta um agendamento
    */
   async delete(id: string): Promise<void> {
