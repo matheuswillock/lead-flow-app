@@ -1,14 +1,13 @@
-import type {
-  BuildLeadFormUrlParams,
-  BuildStudioWebhookUrlParams,
-  GetStudioWebhookLogsResponse,
-  GetRadarPixelHitLogsResponse,
-  IntegrationsBootstrapResponse,
-  IIntegrationsService,
-  RadarPixelConfigData,
-  SaveRadarPixelConfigPayload,
-  SaveStudioWebhookConfigPayload,
-  SaveStudioWebhookConfigResponse,
+import {
+  type GetStudioWebhookLogsResponse,
+  type GetRadarPixelHitLogsResponse,
+  type IntegrationsBootstrapResponse,
+  type IIntegrationsService,
+  type RadarPixelConfigData,
+  type SaveRadarPixelConfigPayload,
+  type SaveStudioWebhookConfigPayload,
+  type SaveStudioWebhookConfigResponse,
+  StudioWebhookRotationRequiresConfirmationError,
 } from "./IIntegrationsService";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
@@ -24,24 +23,6 @@ class IntegrationsService implements IIntegrationsService {
     }
 
     return "";
-  }
-
-  buildLeadFormUrl({ appUrl, teamId }: BuildLeadFormUrlParams): string {
-    if (!appUrl || !teamId) {
-      return "";
-    }
-
-    const normalizedAppUrl = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
-    return `${normalizedAppUrl}/lead-form/${teamId}`;
-  }
-
-  buildStudioWebhookUrl({ appUrl, teamId, token }: BuildStudioWebhookUrlParams): string {
-    if (!appUrl || !teamId || !token) {
-      return "";
-    }
-
-    const normalizedAppUrl = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
-    return `${normalizedAppUrl}/api/webhooks/studio/${teamId}/${token}`;
   }
 
   async copyToClipboard(value: string): Promise<boolean> {
@@ -118,6 +99,9 @@ class IntegrationsService implements IIntegrationsService {
 
     const output = await response.json();
     if (!response.ok || !output?.isValid) {
+      if (response.status === 409) {
+        throw new StudioWebhookRotationRequiresConfirmationError();
+      }
       throw new Error(this.extractErrorMessage(output, "Não foi possível salvar configuração do webhook"));
     }
 

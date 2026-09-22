@@ -11,16 +11,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { teamWebhooksService } from "../services/TeamWebhooksService";
-import type { TeamWebhookSummary } from "../services/ITeamWebhooksService";
+import type { CreateInboundWebhookPayload, TeamWebhookSummary } from "../services/ITeamWebhooksService";
 import {
   WebhookInboundConfigFields,
   type WebhookInboundFormValues,
 } from "./WebhookInboundConfigFields";
 
-type Props = { supabaseId: string };
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — a chamada real de
+ * criação passa pelo Service page-local (`InboundWebhookCreateService`),
+ * injetado via Hook/Context da rota, em vez deste componente compartilhado
+ * importar `teamWebhooksService` direto.
+ */
+type InboundWebhookCreateServiceLike = {
+  create(supabaseId: string, teamId: string, payload: CreateInboundWebhookPayload): Promise<TeamWebhookSummary>;
+};
 
-export function InboundWebhookCreateContainer({ supabaseId }: Props) {
+type Props = {
+  supabaseId: string;
+  /** SPEC 10, R10-5: caminhos vêm do Hook page-local (InboundWebhookCreateHook), não hardcoded aqui. */
+  listPath: string;
+  buildDetailPath: (webhookId: string) => string;
+  service: InboundWebhookCreateServiceLike;
+};
+
+export function InboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
   const [values, setValues] = useState<WebhookInboundFormValues>({
@@ -42,7 +57,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
     if (!activeTeam?.id || !canSubmit) return;
     setSaving(true);
     try {
-      const result = await teamWebhooksService.create(supabaseId, activeTeam.id, {
+      const result = await service.create(supabaseId, activeTeam.id, {
         direction: "inbound",
         name: values.name.trim(),
         tokenMode: values.tokenMode,
@@ -119,7 +134,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
         <div className="flex justify-end gap-2">
           <Button
             onClick={() => {
-              router.push(`/${supabaseId}/integrations/webhooks/inbound/${created.id}`);
+              router.push(buildDetailPath(created.id));
             }}
           >
             Ir para detalhes
@@ -133,7 +148,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
         <Button variant="ghost" size="sm" asChild className="w-fit px-0">
-          <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>
+          <Link href={listPath}>
             <ArrowLeft data-icon="inline-start" />
             Voltar
           </Link>
@@ -148,7 +163,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" asChild disabled={saving}>
-          <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>Cancelar</Link>
+          <Link href={listPath}>Cancelar</Link>
         </Button>
         <Button onClick={onSubmit} disabled={!canSubmit}>
           {saving ? "Salvando..." : "Criar"}

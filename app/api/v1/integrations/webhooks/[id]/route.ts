@@ -23,7 +23,8 @@ const PatchBodySchema = z
     destinationPreset: z.enum(["generic", "slack", "teams", "zapier"]).optional(),
     selectedEvents: z.array(EventKeySchema).min(1).optional(),
     failureThreshold: z.number().int().min(1).max(100).optional(),
-    tokenMode: z.enum(["manual", "auto", "none"]).optional(),
+    // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+    tokenMode: z.enum(["manual", "auto"]).optional(),
     manualToken: z
       .string()
       .min(8)

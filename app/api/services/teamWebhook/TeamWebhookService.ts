@@ -29,6 +29,8 @@ import type {
 } from "./ITeamWebhookService";
 
 const MAX_OUTBOUND_PER_TEAM = 20;
+/** SPEC 10, W23: sem teto para entrada existia até aqui. */
+const MAX_INBOUND_PER_TEAM = 10;
 const NONE_TOKEN_HASH = hashTeamWebhookToken("__none__");
 
 const toIso = (value: Date | null | undefined): string | null =>
@@ -108,22 +110,15 @@ export class TeamWebhookService implements ITeamWebhookService {
     return row ? this.toSummary(row, appUrl) : null;
   }
 
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição — sem branch
+  // para esse modo aqui. `NONE_TOKEN_HASH` continua existindo só para o
+  // `toSummary` reconhecer webhooks históricos nesse modo na LEITURA (0
+  // medidos em produção em 21/09, mas o dado pode existir).
   private resolveTokenFields(input: {
-    tokenMode: "manual" | "auto" | "none";
+    tokenMode: "manual" | "auto";
     manualToken?: string;
     expiryMode: StudioWebhookTokenExpiryMode;
   }) {
-    if (input.tokenMode === "none") {
-      return {
-        token: null as string | null,
-        tokenHash: NONE_TOKEN_HASH,
-        tokenCipher: null as string | null,
-        tokenPreview: "sem-token",
-        expiryMode: input.expiryMode,
-        expiresAt: computeTeamWebhookTokenExpiry(input.expiryMode),
-      };
-    }
-
     if (input.tokenMode === "manual") {
       const manual = input.manualToken?.trim() ?? "";
       if (manual.length < 8) {
@@ -181,6 +176,11 @@ export class TeamWebhookService implements ITeamWebhookService {
       });
 
       return this.toSummary(row, appUrl);
+    }
+
+    const inboundCount = await teamWebhookRepository.countInboundWithCtx(this.ctx(access));
+    if (inboundCount >= MAX_INBOUND_PER_TEAM) {
+      throw new Error(`Limite de ${MAX_INBOUND_PER_TEAM} webhooks de entrada por time`);
     }
 
     const tokenFields = this.resolveTokenFields(input);

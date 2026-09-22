@@ -22,7 +22,8 @@ const CreateBodySchema = z
     z.object({
       direction: z.literal("inbound"),
       name: z.string().trim().min(1).max(120),
-      tokenMode: z.enum(["manual", "auto", "none"]),
+      // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+      tokenMode: z.enum(["manual", "auto"]),
       manualToken: z
         .string()
         .min(8)

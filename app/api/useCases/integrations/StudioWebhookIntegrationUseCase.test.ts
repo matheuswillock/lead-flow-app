@@ -66,7 +66,7 @@ function makeService(overrides: Partial<IStudioWebhookIntegrationService> = {}):
     }),
     touchWebhookLastUsed,
     createWebhookRequestLog: mock(async () => {}),
-    listLatestWebhookRequestLogs: mock(async () => []),
+    listLatestWebhookRequestLogs: mock(async () => ({ items: [], total: 0 })),
     ...overrides,
   };
   return { service, touchWebhookLastUsed };

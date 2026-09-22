@@ -120,6 +120,8 @@ export interface ITeamWebhookRepository {
     pauseReason?: string | null
   ): Promise<TeamWebhookRow>;
   countOutboundWithCtx(ctx: TeamWebhookTeamContext): Promise<number>;
+  /** SPEC 10, W23: teto de webhooks de entrada por time (`MAX_INBOUND_PER_TEAM`). */
+  countInboundWithCtx(ctx: TeamWebhookTeamContext): Promise<number>;
   findActiveOutboundForEvent(
     teamId: string,
     eventKey: TeamWebhookEventKey

@@ -8,11 +8,12 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { integrationsService } from "../services/IntegrationsService";
 import type { IntegrationsState, IntegrationsActions } from "./IntegrationsTypes";
-import type {
-  IntegrationsBootstrapResponse,
-  RadarPixelConfigData,
-  RadarPixelHitLogItem,
-  StudioWebhookLogItem,
+import {
+  StudioWebhookRotationRequiresConfirmationError,
+  type IntegrationsBootstrapResponse,
+  type RadarPixelConfigData,
+  type RadarPixelHitLogItem,
+  type StudioWebhookLogItem,
 } from "../services/IIntegrationsService";
 
 const STUDIO_WEBHOOK_CONTRACT_JSON = `{
@@ -58,8 +59,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const [studioWebhookLogs, setStudioWebhookLogs] = useState<StudioWebhookLogItem[]>([]);
   const [studioWebhookLogsLoading, setStudioWebhookLogsLoading] = useState(false);
   const [selectedStudioWebhookLogId, setSelectedStudioWebhookLogId] = useState<string | null>(null);
-  const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto" | "none">("auto");
+  const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto">("auto");
   const [studioWebhookManualToken, setStudioWebhookManualToken] = useState("");
+  const [studioWebhookRotationDialogOpen, setStudioWebhookRotationDialogOpen] = useState(false);
   const [studioWebhookExpiryMode, setStudioWebhookExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">("months_6");
   const [studioWebhookGeneratedUrl, setStudioWebhookGeneratedUrl] = useState("");
   const [radarPixelConfig, setRadarPixelConfig] = useState<IntegrationsState["radarPixelConfig"]>(null);
@@ -90,6 +92,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     setStudioWebhookExpiryMode("months_6");
     setStudioWebhookManualToken("");
     setStudioWebhookGeneratedUrl("");
+    setStudioWebhookRotationDialogOpen(false);
   }, []);
 
   const resetLogsState = useCallback(() => {
@@ -122,7 +125,11 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       webhookUrl: bootstrap.webhookUrl,
       webhookUrlTemplate: bootstrap.webhookUrlTemplate,
     });
-    setStudioWebhookTokenMode(bootstrap.tokenMode);
+    // SPEC 10, DA4/A-E4: "none" não é mais selecionável no formulário — uma
+    // configuração histórica nesse modo (0 medidas em produção) cai para
+    // "auto" como valor de formulário, sem alterar o que está salvo até o
+    // usuário confirmar uma rotação.
+    setStudioWebhookTokenMode(bootstrap.tokenMode === "none" ? "auto" : bootstrap.tokenMode);
     setStudioWebhookExpiryMode(bootstrap.expiryMode);
     setStudioWebhookManualToken("");
     setStudioWebhookGeneratedUrl("");
@@ -318,79 +325,115 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     });
   }, [leadFormUrl]);
 
-  const saveStudioWebhookConfig = useCallback(() => {
-    const executeSave = async () => {
-      if (!activeTeamId) {
-        toast.error("Selecione um time para configurar o webhook");
-        return;
-      }
+  const executeStudioWebhookSave = useCallback(
+    (confirmRotation: boolean) => {
+      const executeSave = async () => {
+        if (!activeTeamId) {
+          toast.error("Selecione um time para configurar o webhook");
+          return;
+        }
 
-      if (studioWebhookTokenMode === "manual" && !studioWebhookManualToken.trim()) {
-        toast.error("Informe um token manual ou selecione token automático");
-        return;
-      }
+        if (studioWebhookTokenMode === "manual" && !studioWebhookManualToken.trim()) {
+          toast.error("Informe um token manual ou selecione token automático");
+          return;
+        }
 
-      setStudioWebhookSaving(true);
+        setStudioWebhookSaving(true);
 
-      try {
-        const result = await integrationsService.saveStudioWebhookConfig(supabaseId, {
-          teamId: activeTeamId,
-          tokenMode: studioWebhookTokenMode,
-          manualToken: studioWebhookTokenMode === "manual" ? studioWebhookManualToken.trim() : undefined,
-          expiryMode: studioWebhookExpiryMode,
-        });
+        try {
+          const result = await integrationsService.saveStudioWebhookConfig(supabaseId, {
+            teamId: activeTeamId,
+            tokenMode: studioWebhookTokenMode,
+            manualToken: studioWebhookTokenMode === "manual" ? studioWebhookManualToken.trim() : undefined,
+            expiryMode: studioWebhookExpiryMode,
+            confirmRotation,
+          });
 
-        setStudioWebhookGeneratedUrl(result.webhookUrl);
-        const updatedWebhookConfig: IntegrationsState["studioWebhookConfig"] = {
-          configured: result.configured,
-          tokenMode: result.tokenMode,
-          tokenPreview: result.tokenPreview,
-          expiryMode: result.expiryMode,
-          expiresAt: result.expiresAt,
-          isExpired: result.isExpired,
-          lastUsedAt: result.lastUsedAt,
-          webhookUrl: result.webhookUrl,
-          webhookUrlTemplate: result.webhookUrlTemplate,
-        };
-        setStudioWebhookConfig(updatedWebhookConfig);
-        setStudioWebhookManualToken("");
+          setStudioWebhookGeneratedUrl(result.webhookUrl);
+          const updatedWebhookConfig: IntegrationsState["studioWebhookConfig"] = {
+            configured: result.configured,
+            tokenMode: result.tokenMode,
+            tokenPreview: result.tokenPreview,
+            expiryMode: result.expiryMode,
+            expiresAt: result.expiresAt,
+            isExpired: result.isExpired,
+            lastUsedAt: result.lastUsedAt,
+            webhookUrl: result.webhookUrl,
+            webhookUrlTemplate: result.webhookUrlTemplate,
+          };
+          setStudioWebhookConfig(updatedWebhookConfig);
+          setStudioWebhookManualToken("");
 
-        const bootstrapKey = buildBootstrapKey(supabaseId, activeTeamId);
-        const cachedBootstrap = integrationsBootstrapCacheByKey.get(bootstrapKey);
-        integrationsBootstrapCacheByKey.set(bootstrapKey, {
-          leadFormUrl: cachedBootstrap?.leadFormUrl ?? leadFormUrl,
-          configured: updatedWebhookConfig.configured,
-          tokenMode: updatedWebhookConfig.tokenMode,
-          tokenPreview: updatedWebhookConfig.tokenPreview,
-          expiryMode: updatedWebhookConfig.expiryMode,
-          expiresAt: updatedWebhookConfig.expiresAt,
-          isExpired: updatedWebhookConfig.isExpired,
-          lastUsedAt: updatedWebhookConfig.lastUsedAt,
-          webhookUrl: updatedWebhookConfig.webhookUrl,
-          webhookUrlTemplate: updatedWebhookConfig.webhookUrlTemplate,
-        });
-        lastSuccessfulBootstrapKeyRef.current = bootstrapKey;
-        toast.success("Webhook configurado com sucesso");
-      } catch (error) {
-        console.error("[useIntegrations] Erro ao salvar webhook:", error);
-        toastUserError(error);
-      } finally {
+          const bootstrapKey = buildBootstrapKey(supabaseId, activeTeamId);
+          const cachedBootstrap = integrationsBootstrapCacheByKey.get(bootstrapKey);
+          integrationsBootstrapCacheByKey.set(bootstrapKey, {
+            leadFormUrl: cachedBootstrap?.leadFormUrl ?? leadFormUrl,
+            configured: updatedWebhookConfig.configured,
+            tokenMode: updatedWebhookConfig.tokenMode,
+            tokenPreview: updatedWebhookConfig.tokenPreview,
+            expiryMode: updatedWebhookConfig.expiryMode,
+            expiresAt: updatedWebhookConfig.expiresAt,
+            isExpired: updatedWebhookConfig.isExpired,
+            lastUsedAt: updatedWebhookConfig.lastUsedAt,
+            webhookUrl: updatedWebhookConfig.webhookUrl,
+            webhookUrlTemplate: updatedWebhookConfig.webhookUrlTemplate,
+          });
+          lastSuccessfulBootstrapKeyRef.current = bootstrapKey;
+          toast.success(confirmRotation ? "Token rotacionado com sucesso" : "Webhook configurado com sucesso");
+        } catch (error) {
+          if (error instanceof StudioWebhookRotationRequiresConfirmationError) {
+            // SPEC 10, T-10.20: a UI já deveria ter pedido confirmação antes
+            // de chegar aqui — se ainda assim a API recusar (ex.: config
+            // criada em outra aba entre o load e o save), reabre o diálogo
+            // em vez de mostrar um erro genérico. O token atual não muda.
+            setStudioWebhookRotationDialogOpen(true);
+            toast.error("Confirme a rotação do token para continuar");
+            return;
+          }
+          console.error("[useIntegrations] Erro ao salvar webhook:", error);
+          toastUserError(error);
+        } finally {
+          setStudioWebhookSaving(false);
+        }
+      };
+
+      executeSave().catch((error) => {
+        console.error("[useIntegrations] Erro inesperado ao salvar webhook:", error);
         setStudioWebhookSaving(false);
-      }
-    };
+      });
+    },
+    [
+      activeTeamId,
+      leadFormUrl,
+      studioWebhookTokenMode,
+      studioWebhookManualToken,
+      studioWebhookExpiryMode,
+      supabaseId,
+    ]
+  );
 
-    executeSave().catch((error) => {
-      console.error("[useIntegrations] Erro inesperado ao salvar webhook:", error);
-      setStudioWebhookSaving(false);
-    });
-  }, [
-    activeTeamId,
-    leadFormUrl,
-    studioWebhookTokenMode,
-    studioWebhookManualToken,
-    studioWebhookExpiryMode,
-    supabaseId,
-  ]);
+  /**
+   * SPEC 10, B-E1 (DA1, T-10.20) — com configuração existente, salvar
+   * rotaciona o token: pede confirmação explícita via AlertDialog em vez de
+   * salvar direto. Sem configuração, salva normalmente.
+   */
+  const requestSaveStudioWebhookConfig = useCallback(() => {
+    if (studioWebhookConfig?.configured) {
+      setStudioWebhookRotationDialogOpen(true);
+      return;
+    }
+
+    executeStudioWebhookSave(false);
+  }, [executeStudioWebhookSave, studioWebhookConfig?.configured]);
+
+  const confirmStudioWebhookRotation = useCallback(() => {
+    setStudioWebhookRotationDialogOpen(false);
+    executeStudioWebhookSave(true);
+  }, [executeStudioWebhookSave]);
+
+  const cancelStudioWebhookRotation = useCallback(() => {
+    setStudioWebhookRotationDialogOpen(false);
+  }, []);
 
   const copyStudioWebhookUrl = useCallback(() => {
     const executeCopy = async () => {
@@ -707,6 +750,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     studioWebhookTokenMode,
     studioWebhookManualToken,
     studioWebhookExpiryMode,
+    studioWebhookRotationDialogOpen,
     studioWebhookGeneratedUrl,
     integrationsBootstrapLoading,
     studioWebhookLoading,
@@ -730,7 +774,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     setStudioWebhookManualToken,
     setStudioWebhookExpiryMode,
     setSelectedStudioWebhookLogId,
-    saveStudioWebhookConfig,
+    requestSaveStudioWebhookConfig,
+    confirmStudioWebhookRotation,
+    cancelStudioWebhookRotation,
     copyStudioWebhookUrl,
     copyStudioWebhookContract,
     loadRadarPixelConfig,

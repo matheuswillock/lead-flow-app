@@ -2,23 +2,32 @@ import { NextRequest, NextResponse, connection } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { studioWebhookIntegrationUseCase } from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
+import {
+  studioWebhookErrors,
+  studioWebhookIntegrationUseCase,
+} from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const routePrefix = "[StudioWebhookIntegrationRoute]";
 const ExpiryModeSchema = z.enum(["hours_24", "months_6", "indeterminate"]);
 
+// SPEC 10, DA4/A-E4: o modo "none" saiu da API de criação e edição — não
+// há mais "Sem token". V13: o token manual do legado passa a exigir 32
+// caracteres no mínimo (antes eram 8, e o legado histórico aceitava "1").
 const StudioWebhookConfigBodySchema = z
   .object({
     teamId: z.string().uuid().optional(),
-    tokenMode: z.enum(["manual", "auto", "none"]),
+    tokenMode: z.enum(["manual", "auto"]),
     manualToken: z
       .string()
-      .min(8, "Token manual deve ter ao menos 8 caracteres")
+      .min(32, "Token manual deve ter ao menos 32 caracteres")
       .max(512)
       .regex(/^[A-Za-z0-9_-]+$/, "Token manual deve usar apenas letras, números, underscore ou hífen")
       .optional(),
     expiryMode: ExpiryModeSchema,
+    // SPEC 10, DA1: com configuração existente, rotacionar exige confirmação
+    // explícita — sem isso, o PUT retorna 409 rotation_requires_confirmation.
+    confirmRotation: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.tokenMode === "manual" && !data.manualToken?.trim()) {
@@ -120,10 +129,14 @@ export async function PUT(request: NextRequest) {
       manualToken: validation.data.manualToken,
       expiryMode: validation.data.expiryMode,
       appUrl: resolveAppUrl(request),
+      confirmRotation: validation.data.confirmRotation ?? false,
     });
 
     if (!output.isValid) {
-      return NextResponse.json(output, { status: 400 });
+      const isRotationConfirmationRequired = output.errorMessages.includes(
+        studioWebhookErrors.ROTATION_REQUIRES_CONFIRMATION_ERROR
+      );
+      return NextResponse.json(output, { status: isRotationConfirmationRequired ? 409 : 400 });
     }
 
     return NextResponse.json(output, { status: 200 });
