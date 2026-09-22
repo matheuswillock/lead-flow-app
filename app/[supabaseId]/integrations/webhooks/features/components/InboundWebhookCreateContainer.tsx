@@ -86,6 +86,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
               <Button
                 type="button"
                 variant="outline"
+                className="max-lg:h-11"
                 disabled={!created.webhookUrl}
                 onClick={() => {
                   if (created.webhookUrl) void copyText(created.webhookUrl, "URL");
@@ -104,6 +105,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
                 <Button
                   type="button"
                   variant="outline"
+                  className="max-lg:h-11"
                   onClick={() => {
                     void copyText(created.token!, "Token");
                   }}
@@ -118,6 +120,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
 
         <div className="flex justify-end gap-2">
           <Button
+            className="max-lg:h-11"
             onClick={() => {
               router.push(`/${supabaseId}/integrations/webhooks/inbound/${created.id}`);
             }}
@@ -132,7 +135,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
-        <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+        <Button variant="ghost" size="sm" asChild className="w-fit max-lg:h-11 px-0">
           <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>
             <ArrowLeft data-icon="inline-start" />
             Voltar
@@ -147,10 +150,10 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
       />
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" asChild disabled={saving}>
+        <Button variant="outline" asChild disabled={saving} className="max-lg:h-11">
           <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>Cancelar</Link>
         </Button>
-        <Button onClick={onSubmit} disabled={!canSubmit}>
+        <Button className="max-lg:h-11" onClick={onSubmit} disabled={!canSubmit}>
           {saving ? "Salvando..." : "Criar"}
         </Button>
       </div>

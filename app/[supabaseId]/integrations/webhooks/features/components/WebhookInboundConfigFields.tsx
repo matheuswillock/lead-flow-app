@@ -50,7 +50,13 @@ export function WebhookInboundConfigFields({
           <div className="flex gap-2">
             <Input id={`${idPrefix}-url`} readOnly value={webhookUrl} />
             {onCopyUrl ? (
-              <Button type="button" variant="outline" size="icon" onClick={() => onCopyUrl(webhookUrl)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="max-lg:size-11"
+                onClick={() => onCopyUrl(webhookUrl)}
+              >
                 <Copy />
               </Button>
             ) : null}

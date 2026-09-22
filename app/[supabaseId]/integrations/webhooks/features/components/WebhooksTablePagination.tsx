@@ -57,7 +57,7 @@ export function WebhooksTablePagination({
         <Button
           type="button"
           variant="outline"
-          className="size-8 p-0"
+          className="size-8 max-lg:size-11 p-0"
           disabled={disabled || !canPrevious}
           onClick={() => onPageChange(1)}
         >
@@ -67,7 +67,7 @@ export function WebhooksTablePagination({
         <Button
           type="button"
           variant="outline"
-          className="size-8 p-0"
+          className="size-8 max-lg:size-11 p-0"
           disabled={disabled || !canPrevious}
           onClick={() => onPageChange(page - 1)}
         >
@@ -77,7 +77,7 @@ export function WebhooksTablePagination({
         <Button
           type="button"
           variant="outline"
-          className="size-8 p-0"
+          className="size-8 max-lg:size-11 p-0"
           disabled={disabled || !canNext}
           onClick={() => onPageChange(page + 1)}
         >
@@ -87,7 +87,7 @@ export function WebhooksTablePagination({
         <Button
           type="button"
           variant="outline"
-          className="size-8 p-0"
+          className="size-8 max-lg:size-11 p-0"
           disabled={disabled || !canNext}
           onClick={() => onPageChange(pageCount)}
         >
