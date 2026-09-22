@@ -18,6 +18,7 @@ type ClaimRawRow = {
   status: TeamWebhookOutboxStatus;
   attemptCount: number | bigint;
   nextAttemptAt: Date;
+  createdAt: Date;
 };
 
 export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository {
@@ -83,7 +84,8 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
         o.payload,
         o.status,
         o."attemptCount" AS "attemptCount",
-        o."nextAttemptAt" AS "nextAttemptAt"
+        o."nextAttemptAt" AS "nextAttemptAt",
+        o."createdAt" AS "createdAt"
     `;
 
     return rows.map((row) => ({
@@ -95,6 +97,7 @@ export class TeamWebhookOutboxRepository implements ITeamWebhookOutboxRepository
       status: row.status,
       attemptCount: Number(row.attemptCount),
       nextAttemptAt: row.nextAttemptAt,
+      createdAt: row.createdAt,
     }));
   }
 

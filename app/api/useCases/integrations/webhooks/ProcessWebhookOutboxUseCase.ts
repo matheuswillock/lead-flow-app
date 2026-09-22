@@ -19,23 +19,42 @@ import type { OutboundWebhookEnvelope } from "@/lib/webhooks/webhookPayloadPrese
 const BATCH_SIZE = 25;
 const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 16;
-const MISSING_SIGNING_SECRET_BASE_DELAY_MS = 15 * 60 * 1000;
-const MISSING_SIGNING_SECRET_MAX_DELAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Achado da 3ª revisão final (Opus): reagendar TODO evento "sem segredo" no mesmo
- * intervalo fixo (15min) para sempre significa que um único webhook antigo com fila
- * acumulada volta a vencer a cada ciclo do cron (`* / 5 * * * *`, `BATCH_SIZE=25` por
- * ciclo) e disputa espaço com webhooks já assinados de TODAS as contas — com mais de
- * ~75 eventos parados, ele passa a monopolizar a capacidade global do outbox. O
- * atraso cresce exponencialmente a cada ciclo (mesmo evento, sem contar pro
- * failureStreak nem pro TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS) até um teto de 24h, então um
- * webhook parado converge para ocupar no máximo 1 claim por dia em vez de 1 a cada
- * 15min — sem nunca virar dead-letter, e sem nunca deixar de tentar de vez.
+ * Achados acumulados de revisões finais (Opus) sobre este mesmo ramo de código:
+ * (1) um intervalo FIXO de reagendamento (15min pra sempre) deixava um único webhook
+ * parado monopolizar a capacidade global do cron de outbox (`* / 5 * * * *`,
+ * `BATCH_SIZE=25` por ciclo — ver `vercel.json`) e atrasar sem teto a entrega de
+ * webhooks já assinados de TODAS as contas; (2) a tentativa seguinte de resolver isso
+ * reaproveitando `attemptCount` como contador de adiamentos quebrava o orçamento REAL
+ * de retentativas HTTP depois que o segredo fosse rotacionado — um evento adiado 4x por
+ * falta de segredo herdava `attemptCount=4`, e um único 5xx real após a rotação já o
+ * esgotava (`TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5`), disparando dead-letter e auto-pause
+ * sem nenhuma retentativa de verdade.
+ *
+ * Por isso o atraso é calculado a partir do TEMPO REAL de espera (`row.createdAt`), não
+ * de um contador persistido — `attemptCount` fica completamente intocado neste ramo, e
+ * a entrega HTTP real (depois da rotação) sempre começa com o orçamento de tentativas
+ * limpo, exatamente como se o evento nunca tivesse esperado por segredo nenhum.
  */
-function computeMissingSigningSecretRetryDelayMs(deferCount: number): number {
-  const delay = MISSING_SIGNING_SECRET_BASE_DELAY_MS * 2 ** Math.max(0, deferCount - 1);
-  return Math.min(delay, MISSING_SIGNING_SECRET_MAX_DELAY_MS);
+const MISSING_SIGNING_SECRET_RETRY_TIERS: ReadonlyArray<{
+  waitingAtLeastMs: number;
+  delayMs: number;
+}> = [
+  { waitingAtLeastMs: 0, delayMs: 15 * 60 * 1000 }, // 0–1h de espera: reagenda a cada 15min
+  { waitingAtLeastMs: 60 * 60 * 1000, delayMs: 60 * 60 * 1000 }, // 1–4h: a cada 1h
+  { waitingAtLeastMs: 4 * 60 * 60 * 1000, delayMs: 4 * 60 * 60 * 1000 }, // 4–24h: a cada 4h
+  { waitingAtLeastMs: 24 * 60 * 60 * 1000, delayMs: 24 * 60 * 60 * 1000 }, // >24h: a cada 24h
+];
+
+function computeMissingSigningSecretRetryDelayMs(waitingSinceMs: number): number {
+  let delayMs = MISSING_SIGNING_SECRET_RETRY_TIERS[0]!.delayMs;
+  for (const tier of MISSING_SIGNING_SECRET_RETRY_TIERS) {
+    if (waitingSinceMs >= tier.waitingAtLeastMs) {
+      delayMs = tier.delayMs;
+    }
+  }
+  return delayMs;
 }
 
 function resolveTeamWebhookOutboxConcurrency(): number {
@@ -170,22 +189,15 @@ export class ProcessWebhookOutboxUseCase {
       }
 
       if (!signingSecret) {
-        // Achados acumulados de 2 revisões finais (Opus) sobre este mesmo ramo:
-        // (1) reaproveitar o backoff de falha HTTP comum ainda esgotava
-        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (~81min) e dead-letterava/auto-pausava um
-        // webhook legado sozinho; (2) um intervalo FIXO de reagendamento (15min pra
-        // sempre) deixava um único webhook parado monopolizar a capacidade global do
-        // cron (a cada 5min, BATCH_SIZE=25 — ver vercel.json) e atrasar sem teto a
-        // entrega de webhooks já assinados de TODAS as contas. Cifra NUNCA gravada
-        // (`signingSecretCipher` nulo, estado de TODO webhook de saída criado antes
-        // desta migration) não é uma falha de ENTREGA: é um estado de CONFIGURAÇÃO da
-        // conta. Por isso este evento NUNCA conta para o failureStreak e NUNCA vira
-        // dead-letter só por falta de segredo — mas o reagendamento agora cresce
-        // exponencialmente (15min → ... → teto de 24h, ver
-        // computeMissingSigningSecretRetryDelayMs) para que um webhook parado convirja
-        // a ocupar no máximo ~1 claim/dia, não 1 a cada 15min. Depois da rotação —
-        // visível na tela de detalhe —, a próxima claim decifra normalmente e a
-        // entrega HTTP real volta a valer o backoff/streak padrão.
+        // Cifra NUNCA gravada (`signingSecretCipher` nulo, estado de TODO webhook de
+        // saída criado antes desta migration) não é uma falha de ENTREGA: é um estado
+        // de CONFIGURAÇÃO da conta. Por isso este evento NUNCA conta para o
+        // failureStreak e NUNCA vira dead-letter só por falta de segredo — fica
+        // reagendado (ver MISSING_SIGNING_SECRET_RETRY_TIERS acima) até o gestor
+        // rotacionar o segredo, visível na tela de detalhe. `attemptCount` fica
+        // intocado neste ramo (nunca incrementado, nunca lido para decidir o atraso):
+        // depois da rotação, a próxima falha HTTP real começa com o orçamento de
+        // tentativas limpo, em vez de herdar ciclos gastos só esperando o segredo.
         const errorMessage =
           "Segredo de assinatura não configurado — entrega em espera até a rotação";
         await this.eventLogRepository.create({
@@ -202,15 +214,16 @@ export class ProcessWebhookOutboxUseCase {
           errorMessage,
         });
 
-        // attemptCount aqui é reaproveitado só para calcular o backoff exponencial
-        // deste caso específico — nunca é comparado contra
-        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS nem usado para decidir dead-letter/streak
-        // (ver função acima).
-        const deferCount = row.attemptCount + 1;
+        const waitingSinceMs = Date.now() - row.createdAt.getTime();
         const nextAttemptAt = new Date(
-          Date.now() + computeMissingSigningSecretRetryDelayMs(deferCount)
+          Date.now() + computeMissingSigningSecretRetryDelayMs(waitingSinceMs)
         );
-        await this.outboxRepository.markFailed(row.id, deferCount, nextAttemptAt, errorMessage);
+        await this.outboxRepository.markFailed(
+          row.id,
+          row.attemptCount,
+          nextAttemptAt,
+          errorMessage
+        );
         return "failed";
       }
 

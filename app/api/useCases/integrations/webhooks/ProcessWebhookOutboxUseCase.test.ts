@@ -32,6 +32,7 @@ function makeClaimRow(id: string): TeamWebhookOutboxClaimRow {
     status: "processing",
     attemptCount: 0,
     nextAttemptAt: new Date("2026-08-12T12:00:00.000Z"),
+    createdAt: new Date("2026-08-12T11:59:00.000Z"),
   };
 }
 
@@ -373,6 +374,7 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       status: "processing",
       attemptCount: 0,
       nextAttemptAt: new Date(),
+      createdAt: new Date(),
     });
 
     expect(outcome).toBe("failed");
@@ -388,15 +390,65 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     expect(repos.incrementFailureStreakCalls).toHaveLength(0);
     expect(repos.markFailedCalls).toHaveLength(1);
     expect(repos.markFailedCalls[0]?.id).toBe("outbox-no-secret");
-    expect(repos.markFailedCalls[0]?.attemptCount).toBe(1);
-    // 1º adiamento: ~15min (tolerância de 5s pro tempo de execução do teste).
-    const delayMs =
-      (repos.markFailedCalls[0]?.nextAttemptAt?.getTime() ?? 0) - Date.now();
+    // attemptCount 0 na entrada → 0 na saída: este ramo NUNCA avança attemptCount.
+    expect(repos.markFailedCalls[0]?.attemptCount).toBe(0);
+    // Evento recém-criado (createdAt=agora) → 1º degrau: reagenda em ~15min
+    // (tolerância de 5s pro tempo de execução do teste).
+    const delayMs = (repos.markFailedCalls[0]?.nextAttemptAt?.getTime() ?? 0) - Date.now();
     expect(delayMs).toBeGreaterThan(15 * 60 * 1000 - 5000);
     expect(delayMs).toBeLessThan(15 * 60 * 1000 + 5000);
   });
 
-  it("achado da 3ª revisão final (Opus): o reagendamento por falta de segredo cresce exponencialmente até um teto de 24h, nunca vira dead-letter, e nunca conta pro streak", async () => {
+  it("achado da 4ª revisão final (Opus): attemptCount fica intocado por falta de segredo — não herda orçamento de tentativas HTTP depois da rotação", async () => {
+    const repos = makeRepos({ signingSecretCipher: null });
+    const useCase = new ProcessWebhookOutboxUseCase(
+      repos.outboxRepository as never,
+      repos.webhookRepository as never,
+      repos.eventLogRepository as never,
+      repos.deliveryService as never
+    );
+
+    // Achado da 4ª revisão: a correção anterior (b86b9cb2a) reaproveitava attemptCount
+    // como contador de adiamentos. Um evento adiado várias vezes por falta de segredo
+    // herdava um attemptCount alto, e um único 5xx real APÓS a rotação já esgotava
+    // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5 — dead-letter e auto-pause sem nenhuma
+    // retentativa de verdade. Aqui simulamos exatamente esse attemptCount "herdado"
+    // (47, bem acima do limite de tentativas HTTP) para provar que este ramo o
+    // ignora e o devolve INTOCADO — nunca soma, nunca lê para decidir o atraso.
+    const outcome = await (useCase as unknown as {
+      processRow: (row: unknown) => Promise<string>;
+    }).processRow({
+      id: "outbox-no-secret-inherited-attempts",
+      teamId: "team-1",
+      webhookId: "webhook-1",
+      eventKey: "lead_created",
+      payload: {
+        id: "evt_no_secret_inherited",
+        version: 1,
+        type: "lead_created",
+        created_at: "now",
+        team_id: "team-1",
+        data: {},
+      },
+      status: "processing",
+      attemptCount: 47,
+      nextAttemptAt: new Date(),
+      createdAt: new Date(),
+    });
+
+    expect(outcome).toBe("failed");
+    expect(repos.deliverCalls).toHaveLength(0);
+    expect(repos.incrementFailureStreakCalls).toHaveLength(0);
+    expect(repos.markPausedCalls).toHaveLength(0);
+    expect(repos.markFailedCalls).toHaveLength(1);
+    // attemptCount devolvido é EXATAMENTE o de entrada — nunca incrementado, nunca
+    // zerado: o orçamento de tentativas HTTP fica limpo para quando o segredo for
+    // rotacionado e a entrega real (fora deste ramo) voltar a valer.
+    expect(repos.markFailedCalls[0]?.attemptCount).toBe(47);
+    expect(repos.markFailedCalls[0]?.nextAttemptAt).not.toBeNull();
+  });
+
+  it("achado da 3ª/4ª revisões finais (Opus): o reagendamento por falta de segredo cresce com o TEMPO real de espera (não com attemptCount), até um teto de 24h", async () => {
     const repos = makeRepos({ signingSecretCipher: null });
     const useCase = new ProcessWebhookOutboxUseCase(
       repos.outboxRepository as never,
@@ -408,30 +460,32 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       useCase as unknown as { processRow: (row: unknown) => Promise<string> }
     ).processRow.bind(useCase);
 
-    // Achado da 3ª revisão: um intervalo FIXO (a correção anterior, aae73ed0a→b86b9cb2a
-    // usava 15min pra sempre) deixava um único webhook parado monopolizar a capacidade
-    // global do cron (a cada 5min, BATCH_SIZE=25 — vercel.json) e atrasar sem teto os
-    // webhooks já assinados de TODAS as contas. Este teste encadeia 10 ciclos reais
-    // (cada um usa o attemptCount devolvido pelo ciclo anterior, como o T-20.4) e
-    // confirma que o atraso DOBRA a cada ciclo até um teto de 24h — convergindo para
-    // ~1 claim/dia em vez de 1 a cada 15min — sem nunca virar dead-letter (nextAttemptAt
-    // nunca nulo) nem contar pro failureStreak/auto-pause.
-    const expectedDelaysMs = [
-      15, 30, 60, 120, 240, 480, 960, 1440, 1440, 1440, // minutos; 1440min = 24h (teto)
-    ].map((minutes) => minutes * 60 * 1000);
+    // Achado da 3ª revisão: um intervalo FIXO (15min pra sempre) deixava um único
+    // webhook parado monopolizar a capacidade global do cron (a cada 5min,
+    // BATCH_SIZE=25 — vercel.json). Achado da 4ª revisão: crescer esse atraso via
+    // attemptCount persistido quebrava o orçamento de tentativas HTTP após a rotação
+    // (ver teste acima). Por isso o atraso é function de QUANTO TEMPO o evento já
+    // espera (`row.createdAt`), nunca de attemptCount — cada waitingSinceMs abaixo
+    // simula um evento criado há X tempo, sempre com o MESMO attemptCount de entrada
+    // (3, escolhido arbitrariamente para provar que ele nunca é lido nem alterado).
+    const cases: Array<{ waitingSinceMs: number; expectedDelayMinutes: number }> = [
+      { waitingSinceMs: 0, expectedDelayMinutes: 15 }, // recém-criado: 1º degrau
+      { waitingSinceMs: 30 * 60 * 1000, expectedDelayMinutes: 15 }, // 30min: ainda no 1º degrau (<1h)
+      { waitingSinceMs: 90 * 60 * 1000, expectedDelayMinutes: 60 }, // 1h30: 2º degrau (1h-4h)
+      { waitingSinceMs: 5 * 60 * 60 * 1000, expectedDelayMinutes: 240 }, // 5h: 3º degrau (4h-24h)
+      { waitingSinceMs: 25 * 60 * 60 * 1000, expectedDelayMinutes: 1440 }, // 25h: teto (24h)
+      { waitingSinceMs: 200 * 60 * 60 * 1000, expectedDelayMinutes: 1440 }, // 200h: continua no teto
+    ];
 
-    let attemptCount = 0;
-    const outcomes: string[] = [];
-    const observedDelaysMs: number[] = [];
-    for (let cycle = 0; cycle < 10; cycle += 1) {
+    for (const { waitingSinceMs, expectedDelayMinutes } of cases) {
       const before = Date.now();
       const outcome = await processRow({
-        id: "outbox-no-secret-many-cycles",
+        id: `outbox-no-secret-${waitingSinceMs}`,
         teamId: "team-1",
         webhookId: "webhook-1",
         eventKey: "lead_created",
         payload: {
-          id: "evt_no_secret_many_cycles",
+          id: "evt_no_secret_tier",
           version: 1,
           type: "lead_created",
           created_at: "now",
@@ -439,30 +493,27 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
           data: {},
         },
         status: "processing",
-        attemptCount,
+        attemptCount: 3,
         nextAttemptAt: new Date(),
+        createdAt: new Date(before - waitingSinceMs),
       });
-      outcomes.push(outcome);
+      expect(outcome).toBe("failed");
       const call = repos.markFailedCalls[repos.markFailedCalls.length - 1];
-      attemptCount = call?.attemptCount ?? attemptCount;
-      observedDelaysMs.push((call?.nextAttemptAt?.getTime() ?? 0) - before);
+      // attemptCount nunca muda, em NENHUM degrau.
+      expect(call?.attemptCount).toBe(3);
+      const observedDelayMs = (call?.nextAttemptAt?.getTime() ?? 0) - before;
+      const expectedDelayMs = expectedDelayMinutes * 60 * 1000;
+      expect(observedDelayMs).toBeGreaterThan(expectedDelayMs - 5000);
+      expect(observedDelayMs).toBeLessThan(expectedDelayMs + 5000);
     }
 
-    expect(outcomes).toEqual(new Array(10).fill("failed"));
     expect(repos.deliverCalls).toHaveLength(0);
     expect(repos.incrementFailureStreakCalls).toHaveLength(0);
     expect(repos.markPausedCalls).toHaveLength(0);
-    expect(repos.markFailedCalls).toHaveLength(10);
-    // attemptCount cresce 1→10 (nunca comparado contra TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5
-    // neste ramo) e nextAttemptAt nunca é null — nunca vira dead-letter.
-    repos.markFailedCalls.forEach((call, index) => {
-      expect(call.attemptCount).toBe(index + 1);
+    expect(repos.markFailedCalls).toHaveLength(cases.length);
+    // nextAttemptAt nunca é null em nenhum degrau — nunca vira dead-letter.
+    repos.markFailedCalls.forEach((call) => {
       expect(call.nextAttemptAt).not.toBeNull();
-    });
-    observedDelaysMs.forEach((delayMs, index) => {
-      const expected = expectedDelaysMs[index] ?? 0;
-      expect(delayMs).toBeGreaterThan(expected - 5000);
-      expect(delayMs).toBeLessThan(expected + 5000);
     });
   });
 });
