@@ -11,6 +11,7 @@ import type {
 } from "@/app/api/services/teamWebhook/ITeamWebhookService";
 import type { TeamWebhookDirection, TeamWebhookStatus } from "@prisma/client";
 import type { ITeamWebhookUseCase } from "./ITeamWebhookUseCase";
+import { maskSensitiveWebhookPayload } from "@/lib/webhooks/webhookPayloadMasking";
 
 export class TeamWebhookUseCase implements ITeamWebhookUseCase {
   async list(
@@ -100,7 +101,18 @@ export class TeamWebhookUseCase implements ITeamWebhookUseCase {
   ): Promise<Output> {
     try {
       const result = await teamWebhookService.listLogs(access, id, params);
-      return new Output(true, ["Logs carregados com sucesso"], [], result);
+      // SPEC 10, A-E6 (DA6, W7): máscara só na LEITURA — o repositório e o
+      // service continuam devolvendo o dado completo (usado por suporte via
+      // banco); a tela nunca recebe o payload cru.
+      const maskedResult = {
+        ...result,
+        items: result.items.map((item) => ({
+          ...item,
+          requestPayload: maskSensitiveWebhookPayload(item.requestPayload),
+          responsePayload: maskSensitiveWebhookPayload(item.responsePayload),
+        })),
+      };
+      return new Output(true, ["Logs carregados com sucesso"], [], maskedResult);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao carregar logs";
       console.error("[TeamWebhookUseCase][listLogs] Erro:", error);

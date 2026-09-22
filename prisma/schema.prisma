@@ -2849,6 +2849,11 @@ model TeamWebhook {
   direction          TeamWebhookDirection
   status             TeamWebhookStatus             @default(active)
   name               String                        @db.Text
+  /// Versão do contrato de entrada (SPEC 10, DA7). Só faz sentido para
+  /// direction=inbound; nasce em 1 para todo webhook existente (backfill) e
+  /// para todo webhook novo até a v2 ([[11]]) escolher 2. Sem coluna de
+  /// versão na tabela legada `TeamStudioWebhookConfig` — decisão do owner.
+  contractVersion    Int                           @default(1)
   targetUrl          String?                       @db.Text
   destinationPreset  TeamWebhookDestinationPreset?
   selectedEvents     TeamWebhookEventKey[]         @default([])
@@ -5051,6 +5056,22 @@ model BillingRateLimitWindow {
   @@id([key, windowStart])
   @@index([windowStart])
   @@map("billing_rate_limit_windows")
+}
+
+/// Rate limit atômico do webhook de entrada (SPEC 10, DA3,
+/// lib/webhooks/inbound-rate-limit.ts) — chave livre (IP, teamId,
+/// webhookId), sem FK. Tabela própria: não reaproveita a do Pixel (domínio
+/// diferente, sem retenção) nem a de billing (retenção mais curta).
+model InboundWebhookRateLimitWindow {
+  key         String   @db.Text
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+  @@map("webhooks_inbound_rate_limit_windows")
 }
 
 model WhatsAppAutoResponseRule {

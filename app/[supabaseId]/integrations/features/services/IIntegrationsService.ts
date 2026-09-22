@@ -1,16 +1,9 @@
-export interface BuildLeadFormUrlParams {
-  appUrl: string;
-  teamId: string;
-}
-
-export interface BuildStudioWebhookUrlParams {
-  appUrl: string;
-  teamId: string;
-  token: string;
-}
-
 export type StudioWebhookConfigData = {
   configured: boolean;
+  // SPEC 10, DA4/A-E4: "none" saiu da criação/edição, mas a LEITURA ainda
+  // pode encontrar configuração histórica nesse modo (0 medidos em
+  // produção em 21/09) — o tipo de leitura continua aceitando o valor para
+  // não quebrar a exibição.
   tokenMode: "manual" | "auto" | "none";
   tokenPreview: string | null;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
@@ -27,10 +20,29 @@ export type IntegrationsBootstrapResponse = StudioWebhookConfigData & {
 
 export type SaveStudioWebhookConfigPayload = {
   teamId: string;
-  tokenMode: "manual" | "auto" | "none";
+  tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
+  /**
+   * SPEC 10, DA1/A-E1: obrigatório com `true` quando já existe configuração
+   * — sem isso a API responde 409 `rotation_requires_confirmation` e não
+   * toca o token atual.
+   */
+  confirmRotation?: boolean;
 };
+
+/**
+ * SPEC 10, DA1/A-E1 (T-10.20) — a API recusa rotacionar um token existente
+ * sem confirmação explícita. O `IntegrationsService` lança este erro
+ * dedicado (em vez de um `Error` genérico) para a tela distinguir "precisa
+ * confirmar" de qualquer outra falha e abrir o `AlertDialog` certo.
+ */
+export class StudioWebhookRotationRequiresConfirmationError extends Error {
+  constructor() {
+    super("rotation_requires_confirmation");
+    this.name = "StudioWebhookRotationRequiresConfirmationError";
+  }
+}
 
 export type SaveStudioWebhookConfigResponse = StudioWebhookConfigData & {
   token: string;
@@ -83,8 +95,6 @@ export type GetRadarPixelHitLogsResponse = {
 
 export interface IIntegrationsService {
   resolveAppUrl(): string;
-  buildLeadFormUrl(params: BuildLeadFormUrlParams): string;
-  buildStudioWebhookUrl(params: BuildStudioWebhookUrlParams): string;
   copyToClipboard(value: string): Promise<boolean>;
   getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse>;
   getStudioWebhookLogs(supabaseId: string, teamId: string): Promise<GetStudioWebhookLogsResponse>;

@@ -2536,6 +2536,7 @@ completed completed
     TeamWebhookDirection direction 
     TeamWebhookStatus status 
     String name 
+    Int contractVersion 
     String targetUrl "❓"
     TeamWebhookDestinationPreset destinationPreset "❓"
     TeamWebhookEventKey selectedEvents 
@@ -3633,6 +3634,15 @@ completed completed
   
 
   "billing_rate_limit_windows" {
+    String key "🗝️"
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "webhooks_inbound_rate_limit_windows" {
     String key "🗝️"
     DateTime windowStart "🗝️"
     Int count 

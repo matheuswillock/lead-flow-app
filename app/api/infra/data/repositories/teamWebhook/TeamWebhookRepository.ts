@@ -137,6 +137,12 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
     });
   }
 
+  async countInboundWithCtx(ctx: TeamWebhookTeamContext): Promise<number> {
+    return prisma.teamWebhook.count({
+      where: { teamId: ctx.teamId, direction: "inbound" },
+    });
+  }
+
   async findActiveOutboundForEvent(
     teamId: string,
     eventKey: TeamWebhookEventKey

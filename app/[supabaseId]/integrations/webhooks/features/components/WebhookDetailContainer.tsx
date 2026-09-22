@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, Copy, Eye, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,14 +28,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates";
-import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type {
   TeamWebhookDirection,
   TeamWebhookLogItem,
+  TeamWebhookLogResult,
   TeamWebhookSummary,
   UpdateTeamWebhookPayload,
 } from "../services/ITeamWebhooksService";
@@ -48,14 +56,53 @@ import {
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
 
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — as chamadas de rede
+ * passam pelo Service page-local (`InboundWebhookDetailService` /
+ * `OutboundWebhookDetailService`), injetado via Hook/Context da rota. Este
+ * componente compartilhado não importa `teamWebhooksService` diretamente
+ * — a mesma interface estrutural serve para as duas direções.
+ */
+type WebhookDetailServiceLike = {
+  getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  update(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    payload: UpdateTeamWebhookPayload
+  ): Promise<TeamWebhookSummary>;
+  changeStatus(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    body: { status: "active" | "disabled" } | { action: "reactivate" }
+  ): Promise<TeamWebhookSummary>;
+  listLogs(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    params: { page?: number; pageSize?: number; result?: TeamWebhookLogResult }
+  ): Promise<{ items: TeamWebhookLogItem[]; total: number; page: number; pageSize: number }>;
+  testDelivery(
+    supabaseId: string,
+    teamId: string,
+    id: string
+  ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+};
+
 type Props = {
   supabaseId: string;
   webhookId: string;
   direction: TeamWebhookDirection;
+  /** SPEC 10, R10-5: caminho de volta à lista, derivado pelo Hook page-local. */
+  listPath: string;
+  service: WebhookDetailServiceLike;
 };
 
-function inferInboundTokenMode(webhook: TeamWebhookSummary): WebhookInboundFormValues["tokenMode"] {
-  if (webhook.tokenPreview === "sem-token") return "none";
+// SPEC 10, DA4/A-E4: "none" saiu da UI de edição — um webhook histórico
+// nesse modo (0 medidos em produção em 21/09) abre o formulário em "auto"
+// como valor de edição; salvar (rotacionar) sempre gera um token real.
+function inferInboundTokenMode(_webhook: TeamWebhookSummary): WebhookInboundFormValues["tokenMode"] {
   return "auto";
 }
 
@@ -103,6 +150,32 @@ function buildInboundUpdatePayload(
   return Object.keys(payload).length > 0 ? payload : null;
 }
 
+/**
+ * R10-15 (revisão Opus, sugestão) — o Sheet e a tabela mostravam
+ * `log.result` cru ("success"/"rejected"/"failure"), em inglês.
+ */
+const LOG_RESULT_LABEL: Record<string, string> = {
+  success: "Sucesso",
+  rejected: "Rejeitado",
+  failure: "Falha",
+};
+
+function formatLogResultLabel(result: string): string {
+  return LOG_RESULT_LABEL[result] ?? result;
+}
+
+/** SPEC 10, B-E3: mesmo formatador usado no widget legado (StudioWebhookIntegration.tsx). */
+function formatLogPayloadForDetails(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  if (typeof payload === "undefined" || payload === null) return "null";
+
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return JSON.stringify({ serializationError: "unserializable_payload" }, null, 2);
+  }
+}
+
 function buildOutboundUpdatePayload(
   draft: WebhookOutboundFormValues,
   initial: WebhookOutboundFormValues
@@ -124,7 +197,7 @@ function buildOutboundUpdatePayload(
   return Object.keys(payload).length > 0 ? payload : null;
 }
 
-export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Props) {
+export function WebhookDetailContainer({ supabaseId, webhookId, direction, listPath, service }: Props) {
   const { activeTeam } = useTeamContext();
   const { tz } = useTimezone();
   const [webhook, setWebhook] = useState<TeamWebhookSummary | null>(null);
@@ -139,8 +212,9 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const [logsPage, setLogsPage] = useState(1);
   const [logsTotal, setLogsTotal] = useState(0);
   const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedLogForDetail, setSelectedLogForDetail] = useState<TeamWebhookLogItem | null>(null);
 
-  const listPath = `/${supabaseId}/integrations/webhooks/${direction}`;
 
   const applyWebhookToDraft = useCallback((detail: TeamWebhookSummary) => {
     setWebhook(detail);
@@ -162,10 +236,15 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const load = useCallback(async () => {
     if (!activeTeam?.id) return;
     setLoading(true);
+    // SPEC 10, B-E2 (W14): erro de carregamento é um estado próprio, nunca
+    // um skeleton que trava para sempre porque `webhook` nunca chega a
+    // existir. Controle negativo: voltar ao `if (loading || !webhook)` e a
+    // tela trava em skeleton quando a API falha.
+    setLoadError(null);
     try {
       const [detail, logResult] = await Promise.all([
-        teamWebhooksService.getById(supabaseId, activeTeam.id, webhookId),
-        teamWebhooksService.listLogs(supabaseId, activeTeam.id, webhookId, {
+        service.getById(supabaseId, activeTeam.id, webhookId),
+        service.listLogs(supabaseId, activeTeam.id, webhookId, {
           page: logsPage,
           pageSize: 20,
         }),
@@ -174,11 +253,12 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       setLogs(logResult.items);
       setLogsTotal(logResult.total);
     } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Não foi possível carregar este webhook");
       toastUserError(error);
     } finally {
       setLoading(false);
     }
-  }, [activeTeam?.id, applyWebhookToDraft, logsPage, supabaseId, webhookId]);
+  }, [activeTeam?.id, applyWebhookToDraft, logsPage, service, supabaseId, webhookId]);
 
   useEffect(() => {
     void load();
@@ -215,7 +295,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || actionPending) return;
     setActionPending(true);
     try {
-      const updated = await teamWebhooksService.changeStatus(
+      const updated = await service.changeStatus(
         supabaseId,
         activeTeam.id,
         webhookId,
@@ -234,7 +314,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || actionPending) return;
     setActionPending(true);
     try {
-      await teamWebhooksService.testDelivery(supabaseId, activeTeam.id, webhookId);
+      await service.testDelivery(supabaseId, activeTeam.id, webhookId);
       toast.success("Envio de teste concluído");
       setLogsPage(1);
       await load();
@@ -249,7 +329,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || !updatePayload || !canSave) return;
     setSaving(true);
     try {
-      const updated = await teamWebhooksService.update(
+      const updated = await service.update(
         supabaseId,
         activeTeam.id,
         webhookId,
@@ -279,11 +359,35 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   };
 
-  if (loading || !webhook) {
+  if (loading) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Skeleton className="h-8 w-72" />
         <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
+
+  if (!webhook) {
+    return (
+      <div className="flex flex-col gap-4 p-6">
+        <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Link href={listPath}>
+            <ArrowLeft data-icon="inline-start" />
+            Voltar
+          </Link>
+        </Button>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Não foi possível carregar este webhook</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3">
+            <p>{loadError ?? "Tente novamente em instantes."}</p>
+            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+              <RefreshCcw data-icon="inline-start" />
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -383,12 +487,13 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                   <TableHead>Resultado</TableHead>
                   <TableHead>HTTP</TableHead>
                   <TableHead>Erro</TableHead>
+                  <TableHead className="text-right">Detalhes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       Nenhum log ainda.
                     </TableCell>
                   </TableRow>
@@ -408,12 +513,23 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                                 : "destructive"
                           }
                         >
-                          {log.result}
+                          {formatLogResultLabel(log.result)}
                         </Badge>
                       </TableCell>
                       <TableCell>{log.statusCode ?? "—"}</TableCell>
                       <TableCell className="max-w-[280px] truncate text-muted-foreground">
                         {log.errorMessage ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedLogForDetail(log)}
+                        >
+                          <Eye data-icon="inline-start" />
+                          Ver detalhes
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -492,6 +608,75 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* SPEC 10, B-E3 (W17): payload de request/response e erro completo —
+          já mascarados pela API (A-E6). Sem "ver original": a tela nunca
+          reverte a máscara. */}
+      <Sheet open={Boolean(selectedLogForDetail)} onOpenChange={(open) => !open && setSelectedLogForDetail(null)}>
+        <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Detalhe do log</SheetTitle>
+            <SheetDescription>
+              {selectedLogForDetail
+                ? formatIntimezone(new Date(selectedLogForDetail.createdAt), "dd/MM/yyyy HH:mm:ss", tz)
+                : null}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedLogForDetail ? (
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant={
+                    selectedLogForDetail.result === "success"
+                      ? "default"
+                      : selectedLogForDetail.result === "rejected"
+                        ? "secondary"
+                        : "destructive"
+                  }
+                >
+                  {formatLogResultLabel(selectedLogForDetail.result)}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {selectedLogForDetail.method ?? "—"} · HTTP {selectedLogForDetail.statusCode ?? "—"}
+                </span>
+              </div>
+
+              {selectedLogForDetail.endpoint ? (
+                <p className="break-all text-sm text-muted-foreground">{selectedLogForDetail.endpoint}</p>
+              ) : null}
+
+              {selectedLogForDetail.errorMessage ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{selectedLogForDetail.errorMessage}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-foreground">Payload da requisição</p>
+                {selectedLogForDetail.requestPayload ? (
+                  <pre className="max-h-[280px] overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                    {formatLogPayloadForDetails(selectedLogForDetail.requestPayload)}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem dados de requisição.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-semibold text-foreground">Payload da resposta</p>
+                {selectedLogForDetail.responsePayload ? (
+                  <pre className="max-h-[280px] overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                    {formatLogPayloadForDetails(selectedLogForDetail.responsePayload)}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Sem dados de resposta.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

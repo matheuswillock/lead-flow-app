@@ -1,8 +1,18 @@
-import type { OutboundWebhookDetailState } from "./OutboundWebhookDetailTypes";
+import { useMemo } from "react";
+import { outboundWebhookDetailService } from "../services/OutboundWebhookDetailService";
+import type { OutboundWebhookDetailContextValue } from "./OutboundWebhookDetailTypes";
 
-export function useOutboundWebhookDetail(
+export function useOutboundWebhookDetailHook(
   supabaseId: string,
-  webhookId: string,
-): OutboundWebhookDetailState {
-  return { supabaseId, webhookId };
+  webhookId: string
+): OutboundWebhookDetailContextValue {
+  return useMemo(
+    () => ({
+      supabaseId,
+      webhookId,
+      listPath: `/${supabaseId}/integrations/webhooks/outbound`,
+      service: outboundWebhookDetailService,
+    }),
+    [supabaseId, webhookId]
+  );
 }

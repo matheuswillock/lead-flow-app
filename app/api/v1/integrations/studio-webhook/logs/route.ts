@@ -22,9 +22,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // W32: paginação real (page/pageSize) — antes a lista era fixa nos 15
+    // mais recentes.
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+    const pageSize = Math.min(15, Math.max(1, Number(searchParams.get("pageSize") ?? "15") || 15));
+
     const output = await studioWebhookIntegrationUseCase.getLatestWebhookLogs({
       teamId: accessResult.access.teamId,
-      limit: 15,
+      page,
+      pageSize,
     });
 
     if (!output.isValid) {

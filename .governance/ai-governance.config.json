@@ -271,7 +271,6 @@
       "app/api/services/Performance/PerformanceService.ts",
       "app/api/services/Performance/PerformanceMeetingsHeldService.ts",
       "app/api/services/Portfolio/PortfolioService.ts",
-      "app/api/services/StudioWebhookIntegration/StudioWebhookIntegrationService.ts",
       "app/api/services/SubscriptionStatus/SubscriptionStatusService.ts",
       "app/api/services/teamFilterPreset/TeamFilterPresetService.ts",
       "app/api/services/teamStatusRule/TeamStatusRuleService.ts",
@@ -318,13 +317,6 @@
       "app/[supabaseId]/forms/[formId]/page.tsx",
       "app/[supabaseId]/forms/new/page.tsx",
       "app/[supabaseId]/forms/page.tsx",
-      "app/[supabaseId]/integrations/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/inbound/[id]/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/inbound/new/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/inbound/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/outbound/[id]/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/outbound/new/page.tsx",
-      "app/[supabaseId]/integrations/webhooks/outbound/page.tsx",
       "app/[supabaseId]/lead-transfers/page.tsx",
       "app/[supabaseId]/manager-users/page.tsx",
       "app/[supabaseId]/notifications/page.tsx",
@@ -428,7 +420,14 @@
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
-      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
+      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/inbound/page.tsx": "e2e/specs/product/integrations-webhooks-inbound.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/inbound/new/page.tsx": "e2e/specs/product/integrations-webhooks-inbound.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/inbound/[id]/page.tsx": "e2e/specs/product/integrations-webhooks-inbound.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/outbound/page.tsx": "e2e/specs/product/integrations-webhooks-outbound.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/outbound/new/page.tsx": "e2e/specs/product/integrations-webhooks-outbound.spec.ts",
+      "app/[supabaseId]/integrations/webhooks/outbound/[id]/page.tsx": "e2e/specs/product/integrations-webhooks-outbound.spec.ts",
+      "app/[supabaseId]/integrations/page.tsx": "e2e/specs/product/integrations-studio-webhook-widget.spec.ts"
     }
   }
 }

@@ -35,7 +35,8 @@ export type TeamWebhookSummaryDto = {
 export type CreateInboundWebhookInput = {
   direction: "inbound";
   name: string;
-  tokenMode: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: StudioWebhookTokenExpiryMode;
 };
@@ -55,7 +56,8 @@ export type UpdateTeamWebhookInput = {
   destinationPreset?: TeamWebhookDestinationPreset;
   selectedEvents?: TeamWebhookEventKey[];
   failureThreshold?: number;
-  tokenMode?: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode?: "manual" | "auto";
   manualToken?: string;
   expiryMode?: StudioWebhookTokenExpiryMode;
 };

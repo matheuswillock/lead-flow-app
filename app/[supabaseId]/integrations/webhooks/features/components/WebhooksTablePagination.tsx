@@ -7,6 +7,13 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
 
@@ -35,20 +42,22 @@ export function WebhooksTablePagination({
     <div className="flex flex-wrap items-center justify-end gap-4 px-2 py-3">
       <div className="flex items-center gap-2">
         <p className="text-sm font-medium">Linhas por página</p>
-        <select
-          aria-label="Linhas por página"
-          title="Linhas por página"
-          value={pageSize}
+        <Select
+          value={String(pageSize)}
           disabled={disabled}
-          onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="h-8 w-[70px] rounded-md border border-input bg-background"
+          onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          {PAGE_SIZE_OPTIONS.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="Linhas por página" className="h-8 w-[70px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex w-[100px] items-center justify-center text-sm font-medium">
         Página {page} de {pageCount}

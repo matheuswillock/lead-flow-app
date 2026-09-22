@@ -15,8 +15,14 @@ export interface IntegrationsState {
     webhookUrl: string;
     webhookUrlTemplate: string;
   } | null;
-  studioWebhookTokenMode: "manual" | "auto" | "none";
+  studioWebhookTokenMode: "manual" | "auto";
   studioWebhookManualToken: string;
+  /**
+   * SPEC 10, DA1/A-E1 (T-10.20) — controla o AlertDialog de confirmação de
+   * rotação. Aberto quando o usuário clica "Rotacionar token" com
+   * configuração existente; salvar só acontece na confirmação.
+   */
+  studioWebhookRotationDialogOpen: boolean;
   studioWebhookExpiryMode: "hours_24" | "months_6" | "indeterminate";
   studioWebhookGeneratedUrl: string;
   integrationsBootstrapLoading: boolean;
@@ -46,11 +52,14 @@ export interface IntegrationsActions {
   copyLeadFormUrl: () => void;
   loadStudioWebhookConfig: () => Promise<void>;
   loadStudioWebhookLogs: (options?: { force?: boolean }) => Promise<void>;
-  setStudioWebhookTokenMode: (mode: "manual" | "auto" | "none") => void;
+  setStudioWebhookTokenMode: (mode: "manual" | "auto") => void;
   setStudioWebhookManualToken: (token: string) => void;
   setStudioWebhookExpiryMode: (mode: "hours_24" | "months_6" | "indeterminate") => void;
   setSelectedStudioWebhookLogId: (logId: string | null) => void;
-  saveStudioWebhookConfig: () => void;
+  /** SPEC 10, B-E1: decide sozinho se salva direto ou abre a confirmação de rotação. */
+  requestSaveStudioWebhookConfig: () => void;
+  confirmStudioWebhookRotation: () => void;
+  cancelStudioWebhookRotation: () => void;
   copyStudioWebhookUrl: () => void;
   copyStudioWebhookContract: () => void;
   loadRadarPixelConfig: () => Promise<void>;
