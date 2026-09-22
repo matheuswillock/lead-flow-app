@@ -95,5 +95,17 @@ export function validateMeetingLinkValue(
     };
   }
 
+  // Achado do Codex na revisão do PR (R13-9): `new URL(value).toString()`
+  // pode mudar a string (ex.: acrescenta "/" no fim de um host sem path).
+  // Quando o valor é o carry-over de um link `http:` legado, devolver a URL
+  // normalizada quebraria a comparação de igualdade que um chamador seguinte
+  // faz contra o valor já persistido (ex.: rota valida e repassa o
+  // `normalized` para o service, que valida de novo e compara de novo com o
+  // banco). Devolver o valor original (já trimado) preserva a identidade
+  // byte a byte por toda a cadeia de revalidações.
+  if (isLegacyHttpCarryOver) {
+    return { isValid: true, normalized: value };
+  }
+
   return { isValid: true, normalized: parsedUrl.toString() };
 }

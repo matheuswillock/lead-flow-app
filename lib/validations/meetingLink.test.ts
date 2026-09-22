@@ -79,4 +79,22 @@ describe("validateMeetingLinkValue — allowLegacyHttp (achado R13-1/R13-2)", ()
     })
     expect(result.isValid).toBe(false)
   })
+
+  /**
+   * Achado do Codex na revisão do PR (R13-9): `new URL(value).toString()`
+   * pode mudar a string (ex.: acrescenta "/" no fim de um host sem path).
+   * Um chamador que revalida o mesmo valor mais adiante (rota valida e
+   * repassa o `normalized` para o service, que compara de novo com o banco)
+   * quebrava porque o valor normalizado nunca é igual ao valor persistido
+   * sem a barra. `normalized` do carry-over precisa ser o valor original.
+   */
+  test("allowLegacyHttp preserva a string original em `normalized` (sem acrescentar barra)", () => {
+    const result = validateMeetingLinkValue("http://meet.example.com", {
+      allowLegacyHttp: true,
+    })
+    expect(result.isValid).toBe(true)
+    if (result.isValid) {
+      expect(result.normalized).toBe("http://meet.example.com")
+    }
+  })
 })
