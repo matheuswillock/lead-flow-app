@@ -2,6 +2,13 @@ import type { TeamWebhookDestinationPreset } from "@prisma/client";
 import http from "node:http";
 import https from "node:https";
 import { assertSafeWebhookTargetUrlResolved } from "@/lib/webhooks/ssrfUrlGuard";
+import {
+  computeWebhookSignature,
+  WEBHOOK_EVENT_VERSION,
+  WEBHOOK_EVENT_VERSION_HEADER,
+  WEBHOOK_SIGNATURE_HEADER,
+  WEBHOOK_TIMESTAMP_HEADER,
+} from "@/lib/webhooks/webhookSigningSecurity";
 
 export type WebhookHttpDeliveryResult = {
   ok: boolean;
@@ -15,6 +22,8 @@ export interface IWebhookHttpDeliveryService {
     targetUrl: string;
     preset: TeamWebhookDestinationPreset;
     body: unknown;
+    /** Segredo de assinatura em texto puro, já descriptografado (DA1). */
+    signingSecret?: string | null;
     timeoutMs?: number;
   }): Promise<WebhookHttpDeliveryResult>;
 }
@@ -26,6 +35,7 @@ export class WebhookHttpDeliveryService implements IWebhookHttpDeliveryService {
     targetUrl: string;
     preset: TeamWebhookDestinationPreset;
     body: unknown;
+    signingSecret?: string | null;
     timeoutMs?: number;
   }): Promise<WebhookHttpDeliveryResult> {
     const guard = await assertSafeWebhookTargetUrlResolved(args.targetUrl);
@@ -45,6 +55,24 @@ export class WebhookHttpDeliveryService implements IWebhookHttpDeliveryService {
     const pinnedAddress = guard.pinnedAddress;
     const pinnedFamily = guard.pinnedFamily ?? 4;
 
+    // DA1 — todo envio leva assinatura, timestamp e versão do envelope.
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signatureHeaders: Record<string, string> = {
+      [WEBHOOK_EVENT_VERSION_HEADER]: String(WEBHOOK_EVENT_VERSION),
+    };
+    if (args.signingSecret) {
+      signatureHeaders[WEBHOOK_TIMESTAMP_HEADER] = timestamp;
+      signatureHeaders[WEBHOOK_SIGNATURE_HEADER] = computeWebhookSignature(
+        args.signingSecret,
+        timestamp,
+        payload
+      );
+    } else {
+      console.error(
+        "[WebhookHttpDeliveryService] Entrega sem segredo de assinatura configurado"
+      );
+    }
+
     return new Promise((resolve) => {
       const request = transport.request(
         url,
@@ -55,6 +83,7 @@ export class WebhookHttpDeliveryService implements IWebhookHttpDeliveryService {
             "Content-Length": Buffer.byteLength(payload),
             "User-Agent": "CorretorStudio-Webhook/1.0",
             "X-Corretor-Studio-Preset": args.preset,
+            ...signatureHeaders,
             Host: url.host,
           },
           // Pin validated DNS result to reduce rebinding between check and connect.

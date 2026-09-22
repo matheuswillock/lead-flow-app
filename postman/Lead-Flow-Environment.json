@@ -24,6 +24,13 @@
       "description": "ID do lead - será preenchido automaticamente pelos testes"
     },
     {
+      "key": "webhookId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um TeamWebhook (direction=outbound) para os endpoints de Webhooks (Saída)"
+    },
+    {
       "key": "operatorId",
       "value": "operator-uuid-example",
       "type": "default",

@@ -86,6 +86,8 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         tokenHash: data.tokenHash ?? null,
         tokenCipher: data.tokenCipher ?? null,
         tokenPreview: data.tokenPreview ?? null,
+        signingSecretCipher: data.signingSecretCipher ?? null,
+        signingSecretPreview: data.signingSecretPreview ?? null,
         expiryMode: data.expiryMode ?? null,
         expiresAt: data.expiresAt ?? null,
         updatedByProfileId: ctx.profileId,
@@ -239,6 +241,7 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         destinationPreset: true,
         failureStreak: true,
         failureThreshold: true,
+        signingSecretCipher: true,
         updatedByProfileId: true,
       },
     });

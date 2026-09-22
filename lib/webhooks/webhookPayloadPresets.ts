@@ -3,6 +3,8 @@ import type { TeamWebhookDestinationPreset, TeamWebhookEventKey } from "@prisma/
 export type OutboundWebhookEnvelope = {
   id: string;
   type: TeamWebhookEventKey | "webhook_test";
+  /** Versão do envelope (DA2, SPEC 20). Campo aditivo — não remove nenhum campo existente. */
+  version: 1;
   created_at: string;
   team_id: string;
   data: Record<string, unknown>;
