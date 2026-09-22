@@ -18,6 +18,12 @@ import {
   buildMeetingContactNotificationEmailTemplate,
   buildMeetingInviteEmailTemplate,
 } from "@/lib/email/meeting-schedule-templates";
+import {
+  buildLeadNotificationEmailTemplate,
+  buildLeadProposalPendingUrgentEmailTemplate,
+  buildLeadTransferActivatedEmailTemplate,
+} from "@/lib/email/lead-notification-templates";
+import { escapeIcsText } from "@/lib/email/escape-ics-text";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -308,12 +314,7 @@ export class EmailService {
   }
 
   private escapeIcsText(value?: string | null) {
-    if (!value) return "";
-    return value
-      .replace(/\\/g, "\\\\")
-      .replace(/\n/g, "\\n")
-      .replace(/;/g, "\\;")
-      .replace(/,/g, "\\,");
+    return escapeIcsText(value);
   }
 
   private buildCheckoutLinkEmailHtml(input: {
@@ -1221,39 +1222,16 @@ export class EmailService {
 
   // Notificação de novo lead para managers
   async sendLeadNotification(data: LeadNotificationData) {
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #333;">Novo Lead Recebido!</h1>
-        
-        <p>Olá <strong>${data.managerName}</strong>,</p>
-        
-        <p>Um novo lead foi registrado em sua plataforma:</p>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: #333;">Dados do Lead:</h3>
-          <p><strong>Nome:</strong> ${data.leadName}</p>
-          <p><strong>Email:</strong> ${data.leadEmail}</p>
-          ${data.leadPhone ? `<p><strong>Telefone:</strong> ${data.leadPhone}</p>` : ''}
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${getFullUrl('/dashboard')}" 
-             style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            Ver Lead no Dashboard
-          </a>
-        </div>
-        
-        <p>Entre na plataforma para visualizar e gerenciar este novo lead.</p>
-        
-        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um e-mail automático do Corretor Studio.</p>
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadNotificationEmailTemplate({
+      leadName: data.leadName,
+      leadEmail: data.leadEmail,
+      leadPhone: data.leadPhone,
+      managerName: data.managerName,
+    });
 
     return this.sendEmail({
       to: [data.managerEmail],
-      subject: `Novo Lead: ${data.leadName}`,
+      subject,
       html,
       tracking: {
         teamId: data.teamId,
@@ -1264,48 +1242,21 @@ export class EmailService {
   }
 
   async sendLeadProposalPendingUrgentEmail(data: LeadProposalPendingUrgentEmailData) {
-    const leadName = data.leadName || "Lead sem nome";
-    const leadEmail = data.leadEmail || "Não informado";
-    const leadPhone = data.leadPhone || "Não informado";
-    const sdrName = data.sdrName || "Não informado";
-    const closerName = data.closerName || "Não informado";
-    const notes = (data.notes || "Sem observações adicionais").trim();
-    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
-    const proposalPendingTitle = `Você tem uma proposta pendente no Corretor Studio - ID: ${data.leadCode}`;
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
-        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0; font-size: 22px;">${proposalPendingTitle}</h1>
-          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
-            ${data.actorName} moveu um lead para o status de proposta pendente.
-          </p>
-        </div>
-
-        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
-          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${leadName}</p>
-          <p style="margin: 0 0 8px;"><strong>E-mail:</strong> ${leadEmail}</p>
-          <p style="margin: 0 0 14px;"><strong>Telefone:</strong> ${leadPhone}</p>
-
-          <p style="margin: 0 0 8px;"><strong>SDR:</strong> ${sdrName}</p>
-          <p style="margin: 0 0 14px;"><strong>Closer:</strong> ${closerName}</p>
-
-          <div style="margin: 0 0 14px;">
-            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
-          </div>
-
-          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
-            <p style="margin: 0; white-space: pre-wrap;">${notes}</p>
-          </div>
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadProposalPendingUrgentEmailTemplate({
+      leadCode: data.leadCode,
+      leadName: data.leadName,
+      leadEmail: data.leadEmail,
+      leadPhone: data.leadPhone,
+      sdrName: data.sdrName,
+      closerName: data.closerName,
+      notes: data.notes,
+      actorName: data.actorName,
+    });
 
     return this.sendEmail({
       to: data.to,
       cc: data.cc,
-      subject: proposalPendingTitle,
+      subject,
       html,
       attachments: data.attachments,
       tracking: {
@@ -2243,62 +2194,21 @@ export class EmailService {
   }
 
   async sendLeadTransferActivatedEmail(data: LeadTransferActivatedEmailData) {
-    const leadName = data.leadName || "Lead sem nome";
-    const leadPhone = data.leadPhone || "Não informado";
-    const leadCnpj = data.leadCnpj || "Não informado";
-    const leadCurrentHealthPlan = data.leadCurrentHealthPlan || "Não informado";
-    const leadCurrentValue =
-      data.leadCurrentValue != null
-        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.leadCurrentValue)
-        : "Não informado";
-    const sdrName = data.sdrName || "Não informado";
-    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
-    const leadNotes = (data.leadNotes || "Sem observações").trim();
-    const scheduleShareUrl = data.scheduleShareUrl?.trim() || "";
-    const scheduleShareBlock = scheduleShareUrl
-      ? `
-          <div style="margin-top: 16px; background: #fff7ed; border: 1px solid #fed7aa; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 8px;"><strong>Link do formulário da reunião</strong></p>
-            <p style="margin: 0;">
-              <a href="${scheduleShareUrl}" style="color: #ff6900; text-decoration: none;">Abrir agendamento</a>
-            </p>
-          </div>
-        `
-      : "";
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
-        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0; font-size: 22px;">Lead para transferência adicionado</h1>
-          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
-            Um novo lead foi marcado para transferência no Corretor Studio.
-          </p>
-        </div>
-
-        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
-          <p style="margin: 0 0 8px;"><strong>Lead:</strong> ${leadName}</p>
-          <p style="margin: 0 0 8px;"><strong>Telefone:</strong> ${leadPhone}</p>
-          <p style="margin: 0 0 8px;"><strong>CNPJ:</strong> ${leadCnpj}</p>
-          <p style="margin: 0 0 8px;"><strong>Plano atual:</strong> ${leadCurrentHealthPlan}</p>
-          <p style="margin: 0 0 8px;"><strong>Valor atual:</strong> ${leadCurrentValue}</p>
-          <p style="margin: 0 0 14px;"><strong>SDR:</strong> ${sdrName}</p>
-
-          <div style="margin: 0 0 14px;">
-            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
-          </div>
-
-          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
-            <p style="margin: 0; white-space: pre-wrap;">${leadNotes}</p>
-          </div>
-          ${scheduleShareBlock}
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadTransferActivatedEmailTemplate({
+      leadCode: data.leadCode,
+      leadName: data.leadName,
+      leadPhone: data.leadPhone,
+      leadCnpj: data.leadCnpj,
+      leadCurrentHealthPlan: data.leadCurrentHealthPlan,
+      leadCurrentValue: data.leadCurrentValue,
+      leadNotes: data.leadNotes,
+      sdrName: data.sdrName,
+      scheduleShareUrl: data.scheduleShareUrl,
+    });
 
     return this.sendEmail({
       to: data.to,
-      subject: `Novo lead para transferência: ${leadName}`,
+      subject,
       html,
       tracking: {
         teamId: data.teamId,
