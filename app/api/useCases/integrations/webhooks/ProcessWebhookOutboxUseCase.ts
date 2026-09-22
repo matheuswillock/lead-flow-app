@@ -119,10 +119,16 @@ export class ProcessWebhookOutboxUseCase {
         ? decryptWebhookSigningSecret(webhook.signingSecretCipher)
         : null;
 
-      if (webhook.signingSecretCipher && !signingSecret) {
-        // R20-6 — cifra presente mas ilegível (ex.: chave de cifra do servidor rotacionada
-        // sem migrar os segredos existentes). Nunca entregar sem assinatura em silêncio:
-        // vira falha do evento, sem tentar de novo, e conta para o auto-pause.
+      if (!signingSecret) {
+        // Achado de code review (Codex, PR #1220): sem segredo — seja porque a cifra
+        // nunca foi gravada, seja porque está ilegível — a entrega NUNCA sai sem
+        // assinatura em silêncio. O critério de sucesso da SPEC 20 é "todo payload de
+        // saída tem assinatura verificável"; um webhook sem segredo configurado vira
+        // falha do evento, sem tentar de novo, e conta para o auto-pause, do mesmo
+        // jeito que um webhook sem URL de destino.
+        const errorMessage = webhook.signingSecretCipher
+          ? "Segredo de assinatura ilegível — entrega bloqueada por segurança"
+          : "Segredo de assinatura não configurado — entrega bloqueada por segurança";
         await this.eventLogRepository.create({
           teamId: row.teamId,
           webhookId: row.webhookId,
@@ -134,7 +140,7 @@ export class ProcessWebhookOutboxUseCase {
           statusCode: null,
           requestPayload: body,
           responsePayload: null,
-          errorMessage: "Segredo de assinatura ilegível — entrega bloqueada por segurança",
+          errorMessage,
         });
 
         const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
@@ -145,12 +151,7 @@ export class ProcessWebhookOutboxUseCase {
           await this.notifyAutoPaused(webhook);
           wasPausedForBadSecret = true;
         }
-        await this.outboxRepository.markFailed(
-          row.id,
-          row.attemptCount + 1,
-          null,
-          "Segredo de assinatura ilegível"
-        );
+        await this.outboxRepository.markFailed(row.id, row.attemptCount + 1, null, errorMessage);
         return wasPausedForBadSecret ? "paused" : "failed";
       }
 

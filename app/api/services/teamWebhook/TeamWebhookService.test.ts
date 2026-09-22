@@ -180,4 +180,18 @@ describe("TeamWebhookService — segredo de assinatura (T-20.2)", () => {
     expect(loggedCall.result).toBe("failure");
     expect(loggedCall.errorMessage).toBe("Segredo de assinatura ilegível — teste bloqueado por segurança");
   });
+
+  it("achado Codex (PR #1220): testDelivery() bloqueia quando o webhook nunca teve segredo configurado", async () => {
+    findByIdWithCtxMock.mockImplementationOnce(async () => baseRow({ signingSecretCipher: null }));
+    const service = new TeamWebhookService();
+
+    const result = await service.testDelivery(access, "webhook-1");
+
+    expect(result.ok).toBe(false);
+    expect(result.errorMessage).toBe(
+      "Segredo de assinatura não configurado — teste bloqueado por segurança"
+    );
+    expect(deliverMock).not.toHaveBeenCalled();
+    expect(eventLogCreateMock).toHaveBeenCalledTimes(1);
+  });
 });

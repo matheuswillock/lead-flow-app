@@ -423,10 +423,13 @@ export class TeamWebhookService implements ITeamWebhookService {
     // não precisa de uma segunda leitura (findForDelivery) só para o mesmo campo.
     const signingSecret = decryptWebhookSigningSecret(existing.signingSecretCipher);
 
-    if (existing.signingSecretCipher && !signingSecret) {
-      // R20-6: cifra presente mas ilegível — nunca testar (nem entregar) sem
-      // assinatura em silêncio. Mesma regra do cron em ProcessWebhookOutboxUseCase.
-      const errorMessage = "Segredo de assinatura ilegível — teste bloqueado por segurança";
+    if (!signingSecret) {
+      // Achado de code review (Codex, PR #1220): sem segredo — cifra ausente ou
+      // ilegível — nunca testar (nem entregar) sem assinatura em silêncio. Mesma
+      // regra do cron em ProcessWebhookOutboxUseCase.
+      const errorMessage = existing.signingSecretCipher
+        ? "Segredo de assinatura ilegível — teste bloqueado por segurança"
+        : "Segredo de assinatura não configurado — teste bloqueado por segurança";
       await teamWebhookEventLogRepository.create({
         teamId: access.teamId,
         webhookId: existing.id,

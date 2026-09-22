@@ -1,6 +1,22 @@
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import type { TeamWebhookOutboxClaimRow } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookOutboxRepository";
+import { encryptWebhookSigningSecret } from "@/lib/webhooks/webhookSigningSecurity";
 import { ProcessWebhookOutboxUseCase } from "./ProcessWebhookOutboxUseCase";
+
+/**
+ * Cifra válida (AES-256-GCM real) usada como fixture padrão nos testes que
+ * exercitam a entrega HTTP em si (concorrência, contador por evento) — desde
+ * o achado de code review do Codex (PR #1220), um webhook sem segredo
+ * (cifra ausente OU ilegível) nunca chega a chamar `deliveryService.deliver()`.
+ * Sem uma cifra válida aqui, esses testes cairiam no bloqueio de segurança em
+ * vez de exercitar o que realmente testam.
+ */
+const VALID_SIGNING_SECRET_CIPHER = encryptWebhookSigningSecret(
+  "test-secret-for-outbox-processing-fixture"
+);
+if (!VALID_SIGNING_SECRET_CIPHER) {
+  throw new Error("Não foi possível gerar a cifra fixture para os testes do outbox");
+}
 
 function makeClaimRow(id: string): TeamWebhookOutboxClaimRow {
   return {
@@ -57,6 +73,7 @@ describe("ProcessWebhookOutboxUseCase", () => {
         destinationPreset: "generic",
         failureStreak: 0,
         failureThreshold: 5,
+        signingSecretCipher: VALID_SIGNING_SECRET_CIPHER,
         updatedByProfileId: "profile-1",
       }),
       resetFailureStreak: async () => {},
@@ -135,7 +152,10 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
         destinationPreset: "generic",
         failureStreak: 0,
         failureThreshold: 2,
-        signingSecretCipher: overrides.signingSecretCipher ?? null,
+        signingSecretCipher:
+          overrides.signingSecretCipher === undefined
+            ? VALID_SIGNING_SECRET_CIPHER
+            : overrides.signingSecretCipher,
         updatedByProfileId: "profile-1",
       }),
       resetFailureStreak: async () => {},
@@ -326,6 +346,45 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     expect(repos.incrementFailureStreakCalls).toHaveLength(1);
     expect(repos.markFailedCalls).toEqual([
       { id: "outbox-bad-secret", attemptCount: 1, nextAttemptAt: null },
+    ]);
+  });
+
+  it("achado Codex (PR #1220): webhook sem segredo configurado (cifra nunca gravada) também bloqueia a entrega sem tentar HTTP", async () => {
+    const repos = makeRepos({ signingSecretCipher: null });
+    const useCase = new ProcessWebhookOutboxUseCase(
+      repos.outboxRepository as never,
+      repos.webhookRepository as never,
+      repos.eventLogRepository as never,
+      repos.deliveryService as never
+    );
+
+    const outcome = await (useCase as unknown as {
+      processRow: (row: unknown) => Promise<string>;
+    }).processRow({
+      id: "outbox-no-secret",
+      teamId: "team-1",
+      webhookId: "webhook-1",
+      eventKey: "lead_created",
+      payload: { id: "evt_no_secret", version: 1, type: "lead_created", created_at: "now", team_id: "team-1", data: {} },
+      status: "processing",
+      attemptCount: 0,
+      nextAttemptAt: new Date(),
+    });
+
+    expect(outcome).toBe("failed");
+    // Antes desta correção, um webhook com signingSecretCipher=null (ex.: linha criada
+    // antes desta feature) chamava deliver() sem nenhum header de assinatura — o mesmo
+    // achado do Codex no review do PR #1220.
+    expect(repos.deliverCalls).toHaveLength(0);
+    expect(repos.eventLogCreateCalls).toEqual([
+      {
+        result: "failure",
+        errorMessage: "Segredo de assinatura não configurado — entrega bloqueada por segurança",
+      },
+    ]);
+    expect(repos.incrementFailureStreakCalls).toHaveLength(1);
+    expect(repos.markFailedCalls).toEqual([
+      { id: "outbox-no-secret", attemptCount: 1, nextAttemptAt: null },
     ]);
   });
 });
