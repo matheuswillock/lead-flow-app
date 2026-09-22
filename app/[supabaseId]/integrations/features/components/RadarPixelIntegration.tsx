@@ -175,6 +175,7 @@ export function RadarPixelIntegration() {
                   onClick={saveRadarPixelConfig}
                   disabled={radarPixelSaving || radarPixelDeleting}
                   size="sm"
+                  className="max-lg:h-11"
                 >
                   <Save />
                   {radarPixelSaving ? "Salvando…" : radarPixelConfig?.configured ? "Atualizar pixel" : "Ativar pixel"}
@@ -185,6 +186,7 @@ export function RadarPixelIntegration() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="max-lg:h-11"
                       onClick={copyRadarPixelSnippet}
                       disabled={radarPixelSaving || radarPixelDeleting}
                     >
@@ -197,6 +199,7 @@ export function RadarPixelIntegration() {
                         <Button
                           variant="destructive"
                           size="sm"
+                          className="max-lg:h-11"
                           disabled={radarPixelDeleting || radarPixelSaving}
                         >
                           <Trash2 />
