@@ -17,6 +17,7 @@ import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw,
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
+import { LeadStatusBadge } from "@/components/lead-status-badge";
 import { isDraftLead } from "@/lib/lead-status";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -63,28 +64,6 @@ function DragHandle({ id }: { id: string }) {
       </Button>
     </div>
   );
-}
-
-// Função para obter cor do badge baseado no status
-function getStatusColor(status: string): string {
-  const statusColors: Record<string, string> = {
-    new_opportunity: "bg-blue-500",
-    scheduled: "bg-purple-500",
-    no_show: "bg-orange-500",
-    pricingRequest: "bg-yellow-500",
-    future_sale: "bg-fuchsia-500",
-    offerNegotiation: "bg-amber-500",
-    pending_documents: "bg-gray-500",
-    offerSubmission: "bg-cyan-500",
-    dps_agreement: "bg-indigo-500",
-    invoicePayment: "bg-teal-500",
-    disqualified: "bg-red-500",
-    opportunityLost: "bg-rose-500",
-    operator_denied: "bg-pink-500",
-    contract_finalized: "bg-green-500",
-  };
-  
-  return statusColors[status] || "bg-gray-500";
 }
 
 // Função para formatar data de reunião
@@ -361,9 +340,7 @@ export const createColumns = ({
         return <DraftLeadIndicator />;
       }
       const status = row.getValue("status") as string;
-      return (
-        <Badge className={`${getStatusColor(status)} text-white`}>{statusLabels[status]}</Badge>
-      );
+      return <LeadStatusBadge status={status} label={statusLabels[status]} />;
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id))

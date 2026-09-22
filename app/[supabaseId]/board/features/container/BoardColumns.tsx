@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { Badge } from "@/components/ui/badge";
+import { getLeadStatusStageColor } from "@/lib/lead-status";
 import { div as MotionDiv } from "framer-motion/client";
 import { COLUMNS } from "../context/BoardContext";
 import useBoardContext from "../context/BoardHook";
@@ -142,7 +143,10 @@ export default function BoardColumns({
                             onDragOver={onDragOver}
                         >
                             {/* Column Header */}
-                            <div className="mb-2 flex items-center justify-between bg-primary text-primary-foreground px-2 py-1 rounded-md h-12">
+                            <div
+                                className="board-column-head mb-2 flex h-12 items-center justify-between rounded-md px-2 py-1"
+                                style={{ "--stage-color": getLeadStatusStageColor(key) } as CSSProperties}
+                            >
                                 <h2 className="text-base font-semibold">{title}</h2>
                                 <Badge variant="secondary" className="rounded-full">
                                     {items.length}

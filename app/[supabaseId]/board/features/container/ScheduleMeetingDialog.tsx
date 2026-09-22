@@ -198,10 +198,10 @@ export function ScheduleMeetingDialog({
   const canSubmit = isPreSchedule
     ? isValidDate(meetingDate) && !isPreScheduleSlotOccupied
     : !!closerId &&
-      (!isOnlineMeeting || isValidEmail(leadEmailDraft)) &&
-      (!isOnlineMeeting || isValidDate(meetingDate)) &&
-      (!isOnlineMeeting || meetingTitle.trim().length > 0) &&
-      (!isOnlineMeeting || availableTimes.length > 0) &&
+      isValidEmail(leadEmailDraft) &&
+      isValidDate(meetingDate) &&
+      meetingTitle.trim().length > 0 &&
+      availableTimes.length > 0 &&
       (!isOnlineMeeting || meetingLinkValidation.isValid);
   const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
 
@@ -482,12 +482,12 @@ export function ScheduleMeetingDialog({
   }, [shareUrl]);
 
   const submitSchedule = useCallback(async (confirmNoShowSchedule: boolean, shouldShare = false) => {
-    if ((isOnlineMeeting || isPreSchedule) && !isValidDate(meetingDate)) {
+    if (!isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
     }
     const scheduledMeetingDate = isValidDate(meetingDate) ? meetingDate : new Date();
-    if ((isOnlineMeeting || isPreSchedule) && !meetingTitle.trim()) {
+    if (!meetingTitle.trim()) {
       toast.error("Informe o título da reunião");
       return;
     }
@@ -495,8 +495,8 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reunião");
       return;
     }
-    if (!isPreSchedule && isOnlineMeeting && !isValidEmail(leadEmailDraft)) {
-      toast.error("Informe um e-mail válido para agendamento online.");
+    if (!isPreSchedule && !isValidEmail(leadEmailDraft)) {
+      toast.error("Informe um e-mail válido para o lead.");
       return;
     }
     if (!isPreSchedule && isOnlineMeeting && requiresManualMeetingLink && !meetingLink.trim()) {
@@ -519,7 +519,7 @@ export function ScheduleMeetingDialog({
       const normalizedLeadEmail = leadEmailDraft.trim().toLowerCase();
       let resolvedLeadEmail = lead.email?.trim().toLowerCase() || null;
 
-      if (!isPreSchedule && isOnlineMeeting && normalizedLeadEmail !== resolvedLeadEmail) {
+      if (!isPreSchedule && normalizedLeadEmail !== resolvedLeadEmail) {
         const updateLeadResponse = await fetch(`${API_CLIENT_BASE}/leads/${lead.id}`, {
           method: "PUT",
           headers: {
@@ -549,8 +549,8 @@ export function ScheduleMeetingDialog({
           "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
-          date: isOnlineMeeting || isPreSchedule ? scheduledMeetingDate.toISOString() : undefined,
-          meetingTitle: isOnlineMeeting || isPreSchedule ? meetingTitle.trim() : undefined,
+          date: scheduledMeetingDate.toISOString(),
+          meetingTitle: meetingTitle.trim(),
           notes: normalizedNotes,
           meetingLink: !isPreSchedule ? normalizedMeetingLink || undefined : undefined,
           meetingType,
@@ -608,21 +608,18 @@ export function ScheduleMeetingDialog({
       const inviteDispatch = scheduleResult.inviteDispatch;
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
+      const formattedScheduledDate = formatIntimezone(
+        scheduledMeetingDate,
+        "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
+        SCHEDULE_TIMEZONE,
+      );
       const successMessage = isPreSchedule
-        ? `Pré-agendamento salvo para ${formatIntimezone(
-            scheduledMeetingDate,
-            "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
-            SCHEDULE_TIMEZONE,
-          )}`
-        : isOnlineMeeting
-        ? `Reunião agendada para ${formatIntimezone(
-            scheduledMeetingDate,
-            "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
-            SCHEDULE_TIMEZONE,
-          )}`
-        : meetingType === "call"
-          ? "Ligação agendada com sucesso."
-          : "Agendamento por WhatsApp criado com sucesso.";
+        ? `Pré-agendamento salvo para ${formattedScheduledDate}`
+        : meetingType === "online"
+          ? `Reunião agendada para ${formattedScheduledDate}`
+          : meetingType === "call"
+            ? `Ligação agendada para ${formattedScheduledDate}`
+            : `Contato por WhatsApp agendado para ${formattedScheduledDate}`;
       toast.success(successMessage, {
         id: loadingToast,
         duration: 4000,
@@ -657,15 +654,11 @@ export function ScheduleMeetingDialog({
         meetingDate:
           typeof scheduleResult.date === "string"
             ? scheduleResult.date
-            : isOnlineMeeting || isPreSchedule
-              ? scheduledMeetingDate.toISOString()
-              : null,
+            : scheduledMeetingDate.toISOString(),
         meetingTitle:
           typeof scheduleResult.meetingTitle === "string"
             ? scheduleResult.meetingTitle
-            : isOnlineMeeting || isPreSchedule
-              ? meetingTitle.trim()
-              : null,
+            : meetingTitle.trim(),
         meetingNotes:
           typeof scheduleResult.notes === "string"
             ? scheduleResult.notes
@@ -779,7 +772,7 @@ export function ScheduleMeetingDialog({
                     Nenhum closer disponível para este time.
                   </p>
                 )}
-                {selectedCloser && !selectedCloser.googleCalendarConnected && (
+                {isOnlineMeeting && selectedCloser && !selectedCloser.googleCalendarConnected && (
                   <p className="text-xs text-amber-600">
                     Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
                   </p>
@@ -810,7 +803,7 @@ export function ScheduleMeetingDialog({
               </RadioGroup>
             </div>
 
-            {isOnlineMeeting && (
+            {!isPreSchedule && (
               <div className="grid gap-2">
                 <Label htmlFor="lead-email">E-mail do lead</Label>
                 <Input
@@ -823,7 +816,7 @@ export function ScheduleMeetingDialog({
                 />
                 {!isValidEmail(leadEmailDraft) && (
                   <p className="text-xs text-muted-foreground">
-                    Informe um e-mail válido para concluir o agendamento online.
+                    Informe um e-mail válido para concluir o agendamento.
                   </p>
                 )}
               </div>
@@ -833,8 +826,8 @@ export function ScheduleMeetingDialog({
               date={meetingDate}
               onDateChange={setMeetingDate}
               label={isPreSchedule ? "Data e Horário do Pré-agendamento" : "Data e Horário da Reunião"}
-              required={isOnlineMeeting || isPreSchedule}
-              disabled={!isOnlineMeeting && !isPreSchedule}
+              required
+              disabled={false}
               disablePastDates
               availableTimes={isPreSchedule ? (preScheduleAvailableTimes ?? []) : availableTimes}
               availableDateKeys={
@@ -844,22 +837,22 @@ export function ScheduleMeetingDialog({
               timeLoading={isPreSchedule ? preSlotsLoading : availabilityLoading}
               tz={SCHEDULE_TIMEZONE}
             />
-            {isOnlineMeeting && !isValidDate(meetingDate) && (
+            {!isPreSchedule && !isValidDate(meetingDate) && (
               <p className="text-xs text-muted-foreground">Selecione uma data para carregar horários disponíveis.</p>
             )}
-            {isOnlineMeeting && !isPreSchedule && isValidDate(meetingDate) && !closerId && (
+            {!isPreSchedule && isValidDate(meetingDate) && !closerId && (
               <p className="text-xs text-muted-foreground">Selecione um closer para carregar horários disponíveis.</p>
             )}
-            {isOnlineMeeting && availabilityLoading && (
+            {!isPreSchedule && availabilityLoading && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
                 Carregando horários disponíveis...
               </p>
             )}
-            {isOnlineMeeting && availabilityError && (
+            {!isPreSchedule && availabilityError && (
               <p className="text-xs text-destructive">{availabilityError}</p>
             )}
-            {isOnlineMeeting && !isPreSchedule && hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
+            {!isPreSchedule && hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
               <p className="text-xs text-muted-foreground">Nenhum horário disponível para este dia.</p>
             )}
 
@@ -871,8 +864,8 @@ export function ScheduleMeetingDialog({
                 placeholder="Ex: Apresentação da proposta"
                 value={meetingTitle}
                 onChange={(e) => setMeetingTitle(e.target.value)}
-                required={isOnlineMeeting}
-                disabled={!isOnlineMeeting}
+                required={!isPreSchedule}
+                disabled={false}
               />
             </div>
 
@@ -888,8 +881,8 @@ export function ScheduleMeetingDialog({
               />
             </div>
 
-            {/* Link da reunião — oculto em pré-agendamento */}
-            {!isPreSchedule && (
+            {/* Link da reunião — só para agendamento Online */}
+            {!isPreSchedule && isOnlineMeeting && (
               <div className="grid gap-2">
                 <Label htmlFor="meetingLink">
                   Link da reunião {isOnlineMeeting && requiresManualMeetingLink ? "(obrigatório para este closer)" : ""}

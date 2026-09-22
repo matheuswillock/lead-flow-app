@@ -43,8 +43,7 @@ import { getEventTypeIcon, isMilestoneEventType } from "../utils/radarSegmentBui
 import { EligibilityBadge, SourceBadges, WhatsappBadge } from "./RadarProfileBadges"
 import { PromoteRadarProfileAlertDialog } from "./PromoteRadarProfileAlertDialog"
 import { isRealLeadIdentity } from "@/lib/radar/lead-identity"
-import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status"
-import { cn } from "@/lib/utils"
+import { LeadStatusBadge } from "@/components/lead-status-badge"
 import { RadarEngagementBadge } from "./RadarEngagementBadge"
 import { RadarProfileFormsTab } from "./RadarProfileFormsTab"
 import {
@@ -122,9 +121,7 @@ function RelatedLeadCard({ lead, supabaseId }: { lead: RadarRelatedLead; supabas
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium">{lead.name || "Sem nome"}</span>
         {lead.status ? (
-          <Badge variant="outline" className={cn("font-normal", getLeadStatusBadgeClass(lead.status))}>
-            {getLeadStatusLabel(lead.status)}
-          </Badge>
+          <LeadStatusBadge status={lead.status} />
         ) : (
           <Badge variant="outline" className="font-normal text-muted-foreground">
             Rascunho

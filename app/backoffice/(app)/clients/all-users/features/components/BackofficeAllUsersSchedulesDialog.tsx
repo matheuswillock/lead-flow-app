@@ -27,7 +27,7 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { getScheduleMeetingStatusBadgeClass } from "@/lib/lead-meeting"
-import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status"
+import { LeadStatusBadge } from "@/components/lead-status-badge"
 import type { BackofficeAllUsersScheduleItem } from "../context/BackofficeAllUsersTypes"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
 import { useBackofficeUserSchedules } from "../hooks/useBackofficeUserSchedules"
@@ -260,12 +260,7 @@ export function BackofficeAllUsersSchedulesDialog() {
                         </Badge>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge
-                          variant="outline"
-                          className={getLeadStatusBadgeClass(item.lead.status)}
-                        >
-                          {getLeadStatusLabel(item.lead.status)}
-                        </Badge>
+                        <LeadStatusBadge status={item.lead.status} />
                       </td>
                       <td className="px-3 py-3">{renderTransferOrigin(item)}</td>
                       <td className="px-3 py-3">

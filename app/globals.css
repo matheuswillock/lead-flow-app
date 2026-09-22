@@ -82,8 +82,8 @@
 /* TOKENS:ROOT:START */
 :root {
   --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --background: #f4f4f6;
+  --foreground: #17171c;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
   --popover: oklch(1 0 0);
@@ -122,19 +122,19 @@
   --precision-shadow-2: 0 20px 40px -22px rgba(50, 50, 93, 0.28), 0 12px 24px -16px rgba(0, 0, 0, 0.12);
   --precision-shadow-3: 0 30px 45px -30px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.1);
   --frost-border: rgba(214, 235, 253, 0.19);
-  --semantic-success: #00a87e;
+  --semantic-success: #3faa8a;
   --semantic-success-foreground: #ffffff;
   --semantic-success-surface: color-mix(in oklab, var(--semantic-success) 16%, var(--card));
   --semantic-success-border: color-mix(in oklab, var(--semantic-success) 38%, var(--border));
-  --semantic-warning: #ec7e00;
+  --semantic-warning: #c99530;
   --semantic-warning-foreground: #ffffff;
   --semantic-warning-surface: color-mix(in oklab, var(--semantic-warning) 14%, var(--card));
   --semantic-warning-border: color-mix(in oklab, var(--semantic-warning) 34%, var(--border));
-  --semantic-danger: #e23b4a;
+  --semantic-danger: #c96060;
   --semantic-danger-foreground: #ffffff;
   --semantic-danger-surface: color-mix(in oklab, var(--semantic-danger) 14%, var(--card));
   --semantic-danger-border: color-mix(in oklab, var(--semantic-danger) 36%, var(--border));
-  --semantic-info: #3b9eff;
+  --semantic-info: #5b86d4;
   --semantic-info-foreground: #ffffff;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 15%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 36%, var(--border));
@@ -175,12 +175,30 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.213 47.604);
+  --btn-primary-bg: #ff6900;
+  --btn-primary-foreground: #ffffff;
+  --stage-new-opportunity: #5b86d4;
+  --stage-scheduled: #a3a8d4;
+  --stage-no-show: #d4b084;
+  --stage-pricing-request: #8ac4e0;
+  --stage-future-sale: #9b7ec8;
+  --stage-offer-negotiation: #b5a8cc;
+  --stage-pending-documents: #c99530;
+  --stage-offer-submission: #5bbcb6;
+  --stage-dps-agreement: #8ac4e0;
+  --stage-invoice-payment: #c99530;
+  --stage-disqualified: #c96060;
+  --stage-opportunity-lost: #c96060;
+  --stage-operator-denied: #c96060;
+  --stage-contract-finalized: #3faa8a;
+  --stage-foreground-mix: 55%;
+  --stage-solid-foreground: #17171c;
 }
 /* TOKENS:ROOT:END */
 
 /* TOKENS:DARK:START */
 .dark {
-  --background: oklch(0.141 0.005 285.823);
+  --background: #0f0f14;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
   --card-foreground: oklch(0.985 0 0);
@@ -220,19 +238,19 @@
   --precision-shadow-2: 0 20px 40px -22px rgba(0, 0, 0, 0.52), 0 12px 24px -16px rgba(30, 30, 68, 0.45);
   --precision-shadow-3: 0 30px 45px -30px rgba(0, 0, 0, 0.6), 0 18px 36px -18px rgba(36, 36, 78, 0.44);
   --frost-border: rgba(214, 235, 253, 0.19);
-  --semantic-success: #22c08a;
+  --semantic-success: #18b47e;
   --semantic-success-foreground: #052116;
   --semantic-success-surface: color-mix(in oklab, var(--semantic-success) 22%, var(--card));
   --semantic-success-border: color-mix(in oklab, var(--semantic-success) 44%, var(--border));
-  --semantic-warning: #f2a236;
+  --semantic-warning: #d97706;
   --semantic-warning-foreground: #251603;
   --semantic-warning-surface: color-mix(in oklab, var(--semantic-warning) 22%, var(--card));
   --semantic-warning-border: color-mix(in oklab, var(--semantic-warning) 44%, var(--border));
-  --semantic-danger: #f06572;
+  --semantic-danger: #e0524b;
   --semantic-danger-foreground: #2d070b;
   --semantic-danger-surface: color-mix(in oklab, var(--semantic-danger) 22%, var(--card));
   --semantic-danger-border: color-mix(in oklab, var(--semantic-danger) 44%, var(--border));
-  --semantic-info: #62b6ff;
+  --semantic-info: #3b82f6;
   --semantic-info-foreground: #071b32;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 22%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 44%, var(--border));
@@ -273,22 +291,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.646 0.222 41.116);
+  --btn-primary-bg: #ff6900;
+  --btn-primary-foreground: #ffffff;
+  --stage-foreground-mix: 60%;
 }
 /* TOKENS:DARK:END */
-
-/* Botão primary com contraste garantido, fora de --primary/--primary-foreground
-   (esses dois não devem mudar — ver histórico do CTA da landing). Usado pelo
-   variant "default" de components/ui/button.tsx em todo o app.
-   #d43f04 = mesmo hue do #df4204 original a 95%; branco sobre ele mede 4.65:1
-   (WCAG AA >= 4.5 para texto normal). O #df4204 original media 4.27:1. */
-:root {
-  --btn-primary-bg: #d43f04;
-  --btn-primary-foreground: #ffffff;
-}
-.dark {
-  --btn-primary-bg: #d43f04;
-  --btn-primary-foreground: #ffffff;
-}
 
 /* Basic base styles */
 *, *::before, *::after { box-sizing: border-box; }
@@ -365,14 +372,41 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 
+/* Badge de status do lead (pílula tingida do mockup de CRM do dono, hues do UI Kit
+   stage-grid), aplicado sobre o Badge do shadcn (variant outline). Fica FORA de
+   @layer de propósito: o variant injeta a utility text-foreground, e utilities
+   vencem qualquer regra em @layer components — só CSS sem layer ganha delas.
+   Texto = hue misturado com --foreground: no light escurece até passar 4.5:1,
+   no dark clareia (tom 300 do mockup). */
+.lead-status-badge {
+  background: color-mix(in srgb, var(--stage-color) 16%, transparent);
+  border-color: color-mix(in srgb, var(--stage-color) 45%, transparent);
+  color: color-mix(in oklab, var(--stage-color) var(--stage-foreground-mix), var(--foreground));
+}
+
 @layer components {
   .btn-primary-accessible {
     background: var(--btn-primary-bg);
     color: var(--btn-primary-foreground);
+    box-shadow: 0 10px 24px -6px color-mix(in oklab, var(--btn-primary-bg) 55%, transparent);
+    transition: filter 140ms, transform 140ms;
   }
 
   .btn-primary-accessible:hover {
-    filter: brightness(0.92);
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary-accessible:disabled {
+    box-shadow: none;
+    transform: none;
+  }
+
+  /* Cabeçalho de coluna do Kanban (UI Kit .kb-col-head). Tinta escura em vez de
+     branco: branco reprova contraste em 11 dos 14 hues da paleta. */
+  .board-column-head {
+    background: var(--stage-color);
+    color: var(--stage-solid-foreground);
   }
 
   .tiptap .lead-flow-email-node {

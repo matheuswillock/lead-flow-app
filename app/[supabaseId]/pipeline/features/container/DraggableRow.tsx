@@ -56,7 +56,13 @@ export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps)
       onMouseEnter={() => onRowHover?.(row.original)}
     >
       {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id} className="p-2 text-center align-middle">
+        <TableCell
+          key={cell.id}
+          className={cn(
+            "p-2 align-middle",
+            cell.column.id === "status" ? "text-left" : "text-center"
+          )}
+        >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </TableCell>
       ))}
