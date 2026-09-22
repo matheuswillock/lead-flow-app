@@ -24,8 +24,8 @@ export function useCampaignAnalytics(
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [period, setPeriod] = useState<AnalyticsPeriod>("30d")
-  const fetchingRef = useRef(false)
   const lastKeyRef = useRef("")
+  const requestIdRef = useRef(0)
 
   const fetchData = useCallback(
     async (
@@ -36,8 +36,8 @@ export function useCampaignAnalytics(
       const force = options?.force ?? false
       const silent = options?.silent ?? false
       const key = `${p}:${cId ?? "all"}:${tz}`
-      if (fetchingRef.current || (!force && lastKeyRef.current === key)) return
-      fetchingRef.current = true
+      if (!force && lastKeyRef.current === key) return
+      const requestId = ++requestIdRef.current
       if (silent) {
         setRefreshing(true)
       } else {
@@ -45,20 +45,23 @@ export function useCampaignAnalytics(
       }
       try {
         const result = await service.getAnalytics(p, tz, cId)
+        if (requestId !== requestIdRef.current) return
         setData(result)
         lastKeyRef.current = key
       } catch (err) {
+        if (requestId !== requestIdRef.current) return
         console.error("[useCampaignAnalytics] fetchData error", err)
         if (!silent) {
           toast.error("Erro ao carregar analytics")
         }
       } finally {
-        if (silent) {
-          setRefreshing(false)
-        } else {
-          setLoading(false)
+        if (requestId === requestIdRef.current) {
+          if (silent) {
+            setRefreshing(false)
+          } else {
+            setLoading(false)
+          }
         }
-        fetchingRef.current = false
       }
     },
     [tz]
@@ -67,6 +70,7 @@ export function useCampaignAnalytics(
   useEffect(() => {
     if (!open) return
     lastKeyRef.current = ""
+    setData(null)
     void fetchData(period, campaignId)
   }, [open, period, campaignId, fetchData])
 
