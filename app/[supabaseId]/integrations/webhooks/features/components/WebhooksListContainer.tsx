@@ -120,7 +120,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
-          <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Button variant="ghost" size="sm" asChild className="w-fit max-lg:h-11 px-0">
             <Link href={`/${supabaseId}/integrations`}>
               <ArrowLeft data-icon="inline-start" />
               Integrações
@@ -129,7 +129,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
           <h1 className="text-2xl font-semibold">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <Button asChild>
+        <Button asChild className="max-lg:h-11">
           <Link href={`${basePath}/new`}>
             <Plus data-icon="inline-start" />
             Criar webhook
@@ -198,7 +198,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm" asChild>
+                    <Button variant="outline" size="sm" asChild className="max-lg:h-11">
                       <Link href={`${basePath}/${item.id}`}>Abrir</Link>
                     </Button>
                   </TableCell>

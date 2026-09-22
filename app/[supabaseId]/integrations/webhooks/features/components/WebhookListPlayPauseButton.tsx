@@ -35,6 +35,7 @@ export function WebhookListPlayPauseButton({ status, disabled, onToggle }: Props
             type="button"
             variant="ghost"
             size="icon"
+            className="max-lg:size-11"
             disabled={disabled}
             aria-label={label}
             onClick={onToggle}

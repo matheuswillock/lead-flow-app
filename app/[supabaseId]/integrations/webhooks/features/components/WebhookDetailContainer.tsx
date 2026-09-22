@@ -292,7 +292,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
-          <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Button variant="ghost" size="sm" asChild className="w-fit max-lg:h-11 px-0">
             <Link href={listPath}>
               <ArrowLeft data-icon="inline-start" />
               Voltar
@@ -306,13 +306,18 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
         </div>
         <div className="flex flex-wrap gap-2">
           {webhook.status === "paused" ? (
-            <Button onClick={() => runStatus({ action: "reactivate" })} disabled={actionPending}>
+            <Button
+              className="max-lg:h-11"
+              onClick={() => runStatus({ action: "reactivate" })}
+              disabled={actionPending}
+            >
               Reativar
             </Button>
           ) : null}
           {webhook.status === "active" ? (
             <Button
               variant="outline"
+              className="max-lg:h-11"
               onClick={() => runStatus({ status: "disabled" })}
               disabled={actionPending}
             >
@@ -320,16 +325,26 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             </Button>
           ) : null}
           {webhook.status === "disabled" ? (
-            <Button onClick={() => runStatus({ status: "active" })} disabled={actionPending}>
+            <Button
+              className="max-lg:h-11"
+              onClick={() => runStatus({ status: "active" })}
+              disabled={actionPending}
+            >
               Ativar
             </Button>
           ) : null}
           {direction === "outbound" ? (
-            <Button variant="secondary" onClick={runTest} disabled={actionPending}>
+            <Button variant="secondary" className="max-lg:h-11" onClick={runTest} disabled={actionPending}>
               Testar envio
             </Button>
           ) : null}
-          <Button variant="ghost" size="icon" onClick={() => void load()} disabled={actionPending}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="max-lg:size-11"
+            onClick={() => void load()}
+            disabled={actionPending}
+          >
             <RefreshCcw />
           </Button>
         </div>
@@ -337,8 +352,12 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
 
       <Tabs defaultValue="config">
         <TabsList>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
+          <TabsTrigger value="config" className="max-lg:h-11">
+            Configuração
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="max-lg:h-11">
+            Logs
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
@@ -368,7 +387,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               </>
             ) : null}
             <div className="mt-6 flex justify-end">
-              <Button onClick={() => void runSave()} disabled={!canSave}>
+              <Button className="max-lg:h-11" onClick={() => void runSave()} disabled={!canSave}>
                 {saving ? "Salvando..." : "Salvar alterações"}
               </Button>
             </div>
@@ -429,6 +448,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               <Button
                 variant="outline"
                 size="sm"
+                className="max-lg:h-11"
                 disabled={logsPage <= 1 || actionPending}
                 onClick={() => setLogsPage((p) => Math.max(1, p - 1))}
               >
@@ -437,6 +457,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               <Button
                 variant="outline"
                 size="sm"
+                className="max-lg:h-11"
                 disabled={logsPage * 20 >= logsTotal || actionPending}
                 onClick={() => setLogsPage((p) => p + 1)}
               >
@@ -464,6 +485,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                   type="button"
                   variant="outline"
                   size="icon"
+                  className="max-lg:size-11"
                   onClick={() => rotatedToken?.url && void copyValue(rotatedToken.url)}
                 >
                   <Copy />
@@ -479,6 +501,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                     type="button"
                     variant="outline"
                     size="icon"
+                    className="max-lg:size-11"
                     onClick={() => void copyValue(rotatedToken.token!)}
                   >
                     <Copy />
