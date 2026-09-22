@@ -17,10 +17,15 @@ import { Output } from "@/lib/output"
  * contornando a exigência de `https:` por completo.
  *
  * Correção: fora de reunião online, o link nunca é validado nem gravado —
- * `normalizedMeetingLink` é sempre `null`. Controle negativo: reverter para
- * `isOnlineMeeting ? (meetingLinkValidation.normalized ?? null) : null` por
- * um `normalizedMeetingLink = meetingLinkValidation.normalized ?? null`
- * incondicional faz este teste falhar.
+ * `normalizedMeetingLink` é sempre `null`. Controle negativo (executado pelo
+ * implementador, revertido e restaurado): reverter as DUAS peças da correção
+ * juntas — a validação condicional por `isOnlineMeeting` (voltando para
+ * `allowLegacyHttp: !isOnlineMeeting || ...` incondicional) e a atribuição de
+ * `normalizedMeetingLink` (voltando para `meetingLinkValidation.normalized ??
+ * null` sem o `isOnlineMeeting ? ... : null`) — faz os dois testes de
+ * descarte abaixo falharem. Reverter só uma das duas não é suficiente: com a
+ * validação já condicional, `meetingLinkValidation.normalized` fica
+ * `undefined` fora de reunião online de qualquer forma.
  */
 
 const closerFixture = {
