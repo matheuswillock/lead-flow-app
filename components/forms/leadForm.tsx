@@ -1147,6 +1147,7 @@ export function LeadForm({
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2 mb-4">
                 <Button
+                    data-testid="lead-form-cancel"
                     className="max-lg:h-11 cursor-pointer"
                     type="button"
                     variant="ghost"

@@ -43,6 +43,7 @@ export function SaveWithDraftButton({
     return (
       <Button
         type="button"
+        data-testid="save-with-draft-main"
         className={cn("max-lg:h-11", className)}
         disabled={saveDisabled}
         onClick={onSaveFull}
@@ -57,6 +58,7 @@ export function SaveWithDraftButton({
     <div className={cn("inline-flex rounded-md", className)}>
       <Button
         type="button"
+        data-testid="save-with-draft-main"
         className="max-lg:h-11 rounded-r-none"
         disabled={saveDisabled}
         onClick={onSaveFull}
@@ -68,6 +70,7 @@ export function SaveWithDraftButton({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
+            data-testid="save-with-draft-chevron"
             className="max-lg:size-11 rounded-l-none border-l border-primary-foreground/20 px-2"
             disabled={saveDisabled && draftDisabled}
             aria-label="Mais opções de salvamento"
