@@ -1,4 +1,4 @@
-import type { RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIntegrationsService";
+import type { RadarPixelConfigData, RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIntegrationsService";
 
 export interface IntegrationsState {
   supabaseId: string;
@@ -26,13 +26,7 @@ export interface IntegrationsState {
   studioWebhookLogsLoading: boolean;
   selectedStudioWebhookLogId: string | null;
   studioWebhookContractJson: string;
-  radarPixelConfig: {
-    configured: boolean;
-    publicToken: string | null;
-    allowedOrigins: string[];
-    lastUsedAt: string | null;
-    pixelSnippet: string | null;
-  } | null;
+  radarPixelConfig: RadarPixelConfigData | null;
   radarPixelAllowedOriginsInput: string;
   radarPixelLoading: boolean;
   radarPixelSaving: boolean;

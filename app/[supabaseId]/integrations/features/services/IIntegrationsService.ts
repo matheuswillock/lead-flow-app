@@ -58,6 +58,8 @@ export type RadarPixelConfigData = {
   configured: boolean;
   publicToken: string | null;
   allowedOrigins: string[];
+  /** `true` quando há pelo menos uma origem permitida configurada. */
+  originRestrictionActive: boolean;
   lastUsedAt: string | null;
   pixelSnippet: string | null;
 };
