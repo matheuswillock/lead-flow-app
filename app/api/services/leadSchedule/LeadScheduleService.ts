@@ -4,10 +4,14 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import type { IMeetingRepository } from "@/app/api/infra/data/repositories/meeting/IMeetingRepository";
 import { meetingRepository } from "@/app/api/infra/data/repositories/meeting/MeetingRepository";
-import {
-  cancelCalendarEvent,
-  upsertCalendarEvent,
-} from "@/app/api/services/googleCalendar/GoogleCalendarService";
+import type { IMeetingInvitationDispatcher } from "./invitationDispatch/IMeetingInvitationDispatcher";
+import { meetingInvitationDispatcher } from "./invitationDispatch/MeetingInvitationDispatcher";
+import type {
+  GoogleCalendarLogEvent,
+  InviteDispatchActivityEvent,
+  InviteDispatchProvider,
+  InviteDispatchPublicResult,
+} from "./invitationDispatch/types";
 import { emailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
@@ -20,28 +24,14 @@ import { getScheduleShareExpiry } from "@/lib/schedule-share";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import { resolveCloserCalendarTransfer } from "./resolveCloserCalendarTransfer";
-import { resolveBestEffortCalendarFailure } from "./resolveBestEffortCalendarFailure";
 import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 
-type InviteDispatchProvider = "google" | "resend";
-
-type CalendarEventResult = {
-  eventId: string;
-  calendarId: string;
-  htmlLink?: string | null;
-  meetLink?: string | null;
-};
-
-type InviteDispatchPublicResult = {
-  status: InviteDispatchStatus;
-  provider: InviteDispatchProvider;
-  fallbackUsed: boolean;
-  attemptedAt: string;
-  error: string | null;
-};
+// SPEC 13, A-E3 — `InviteDispatchProvider`/`InviteDispatchPublicResult` agora
+// vivem em `invitationDispatch/types.ts` (compartilhados com o despachante).
+// `CalendarEventResult` idem — ver import de `IMeetingInvitationDispatcher`.
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -65,24 +55,9 @@ const NO_SHOW_SCHEDULE_CONFIRMATION_THRESHOLD = 3;
 
 const formatMeetingDate = (date: Date, tz: string) => formatIntimezone(date, "dd/MM/yyyy HH:mm", tz);
 
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
-
-const toUserFacingGoogleCalendarError = (rawError: string): string => {
-  const normalized = rawError.toLowerCase();
-
-  if (normalized.includes("insufficient authentication scopes")) {
-    return "a conta Google do closer está conectada sem as permissões necessárias para criar eventos. Peça para reconectar o Google Calendar em Conta e tente novamente.";
-  }
-
-  return rawError;
-};
-
-const extractResendMessageId = (data: unknown): string | null => {
-  if (!data || typeof data !== "object") return null;
-  const maybeId = (data as { id?: unknown }).id;
-  return typeof maybeId === "string" ? maybeId : null;
-};
+// SPEC 13, A-E3 — `getErrorMessage`/`toUserFacingGoogleCalendarError`/
+// `extractResendMessageId` mudaram para `invitationDispatch/MeetingInvitationDispatcher.ts`,
+// único lugar que ainda os usa.
 
 const buildInviteDispatchBody = ({
   provider,
@@ -188,7 +163,12 @@ export class LeadScheduleService implements ILeadScheduleService {
   // parâmetro, para não quebrar `export const leadScheduleService = new
   // LeadScheduleService()` (6 call sites de produção usam esse singleton) e
   // ainda permitir injetar um dublê nos testes.
-  constructor(private readonly meetingRepo: IMeetingRepository = meetingRepository) {}
+  constructor(
+    private readonly meetingRepo: IMeetingRepository = meetingRepository,
+    // SPEC 13, A-E3 — mesmo padrão do A-E2: DIP com o singleton concreto só
+    // como valor padrão, para não quebrar os 6 call sites de produção.
+    private readonly invitationDispatcher: IMeetingInvitationDispatcher = meetingInvitationDispatcher
+  ) {}
 
   async createSchedule(params: CreateScheduleParams): Promise<Output> {
     const {
@@ -355,444 +335,138 @@ export class LeadScheduleService implements ILeadScheduleService {
       console.warn(`${LOG_PREFIX} Não foi possível resolver o scheduler para logs e notificação:`, schedulerError);
     }
 
-    let calendarResult: CalendarEventResult | null = null;
-    let calendarSyncWarning: string | null = null;
-    let googleDispatchError: string | null = null;
-
-    let inviteDispatchStatus: InviteDispatchStatus = "failed";
-    let inviteDispatchProvider: InviteDispatchProvider = "resend";
-    let inviteDispatchFallbackUsed = false;
-    let inviteDispatchLastError: string | null = null;
-    let inviteDispatchLastPayload: Prisma.InputJsonValue | null = null;
     const inviteDispatchLastAttemptAt = new Date();
 
-    // Upserts the Google Calendar event on the closer's own calendar and, when the
-    // closer changed since the last schedule, cancels the previous closer's event.
-    // Reused by the Online flow (mandatory) and the Ligação/WhatsApp flow (best-effort).
-    const attemptCloserCalendarUpsert = async (options: {
-      attendeeEmails: string[];
-      meetingFormatLabel?: string | null;
-    }): Promise<CalendarEventResult> => {
-      const result = await upsertCalendarEvent({
-        organizer: closerProfile,
-        lead: { id: leadId, name: leadName, email: leadEmail } as any,
-        closerEmail,
-        sdrEmail: leadAssigneeEmail,
-        meetingDate,
-        meetingTitle: resolvedMeetingTitle,
-        notes: meetingNotes,
-        meetingLink: calendarTransfer.meetingLinkForUpsert,
-        meetingFormatLabel: options.meetingFormatLabel ?? null,
-        extraGuests,
-        attendeeEmails: options.attendeeEmails,
-        existingEventId: calendarTransfer.existingEventIdForUpsert,
-        durationMinutes,
-      });
-
-      // Cancel the previous closer's event only after the new one succeeds,
-      // so a failed upsert does not leave the lead without a calendar invite.
-      if (
-        calendarTransfer.shouldTransferCalendarOwnership &&
+    // SPEC 13 (Agenda na Criação de Lead), A-E3 — a leitura do perfil do
+    // closer anterior (só relevante numa troca de closer com evento
+    // existente no Google) é resolvida aqui, antes do despacho, e passada já
+    // pronta para `IMeetingInvitationDispatcher`, que não lê banco (T-13.7).
+    // Mesma condição de antes (`shouldTransferCalendarOwnership` +
+    // `previousCloserId` + `previousEventId`); a única mudança é o MOMENTO da
+    // leitura (antes do despacho, não só depois do upsert no Google ter
+    // sucesso) — sem efeito no resultado, porque a estratégia só tenta
+    // cancelar depois que o upsert novo já teve sucesso, igual antes.
+    const shouldAttemptCalendarTransfer = Boolean(
+      calendarTransfer.shouldTransferCalendarOwnership &&
         calendarTransfer.previousCloserId &&
         calendarTransfer.previousEventId
-      ) {
-        try {
-          const previousCloserProfile = await prisma.profile.findUnique({
-            where: { id: calendarTransfer.previousCloserId },
-            include: {
-              googleConnection: {
-                select: {
-                  accessToken: true,
-                  refreshToken: true,
-                  tokenExpiresAt: true,
-                  revokedAt: true,
-                  googleEmail: true,
-                },
-              },
+    );
+    let previousOrganizerForTransfer: typeof closerProfile | null = null;
+    if (shouldAttemptCalendarTransfer && calendarTransfer.previousCloserId) {
+      const previousCloserProfile = await prisma.profile.findUnique({
+        where: { id: calendarTransfer.previousCloserId },
+        include: {
+          googleConnection: {
+            select: {
+              accessToken: true,
+              refreshToken: true,
+              tokenExpiresAt: true,
+              revokedAt: true,
+              googleEmail: true,
             },
-          });
-
-          if (
-            previousCloserProfile &&
-            isGoogleConnectionActive(previousCloserProfile.googleConnection)
-          ) {
-            await cancelCalendarEvent({
-              organizer: previousCloserProfile,
-              eventId: calendarTransfer.previousEventId,
-              calendarId: existingSchedule?.googleCalendarId ?? "primary",
-            });
-            console.info(`${LOG_PREFIX} Evento cancelado no Calendar do closer anterior`, {
-              leadId,
-              previousCloserId: calendarTransfer.previousCloserId,
-              previousEventId: calendarTransfer.previousEventId,
-              newCloserId: closerId,
-              newEventId: result.eventId,
-            });
-          } else {
-            console.warn(
-              `${LOG_PREFIX} Closer anterior sem Google conectado; evento antigo pode ficar órfão`,
-              {
-                leadId,
-                previousCloserId: calendarTransfer.previousCloserId,
-                previousEventId: calendarTransfer.previousEventId,
-              }
-            );
-          }
-        } catch (cancelPreviousError) {
-          console.warn(
-            `${LOG_PREFIX} Falha ao cancelar evento no Calendar do closer anterior após criar o novo`,
-            {
-              leadId,
-              previousCloserId: calendarTransfer.previousCloserId,
-              previousEventId: calendarTransfer.previousEventId,
-              newEventId: result.eventId,
-              error:
-                cancelPreviousError instanceof Error
-                  ? cancelPreviousError.message
-                  : String(cancelPreviousError),
-            }
-          );
-        }
-      }
-
-      return result;
-    };
-
-    // --- Google Calendar attempt (Online) ---
-    if (isOnlineMeeting && canUseGoogleCalendar) {
-      if (googleRecipients.length === 0) {
-        return new Output(
-          false,
-          [],
-          ["Não foi possível concluir o agendamento: nenhum participante elegível para Google Calendar."],
-          null
-        );
-      }
-
-      try {
-        calendarResult = await attemptCloserCalendarUpsert({ attendeeEmails: googleRecipients });
-
-        inviteDispatchStatus = "sent_google";
-        inviteDispatchProvider = "google";
-        inviteDispatchLastError = null;
-        inviteDispatchLastPayload = {
-          provider: "google",
-          eventId: calendarResult.eventId,
-          calendarId: calendarResult.calendarId,
-          htmlLink: calendarResult.htmlLink ?? null,
-          meetLink: calendarResult.meetLink ?? null,
-          ...participantDispatchMetadata,
-        };
-
-        await registerInviteDispatchActivity({
-          leadId,
-          provider: "google",
-          status: "sent_google",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: googleRecipients,
-          error: null,
-          metadata: inviteDispatchLastPayload,
-        });
-
-        const { logGoogleCalendarDispatchesForRecipients } = await import(
-          "@/lib/email/log-profile-email-dispatches"
-        );
-        await logGoogleCalendarDispatchesForRecipients({
-          recipients: googleRecipients,
-          subject: resolvedMeetingTitle,
-          category: "schedule_invite",
-          sourceType: "leads_schedule",
-          sourceId: scheduleId,
-          success: true,
-        });
-      } catch (calendarError) {
-        const rawGoogleDispatchError = getErrorMessage(
-          calendarError,
-          "Falha ao criar evento no Google Calendar"
-        );
-        googleDispatchError = toUserFacingGoogleCalendarError(rawGoogleDispatchError);
-        inviteDispatchLastError = googleDispatchError;
-        inviteDispatchLastPayload = {
-          provider: "google",
-          rawError: rawGoogleDispatchError,
-          error: googleDispatchError,
-          ...participantDispatchMetadata,
-        };
-        console.error(
-          `${LOG_PREFIX} Falha no disparo de convite via Google Calendar`,
-          {
-            leadId,
-            scheduleId,
-            errorMessage: rawGoogleDispatchError,
-            userMessage: googleDispatchError,
-            googleRecipients,
           },
-          calendarError
-        );
-        await registerInviteDispatchActivity({
-          leadId,
-          provider: "google",
-          status: "failed",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: googleRecipients,
-          error: googleDispatchError,
-          metadata: inviteDispatchLastPayload,
-        });
-
-        const { logGoogleCalendarDispatchesForRecipients } = await import(
-          "@/lib/email/log-profile-email-dispatches"
-        );
-        await logGoogleCalendarDispatchesForRecipients({
-          recipients: googleRecipients,
-          subject: resolvedMeetingTitle,
-          category: "schedule_invite",
-          sourceType: "leads_schedule",
-          sourceId: scheduleId,
-          success: false,
-          errorMessage: googleDispatchError,
-        });
-
-        return new Output(
-          false,
-          [],
-          [`Não foi possível concluir o agendamento porque o envio via Google Calendar falhou (${googleDispatchError}).`],
-          null
-        );
-      }
-    } else if (isOnlineMeeting) {
-      googleDispatchError = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
-      console.warn(`${LOG_PREFIX} Google Calendar não conectado para closer`, { leadId, closerId });
-      await registerInviteDispatchActivity({
-        leadId,
-        provider: "google",
-        status: "failed",
-        fallbackUsed: false,
-        attemptedAt: inviteDispatchLastAttemptAt,
-        recipients: attendeeEmails,
-        error: googleDispatchError,
-        metadata: {
-          provider: "google",
-          reason: "google_not_connected",
-          ...participantDispatchMetadata,
         },
       });
+      previousOrganizerForTransfer =
+        previousCloserProfile && isGoogleConnectionActive(previousCloserProfile.googleConnection)
+          ? previousCloserProfile
+          : null;
     }
 
-    const resolvedMeetingLink = isOnlineMeeting
-      ? calendarTransfer.meetingLinkForUpsert ||
-        normalizedMeetingLink?.trim() ||
-        calendarResult?.meetLink ||
-        null
-      : null;
-
-    if (isOnlineMeeting && !resolvedMeetingLink?.trim()) {
-      return new Output(
-        false,
-        [],
-        ["Não foi possível concluir o agendamento sem um link válido da reunião."],
-        null
-      );
-    }
-
-    // --- Lead notification email + closer's personal calendar event (Ligação/WhatsApp) ---
-    if (!isOnlineMeeting) {
-      const meetingFormatLabel = resolvedMeetingType === "call" ? "Ligação" : "WhatsApp";
-      const contactEmailResult = await emailService.sendMeetingContactNotificationEmail({
-        to: leadEmail.trim(),
-        leadName,
-        meetingDate,
-        meetingType: resolvedMeetingType as "call" | "whatsapp",
-        closerName: closerProfile.fullName || closerProfile.email,
-        closerPhone: closerProfile.phone,
-        timezone: closerProfile.timezone,
-        teamId,
-        sourceType: "leads_schedule",
-        sourceId: scheduleId,
-      });
-
-      if (!contactEmailResult.success) {
-        const contactEmailError = contactEmailResult.error || "Não foi possível enviar o e-mail ao lead.";
-        inviteDispatchLastPayload = {
-          provider: "resend",
-          reason: `meeting_type_${resolvedMeetingType}`,
-          error: contactEmailError,
-        };
-        console.error(`${LOG_PREFIX} Falha ao enviar e-mail de aviso de ${meetingFormatLabel} ao lead`, {
-          leadId,
-          scheduleId,
-          errorMessage: contactEmailError,
-        });
+    const flushDispatchEvents = async (
+      activityEvents: InviteDispatchActivityEvent[],
+      googleCalendarLogEvents: GoogleCalendarLogEvent[]
+    ) => {
+      for (const event of activityEvents) {
         await registerInviteDispatchActivity({
           leadId,
-          provider: "resend",
-          status: "failed",
-          fallbackUsed: false,
+          provider: event.provider,
+          status: event.status,
+          fallbackUsed: event.fallbackUsed,
           attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: [leadEmail.trim()],
-          error: contactEmailError,
-          metadata: inviteDispatchLastPayload,
+          recipients: event.recipients,
+          error: event.error,
+          metadata: event.metadata,
         });
-
-        return new Output(
-          false,
-          [],
-          [`Não foi possível concluir o agendamento porque o e-mail ao lead não foi enviado (${contactEmailError}).`],
-          null
-        );
       }
-
-      inviteDispatchStatus = "sent_resend";
-      inviteDispatchProvider = "resend";
-      inviteDispatchLastError = null;
-      inviteDispatchLastPayload = {
-        provider: "resend",
-        reason: `meeting_type_${resolvedMeetingType}`,
-      };
-      await registerInviteDispatchActivity({
-        leadId,
-        provider: "resend",
-        status: "sent_resend",
-        fallbackUsed: false,
-        attemptedAt: inviteDispatchLastAttemptAt,
-        recipients: [leadEmail.trim()],
-        error: null,
-        metadata: inviteDispatchLastPayload,
-      });
-
-      if (canUseGoogleCalendar) {
-        try {
-          calendarResult = await attemptCloserCalendarUpsert({
-            attendeeEmails: [],
-            meetingFormatLabel,
+      if (googleCalendarLogEvents.length > 0) {
+        const { logGoogleCalendarDispatchesForRecipients } = await import(
+          "@/lib/email/log-profile-email-dispatches"
+        );
+        for (const event of googleCalendarLogEvents) {
+          await logGoogleCalendarDispatchesForRecipients({
+            recipients: event.recipients,
+            subject: event.subject,
+            category: "schedule_invite",
+            sourceType: "leads_schedule",
+            sourceId: event.sourceId,
+            success: event.success,
+            ...(event.errorMessage !== undefined ? { errorMessage: event.errorMessage } : {}),
           });
-        } catch (calendarError) {
-          const calendarFailure = resolveBestEffortCalendarFailure({
-            existingGoogleEventId: existingSchedule?.googleEventId,
-            errorMessage: getErrorMessage(calendarError, "erro desconhecido"),
-          });
-          console.warn(
-            `${LOG_PREFIX} Falha ao criar evento pessoal no Google Calendar do closer para ${meetingFormatLabel} — agendamento continua`,
-            {
+        }
+      }
+    };
+
+    const dispatchResult = await this.invitationDispatcher.dispatch({
+      isOnlineMeeting,
+      canUseGoogleCalendar,
+      leadId,
+      leadEmail,
+      leadName,
+      resolvedMeetingType,
+      resolvedMeetingTitle,
+      scheduleId,
+      teamId,
+      attendeeEmails,
+      googleRecipients,
+      resendRecipients,
+      participantDispatchMetadata,
+      normalizedMeetingLink,
+      existingSchedule: existingSchedule ? { googleEventId: existingSchedule.googleEventId } : null,
+      closerEmail,
+      closerName: closerProfile.fullName || closerProfile.email,
+      closerPhone: closerProfile.phone,
+      timezone: closerProfile.timezone,
+      googleCalendarEventInput: {
+        organizer: closerProfile,
+        lead: { id: leadId, name: leadName, email: leadEmail } as any,
+        sdrEmail: leadAssigneeEmail,
+        meetingDate,
+        meetingNotes,
+        meetingLink: calendarTransfer.meetingLinkForUpsert,
+        extraGuests,
+        existingEventId: calendarTransfer.existingEventIdForUpsert,
+        durationMinutes,
+        transfer: shouldAttemptCalendarTransfer
+          ? {
+              shouldTransfer: true,
+              previousOrganizer: previousOrganizerForTransfer,
+              previousEventId: calendarTransfer.previousEventId,
+              previousCalendarId: existingSchedule?.googleCalendarId ?? "primary",
               leadId,
-              scheduleId,
-              error: calendarFailure.payload.error,
-              staleEventId: calendarFailure.payload.staleEventId,
+              previousCloserId: calendarTransfer.previousCloserId,
+              newCloserId: closerId,
             }
-          );
-          calendarResult = null;
-          inviteDispatchLastError = calendarFailure.lastError;
-          inviteDispatchLastPayload = {
-            ...(inviteDispatchLastPayload && typeof inviteDispatchLastPayload === "object"
-              ? inviteDispatchLastPayload
-              : {}),
-            calendarSync: calendarFailure.payload,
-          };
-          calendarSyncWarning = calendarFailure.warning;
-        }
-      }
+          : undefined,
+      },
+    });
+
+    await flushDispatchEvents(dispatchResult.activityEvents, dispatchResult.googleCalendarLogEvents);
+
+    if (!dispatchResult.ok) {
+      return new Output(false, [], [dispatchResult.errorMessage], null);
     }
 
-    // --- Resend email dispatch for participants sem Google conectado ---
-    if (isOnlineMeeting && resendRecipients.length > 0) {
-      const organizerName = closerProfile.fullName || closerProfile.email;
-      const emailResult = await emailService.sendMeetingInviteEmail({
-        to: resendRecipients,
-        leadName,
-        meetingTitle: resolvedMeetingTitle,
-        meetingDate,
-        meetingLink: resolvedMeetingLink,
-        organizerName,
-        organizerEmail: closerEmail,
-        eventUid: scheduleId,
-        timezone: closerProfile.timezone,
-        teamId,
-        sourceType: "leads_schedule",
-        sourceId: scheduleId,
-      });
-
-      if (emailResult.success) {
-        const resendMessageId =
-          "data" in emailResult ? extractResendMessageId(emailResult.data) : null;
-        if (!canUseGoogleCalendar) {
-          inviteDispatchStatus = "sent_resend";
-          inviteDispatchProvider = "resend";
-        }
-        inviteDispatchFallbackUsed = false;
-        inviteDispatchLastError = null;
-        inviteDispatchLastPayload = {
-          ...(inviteDispatchLastPayload && typeof inviteDispatchLastPayload === "object"
-            ? inviteDispatchLastPayload
-            : {}),
-          resend: {
-            resendMessageId,
-            recipientCount: resendRecipients.length,
-          },
-          ...participantDispatchMetadata,
-        };
-
-        await registerInviteDispatchActivity({
-          leadId,
-          provider: "resend",
-          status: "sent_resend",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: resendRecipients,
-          error: null,
-          metadata: inviteDispatchLastPayload,
-        });
-      } else {
-        const resendError = emailResult.error || "Convite por e-mail não pôde ser enviado.";
-        inviteDispatchStatus = "failed";
-        inviteDispatchProvider = "resend";
-        inviteDispatchFallbackUsed = false;
-        inviteDispatchLastError = resendError;
-        inviteDispatchLastPayload = {
-          provider: "resend",
-          recipientCount: resendRecipients.length,
-          googleError: googleDispatchError,
-          resendError,
-          ...participantDispatchMetadata,
-        };
-        console.error(`${LOG_PREFIX} Falha no disparo de convite via Resend`, {
-          leadId,
-          scheduleId,
-          errorMessage: resendError,
-          resendRecipients,
-        });
-        await registerInviteDispatchActivity({
-          leadId,
-          provider: "resend",
-          status: "failed",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: resendRecipients,
-          error: resendError,
-          metadata: inviteDispatchLastPayload,
-        });
-
-        const reason = canUseGoogleCalendar
-          ? `falhou o envio por e-mail para participantes sem Google conectado (${resendError})`
-          : `falhou o envio por e-mail (${resendError})`;
-        return new Output(
-          false,
-          [],
-          [`Não foi possível concluir o agendamento porque ${reason}.`],
-          null
-        );
-      }
-    }
-
-    if (isOnlineMeeting && inviteDispatchStatus === "failed") {
-      const reason = inviteDispatchLastError || googleDispatchError || "Falha no envio do convite";
-      return new Output(
-        false,
-        [],
-        [`Não foi possível concluir o agendamento porque o convite não foi enviado com sucesso (${reason}).`],
-        null
-      );
-    }
+    const {
+      calendarResult,
+      calendarSyncWarning,
+      resolvedMeetingLink,
+      inviteDispatchStatus,
+      inviteDispatchProvider,
+      inviteDispatchFallbackUsed,
+      inviteDispatchLastError,
+      inviteDispatchLastPayload,
+    } = dispatchResult;
 
     // --- Persist schedule + update lead ---
     const refreshedPublicShareExpiresAt = existingSchedule?.publicShareTokenHash
