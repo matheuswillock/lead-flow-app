@@ -116,6 +116,7 @@ export const AgeEntryInput = forwardRef<AgeEntryInputHandle, AgeEntryInputProps>
             type="button"
             variant="secondary"
             size="sm"
+            className="max-lg:h-11"
             disabled={!canAdd}
             onClick={handleAdd}
           >

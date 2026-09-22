@@ -3,7 +3,12 @@ import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
-import { assertNoHorizontalOverflow, runResponsiveChecks } from "../../support/responsive";
+import {
+  assertNoHorizontalOverflow,
+  MIN_TOUCH_TARGET_PX,
+  runResponsiveChecks,
+} from "../../support/responsive";
+import type { Locator } from "@playwright/test";
 
 const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
@@ -17,7 +22,15 @@ const TOUCH_LEAD_CODE = "E2ELEADTOUCH0001";
 const TOUCH_LEAD_NAME = "Lead Touch Target E2E";
 const TOUCH_LEAD_PHONE = "11999990302";
 
-const CRM_E2E_LEAD_IDS = [LAYOUT_LEAD_ID, TOUCH_LEAD_ID];
+// Lead dedicado ao teste de alvos de toque dos formulários compartilhados
+// (dialog "Novo Lead" e dialog "Agendar Reunião") — bugfix touch-targets-44px.
+// ID próprio para não disputar seed/cleanup com os outros testes deste spec.
+const FORM_TOUCH_LEAD_ID = "e2e20000-0000-4000-8000-000000000303";
+const FORM_TOUCH_LEAD_CODE = "E2ELEADFORMTOUCH1";
+const FORM_TOUCH_LEAD_NAME = "Lead Form Touch Target E2E";
+const FORM_TOUCH_LEAD_PHONE = "11999990303";
+
+const CRM_E2E_LEAD_IDS = [LAYOUT_LEAD_ID, TOUCH_LEAD_ID, FORM_TOUCH_LEAD_ID];
 
 /** Mesma resolução de `playwright.config.ts` — o afterAll cria o próprio
  * `APIRequestContext` (a fixture `request` é por-teste e não existe em
@@ -146,6 +159,41 @@ async function waitForSeededLeadOnBoard(page: Page, name: string) {
   return seededLeadCell;
 }
 
+/**
+ * Alvo de toque individual >= 44x44 (agents.md — Landing Page Method /
+ * Verificação medida, aplicado aqui a um controle específico em vez do
+ * dialog inteiro). Usado pelo bugfix touch-targets-44px-controles-
+ * compartilhados para medir só os controles corrigidos, não todo alvo de
+ * toque da tela.
+ */
+async function assertMinBoundingBox(locator: Locator, label: string): Promise<void> {
+  // Mede até estabilizar (mesmo padrão de `assertTouchTargets` em
+  // `e2e/support/responsive.ts`): numa navegação quente, uma transição CSS
+  // ainda em andamento (`transition-all` do shadcn) pode reportar o alvo
+  // ~0.2px abaixo por alguns frames (43.8px medido em local, mesma causa do
+  // 43.48px documentado no PR #1153). Violação real continua reprovando no
+  // assert final.
+  const deadline = Date.now() + 5_000;
+  let box = await locator.boundingBox();
+  while (
+    box &&
+    (box.width < MIN_TOUCH_TARGET_PX || box.height < MIN_TOUCH_TARGET_PX) &&
+    Date.now() < deadline
+  ) {
+    await locator.page().waitForTimeout(250);
+    box = await locator.boundingBox();
+  }
+  expect(box, `${label}: sem bounding box (elemento não visível?)`).not.toBeNull();
+  expect(
+    box!.width,
+    `${label}: largura ${box!.width.toFixed(2)}px < ${MIN_TOUCH_TARGET_PX}px em 360px`,
+  ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(
+    box!.height,
+    `${label}: altura ${box!.height.toFixed(2)}px < ${MIN_TOUCH_TARGET_PX}px em 360px`,
+  ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+}
+
 test.describe("app/[supabaseId]/crm", () => {
   test.setTimeout(60_000);
 
@@ -254,6 +302,88 @@ test.describe("app/[supabaseId]/crm", () => {
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
+  });
+
+  /**
+   * Bugfix touch-targets-44px-controles-compartilhados: cobre, em 360px, os
+   * controles de formulário compartilhado apontados no relatório da SPEC 40
+   * — `+ Adicionar` (`AgeEntryInput`/`LeadAgeField`) e `SaveWithDraftButton`
+   * (botão principal + chevron do dropdown) — dentro do dialog "Novo Lead"
+   * (`components/forms/leadForm.tsx`) e o `SelectTrigger` compartilhado
+   * (`components/ui/select.tsx`) dentro do dialog "Agendar Reunião"
+   * (`ScheduleMeetingDialog`, fora do escopo de edição deste bugfix).
+   *
+   * Mede APENAS estes controles, não o dialog inteiro: o dialog "Novo Lead"
+   * tem outros alvos de toque pré-existentes abaixo de 44px (pills de status,
+   * abas, composer de atividade) que já existiam antes da SPEC 40 e estão
+   * fora do escopo deste bugfix — um `assertTouchTargets` genérico sobre o
+   * dialog inteiro reprovaria por eles, não pelos controles corrigidos aqui.
+   */
+  test("responsividade mobile-first dos formulários compartilhados (novo lead e agendar reunião)", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const { teamId } = await seedCrmLead({
+      id: FORM_TOUCH_LEAD_ID,
+      leadCode: FORM_TOUCH_LEAD_CODE,
+      name: FORM_TOUCH_LEAD_NAME,
+      phone: FORM_TOUCH_LEAD_PHONE,
+    });
+    await invalidateTeamLeadsCache(page, {
+      leadId: FORM_TOUCH_LEAD_ID,
+      teamId,
+      name: FORM_TOUCH_LEAD_NAME,
+    });
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm?view=pipeline`);
+    await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
+      timeout: 30_000,
+    });
+    const seededLeadCell = await waitForSeededLeadOnBoard(page, FORM_TOUCH_LEAD_NAME);
+
+    await page.setViewportSize({ width: 360, height: 800 });
+
+    // --- Dialog "Novo Lead": "+ Adicionar", SaveWithDraftButton e "Cancelar" ---
+    await page.getByRole("button", { name: "Adicionar novo lead" }).click();
+    const newLeadDialog = page.getByRole("dialog").filter({ hasText: "Novo Lead" });
+    await expect(newLeadDialog).toBeVisible({ timeout: 15_000 });
+
+    const addAgeButton = newLeadDialog.getByRole("button", { name: "+ Adicionar", exact: true });
+    await expect(addAgeButton).toBeVisible();
+    await assertMinBoundingBox(addAgeButton, "+ Adicionar (AgeEntryInput)");
+
+    const cancelButton = newLeadDialog.getByRole("button", { name: "Cancelar", exact: true });
+    await assertMinBoundingBox(cancelButton, "Cancelar (leadForm footer)");
+
+    // SaveWithDraftButton renderiza como `div.inline-flex.rounded-md` com dois
+    // botões: o principal (rótulo dinâmico: "Salvar"/"Agendar lead"/"Cadastrar
+    // lead" conforme o estado do form) e o chevron ("Mais opções de
+    // salvamento"). Localizar pela estrutura, não pelo texto, porque o rótulo
+    // muda com o estado do formulário.
+    const saveWithDraftWrapper = newLeadDialog.locator("div.inline-flex.rounded-md").first();
+    await expect(saveWithDraftWrapper).toBeVisible();
+    const saveMainButton = saveWithDraftWrapper.getByRole("button").first();
+    const saveChevronButton = saveWithDraftWrapper.getByRole("button", {
+      name: "Mais opções de salvamento",
+    });
+    await assertMinBoundingBox(saveMainButton, "SaveWithDraftButton (ação principal)");
+    await assertMinBoundingBox(saveChevronButton, "SaveWithDraftButton (chevron)");
+
+    await page.keyboard.press("Escape");
+    await expect(newLeadDialog).toHaveCount(0);
+
+    // --- Dialog "Agendar Reunião": SelectTrigger compartilhado do closer ---
+    // (verificação apenas — select.tsx não foi alterado por este bugfix, já
+    // aplicava `max-lg:h-11!` para o mobile antes desta mudança).
+    const seededRow = page.getByRole("row").filter({ has: seededLeadCell });
+    await seededRow.getByRole("button", { name: "Abrir menu" }).click();
+    await page.getByRole("menuitem", { name: "Agendar reunião" }).click();
+    const scheduleDialog = page.getByRole("dialog").filter({ hasText: "Agendar Reunião" });
+    await expect(scheduleDialog).toBeVisible({ timeout: 15_000 });
+    const closerSelectTrigger = scheduleDialog.locator('[role="combobox"]').first();
+    await assertMinBoundingBox(closerSelectTrigger, "SelectTrigger do closer (ScheduleMeetingDialog)");
+    await page.keyboard.press("Escape");
+    await expect(scheduleDialog).toHaveCount(0);
   });
 
   test("paginação da tabela cabe no viewport de 360px", async ({ page }) => {
