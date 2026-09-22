@@ -11,7 +11,9 @@ import {
   Users2,
   Activity,
   LifeBuoy,
-  Plug,
+  Code2,
+  Webhook,
+  Radio,
   ChevronDown,
   ChevronRight,
   Briefcase,
@@ -50,7 +52,6 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { useOperationalAccess } from "@/app/context/OperationalAccessContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
-import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { useWhatsAppUnreadCount } from "@/hooks/useWhatsAppUnreadCount"
@@ -63,11 +64,12 @@ type SidebarItem = {
   masterOnly?: boolean
   closerOrManager?: boolean
   sdrCloserOrManager?: boolean
-  requiresIntegrationsAccess?: boolean
   requiresTransferRoutes?: boolean
   requiresAssociadosQueue?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
+  /** Ignora o rótulo de beta do feature flag e sempre usa `status` (ex.: "Em breve" fixo). */
+  forceStatusBadge?: boolean
   unreadCount?: number
 }
 
@@ -97,7 +99,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const isManager = activeRole === "manager" || activeRole === "backoffice";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
-  const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
@@ -179,6 +180,29 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     },
   ];
 
+  const integrationsItems: SidebarItem[] = [
+    {
+      title: "Catálogo de API",
+      url: `/${supabaseId}/integrations`,
+      icon: Code2,
+      featureSlug: FEATURE_SLUGS.CONFIGURATION,
+      status: "comingSoon",
+      forceStatusBadge: true,
+    },
+    {
+      title: "Webhooks",
+      url: `/${supabaseId}/integrations/webhooks`,
+      icon: Webhook,
+      featureSlug: FEATURE_SLUGS.CONFIGURATION,
+    },
+    {
+      title: "Pixel",
+      url: `/${supabaseId}/integrations/pixel`,
+      icon: Radio,
+      featureSlug: FEATURE_SLUGS.RADAR,
+    },
+  ];
+
   const { members: teamMembersWithPresence, isLoadingMembers } = useTeamPresence({
     activeTeamId,
     masterId: activeTeam?.masterId ?? user?.managerId ?? user?.id ?? null,
@@ -218,9 +242,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.sdrCloserOrManager && !isManager && !isTeamMaster && !isCloser && !isSdr) {
-      return false;
-    }
-    if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
       return false;
     }
     if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes && !activeTeam?.canTransferAccountLeads) {
@@ -296,7 +317,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       .slice(0, 2);
 
   const getItemBadge = (item: SidebarItem) => {
-    if (item.featureSlug && showsBetaLabel(item.featureSlug)) return getSidebarStatusBadge("beta")
+    if (!item.forceStatusBadge && item.featureSlug && showsBetaLabel(item.featureSlug)) {
+      return getSidebarStatusBadge("beta")
+    }
     return getSidebarStatusBadge(item.status)
   }
 
@@ -305,6 +328,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
+  const visibleIntegrationsItems = integrationsItems.filter(canShowItem)
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
@@ -513,29 +537,31 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
-            {(hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR)) && (
+            {visibleIntegrationsItems.length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel>Integrações</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
-                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2">
-                            <Plug className="size-4 shrink-0" />
-                            <span>Webhooks</span>
-                          </span>
-                          {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
-                            const badge = getSidebarStatusBadge("beta")
-                            return badge ? (
-                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
-                                {badge.label}
+                    {visibleIntegrationsItems.map((item) => {
+                      const badge = getItemBadge(item)
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                            <Link href={item.url} className="flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2">
+                                <item.icon className="size-4 shrink-0" />
+                                <span>{item.title}</span>
                               </span>
-                            ) : null
-                          })()}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                              {badge && (
+                                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                  {badge.label}
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

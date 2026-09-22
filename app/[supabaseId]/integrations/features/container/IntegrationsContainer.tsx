@@ -1,54 +1,38 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowDownToLine, ArrowUpFromLine, FormInput, Webhook } from "lucide-react";
+import { Code2, Radio, Webhook } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { IntegrationEntryCard } from "../components/IntegrationEntryCard";
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
-import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
-import { RadarPixelIntegration } from "../components/RadarPixelIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
+import { useIntegrationsHubWebhooksSummary } from "../context/IntegrationsHubSummaryHook";
+import { resolveIntegrationsHubAccess } from "../context/resolveIntegrationsHubAccess";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function IntegrationsContainer() {
-  const { activeTeam, isLoading: isTeamLoading } = useTeamContext();
-  const { integrationsBootstrapLoading, supabaseId } = useIntegrationsContext();
+  const { isLoading: isTeamLoading } = useTeamContext();
+  const { integrationsBootstrapLoading, supabaseId, radarPixelConfig, radarPixelLoading } = useIntegrationsContext();
   const { hasAccess } = useFeatureAccess();
-  const canAccessIntegrations =
-    isTeamAllowedForIntegrations(activeTeam?.id) ||
-    hasAccess(FEATURE_SLUGS.CONFIGURATION) ||
-    hasAccess(FEATURE_SLUGS.RADAR);
 
-  if (isTeamLoading || (canAccessIntegrations && integrationsBootstrapLoading)) {
+  const hasIntegrationAccess = hasAccess(FEATURE_SLUGS.CONFIGURATION);
+  const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
+  const { apiCatalogLocked, webhooksLocked, pixelLocked } = resolveIntegrationsHubAccess({
+    hasIntegrationAccess,
+    hasRadarAccess,
+  });
+
+  const webhooksSummary = useIntegrationsHubWebhooksSummary(supabaseId, hasIntegrationAccess);
+
+  if (isTeamLoading || integrationsBootstrapLoading) {
     return <IntegrationsPageSkeleton />;
   }
 
-  if (!canAccessIntegrations) {
-    return (
-      <div className="flex flex-col gap-6 p-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Integrações</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Esta área está disponível apenas para times autorizados.
-          </p>
-        </div>
-
-        <div className="rounded-lg border p-6">
-          <h2 className="text-base font-semibold">Acesso restrito</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Selecione um time autorizado para visualizar as integrações.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const inboundHref = `/${supabaseId}/integrations/webhooks/inbound`;
-  const outboundHref = `/${supabaseId}/integrations/webhooks/outbound`;
+  const subscriptionHref = `/${supabaseId}/subscription`;
+  const webhooksHref = `/${supabaseId}/integrations/webhooks`;
+  const pixelHref = `/${supabaseId}/integrations/pixel`;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -59,52 +43,63 @@ export function IntegrationsContainer() {
         </p>
       </div>
 
-      <LeadFormIntegration />
+      <div className="grid gap-4 md:grid-cols-3">
+        <IntegrationEntryCard
+          icon={Code2}
+          title="Catálogo de API"
+          description="Consulte recursos da API do Studio, cada um com escopo e token próprios."
+          badge={{ label: "Em breve", variant: "outline" }}
+          state="Disponível em breve"
+          locked={apiCatalogLocked}
+          lockedHref={subscriptionHref}
+        />
 
-      <StudioWebhookIntegration />
+        <IntegrationEntryCard
+          icon={Webhook}
+          title="Webhooks"
+          description="Receba eventos de sistemas externos e envie eventos do CRM para fora."
+          badge={{ label: "Entrada e saída", variant: "secondary" }}
+          state={
+            webhooksLocked ? (
+              "Fale com seu gerente de conta"
+            ) : webhooksSummary.loading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : webhooksSummary.totalCount === 0 ? (
+              "Nenhum webhook configurado"
+            ) : (
+              `${webhooksSummary.totalCount} webhook${webhooksSummary.totalCount === 1 ? "" : "s"} · ${webhooksSummary.activeCount} ativo${webhooksSummary.activeCount === 1 ? "" : "s"}`
+            )
+          }
+          locked={webhooksLocked}
+          lockedHref={subscriptionHref}
+          href={webhooksLocked ? undefined : webhooksHref}
+        />
 
-      {hasAccess(FEATURE_SLUGS.RADAR) && <RadarPixelIntegration />}
+        <IntegrationEntryCard
+          icon={Radio}
+          title="Pixel"
+          description="Rastreie visitantes anônimos do seu site e enriqueça perfis no Radar."
+          badge={{ label: "Radar", variant: "secondary" }}
+          state={
+            pixelLocked ? (
+              "Fale com seu gerente de conta"
+            ) : radarPixelLoading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : radarPixelConfig?.configured ? (
+              "Pixel configurado"
+            ) : (
+              "Pixel não configurado"
+            )
+          }
+          locked={pixelLocked}
+          lockedHref={subscriptionHref}
+          href={pixelLocked ? undefined : pixelHref}
+        />
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link href={inboundHref} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Card className="h-full transition-colors hover:bg-muted/40">
-            <CardHeader className="flex flex-row items-start gap-3">
-              <div className="rounded-md border bg-background p-2">
-                <ArrowDownToLine className="size-5 text-primary" />
-              </div>
-              <div className="flex flex-1 flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base">Webhooks de entrada</CardTitle>
-                  <Badge variant="secondary">Receber</Badge>
-                </div>
-                <CardDescription>
-                  Receba eventos de sistemas externos e crie leads automaticamente no CRM.
-                </CardDescription>
-              </div>
-              <Webhook className="size-4 text-muted-foreground" />
-            </CardHeader>
-          </Card>
-        </Link>
-
-        <Link href={outboundHref} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Card className="h-full transition-colors hover:bg-muted/40">
-            <CardHeader className="flex flex-row items-start gap-3">
-              <div className="rounded-md border bg-background p-2">
-                <ArrowUpFromLine className="size-5 text-primary" />
-              </div>
-              <div className="flex flex-1 flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-base">Webhooks de saída</CardTitle>
-                  <Badge variant="outline">Enviar</Badge>
-                </div>
-                <CardDescription>
-                  Envie eventos do CRM para Slack, Teams, Zapier ou qualquer URL HTTPS.
-                </CardDescription>
-              </div>
-              <FormInput className="size-4 text-muted-foreground" />
-            </CardHeader>
-          </Card>
-        </Link>
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-muted-foreground">Outras integrações</h2>
+        <LeadFormIntegration />
       </div>
     </div>
   );
