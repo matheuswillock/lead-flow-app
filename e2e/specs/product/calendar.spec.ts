@@ -85,6 +85,17 @@ async function listTaskTitlesInMemberAllScope(api: APIRequestContext): Promise<s
   return (body.result ?? []).map((task) => task.title);
 }
 
+async function listTaskTitlesInActiveScope(api: APIRequestContext): Promise<string[]> {
+  const { dateFrom, dateTo } = dayWindow(fixture.referenceDate);
+  const response = await api.get(
+    `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}&teamScope=active`,
+    { headers: headersForTeam(fixture.activeTeamId) },
+  );
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as { result?: Array<{ title: string }> };
+  return (body.result ?? []).map((task) => task.title);
+}
+
 test.describe("app/[supabaseId]/calendar", () => {
   // Serial: com `fullyParallel`, dois testes do MESMO arquivo podem cair em
   // workers diferentes e cada um rodaria o `beforeAll`, que apaga e recria a
@@ -181,26 +192,25 @@ test.describe("app/[supabaseId]/calendar", () => {
     expect(crossTeamTask?.lead.teamId).toBe(fixture.managerTeamId);
   });
 
-  test("a página mostra o agendamento de um time que não é o ativo", async ({ page }) => {
+  test("a página não mostra agendamentos de outros times", async ({ page }) => {
+    const activeScopeTitles = await listTaskTitlesInActiveScope(page.request);
+    expect(activeScopeTitles).not.toContain(fixture.titles.managerTeamTask);
+    expect(activeScopeTitles).not.toContain(fixture.titles.operatorTeamOwnTask);
+    expect(activeScopeTitles).not.toContain(fixture.titles.operatorTeamOtherTask);
+
+    const activeTasksResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname.endsWith("/tasks");
+    });
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/calendar`);
+    const tasksResponse = await activeTasksResponse;
+    expect(new URL(tasksResponse.url()).searchParams.get("teamScope")).toBe("active");
 
     await expect(page.getByText("Calendário").first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
-
-    const crossTeamTask = page
-      .getByText(fixture.titles.managerTeamTask, { exact: false })
-      .first();
-    await expect(async () => {
-      if ((await crossTeamTask.count()) === 0) {
-        await page.reload({ waitUntil: "domcontentloaded" });
-      }
-      await expect(crossTeamTask).toBeVisible({ timeout: 15_000 });
-    }).toPass({ timeout: 150_000 });
-
-    // O agendamento alheio do time onde o perfil é operator não pode vazar.
-    await expect(
-      page.getByText(fixture.titles.operatorTeamOtherTask, { exact: false }),
-    ).toHaveCount(0);
+    await expect(page.getByText(fixture.titles.managerTeamTask, { exact: false })).toHaveCount(0);
+    await expect(page.getByText(fixture.titles.operatorTeamOwnTask, { exact: false })).toHaveCount(0);
+    await expect(page.getByText(fixture.titles.operatorTeamOtherTask, { exact: false })).toHaveCount(0);
   });
 
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({

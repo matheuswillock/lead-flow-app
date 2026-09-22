@@ -63,14 +63,8 @@ type AttendeesByLead = Record<string, { attendees: ScheduleAttendee[]; hasGoogle
 
 const ROLE_ORDER: AttendeeRole[] = ["closer", "sdr", "lead", "extra"]
 
-/**
- * O Calendário pede os agendamentos de TODOS os times em que o usuário é
- * membro — inclusive de outros masters. Quem pertence a N times via só o time
- * ativo antes desta mudança. A restrição de papel é aplicada pelo servidor, por
- * time (manager-like vê o time inteiro; papel menor vê só os próprios), então
- * não há filtro de papel no cliente para as tasks.
- */
-const TASKS_TEAM_SCOPE = "member-all"
+/** O Calendário exibe somente os agendamentos do time ativo da sessão. */
+const TASKS_TEAM_SCOPE = "active"
 
 const normalizeEmail = (value?: string | null) => value?.toLowerCase().trim() ?? ""
 
@@ -865,11 +859,8 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
   }, [selectedDateKey, supabaseId, activeTeamId])
 
   /**
-   * O board carrega os leads do time ATIVO. Uma tarefa de outro time aparece no
-   * Calendário (escopo member-all), mas o dialog de lead/edição depende do lead
-   * carregado — então aqui o usuário recebe o motivo real, com o nome do time,
-   * em vez de um "não encontrado" genérico. Concluir e cancelar seguem
-   * funcionando: o TaskCard usa o time dono da tarefa.
+   * Tasks e leads usam o time ativo. A mensagem específica permanece como
+   * defesa caso uma resposta obsoleta de cache atravesse uma troca de time.
    */
   const findLeadForTask = React.useCallback(
     (task: TaskItem): Lead | null => {
