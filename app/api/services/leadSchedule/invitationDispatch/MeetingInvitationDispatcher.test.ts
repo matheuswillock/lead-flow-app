@@ -21,6 +21,7 @@ function buildInput(overrides: Partial<DispatchMeetingInvitationInput> = {}): Di
     leadId: "lead-1",
     leadEmail: "lead@example.com",
     leadName: "Lead de Teste",
+    closerId: "closer-1",
     resolvedMeetingType: "online",
     resolvedMeetingTitle: "Reunião de teste",
     scheduleId: "schedule-1",

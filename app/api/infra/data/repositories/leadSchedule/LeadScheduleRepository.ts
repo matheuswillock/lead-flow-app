@@ -181,7 +181,12 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       inviteDispatchStatus: data.inviteDispatchStatus ?? undefined,
       inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
       inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
-      inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+      // Achado da revisão (R13-16): `??` transformava `null` (disparo com
+      // sucesso, sem erro) em `undefined` (Prisma não mexe no campo) — um
+      // erro antigo continuava gravado depois de um reagendamento
+      // bem-sucedido. Mesmo motivo do `meetingLink`/`reminder30MinSentAt`
+      // abaixo: `null` aqui é um valor com significado, não "não informado".
+      inviteDispatchLastError: data.inviteDispatchLastError,
       publicShareTokenHash: data.publicShareTokenHash ?? undefined,
       publicShareExpiresAt: data.publicShareExpiresAt ?? undefined,
       // `??` NÃO serve aqui: precisa distinguir "não informado" (undefined,

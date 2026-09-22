@@ -266,7 +266,6 @@
       "app/api/services/DashboardInfos/DashboardInfosService.ts",
       "app/api/services/healthPlans/HealthPlanService.ts",
       "app/api/services/leadSchedule/LeadScheduleService.ts",
-      "app/api/services/leadSchedule/participantDispatch.ts",
       "app/api/services/notifications/NotificationService.ts",
       "app/api/services/Performance/PerformanceService.ts",
       "app/api/services/Performance/PerformanceMeetingsHeldService.ts",

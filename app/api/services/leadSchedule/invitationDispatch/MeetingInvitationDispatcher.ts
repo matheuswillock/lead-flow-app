@@ -16,6 +16,8 @@ import type {
   InviteDispatchProvider,
 } from "./types";
 
+const LOG_PREFIX = "[MeetingInvitationDispatcher]";
+
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -119,6 +121,17 @@ export class MeetingInvitationDispatcher implements IMeetingInvitationDispatcher
           error: googleDispatchError,
           ...input.participantDispatchMetadata,
         };
+        console.error(
+          `${LOG_PREFIX} Falha no disparo de convite via Google Calendar`,
+          {
+            leadId: input.leadId,
+            scheduleId: input.scheduleId,
+            errorMessage: rawGoogleDispatchError,
+            userMessage: googleDispatchError,
+            googleRecipients: input.googleRecipients,
+          },
+          calendarError
+        );
 
         activityEvents.push({
           provider: "google",
@@ -142,6 +155,10 @@ export class MeetingInvitationDispatcher implements IMeetingInvitationDispatcher
       }
     } else if (input.isOnlineMeeting) {
       googleDispatchError = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
+      console.warn(`${LOG_PREFIX} Google Calendar não conectado para closer`, {
+        leadId: input.leadId,
+        closerId: input.closerId,
+      });
       activityEvents.push({
         provider: "google",
         status: "failed",
@@ -194,6 +211,14 @@ export class MeetingInvitationDispatcher implements IMeetingInvitationDispatcher
           reason: `meeting_type_${input.resolvedMeetingType}`,
           error: contactEmailError,
         };
+        console.error(
+          `${LOG_PREFIX} Falha ao enviar e-mail de aviso de ${meetingFormatLabel} ao lead`,
+          {
+            leadId: input.leadId,
+            scheduleId: input.scheduleId,
+            errorMessage: contactEmailError,
+          }
+        );
 
         activityEvents.push({
           provider: "resend",
@@ -227,22 +252,31 @@ export class MeetingInvitationDispatcher implements IMeetingInvitationDispatcher
 
       if (input.canUseGoogleCalendar) {
         try {
+          // Achado da revisão (R13-15): para telefone/WhatsApp este É o
+          // único upsert no Google (não existe "primeira chamada" antes
+          // dele) — por isso `transfer` precisa vir junto, senão uma troca
+          // de closer nunca cancela o evento antigo nesse caminho.
           calendarResult = await this.googleStrategy.dispatch({
             ...input.googleCalendarEventInput,
             closerEmail: input.closerEmail,
             meetingTitle: input.resolvedMeetingTitle,
             attendeeEmails: [],
             meetingFormatLabel,
-            // O evento pessoal best-effort não repete a transferência do
-            // closer anterior — o cancelamento já foi tentado (ou não se
-            // aplicava) na primeira chamada, se o closer tiver Google.
-            transfer: undefined,
           });
         } catch (calendarError) {
           const calendarFailure = resolveBestEffortCalendarFailure({
             existingGoogleEventId: input.existingSchedule?.googleEventId,
             errorMessage: getErrorMessage(calendarError, "erro desconhecido"),
           });
+          console.warn(
+            `${LOG_PREFIX} Falha ao criar evento pessoal no Google Calendar do closer para ${meetingFormatLabel} — agendamento continua`,
+            {
+              leadId: input.leadId,
+              scheduleId: input.scheduleId,
+              error: calendarFailure.payload.error,
+              staleEventId: calendarFailure.payload.staleEventId,
+            }
+          );
           calendarResult = null;
           inviteDispatchLastError = calendarFailure.lastError;
           inviteDispatchLastPayload = {
@@ -314,6 +348,12 @@ export class MeetingInvitationDispatcher implements IMeetingInvitationDispatcher
           resendError,
           ...input.participantDispatchMetadata,
         };
+        console.error(`${LOG_PREFIX} Falha no disparo de convite via Resend`, {
+          leadId: input.leadId,
+          scheduleId: input.scheduleId,
+          errorMessage: resendError,
+          resendRecipients: input.resendRecipients,
+        });
 
         activityEvents.push({
           provider: "resend",

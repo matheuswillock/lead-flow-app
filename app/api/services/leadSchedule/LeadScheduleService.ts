@@ -339,38 +339,60 @@ export class LeadScheduleService implements ILeadScheduleService {
 
     // SPEC 13 (Agenda na Criação de Lead), A-E3 — a leitura do perfil do
     // closer anterior (só relevante numa troca de closer com evento
-    // existente no Google) é resolvida aqui, antes do despacho, e passada já
-    // pronta para `IMeetingInvitationDispatcher`, que não lê banco (T-13.7).
-    // Mesma condição de antes (`shouldTransferCalendarOwnership` +
-    // `previousCloserId` + `previousEventId`); a única mudança é o MOMENTO da
-    // leitura (antes do despacho, não só depois do upsert no Google ter
-    // sucesso) — sem efeito no resultado, porque a estratégia só tenta
-    // cancelar depois que o upsert novo já teve sucesso, igual antes.
+    // existente no Google, E só quando o closer NOVO tem Google — é a mesma
+    // condição de quando `attemptCloserCalendarUpsert` era chamada antes da
+    // extração) é resolvida aqui, antes do despacho, e passada já pronta
+    // para `IMeetingInvitationDispatcher`, que não lê banco (T-13.7).
+    //
+    // Achado da revisão (R13-17): esta leitura só era feita DEPOIS do upsert
+    // no Google ter sucesso, dentro de um try/catch que tratava qualquer
+    // falha (inclusive na leitura do perfil) como "não cancela, só loga um
+    // aviso" — nunca derrubava o agendamento. Resolver antes, sem
+    // try/catch, faria uma falha transiente do banco nesta leitura
+    // secundária derrubar o agendamento inteiro. Mantido o mesmo
+    // comportamento: qualquer erro aqui vira "trata como sem Google ativo",
+    // com o mesmo aviso de antes.
     const shouldAttemptCalendarTransfer = Boolean(
-      calendarTransfer.shouldTransferCalendarOwnership &&
+      canUseGoogleCalendar &&
+        calendarTransfer.shouldTransferCalendarOwnership &&
         calendarTransfer.previousCloserId &&
         calendarTransfer.previousEventId
     );
     let previousOrganizerForTransfer: typeof closerProfile | null = null;
     if (shouldAttemptCalendarTransfer && calendarTransfer.previousCloserId) {
-      const previousCloserProfile = await prisma.profile.findUnique({
-        where: { id: calendarTransfer.previousCloserId },
-        include: {
-          googleConnection: {
-            select: {
-              accessToken: true,
-              refreshToken: true,
-              tokenExpiresAt: true,
-              revokedAt: true,
-              googleEmail: true,
+      try {
+        const previousCloserProfile = await prisma.profile.findUnique({
+          where: { id: calendarTransfer.previousCloserId },
+          include: {
+            googleConnection: {
+              select: {
+                accessToken: true,
+                refreshToken: true,
+                tokenExpiresAt: true,
+                revokedAt: true,
+                googleEmail: true,
+              },
             },
           },
-        },
-      });
-      previousOrganizerForTransfer =
-        previousCloserProfile && isGoogleConnectionActive(previousCloserProfile.googleConnection)
-          ? previousCloserProfile
-          : null;
+        });
+        previousOrganizerForTransfer =
+          previousCloserProfile && isGoogleConnectionActive(previousCloserProfile.googleConnection)
+            ? previousCloserProfile
+            : null;
+      } catch (previousCloserLookupError) {
+        console.warn(
+          `${LOG_PREFIX} Falha ao buscar perfil do closer anterior para avaliar cancelamento no Calendar`,
+          {
+            leadId,
+            previousCloserId: calendarTransfer.previousCloserId,
+            error:
+              previousCloserLookupError instanceof Error
+                ? previousCloserLookupError.message
+                : String(previousCloserLookupError),
+          }
+        );
+        previousOrganizerForTransfer = null;
+      }
     }
 
     const flushDispatchEvents = async (
@@ -413,6 +435,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       leadId,
       leadEmail,
       leadName,
+      closerId,
       resolvedMeetingType,
       resolvedMeetingTitle,
       scheduleId,

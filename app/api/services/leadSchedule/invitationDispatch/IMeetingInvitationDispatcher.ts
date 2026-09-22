@@ -27,6 +27,8 @@ export interface DispatchMeetingInvitationInput {
   leadId: string;
   leadEmail: string;
   leadName: string;
+  /** Só para os logs terem o mesmo contexto que tinham antes da extração. */
+  closerId: string;
   resolvedMeetingType: string;
   resolvedMeetingTitle: string;
   scheduleId: string;

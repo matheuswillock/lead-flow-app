@@ -29,6 +29,7 @@ const CREATED_BY_ID = "44444444-4444-4444-8444-444444444444"
 
 let previousCloserGoogleConnectionActive: { refreshToken: string | null; revokedAt: Date | null } | null =
   null
+let previousCloserLookupShouldFail = false
 
 // --- prisma ---
 const profileFindUniqueMock = mock(async ({ where }: { where: { id: string } }) => {
@@ -36,6 +37,9 @@ const profileFindUniqueMock = mock(async ({ where }: { where: { id: string } }) 
     return closerProfileFixture()
   }
   if (where.id === PREVIOUS_CLOSER_ID) {
+    if (previousCloserLookupShouldFail) {
+      throw new Error("db transient")
+    }
     return {
       id: PREVIOUS_CLOSER_ID,
       email: "closer-anterior@example.com",
@@ -212,6 +216,7 @@ describe("LeadScheduleService.createSchedule — T-13.4 (snapshot pré-refatora�
   beforeEach(() => {
     googleConnectionActive = null
     previousCloserGoogleConnectionActive = null
+    previousCloserLookupShouldFail = false
     existingScheduleFixture = null
     upsertCalendarEventShouldFail = false
     sendMeetingInviteEmailShouldFail = false
@@ -408,5 +413,96 @@ describe("LeadScheduleService.createSchedule — T-13.4 (snapshot pré-refatora�
 
     expect(output.isValid).toBe(true)
     expect(cancelCalendarEventMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Achados da revisão xhigh de fechamento de A-E2/A-E3.
+   */
+
+  it("R13-15: troca de closer + WhatsApp com Google conectado: cancela o evento do closer anterior", async () => {
+    googleConnectionActive = { refreshToken: "refresh-token", revokedAt: null }
+    previousCloserGoogleConnectionActive = { refreshToken: "refresh-token-anterior", revokedAt: null }
+    existingScheduleFixture = {
+      id: "schedule-existing-1",
+      leadId: LEAD_ID,
+      date: new Date(FIXED_MEETING_DATE),
+      extraGuests: [],
+      googleEventId: "google-event-antigo",
+      googleCalendarId: "primary",
+      reminder30MinSentAt: null,
+      noShowCount: 0,
+      meetingLink: null,
+    }
+    const { LeadScheduleService } = await import("./LeadScheduleService")
+    const service = new LeadScheduleService()
+
+    const output = await service.createSchedule(
+      baseParams({ leadCurrentCloserId: PREVIOUS_CLOSER_ID, meetingType: "whatsapp" }) as any
+    )
+
+    expect(output.isValid).toBe(true)
+    // Para telefone/WhatsApp o upsert best-effort no Calendar é o ÚNICO
+    // upsert (não existe uma "primeira chamada" online antes dele) — por
+    // isso o cancelamento do evento antigo precisa acontecer aqui também.
+    expect(cancelCalendarEventMock).toHaveBeenCalledTimes(1)
+    const cancelArgs = cancelCalendarEventMock.mock.calls[0]?.[0] as any
+    expect(cancelArgs.eventId).toBe("google-event-antigo")
+  })
+
+  it("R13-17: falha ao buscar o perfil do closer anterior não derruba o agendamento", async () => {
+    googleConnectionActive = { refreshToken: "refresh-token", revokedAt: null }
+    previousCloserLookupShouldFail = true
+    existingScheduleFixture = {
+      id: "schedule-existing-1",
+      leadId: LEAD_ID,
+      date: new Date(FIXED_MEETING_DATE),
+      extraGuests: [],
+      googleEventId: "google-event-antigo",
+      googleCalendarId: "primary",
+      reminder30MinSentAt: null,
+      noShowCount: 0,
+      meetingLink: null,
+    }
+    const { LeadScheduleService } = await import("./LeadScheduleService")
+    const service = new LeadScheduleService()
+
+    const output = await service.createSchedule(
+      baseParams({ leadCurrentCloserId: PREVIOUS_CLOSER_ID }) as any
+    )
+
+    // Uma falha transiente ao buscar o perfil do closer anterior é
+    // exatamente o tipo de erro que não pode derrubar o agendamento — só o
+    // cancelamento do evento antigo fica pendente (loga um aviso).
+    expect(output.isValid).toBe(true)
+    expect(cancelCalendarEventMock).not.toHaveBeenCalled()
+  })
+
+  it("não busca o perfil do closer anterior quando o closer novo não tem Google (não é usado de qualquer forma)", async () => {
+    googleConnectionActive = null
+    existingScheduleFixture = {
+      id: "schedule-existing-1",
+      leadId: LEAD_ID,
+      date: new Date(FIXED_MEETING_DATE),
+      extraGuests: [],
+      googleEventId: "google-event-antigo",
+      googleCalendarId: "primary",
+      reminder30MinSentAt: null,
+      noShowCount: 0,
+      meetingLink: null,
+    }
+    const { LeadScheduleService } = await import("./LeadScheduleService")
+    const service = new LeadScheduleService()
+
+    await service.createSchedule(
+      baseParams({
+        leadCurrentCloserId: PREVIOUS_CLOSER_ID,
+        meetingLink: "https://meet.google.com/link-manual-abc",
+      }) as any
+    )
+
+    const previousCloserLookupCalls = profileFindUniqueMock.mock.calls.filter(
+      (call: any) => call[0]?.where?.id === PREVIOUS_CLOSER_ID
+    )
+    expect(previousCloserLookupCalls).toHaveLength(0)
   })
 })
