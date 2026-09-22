@@ -60,6 +60,8 @@ export default defineConfig({
             ...process.env,
             APP_ENV: process.env.APP_ENV || "test",
             E2E_TEST_MODE: process.env.E2E_TEST_MODE || "true",
+            // Espelho client-side de E2E_TEST_MODE — ver lib/e2e/is-e2e-test-mode-client.ts.
+            NEXT_PUBLIC_E2E_TEST_MODE: process.env.NEXT_PUBLIC_E2E_TEST_MODE || "true",
             PUBLIC_FORM_LEAD_GATE_MODE: process.env.PUBLIC_FORM_LEAD_GATE_MODE || "radar",
           },
         },

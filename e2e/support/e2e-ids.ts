@@ -1,6 +1,7 @@
 /** Reexporta IDs estáveis do seed/JWT para specs e fixtures Playwright. */
 
 export {
+  E2E_CLIENT_SESSION_COOKIE_NAME,
   E2E_COOKIE_NAME,
   E2E_MASTER_EMAIL,
   E2E_MASTER_FULL_NAME,
