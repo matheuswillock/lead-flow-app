@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"  
+import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
+import { cn } from "@/lib/utils"
 import {
   LayoutDashboard,
   Users,
@@ -11,7 +12,9 @@ import {
   Users2,
   Activity,
   LifeBuoy,
-  Plug,
+  Code2,
+  Webhook,
+  Radio,
   ChevronDown,
   ChevronRight,
   Briefcase,
@@ -50,7 +53,6 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { useOperationalAccess } from "@/app/context/OperationalAccessContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
-import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { useWhatsAppUnreadCount } from "@/hooks/useWhatsAppUnreadCount"
@@ -63,11 +65,20 @@ type SidebarItem = {
   masterOnly?: boolean
   closerOrManager?: boolean
   sdrCloserOrManager?: boolean
-  requiresIntegrationsAccess?: boolean
   requiresTransferRoutes?: boolean
   requiresAssociadosQueue?: boolean
   featureSlug?: string
   status?: "beta" | "comingSoon"
+  /** Ignora o rótulo de beta do feature flag e sempre usa `status` (ex.: "Em breve" fixo). */
+  forceStatusBadge?: boolean
+  /** Só fica "ativo" com pathname === url, nunca por prefixo (evita casar com subpáginas). */
+  matchExact?: boolean
+  /**
+   * Feature(s) que destravam o item (mostra "Bloqueado" em vez de sumir —
+   * DA3/R15.2), sem afetar `canShowItem`. Qualquer uma da lista já libera
+   * (ex.: Webhooks por `integration` OU `radar` — decisão do owner, R15-3).
+   */
+  lockFeatureSlugs?: string[]
   unreadCount?: number
 }
 
@@ -97,7 +108,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const isManager = activeRole === "manager" || activeRole === "backoffice";
   const isCloser = activeFunctions.includes("CLOSER");
   const isSdr = activeFunctions.includes("SDR");
-  const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
@@ -179,6 +189,39 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     },
   ];
 
+  // As 3 entradas do hub de Integrações (DA3) NÃO usam `featureSlug` no
+  // `canShowItem` — ficam sempre visíveis e mostram "Bloqueado" sem a
+  // feature, em vez de sumir (R15.2/R15-9). O lock em si é calculado abaixo,
+  // no map, via `hasAccess`.
+  const integrationsItems: SidebarItem[] = [
+    {
+      title: "Catálogo de API",
+      url: `/${supabaseId}/integrations`,
+      icon: Code2,
+      status: "comingSoon",
+      forceStatusBadge: true,
+      // Aponta pro hub (não existe página própria ainda), mas só fica
+      // "ativo" quando o pathname é exatamente o hub — sem isso, ficava
+      // marcado junto com Webhooks/Pixel em qualquer subpágina (R15-8).
+      matchExact: true,
+      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION],
+    },
+    {
+      title: "Webhooks",
+      url: `/${supabaseId}/integrations/webhooks`,
+      icon: Webhook,
+      // Decisão do owner (22/09, R15-3): integration OU radar libera —
+      // preserva quem já vê Webhooks só com radar hoje.
+      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR],
+    },
+    {
+      title: "Pixel",
+      url: `/${supabaseId}/integrations/pixel`,
+      icon: Radio,
+      lockFeatureSlugs: [FEATURE_SLUGS.RADAR],
+    },
+  ];
+
   const { members: teamMembersWithPresence, isLoadingMembers } = useTeamPresence({
     activeTeamId,
     masterId: activeTeam?.masterId ?? user?.managerId ?? user?.id ?? null,
@@ -218,9 +261,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.sdrCloserOrManager && !isManager && !isTeamMaster && !isCloser && !isSdr) {
-      return false;
-    }
-    if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
       return false;
     }
     if (item.requiresTransferRoutes && !activeTeam?.hasTransferRoutes && !activeTeam?.canTransferAccountLeads) {
@@ -296,7 +336,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       .slice(0, 2);
 
   const getItemBadge = (item: SidebarItem) => {
-    if (item.featureSlug && showsBetaLabel(item.featureSlug)) return getSidebarStatusBadge("beta")
+    if (!item.forceStatusBadge && item.featureSlug && showsBetaLabel(item.featureSlug)) {
+      return getSidebarStatusBadge("beta")
+    }
     return getSidebarStatusBadge(item.status)
   }
 
@@ -305,6 +347,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
+  // R15-19 (revisão): a rota /integrations já é manager-only no proxy
+  // (`lib/proxy/route-access.ts` MANAGER_ONLY_ROUTE_PREFIXES) e exige
+  // `integration` ou `radar` no gate de feature de rota
+  // (`lib/features/feature-route-access.ts`) antes mesmo do hub renderizar.
+  // Mostrar o grupo pra quem cairia num redirect ou na tela genérica
+  // "Acesso não liberado" tornaria o badge "Bloqueado" enganoso — por isso o
+  // grupo só aparece pra quem realmente alcança o hub.
+  const canAccessIntegrationsArea =
+    (isManager || isTeamMaster) && (hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR))
+  const visibleIntegrationsItems = canAccessIntegrationsArea ? integrationsItems.filter(canShowItem) : []
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
@@ -513,29 +565,35 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
-            {(hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR)) && (
+            {visibleIntegrationsItems.length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel>Integrações</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
-                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2">
-                            <Plug className="size-4 shrink-0" />
-                            <span>Webhooks</span>
-                          </span>
-                          {showsBetaLabel(FEATURE_SLUGS.CONFIGURATION) && (() => {
-                            const badge = getSidebarStatusBadge("beta")
-                            return badge ? (
-                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
-                                {badge.label}
+                    {visibleIntegrationsItems.map((item) => {
+                      const locked = Boolean(item.lockFeatureSlugs?.length) && !item.lockFeatureSlugs!.some(hasAccess)
+                      const badge = locked
+                        ? { label: "Bloqueado", className: "bg-muted text-muted-foreground" }
+                        : getItemBadge(item)
+                      const isActive = item.matchExact ? pathname === item.url : isItemActive(item.url)
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild isActive={isActive}>
+                            <Link href={item.url} className="flex items-center justify-between gap-2">
+                              <span className={cn("flex items-center gap-2", locked && "text-muted-foreground")}>
+                                <item.icon className="size-4 shrink-0" />
+                                <span>{item.title}</span>
                               </span>
-                            ) : null
-                          })()}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                              {badge && (
+                                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                  {badge.label}
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
