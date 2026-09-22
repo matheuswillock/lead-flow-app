@@ -7946,6 +7946,166 @@
       ]
     },
     {
+      "name": "Webhooks (Saída)",
+      "description": "CRUD e ciclo de vida do webhook de saída (TeamWebhook direction=outbound). SPEC 20 — Webhooks de Saída. Toda entrega HTTP para o destino do cliente leva os headers X-Corretor-Studio-Signature (sha256=<hmac> sobre timestamp + \".\" + corpo bruto, com o segredo do webhook), X-Corretor-Studio-Timestamp (o destino deve rejeitar timestamp com mais de 5 minutos) e X-Corretor-Studio-Event-Version (hoje sempre \"1\"). O segredo de assinatura é mostrado em texto puro só na criação e na rotação — depois disso só o preview fica disponível.",
+      "item": [
+        {
+          "name": "List Outbound Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks?direction=outbound&page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks"],
+              "query": [
+                { "key": "direction", "value": "outbound" },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Lista os webhooks de saída do time ativo. Apenas manager."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Outbound Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direction\": \"outbound\",\n  \"name\": \"Meu CRM externo\",\n  \"targetUrl\": \"https://example.com/hook\",\n  \"destinationPreset\": \"generic\",\n  \"selectedEvents\": [\"lead_created\"],\n  \"failureThreshold\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks"]
+            },
+            "description": "Cria um webhook de saída. A resposta traz `signingSecret` (texto puro) UMA ÚNICA VEZ — o cliente deve copiá-lo na hora, o backend só guarda a cifra e o preview a partir daqui."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Outbound Webhook By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            },
+            "description": "Detalhe do webhook. `signingSecretPreview` vem sempre; o segredo completo nunca é devolvido aqui."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Outbound Webhook",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selectedEvents\": [\"lead_created\", \"lead_status_changed\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rotate Signing Secret",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/signing-secret",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "signing-secret"]
+            },
+            "description": "Gera um novo segredo de assinatura HMAC e invalida o anterior imediatamente (sem período de graça). A resposta traz `signingSecret` em texto puro uma única vez — atualize o verificador no destino antes de rotacionar em produção."
+          },
+          "response": []
+        },
+        {
+          "name": "Test Delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "test"]
+            },
+            "description": "Envia um evento de teste assinado com o mesmo segredo do webhook real."
+          },
+          "response": []
+        },
+        {
+          "name": "List Delivery Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/logs?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "logs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Payload enviado, status HTTP, corpo da resposta e erro completo de cada entrega. O payload de saída não é mascarado — o time é dono do dado e do destino (D4)."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Webhook (DELETE = disable, não apaga)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            },
+            "description": "IMPORTANTE (W20): apesar do verbo HTTP, este endpoint NÃO apaga o webhook. Ele só muda o status para `disabled` (soft-disable) — a linha, os logs de entrega e o histórico continuam no banco, e o webhook pode ser reativado depois via `POST /status` com `{\"status\":\"active\"}`. Use este endpoint quando a tela oferecer \"Excluir\"; o efeito real é desativar."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Performance",
       "item": [
         {

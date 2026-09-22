@@ -9,6 +9,7 @@ import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWeb
 import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
 import { webhookHttpDeliveryService } from "@/app/api/services/teamWebhook/WebhookHttpDeliveryService";
 import { wrapOutboundPayloadForPreset } from "@/lib/webhooks/webhookPayloadPresets";
+import { decryptWebhookSigningSecret } from "@/lib/webhooks/webhookSigningSecurity";
 import {
   computeWebhookOutboxNextAttemptAt,
   shouldRetryWebhookOutbox,
@@ -114,11 +115,50 @@ export class ProcessWebhookOutboxUseCase {
       const envelope = row.payload as unknown as OutboundWebhookEnvelope;
       const preset: TeamWebhookDestinationPreset = webhook.destinationPreset ?? "generic";
       const body = wrapOutboundPayloadForPreset(preset, envelope);
+      const signingSecret = webhook.signingSecretCipher
+        ? decryptWebhookSigningSecret(webhook.signingSecretCipher)
+        : null;
+
+      if (webhook.signingSecretCipher && !signingSecret) {
+        // R20-6 — cifra presente mas ilegível (ex.: chave de cifra do servidor rotacionada
+        // sem migrar os segredos existentes). Nunca entregar sem assinatura em silêncio:
+        // vira falha do evento, sem tentar de novo, e conta para o auto-pause.
+        await this.eventLogRepository.create({
+          teamId: row.teamId,
+          webhookId: row.webhookId,
+          direction: "outbound",
+          result: "failure",
+          eventKey: row.eventKey,
+          method: "POST",
+          endpoint: webhook.targetUrl,
+          statusCode: null,
+          requestPayload: body,
+          responsePayload: null,
+          errorMessage: "Segredo de assinatura ilegível — entrega bloqueada por segurança",
+        });
+
+        const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+        let wasPausedForBadSecret = false;
+        if (updated.failureStreak >= updated.failureThreshold) {
+          await this.webhookRepository.markPausedByFailures(row.webhookId);
+          await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
+          await this.notifyAutoPaused(webhook);
+          wasPausedForBadSecret = true;
+        }
+        await this.outboxRepository.markFailed(
+          row.id,
+          row.attemptCount + 1,
+          null,
+          "Segredo de assinatura ilegível"
+        );
+        return wasPausedForBadSecret ? "paused" : "failed";
+      }
 
       const result = await this.deliveryService.deliver({
         targetUrl: webhook.targetUrl,
         preset,
         body,
+        signingSecret,
       });
 
       await this.eventLogRepository.create({
@@ -142,19 +182,22 @@ export class ProcessWebhookOutboxUseCase {
       }
 
       const attemptCount = row.attemptCount + 1;
-      const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+      const willRetry = shouldRetryWebhookOutbox(attemptCount);
+      const nextAttemptAt = willRetry ? computeWebhookOutboxNextAttemptAt(attemptCount) : null;
 
+      // DA3/W13 — o contador de falha é por EVENTO, não por tentativa HTTP: só
+      // incrementa quando este evento já esgotou as TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS
+      // tentativas (nextAttemptAt nulo, o outbox vira dead-letter para esta linha).
       let wasPaused = false;
-      if (updated.failureStreak >= updated.failureThreshold) {
-        await this.webhookRepository.markPausedByFailures(row.webhookId);
-        await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
-        await this.notifyAutoPaused(webhook);
-        wasPaused = true;
+      if (!willRetry) {
+        const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+        if (updated.failureStreak >= updated.failureThreshold) {
+          await this.webhookRepository.markPausedByFailures(row.webhookId);
+          await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
+          await this.notifyAutoPaused(webhook);
+          wasPaused = true;
+        }
       }
-
-      const nextAttemptAt = shouldRetryWebhookOutbox(attemptCount)
-        ? computeWebhookOutboxNextAttemptAt(attemptCount)
-        : null;
 
       await this.outboxRepository.markFailed(
         row.id,

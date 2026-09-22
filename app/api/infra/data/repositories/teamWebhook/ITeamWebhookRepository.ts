@@ -24,6 +24,8 @@ export type CreateTeamWebhookData = {
   tokenHash?: string | null;
   tokenCipher?: string | null;
   tokenPreview?: string | null;
+  signingSecretCipher?: string | null;
+  signingSecretPreview?: string | null;
   expiryMode?: StudioWebhookTokenExpiryMode | null;
   expiresAt?: Date | null;
 };
@@ -61,6 +63,8 @@ export type TeamWebhookSelect = {
   tokenHash: true;
   tokenCipher: true;
   tokenPreview: true;
+  signingSecretCipher: true;
+  signingSecretPreview: true;
   expiryMode: true;
   expiresAt: true;
   lastUsedAt: true;
@@ -87,6 +91,8 @@ export const TEAM_WEBHOOK_SELECT = {
   tokenHash: true,
   tokenCipher: true,
   tokenPreview: true,
+  signingSecretCipher: true,
+  signingSecretPreview: true,
   expiryMode: true,
   expiresAt: true,
   lastUsedAt: true,
@@ -146,6 +152,7 @@ export interface ITeamWebhookRepository {
     destinationPreset: TeamWebhookDestinationPreset | null;
     failureStreak: number;
     failureThreshold: number;
+    signingSecretCipher: string | null;
     updatedByProfileId: string;
   } | null>;
   findTeamMasterId(teamId: string): Promise<string | null>;

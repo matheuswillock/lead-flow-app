@@ -16,6 +16,13 @@ import {
   generateTeamWebhookToken,
   hashTeamWebhookToken,
 } from "@/lib/webhooks/teamWebhookSecurity";
+import {
+  buildWebhookSigningSecretPreview,
+  decryptWebhookSigningSecret,
+  encryptWebhookSigningSecret,
+  generateWebhookSigningSecret,
+  WEBHOOK_EVENT_VERSION,
+} from "@/lib/webhooks/webhookSigningSecurity";
 import { assertSafeWebhookTargetUrlResolved } from "@/lib/webhooks/ssrfUrlGuard";
 import { wrapOutboundPayloadForPreset } from "@/lib/webhooks/webhookPayloadPresets";
 import { webhookHttpDeliveryService } from "./WebhookHttpDeliveryService";
@@ -75,6 +82,7 @@ export class TeamWebhookService implements ITeamWebhookService {
       pausedAt: toIso(row.pausedAt),
       pauseReason: row.pauseReason,
       tokenPreview: row.tokenPreview,
+      signingSecretPreview: row.signingSecretPreview,
       expiryMode: row.expiryMode,
       expiresAt: toIso(row.expiresAt),
       webhookUrl,
@@ -155,7 +163,7 @@ export class TeamWebhookService implements ITeamWebhookService {
     access: TeamAccess,
     input: CreateInboundWebhookInput | CreateOutboundWebhookInput,
     appUrl: string
-  ) {
+  ): Promise<TeamWebhookSummaryDto & { token?: string; signingSecret?: string }> {
     if (input.direction === "outbound") {
       const count = await teamWebhookRepository.countOutboundWithCtx(this.ctx(access));
       if (count >= MAX_OUTBOUND_PER_TEAM) {
@@ -171,6 +179,16 @@ export class TeamWebhookService implements ITeamWebhookService {
         throw new Error(guard.reason);
       }
 
+      const signingSecret = generateWebhookSigningSecret();
+      const signingSecretCipher = encryptWebhookSigningSecret(signingSecret);
+      if (!signingSecretCipher) {
+        // R20-6: sem chave de cifra configurada, a entrega sairia sem assinatura em
+        // silêncio — melhor falhar a criação do que gerar um webhook que nunca assina.
+        throw new Error(
+          "Não foi possível gerar o segredo de assinatura. Verifique a configuração de cifra do servidor."
+        );
+      }
+
       const row = await teamWebhookRepository.createWithCtx(this.ctx(access), {
         direction: "outbound",
         name: input.name.trim(),
@@ -178,9 +196,11 @@ export class TeamWebhookService implements ITeamWebhookService {
         destinationPreset: input.destinationPreset,
         selectedEvents: input.selectedEvents,
         failureThreshold: input.failureThreshold ?? 10,
+        signingSecretCipher,
+        signingSecretPreview: buildWebhookSigningSecretPreview(signingSecret),
       });
 
-      return this.toSummary(row, appUrl);
+      return { ...this.toSummary(row, appUrl), signingSecret };
     }
 
     const tokenFields = this.resolveTokenFields(input);
@@ -272,6 +292,36 @@ export class TeamWebhookService implements ITeamWebhookService {
     };
   }
 
+  async rotateSigningSecret(
+    access: TeamAccess,
+    id: string,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { signingSecret: string }> {
+    const existing = await teamWebhookRepository.findByIdWithCtx(this.ctx(access), id);
+    if (!existing) {
+      throw new Error("Webhook não encontrado");
+    }
+    if (existing.direction !== "outbound") {
+      throw new Error("Segredo de assinatura disponível apenas para webhooks de saída");
+    }
+
+    const signingSecret = generateWebhookSigningSecret();
+    const signingSecretCipher = encryptWebhookSigningSecret(signingSecret);
+    if (!signingSecretCipher) {
+      // R20-6: mesma regra do create — nunca persistir uma rotação sem cifra válida.
+      throw new Error(
+        "Não foi possível gerar o segredo de assinatura. Verifique a configuração de cifra do servidor."
+      );
+    }
+
+    const row = await teamWebhookRepository.updateWithCtx(this.ctx(access), id, {
+      signingSecretCipher,
+      signingSecretPreview: buildWebhookSigningSecretPreview(signingSecret),
+    });
+
+    return { ...this.toSummary(row, appUrl), signingSecret };
+  }
+
   async changeStatus(
     access: TeamAccess,
     id: string,
@@ -353,6 +403,7 @@ export class TeamWebhookService implements ITeamWebhookService {
     const envelope = {
       id: `evt_test_${Date.now()}`,
       type: "webhook_test" as const,
+      version: WEBHOOK_EVENT_VERSION,
       created_at: new Date().toISOString(),
       team_id: access.teamId,
       data: {
@@ -368,10 +419,36 @@ export class TeamWebhookService implements ITeamWebhookService {
       envelope as unknown as Parameters<typeof wrapOutboundPayloadForPreset>[1]
     );
 
+    // R20-9: `existing` já veio com signingSecretCipher via TEAM_WEBHOOK_SELECT —
+    // não precisa de uma segunda leitura (findForDelivery) só para o mesmo campo.
+    const signingSecret = decryptWebhookSigningSecret(existing.signingSecretCipher);
+
+    if (existing.signingSecretCipher && !signingSecret) {
+      // R20-6: cifra presente mas ilegível — nunca testar (nem entregar) sem
+      // assinatura em silêncio. Mesma regra do cron em ProcessWebhookOutboxUseCase.
+      const errorMessage = "Segredo de assinatura ilegível — teste bloqueado por segurança";
+      await teamWebhookEventLogRepository.create({
+        teamId: access.teamId,
+        webhookId: existing.id,
+        direction: "outbound",
+        result: "failure",
+        eventKey: null,
+        method: "POST",
+        endpoint: existing.targetUrl,
+        statusCode: null,
+        requestPayload: body,
+        responsePayload: null,
+        errorMessage,
+      });
+      await teamWebhookRepository.touchUsage(existing.id, false);
+      return { ok: false, statusCode: null, errorMessage };
+    }
+
     const result = await webhookHttpDeliveryService.deliver({
       targetUrl: existing.targetUrl,
       preset: existing.destinationPreset ?? "generic",
       body,
+      signingSecret,
     });
 
     await teamWebhookEventLogRepository.create({

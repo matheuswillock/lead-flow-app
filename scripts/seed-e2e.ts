@@ -385,6 +385,42 @@ async function grantE2eMasterEmailCampaignsBeta(prisma: PrismaClient, profileId:
   info("✓ Email Campaigns BETA liberado para o master E2E");
 }
 
+/** SPEC 20 — a feature `integration` (Integrações/Webhooks) está em beta no catálogo. */
+async function grantE2eMasterIntegrationBeta(prisma: PrismaClient, profileId: string) {
+  step("Granting Integration BETA to E2E master");
+
+  const integrationFeature = await prisma.backofficeFeature.findUnique({
+    where: { slug: "integration" },
+    select: { id: true },
+  });
+  if (!integrationFeature) {
+    fail("Feature integration ausente no catálogo após seed-backoffice-products.");
+  }
+
+  await prisma.backofficeFeatureGrant.upsert({
+    where: {
+      featureId_profileId_grantType: {
+        featureId: integrationFeature.id,
+        profileId,
+        grantType: "BETA",
+      },
+    },
+    create: {
+      featureId: integrationFeature.id,
+      profileId,
+      grantType: "BETA",
+      isActive: true,
+      betaTeamScope: "ALL_TEAMS",
+    },
+    update: {
+      isActive: true,
+      betaTeamScope: "ALL_TEAMS",
+    },
+  });
+
+  info("✓ Integration BETA liberado para o master E2E");
+}
+
 async function main() {
   const dbUrl = LOCAL_DB_URL;
   const fromEnv = process.env.DATABASE_URL?.trim();
@@ -401,6 +437,7 @@ async function main() {
     const profile = await upsertE2eMaster(prisma);
     await grantE2eMasterRadarBeta(prisma, profile.id);
     await grantE2eMasterEmailCampaignsBeta(prisma, profile.id);
+    await grantE2eMasterIntegrationBeta(prisma, profile.id);
   } finally {
     await prisma.$disconnect();
   }

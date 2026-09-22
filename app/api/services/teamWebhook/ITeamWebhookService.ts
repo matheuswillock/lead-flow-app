@@ -25,6 +25,7 @@ export type TeamWebhookSummaryDto = {
   pausedAt: string | null;
   pauseReason: string | null;
   tokenPreview: string | null;
+  signingSecretPreview: string | null;
   expiryMode: StudioWebhookTokenExpiryMode | null;
   expiresAt: string | null;
   webhookUrl: string | null;
@@ -81,13 +82,18 @@ export interface ITeamWebhookService {
     access: TeamAccess,
     input: CreateInboundWebhookInput | CreateOutboundWebhookInput,
     appUrl: string
-  ): Promise<TeamWebhookSummaryDto & { token?: string }>;
+  ): Promise<TeamWebhookSummaryDto & { token?: string; signingSecret?: string }>;
   update(
     access: TeamAccess,
     id: string,
     input: UpdateTeamWebhookInput,
     appUrl: string
   ): Promise<TeamWebhookSummaryDto & { token?: string }>;
+  rotateSigningSecret(
+    access: TeamAccess,
+    id: string,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { signingSecret: string }>;
   changeStatus(
     access: TeamAccess,
     id: string,

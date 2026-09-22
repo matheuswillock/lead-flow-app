@@ -2859,6 +2859,8 @@ model TeamWebhook {
   tokenHash          String?                       @db.Text
   tokenCipher        String?                       @db.Text
   tokenPreview       String?                       @db.Text
+  signingSecretCipher  String?                     @db.Text
+  signingSecretPreview String?                     @db.Text
   expiryMode         StudioWebhookTokenExpiryMode?
   expiresAt          DateTime?                     @db.Timestamptz(6)
   lastUsedAt         DateTime?                     @db.Timestamptz(6)

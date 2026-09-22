@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Copy, KeyRound, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,20 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -47,6 +55,7 @@ import {
   WebhookOutboundConfigFields,
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
+import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 
 type Props = {
   supabaseId: string;
@@ -66,6 +75,13 @@ function inboundValuesFromWebhook(webhook: TeamWebhookSummary): WebhookInboundFo
     manualToken: "",
     expiryMode: webhook.expiryMode ?? "indeterminate",
   };
+}
+
+/** R20-10: `null`/`undefined` viram "—" (não o texto "null"); string crua não é reescapada como JSON. */
+function formatLogBody(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value, null, 2);
 }
 
 function outboundValuesFromWebhook(webhook: TeamWebhookSummary): WebhookOutboundFormValues {
@@ -139,6 +155,12 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const [logsPage, setLogsPage] = useState(1);
   const [logsTotal, setLogsTotal] = useState(0);
   const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
+  const [rotatingSecret, setRotatingSecret] = useState(false);
+  const [revealedSigningSecret, setRevealedSigningSecret] = useState<string | null>(null);
+  const [selectedLog, setSelectedLog] = useState<TeamWebhookLogItem | null>(null);
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
+  const [confirmingRotateSecret, setConfirmingRotateSecret] = useState(false);
+  const [showSignatureGuide, setShowSignatureGuide] = useState(false);
 
   const listPath = `/${supabaseId}/integrations/webhooks/${direction}`;
 
@@ -245,6 +267,25 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   };
 
+  const runRotateSigningSecret = async () => {
+    if (!activeTeam?.id || rotatingSecret) return;
+    setRotatingSecret(true);
+    try {
+      const updated = await teamWebhooksService.rotateSigningSecret(
+        supabaseId,
+        activeTeam.id,
+        webhookId
+      );
+      applyWebhookToDraft(updated);
+      setRevealedSigningSecret(updated.signingSecret ?? null);
+      toast.success("Segredo de assinatura rotacionado");
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setRotatingSecret(false);
+    }
+  };
+
   const runSave = async () => {
     if (!activeTeam?.id || !updatePayload || !canSave) return;
     setSaving(true);
@@ -313,7 +354,11 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           {webhook.status === "active" ? (
             <Button
               variant="outline"
-              onClick={() => runStatus({ status: "disabled" })}
+              onClick={() =>
+                direction === "outbound"
+                  ? setConfirmingDeactivate(true)
+                  : runStatus({ status: "disabled" })
+              }
               disabled={actionPending}
             >
               Desativar
@@ -365,6 +410,36 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                 <p className="mt-4 text-sm text-muted-foreground">
                   Falhas consecutivas: {webhook.failureStreak}/{webhook.failureThreshold}
                 </p>
+
+                <div className="mt-6 flex flex-col gap-3 rounded-lg border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <Label>Segredo de assinatura (HMAC)</Label>
+                      <p className="font-mono text-sm text-muted-foreground">
+                        {webhook.signingSecretPreview ?? "não configurado"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmingRotateSecret(true)}
+                      disabled={rotatingSecret || actionPending}
+                    >
+                      <KeyRound data-icon="inline-start" />
+                      {rotatingSecret ? "Rotacionando..." : "Rotacionar segredo"}
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit px-0"
+                    onClick={() => setShowSignatureGuide((current) => !current)}
+                  >
+                    {showSignatureGuide ? "Ocultar guia de verificação" : "Ver guia de verificação"}
+                  </Button>
+                  {showSignatureGuide ? <WebhookSignatureVerificationGuide /> : null}
+                </div>
               </>
             ) : null}
             <div className="mt-6 flex justify-end">
@@ -383,12 +458,18 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                   <TableHead>Resultado</TableHead>
                   <TableHead>HTTP</TableHead>
                   <TableHead>Erro</TableHead>
+                  {direction === "outbound" ? (
+                    <TableHead className="text-right">Detalhe</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={direction === "outbound" ? 5 : 4}
+                      className="text-center text-muted-foreground"
+                    >
                       Nenhum log ainda.
                     </TableCell>
                   </TableRow>
@@ -415,6 +496,18 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                       <TableCell className="max-w-[280px] truncate text-muted-foreground">
                         {log.errorMessage ?? "—"}
                       </TableCell>
+                      {direction === "outbound" ? (
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedLog(log)}
+                          >
+                            Ver detalhes
+                          </Button>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   ))
                 )}
@@ -489,6 +582,155 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           </div>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setRotatedToken(null)}>Entendi</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(revealedSigningSecret)}
+        onOpenChange={(open) => !open && setRevealedSigningSecret(null)}
+      >
+        <AlertDialogContent className="max-h-[90vh] flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Segredo de assinatura atualizado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Copie o segredo agora e atualize o verificador no destino. Depois desta tela ele
+              não será exibido novamente — o segredo anterior para de validar assinaturas
+              imediatamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rotated-signing-secret">Segredo de assinatura (HMAC)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="rotated-signing-secret"
+                  readOnly
+                  value={revealedSigningSecret ?? ""}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => revealedSigningSecret && void copyValue(revealedSigningSecret)}
+                >
+                  <Copy />
+                </Button>
+              </div>
+            </div>
+            <WebhookSignatureVerificationGuide />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setRevealedSigningSecret(null)}>
+              Entendi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhe da entrega</DialogTitle>
+            <DialogDescription>
+              {selectedLog
+                ? formatIntimezone(new Date(selectedLog.createdAt), "dd/MM/yyyy HH:mm:ss", tz)
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge
+                variant={
+                  selectedLog?.result === "success"
+                    ? "default"
+                    : selectedLog?.result === "rejected"
+                      ? "secondary"
+                      : "destructive"
+                }
+              >
+                {selectedLog?.result}
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                HTTP {selectedLog?.statusCode ?? "—"}
+              </span>
+            </div>
+
+            {selectedLog?.errorMessage ? (
+              <div className="flex flex-col gap-1">
+                <Label>Erro completo</Label>
+                <p className="rounded-md bg-muted p-3 text-sm text-destructive">
+                  {selectedLog.errorMessage}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-1">
+              <Label>Payload enviado</Label>
+              <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed">
+                <code className="font-mono">
+                  {selectedLog ? formatLogBody(selectedLog.requestPayload) : ""}
+                </code>
+              </pre>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Corpo da resposta</Label>
+              <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed">
+                <code className="font-mono">
+                  {selectedLog ? formatLogBody(selectedLog.responsePayload) : ""}
+                </code>
+              </pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmingDeactivate} onOpenChange={setConfirmingDeactivate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desativar este webhook?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O webhook é desativado, não excluído: nenhum evento novo é entregue, mas os logs
+              de entrega e o histórico continuam disponíveis nesta tela. Você pode reativá-lo a
+              qualquer momento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmingDeactivate(false);
+                void runStatus({ status: "disabled" });
+              }}
+            >
+              Desativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmingRotateSecret} onOpenChange={setConfirmingRotateSecret}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotacionar o segredo de assinatura?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O segredo atual para de validar assinaturas imediatamente, sem período de
+              graça. Toda entrega feita com o segredo anterior passa a ser rejeitada pelo
+              destino até você atualizar o verificador com o novo segredo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmingRotateSecret(false);
+                void runRotateSigningSecret();
+              }}
+            >
+              Rotacionar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
