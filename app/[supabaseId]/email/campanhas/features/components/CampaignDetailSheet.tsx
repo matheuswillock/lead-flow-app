@@ -725,18 +725,16 @@ export function CampaignDetailSheet({
                                   ) : (
                                     <CampaignStatusBadge status={sub.status} scheduledAt={sub.scheduledAt} />
                                   )}
-                                  <CampaignDispatchProgressLine
-                                    progress={
-                                      subProgress
-                                        ? {
-                                            ...subProgress,
-                                            errorMessage: formatCampaignDispatchErrorMessage(
-                                              subProgress.errorMessage
-                                            ),
-                                          }
-                                        : null
-                                    }
-                                  />
+                                  {subProgress && subProgress.completionKind !== "full" ? (
+                                    <CampaignDispatchProgressLine
+                                      progress={{
+                                        ...subProgress,
+                                        errorMessage: formatCampaignDispatchErrorMessage(
+                                          subProgress.errorMessage
+                                        ),
+                                      }}
+                                    />
+                                  ) : null}
                                 </div>
                               </TableCell>
                               <TableCell className="text-muted-foreground">

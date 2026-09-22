@@ -209,8 +209,7 @@ export function BackofficeLeadScheduleDialog({
   const linkValidation = validateMeetingLinkValue(link, {
     required: requiresManualMeetingLink,
   })
-  const leadEmailValid =
-    !isOnlineMeeting || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail.trim())
+  const leadEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail.trim())
   const canSubmit =
     Boolean(meetingDate && closerId && linkValidation.isValid && leadEmailValid) &&
     !isSubmitting
@@ -257,8 +256,8 @@ export function BackofficeLeadScheduleDialog({
       toast.error("Selecione um closer")
       return
     }
-    if (isOnlineMeeting && !leadEmailValid) {
-      toast.error("Informe um e-mail válido do lead para agendamento online")
+    if (!leadEmailValid) {
+      toast.error("Informe um e-mail válido do lead")
       return
     }
     if (!linkValidation.isValid) {
@@ -343,25 +342,23 @@ export function BackofficeLeadScheduleDialog({
             </Select>
           </div>
 
-          {isOnlineMeeting ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="backoffice-schedule-lead-email">E-mail do lead *</Label>
-              <Input
-                id="backoffice-schedule-lead-email"
-                type="email"
-                value={leadEmail}
-                onChange={(event) => setLeadEmail(event.target.value)}
-                disabled={isSubmitting}
-                placeholder="lead@empresa.com"
-                aria-invalid={!leadEmailValid}
-              />
-              {!leadEmailValid ? (
-                <p className="text-xs font-medium text-destructive">
-                  Informe um e-mail válido para enviar o convite.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="backoffice-schedule-lead-email">E-mail do lead *</Label>
+            <Input
+              id="backoffice-schedule-lead-email"
+              type="email"
+              value={leadEmail}
+              onChange={(event) => setLeadEmail(event.target.value)}
+              disabled={isSubmitting}
+              placeholder="lead@empresa.com"
+              aria-invalid={!leadEmailValid}
+            />
+            {!leadEmailValid ? (
+              <p className="text-xs font-medium text-destructive">
+                Informe um e-mail válido para enviar o convite.
+              </p>
+            ) : null}
+          </div>
 
           <DateTimePicker
             date={meetingDate}

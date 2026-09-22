@@ -17,7 +17,11 @@ export interface BackofficeCalendarEventInput {
   meetingTitle: string
   meetingNotes?: string | null
   meetingLink?: string | null
+  /** Rótulo do formato ("Ligação"/"WhatsApp") para reuniões sem link de vídeo — evita criar um Google Meet automático. */
+  meetingFormatLabel?: string | null
   extraGuests?: string[]
+  /** Quando informado, substitui a lista padrão (lead + closer + extraGuests) — passe [] para um evento pessoal sem convidados. */
+  attendeeEmails?: string[]
   existingEventId?: string | null
 }
 

@@ -264,15 +264,16 @@ export class BackofficeGoogleCalendarService
     const calendarId = "primary"
     const timezone = resolveTimezone(input.organizer.timezone ?? DEFAULT_TZ)
     const endTime = getEventEnd(input.meetingDate)
-    const attendeeEmails = normalizeEmails([
-      input.leadEmail,
-      input.closerEmail,
-      ...(input.extraGuests ?? []),
-    ])
+    const attendeeEmails =
+      input.attendeeEmails !== undefined
+        ? normalizeEmails(input.attendeeEmails)
+        : normalizeEmails([input.leadEmail, input.closerEmail, ...(input.extraGuests ?? [])])
     const body: Record<string, unknown> = {
       summary: input.meetingTitle,
       description: [
-        "Demonstração agendada pelo Backoffice Corretor Studio.",
+        input.meetingFormatLabel
+          ? `Demonstração agendada pelo Backoffice Corretor Studio via ${input.meetingFormatLabel}.`
+          : "Demonstração agendada pelo Backoffice Corretor Studio.",
         `Lead: ${input.leadName}`,
         input.meetingNotes ? `Notas: ${input.meetingNotes}` : null,
       ]
@@ -283,7 +284,9 @@ export class BackofficeGoogleCalendarService
       attendees: attendeeEmails.map((email) => ({ email })),
     }
 
-    if (input.meetingLink?.trim()) {
+    if (input.meetingFormatLabel) {
+      body.location = input.meetingFormatLabel
+    } else if (input.meetingLink?.trim()) {
       body.location = input.meetingLink.trim()
     } else {
       body.conferenceData = {

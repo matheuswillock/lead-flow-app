@@ -25,23 +25,24 @@ export const getLeadStatusLabel = (status: LeadStatus | string) =>
 export const isDraftLead = (lead: { status: LeadStatus | null | undefined }) =>
   lead.status === null || lead.status === undefined
 
-export const getLeadStatusBadgeClass = (status: string) => {
-  const classes: Record<string, string> = {
-    new_opportunity: "border-primary/30 bg-primary/10 text-primary",
-    scheduled: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
-    no_show: "border-border bg-muted text-muted-foreground",
-    pricingRequest: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    future_sale: "border-primary/30 bg-primary/10 text-primary",
-    offerNegotiation: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    pending_documents: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    offerSubmission: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    dps_agreement: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    invoicePayment: "border-semantic-info-border bg-semantic-info-surface text-semantic-info",
-    disqualified: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
-    opportunityLost: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
-    operator_denied: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
-    contract_finalized: "border-semantic-success-border bg-semantic-success-surface text-semantic-success",
-  }
-
-  return classes[status] ?? "border-border bg-muted text-muted-foreground"
+// Tokens --stage-* definidos em DESIGN.md (TOKENS:LIGHT) — paleta "Etapas do
+// pipeline" do UI Kit.
+const leadStatusStageColors: Record<LeadStatus, string> = {
+  new_opportunity: "var(--stage-new-opportunity)",
+  scheduled: "var(--stage-scheduled)",
+  no_show: "var(--stage-no-show)",
+  pricingRequest: "var(--stage-pricing-request)",
+  future_sale: "var(--stage-future-sale)",
+  offerNegotiation: "var(--stage-offer-negotiation)",
+  pending_documents: "var(--stage-pending-documents)",
+  offerSubmission: "var(--stage-offer-submission)",
+  dps_agreement: "var(--stage-dps-agreement)",
+  invoicePayment: "var(--stage-invoice-payment)",
+  disqualified: "var(--stage-disqualified)",
+  opportunityLost: "var(--stage-opportunity-lost)",
+  operator_denied: "var(--stage-operator-denied)",
+  contract_finalized: "var(--stage-contract-finalized)",
 }
+
+export const getLeadStatusStageColor = (status: LeadStatus | string) =>
+  leadStatusStageColors[status as LeadStatus] ?? "var(--muted-foreground)"

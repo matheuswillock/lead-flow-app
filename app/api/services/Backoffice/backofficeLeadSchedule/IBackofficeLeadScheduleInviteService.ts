@@ -8,6 +8,7 @@ export interface SendBackofficeLeadScheduleInviteInput {
   meetingDate: Date
   meetingTitle: string
   meetingLink: string
+  meetingType?: "online" | "call" | "whatsapp" | null
   meetingNotes?: string | null
   extraGuests?: string[]
   eventUid: string
@@ -22,6 +23,7 @@ export interface SendCloserNewLeadNotificationInput {
   meetingDate: Date
   meetingTitle: string
   meetingLink?: string | null
+  meetingType?: "online" | "call" | "whatsapp" | null
   timezone?: string | null
 }
 

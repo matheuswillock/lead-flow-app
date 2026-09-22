@@ -33,8 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import { getLeadStatusBadgeClass, getLeadStatusLabel } from "@/lib/lead-status";
+import { LeadStatusBadge } from "@/components/lead-status-badge";
 import { useLeadTransfersContext } from "../context/LeadTransfersContext";
 import type { LeadTransferMemberRef, LeadTransferRow } from "../context/LeadTransfersTypes";
 
@@ -149,12 +148,7 @@ export function LeadTransfersTable({ onRowClick }: LeadTransfersTableProps) {
                   <TableCell className="text-muted-foreground">{row.leadEmail ?? "—"}</TableCell>
                   <TableCell>{row.leadPhone ?? "—"}</TableCell>
                   <TableCell className="text-center">
-                    <Badge
-                      variant="outline"
-                      className={cn("font-normal", getLeadStatusBadgeClass(row.leadStatus))}
-                    >
-                      {getLeadStatusLabel(row.leadStatus)}
-                    </Badge>
+                    <LeadStatusBadge status={row.leadStatus} />
                   </TableCell>
                   <TableCell className="text-center">
                     <TransferStateBadge state={row.transferState} />
