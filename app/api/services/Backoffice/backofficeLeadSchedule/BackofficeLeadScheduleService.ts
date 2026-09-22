@@ -76,9 +76,22 @@ export class BackofficeLeadScheduleService
       const existingSchedule = await this.scheduleRepo.findLatestActiveByLeadId(input.leadId)
       const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
       const canUseGoogleCalendar = !!organizer
-      const meetingLinkValidation = validateMeetingLinkValue(input.meetingLink, {
-        required: isOnlineMeeting && !canUseGoogleCalendar,
-      })
+      // Achado da revisão final do PR de A-E1c (R13-8) + achado do Codex
+      // (R13-10): o link não é usado (nem exibido) fora de reunião online, e
+      // um valor herdado (possivelmente `http:` legado) não pode travar a
+      // reserva por telefone/WhatsApp. Mas liberar QUALQUER esquema para
+      // "não é online" (via `allowLegacyHttp: !isOnlineMeeting || ...`)
+      // deixava gravar um `http:` novo nesse caminho, que depois passava por
+      // legado de verdade se o lead virasse online — contornando a exigência
+      // de `https:`. A validação de esquema só roda para reunião online; fora
+      // disso o link nem é validado, porque nunca é persistido (ver abaixo).
+      const meetingLinkValidation = isOnlineMeeting
+        ? validateMeetingLinkValue(input.meetingLink, {
+            required: !canUseGoogleCalendar,
+            allowLegacyHttp:
+              !!input.meetingLink && input.meetingLink === existingSchedule?.meetingLink,
+          })
+        : ({ isValid: true, normalized: undefined } as const)
 
       if (!meetingLinkValidation.isValid) {
         if (isOnlineMeeting && !canUseGoogleCalendar && !input.meetingLink?.trim()) {
@@ -93,7 +106,12 @@ export class BackofficeLeadScheduleService
         return new Output(false, [], [meetingLinkValidation.error], null)
       }
 
-      const normalizedMeetingLink = meetingLinkValidation.normalized ?? null
+      // Fora de reunião online, o link é descartado (nunca gravado) — não só
+      // ignorado na tela. Isso fecha o vetor que o Codex apontou: sem isso,
+      // um `http:` novo submetido com `meetingType: "call"/"whatsapp"` seria
+      // persistido e, numa atualização futura para "online", seria aceito
+      // como se fosse legado de verdade.
+      const normalizedMeetingLink = isOnlineMeeting ? (meetingLinkValidation.normalized ?? null) : null
       const attemptedAt = new Date()
       const closerEmail = normalizeEmail(closer.email)
       if (!closerEmail) {
