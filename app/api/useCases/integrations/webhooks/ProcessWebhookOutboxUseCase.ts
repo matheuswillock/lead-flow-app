@@ -119,16 +119,12 @@ export class ProcessWebhookOutboxUseCase {
         ? decryptWebhookSigningSecret(webhook.signingSecretCipher)
         : null;
 
-      if (!signingSecret) {
-        // Achado de code review (Codex, PR #1220): sem segredo — seja porque a cifra
-        // nunca foi gravada, seja porque está ilegível — a entrega NUNCA sai sem
-        // assinatura em silêncio. O critério de sucesso da SPEC 20 é "todo payload de
-        // saída tem assinatura verificável"; um webhook sem segredo configurado vira
-        // falha do evento, sem tentar de novo, e conta para o auto-pause, do mesmo
-        // jeito que um webhook sem URL de destino.
-        const errorMessage = webhook.signingSecretCipher
-          ? "Segredo de assinatura ilegível — entrega bloqueada por segurança"
-          : "Segredo de assinatura não configurado — entrega bloqueada por segurança";
+      if (webhook.signingSecretCipher && !signingSecret) {
+        // Achado de code review (Codex, PR #1220): cifra PRESENTE mas ilegível (chave de
+        // cifra do servidor trocada, dado corrompido) é um bug de configuração real, não
+        // um estado esperado — nunca sai sem assinatura em silêncio, dead-letter imediato
+        // e conta para o auto-pause, do mesmo jeito que um webhook sem URL de destino.
+        const errorMessage = "Segredo de assinatura ilegível — entrega bloqueada por segurança";
         await this.eventLogRepository.create({
           teamId: row.teamId,
           webhookId: row.webhookId,
@@ -153,6 +149,52 @@ export class ProcessWebhookOutboxUseCase {
         }
         await this.outboxRepository.markFailed(row.id, row.attemptCount + 1, null, errorMessage);
         return wasPausedForBadSecret ? "paused" : "failed";
+      }
+
+      if (!signingSecret) {
+        // Achado da revisão final (Opus) sobre o achado do Codex: cifra NUNCA gravada
+        // (`signingSecretCipher` nulo) é o estado de TODO webhook de saída criado antes
+        // desta migration — produção tem webhooks de saída desde 27/07. Bloquear sem
+        // assinatura continua certo, mas tratar isso como o mesmo bug de "cifra
+        // ilegível" (dead-letter imediato + conta pro streak + auto-pausa e cancela a
+        // fila inteira) apagaria os eventos de todo webhook legado no primeiro deploy.
+        // Em vez disso, este evento entra no MESMO caminho de retry/backoff de uma
+        // falha HTTP comum: só conta para o failureStreak quando o evento esgota
+        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (ver DA3/W13 abaixo), dando tempo para o
+        // gestor rotacionar o segredo — visível na tela de detalhe — antes do auto-pause.
+        const errorMessage =
+          "Segredo de assinatura não configurado — entrega adiada até a rotação";
+        await this.eventLogRepository.create({
+          teamId: row.teamId,
+          webhookId: row.webhookId,
+          direction: "outbound",
+          result: "failure",
+          eventKey: row.eventKey,
+          method: "POST",
+          endpoint: webhook.targetUrl,
+          statusCode: null,
+          requestPayload: body,
+          responsePayload: null,
+          errorMessage,
+        });
+
+        const attemptCount = row.attemptCount + 1;
+        const willRetry = shouldRetryWebhookOutbox(attemptCount);
+        const nextAttemptAt = willRetry ? computeWebhookOutboxNextAttemptAt(attemptCount) : null;
+
+        let wasPausedForMissingSecret = false;
+        if (!willRetry) {
+          const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+          if (updated.failureStreak >= updated.failureThreshold) {
+            await this.webhookRepository.markPausedByFailures(row.webhookId);
+            await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
+            await this.notifyAutoPaused(webhook);
+            wasPausedForMissingSecret = true;
+          }
+        }
+
+        await this.outboxRepository.markFailed(row.id, attemptCount, nextAttemptAt, errorMessage);
+        return wasPausedForMissingSecret ? "paused" : "failed";
       }
 
       const result = await this.deliveryService.deliver({

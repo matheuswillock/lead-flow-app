@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, KeyRound, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Copy, KeyRound, RefreshCcw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
@@ -429,6 +429,13 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                       {rotatingSecret ? "Rotacionando..." : "Rotacionar segredo"}
                     </Button>
                   </div>
+                  {!webhook.signingSecretPreview ? (
+                    <p className="flex items-start gap-2 text-sm text-destructive">
+                      <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                      Sem segredo configurado, as entregas deste webhook ficam em espera
+                      (não são descartadas) até você rotacionar um segredo.
+                    </p>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
