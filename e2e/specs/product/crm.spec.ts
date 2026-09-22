@@ -326,9 +326,14 @@ test.describe("app/[supabaseId]/crm", () => {
       await page.getByRole("button", { name: "Adicionar novo lead" }).click();
       const newLeadDialog = page.getByRole("dialog").filter({ hasText: "Novo Lead" });
       await expect(newLeadDialog).toBeVisible({ timeout: 15_000 });
-      await expect(
-        newLeadDialog.getByTestId("age-entry-add-button"),
-      ).toBeVisible();
+      // Confirma que os 4 controles existem ANTES de medir: `assertTouchTargets`
+      // passa silenciosamente se o selector não casar com nada — sem este
+      // guard, um data-testid renomeado/removido faria o teste ficar verde
+      // sem medir nada (achado do review Opus final neste PR).
+      await expect(newLeadDialog.getByTestId("age-entry-add-button")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("save-with-draft-main")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("save-with-draft-chevron")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("lead-form-cancel")).toHaveCount(1);
       await assertTouchTargets(page, {
         selector:
           '[data-testid="age-entry-add-button"], [data-testid="save-with-draft-main"], [data-testid="save-with-draft-chevron"], [data-testid="lead-form-cancel"]',
@@ -345,6 +350,7 @@ test.describe("app/[supabaseId]/crm", () => {
       await page.getByRole("menuitem", { name: "Agendar reunião" }).click();
       const scheduleDialog = page.getByRole("dialog").filter({ hasText: "Agendar Reunião" });
       await expect(scheduleDialog).toBeVisible({ timeout: 15_000 });
+      await expect(scheduleDialog.locator('[role="combobox"]').first()).toHaveCount(1);
       await assertTouchTargets(page, { selector: '[role="dialog"] [role="combobox"]' });
       await page.keyboard.press("Escape");
       await expect(scheduleDialog).toHaveCount(0);
