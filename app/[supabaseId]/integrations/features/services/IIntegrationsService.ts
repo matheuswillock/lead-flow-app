@@ -23,6 +23,7 @@ export type StudioWebhookConfigData = {
 
 export type IntegrationsBootstrapResponse = StudioWebhookConfigData & {
   leadFormUrl: string;
+  leadFormFullUrl: string;
 };
 
 export type SaveStudioWebhookConfigPayload = {

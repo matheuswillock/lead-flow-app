@@ -155,7 +155,6 @@ function PublicLeadFormReady() {
     healthPlansLoading,
     closers,
     sdrs,
-    guestCandidates,
     hasTransferTargets,
     customFieldDefinitions,
     isSubmitting,
@@ -506,7 +505,6 @@ function PublicLeadFormReady() {
                       extraGuests={watchedExtraGuests}
                       extraGuestsError={extraGuestsError}
                       onExtraGuestsChange={handleExtraGuestsChange}
-                      guestCandidates={guestCandidates}
                       disabled={isLoading}
                     />
                   </div>

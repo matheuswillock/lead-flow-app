@@ -9,6 +9,10 @@ import type {
 import { DEFAULT_TZ } from "@/lib/dates";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
+// SPEC 40 B-E1 (DA1): mesmo texto usado pela rota (`lead-form/route.ts`).
+const PUBLIC_LEAD_FORM_RATE_LIMIT_MESSAGE =
+  "Recebemos muitos envios agora. Tente de novo em alguns minutos.";
+
 class PublicLeadFormService implements IPublicLeadFormService {
   private resolveTrackingPayload(): Pick<
     SubmitPublicLeadPayload,
@@ -66,7 +70,6 @@ class PublicLeadFormService implements IPublicLeadFormService {
       healthPlans: result.result?.healthPlans ?? [],
       closers: result.result?.closers ?? [],
       sdrs: result.result?.sdrs ?? [],
-      guestCandidates: result.result?.guestCandidates ?? [],
       timezone: result.result?.timezone ?? DEFAULT_TZ,
       hasTransferTargets: result.result?.hasTransferTargets ?? false,
       customFieldDefinitions: Array.isArray(result.result?.customFieldDefinitions)
@@ -129,11 +132,18 @@ class PublicLeadFormService implements IPublicLeadFormService {
       }),
     });
     const result = await response.json();
+    const errorMessages: string[] = Array.isArray(result?.errorMessages) ? result.errorMessages : [];
+
+    // SPEC 40 B-E1 (DA1): 429 sempre mostra a mensagem calma, mesmo se a
+    // rota não vier com `errorMessages` preenchido — sem detalhe técnico.
+    if (response.status === 429 && errorMessages.length === 0) {
+      errorMessages.push(PUBLIC_LEAD_FORM_RATE_LIMIT_MESSAGE);
+    }
 
     return {
       isValid: result?.isValid ?? false,
       successMessages: result?.successMessages ?? [],
-      errorMessages: result?.errorMessages ?? [],
+      errorMessages,
       lead: result?.result ?? null,
     };
   }

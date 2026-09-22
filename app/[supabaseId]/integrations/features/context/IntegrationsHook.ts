@@ -51,6 +51,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const { hasAccess } = useFeatureAccess();
   const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
   const [leadFormUrl, setLeadFormUrl] = useState("");
+  const [leadFormFullUrl, setLeadFormFullUrl] = useState("");
   const [studioWebhookConfig, setStudioWebhookConfig] = useState<IntegrationsState["studioWebhookConfig"]>(null);
   const [integrationsBootstrapLoading, setIntegrationsBootstrapLoading] = useState(false);
   const [studioWebhookLoading, setStudioWebhookLoading] = useState(false);
@@ -85,6 +86,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
   const resetBootstrapState = useCallback(() => {
     setLeadFormUrl("");
+    setLeadFormFullUrl("");
     setStudioWebhookConfig(null);
     setStudioWebhookTokenMode("auto");
     setStudioWebhookExpiryMode("months_6");
@@ -111,6 +113,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
   const applyBootstrapResult = useCallback((bootstrap: IntegrationsBootstrapResponse) => {
     setLeadFormUrl(bootstrap.leadFormUrl);
+    setLeadFormFullUrl(bootstrap.leadFormFullUrl);
     setStudioWebhookConfig({
       configured: bootstrap.configured,
       tokenMode: bootstrap.tokenMode,
@@ -359,6 +362,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         const cachedBootstrap = integrationsBootstrapCacheByKey.get(bootstrapKey);
         integrationsBootstrapCacheByKey.set(bootstrapKey, {
           leadFormUrl: cachedBootstrap?.leadFormUrl ?? leadFormUrl,
+          leadFormFullUrl: cachedBootstrap?.leadFormFullUrl ?? leadFormFullUrl,
           configured: updatedWebhookConfig.configured,
           tokenMode: updatedWebhookConfig.tokenMode,
           tokenPreview: updatedWebhookConfig.tokenPreview,
@@ -386,6 +390,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   }, [
     activeTeamId,
     leadFormUrl,
+    leadFormFullUrl,
     studioWebhookTokenMode,
     studioWebhookManualToken,
     studioWebhookExpiryMode,
@@ -702,6 +707,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   return {
     supabaseId,
     leadFormUrl,
+    leadFormFullUrl,
     activeTeamId,
     studioWebhookConfig,
     studioWebhookTokenMode,

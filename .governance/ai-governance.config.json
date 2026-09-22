@@ -396,8 +396,6 @@
       "app/documentos/[token]/page.tsx",
       "app/email-unsubscribe/[token]/page.tsx",
       "app/forgot-password/page.tsx",
-      "app/lead-form/[supabaseId]/[teamId]/page.tsx",
-      "app/lead-form/[supabaseId]/page.tsx",
       "app/oferta/[token]/page.tsx",
       "app/operator-confirmed/page.tsx",
       "app/page.tsx",
@@ -428,7 +426,9 @@
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
-      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts"
+      "app/backoffice/(app)/pricing/page.tsx": "e2e/specs/backoffice/pricing.spec.ts",
+      "app/lead-form/[supabaseId]/page.tsx": "e2e/specs/public/lead-form.spec.ts",
+      "app/lead-form/[supabaseId]/[teamId]/page.tsx": "e2e/specs/public/lead-form.spec.ts"
     }
   }
 }

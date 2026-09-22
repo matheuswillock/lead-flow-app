@@ -164,6 +164,72 @@ describe("StudioWebhookIntegrationUseCase.processWebhookLead (D2)", () => {
     expect(createLeadMock).not.toHaveBeenCalled();
   });
 
+  it("SPEC 11 DA1/T-11.1: contrato v1 congelado — corrida de índice único (e-mail) devolve result: null mesmo com isDuplicateConflict/existingLeadId no LeadUseCase (SPEC 40 D25)", async () => {
+    // `LeadUseCase.createLead` passou a devolver `isDuplicateConflict` e
+    // `existingLeadId` no `result` de erro (SPEC 40 D25), para o formulário
+    // público resolver o lead que recebe a atividade de duplicata. Nesse
+    // caminho específico (corrida de índice único) o `result` já era `null`
+    // antes da SPEC 40 — o webhook v1 (contrato congelado, SPEC 11 DA1)
+    // precisa continuar recebendo `null` aqui.
+    createLeadMock.mockClear();
+    touchUsageMock.mockClear();
+    listInboundByTeamIdMock.mockClear();
+    listInboundByTeamIdMock.mockImplementation(async () => []);
+    createLeadMock.mockImplementationOnce(async () =>
+      new Output(false, [], ["Ja existe um lead com este e-mail"], {
+        isDuplicateConflict: true,
+        existingLeadId: "lead-existente-1",
+      })
+    );
+    const { service } = makeService();
+    const useCase = new StudioWebhookIntegrationUseCase(service);
+
+    const output = await useCase.processWebhookLead(makeInput());
+
+    expect(output.isValid).toBe(false);
+    expect(output.errorMessages).toEqual(["Ja existe um lead com este e-mail"]);
+    // O ponto central do teste: nada de `isDuplicateConflict`/`existingLeadId`
+    // vaza para o contrato v1 do webhook.
+    expect(output.result).toBeNull();
+  });
+
+  it("R40-20: contrato v1 preserva requiresDuplicateConfirmation/duplicateCandidates do pre-check, removendo só os campos novos do D25", async () => {
+    // Antes da SPEC 40 (origin/develop), o pre-check de telefone/e-mail
+    // duplicado em `LeadUseCase.ts` já devolvia
+    // `{ requiresDuplicateConfirmation: true, duplicateCandidates: [...] }`
+    // no `result` de erro, e `handleStudioWebhookLeadRequest.ts` serializa
+    // esse `result` inteiro na resposta do webhook. `restoreV1LeadErrorContract`
+    // MUST remover só os dois campos novos do D25 (`isDuplicateConflict`,
+    // `existingLeadId`) — nunca o `result` inteiro — para não quebrar o
+    // contrato v1 no sentido oposto (achado R40-20 da revisão).
+    createLeadMock.mockClear();
+    touchUsageMock.mockClear();
+    listInboundByTeamIdMock.mockClear();
+    listInboundByTeamIdMock.mockImplementation(async () => []);
+    const duplicateCandidates = [
+      { id: "lead-candidato-1", leadCode: "T0001A", name: "Cliente Existente" },
+    ];
+    createLeadMock.mockImplementationOnce(async () =>
+      new Output(false, [], ["Possível lead duplicado neste time"], {
+        requiresDuplicateConfirmation: true,
+        existingLeadId: "lead-candidato-1",
+        duplicateCandidates,
+      })
+    );
+    const { service } = makeService();
+    const useCase = new StudioWebhookIntegrationUseCase(service);
+
+    const output = await useCase.processWebhookLead(makeInput());
+
+    expect(output.isValid).toBe(false);
+    expect(output.errorMessages).toEqual(["Possível lead duplicado neste time"]);
+    // Preserva o formato pré-SPEC-40 exatamente — sem existingLeadId.
+    expect(output.result).toEqual({
+      requiresDuplicateConfirmation: true,
+      duplicateCandidates,
+    });
+  });
+
   it("usa TeamWebhook inbound ativo e grava touchUsage no webhook unificado", async () => {
     createLeadMock.mockClear();
     touchUsageMock.mockClear();
@@ -183,5 +249,28 @@ describe("StudioWebhookIntegrationUseCase.processWebhookLead (D2)", () => {
     expect(touchUsageMock).toHaveBeenCalledWith("inbound-1", true);
     expect(touchWebhookLastUsed).toHaveBeenCalledTimes(1);
     expect((output.result as { webhookId?: string }).webhookId).toBe("inbound-1");
+  });
+
+  it("SPEC 11 DA1/T-11.1: contrato v1 congelado no caminho de TeamWebhook inbound — mesmo tratamento do legado", async () => {
+    createLeadMock.mockClear();
+    touchUsageMock.mockClear();
+    listInboundByTeamIdMock.mockClear();
+    listInboundByTeamIdMock.mockImplementation(async () => [makeInboundNoTokenRow()]);
+    createLeadMock.mockImplementationOnce(async () =>
+      new Output(false, [], ["Já existe um lead com este CNPJ neste time (T1234A)"], {
+        isDuplicateConflict: true,
+        existingLeadId: "lead-existente-2",
+      })
+    );
+
+    const { service } = makeService();
+    const useCase = new StudioWebhookIntegrationUseCase(service);
+
+    const output = await useCase.processWebhookLead(makeInput());
+
+    expect(output.isValid).toBe(false);
+    expect(output.errorMessages).toEqual(["Já existe um lead com este CNPJ neste time (T1234A)"]);
+    expect(output.result).toBeNull();
+    expect(touchUsageMock).not.toHaveBeenCalled();
   });
 });
