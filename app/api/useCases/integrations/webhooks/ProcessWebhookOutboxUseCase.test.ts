@@ -386,12 +386,17 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
     // Diferente do achado de cifra ILEGÍVEL: isto NÃO conta para o streak nem cancela
     // a fila — só reagenda, indefinidamente, como um estado de configuração da conta.
     expect(repos.incrementFailureStreakCalls).toHaveLength(0);
-    expect(repos.markFailedCalls).toEqual([
-      { id: "outbox-no-secret", attemptCount: 0, nextAttemptAt: expect.any(Date) },
-    ]);
+    expect(repos.markFailedCalls).toHaveLength(1);
+    expect(repos.markFailedCalls[0]?.id).toBe("outbox-no-secret");
+    expect(repos.markFailedCalls[0]?.attemptCount).toBe(1);
+    // 1º adiamento: ~15min (tolerância de 5s pro tempo de execução do teste).
+    const delayMs =
+      (repos.markFailedCalls[0]?.nextAttemptAt?.getTime() ?? 0) - Date.now();
+    expect(delayMs).toBeGreaterThan(15 * 60 * 1000 - 5000);
+    expect(delayMs).toBeLessThan(15 * 60 * 1000 + 5000);
   });
 
-  it("achado da 2ª revisão final (Opus): webhook sem segredo NUNCA vira dead-letter nem auto-pausa só por falta de segredo, mesmo depois de muitos ciclos", async () => {
+  it("achado da 3ª revisão final (Opus): o reagendamento por falta de segredo cresce exponencialmente até um teto de 24h, nunca vira dead-letter, e nunca conta pro streak", async () => {
     const repos = makeRepos({ signingSecretCipher: null });
     const useCase = new ProcessWebhookOutboxUseCase(
       repos.outboxRepository as never,
@@ -403,14 +408,23 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
       useCase as unknown as { processRow: (row: unknown) => Promise<string> }
     ).processRow.bind(useCase);
 
-    // A 1ª correção (aae73ed0a) reaproveitava o backoff de falha HTTP comum, mas isso
-    // ainda esgotava TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (5) e dead-letterava/auto-pausava
-    // o webhook sozinho ~81min depois do deploy — só adiava o mesmo desastre. Esta
-    // correção NUNCA avança attemptCount nem conta pro streak só por falta de segredo:
-    // simula bem mais que TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS ciclos e confirma que o
-    // evento continua "em espera" (pending, attemptCount sempre igual ao de entrada).
+    // Achado da 3ª revisão: um intervalo FIXO (a correção anterior, aae73ed0a→b86b9cb2a
+    // usava 15min pra sempre) deixava um único webhook parado monopolizar a capacidade
+    // global do cron (a cada 5min, BATCH_SIZE=25 — vercel.json) e atrasar sem teto os
+    // webhooks já assinados de TODAS as contas. Este teste encadeia 10 ciclos reais
+    // (cada um usa o attemptCount devolvido pelo ciclo anterior, como o T-20.4) e
+    // confirma que o atraso DOBRA a cada ciclo até um teto de 24h — convergindo para
+    // ~1 claim/dia em vez de 1 a cada 15min — sem nunca virar dead-letter (nextAttemptAt
+    // nunca nulo) nem contar pro failureStreak/auto-pause.
+    const expectedDelaysMs = [
+      15, 30, 60, 120, 240, 480, 960, 1440, 1440, 1440, // minutos; 1440min = 24h (teto)
+    ].map((minutes) => minutes * 60 * 1000);
+
+    let attemptCount = 0;
     const outcomes: string[] = [];
+    const observedDelaysMs: number[] = [];
     for (let cycle = 0; cycle < 10; cycle += 1) {
+      const before = Date.now();
       const outcome = await processRow({
         id: "outbox-no-secret-many-cycles",
         teamId: "team-1",
@@ -425,21 +439,30 @@ describe("ProcessWebhookOutboxUseCase — contador de falha por evento (DA3/W13)
           data: {},
         },
         status: "processing",
-        attemptCount: 0,
+        attemptCount,
         nextAttemptAt: new Date(),
       });
       outcomes.push(outcome);
+      const call = repos.markFailedCalls[repos.markFailedCalls.length - 1];
+      attemptCount = call?.attemptCount ?? attemptCount;
+      observedDelaysMs.push((call?.nextAttemptAt?.getTime() ?? 0) - before);
     }
 
     expect(outcomes).toEqual(new Array(10).fill("failed"));
     expect(repos.deliverCalls).toHaveLength(0);
     expect(repos.incrementFailureStreakCalls).toHaveLength(0);
     expect(repos.markPausedCalls).toHaveLength(0);
-    // attemptCount nunca avança e nextAttemptAt nunca é null (nunca vira dead-letter).
-    for (const call of repos.markFailedCalls) {
-      expect(call.attemptCount).toBe(0);
-      expect(call.nextAttemptAt).not.toBeNull();
-    }
     expect(repos.markFailedCalls).toHaveLength(10);
+    // attemptCount cresce 1→10 (nunca comparado contra TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS=5
+    // neste ramo) e nextAttemptAt nunca é null — nunca vira dead-letter.
+    repos.markFailedCalls.forEach((call, index) => {
+      expect(call.attemptCount).toBe(index + 1);
+      expect(call.nextAttemptAt).not.toBeNull();
+    });
+    observedDelaysMs.forEach((delayMs, index) => {
+      const expected = expectedDelaysMs[index] ?? 0;
+      expect(delayMs).toBeGreaterThan(expected - 5000);
+      expect(delayMs).toBeLessThan(expected + 5000);
+    });
   });
 });

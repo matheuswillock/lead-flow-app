@@ -19,7 +19,24 @@ import type { OutboundWebhookEnvelope } from "@/lib/webhooks/webhookPayloadPrese
 const BATCH_SIZE = 25;
 const DEFAULT_CONCURRENCY = 4;
 const MAX_CONCURRENCY = 16;
-const MISSING_SIGNING_SECRET_RETRY_DELAY_MS = 15 * 60 * 1000;
+const MISSING_SIGNING_SECRET_BASE_DELAY_MS = 15 * 60 * 1000;
+const MISSING_SIGNING_SECRET_MAX_DELAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Achado da 3ª revisão final (Opus): reagendar TODO evento "sem segredo" no mesmo
+ * intervalo fixo (15min) para sempre significa que um único webhook antigo com fila
+ * acumulada volta a vencer a cada ciclo do cron (`* / 5 * * * *`, `BATCH_SIZE=25` por
+ * ciclo) e disputa espaço com webhooks já assinados de TODAS as contas — com mais de
+ * ~75 eventos parados, ele passa a monopolizar a capacidade global do outbox. O
+ * atraso cresce exponencialmente a cada ciclo (mesmo evento, sem contar pro
+ * failureStreak nem pro TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS) até um teto de 24h, então um
+ * webhook parado converge para ocupar no máximo 1 claim por dia em vez de 1 a cada
+ * 15min — sem nunca virar dead-letter, e sem nunca deixar de tentar de vez.
+ */
+function computeMissingSigningSecretRetryDelayMs(deferCount: number): number {
+  const delay = MISSING_SIGNING_SECRET_BASE_DELAY_MS * 2 ** Math.max(0, deferCount - 1);
+  return Math.min(delay, MISSING_SIGNING_SECRET_MAX_DELAY_MS);
+}
 
 function resolveTeamWebhookOutboxConcurrency(): number {
   const raw = process.env.TEAM_WEBHOOK_OUTBOX_CONCURRENCY;
@@ -153,19 +170,22 @@ export class ProcessWebhookOutboxUseCase {
       }
 
       if (!signingSecret) {
-        // Achado da 2ª revisão final (Opus) sobre a 1ª: mesmo reaproveitando o backoff
-        // de falha HTTP comum, o evento ainda esgotava TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS
-        // (~81min) e dead-letterava/auto-pausava um webhook legado sozinho — só adiava
-        // o mesmo desastre do achado anterior, e a UI passou a prometer "não descarta"
-        // sem isso ser verdade. Cifra NUNCA gravada (`signingSecretCipher` nulo, estado
-        // de TODO webhook de saída criado antes desta migration) não é uma falha de
-        // ENTREGA que deva consumir orçamento de tentativas: é um estado de CONFIGURAÇÃO
-        // da conta. Por isso este evento NUNCA conta como tentativa (attemptCount não
-        // avança), NUNCA conta para o failureStreak e NUNCA vira dead-letter só por
-        // falta de segredo — fica reagendado num intervalo fixo, de verdade "em espera",
-        // até o gestor rotacionar o segredo (aviso visível na tela de detalhe). Depois
-        // da rotação, a próxima claim decifra normalmente e a entrega HTTP real volta a
-        // valer o backoff/streak padrão.
+        // Achados acumulados de 2 revisões finais (Opus) sobre este mesmo ramo:
+        // (1) reaproveitar o backoff de falha HTTP comum ainda esgotava
+        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS (~81min) e dead-letterava/auto-pausava um
+        // webhook legado sozinho; (2) um intervalo FIXO de reagendamento (15min pra
+        // sempre) deixava um único webhook parado monopolizar a capacidade global do
+        // cron (a cada 5min, BATCH_SIZE=25 — ver vercel.json) e atrasar sem teto a
+        // entrega de webhooks já assinados de TODAS as contas. Cifra NUNCA gravada
+        // (`signingSecretCipher` nulo, estado de TODO webhook de saída criado antes
+        // desta migration) não é uma falha de ENTREGA: é um estado de CONFIGURAÇÃO da
+        // conta. Por isso este evento NUNCA conta para o failureStreak e NUNCA vira
+        // dead-letter só por falta de segredo — mas o reagendamento agora cresce
+        // exponencialmente (15min → ... → teto de 24h, ver
+        // computeMissingSigningSecretRetryDelayMs) para que um webhook parado convirja
+        // a ocupar no máximo ~1 claim/dia, não 1 a cada 15min. Depois da rotação —
+        // visível na tela de detalhe —, a próxima claim decifra normalmente e a
+        // entrega HTTP real volta a valer o backoff/streak padrão.
         const errorMessage =
           "Segredo de assinatura não configurado — entrega em espera até a rotação";
         await this.eventLogRepository.create({
@@ -182,13 +202,15 @@ export class ProcessWebhookOutboxUseCase {
           errorMessage,
         });
 
-        const nextAttemptAt = new Date(Date.now() + MISSING_SIGNING_SECRET_RETRY_DELAY_MS);
-        await this.outboxRepository.markFailed(
-          row.id,
-          row.attemptCount,
-          nextAttemptAt,
-          errorMessage
+        // attemptCount aqui é reaproveitado só para calcular o backoff exponencial
+        // deste caso específico — nunca é comparado contra
+        // TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS nem usado para decidir dead-letter/streak
+        // (ver função acima).
+        const deferCount = row.attemptCount + 1;
+        const nextAttemptAt = new Date(
+          Date.now() + computeMissingSigningSecretRetryDelayMs(deferCount)
         );
+        await this.outboxRepository.markFailed(row.id, deferCount, nextAttemptAt, errorMessage);
         return "failed";
       }
 
