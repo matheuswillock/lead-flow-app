@@ -1,9 +1,11 @@
 import type { UserRole } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   ITeamMembersRepository,
   ProfileTeamMembership,
+  TeamMemberGoogleConnectionStatus,
   TeamMembersEligibleProfile,
   TeamMembersListItem,
   TeamMembersProfileOption,
@@ -345,6 +347,54 @@ export class TeamMembersRepository implements ITeamMembersRepository {
       where: { teamId_profileId: { teamId, profileId } },
       select: { role: true, canTransferAccountLeads: true },
     });
+  }
+
+  /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E3 — extraído de
+   * `participantDispatch.ts`, que fazia essa mesma consulta direto com
+   * `prisma.teamMember.findMany` (violação de `nonRepositoryDatabaseAccessAllowlist`,
+   * DA9). O booleano derivado (`isGoogleConnectionActive`) já basta para
+   * quem chama decidir o canal — o `refreshToken` cru não sai do repositório.
+   */
+  async findGoogleConnectionStatusByEmails(
+    teamId: string,
+    emails: string[]
+  ): Promise<TeamMemberGoogleConnectionStatus[]> {
+    if (emails.length === 0) return [];
+
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+        profile: {
+          email: {
+            in: emails,
+            mode: "insensitive",
+          },
+        },
+      },
+      select: {
+        profile: {
+          select: {
+            email: true,
+            googleConnection: {
+              select: {
+                refreshToken: true,
+                revokedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return teamMembers
+      .filter((member): member is typeof member & { profile: { email: string } } =>
+        Boolean(member.profile.email)
+      )
+      .map((member) => ({
+        email: member.profile.email,
+        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+      }));
   }
 }
 

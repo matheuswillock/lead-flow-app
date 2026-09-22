@@ -94,6 +94,17 @@ export interface TeamMemberNotificationRecipient {
   profile: { email: string; fullName: string | null } | null;
 }
 
+/**
+ * SPEC 13 (Agenda na Criação de Lead), A-E3 — status de conexão Google por
+ * e-mail, para `participantDispatch.ts` classificar quem recebe convite via
+ * Google Calendar e quem recebe por e-mail (Resend). Não trafega o
+ * `refreshToken` de verdade fora do repositório — só o booleano derivado.
+ */
+export interface TeamMemberGoogleConnectionStatus {
+  email: string;
+  googleCalendarConnected: boolean;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
@@ -106,6 +117,11 @@ export interface ITeamMembersRepository {
   findTransferAuthorization(teamId: string, profileId: string): Promise<TeamMemberTransferAuthorization | null>;
   /** Membros do time nos papeis informados, para destinatarios de notificacao. */
   findNotificationRecipients(input: { teamId: string; roles: UserRole[]; onlyTransferAuthorized?: boolean }): Promise<TeamMemberNotificationRecipient[]>;
+  /** Status de conexão Google dos membros do time cujo e-mail está em `emails` (case-insensitive). */
+  findGoogleConnectionStatusByEmails(
+    teamId: string,
+    emails: string[]
+  ): Promise<TeamMemberGoogleConnectionStatus[]>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;

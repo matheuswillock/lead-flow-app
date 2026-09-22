@@ -7,7 +7,15 @@ export interface CreateLeadScheduleDTO {
   date: Date;
   meetingTitle?: string;
   notes?: string;
-  meetingLink?: string;
+  meetingLink?: string | null;
+  /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E2 — o DTO original não tinha esse
+   * campo, mas `LeadScheduleService.createSchedule` grava `meetingType` no
+   * schedule desde sempre (via `tx.leadsSchedule.upsert` direto). Adicionado
+   * aqui para `upsertByLeadIdWithTx` poder cobrir o campo sem duplicar a
+   * lógica de gravação.
+   */
+  meetingType?: string | null;
   extraGuests?: string[];
   googleEventId?: string | null;
   googleCalendarId?: string | null;
@@ -18,6 +26,13 @@ export interface CreateLeadScheduleDTO {
   inviteDispatchLastPayload?: Prisma.InputJsonValue | null;
   publicShareTokenHash?: string | null;
   publicShareExpiresAt?: Date | null;
+  /**
+   * SPEC 13, A-E2 — mesmo motivo do `meetingType`: `createSchedule` reseta
+   * este campo para `null` quando a data da reunião muda (ou mantém o valor
+   * existente quando não muda). O chamador computa o valor final; o
+   * repositório só grava.
+   */
+  reminder30MinSentAt?: Date | null;
 }
 
 export interface UpdateLeadScheduleDTO {
@@ -81,6 +96,20 @@ export interface ILeadScheduleRepository {
    * Atualiza ou cria um agendamento usando leadId como chave única
    */
   upsertByLeadId(leadId: string, data: CreateLeadScheduleDTO): Promise<LeadsSchedule>;
+
+  /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E2 — mesma lógica de
+   * `upsertByLeadId`, mas dentro de uma transação recebida (`tx`), para
+   * `IMeetingRepository.upsertMeetingWithLeadTransition` poder gravar a
+   * reunião e a transição de status do lead atomicamente. `upsertByLeadId`
+   * (sem `tx`) continua existindo e inalterado para não quebrar quem já o usa
+   * fora de transação.
+   */
+  upsertByLeadIdWithTx(
+    tx: Prisma.TransactionClient,
+    leadId: string,
+    data: CreateLeadScheduleDTO
+  ): Promise<LeadsSchedule>;
 
   /**
    * Deleta um agendamento

@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape-html"
+
 const X_HOSTS = new Set(["x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"])
 
 export interface XPostEmbedInput {
@@ -32,15 +34,6 @@ export function parseXPostUrl(rawUrl: string): ParsedXPostUrl | null {
   } catch {
     return null
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
 }
 
 export function buildXPostEmailSnippet({
