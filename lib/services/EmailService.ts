@@ -13,6 +13,7 @@ import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import { resolveTransactionalQuotaFailure } from "@/lib/email/resend-quota-incident";
 import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
 import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
+import { escapeHtml, sanitizeEmailHref } from "@/lib/email/escape-html";
 import {
   buildCloserScheduleNotificationEmailTemplate,
   buildMeetingContactNotificationEmailTemplate,
@@ -2226,10 +2227,27 @@ export class EmailService {
         ? `${data.leadCount} ${meetingLabel} aguardando confirmação`
         : `Time: ${data.leadCount} ${meetingLabel} pendentes há mais de 3 dias`;
 
+    const safeRecipientName = escapeHtml(data.recipientName);
+    const safeTeamName = escapeHtml(data.teamName ?? "do time");
+    const safeCrmUrl = sanitizeEmailHref(data.crmUrl);
+
     const introText =
       data.role === "closer"
-        ? `Olá <strong>${data.recipientName}</strong>, você tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação. Marque como realizada ou no-show no Corretor Studio.`
-        : `Olá <strong>${data.recipientName}</strong>, o time <strong>${data.teamName ?? "do time"}</strong> tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação há mais de 3 dias.`;
+        ? `Olá <strong>${safeRecipientName}</strong>, você tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação. Marque como realizada ou no-show no Corretor Studio.`
+        : `Olá <strong>${safeRecipientName}</strong>, o time <strong>${safeTeamName}</strong> tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação há mais de 3 dias.`;
+
+    // Achado da revisão xhigh do PR de A-E1c (R13-6): `crmUrl` é `http://localhost`
+    // em dev/E2E (não tem CTA nem log nesses ambientes). Em produção é sempre
+    // `https:`, então nunca cai neste fallback.
+    const ctaMarkup = safeCrmUrl
+      ? `<div style="text-align: center; margin: 32px 0;">
+                      <a href="${safeCrmUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 16px;">
+                        Abrir board no CRM
+                      </a>
+                    </div>`
+      : `<p style="margin: 0 0 24px 0; color: #a3a3a3; font-size: 13px; text-align: center;">
+                      ${escapeHtml(data.crmUrl)}
+                    </p>`;
 
     const html = `
       <!DOCTYPE html>
@@ -2254,11 +2272,7 @@ export class EmailService {
                     <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6;">
                       ${introText}
                     </p>
-                    <div style="text-align: center; margin: 32px 0;">
-                      <a href="${data.crmUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 16px;">
-                        Abrir board no CRM
-                      </a>
-                    </div>
+                    ${ctaMarkup}
                   </td>
                 </tr>
                 <tr>

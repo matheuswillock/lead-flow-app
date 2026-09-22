@@ -298,6 +298,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     const manualLinkRequired = isOnlineMeeting && !canUseGoogleCalendar;
     const validatedMeetingLink = validateMeetingLinkValue(meetingLink, {
       required: manualLinkRequired,
+      allowLegacyHttp: !!meetingLink && meetingLink === existingSchedule?.meetingLink,
     });
 
     if (!validatedMeetingLink.isValid) {

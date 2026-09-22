@@ -4,7 +4,7 @@ import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { buildBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
 import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from"
-import { escapeHtml, escapeHtmlAttribute } from "@/lib/email/escape-html"
+import { escapeHtml, sanitizeEmailHref } from "@/lib/email/escape-html"
 import { escapeIcsText } from "@/lib/email/escape-ics-text"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
@@ -25,6 +25,19 @@ interface BackofficeScheduleEmailOptions {
   sourceType?: string
   sourceId?: string
   category?: "schedule_invite"
+}
+
+/**
+ * SPEC 13 (Agenda na Criação de Lead), A-E1c — o link só vira `<a href>` quando
+ * é `https:` válido (`sanitizeEmailHref`). Reunião gravada com link `http:` (ou
+ * qualquer outro esquema) aparece como texto, sem quebrar o e-mail existente.
+ */
+export function buildMeetingLinkMarkup(rawLink: string | null | undefined): string {
+  const safeText = escapeHtml(rawLink)
+  const safeHref = sanitizeEmailHref(rawLink)
+  if (!safeHref) return safeText
+
+  return `<a href="${safeHref}" style="color: #ff6900; text-decoration: none;">${safeText}</a>`
 }
 
 function normalizeEmail(value: string | null | undefined): string | null {
@@ -116,7 +129,7 @@ function buildInviteAttachment(
   }
 }
 
-function buildScheduleDetailsHtml(input: SendBackofficeLeadScheduleInviteInput) {
+export function buildScheduleDetailsHtml(input: SendBackofficeLeadScheduleInviteInput) {
   const timezone = input.timezone || DEFAULT_TZ
   const formattedDate = formatIntimezone(input.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone)
   const formattedTime = formatIntimezone(input.meetingDate, "HH:mm", timezone)
@@ -124,7 +137,7 @@ function buildScheduleDetailsHtml(input: SendBackofficeLeadScheduleInviteInput) 
   const linkRowLabel = formatLabel ? "Formato" : "Link"
   const linkRowValue = formatLabel
     ? escapeHtml(formatLabel)
-    : `<a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a>`
+    : buildMeetingLinkMarkup(input.meetingLink)
 
   return `
     <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
@@ -428,7 +441,7 @@ export class BackofficeLeadScheduleInviteService
       const meetingLinkRow = closerNotificationFormatLabel
         ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Formato:</strong> ${escapeHtml(closerNotificationFormatLabel)}</p>`
         : input.meetingLink
-          ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> <a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a></p>`
+          ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${buildMeetingLinkMarkup(input.meetingLink)}</p>`
           : ""
 
       const body = `

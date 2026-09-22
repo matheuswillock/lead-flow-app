@@ -206,9 +206,18 @@ export function BackofficeLeadScheduleDialog({
 
   const requiresManualMeetingLink =
     isOnlineMeeting && !!selectedCloser && !selectedCloser.googleCalendarConnected
-  const linkValidation = validateMeetingLinkValue(link, {
-    required: requiresManualMeetingLink,
-  })
+  // SPEC 13 (Agenda na Criação de Lead), A-E1c — o link só é exibido e relevante
+  // para reunião online (ver o `isOnlineMeeting ? ... : null` mais abaixo); não
+  // pode travar o envio de um agendamento por telefone/WhatsApp cujo `link`
+  // herdado do lead (possivelmente `http:` legado) nem aparece na tela. Quando
+  // é online e o valor não foi tocado pelo usuário, o `http:` legado continua
+  // aceito (não pode quebrar reunião já gravada).
+  const linkValidation = isOnlineMeeting
+    ? validateMeetingLinkValue(link, {
+        required: requiresManualMeetingLink,
+        allowLegacyHttp: !!link && link === (lead?.meetingLink ?? ""),
+      })
+    : { isValid: true as const, normalized: undefined }
   const leadEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail.trim())
   const canSubmit =
     Boolean(meetingDate && closerId && linkValidation.isValid && leadEmailValid) &&

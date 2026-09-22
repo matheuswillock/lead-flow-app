@@ -78,6 +78,8 @@ export class BackofficeLeadScheduleService
       const canUseGoogleCalendar = !!organizer
       const meetingLinkValidation = validateMeetingLinkValue(input.meetingLink, {
         required: isOnlineMeeting && !canUseGoogleCalendar,
+        allowLegacyHttp:
+          !!input.meetingLink && input.meetingLink === existingSchedule?.meetingLink,
       })
 
       if (!meetingLinkValidation.isValid) {

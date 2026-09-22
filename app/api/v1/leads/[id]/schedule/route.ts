@@ -74,15 +74,6 @@ export async function POST(
       transitionStatusToScheduled,
       confirmNoShowSchedule,
     } = validation.data;
-    const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
-      required: false,
-    });
-
-    if (!meetingLinkValidation.isValid) {
-      const output = new Output(false, [], [meetingLinkValidation.error], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
@@ -98,6 +89,19 @@ export async function POST(
     }
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+
+    // SPEC 13 (Agenda na Criação de Lead), A-E1c — a validação precisa vir depois
+    // de `existingSchedule` para não quebrar uma reunião já gravada com link
+    // `http:` só porque outro campo (data, closer, título…) mudou nesta chamada.
+    const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
+      required: false,
+      allowLegacyHttp: !!meetingLink && meetingLink === existingSchedule?.meetingLink,
+    });
+
+    if (!meetingLinkValidation.isValid) {
+      const output = new Output(false, [], [meetingLinkValidation.error], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
     if (lead.isTransfer === true) {
       if (!date) {
