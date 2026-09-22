@@ -347,7 +347,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const visibleEmailItems = emailItems.filter(canShowItem)
   const visibleWhatsAppItems = whatsAppItems.filter(canShowItem)
   const visibleTeamItems = teamItems.filter(canShowItem)
-  const visibleIntegrationsItems = integrationsItems.filter(canShowItem)
+  // R15-19 (revisão): a rota /integrations já é manager-only no proxy
+  // (`lib/proxy/route-access.ts` MANAGER_ONLY_ROUTE_PREFIXES) e exige
+  // `integration` ou `radar` no gate de feature de rota
+  // (`lib/features/feature-route-access.ts`) antes mesmo do hub renderizar.
+  // Mostrar o grupo pra quem cairia num redirect ou na tela genérica
+  // "Acesso não liberado" tornaria o badge "Bloqueado" enganoso — por isso o
+  // grupo só aparece pra quem realmente alcança o hub.
+  const canAccessIntegrationsArea =
+    (isManager || isTeamMaster) && (hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR))
+  const visibleIntegrationsItems = canAccessIntegrationsArea ? integrationsItems.filter(canShowItem) : []
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>

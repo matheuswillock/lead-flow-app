@@ -35,7 +35,15 @@ export function useWebhooksEntry(supabaseId: string): WebhooksEntryState & Webho
       const forceReload = options?.force === true;
       currentKeyRef.current = requestKey;
 
-      if (!forceReload && lastSuccessfulKeyRef.current === requestKey) return;
+      if (!forceReload && lastSuccessfulKeyRef.current === requestKey) {
+        // R15-20: sem isso, voltar para um time cujo fetch já resolveu antes
+        // (com `loading` ainda `true` por causa de um outro time que ficou
+        // pendente no meio da troca) deixava o card preso no Skeleton para
+        // sempre — o fetch pendente do outro time nunca zera `loading` aqui,
+        // porque `currentKeyRef` já não bate com a chave dele quando resolve.
+        setLoading(false);
+        return;
+      }
       if (inFlightKeyRef.current === requestKey) return;
 
       inFlightKeyRef.current = requestKey;

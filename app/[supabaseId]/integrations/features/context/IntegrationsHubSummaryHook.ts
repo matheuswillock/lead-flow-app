@@ -43,7 +43,15 @@ export function useIntegrationsHubWebhooksSummary(
     const requestKey = buildKey(supabaseId, activeTeamId);
     currentKeyRef.current = requestKey;
 
-    if (lastSuccessfulKeyRef.current === requestKey || inFlightKeyRef.current === requestKey) {
+    if (lastSuccessfulKeyRef.current === requestKey) {
+      // R15-20: mesmo motivo do WebhooksEntryHook — sem isso, voltar a um
+      // time já carregado enquanto o fetch de outro time ainda está pendente
+      // deixava o card preso no Skeleton (o fetch pendente nunca zera
+      // `loading` porque `currentKeyRef` muda antes dele resolver).
+      setSummary((prev) => ({ ...prev, loading: false }));
+      return;
+    }
+    if (inFlightKeyRef.current === requestKey) {
       return;
     }
 
