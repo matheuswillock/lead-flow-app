@@ -157,6 +157,21 @@ class TeamWebhooksService implements ITeamWebhooksService {
     }
     return output.result;
   }
+
+  async rotateSigningSecret(supabaseId: string, teamId: string, id: string) {
+    const response = await fetch(
+      `${API_CLIENT_BASE}/integrations/webhooks/${id}/signing-secret`,
+      {
+        method: "POST",
+        headers: this.headers(supabaseId, teamId),
+      }
+    );
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível rotacionar o segredo"));
+    }
+    return output.result as TeamWebhookSummary;
+  }
 }
 
 export const teamWebhooksService = new TeamWebhooksService();

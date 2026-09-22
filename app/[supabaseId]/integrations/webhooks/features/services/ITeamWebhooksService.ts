@@ -26,12 +26,14 @@ export type TeamWebhookSummary = {
   pausedAt: string | null;
   pauseReason: string | null;
   tokenPreview: string | null;
+  signingSecretPreview: string | null;
   expiryMode: "hours_24" | "months_6" | "indeterminate" | null;
   expiresAt: string | null;
   webhookUrl: string | null;
   createdAt: string;
   updatedAt: string;
   token?: string;
+  signingSecret?: string;
 };
 
 export type TeamWebhookLogItem = {
@@ -119,6 +121,7 @@ export interface ITeamWebhooksService {
     teamId: string,
     id: string
   ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+  rotateSigningSecret(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
 }
 
 export const WEBHOOK_EVENT_OPTIONS: Array<{ value: TeamWebhookEventKey; label: string }> = [

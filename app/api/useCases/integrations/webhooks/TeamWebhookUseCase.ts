@@ -77,6 +77,17 @@ export class TeamWebhookUseCase implements ITeamWebhookUseCase {
     }
   }
 
+  async rotateSigningSecret(access: TeamAccess, id: string, appUrl: string): Promise<Output> {
+    try {
+      const result = await teamWebhookService.rotateSigningSecret(access, id, appUrl);
+      return new Output(true, ["Segredo de assinatura rotacionado"], [], result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao rotacionar segredo";
+      console.error("[TeamWebhookUseCase][rotateSigningSecret] Erro:", error);
+      return new Output(false, [], [message], null);
+    }
+  }
+
   async changeStatus(
     access: TeamAccess,
     id: string,

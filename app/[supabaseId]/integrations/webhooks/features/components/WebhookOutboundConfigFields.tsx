@@ -96,6 +96,7 @@ export function WebhookOutboundConfigFields({ values, onChange, idPrefix = "outb
           {WEBHOOK_EVENT_OPTIONS.map((option) => (
             <label key={option.value} className="flex items-center gap-2 text-sm">
               <Checkbox
+                className="max-lg:size-11"
                 checked={values.selectedEvents.includes(option.value)}
                 onCheckedChange={(checked) => toggleEvent(option.value, checked === true)}
               />

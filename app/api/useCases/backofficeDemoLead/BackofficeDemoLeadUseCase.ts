@@ -5,6 +5,7 @@ import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/back
 import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
 import { backofficeLeadSlackNotificationService } from "@/app/api/services/backofficeLeadSlack/BackofficeLeadSlackNotificationService"
 import { getEmailService } from "@/lib/services/EmailService"
+import { escapeHtml } from "@/lib/email/escape-html"
 import type { CreateDemoLeadInput, IBackofficeDemoLeadUseCase } from "./IBackofficeDemoLeadUseCase"
 
 const demoRequestRecipients = [
@@ -12,15 +13,6 @@ const demoRequestRecipients = [
   "nathielewillock@gmail.com",
   "bruno@onsidemarketing.com.br",
 ]
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}
 
 function buildDemoLeadNotes(input: CreateDemoLeadInput) {
   return [

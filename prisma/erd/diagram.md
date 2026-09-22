@@ -2546,6 +2546,8 @@ completed completed
     String tokenHash "❓"
     String tokenCipher "❓"
     String tokenPreview "❓"
+    String signingSecretCipher "❓"
+    String signingSecretPreview "❓"
     StudioWebhookTokenExpiryMode expiryMode "❓"
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
