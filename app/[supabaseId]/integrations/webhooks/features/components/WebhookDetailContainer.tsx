@@ -613,6 +613,8 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                   type="button"
                   variant="outline"
                   size="icon"
+                  className="max-lg:size-11"
+                  aria-label="Copiar segredo de assinatura"
                   onClick={() => revealedSigningSecret && void copyValue(revealedSigningSecret)}
                 >
                   <Copy />

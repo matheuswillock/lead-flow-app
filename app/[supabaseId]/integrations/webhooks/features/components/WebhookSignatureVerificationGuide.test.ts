@@ -64,6 +64,13 @@ describe("WebhookSignatureVerificationGuide — texto do NODE_VERIFY_SAMPLE cont
     );
   });
 
+  it("timestamp não numérico devolve false, nunca vira NaN passando pela janela de 5 minutos", () => {
+    const signature = "sha256=" + "0".repeat(64);
+    expect(
+      isValidCorretorStudioSignature("secret", "não-e-um-numero", "{}", signature)
+    ).toBe(false);
+  });
+
   it("R20-5: header de assinatura ausente devolve false, nunca lança exceção", () => {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     expect(() =>

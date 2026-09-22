@@ -7,7 +7,7 @@ function isValidCorretorStudioSignature(secret, timestamp, rawBody, signatureHea
   // Nunca comparar sem checar presença e tamanho antes — timingSafeEqual lança
   // exceção (em vez de devolver false) quando os buffers têm tamanhos diferentes,
   // e um header ausente ou forjado com outro tamanho não pode derrubar o receptor.
-  if (!timestamp || !signatureHeader) {
+  if (!timestamp || !signatureHeader || !Number.isFinite(Number(timestamp))) {
     return false;
   }
 
