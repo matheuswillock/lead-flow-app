@@ -39,9 +39,10 @@ import {
 } from "@/lib/public-forms/phone-field"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
 import {
-  resolvePrefilledFieldIds,
+  applyPrefillToVisibleQuestions,
   retainPrefilledFieldsWithAnswers,
   withoutPrefilledField,
+  type PublicFormPrefillResult,
 } from "@/lib/public-forms/prefill-indicator"
 import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldIndicator"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
@@ -153,6 +154,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   // prefill de `cs_el` — dirige o indicador visível no campo (Sparkles +
   // tooltip). Some assim que o visitante edita o campo (ver `onChange`).
   const [prefilledFieldIds, setPrefilledFieldIds] = useState<Set<string>>(new Set())
+  const [campaignPrefill, setCampaignPrefill] = useState<PublicFormPrefillResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
@@ -260,30 +262,32 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       .then((res) => res.json())
       .then((data: { isValid?: boolean; result?: { name: string | null; email: string | null } }) => {
         if (!data?.isValid || !data?.result) return
-        const { name, email } = data.result
-        setAnswers((current) => {
-          const prefilledIds = resolvePrefilledFieldIds({
-            questions: snapshot.questions,
-            prefill: { name, email },
-            currentAnswers: current,
-          })
-          if (prefilledIds.size > 0) {
-            setPrefilledFieldIds((currentIds) => new Set([...currentIds, ...prefilledIds]))
-          }
-          const next = { ...current }
-          for (const question of snapshot.questions) {
-            if (question.mappingKey === "name" && name && !current[question.id]) {
-              next[question.id] = name
-            }
-            if (question.mappingKey === "email" && email && !current[question.id]) {
-              next[question.id] = email
-            }
-          }
-          return next
-        })
+        setCampaignPrefill(data.result)
       })
       .catch(() => {})
-  }, [preview, publicId, snapshot.questions])
+  }, [preview, publicId])
+
+  useEffect(() => {
+    if (!started || !campaignPrefill || !pageQuestionsKey) return
+    const visibleQuestions = pageQuestionsKey
+      .split("\0")
+      .map((questionId) => snapshot.questions.find((question) => question.id === questionId))
+      .filter((question): question is PublicQuestion => Boolean(question))
+
+    setAnswers((currentAnswers) => {
+      const applied = applyPrefillToVisibleQuestions({
+        visibleQuestions,
+        prefill: campaignPrefill,
+        currentAnswers,
+      })
+      if (applied.prefilledFieldIds.size === 0) return currentAnswers
+
+      setPrefilledFieldIds((currentIds) =>
+        new Set([...currentIds, ...applied.prefilledFieldIds]),
+      )
+      return applied.answers
+    })
+  }, [campaignPrefill, pageQuestionsKey, snapshot.questions, started])
 
   const sendWithOutbox = useCallback(
     async (kind: PublicFormBrowserOutboxKind, endpoint: string, body: Record<string, unknown>) => {

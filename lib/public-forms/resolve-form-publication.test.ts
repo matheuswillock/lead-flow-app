@@ -67,6 +67,70 @@ describe("resolvePublicFormPublicationForVisitor", () => {
     expect(findPublicationContainingQuestions).not.toHaveBeenCalled()
   })
 
+  it("usa a publicação atual quando as respostas pertencem à tela republicada", async () => {
+    findLatestSessionSubmissionOnForm.mockResolvedValueOnce({
+      publicationId: "pub-old",
+      status: "processing",
+      leadId: null,
+    })
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: "pub-old",
+      snapshot: PREVIOUS_SNAPSHOT,
+    })
+
+    const resolved = await resolvePublicFormPublicationForVisitor({
+      current: { publicationId: "pub-current", snapshot: CURRENT_SNAPSHOT },
+      visitorSessionId: "session-1",
+      questionIds: ["q-new"],
+    })
+
+    expect(resolved.publicationId).toBe("pub-current")
+    expect(resolved.snapshot).toBe(CURRENT_SNAPSHOT)
+    expect(resolved.sessionSubmission).toBeNull()
+  })
+
+  it("preserva a sessão quando ela já pertence à publicação atual", async () => {
+    const currentSessionSubmission = {
+      publicationId: "pub-current",
+      status: "processing",
+      leadId: null,
+    }
+    findLatestSessionSubmissionOnForm.mockResolvedValueOnce(currentSessionSubmission)
+
+    const resolved = await resolvePublicFormPublicationForVisitor({
+      current: { publicationId: "pub-current", snapshot: CURRENT_SNAPSHOT },
+      visitorSessionId: "session-1",
+      questionIds: ["q-new"],
+    })
+
+    expect(resolved.publicationId).toBe("pub-current")
+    expect(resolved.snapshot).toBe(CURRENT_SNAPSHOT)
+    expect(resolved.sessionSubmission?.publicationId).toBe("pub-current")
+    expect(findPublicationById).not.toHaveBeenCalled()
+  })
+
+  it("preserva a publicação da sessão quando não há perguntas no payload", async () => {
+    const previousSessionSubmission = {
+      publicationId: "pub-old",
+      status: "processing",
+      leadId: null,
+    }
+    findLatestSessionSubmissionOnForm.mockResolvedValueOnce(previousSessionSubmission)
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: "pub-old",
+      snapshot: PREVIOUS_SNAPSHOT,
+    })
+
+    const resolved = await resolvePublicFormPublicationForVisitor({
+      current: { publicationId: "pub-current", snapshot: CURRENT_SNAPSHOT },
+      visitorSessionId: "session-1",
+      questionIds: [],
+    })
+
+    expect(resolved.publicationId).toBe("pub-old")
+    expect(resolved.sessionSubmission?.publicationId).toBe("pub-old")
+  })
+
   it("usa a publicação que cobre as respostas quando não há sessão", async () => {
     findPublicationContainingQuestions.mockResolvedValueOnce({
       publicationId: "pub-old",

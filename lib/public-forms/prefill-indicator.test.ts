@@ -1,9 +1,49 @@
 import { describe, expect, it } from "bun:test"
 import {
+  applyPrefillToVisibleQuestions,
   resolvePrefilledFieldIds,
   retainPrefilledFieldsWithAnswers,
   withoutPrefilledField,
 } from "./prefill-indicator"
+
+describe("applyPrefillToVisibleQuestions", () => {
+  it("preenche somente as perguntas que já apareceram na tela", () => {
+    const result = applyPrefillToVisibleQuestions({
+      visibleQuestions: [{ id: "q-name", mappingKey: "name" }],
+      prefill: { name: "Maria Silva", email: "maria@example.com" },
+      currentAnswers: {},
+    })
+
+    expect(result.answers).toEqual({ "q-name": "Maria Silva" })
+    expect([...result.prefilledFieldIds]).toEqual(["q-name"])
+    expect(result.answers).not.toHaveProperty("q-email")
+  })
+
+  it("preenche e-mail somente quando sua pergunta aparece depois", () => {
+    const result = applyPrefillToVisibleQuestions({
+      visibleQuestions: [{ id: "q-email", mappingKey: "email" }],
+      prefill: { name: "Maria Silva", email: "maria@example.com" },
+      currentAnswers: { "q-name": "Maria Silva" },
+    })
+
+    expect(result.answers).toEqual({
+      "q-name": "Maria Silva",
+      "q-email": "maria@example.com",
+    })
+    expect([...result.prefilledFieldIds]).toEqual(["q-email"])
+  })
+
+  it("não sobrescreve pergunta que o visitante já tocou", () => {
+    const result = applyPrefillToVisibleQuestions({
+      visibleQuestions: [{ id: "q-email", mappingKey: "email" }],
+      prefill: { name: null, email: "campanha@example.com" },
+      currentAnswers: { "q-email": "digitado@example.com" },
+    })
+
+    expect(result.answers["q-email"]).toBe("digitado@example.com")
+    expect(result.prefilledFieldIds.size).toBe(0)
+  })
+})
 
 describe("resolvePrefilledFieldIds", () => {
   it("marca a pergunta de nome quando o prefill a preenche e ela ainda está vazia", () => {

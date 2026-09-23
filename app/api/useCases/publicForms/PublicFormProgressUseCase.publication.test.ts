@@ -162,4 +162,32 @@ describe("PublicFormProgressUseCase publicação da sessão", () => {
     const metricArg = upsertMetricEvent.mock.calls[0] as unknown as [{ publicationId: string }]
     expect(metricArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
   })
+
+  it("salva na publicação atual sem misturar respostas de uma sessão antiga", async () => {
+    findLatestSessionSubmissionOnForm.mockResolvedValueOnce({
+      id: "sub-session-old",
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      status: "processing",
+      leadId: null,
+    })
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      snapshot: makeSnapshot(Q_OLD),
+    })
+    listSubmissionAnswers.mockResolvedValueOnce([{ questionId: Q_OLD, value: "Resposta antiga" }])
+
+    const output = await useCase.execute(PUBLIC_ID, {
+      visitorSessionId: "session-1",
+      answers: [{ questionId: "q-new", value: "Ana" }],
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(listSubmissionAnswers).not.toHaveBeenCalled()
+    const progressArg = upsertProgressSubmission.mock.calls[0] as unknown as [
+      { publicationId: string; requestKey: string; answers: Array<{ questionId: string }> },
+    ]
+    expect(progressArg[0].publicationId).toBe(CURRENT_PUBLICATION_ID)
+    expect(progressArg[0].requestKey).toBe(`progress:session-1:${CURRENT_PUBLICATION_ID}`)
+    expect(progressArg[0].answers.map((answer) => answer.questionId)).toEqual(["q-new"])
+  })
 })

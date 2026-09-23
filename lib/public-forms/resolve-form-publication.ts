@@ -10,6 +10,16 @@ export type ResolvedPublicFormPublication = {
   >
 }
 
+function snapshotContainsAllQuestions(
+  snapshot: PublicFormSnapshot,
+  questionIds: string[],
+): boolean {
+  if (questionIds.length === 0) return false
+
+  const snapshotQuestionIds = new Set(snapshot.questions.map((question) => question.id))
+  return questionIds.every((questionId) => snapshotQuestionIds.has(questionId))
+}
+
 export async function resolvePublicFormPublicationForVisitor(input: {
   current: { publicationId: string; snapshot: PublicFormSnapshot }
   visitorSessionId?: string | null
@@ -23,6 +33,22 @@ export async function resolvePublicFormPublicationForVisitor(input: {
       input.visitorSessionId,
     )
     if (sessionSubmission) {
+      if (sessionSubmission.publicationId === input.current.publicationId) {
+        return {
+          publicationId: input.current.publicationId,
+          snapshot: input.current.snapshot,
+          sessionSubmission,
+        }
+      }
+
+      if (snapshotContainsAllQuestions(input.current.snapshot, input.questionIds)) {
+        return {
+          publicationId: input.current.publicationId,
+          snapshot: input.current.snapshot,
+          sessionSubmission: null,
+        }
+      }
+
       const publication = await publicFormsRepository.findPublicationById(
         sessionSubmission.publicationId,
       )

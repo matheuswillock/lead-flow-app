@@ -16,6 +16,35 @@ export type PublicFormPrefillResult = {
   email: string | null
 }
 
+export function applyPrefillToVisibleQuestions(input: {
+  visibleQuestions: PrefillableQuestion[]
+  prefill: PublicFormPrefillResult
+  currentAnswers: Record<string, unknown>
+}): {
+  answers: Record<string, unknown>
+  prefilledFieldIds: Set<string>
+} {
+  const answers = { ...input.currentAnswers }
+  const prefilledFieldIds = new Set<string>()
+
+  for (const question of input.visibleQuestions) {
+    if (question.id in input.currentAnswers) continue
+
+    const value =
+      question.mappingKey === "name"
+        ? input.prefill.name
+        : question.mappingKey === "email"
+          ? input.prefill.email
+          : null
+    if (!value) continue
+
+    answers[question.id] = value
+    prefilledFieldIds.add(question.id)
+  }
+
+  return { answers, prefilledFieldIds }
+}
+
 /**
  * Espelha a condição usada pelo efeito de prefill: uma pergunta só entra no
  * indicador quando o prefill de fato vai definir seu valor — isto é, o
