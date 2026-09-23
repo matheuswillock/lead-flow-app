@@ -1160,7 +1160,9 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                   <p className="text-sm text-muted-foreground">
                     Nenhuma agenda, tarefa ou lembrete para este dia e horário.
                   </p>
-                  <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
+                  <Button className="max-lg:h-11" onClick={() => setLeadPickerOpen(true)}>
+                    Agendar nova reunião
+                  </Button>
                 </div>
               ) : (
                 <>
