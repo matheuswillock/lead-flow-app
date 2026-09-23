@@ -263,7 +263,7 @@ test.describe("app/forms/[publicId]", () => {
     expect(body.answers[0].value).toBe("Maria Teste")
   })
 
-  test("prefill via cs_el pré-preenche nome e e-mail nos campos nativos", async ({ page }) => {
+  test("preenche identidade somente quando cada pergunta aparece", async ({ page }) => {
     await arrangeEmailLog(teamId)
 
     await page.goto(`/forms/${publicId}?cs_el=${E2E_EMAIL_LOG_ID}`)
@@ -271,6 +271,21 @@ test.describe("app/forms/[publicId]", () => {
 
     const nameInput = page.getByRole("textbox").first()
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
+    await expect(nameInput).toHaveAttribute("name", "name")
+    await expect(nameInput).toHaveAttribute("autocomplete", "name")
+
+    await page.getByRole("button", { name: /continuar/i }).click()
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible({ timeout: 15_000 })
+    const emailInput = page.getByRole("textbox").first()
+    await expect(emailInput).toHaveValue("destinatario.e2e@example.com")
+    await expect(emailInput).toHaveAttribute("name", "email")
+    await expect(emailInput).toHaveAttribute("autocomplete", "email")
+
+    await page.getByRole("button", { name: /continuar/i }).click()
+    await expect(page.getByText("Qual o seu telefone?")).toBeVisible({ timeout: 15_000 })
+    const phoneInput = page.getByRole("textbox").first()
+    await expect(phoneInput).toHaveAttribute("name", "phone")
+    await expect(phoneInput).toHaveAttribute("autocomplete", "tel")
   })
 
   test("bloqueia Continuar quando o nome tem menos de 3 caracteres", async ({ page }) => {
