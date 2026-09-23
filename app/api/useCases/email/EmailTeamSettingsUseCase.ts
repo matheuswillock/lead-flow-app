@@ -12,6 +12,7 @@ import {
   isClickTrackingEligibleDomain,
   RESEND_TRACKING_POLICY,
 } from "@/lib/email/resend-domain-reconcile"
+import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
 import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   isSelfInflictedTrackingConflict,
@@ -180,6 +181,7 @@ export type EmailTeamSettingsDependencies = {
   domainExistence?: (name: string) => Promise<SendingDomainExistence>
   /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
   dnsProviderLookupService?: IDnsProviderLookupService
+  waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 }
 
 export class EmailTeamSettingsUseCase {
@@ -191,6 +193,7 @@ export class EmailTeamSettingsUseCase {
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
   private readonly dnsProviderLookupService: IDnsProviderLookupService
+  private readonly waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -208,6 +211,7 @@ export class EmailTeamSettingsUseCase {
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
     this.dnsProviderLookupService =
       dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
+    this.waitForTrackingConfirmation = dependencies.waitForTrackingConfirmation
   }
 
   private composeResult(
@@ -780,18 +784,30 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const { data: domainData, error: getError } = await resend.domains.get(
-        settings.resendDomainId
-      )
-      if (getError || !domainData) {
+      const confirmation = await confirmResendDomainTracking({
+        desired: { openTracking: input.openTracking, clickTracking: desiredClickTracking },
+        fetchDomain: async () => {
+          const result = await resend.domains.get(settings.resendDomainId!)
+          return { data: result.data, error: result.error }
+        },
+        wait: this.waitForTrackingConfirmation,
+      })
+      const domainData = confirmation.snapshot
+      if (!domainData) {
         console.error(
           "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
-          getError
+          confirmation.error
         )
         return new Output(
           false,
           [],
-          [mapResendDomainError(getError?.message, "tracking", settings.resendDomainName ?? undefined)],
+          [
+            mapResendDomainError(
+              confirmation.error instanceof Error ? confirmation.error.message : undefined,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
           null
         )
       }
@@ -842,6 +858,17 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (!confirmation.confirmed) {
+        return new Output(
+          false,
+          [],
+          [
+            "O Resend não confirmou a alteração das métricas de tracking. O estado atual foi sincronizado; tente novamente.",
+          ],
+          null
+        )
+      }
 
       const successMessage = trackingConflict
         ? "Subdomínio de tracking já existia no Resend. Status sincronizado — adicione o DNS de Tracking e re-verifique, se pendente."
