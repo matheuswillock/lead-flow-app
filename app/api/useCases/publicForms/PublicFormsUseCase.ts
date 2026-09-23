@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type { ITeamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/ITeamFormDomainRepository"
+import { teamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/TeamFormDomainRepository"
 import {
   buildPublicFormPreviewSnapshot,
   mapPublicFormDraft,
@@ -41,7 +43,14 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
   return validatePublicFormDraft(mapPublicFormDraft(form), { mode: "form" })
 }
 
+const FORM_DOMAIN_REQUIRED_MESSAGE =
+  "Configure o subdomínio dos formulários antes de publicar. Depois que ele for verificado, você poderá publicar este formulário."
+
 export class PublicFormsUseCase {
+  constructor(
+    private readonly formDomainRepository: ITeamFormDomainRepository = teamFormDomainRepository,
+  ) {}
+
   async list(access: TeamAccess, filters: PublicFormListFilters) {
     const approvalPermission = await canApprove(access)
     if (!isManager(access) && !approvalPermission) {
@@ -169,6 +178,10 @@ export class PublicFormsUseCase {
   async publish(access: TeamAccess, id: string) {
     if (!isManager(access) && !(await canApprove(access))) {
       return new Output(false, [], ["Acesso negado"], null)
+    }
+    const formDomain = await this.formDomainRepository.findByTeamId(access.teamId)
+    if (formDomain?.status !== "verified") {
+      return new Output(false, [], [FORM_DOMAIN_REQUIRED_MESSAGE], null)
     }
     const form = await publicFormsService.get(access.teamId, id)
     const errors = publicationErrors(form)

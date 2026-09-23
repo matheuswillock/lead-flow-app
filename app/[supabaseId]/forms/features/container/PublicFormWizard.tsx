@@ -76,6 +76,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
+import type { PublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
 import {
   Dialog,
   DialogContent,
@@ -352,6 +355,9 @@ export function PublicFormWizard({
   const isCatalogTemplate = host?.mode === "catalog-template"
   const isHealthPlanTemplate = templateParam === PUBLIC_FORM_TEMPLATE_IDS.HEALTH_PLAN_SIMULATOR
   const activeTeam = host ? { id: "host" } : productTeam?.activeTeam
+  const formDomain = usePublicFormDomainStatus(
+    isCatalogTemplate ? null : activeTeam?.id,
+  )
   const listHref = host?.listHref ?? `/${params.supabaseId}/forms`
   const formHref = host?.formHref ?? ((id: string) => `/${params.supabaseId}/forms/${id}`)
   const previewHref =
@@ -809,6 +815,8 @@ export function PublicFormWizard({
                 draft={draft}
                 publishing={publishing}
                 isCatalogTemplate={isCatalogTemplate}
+                formDomain={formDomain}
+                formSettingsHref={`/${params.supabaseId}/email/configuracoes`}
                 onPublish={() => void publish()}
                 onGoToStep={setStep}
                 change={change}
@@ -2773,6 +2781,8 @@ function Review({
   draft: d,
   publishing,
   isCatalogTemplate = false,
+  formDomain,
+  formSettingsHref,
   onPublish,
   onGoToStep,
   change,
@@ -2780,6 +2790,8 @@ function Review({
   draft: PublicFormDraftInput
   publishing: boolean
   isCatalogTemplate?: boolean
+  formDomain: PublicFormDomainStatus
+  formSettingsHref: string
   onPublish: () => void
   onGoToStep: (step: number) => void
   change: (p: Partial<PublicFormDraftInput>) => void
@@ -2882,9 +2894,27 @@ function Review({
           <AlertDescription>Conclua os itens pendentes antes de publicar.</AlertDescription>
         </Alert>
       ) : null}
-      <Button disabled={!ready || publishing} onClick={onPublish}>
-        {publishing ? "Publicando..." : isCatalogTemplate ? "Publicar template" : "Publicar formulário"}
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                disabled={!ready || publishing || (!isCatalogTemplate && !formDomain.isVerified)}
+                onClick={onPublish}
+              >
+                {publishing ? "Publicando..." : isCatalogTemplate ? "Publicar template" : "Publicar formulário"}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {!isCatalogTemplate && !formDomain.isVerified ? (
+            <TooltipContent>
+              <Link href={formSettingsHref}>
+                Configure e verifique o subdomínio dos formulários para publicar.
+              </Link>
+            </TooltipContent>
+          ) : null}
+        </Tooltip>
+      </TooltipProvider>
     </div>
   )
 }
