@@ -1,10 +1,11 @@
-import type { 
-  SubscriptionData, 
-  SubscriptionInvoice, 
+import type {
+  SubscriptionData,
+  SubscriptionInvoice,
   UpdateSubscriptionCreditsDTO,
-  UpdatePaymentMethodDTO 
+  UpdatePaymentMethodDTO
 } from '../types/subscription.types';
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 export interface ISubscriptionService {
   getSubscription(supabaseId: string): Promise<SubscriptionData | null>;
@@ -16,40 +17,59 @@ export interface ISubscriptionService {
   retryPayment(supabaseId: string, invoiceId: string): Promise<boolean>;
 }
 
+type ApiOutput = {
+  isValid: boolean;
+  errorMessages?: string[];
+  result?: unknown;
+};
+
 export class SubscriptionService implements ISubscriptionService {
   private baseUrl = `${API_CLIENT_BASE}/subscription-management`;
+
+  /**
+   * DA1 (SPEC 21): nunca descartar o body do erro. Um `!response.ok` sem ler
+   * `errorMessages` degrada 404 de negócio, 403 de permissão e 500 para a
+   * mesma mensagem genérica no toast — na janela dual-account isso escondia
+   * exatamente o erro que o usuário precisava ver. `ApiRequestError` é o
+   * mesmo tipo que `toUserToastMessage`/`toastUserError` já tratam como copy
+   * de produto (passa intacto, sem heurística de acentuação).
+   */
+  private async throwFromResponse(response: Response, fallback: string): Promise<never> {
+    const body = (await response.json().catch(() => null)) as ApiOutput | null;
+    throw new ApiRequestError(body?.errorMessages?.join(', ') || fallback, response.status);
+  }
 
   async getSubscription(supabaseId: string): Promise<SubscriptionData | null> {
     const response = await fetch(`${this.baseUrl}?supabaseId=${supabaseId}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao carregar assinatura.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao carregar assinatura.', response.status);
     }
 
     // Backend retorna null quando não há assinatura (comportamento esperado)
-    return result.result;
+    return (result.result as SubscriptionData | null) ?? null;
   }
 
   async getInvoices(supabaseId: string): Promise<SubscriptionInvoice[]> {
     const response = await fetch(`${this.baseUrl}/invoices?supabaseId=${supabaseId}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao carregar faturas.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao carregar faturas.', response.status);
     }
 
-    return result.result || [];
+    return (result.result as SubscriptionInvoice[]) || [];
   }
 
   async syncSubscription(supabaseId: string): Promise<boolean> {
@@ -58,13 +78,13 @@ export class SubscriptionService implements ISubscriptionService {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao sincronizar assinatura.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao sincronizar assinatura.', response.status);
     }
 
     return true;
@@ -81,18 +101,17 @@ export class SubscriptionService implements ISubscriptionService {
     });
 
     if (!response.ok) {
-      const result = await response.json().catch(() => null);
-      throw new Error(result?.errorMessages?.join(', ') || `HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao atualizar créditos.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao atualizar créditos.', response.status);
     }
 
     return {
-      checkoutUrl: result.result?.checkoutUrl ?? null,
+      checkoutUrl: (result.result as { checkoutUrl?: string | null } | undefined)?.checkoutUrl ?? null,
     };
   }
 
@@ -103,13 +122,13 @@ export class SubscriptionService implements ISubscriptionService {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao cancelar assinatura.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao cancelar assinatura.', response.status);
     }
 
     return true;
@@ -126,13 +145,13 @@ export class SubscriptionService implements ISubscriptionService {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao atualizar método de pagamento.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao atualizar método de pagamento.', response.status);
     }
 
     return true;
@@ -146,13 +165,13 @@ export class SubscriptionService implements ISubscriptionService {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      await this.throwFromResponse(response, 'Erro ao retentar pagamento.');
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as ApiOutput;
 
     if (!result.isValid) {
-      throw new Error(result.errorMessages.join(', '));
+      throw new ApiRequestError(result.errorMessages?.join(', ') || 'Erro ao retentar pagamento.', response.status);
     }
 
     return true;

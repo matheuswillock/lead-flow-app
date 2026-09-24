@@ -85,7 +85,7 @@ export function BackofficeProductTable({ products, onCreate }: Props) {
           </p>
         </div>
         {canManage && onCreate ? (
-          <Button type="button" onClick={onCreate}>
+          <Button type="button" onClick={onCreate} className="max-lg:h-11">
             Criar primeira precificação
           </Button>
         ) : null}
@@ -174,7 +174,12 @@ export function BackofficeProductTable({ products, onCreate }: Props) {
                   {canManage && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="max-lg:size-11"
+                          aria-label={`Ações de ${product.name}`}
+                        >
                           <MoreHorizontal data-icon="inline-start" />
                         </Button>
                       </DropdownMenuTrigger>

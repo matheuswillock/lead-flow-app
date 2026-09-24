@@ -24,11 +24,23 @@ export async function getPaymentByAccountWithFallback(
 ): Promise<GetPaymentByAccountResult> {
   const accountsToTry: AsaasAccountId[] = knownAccount ? [knownAccount] : ["primary", "legacy"];
 
+  // Achado P2 da revisão do PR #1207 (thread PRRT_...eDvN): sem conta
+  // conhecida, este laço é uma SONDA — tentar primary e depois legacy é o
+  // desenho, e o 404 final é resultado normal (`found: false`), não sintoma
+  // de ponteiro morto. Deixar o alerta `asaas-legacy-404` disparar aqui
+  // inunda o alarme de E7/X3, ainda por cima a partir de
+  // `/api/q/payments/[id]/status`, que aceita `pay_` arbitrário sem
+  // autenticação. Com a conta conhecida não há sonda: é consulta dirigida a
+  // um ponteiro persistido, e aí o 404 é exatamente o sintoma que o alerta
+  // existe para pegar — por isso a supressão é condicional, não fixa.
+  const isFallbackProbe = !knownAccount;
+
   for (const account of accountsToTry) {
     try {
       const client = createAsaasClient(account);
       const payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
         method: "GET",
+        suppressLegacy404Alert: isFallbackProbe,
       });
       return { found: true, payment, account };
     } catch (error) {

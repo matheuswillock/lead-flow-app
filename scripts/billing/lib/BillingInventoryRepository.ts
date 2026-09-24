@@ -24,11 +24,15 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
         where: { asaasCustomerId: { not: null }, asaasAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
       }),
-      // BackofficeClient ainda não tem coluna de conta (nasce em 30-E3):
-      // pré-cutover todos os customers vivem numa conta só, então incluir
-      // sem filtro evita FANTASMA falso; refinar quando a coluna existir.
+      // 30-E3 entregou `BackofficeClient.asaasAccount`, então o ponteiro
+      // deixa de entrar sem filtro (refinamento que o E1 deixou pendente).
+      // Sem ele a execução da conta `legacy` classificaria TODO cliente de
+      // backoffice como ORFAO — o cus_ está no banco e não existe naquela
+      // conta —, e o cron diário de E7
+      // (`AsaasDualAccountReconciliationUseCase`, que reconcilia as duas
+      // contas) alertaria no Sentry uma vez por cliente, todo dia.
       prisma.backofficeClient.findMany({
-        where: { asaasCustomerId: { not: null } },
+        where: { asaasCustomerId: { not: null }, asaasAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
       }),
     ])
@@ -56,13 +60,23 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
   }
 
   async listSubscriptionPointers(account: AsaasAccountId): Promise<DbSubscriptionPointer[]> {
-    // ProfileSubscription não tem coluna própria de conta (nasce em 30-E3);
-    // o dono da conta do sub_ hoje é Profile.asaasSubscriptionAccount.
+    // `ProfileSubscription.asaasSubscriptionAccount` (30-E3) é o dono certo
+    // deste `sub_` — o Profile pode apontar outro, do fluxo legado direto.
+    // O filtro agora vai na coluna própria, e não mais pela relação com
+    // Profile. A ressalva que segurava essa troca era a ausência de
+    // backfill: a coluna nasceu `not null default 'primary'`, então ler por
+    // ela devolvia valor constante. Isso deixou de valer com
+    // 20260918150645_backfill-legacy-account-new-pointer-columns.sql, que
+    // relabela para 'legacy' todo ponteiro anterior ao cutover (achado P1 da
+    // revisão). Usar Profile como proxy era aproximação boa só enquanto as
+    // duas contas coincidiam por perfil — na janela dual elas divergem por
+    // desenho (customer já migrado, assinatura ainda drenando na antiga), e
+    // é justamente aí que o inventário precisa acertar.
     const [profileSubscriptions, fallbackProfiles] = await Promise.all([
       prisma.profileSubscription.findMany({
         where: {
           asaasSubscriptionId: { not: null },
-          profile: { asaasSubscriptionAccount: account },
+          asaasSubscriptionAccount: account,
         },
         select: {
           id: true,
@@ -74,13 +88,23 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
       }),
       // Fallback legado (mesmo padrão de AsaasSubscriptionSyncRepository.
       // getSyncSnapshot): Profile.asaasSubscriptionId ainda vale quando a
-      // linha de ProfileSubscription não existe ou não tem sub_. Sem ele,
-      // assinatura viva apontada só pelo Profile viraria FANTASMA falso.
+      // linha de ProfileSubscription não existe, não tem sub_, ou tem um
+      // sub_ DIFERENTE do Profile — achado P2 da revisão (chatgpt-codex-
+      // connector, thread PRRT_...CUk8). O filtro anterior só liberava o
+      // fallback quando `subscription` era nulo/sem id, então a conta dupla
+      // (os dois ponteiros não-nulos e distintos — Profile numa conta,
+      // ProfileSubscription noutra) escondia o sub_ do Profile: a
+      // reconciliação via API achava a assinatura real na conta certa e não
+      // encontrava ninguém no banco, reportando FANTASMA falso. Sem o `OR`
+      // aqui, todo profile com pointer próprio na conta pedida entra —
+      // Prisma não compara duas colunas de relações diferentes no `where`
+      // (mesma limitação documentada no achado do `OverdueReminderUseCase`),
+      // então o dedupe por `asaasSubscriptionId` abaixo é quem evita
+      // duplicata quando os dois ponteiros coincidem.
       prisma.profile.findMany({
         where: {
           asaasSubscriptionId: { not: null },
           asaasSubscriptionAccount: account,
-          OR: [{ subscription: null }, { subscription: { asaasSubscriptionId: null } }],
         },
         select: {
           id: true,
