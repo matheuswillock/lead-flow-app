@@ -138,6 +138,7 @@ export class PublicFormSubmissionUseCase {
       const resolved = await resolvePublicFormPublicationForVisitor({
         current,
         visitorSessionId: input.visitorSessionId,
+        renderedPublicationId: input.publicationId,
         questionIds: input.answers.map((answer) => answer.questionId),
       })
       // Este gate roda ANTES do de baixo e usa a última submissão da sessão no

@@ -81,6 +81,8 @@ import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
 import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
+import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -100,6 +102,7 @@ export function PublicFormsContainer() {
   // entra na chave do cache — sem ele, trocar de time devolvia o domínio do
   // time anterior e gerava link que a guarda de tenancy responde 404.
   const shareBaseUrl = usePublicFormShareBaseUrl(forms.ids?.teamId ?? null)
+  const formDomain = usePublicFormDomainStatus(forms.ids?.teamId ?? null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [analyticsId, setAnalyticsId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<PublicFormListItem | null>(null)
@@ -406,9 +409,29 @@ export function PublicFormsContainer() {
                           </DropdownMenuItem>
                         ) : null}
                         {(forms.capabilities.canEdit || forms.capabilities.canApprove) && item.status !== "archived" ? (
-                          <DropdownMenuItem onClick={() => void forms.action(item.id, "publish")}>
-                            Publicar
-                          </DropdownMenuItem>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="block">
+                                  <DropdownMenuItem
+                                    disabled={!formDomain.isVerified}
+                                    onClick={() => {
+                                      if (formDomain.isVerified) void forms.action(item.id, "publish")
+                                    }}
+                                  >
+                                    Publicar
+                                  </DropdownMenuItem>
+                                </span>
+                              </TooltipTrigger>
+                              {!formDomain.isVerified ? (
+                                <TooltipContent>
+                                  <Link href={`/${params.supabaseId}/email/configuracoes`}>
+                                    Configure e verifique o subdomínio dos formulários para publicar.
+                                  </Link>
+                                </TooltipContent>
+                              ) : null}
+                            </Tooltip>
+                          </TooltipProvider>
                         ) : forms.capabilities.canEdit ? (
                           <DropdownMenuItem onClick={() => void forms.action(item.id, "restore")}>
                             Restaurar para rascunho

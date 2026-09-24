@@ -410,7 +410,13 @@ export function CustomDomainCard() {
       // o backend valida de novo (domínio verificado + CNAME de Tracking ok).
       clickTracking: clickTrackingUnlockable ? clickTrackingDraft : false,
     })
-    if (ok) setTrackingDialogOpen(false)
+    if (ok) {
+      setTrackingDialogOpen(false)
+      return
+    }
+
+    setOpenTrackingDraft(domainOpenTracking)
+    setClickTrackingDraft(domainClickTracking)
   }
 
   return (

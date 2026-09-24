@@ -7,6 +7,7 @@
  * usuário copia com o que a campanha vai enviar.
  */
 export interface IPublicFormShareBaseUrlClientService {
+  getFormDomain(): Promise<{ hostname: string | null; isVerified: boolean }>
   /** Origem (https://forms.time.com.br) do domínio VERIFICADO, ou null. */
   getVerifiedFormDomainBaseUrl(): Promise<string | null>
 }

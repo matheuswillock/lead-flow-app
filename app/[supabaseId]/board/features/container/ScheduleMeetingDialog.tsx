@@ -50,6 +50,10 @@ import {
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import {
+  isLeadEmailRequiredForMeetingType,
+  isLeadEmailValidForMeetingType,
+} from "@/lib/lead-schedule/email-requirement";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -172,6 +176,8 @@ export function ScheduleMeetingDialog({
     [meetingLink, requiresManualMeetingLink, isOnlineMeeting]
   );
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  const isLeadEmailRequired = isLeadEmailRequiredForMeetingType(meetingType);
+  const isLeadEmailValid = isLeadEmailValidForMeetingType(meetingType, leadEmailDraft);
   const isPreSchedule = !!lead.isTransfer;
   const meetingDateKey = isValidDate(meetingDate) && meetingDate ? formatLocalDateValue(meetingDate, SCHEDULE_TIMEZONE) : null;
   const availableTimes = useMemo(
@@ -198,7 +204,7 @@ export function ScheduleMeetingDialog({
   const canSubmit = isPreSchedule
     ? isValidDate(meetingDate) && !isPreScheduleSlotOccupied
     : !!closerId &&
-      isValidEmail(leadEmailDraft) &&
+      isLeadEmailValid &&
       isValidDate(meetingDate) &&
       meetingTitle.trim().length > 0 &&
       availableTimes.length > 0 &&
@@ -495,7 +501,7 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reunião");
       return;
     }
-    if (!isPreSchedule && !isValidEmail(leadEmailDraft)) {
+    if (!isPreSchedule && !isLeadEmailValid) {
       toast.error("Informe um e-mail válido para o lead.");
       return;
     }
@@ -528,7 +534,7 @@ export function ScheduleMeetingDialog({
             "x-team-id": activeTeamId || "",
           },
           body: JSON.stringify({
-            email: normalizedLeadEmail,
+            email: normalizedLeadEmail || null,
           }),
         });
 
@@ -812,11 +818,13 @@ export function ScheduleMeetingDialog({
                   placeholder="lead@exemplo.com"
                   value={leadEmailDraft}
                   onChange={(event) => setLeadEmailDraft(event.target.value)}
-                  required
+                  required={isLeadEmailRequired}
                 />
-                {!isValidEmail(leadEmailDraft) && (
+                {!isLeadEmailValid && (
                   <p className="text-xs text-muted-foreground">
-                    Informe um e-mail válido para concluir o agendamento.
+                    {isLeadEmailRequired
+                      ? "Informe um e-mail válido para concluir o agendamento."
+                      : "E-mail opcional. Se informado, será usado para enviar os detalhes da agenda."}
                   </p>
                 )}
               </div>

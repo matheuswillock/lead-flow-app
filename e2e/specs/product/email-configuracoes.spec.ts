@@ -543,6 +543,48 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
         clickTracking: true,
       })
     })
+
+    test("mantém o diálogo aberto e restaura o toggle quando o Resend não confirma", async ({
+      page,
+    }) => {
+      await page.route("**/email/settings/domain/records**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(verifiedDomainRecordsPayload()),
+        })
+      )
+      await page.route("**/email/settings/domain/tracking**", (route) =>
+        route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: false,
+            successMessages: [],
+            errorMessages: [
+              "O Resend não confirmou a alteração das métricas de tracking. O estado atual foi sincronizado; tente novamente.",
+            ],
+            result: null,
+          }),
+        })
+      )
+
+      await gotoEmailSettings(page)
+      await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
+      await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
+
+      const dialogHeading = page.getByRole("heading", {
+        name: "Configurar métricas de tracking",
+      })
+      const clickSwitch = page.locator("#click-tracking-switch")
+      await clickSwitch.click()
+      await expect(clickSwitch).toBeChecked()
+      await page.getByRole("button", { name: "Salvar" }).click()
+
+      await expect(dialogHeading).toBeVisible()
+      await expect(clickSwitch).not.toBeChecked()
+      await expect(page.getByText(/Resend não confirmou/)).toBeVisible()
+    })
   })
 
   /**

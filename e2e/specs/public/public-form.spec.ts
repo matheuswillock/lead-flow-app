@@ -16,6 +16,8 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 const QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111101"
 const QUESTION_EMAIL_ID = "11111111-1111-4111-8111-111111111102"
 const QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111103"
+const PREVIOUS_QUESTION_NAME_ID = "11111111-1111-4111-8111-111111111104"
+const PREVIOUS_QUESTION_PHONE_ID = "11111111-1111-4111-8111-111111111105"
 const E2E_PUBLIC_ID = "e2e00000-0000-4000-8000-000000000001"
 const E2E_EMAIL_LOG_ID = "e2e10000-0000-4000-8000-000000000001"
 
@@ -201,6 +203,7 @@ test.describe("app/forms/[publicId]", () => {
     const { form, team } = await arrangePublicForm()
     publicId = form.publicId
     teamId = team.id
+    await getPrisma().publicFormRateLimit.deleteMany()
   })
 
   test.afterAll(async () => {
@@ -218,10 +221,15 @@ test.describe("app/forms/[publicId]", () => {
     await page.goto(`/forms/${publicId}`)
     await expect(page.getByRole("button", { name: /começar/i })).toBeVisible({ timeout: 15_000 })
 
+    await expect
+      .poll(async () => (await context.cookies()).some((cookie) => cookie.name === "cs_form_vs"), {
+        message: "Cookie cs_form_vs não foi criado",
+      })
+      .toBe(true)
     const cookies = await context.cookies()
     const sessionCookie = cookies.find((c) => c.name === "cs_form_vs")
 
-    expect(sessionCookie, "Cookie cs_form_vs não foi criado").toBeTruthy()
+    expect(sessionCookie).toBeTruthy()
 
     const decoded = decodeURIComponent(sessionCookie.value)
     expect(decoded).toMatch(new RegExp(`^${publicId}:[0-9a-f-]{36}$`))
@@ -255,7 +263,7 @@ test.describe("app/forms/[publicId]", () => {
     expect(body.answers[0].value).toBe("Maria Teste")
   })
 
-  test("prefill via cs_el pré-preenche nome e e-mail nos campos nativos", async ({ page }) => {
+  test("preenche identidade somente quando cada pergunta aparece", async ({ page }) => {
     await arrangeEmailLog(teamId)
 
     await page.goto(`/forms/${publicId}?cs_el=${E2E_EMAIL_LOG_ID}`)
@@ -263,6 +271,21 @@ test.describe("app/forms/[publicId]", () => {
 
     const nameInput = page.getByRole("textbox").first()
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
+    await expect(nameInput).toHaveAttribute("name", "name")
+    await expect(nameInput).toHaveAttribute("autocomplete", "name")
+
+    await page.getByRole("button", { name: /continuar/i }).click()
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible({ timeout: 15_000 })
+    const emailInput = page.getByRole("textbox").first()
+    await expect(emailInput).toHaveValue("destinatario.e2e@example.com")
+    await expect(emailInput).toHaveAttribute("name", "email")
+    await expect(emailInput).toHaveAttribute("autocomplete", "email")
+
+    await page.getByRole("button", { name: /continuar/i }).click()
+    await expect(page.getByText("Qual o seu telefone?")).toBeVisible({ timeout: 15_000 })
+    const phoneInput = page.getByRole("textbox").first()
+    await expect(phoneInput).toHaveAttribute("name", "phone")
+    await expect(phoneInput).toHaveAttribute("autocomplete", "tel")
   })
 
   test("bloqueia Continuar quando o nome tem menos de 3 caracteres", async ({ page }) => {
@@ -320,7 +343,7 @@ test.describe("app/forms/[publicId]", () => {
     await expect(page.getByRole("button", { name: /continuar/i })).toBeEnabled()
     await page.getByRole("button", { name: /continuar/i }).click()
 
-    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible()
+    await expect(page.getByText("Qual o seu e-mail?")).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole("textbox")).toHaveValue("user@example.com")
   })
 
@@ -418,6 +441,117 @@ test.describe("app/forms/[publicId]", () => {
     expect(partial, "Casca de progresso não foi criada").toBeTruthy()
     expect(partial.submitRequestedAt).toBeNull()
     expect(partial.status).toBe("processing")
+  })
+
+  test("sessão parcial anterior não valida respostas da publicação atual contra perguntas antigas", async ({
+    request,
+  }) => {
+    const prisma = getPrisma()
+    const suffix = String(Date.now()).slice(-6)
+    const visitorSessionId = `e2eRepublish${suffix}`
+    const form = await prisma.publicForm.findUniqueOrThrow({
+      where: { publicId },
+      select: { id: true, createdById: true },
+    })
+    const previousPublication = await prisma.publicFormPublication.findUniqueOrThrow({
+      where: { formId_version: { formId: form.id, version: 1 } },
+      select: { id: true },
+    })
+    const previousSnapshot = {
+      ...buildSnapshot(form.id, publicId),
+      version: 1,
+      questions: [
+        {
+          id: PREVIOUS_QUESTION_NAME_ID,
+          position: 1,
+          type: "text",
+          title: "Nova pergunta",
+          required: true,
+          scoreWeight: 0,
+          options: [],
+          mappingTarget: "native_field",
+          mappingKey: "name",
+        },
+        {
+          id: PREVIOUS_QUESTION_PHONE_ID,
+          position: 2,
+          type: "phone",
+          title: "tel",
+          required: false,
+          scoreWeight: 0,
+          options: [],
+          mappingTarget: "native_field",
+          mappingKey: "phone",
+        },
+      ],
+    }
+    const currentSnapshot = {
+      ...buildSnapshot(form.id, publicId),
+      version: 2,
+    }
+    const previousPublishedAt = new Date("2025-01-01T00:00:00.000Z")
+    const previousEndedAt = new Date("2025-01-02T00:00:00.000Z")
+    const currentPublishedAt = new Date("2025-01-03T00:00:00.000Z")
+    const [, currentPublication] = await prisma.$transaction([
+      prisma.publicFormPublication.update({
+        where: { id: previousPublication.id },
+        data: {
+          snapshot: previousSnapshot,
+          publishedAt: previousPublishedAt,
+          endedAt: previousEndedAt,
+        },
+        select: { id: true },
+      }),
+      prisma.publicFormPublication.upsert({
+        where: { formId_version: { formId: form.id, version: 2 } },
+        create: {
+          formId: form.id,
+          publishedById: form.createdById,
+          version: 2,
+          snapshot: currentSnapshot,
+          publishedAt: currentPublishedAt,
+        },
+        update: {
+          snapshot: currentSnapshot,
+          publishedAt: currentPublishedAt,
+          endedAt: null,
+        },
+        select: { id: true },
+      }),
+    ])
+    await prisma.publicFormSubmission.create({
+      data: {
+        formId: form.id,
+        publicationId: previousPublication.id,
+        requestKey: `e2e-old-progress-${suffix}`,
+        visitorSessionId,
+        completionStatus: "partial",
+        status: "processing",
+      },
+    })
+
+    const response = await request.post(`/api/q/public-forms/${publicId}/submissions`, {
+      data: {
+        requestKey: `e2e-republished-submit-${suffix}`,
+        visitorSessionId,
+        origin: {},
+        answers: [
+          { questionId: QUESTION_NAME_ID, value: `Maria Republicada ${suffix}` },
+          { questionId: QUESTION_PHONE_ID, value: `1197777${suffix.slice(-4)}` },
+        ],
+      },
+    })
+
+    const body = await response.json()
+    expect(response.status(), JSON.stringify(body)).toBe(201)
+    expect(body.errorMessages).toEqual([])
+    expect(JSON.stringify(body)).not.toContain("Nova pergunta")
+    expect(JSON.stringify(body)).not.toContain("tel: Informe um telefone válido")
+    const submitted = await prisma.publicFormSubmission.findUniqueOrThrow({
+      where: { requestKey: `e2e-republished-submit-${suffix}` },
+      select: { publicationId: true },
+    })
+    expect(submitted.publicationId).toBe(currentPublication.id)
   })
 
   // T-F1.4 — SPEC 40 E1. `required` é invariante do servidor: POST direto (sem

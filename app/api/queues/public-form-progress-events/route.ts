@@ -72,6 +72,7 @@ export async function processPublicFormProgressEventMessage(
   try {
     const output = await useCase.execute(message.publicId, {
       visitorSessionId: message.visitorSessionId,
+      publicationId: message.publicationId,
       answers: message.answers ?? [],
       origin: message.origin ?? {},
       lastQuestionId: message.lastQuestionId,
