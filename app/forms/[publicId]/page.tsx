@@ -53,9 +53,17 @@ export default async function PublicFormPage({
     output.isValid && output.result
       ? (output.result as { snapshot: PublicFormSnapshot }).snapshot
       : null;
+  const initialPublicationId =
+    output.isValid && output.result
+      ? (output.result as { publicationId: string }).publicationId
+      : null;
 
   return (
-    <PublicFormViewProvider publicId={publicId} initialSnapshot={initialSnapshot}>
+    <PublicFormViewProvider
+      publicId={publicId}
+      initialSnapshot={initialSnapshot}
+      initialPublicationId={initialPublicationId}
+    >
       <PublicFormViewContainer />
     </PublicFormViewProvider>
   );

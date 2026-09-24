@@ -79,6 +79,18 @@ describe("resolvePrefilledFieldIds", () => {
     expect(ids.has("q-name")).toBe(false)
   })
 
+  it("não reaplica o prefill a um campo editado que ficou oculto e voltou", () => {
+    const result = applyPrefillToVisibleQuestions({
+      visibleQuestions: [{ id: "q-name", mappingKey: "name" }],
+      prefill: { name: "ED-ENERGY", email: null },
+      currentAnswers: {},
+      editedQuestionIds: new Set(["q-name"]),
+    })
+
+    expect(result.answers).toEqual({})
+    expect(result.prefilledFieldIds.size).toBe(0)
+  })
+
   it("nunca marca pergunta sem mappingKey de nome/e-mail, mesmo com prefill disponível", () => {
     const ids = resolvePrefilledFieldIds({
       questions: [{ id: "q-vidas", mappingKey: null }],

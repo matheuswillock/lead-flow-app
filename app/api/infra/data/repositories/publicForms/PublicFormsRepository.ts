@@ -649,6 +649,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     })
   }
 
+  findLatestSessionSubmissionForPublication(publicationId: string, visitorSessionId: string) {
+    return prisma.publicFormSubmission.findFirst({
+      where: { publicationId, visitorSessionId },
+      orderBy: { updatedAt: "desc" },
+    })
+  }
+
   async attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,

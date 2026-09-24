@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { usePublicFormViewContext } from "../context/PublicFormViewContext"
 
 export function PublicFormViewContainer() {
-  const { publicId, snapshot, error, isLoading } = usePublicFormViewContext()
+  const { publicId, publicationId, snapshot, error, isLoading } = usePublicFormViewContext()
 
   if (error) {
     return (
@@ -31,6 +31,7 @@ export function PublicFormViewContainer() {
       <PublicFormRenderer
         snapshot={snapshot}
         publicId={publicId}
+        publicationId={publicationId ?? undefined}
         className="min-h-[60dvh] w-full max-w-[580px]"
       />
     </main>

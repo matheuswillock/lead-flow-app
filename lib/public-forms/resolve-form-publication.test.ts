@@ -6,6 +6,11 @@ const findLatestSessionSubmissionOnForm = mock(async () => null as {
   status: string
   leadId: string | null
 } | null)
+const findLatestSessionSubmissionForPublication = mock(async () => null as {
+  publicationId: string
+  status: string
+  leadId: string | null
+} | null)
 const findPublicationById = mock(async () => null as {
   publicationId: string
   snapshot: unknown
@@ -18,6 +23,7 @@ const findPublicationContainingQuestions = mock(async () => null as {
 mock.module("@/app/api/infra/data/repositories/publicForms/PublicFormsRepository", () => ({
   publicFormsRepository: {
     findLatestSessionSubmissionOnForm,
+    findLatestSessionSubmissionForPublication,
     findPublicationById,
     findPublicationContainingQuestions,
   },
@@ -38,6 +44,7 @@ const PREVIOUS_SNAPSHOT = {
 describe("resolvePublicFormPublicationForVisitor", () => {
   beforeEach(() => {
     findLatestSessionSubmissionOnForm.mockClear()
+    findLatestSessionSubmissionForPublication.mockClear()
     findPublicationById.mockClear()
     findPublicationContainingQuestions.mockClear()
     findLatestSessionSubmissionOnForm.mockResolvedValue(null)
@@ -87,6 +94,30 @@ describe("resolvePublicFormPublicationForVisitor", () => {
     expect(resolved.publicationId).toBe("pub-current")
     expect(resolved.snapshot).toBe(CURRENT_SNAPSHOT)
     expect(resolved.sessionSubmission).toBeNull()
+  })
+
+  it("fixa a publicação que a tela informou mesmo quando os IDs também existem na atual", async () => {
+    const renderedSubmission = {
+      publicationId: "pub-old",
+      status: "processing",
+      leadId: null,
+    }
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: "pub-old",
+      snapshot: { ...CURRENT_SNAPSHOT, questions: [{ id: "q-new" }] },
+    })
+    findLatestSessionSubmissionForPublication.mockResolvedValueOnce(renderedSubmission as never)
+
+    const resolved = await resolvePublicFormPublicationForVisitor({
+      current: { publicationId: "pub-current", snapshot: CURRENT_SNAPSHOT },
+      renderedPublicationId: "pub-old",
+      visitorSessionId: "session-1",
+      questionIds: ["q-new"],
+    })
+
+    expect(resolved.publicationId).toBe("pub-old")
+    expect(resolved.sessionSubmission).toBe(renderedSubmission as never)
+    expect(findLatestSessionSubmissionOnForm).not.toHaveBeenCalled()
   })
 
   it("preserva a sessão quando ela já pertence à publicação atual", async () => {

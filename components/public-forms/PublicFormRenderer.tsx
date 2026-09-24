@@ -76,6 +76,7 @@ type SchedulingAnswer = {
 type Props = {
   snapshot: PublicFormSnapshot
   publicId?: string
+  publicationId?: string
   preview?: boolean
   className?: string
 }
@@ -146,7 +147,13 @@ function runSuccessAction(action: PublicFormSuccessAction) {
   }
 }
 
-export function PublicFormRenderer({ snapshot, publicId, preview = false, className }: Props) {
+export function PublicFormRenderer({
+  snapshot,
+  publicId,
+  publicationId,
+  preview = false,
+  className,
+}: Props) {
   const [started, setStarted] = useState(false)
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
@@ -154,6 +161,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   // prefill de `cs_el` — dirige o indicador visível no campo (Sparkles +
   // tooltip). Some assim que o visitante edita o campo (ver `onChange`).
   const [prefilledFieldIds, setPrefilledFieldIds] = useState<Set<string>>(new Set())
+  const editedQuestionIds = useRef<Set<string>>(new Set())
   const [campaignPrefill, setCampaignPrefill] = useState<PublicFormPrefillResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -279,6 +287,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         visibleQuestions,
         prefill: campaignPrefill,
         currentAnswers,
+        editedQuestionIds: editedQuestionIds.current,
       })
       if (applied.prefilledFieldIds.size === 0) return currentAnswers
 
@@ -479,6 +488,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     if (preview || !publicId || !session) return
     await sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
         visitorSessionId: session,
+        ...(publicationId ? { publicationId } : {}),
         answers: pageAnswers,
         origin: getOrigin(),
         schemaVersion: 1,
@@ -486,7 +496,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         occurredAt: new Date().toISOString(),
         trigger: "page_flush",
     })
-  }, [pageAnswers, preview, publicId, sendWithOutbox, session])
+  }, [pageAnswers, preview, publicId, publicationId, sendWithOutbox, session])
 
   const sendBlurProgress = useCallback(
     (questionId: string, value: unknown, trigger: "blur" | "change" = "blur") => {
@@ -494,6 +504,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
       void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
           visitorSessionId: session,
+          ...(publicationId ? { publicationId } : {}),
           answers: [{ questionId, value }],
           origin: getOrigin(),
           schemaVersion: 1,
@@ -509,7 +520,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         setError(getPhoneFieldInlineError(value))
       }
     },
-    [preview, publicId, sendWithOutbox, session, snapshot.questions],
+    [preview, publicId, publicationId, sendWithOutbox, session, snapshot.questions],
   )
 
   function start() {
@@ -641,6 +652,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         `${API_CLIENT_BASE}/public-forms/${publicId}/submissions`,
         {
           requestKey: buildPublicFormSubmitRequestKey(session, getOrigin().emailLogId),
+          ...(publicationId ? { publicationId } : {}),
           answers: answerList,
           origin: getOrigin(),
           visitorSessionId: session,
@@ -1003,6 +1015,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                         question={item}
                         value={answers[item.id]}
                         onChange={(value) => {
+                          editedQuestionIds.current.add(item.id)
                           setAnswers((current) => {
                             if (!isLeadNameQuestion(item)) {
                               return { ...current, [item.id]: value }

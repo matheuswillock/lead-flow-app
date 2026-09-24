@@ -213,6 +213,7 @@ export const PUBLIC_FORM_JOURNEY_EVENT_TYPES = [
 
 export type PublicFormProgressInput = {
   visitorSessionId: string
+  publicationId?: string
   answers: PublicFormAnswerInput[]
   origin?: Record<string, unknown>
   lastQuestionId?: string
@@ -224,6 +225,7 @@ export type PublicFormProgressInput = {
 
 export type PublicFormSubmissionInput = {
   requestKey: string
+  publicationId?: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
   schemaVersion?: 1
