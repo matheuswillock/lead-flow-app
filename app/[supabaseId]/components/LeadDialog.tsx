@@ -1506,7 +1506,7 @@ export default function LeadDialog({
 
     return {
       name: data.name,
-      email: data.email || undefined,
+      email: data.email?.trim() ? data.email.trim() : null,
       phone: normalizedPhone || undefined,
       meetingDate: undefined,
       meetingTitle: undefined,

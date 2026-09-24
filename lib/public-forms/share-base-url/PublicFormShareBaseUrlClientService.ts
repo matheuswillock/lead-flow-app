@@ -9,15 +9,21 @@ type FormDomainApiOutput = {
 }
 
 export class PublicFormShareBaseUrlClientService implements IPublicFormShareBaseUrlClientService {
-  async getVerifiedFormDomainBaseUrl(): Promise<string | null> {
+  async getFormDomain(): Promise<{ hostname: string | null; isVerified: boolean }> {
     const res = await fetch(`${API_CLIENT_BASE}/email/settings/form-domain`)
-    if (!res.ok) return null
+    if (!res.ok) return { hostname: null, isVerified: false }
 
     const json = (await res.json().catch(() => null)) as FormDomainApiOutput | null
     const formDomain = json?.isValid ? json.result?.formDomain : null
-    if (!formDomain || formDomain.status !== "verified") return null
+    return {
+      hostname: formDomain?.hostname ?? null,
+      isVerified: formDomain?.status === "verified",
+    }
+  }
 
-    return `https://${formDomain.hostname}`
+  async getVerifiedFormDomainBaseUrl(): Promise<string | null> {
+    const domain = await this.getFormDomain()
+    return domain.isVerified && domain.hostname ? `https://${domain.hostname}` : null
   }
 }
 

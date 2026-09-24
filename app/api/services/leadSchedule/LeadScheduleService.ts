@@ -259,7 +259,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       return new Output(false, [], ["Closer não encontrado ou sem e-mail válido."], null);
     }
 
-    if (!leadEmail?.trim()) {
+    if (isOnlineMeeting && !leadEmail?.trim()) {
       return new Output(
         false,
         [],
@@ -269,15 +269,16 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     const closerEmail = closerProfile.email.trim().toLowerCase();
+    const participantEmails = [
+      leadEmail?.trim().toLowerCase(),
+      closerEmail,
+      leadAssigneeEmail?.trim().toLowerCase(),
+      ...(extraGuests ?? []),
+    ].filter((email): email is string => Boolean(email));
     const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${leadName}`;
     const participantDispatch = await resolveParticipantDispatchGroups({
       teamId,
-      emails: [
-        leadEmail,
-        closerEmail,
-        leadAssigneeEmail,
-        ...(extraGuests ?? []),
-      ],
+      emails: participantEmails,
     });
     const attendeeEmails = participantDispatch.all;
     const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
@@ -582,7 +583,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     // --- Lead notification email + closer's personal calendar event (Ligação/WhatsApp) ---
-    if (!isOnlineMeeting) {
+    if (!isOnlineMeeting && leadEmail?.trim()) {
       const meetingFormatLabel = resolvedMeetingType === "call" ? "Ligação" : "WhatsApp";
       const contactEmailResult = await emailService.sendMeetingContactNotificationEmail({
         to: leadEmail.trim(),

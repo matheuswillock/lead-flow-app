@@ -58,6 +58,7 @@ export async function POST(
   if (parsed.data.answers.length > 0) {
     const payload = buildPublicFormProgressQueuePayload({
       publicId,
+      publicationId: parsed.data.publicationId,
       visitorSessionId: parsed.data.visitorSessionId,
       answers: parsed.data.answers,
       origin: parsed.data.origin ?? {},

@@ -16,6 +16,7 @@ const queue = new QueueClient({ region: "gru1" })
 
 export type PublicFormProgressQueuePayload = {
   publicId: string
+  publicationId?: string
   schemaVersion: 1
   eventId: string
   occurredAt: string
@@ -70,6 +71,7 @@ export function buildPublicFormProgressIdempotencyKey(input: {
 
 export function buildPublicFormProgressQueuePayload(input: {
   publicId: string
+  publicationId?: string
   visitorSessionId: string
   answers: PublicFormAnswerInput[]
   origin: Record<string, unknown>
@@ -83,6 +85,7 @@ export function buildPublicFormProgressQueuePayload(input: {
   const eventId = input.eventId ?? crypto.randomUUID()
   return {
     publicId: input.publicId,
+    publicationId: input.publicationId,
     schemaVersion: input.schemaVersion ?? 1,
     eventId,
     occurredAt: input.occurredAt ?? new Date().toISOString(),

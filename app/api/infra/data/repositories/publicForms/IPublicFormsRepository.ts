@@ -282,6 +282,10 @@ export interface IPublicFormsRepository {
     formId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
+  findLatestSessionSubmissionForPublication(
+    publicationId: string,
+    visitorSessionId: string,
+  ): Promise<PublicFormSubmission | null>
   attachLeadIdToSessionSubmission(
     formId: string,
     visitorSessionId: string,

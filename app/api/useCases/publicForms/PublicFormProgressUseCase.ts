@@ -89,6 +89,7 @@ export class PublicFormProgressUseCase {
     const resolved = await resolvePublicFormPublicationForVisitor({
       current,
       visitorSessionId: input.visitorSessionId,
+      renderedPublicationId: input.publicationId,
       questionIds: input.answers.map((answer) => answer.questionId),
     })
     if (resolved.sessionSubmission?.status === "completed") {

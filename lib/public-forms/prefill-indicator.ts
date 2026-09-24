@@ -20,6 +20,7 @@ export function applyPrefillToVisibleQuestions(input: {
   visibleQuestions: PrefillableQuestion[]
   prefill: PublicFormPrefillResult
   currentAnswers: Record<string, unknown>
+  editedQuestionIds?: ReadonlySet<string>
 }): {
   answers: Record<string, unknown>
   prefilledFieldIds: Set<string>
@@ -28,7 +29,7 @@ export function applyPrefillToVisibleQuestions(input: {
   const prefilledFieldIds = new Set<string>()
 
   for (const question of input.visibleQuestions) {
-    if (question.id in input.currentAnswers) continue
+    if (question.id in input.currentAnswers || input.editedQuestionIds?.has(question.id)) continue
 
     const value =
       question.mappingKey === "name"
@@ -55,20 +56,23 @@ export function resolvePrefilledFieldIds(input: {
   questions: PrefillableQuestion[]
   prefill: PublicFormPrefillResult
   currentAnswers: Record<string, unknown>
+  editedQuestionIds?: ReadonlySet<string>
 }): Set<string> {
   const prefilledIds = new Set<string>()
   for (const question of input.questions) {
     if (
       question.mappingKey === "name" &&
       input.prefill.name &&
-      !input.currentAnswers[question.id]
+      !input.currentAnswers[question.id] &&
+      !input.editedQuestionIds?.has(question.id)
     ) {
       prefilledIds.add(question.id)
     }
     if (
       question.mappingKey === "email" &&
       input.prefill.email &&
-      !input.currentAnswers[question.id]
+      !input.currentAnswers[question.id] &&
+      !input.editedQuestionIds?.has(question.id)
     ) {
       prefilledIds.add(question.id)
     }
