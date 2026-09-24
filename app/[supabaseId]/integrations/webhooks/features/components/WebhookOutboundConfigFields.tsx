@@ -17,6 +17,7 @@ import {
   type TeamWebhookDestinationPreset,
   type TeamWebhookEventKey,
 } from "../services/ITeamWebhooksService";
+import { WebhookPayloadPreview } from "./WebhookPayloadPreview";
 
 export type WebhookOutboundFormValues = {
   name: string;
@@ -115,6 +116,10 @@ export function WebhookOutboundConfigFields({ values, onChange, idPrefix = "outb
           onChange={(e) => onChange({ failureThreshold: Number(e.target.value) || 10 })}
         />
       </Field>
+      <WebhookPayloadPreview
+        selectedEvents={values.selectedEvents}
+        destinationPreset={values.destinationPreset}
+      />
     </FieldGroup>
   );
 }
