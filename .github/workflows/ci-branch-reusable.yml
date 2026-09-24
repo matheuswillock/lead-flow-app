@@ -81,18 +81,15 @@ jobs:
           echo "::notice::Branch '${ref}' does not match allowed prefixes (${BRANCH_PREFIXES}). Skipping CI."
 
   ci-light:
-    name: CI Light (VPS)
+    name: CI Light
     needs: validate-branch
     if: >-
       ${{
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # 12min (era 8): mesmo teto do `ci-light` de `ci-main.yml`/`ci-develop.yml` —
-    # ver o incidente de 16/09 comentado lá. A VPS é de 2 vCPU e o tempo do job
-    # varia com quantos pipelines disputam a máquina.
-    timeout-minutes: 12
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
@@ -177,7 +174,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -231,34 +228,19 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    # `ci-light` no needs: CI Light e E2E disputam os 2 vCPU da VPS (cada um em
-    # um runner da MESMA máquina) — medido em 10-11/09/2026, unit test do CI
-    # Light estourou timeout de 5s com E2E ao lado, mesmo sob `nice -n 19`
-    # (runs 34501366334 e 34594117712). O needs serializa intra-run SEM o
-    # risco de um concurrency group compartilhado: por padrão, "any existing
-    # pending job or workflow in the same concurrency group will be canceled"
-    # (docs.github.com/en/actions/using-jobs/using-concurrency) — um group
-    # CI-Light+E2E cancelaria o CI Light pendente de um PR alheio.
-    # O `!cancelled()` preserva o desenho do Quality Gate: CI Light REPROVAR
-    # não pode virar E2E "skipped" — cada check dá o próprio veredito.
-    needs: [validate-branch, ci-light]
+    # CI Light e E2E usam VMs hospedadas independentes. Eles começam juntos,
+    # e o Quality Gate continua aguardando ambos antes de aprovar a branch.
+    needs: validate-branch
     if: >-
       ${{
         !cancelled() &&
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # A VPS tem 2 vCPU / 7,8 Gi e 2+ runners na mesma máquina — o E2E completo
-    # (Postgres :55322 + build Next com heap de 5 Gi + Chromium) não comporta
-    # duas execuções simultâneas nem porta/nome compartilhados. Este grupo
-    # serializa TODO E2E na VPS (mesmo grupo em ci-develop/ci-main).
-    # `cancel-in-progress: false`: execução em andamento nunca é derrubada.
-    concurrency:
-      group: e2e-postgres-vps
-      cancel-in-progress: false
-    # 45min (era 30 no ubuntu-latest de 4 vCPU): build + suíte em 2 vCPU.
-    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    # Cada VM tem Docker e porta 55322 próprios, portanto execuções de branches
+    # diferentes podem rodar simultaneamente sem fila global ou colisões.
+    timeout-minutes: 30
     # Aqui a distinção é a mais crítica dos três: o upload do relatório roda
     # DEPOIS do teste. Um upload que falha deixa o job vermelho com o E2E tendo
     # passado, e ler só `needs.e2e.result` reportaria "E2E reprovou".
@@ -274,7 +256,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -284,7 +266,7 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/run-e2e-playwright
         with:
-          include-slow: 'false'
+          include-slow: "false"
           asaas-sandbox-api-key: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
 
       - name: Resolve E2E
@@ -312,7 +294,7 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     needs:
       - validate-branch
@@ -412,7 +394,7 @@ jobs:
               # Um job reprovado nunca passa no gate, mesmo que todo output lido
               # esteja verde — pode ter morrido depois do último output.
               if [[ "$CI_LIGHT_RESULT" == "failure" ]]; then
-                echo "::error::CI Light (VPS): job terminou em falha. Se todos os checks acima aparecem verdes, ele morreu em um passo posterior — comece pelo log do job."
+                echo "::error::CI Light: job terminou em falha. Se todos os checks acima aparecem verdes, ele morreu em um passo posterior — comece pelo log do job."
                 failed=1
               fi
               ;;
@@ -420,8 +402,8 @@ jobs:
               # cancelled / skipped / vazio: o job não chegou a produzir veredito
               # nenhum. Reportar cada output individualmente aqui só geraria
               # ruído apontando para código íntegro.
-              assert_job "CI Light (VPS)" "$CI_LIGHT_RESULT" || failed=1
-              echo "::notice::Os checks de lint, governança, testes e spellcheck NÃO foram executados. Não há reprovação de código a corrigir aqui — comece pelo log do job CI Light (VPS)."
+              assert_job "CI Light" "$CI_LIGHT_RESULT" || failed=1
+              echo "::notice::Os checks de lint, governança, testes e spellcheck NÃO foram executados. Não há reprovação de código a corrigir aqui — comece pelo log do job CI Light."
               ;;
           esac
 
@@ -473,7 +455,7 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - validate-branch
