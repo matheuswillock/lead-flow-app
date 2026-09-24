@@ -497,15 +497,12 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      // Click tracking fica desligado: ele reescreve todo href do template para
-      // o subdomínio de tracking, e esse redirecionador é penalizado pelo Safe
-      // Browsing ("link parece perigoso" no Gmail). O clique é medido no
-      // first-party, pelo `cs_el` carimbado na URL do formulário. O
-      // `trackingSubdomain` continua sendo criado porque o open tracking usa o
-      // mesmo CNAME.
+      // O tracking de cliques nasce ligado para novos domínios. O
+      // `trackingSubdomain` continua sendo criado porque o open tracking e os
+      // redirecionamentos de clique usam o mesmo CNAME.
       //
-      // O `create` acima já nasce com `clickTracking: false` — não há janela em
-      // que o redirecionador exista. Este update é reforço, e o erro dele é
+      // O `create` acima já nasce com a política de tracking desejada. Este
+      // update é reforço, e o erro dele é
       // verificado: sem isso, uma falha aqui deixaria o provedor divergente do
       // que gravamos no banco e a operação ainda reportaria sucesso.
       //

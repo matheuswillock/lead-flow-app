@@ -368,7 +368,9 @@ export function CustomDomainCard() {
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
-      void handleLoadDomainRecords()
+      void handleLoadDomainRecords().catch((error) => {
+        console.error("[CustomDomainCard] Falha ao carregar registros DNS", error)
+      })
     }
   }, [domainName, domainRecords.length, handleLoadDomainRecords])
 
