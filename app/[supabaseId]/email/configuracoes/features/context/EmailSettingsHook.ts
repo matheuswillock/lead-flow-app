@@ -27,6 +27,12 @@ import {
   buildDnsInstructionsText,
 } from "@/lib/email/custom-domain-dns-instructions"
 import { suggestFormDomainHostname } from "@/lib/public-forms/suggest-form-domain-hostname"
+import {
+  DOMAIN_VERIFICATION_POLL_INTERVAL_MS,
+  isDomainVerificationPollActive,
+  isDomainVerificationTerminal,
+  shouldContinueDomainVerificationPolling,
+} from "@/lib/email/domain-verification-polling"
 
 const defaultService = new EmailSettingsService()
 const SENDER_DOMAIN_ERROR_PREFIX = "O e-mail do remetente deve usar o domínio cadastrado"
@@ -102,7 +108,7 @@ export type EmailSettingsHookReturn = {
   handleConnectDomain: () => Promise<void>
   handleDisconnectDomain: () => Promise<void>
   handleVerifyDomain: () => Promise<void>
-  handleLoadDomainRecords: () => Promise<void>
+  handleLoadDomainRecords: () => Promise<DomainConnectResult>
   handleConfigureDomainTracking: (data: ConfigureDomainTrackingData) => Promise<boolean>
   sendingDnsInstructions: boolean
   canSendDnsInstructions: boolean
@@ -213,6 +219,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const fetchingFormDomainRef = useRef(false)
   const lastFormDomainKeyRef = useRef("")
   const formDomainSuggestionAppliedRef = useRef(false)
+  const domainVerificationPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const domainVerificationPollStartedAtRef = useRef<number | null>(null)
+  const domainVerificationPollIdRef = useRef<string | null>(null)
+  const domainVerificationPollSequenceRef = useRef(0)
+  const isMountedRef = useRef(true)
 
   const applySettings = useCallback((result: EmailSettings) => {
     setSettings(result)
@@ -515,10 +526,11 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     }
   }, [])
 
-  const handleLoadDomainRecords = useCallback(async () => {
+  const handleLoadDomainRecords = useCallback(async (): Promise<DomainConnectResult> => {
     setLoadingRecords(true)
     try {
       const result: DomainConnectResult = await service.getDomainRecords()
+      if (!isMountedRef.current) return result
       setDomainRecords(result.records)
       setDomainStatus(result.status as ResendDomainStatus)
       setDomainRegion(result.region ?? domainRegion)
@@ -532,28 +544,95 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       // o ponto em que `resendSendingDnsVerified` costuma mudar. Reler mantém o
       // aviso coerente com o que o gate passou a decidir.
       void reloadSettings()
+      return result
     } catch (err) {
       console.error("[useEmailSettings] handleLoadDomainRecords error", err)
+      throw err
     } finally {
-      setLoadingRecords(false)
+      if (isMountedRef.current) setLoadingRecords(false)
     }
   }, [reloadSettings])
 
   const handleVerifyDomain = useCallback(async () => {
+    if (domainVerificationPollRef.current) {
+      clearTimeout(domainVerificationPollRef.current)
+      domainVerificationPollRef.current = null
+    }
+
+    const pollId = String(++domainVerificationPollSequenceRef.current)
+    domainVerificationPollIdRef.current = pollId
+    const isCurrentPoll = () =>
+      isDomainVerificationPollActive(pollId, domainVerificationPollIdRef.current)
+
     setVerifyingDomain(true)
     try {
       const result = await service.verifyDomain()
+      if (!isCurrentPoll()) return
       setDomainStatus(result.status)
-      toast.success("Verificação iniciada. Aguarde a propagação do DNS.")
-      void handleLoadDomainRecords()
-      void reloadSettings()
+
+      const refreshVerificationState = async (): Promise<void> => {
+        const refreshed = await handleLoadDomainRecords()
+        if (!isCurrentPoll()) return
+        const refreshedStatus = refreshed.status as ResendDomainStatus
+        setDomainStatus(refreshedStatus)
+
+        if (isDomainVerificationTerminal(refreshedStatus)) {
+          if (refreshedStatus === "verified") {
+            toast.success("Domínio verificado com sucesso.")
+          } else {
+            toast.error("A verificação do domínio não foi concluída. Confira os registros DNS.")
+          }
+          setVerifyingDomain(false)
+          return
+        }
+
+        const startedAt = domainVerificationPollStartedAtRef.current ?? Date.now()
+        domainVerificationPollStartedAtRef.current = startedAt
+        if (!shouldContinueDomainVerificationPolling(refreshedStatus, startedAt, Date.now())) {
+          toast.info("A verificação ainda está pendente. O DNS pode levar mais tempo para propagar.")
+          setVerifyingDomain(false)
+          return
+        }
+
+        domainVerificationPollRef.current = setTimeout(() => {
+          if (!isCurrentPoll()) return
+          void refreshVerificationState().catch((error) => {
+            if (!isCurrentPoll()) return
+            console.error("[useEmailSettings] domain verification poll error", error)
+            domainVerificationPollRef.current = null
+            setVerifyingDomain(false)
+            toast.error("Não foi possível atualizar a verificação do domínio")
+          })
+        }, DOMAIN_VERIFICATION_POLL_INTERVAL_MS)
+      }
+
+      domainVerificationPollStartedAtRef.current = Date.now()
+      toast.info("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+      await refreshVerificationState()
     } catch (err) {
+      if (!isCurrentPoll()) return
       console.error("[useEmailSettings] handleVerifyDomain error", err)
       toast.error("Erro ao verificar domínio")
-    } finally {
       setVerifyingDomain(false)
+    } finally {
+      if (isCurrentPoll() && !domainVerificationPollRef.current) {
+        setVerifyingDomain(false)
+      }
     }
   }, [handleLoadDomainRecords, reloadSettings])
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (domainVerificationPollRef.current) {
+        clearTimeout(domainVerificationPollRef.current)
+      }
+      domainVerificationPollRef.current = null
+      domainVerificationPollStartedAtRef.current = null
+      domainVerificationPollIdRef.current = null
+    }
+  }, [])
 
   /**
    * As instruções são montadas dos registros já carregados na tela — os mesmos

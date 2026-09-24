@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, TeamWebhookEventKey } from "@prisma/client";
+import * as Sentry from "@sentry/nextjs";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
 import { teamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository";
+import type { ITeamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookRepository";
+import type { ITeamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookOutboxRepository";
 
 export type OutboundDomainEvent = {
   teamId: string;
@@ -11,20 +14,35 @@ export type OutboundDomainEvent = {
   payload: Record<string, unknown>;
 };
 
+export type OutboundEventPublishResult = {
+  matchedWebhooks: number;
+  enqueuedWebhooks: number;
+  failedWebhooks: number;
+};
+
 export interface IOutboundEventPublisher {
-  publish(event: OutboundDomainEvent): Promise<void>;
+  publish(event: OutboundDomainEvent): Promise<OutboundEventPublishResult>;
 }
 
 export class OutboundEventPublisher implements IOutboundEventPublisher {
-  async publish(event: OutboundDomainEvent): Promise<void> {
+  constructor(
+    private readonly webhookRepository: Pick<ITeamWebhookRepository, "findActiveOutboundForEvent"> =
+      teamWebhookRepository,
+    private readonly outboxRepository: Pick<ITeamWebhookOutboxRepository, "enqueue"> =
+      teamWebhookOutboxRepository,
+    private readonly reportFailure: (error: unknown, context: Record<string, unknown>) => void =
+      (error, context) => Sentry.captureException(error, { extra: context })
+  ) {}
+
+  async publish(event: OutboundDomainEvent): Promise<OutboundEventPublishResult> {
     try {
-      const webhooks = await teamWebhookRepository.findActiveOutboundForEvent(
+      const webhooks = await this.webhookRepository.findActiveOutboundForEvent(
         event.teamId,
         event.eventKey
       );
 
       if (webhooks.length === 0) {
-        return;
+        return { matchedWebhooks: 0, enqueuedWebhooks: 0, failedWebhooks: 0 };
       }
 
       const occurredAt = event.occurredAt ?? new Date().toISOString();
@@ -39,9 +57,9 @@ export class OutboundEventPublisher implements IOutboundEventPublisher {
         },
       };
 
-      await Promise.all(
+      const enqueueResults = await Promise.allSettled(
         webhooks.map((webhook) =>
-          teamWebhookOutboxRepository.enqueue({
+          this.outboxRepository.enqueue({
             teamId: event.teamId,
             webhookId: webhook.id,
             eventKey: event.eventKey,
@@ -50,13 +68,45 @@ export class OutboundEventPublisher implements IOutboundEventPublisher {
         )
       );
 
+      const failedResults = enqueueResults.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      const publishResult = {
+        matchedWebhooks: webhooks.length,
+        enqueuedWebhooks: enqueueResults.length - failedResults.length,
+        failedWebhooks: failedResults.length,
+      };
+
+      for (const failure of failedResults) {
+        this.reportFailure(failure.reason, {
+          teamId: event.teamId,
+          eventKey: event.eventKey,
+          ...publishResult,
+        });
+      }
+
       console.info("[OutboundEventPublisher] Eventos enfileirados", {
         teamId: event.teamId,
         eventKey: event.eventKey,
-        count: webhooks.length,
+        ...publishResult,
       });
+
+      return publishResult;
     } catch (error) {
-      console.error("[OutboundEventPublisher] Erro ao publicar evento:", error);
+      const context = {
+        teamId: event.teamId,
+        eventKey: event.eventKey,
+        matchedWebhooks: 0,
+        enqueuedWebhooks: 0,
+        failedWebhooks: 1,
+      };
+      console.error("[OutboundEventPublisher] Erro ao consultar destinos:", context, error);
+      this.reportFailure(error, context);
+      return {
+        matchedWebhooks: 0,
+        enqueuedWebhooks: 0,
+        failedWebhooks: 1,
+      };
     }
   }
 }

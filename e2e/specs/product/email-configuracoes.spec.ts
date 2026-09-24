@@ -290,7 +290,9 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       const restartButtons = page.getByRole("button", { name: "Reiniciar verificação" })
       await expect(restartButtons).toHaveCount(2)
       await restartButtons.first().click()
-      await expect(page.getByText("Verificação iniciada. Aguarde a propagação do DNS.")).toBeVisible()
+      await expect(
+        page.getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+      ).toBeVisible()
       expect(verifyRequested).toBe(true)
     })
 
