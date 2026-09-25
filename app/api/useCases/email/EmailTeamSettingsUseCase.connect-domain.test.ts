@@ -152,7 +152,7 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
 
     expect(responded.openTracking).toBe(persisted.openTracking)
     expect(responded.clickTracking).toBe(persisted.clickTracking)
-    expect(responded.clickTracking).toBe(false)
+    expect(responded.clickTracking).toBe(true)
     expect(responded.openTracking).toBe(true)
   })
 
@@ -164,6 +164,7 @@ describe("EmailTeamSettingsUseCase.connectDomain — resposta honesta de trackin
 
     expect(created.openTracking).toBe(persisted.openTracking)
     expect(created.clickTracking).toBe(persisted.clickTracking)
+    expect(created.clickTracking).toBe(true)
   })
 
   /**

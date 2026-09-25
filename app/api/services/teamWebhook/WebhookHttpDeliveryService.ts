@@ -1,6 +1,7 @@
 import type { TeamWebhookDestinationPreset } from "@prisma/client";
 import http from "node:http";
 import https from "node:https";
+import type { LookupFunction } from "node:net";
 import { assertSafeWebhookTargetUrlResolved } from "@/lib/webhooks/ssrfUrlGuard";
 
 export type WebhookHttpDeliveryResult = {
@@ -20,6 +21,17 @@ export interface IWebhookHttpDeliveryService {
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+export function createPinnedAddressLookup(address: string, family: number): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [{ address, family }]);
+      return;
+    }
+
+    callback(null, address, family);
+  };
+}
 
 export class WebhookHttpDeliveryService implements IWebhookHttpDeliveryService {
   async deliver(args: {
@@ -60,17 +72,7 @@ export class WebhookHttpDeliveryService implements IWebhookHttpDeliveryService {
           // Pin validated DNS result to reduce rebinding between check and connect.
           ...(pinnedAddress
             ? {
-                lookup: (
-                  _hostname: string,
-                  _options: unknown,
-                  callback: (
-                    err: NodeJS.ErrnoException | null,
-                    address: string,
-                    family: number
-                  ) => void
-                ) => {
-                  callback(null, pinnedAddress, pinnedFamily);
-                },
+                lookup: createPinnedAddressLookup(pinnedAddress, pinnedFamily),
               }
             : {}),
         },
