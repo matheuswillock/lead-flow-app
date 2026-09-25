@@ -273,9 +273,19 @@ jobs:
         id: resolve-e2e
         if: always()
         run: |
+          set -euo pipefail
           outcome="${{ steps.playwright.outcome }}"
           echo "result=${outcome}" >> "$GITHUB_OUTPUT"
-          [[ "$outcome" == "success" ]] || exit 1
+          if [[ "$outcome" != "success" ]]; then
+            echo "::error title=E2E failed::The E2E action failed. Check the E2E stage marker above and download the playwright-report artifact."
+            {
+              echo "## E2E result"
+              echo "The E2E action finished with outcome: \`$outcome\`."
+              echo "The failing stage is reported by the composite action above."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "E2E passed: integration tests, build and Playwright completed successfully."
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

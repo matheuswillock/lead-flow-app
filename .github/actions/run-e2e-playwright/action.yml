@@ -176,6 +176,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::Integration tests (Postgres local) failed."; { echo "## E2E: integration tests"; echo "bun run test:integration failed against the local Postgres."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: integration tests"
         if command -v ionice >/dev/null 2>&1; then
           RUN_INTEGRATION="ionice -c3 nice -n 19"
         else
@@ -185,27 +187,34 @@ runs:
           echo "::error title=Testes de integração reprovaram::bun run test:integration falhou. A falha é dos TESTES DE INTEGRAÇÃO contra o Postgres :55322, não do Playwright — este job hospeda os dois. Reproduza local com: bun run test:integration:local"
           exit 1
         fi
+        echo "::endgroup::"
 
     - name: Build
       shell: bash
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::The application build failed inside the E2E action."; { echo "## E2E: build"; echo "bun run build failed before Playwright started."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: application build"
         if command -v ionice >/dev/null 2>&1; then
           ionice -c3 nice -n 19 bun run build
         else
           nice -n 19 bun run build
         fi
+        echo "::endgroup::"
 
     - name: Run Playwright
       shell: bash
       # O `next start` (webServer) e o Chromium herdam ionice/nice do pai.
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::Playwright tests failed. See the Playwright report artifact for the failing spec."; { echo "## E2E: Playwright"; echo "bun run test:e2e failed. Download the playwright-report artifact for the failing test and trace."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: Playwright"
         if command -v ionice >/dev/null 2>&1; then
           ionice -c3 nice -n 19 bun run test:e2e
         else
           nice -n 19 bun run test:e2e
         fi
+        echo "::endgroup::"
 
     - name: Stop postgres
       if: always()
