@@ -157,6 +157,21 @@ class TeamWebhooksService implements ITeamWebhooksService {
     }
     return output.result;
   }
+
+  async resendLog(supabaseId: string, teamId: string, webhookId: string, logId: string) {
+    const response = await fetch(
+      `${API_CLIENT_BASE}/integrations/webhooks/${webhookId}/logs/${logId}/resend`,
+      {
+        method: "POST",
+        headers: this.headers(supabaseId, teamId),
+      }
+    );
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível reenviar o webhook"));
+    }
+    return output.result;
+  }
 }
 
 export const teamWebhooksService = new TeamWebhooksService();

@@ -54,6 +54,17 @@ export class TeamWebhookEventLogRepository implements ITeamWebhookEventLogReposi
     });
   }
 
+  async findById(input: {
+    id: string;
+    webhookId: string;
+    teamId: string;
+  }): Promise<TeamWebhookEventLogRow | null> {
+    return prisma.teamWebhookEventLog.findFirst({
+      where: input,
+      select: LOG_SELECT,
+    });
+  }
+
   async list(params: ListTeamWebhookEventLogsParams): Promise<{
     items: TeamWebhookEventLogRow[];
     total: number;

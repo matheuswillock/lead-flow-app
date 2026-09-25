@@ -45,21 +45,16 @@ runs:
 
     - name: Start supabase/postgres
       shell: bash
-      # Nome de container ÚNICO por run: na VPS há 2+ runners na mesma máquina
-      # e um nome fixo colidiria entre execuções (docker run falha e/ou o
-      # cleanup de um job mata o Postgres do outro). A porta host segue fixa
-      # em 55322 porque scripts/seed-e2e.ts, scripts/lib/local-stack.ts e
-      # .env.test.example fixam essa porta por design — a serialização fica a
-      # cargo do concurrency group `e2e-postgres-vps` no job chamador.
+      # O nome único evita colisão com containers órfãos em retries. A porta
+      # permanece fixa em 55322 porque scripts/seed-e2e.ts,
+      # scripts/lib/local-stack.ts e .env.test.example dependem dela. Nos
+      # runners hospedados, cada job possui uma VM e uma rede Docker isoladas.
       run: |
         set -euo pipefail
         E2E_PG_CONTAINER="e2e-postgres-${{ github.run_id }}-${{ github.run_attempt }}"
         echo "E2E_PG_CONTAINER=${E2E_PG_CONTAINER}" >> "$GITHUB_ENV"
 
-        # Varredura de órfãos: remove QUALQUER container e2e-postgres* (nome
-        # legado fixo incluído). Serializado pelo concurrency group, todo
-        # container pré-existente desse prefixo é lixo de um run que morreu
-        # sem cleanup — e seguraria a porta 55322 para sempre.
+        # Remove containers órfãos de uma tentativa anterior no mesmo runner.
         for c in $(docker ps -aq --filter "name=e2e-postgres" 2>/dev/null); do
           echo "Removendo container e2e-postgres órfão: $(docker inspect --format '{{.Name}} (criado {{.Created}})' "$c")"
           docker rm -f "$c" >/dev/null 2>&1 || true
@@ -153,18 +148,8 @@ runs:
           bunx --bun playwright install chromium
         fi
 
-    # `ionice -c3 nice -n 19` nos passos pesados: na VPS o job divide 2 vCPU e
-    # o disco com o outro runner (CI Light de qualquer branch). `nice` sozinho
-    # NÃO bastou — medido 2×: run 34501366334 (10/09, 2 testes por timeout) e
-    # run 34594117712 (11/09, JÁ com nice -n 19, AsaasCustomerGateway.escape
-    # .test.ts estourou 5s — é uma varredura readFileSync de app/+lib/,
-    # I/O-bound; nice rebaixa só CPU). `ionice -c3` (classe idle) cede o disco
-    # sempre que o vizinho precisar. A serialização intra-run vem do `needs:
-    # ci-light` no job chamador; o ionice cobre o cruzamento ENTRE runs (E2E
-    # do run A × CI Light do run B). Guard `command -v`: ionice vem do
-    # util-linux (padrão no Ubuntu), mas a ausência não pode derrubar o job.
-    # Em runner dedicado (ubuntu-latest) ambos são inócuos: sem competição,
-    # prioridade não muda nada.
+    # Os wrappers de prioridade mantêm a action portátil para runners locais.
+    # Em ubuntu-latest a VM é isolada, portanto não há disputa com outro job.
     - name: Seed E2E database
       shell: bash
       run: |
@@ -191,6 +176,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::Integration tests (Postgres local) failed."; { echo "## E2E: integration tests"; echo "bun run test:integration failed against the local Postgres."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: integration tests"
         if command -v ionice >/dev/null 2>&1; then
           RUN_INTEGRATION="ionice -c3 nice -n 19"
         else
@@ -200,27 +187,34 @@ runs:
           echo "::error title=Testes de integração reprovaram::bun run test:integration falhou. A falha é dos TESTES DE INTEGRAÇÃO contra o Postgres :55322, não do Playwright — este job hospeda os dois. Reproduza local com: bun run test:integration:local"
           exit 1
         fi
+        echo "::endgroup::"
 
     - name: Build
       shell: bash
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::The application build failed inside the E2E action."; { echo "## E2E: build"; echo "bun run build failed before Playwright started."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: application build"
         if command -v ionice >/dev/null 2>&1; then
           ionice -c3 nice -n 19 bun run build
         else
           nice -n 19 bun run build
         fi
+        echo "::endgroup::"
 
     - name: Run Playwright
       shell: bash
       # O `next start` (webServer) e o Chromium herdam ionice/nice do pai.
       run: |
         set -euo pipefail
+        trap 'echo "::error title=E2E stage failed::Playwright tests failed. See the Playwright report artifact for the failing spec."; { echo "## E2E: Playwright"; echo "bun run test:e2e failed. Download the playwright-report artifact for the failing test and trace."; } >> "$GITHUB_STEP_SUMMARY"' ERR
+        echo "::group::E2E stage: Playwright"
         if command -v ionice >/dev/null 2>&1; then
           ionice -c3 nice -n 19 bun run test:e2e
         else
           nice -n 19 bun run test:e2e
         fi
+        echo "::endgroup::"
 
     - name: Stop postgres
       if: always()
