@@ -137,6 +137,7 @@ export interface ITeamWebhookRepository {
   incrementFailureStreak(webhookId: string): Promise<TeamWebhook>;
   resetFailureStreak(webhookId: string): Promise<void>;
   markPausedByFailures(webhookId: string): Promise<TeamWebhook>;
+  touchUsage(webhookId: string, success: boolean): Promise<void>;
   findForDelivery(webhookId: string): Promise<{
     id: string;
     teamId: string;

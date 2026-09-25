@@ -45,6 +45,11 @@ export type TeamWebhookEventLogRow = {
 
 export interface ITeamWebhookEventLogRepository {
   create(input: CreateTeamWebhookEventLogInput): Promise<void>;
+  findById(input: {
+    id: string;
+    webhookId: string;
+    teamId: string;
+  }): Promise<TeamWebhookEventLogRow | null>;
   list(params: ListTeamWebhookEventLogsParams): Promise<{
     items: TeamWebhookEventLogRow[];
     total: number;

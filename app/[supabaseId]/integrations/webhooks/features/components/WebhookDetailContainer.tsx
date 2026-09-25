@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -10,14 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +22,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { formatIntimezone } from "@/lib/dates";
 import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type {
   TeamWebhookDirection,
@@ -47,6 +38,7 @@ import {
   WebhookOutboundConfigFields,
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
+import { WebhookLogsPanel } from "./WebhookLogsPanel";
 
 type Props = {
   supabaseId: string;
@@ -134,11 +126,17 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const [outboundInitial, setOutboundInitial] = useState<WebhookOutboundFormValues | null>(null);
   const [logs, setLogs] = useState<TeamWebhookLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsRefreshing, setLogsRefreshing] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logsPage, setLogsPage] = useState(1);
   const [logsTotal, setLogsTotal] = useState(0);
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [resendingLogId, setResendingLogId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("config");
   const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
+  const logsRequestIdRef = useRef(0);
 
   const listPath = `/${supabaseId}/integrations/webhooks/${direction}`;
 
@@ -159,30 +157,76 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const loadConfiguration = useCallback(async () => {
     if (!activeTeam?.id) return;
     setLoading(true);
     try {
-      const [detail, logResult] = await Promise.all([
-        teamWebhooksService.getById(supabaseId, activeTeam.id, webhookId),
-        teamWebhooksService.listLogs(supabaseId, activeTeam.id, webhookId, {
-          page: logsPage,
-          pageSize: 20,
-        }),
-      ]);
+      const detail = await teamWebhooksService.getById(supabaseId, activeTeam.id, webhookId);
       applyWebhookToDraft(detail);
-      setLogs(logResult.items);
-      setLogsTotal(logResult.total);
     } catch (error) {
       toastUserError(error);
     } finally {
       setLoading(false);
     }
-  }, [activeTeam?.id, applyWebhookToDraft, logsPage, supabaseId, webhookId]);
+  }, [activeTeam?.id, applyWebhookToDraft, supabaseId, webhookId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadConfiguration();
+  }, [loadConfiguration]);
+
+  const fetchLogsPage = useCallback(async (page: number) => {
+    if (!activeTeam?.id) return null;
+    const requestId = ++logsRequestIdRef.current;
+    const result = await teamWebhooksService.listLogs(supabaseId, activeTeam.id, webhookId, {
+      page,
+      pageSize: 20,
+    });
+    if (requestId !== logsRequestIdRef.current) return null;
+    setLogs(result.items);
+    setLogsTotal(result.total);
+    setSelectedLogId((current) =>
+      current && result.items.some((log: TeamWebhookLogItem) => log.id === current)
+        ? current
+        : (result.items[0]?.id ?? null)
+    );
+    return result;
+  }, [activeTeam?.id, supabaseId, webhookId]);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      await fetchLogsPage(logsPage);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [fetchLogsPage, logsPage]);
+
+  const refreshLogs = useCallback(async () => {
+    setLogsRefreshing(true);
+    try {
+      await fetchLogsPage(logsPage);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setLogsRefreshing(false);
+    }
+  }, [fetchLogsPage, logsPage]);
+
+  useEffect(() => {
+    if (activeTab !== "logs") return;
+
+    void loadLogs();
+    const intervalId = window.setInterval(() => {
+      void refreshLogs();
+    }, 10_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      logsRequestIdRef.current += 1;
+    };
+  }, [activeTab, loadLogs, refreshLogs]);
 
   const updatePayload = useMemo(() => {
     if (direction === "inbound" && inboundDraft && inboundInitial) {
@@ -237,11 +281,37 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       await teamWebhooksService.testDelivery(supabaseId, activeTeam.id, webhookId);
       toast.success("Envio de teste concluído");
       setLogsPage(1);
-      await load();
+      const result = await fetchLogsPage(1);
+      setSelectedLogId(result?.items[0]?.id ?? null);
     } catch (error) {
       toastUserError(error);
     } finally {
       setActionPending(false);
+    }
+  };
+
+  const runResend = async (log: TeamWebhookLogItem) => {
+    if (!activeTeam?.id || resendingLogId) return;
+    setResendingLogId(log.id);
+    try {
+      const result = await teamWebhooksService.resendLog(
+        supabaseId,
+        activeTeam.id,
+        webhookId,
+        log.id
+      );
+      if (result.ok) {
+        toast.success("Webhook reenviado com sucesso");
+      } else {
+        toast.error(result.errorMessage ?? "O reenvio foi registrado com falha");
+      }
+      setLogsPage(1);
+      const refreshed = await fetchLogsPage(1);
+      setSelectedLogId(refreshed?.items[0]?.id ?? null);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setResendingLogId(null);
     }
   };
 
@@ -329,13 +399,19 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               Testar envio
             </Button>
           ) : null}
-          <Button variant="ghost" size="icon" onClick={() => void load()} disabled={actionPending}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => void loadConfiguration()}
+            disabled={actionPending}
+            aria-label="Atualizar webhook"
+          >
             <RefreshCcw />
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="config">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="config">Configuração</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
@@ -374,53 +450,19 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="logs" className="pt-4">
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Quando</TableHead>
-                  <TableHead>Resultado</TableHead>
-                  <TableHead>HTTP</TableHead>
-                  <TableHead>Erro</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      Nenhum log ainda.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        {formatIntimezone(new Date(log.createdAt), "dd/MM/yyyy HH:mm", tz)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            log.result === "success"
-                              ? "default"
-                              : log.result === "rejected"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {log.result}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{log.statusCode ?? "—"}</TableCell>
-                      <TableCell className="max-w-[280px] truncate text-muted-foreground">
-                        {log.errorMessage ?? "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        <TabsContent value="logs" className="min-w-0 pt-4">
+          <WebhookLogsPanel
+            logs={logs}
+            selectedLogId={selectedLogId}
+            timezone={tz}
+            isLoading={logsLoading}
+            isRefreshing={logsRefreshing}
+            resendingLogId={resendingLogId}
+            canResend={webhook.status !== "disabled"}
+            onSelect={setSelectedLogId}
+            onRefresh={() => void refreshLogs()}
+            onResend={(log) => void runResend(log)}
+          />
           <div className="mt-3 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Página {logsPage} · {logsTotal} registro(s)
