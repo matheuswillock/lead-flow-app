@@ -81,7 +81,7 @@ jobs:
           echo "::notice::Branch '${ref}' does not match allowed prefixes (${BRANCH_PREFIXES}). Skipping CI."
 
   ci-light:
-    name: CI Light
+    name: CI Light (VPS)
     needs: validate-branch
     if: >-
       ${{
