@@ -120,9 +120,9 @@ async function invalidateTeamLeadsCache(
 }
 
 /**
- * Garante o lead seedado visível no board: recarrega enquanto a listagem
- * cacheada ainda não o traz e filtra por nome para isolar o lead do que os
- * outros workers da CI criam no mesmo time (orderBy createdAt desc, página 1).
+ * Garante o lead seedado visível no board: recarrega a tela em cada tentativa
+ * para descartar o estado local do BoardProvider e filtra por nome para
+ * isolar o lead do que os outros workers da CI criam no mesmo time.
  *
  * Janela de 120s, não 60s — medido nos traces da CI (run 34385997396): mesmo
  * com o PUT de invalidação e o poll da API drenados, os fetches da PÁGINA
@@ -134,16 +134,15 @@ async function invalidateTeamLeadsCache(
  * momento do seed.
  */
 async function waitForSeededLeadOnBoard(page: Page, name: string) {
-  const nameFilter = page.getByPlaceholder("Filtrar por nome...");
-  const seededLeadCell = page.getByText(name).first();
   await expect(async () => {
-    if ((await seededLeadCell.count()) === 0) {
-      await page.reload({ waitUntil: "domcontentloaded" });
-    }
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const nameFilter = page.getByPlaceholder("Filtrar por nome...");
+    const seededLeadCell = page.getByText(name).first();
     await nameFilter.fill(name);
     await expect(seededLeadCell).toBeVisible({ timeout: 10_000 });
   }).toPass({ timeout: 120_000 });
-  return seededLeadCell;
+
+  return page.getByText(name).first();
 }
 
 test.describe("app/[supabaseId]/crm", () => {
