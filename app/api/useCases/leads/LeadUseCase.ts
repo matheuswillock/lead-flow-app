@@ -72,7 +72,10 @@ import { leadCustomFieldRepository } from "@/app/api/infra/data/repositories/lea
 import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 import { leadDuplicateCheckService } from "@/app/api/services/leadDuplicateCheck/LeadDuplicateCheckService";
 import { teamAutomationDispatcherService } from "@/app/api/services/teamAutomation/TeamAutomationDispatcherService";
-import { outboundEventPublisher } from "@/app/api/services/teamWebhook/OutboundEventPublisher";
+import {
+  outboundEventPublisher,
+  type IOutboundEventPublisher,
+} from "@/app/api/services/teamWebhook/OutboundEventPublisher";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -138,6 +141,7 @@ export class LeadUseCase implements ILeadUseCase {
   constructor(
     private leadRepository: ILeadRepository,
     private profileUseCase: IProfileUseCase,
+    private readonly outboundPublisher: IOutboundEventPublisher = outboundEventPublisher,
   ) {}
 
   async createLead(
@@ -533,7 +537,7 @@ export class LeadUseCase implements ILeadUseCase {
           })
           .catch(console.error);
 
-        await outboundEventPublisher.publish({
+        await this.outboundPublisher.publish({
           teamId,
           eventKey: "lead_created",
           leadId: lead.id,

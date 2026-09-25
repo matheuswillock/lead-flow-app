@@ -159,7 +159,7 @@ test.describe("backoffice clients member access link", () => {
     expect(unauthenticatedResponse.status()).toBe(401);
 
     await page.goto(`/backoffice/clients/${created.masterProfileId}`);
-    await expect(page.getByText(masterName)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: masterName })).toBeVisible({ timeout: 60_000 });
 
     await page.getByText(teamName).click();
     const memberRow = page.locator("tr", { hasText: memberEmail });
