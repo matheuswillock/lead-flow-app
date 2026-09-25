@@ -402,6 +402,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           <Button
             variant="ghost"
             size="icon"
+            className="size-11"
             onClick={() => void loadConfiguration()}
             disabled={actionPending}
             aria-label="Atualizar webhook"
@@ -458,7 +459,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             isLoading={logsLoading}
             isRefreshing={logsRefreshing}
             resendingLogId={resendingLogId}
-            canResend={webhook.status !== "disabled"}
+            canResend={direction === "outbound" && webhook.status !== "disabled"}
             onSelect={setSelectedLogId}
             onRefresh={() => void refreshLogs()}
             onResend={(log) => void runResend(log)}

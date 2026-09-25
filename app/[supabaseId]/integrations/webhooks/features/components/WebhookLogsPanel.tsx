@@ -159,6 +159,7 @@ export function WebhookLogsPanel({
                           className={cn("cursor-pointer", isSelected && "bg-muted/60")}
                           onClick={() => onSelect(log.id)}
                           onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault()
                               onSelect(log.id)
@@ -185,6 +186,7 @@ export function WebhookLogsPanel({
                                   type="button"
                                   variant="ghost"
                                   size="icon"
+                                  className="size-11"
                                   aria-label={resendLabel}
                                   disabled={resendUnavailable || resendingLogId !== null}
                                   onClick={(event) => {
