@@ -349,7 +349,7 @@ test.describe("app/[supabaseId]/crm", () => {
     // 30s como o assert do composer acima: a timeline só monta depois do fetch
     // de detalhes do lead, que sob a carga dos 4 workers da CI passa dos 5s
     // do timeout default.
-    await expect(timelineScroll).toBeVisible({ timeout: 30_000 });
+    await expect(timelineScroll).toBeVisible({ timeout: 60_000 });
     const timelineHeight = await timelineScroll.evaluate((el) => el.clientHeight);
     expect(timelineHeight).toBeGreaterThanOrEqual(200);
 

@@ -86,6 +86,7 @@ export function WebhookLogsPanel({
             type="button"
             variant="outline"
             size="sm"
+            className="min-h-11"
             onClick={onRefresh}
             disabled={isRefreshing}
           >

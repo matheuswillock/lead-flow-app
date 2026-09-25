@@ -362,7 +362,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
-          <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Button variant="ghost" size="sm" asChild className="min-h-11 w-fit px-0">
             <Link href={listPath}>
               <ArrowLeft data-icon="inline-start" />
               Voltar
@@ -383,6 +383,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           {webhook.status === "active" ? (
             <Button
               variant="outline"
+              className="min-h-11"
               onClick={() => runStatus({ status: "disabled" })}
               disabled={actionPending}
             >
@@ -395,7 +396,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             </Button>
           ) : null}
           {direction === "outbound" ? (
-            <Button variant="secondary" onClick={runTest} disabled={actionPending}>
+            <Button variant="secondary" className="min-h-11" onClick={runTest} disabled={actionPending}>
               Testar envio
             </Button>
           ) : null}
@@ -414,8 +415,8 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
+          <TabsTrigger value="config" className="min-h-11">Configuração</TabsTrigger>
+          <TabsTrigger value="logs" className="min-h-11">Logs</TabsTrigger>
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
@@ -472,6 +473,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-11"
                 disabled={logsPage <= 1 || actionPending}
                 onClick={() => setLogsPage((p) => Math.max(1, p - 1))}
               >
@@ -480,6 +482,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-11"
                 disabled={logsPage * 20 >= logsTotal || actionPending}
                 onClick={() => setLogsPage((p) => p + 1)}
               >
