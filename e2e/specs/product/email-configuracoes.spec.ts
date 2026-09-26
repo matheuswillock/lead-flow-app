@@ -78,9 +78,9 @@ function domainRecordsPayload(
       region: "us-east-1",
       dnsProvider,
       connectedAt: new Date().toISOString(),
-      openTracking: false,
-      clickTracking: false,
-      trackingSubdomain: null,
+      openTracking: true,
+      clickTracking: true,
+      trackingSubdomain: "links",
       records: MOCK_DNS_RECORDS,
       events: [],
     },
@@ -103,8 +103,8 @@ async function seedConnectedDomain(status: "pending" | "verified" = "pending"): 
     resendDomainStatus: status,
     resendDomainRegion: "us-east-1",
     resendDomainConnectedAt: new Date(),
-    resendOpenTracking: status === "verified",
-    resendClickTracking: false,
+    resendOpenTracking: true,
+    resendClickTracking: true,
   }
   await getPrisma().emailTeamSettings.upsert({
     where: { teamId },
@@ -113,7 +113,7 @@ async function seedConnectedDomain(status: "pending" | "verified" = "pending"): 
   })
 }
 
-/** Registros todos verificados — o estado que destrava o toggle de cliques. */
+/** Registros todos verificados — usado para validar a configuração após o DNS. */
 const VERIFIED_DNS_RECORDS = MOCK_DNS_RECORDS.map((record) => ({
   ...record,
   status: "verified",
@@ -451,7 +451,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toHaveCount(0)
     })
 
-    test("toggle de cliques fica BLOQUEADO enquanto o CNAME de Tracking não verifica", async ({
+    test("toggle de cliques fica disponível antes da verificação do DNS", async ({
       page,
     }) => {
       await mockDomainRecordsRoute(page)
@@ -465,10 +465,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
-      await expect(clickSwitch).toBeDisabled()
-      await expect(clickSwitch).not.toBeChecked()
+      await expect(clickSwitch).toBeEnabled()
+      await expect(clickSwitch).toBeChecked()
       await expect(
-        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
+        page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
           exact: false,
         })
       ).toBeVisible()

@@ -13,7 +13,6 @@ import {
   RESEND_TRACKING_POLICY,
 } from "@/lib/email/resend-domain-reconcile"
 import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
-import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   isSelfInflictedTrackingConflict,
   isTrackingSubdomainConflict,
@@ -702,14 +701,8 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
-        // O gate de DNS abaixo lê `currentDomain.records`, que descreve o
-        // subdomínio de tracking ATUAL no Resend. Se este mesmo request troca o
-        // subdomínio, aquele snapshot é do hostname ANTIGO: o gate passaria com
-        // o CNAME velho e o clique seria ligado sobre um hostname ainda sem
-        // CNAME verificado — links quebrados no e-mail entregue. Trocar o
-        // subdomínio e ligar o clique são, por isso, duas operações: primeiro
-        // salva o subdomínio com o clique desligado, verifica o DNS novo,
-        // depois liga.
+        // A troca do subdomínio continua sendo uma operação separada para que
+        // o novo CNAME possa ser configurado sem alterar o tracking existente.
         if (!trackingAlreadyConfigured) {
           return new Output(
             false,
@@ -721,32 +714,7 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
-        // Checkpoint: sem o CNAME de Tracking verificado o rewrite produziria
-        // links quebrados no e-mail entregue. `false` E `undefined` bloqueiam.
-        const trackingDnsVerified = deriveTrackingDnsVerified(currentDomain.records)
-        if (trackingDnsVerified !== true) {
-          return new Output(
-            false,
-            [],
-            [
-              `O registro DNS de Tracking (CNAME ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}) ainda não está verificado no Resend. Verifique o DNS do domínio antes de ligar o rastreio de cliques.`,
-            ],
-            null
-          )
-        }
-
-        if (currentDomain.status !== "verified") {
-          return new Output(
-            false,
-            [],
-            [
-              "O domínio precisa estar verificado no Resend antes de ligar o rastreio de cliques.",
-            ],
-            null
-          )
-        }
       }
-
       const updatePayload: {
         id: string
         openTracking: boolean
