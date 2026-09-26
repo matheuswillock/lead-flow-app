@@ -31,6 +31,7 @@ export type LandingPageSnapshot = {
   templateSlug: string
   content: LandingPageContent
   offer: LandingPageOffer
+  formPublicationId?: string
   form: PublicFormSnapshot
 }
 

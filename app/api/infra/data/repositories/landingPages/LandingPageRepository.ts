@@ -156,6 +156,7 @@ export class LandingPageRepository implements ILandingPageRepository {
       templateSlug: landing.templateSlug,
       content: landing.content,
       offer: landing.offer,
+      formPublicationId: formPublication.id,
       form: formPublication.snapshot,
     }
 
