@@ -28,6 +28,7 @@ import {
   Database,
   Zap,
   Mail,
+  PanelsTopLeft,
 } from "lucide-react"
 
 import {
@@ -137,6 +138,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
     { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
     { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
+    { title: "Landing pages", url: `/${supabaseId}/landing-pages`, icon: PanelsTopLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
   ];
 
   const emailItems: SidebarItem[] = [

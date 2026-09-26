@@ -100,6 +100,7 @@ import {
 import { mapLeadInfoPayloadForUpdate } from "@/lib/leadStatusTransitionFields";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { shouldShowLeadFormsTab } from "@/lib/public-forms/lead-forms-tab-visibility";
 import { LeadWhatsAppCard } from "@/app/[supabaseId]/components/LeadWhatsAppCard";
 import { LeadRadarTemperatureCard } from "@/app/[supabaseId]/components/LeadRadarTemperatureCard";
 import { shouldRenderLeadRadarTemperatureCard } from "@/lib/leads/lead-radar-temperature-card-visibility";
@@ -397,6 +398,7 @@ export default function LeadDialog({
   });
   const form = useLeadForm(leadCustomFieldDefinitions);
   const { hasAccess } = useFeatureAccess();
+  const canAccessPublicForms = shouldShowLeadFormsTab(hasAccess(FEATURE_SLUGS.PUBLIC_FORMS));
   const { access: operationalAccess } = useOperationalAccess();
   const canTransferBetweenTeams =
     isTeamMaster || Boolean(activeTeam?.canTransferAccountLeads);
@@ -3000,14 +3002,14 @@ export default function LeadDialog({
                   </Button>
                 </DialogClose>
               </div>
-              <Tabs value={sidePanelTab} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3 shrink-0">
-                <TabsList className="grid w-full grid-cols-2">
+              <Tabs value={canAccessPublicForms ? sidePanelTab : "activities"} onValueChange={(value) => setSidePanelTab(value as "activities" | "forms")} className="mt-3 shrink-0">
+                <TabsList className={cn("grid w-full", canAccessPublicForms ? "grid-cols-2" : "grid-cols-1")}>
                   <TabsTrigger value="activities">Atividades</TabsTrigger>
-                  <TabsTrigger value="forms">Formulários</TabsTrigger>
+                  {canAccessPublicForms ? <TabsTrigger value="forms">Formulários</TabsTrigger> : null}
                 </TabsList>
               </Tabs>
 
-              {sidePanelTab === "forms" ? (
+              {canAccessPublicForms && sidePanelTab === "forms" ? (
                 currentLead && activeTeamId ? (
                   <div className="flex min-h-0 flex-1 flex-col">
                     {shouldRenderLeadRadarTemperatureCard({

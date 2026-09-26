@@ -32,6 +32,7 @@ export function usePublicFormsState() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [capabilities, setCapabilities] = useState({ canEdit: false, canApprove: false })
+  const [approvalRequired, setApprovalRequired] = useState(false)
   const rankingRequestKeyRef = useRef("")
 
   const refresh = useCallback(async () => {
@@ -39,7 +40,7 @@ export function usePublicFormsState() {
     setLoading(true)
     setError(null)
     try {
-      const [result, templateItems] = await Promise.all([
+      const [result, templateItems, settings] = await Promise.all([
         publicFormsClientService.list(ids, {
           search,
           status,
@@ -51,11 +52,13 @@ export function usePublicFormsState() {
           pageSize: 20,
         }),
         publicFormsClientService.listTemplates(ids).catch(() => [] as PublicFormTemplateListItem[]),
+        publicFormsClientService.getSettings(ids),
       ])
       setItems(result.items)
       setTotal(result.total)
       setTotalPages(result.totalPages)
       setCapabilities(result.capabilities)
+      setApprovalRequired(settings.approvalRequired)
       setTemplates(templateItems)
     } catch (requestError) {
       setError(toUserToastMessage(requestError))
@@ -136,6 +139,7 @@ export function usePublicFormsState() {
     total,
     totalPages,
     capabilities,
+    approvalRequired,
     refresh,
     action,
   }
