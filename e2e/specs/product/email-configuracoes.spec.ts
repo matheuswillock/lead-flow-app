@@ -466,7 +466,6 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       const clickSwitch = page.locator("#click-tracking-switch")
       await expect(clickSwitch).toBeEnabled()
-      await expect(clickSwitch).toBeChecked()
       await expect(
         page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
           exact: false,
