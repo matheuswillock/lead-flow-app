@@ -14,13 +14,14 @@ import { expect, test } from "@playwright/test"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
 
 const RUN_SUFFIX = `${Date.now()}`
+const RUN_UUID_SUFFIX = `${Date.now().toString(16).padStart(11, "0").slice(-11)}a`
 const VERIFIED_HOST = `forms.e2e-host-a-${RUN_SUFFIX}.com.br`
 const UNKNOWN_HOST = `forms.e2e-desconhecido-${RUN_SUFFIX}.com.br`
 
 const TEAM_A_NAME = "E2E Forms Host — Time A"
 const TEAM_B_NAME = "E2E Forms Host — Time B"
-const FORM_A_PUBLIC_ID = "e2e70000-0000-4000-8000-00000000000a"
-const FORM_B_PUBLIC_ID = "e2e70000-0000-4000-8000-00000000000b"
+const FORM_A_PUBLIC_ID = `e2e70000-0000-4000-8000-${RUN_UUID_SUFFIX}`
+const FORM_B_PUBLIC_ID = `e2e70000-0000-4000-8000-${RUN_UUID_SUFFIX.slice(0, -1)}b`
 const FORM_A_COVER_TITLE = "Formulário do Time A (host routing)"
 
 function buildMinimalSnapshot(formId: string, publicId: string, coverTitle: string) {
@@ -159,7 +160,13 @@ test.describe("roteamento por host dos formulários públicos", () => {
 
     expect(response.status()).toBe(200)
     expect(response.headers()["x-robots-tag"]).toContain("noindex")
-    expect(await response.text()).toContain(FORM_A_COVER_TITLE)
+    await expect
+      .poll(
+        async () =>
+          (await request.get(`/forms/${FORM_A_PUBLIC_ID}`, { headers: { host: VERIFIED_HOST } })).text(),
+        { timeout: 15_000, message: "formulário do time A terminou de transmitir o conteúdo" },
+      )
+      .toContain(FORM_A_COVER_TITLE)
   })
 
   /**
