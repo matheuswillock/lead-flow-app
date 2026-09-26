@@ -3,7 +3,11 @@ import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
-import { assertNoHorizontalOverflow, runResponsiveChecks } from "../../support/responsive";
+import {
+  assertNoHorizontalOverflow,
+  assertTouchTargets,
+  runResponsiveChecks,
+} from "../../support/responsive";
 
 const LAYOUT_LEAD_ID = "e2e20000-0000-4000-8000-000000000301";
 const LAYOUT_LEAD_CODE = "E2ELEADLAYOUT001";
@@ -16,6 +20,20 @@ const TOUCH_LEAD_ID = "e2e20000-0000-4000-8000-000000000302";
 const TOUCH_LEAD_CODE = "E2ELEADTOUCH0001";
 const TOUCH_LEAD_NAME = "Lead Touch Target E2E";
 const TOUCH_LEAD_PHONE = "11999990302";
+
+// Lead dedicado ao teste de alvos de toque dos formulários compartilhados
+// (dialog "Novo Lead" e dialog "Agendar Reunião") — bugfix touch-targets-44px.
+// ID próprio para não disputar seed com os outros testes deste spec. NÃO entra
+// em CRM_E2E_LEAD_IDS/afterAll: com `fullyParallel` e mais de um worker, o
+// afterAll do describe roda por worker assim que ELE termina os testes que
+// pegou — inclusive quando esse worker nunca rodou o teste que seeda este
+// lead. Isso apaga o lead sob um teste ainda em andamento em outro worker
+// (achado do Codex review no PR #1218). Este ID limpa a si mesmo num
+// try/finally dentro do próprio teste, sem depender do afterAll do describe.
+const FORM_TOUCH_LEAD_ID = "e2e20000-0000-4000-8000-000000000303";
+const FORM_TOUCH_LEAD_CODE = "E2ELEADFORMTOUCH1";
+const FORM_TOUCH_LEAD_NAME = "Lead Form Touch Target E2E";
+const FORM_TOUCH_LEAD_PHONE = "11999990303";
 
 const CRM_E2E_LEAD_IDS = [LAYOUT_LEAD_ID, TOUCH_LEAD_ID];
 
@@ -253,6 +271,96 @@ test.describe("app/[supabaseId]/crm", () => {
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await runResponsiveChecks(page);
+  });
+
+  /**
+   * Bugfix touch-targets-44px-controles-compartilhados: cobre, em 360px, os
+   * controles de formulário compartilhado apontados no relatório da SPEC 40
+   * — `+ Adicionar` (`AgeEntryInput`/`LeadAgeField`) e `SaveWithDraftButton`
+   * (botão principal + chevron do dropdown) — dentro do dialog "Novo Lead"
+   * (`components/forms/leadForm.tsx`) e o `SelectTrigger` compartilhado
+   * (`components/ui/select.tsx`) dentro do dialog "Agendar Reunião"
+   * (`ScheduleMeetingDialog`, fora do escopo de edição deste bugfix).
+   *
+   * Mede APENAS estes controles, não o dialog inteiro: o dialog "Novo Lead"
+   * tem outros alvos de toque pré-existentes abaixo de 44px (pills de status,
+   * abas, composer de atividade) que já existiam antes da SPEC 40 e estão
+   * fora do escopo deste bugfix — um `assertTouchTargets` genérico sobre o
+   * dialog inteiro reprovaria por eles, não pelos controles corrigidos aqui.
+   */
+  test("responsividade mobile-first dos formulários compartilhados (novo lead e agendar reunião)", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    // Cleanup próprio (try/finally), não o afterAll do describe: ver o
+    // comentário na declaração de FORM_TOUCH_LEAD_ID acima.
+    const { teamId } = await seedCrmLead({
+      id: FORM_TOUCH_LEAD_ID,
+      leadCode: FORM_TOUCH_LEAD_CODE,
+      name: FORM_TOUCH_LEAD_NAME,
+      phone: FORM_TOUCH_LEAD_PHONE,
+    });
+    try {
+      await invalidateTeamLeadsCache(page, {
+        leadId: FORM_TOUCH_LEAD_ID,
+        teamId,
+        name: FORM_TOUCH_LEAD_NAME,
+      });
+
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/crm?view=pipeline`);
+      await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({
+        timeout: 30_000,
+      });
+      const seededLeadCell = await waitForSeededLeadOnBoard(page, FORM_TOUCH_LEAD_NAME);
+
+      await page.setViewportSize({ width: 360, height: 800 });
+
+      // --- Dialog "Novo Lead": "+ Adicionar", SaveWithDraftButton e "Cancelar" ---
+      // Medidos via `assertTouchTargets` (fonte única de alvo de toque —
+      // agents.md #responsividade-mobile-first-must) com selector restrito
+      // a `data-testid` dos controles corrigidos por este bugfix: o dialog
+      // "Novo Lead" tem outros alvos pré-existentes abaixo de 44px (pills de
+      // status, abas, composer de atividade) fora do escopo desta mudança —
+      // um selector genérico sobre o dialog inteiro reprovaria por eles.
+      await page.getByRole("button", { name: "Adicionar novo lead" }).click();
+      const newLeadDialog = page.getByRole("dialog").filter({ hasText: "Novo Lead" });
+      await expect(newLeadDialog).toBeVisible({ timeout: 15_000 });
+      // Confirma que os 4 controles existem ANTES de medir: `assertTouchTargets`
+      // passa silenciosamente se o selector não casar com nada — sem este
+      // guard, um data-testid renomeado/removido faria o teste ficar verde
+      // sem medir nada (achado do review Opus final neste PR).
+      await expect(newLeadDialog.getByTestId("age-entry-add-button")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("save-with-draft-main")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("save-with-draft-chevron")).toHaveCount(1);
+      await expect(newLeadDialog.getByTestId("lead-form-cancel")).toHaveCount(1);
+      await assertTouchTargets(page, {
+        selector:
+          '[data-testid="age-entry-add-button"], [data-testid="save-with-draft-main"], [data-testid="save-with-draft-chevron"], [data-testid="lead-form-cancel"]',
+      });
+
+      await page.keyboard.press("Escape");
+      await expect(newLeadDialog).toHaveCount(0);
+
+      // --- Dialog "Agendar Reunião": SelectTrigger compartilhado do closer ---
+      // (verificação apenas — select.tsx não foi alterado por este bugfix, já
+      // aplicava `max-lg:h-11!` para o mobile antes desta mudança).
+      const seededRow = page.getByRole("row").filter({ has: seededLeadCell });
+      await seededRow.getByRole("button", { name: "Abrir menu" }).click();
+      await page.getByRole("menuitem", { name: "Agendar reunião" }).click();
+      const scheduleDialog = page.getByRole("dialog").filter({ hasText: "Agendar Reunião" });
+      await expect(scheduleDialog).toBeVisible({ timeout: 15_000 });
+      await expect(scheduleDialog.locator('[role="combobox"]').first()).toHaveCount(1);
+      await assertTouchTargets(page, { selector: '[role="dialog"] [role="combobox"]' });
+      await page.keyboard.press("Escape");
+      await expect(scheduleDialog).toHaveCount(0);
+    } finally {
+      const headers = {
+        "x-supabase-user-id": E2E_MASTER_SUPABASE_ID,
+        "x-team-id": teamId,
+      };
+      await page.request.delete(`/api/v1/leads/${FORM_TOUCH_LEAD_ID}`, { headers }).catch(() => null);
+      await getPrisma().lead.deleteMany({ where: { id: FORM_TOUCH_LEAD_ID } });
+    }
   });
 
   test("paginação da tabela cabe no viewport de 360px", async ({ page }) => {
