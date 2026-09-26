@@ -10,10 +10,9 @@ import { assertResend } from "@/lib/email"
 import { EmailTeamSettingsUseCase } from "./EmailTeamSettingsUseCase"
 
 /**
- * O click tracking fica disponível assim que um domínio próprio é conectado;
- * o domínio compartilhado da plataforma nunca liga. `clickTracking` ausente preserva a escolha
- * persistida — a rota antiga descartava o campo, e é exatamente essa regressão
- * que estes testes travam.
+ * O click tracking só pode ser ligado quando o domínio próprio e o CNAME de
+ * Tracking estão verificados. `clickTracking` ausente preserva a escolha
+ * persistida do time.
  */
 
 type DomainsUpdatePayload = {
@@ -216,7 +215,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
     expect(syncedSnapshot.click_tracking).toBe(false)
   })
 
-  it("liga o clique mesmo com o CNAME de Tracking pendente", async () => {
+  it("recusa ligar o clique com o CNAME de Tracking pendente", async () => {
     domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
@@ -257,12 +256,12 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       teamCtx
     )
 
-    expect(output.isValid).toBe(true)
-    expect(domainsUpdateMock).toHaveBeenCalledTimes(1)
-    expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({ clickTracking: true })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("CNAME")
+    expect(domainsUpdateMock).not.toHaveBeenCalled()
   })
 
-  it("liga o clique com o domínio ainda não verificado", async () => {
+  it("recusa ligar o clique com o domínio ainda não verificado", async () => {
     domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
@@ -295,9 +294,9 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       teamCtx
     )
 
-    expect(output.isValid).toBe(true)
-    expect(domainsUpdateMock).toHaveBeenCalledTimes(1)
-    expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({ clickTracking: true })
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("verificado")
+    expect(domainsUpdateMock).not.toHaveBeenCalled()
   })
 
   it("NUNCA liga o clique para domínio da plataforma (guard explícito)", async () => {

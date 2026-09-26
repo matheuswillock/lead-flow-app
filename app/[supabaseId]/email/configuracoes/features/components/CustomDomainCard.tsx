@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils"
 import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
 import { isClickTrackingEligibleDomain } from "@/lib/email/resend-domain-reconcile"
+import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   groupDnsRecordsBySection,
   isDnsRecordVerified,
@@ -381,9 +382,14 @@ export function CustomDomainCard() {
     ? `${trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN}.${domainName}`
     : trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN
 
-  // O tracking nasce habilitado quando um domínio próprio é adicionado. A
-  // verificação DNS confirma a entrega, mas não deve bloquear a configuração.
-  const clickTrackingUnlockable = isConnected && isClickTrackingEligibleDomain(domainName)
+  // O rewrite de cliques só é seguro quando o domínio e o CNAME de Tracking
+  // já estão verificados no Resend.
+  const trackingDnsVerified = deriveTrackingDnsVerified(domainRecords) === true
+  const clickTrackingUnlockable =
+    isConnected &&
+    isClickTrackingEligibleDomain(domainName) &&
+    trackingDnsVerified &&
+    domainStatus === "verified"
 
   function openTrackingDialog() {
     setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
@@ -406,8 +412,6 @@ export function CustomDomainCard() {
     const ok = await handleConfigureDomainTracking({
       trackingSubdomain: subdomain,
       openTracking: openTrackingDraft,
-      // Domínio próprio pode habilitar cliques antes da verificação DNS; o
-      // backend mantém o guard do domínio compartilhado da plataforma.
       clickTracking: clickTrackingUnlockable ? clickTrackingDraft : false,
     })
     if (ok) {
@@ -858,9 +862,8 @@ export function CustomDomainCard() {
 
                   {clickTrackingUnlockable ? (
                     <FieldDescription>
-                      O rastreio de cliques fica disponível assim que o domínio
-                      é adicionado. A verificação DNS confirma o funcionamento
-                      do endereço personalizado.
+                      O rastreio de cliques fica disponível quando o domínio e
+                      o CNAME de Tracking estiverem verificados no Resend.
                     </FieldDescription>
                   ) : (
                     <FieldDescription>

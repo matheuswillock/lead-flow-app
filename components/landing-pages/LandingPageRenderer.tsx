@@ -1,13 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { format, parseISO } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { CalendarIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
 import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 type Props = { snapshot: LandingPageSnapshot }
 
-type SchedulingAnswer = { startsAt?: string }
+type SchedulingAnswer = { date?: string; time?: string; startsAt?: string }
 
 function questionInputType(question: PublicFormSnapshot["questions"][number]) {
   if (question.type === "email") return "email"
@@ -20,10 +29,12 @@ function LandingQuestion({
   question,
   value,
   onChange,
+  publicId,
 }: {
   question: PublicFormSnapshot["questions"][number]
   value: unknown
   onChange: (value: unknown) => void
+  publicId?: string
 }) {
   const options = question.options ?? []
   if (question.type === "multiple_choice") {
@@ -57,27 +68,7 @@ function LandingQuestion({
     )
   }
   if (question.type === "scheduling") {
-    const scheduling = typeof value === "object" && value !== null ? value as { date?: string; time?: string; startsAt?: string } : {}
-    return (
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input
-          type="date"
-          value={scheduling.date ?? ""}
-          onChange={(event) => {
-            const date = event.target.value
-            onChange({ ...scheduling, date, startsAt: date && scheduling.time ? `${date}T${scheduling.time}:00` : undefined })
-          }}
-        />
-        <input
-          type="time"
-          value={scheduling.time ?? ""}
-          onChange={(event) => {
-            const time = event.target.value
-            onChange({ ...scheduling, time, startsAt: scheduling.date && time ? `${scheduling.date}T${time}:00` : undefined })
-          }}
-        />
-      </div>
-    )
+    return <LandingSchedulingQuestion value={(value as SchedulingAnswer | undefined) ?? {}} onChange={onChange} publicId={publicId} questionId={question.id} />
   }
   if (question.type === "boolean") {
     return (
@@ -100,6 +91,110 @@ function LandingQuestion({
     )
   }
   return <input type={questionInputType(question)} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={question.placeholder ?? ""} />
+}
+
+function LandingSchedulingQuestion({
+  value,
+  onChange,
+  publicId,
+  questionId,
+}: {
+  value: SchedulingAnswer
+  onChange: (value: SchedulingAnswer) => void
+  publicId?: string
+  questionId: string
+}) {
+  const [slots, setSlots] = useState<Array<{ time: string; startsAt: string }>>([])
+  const [loading, setLoading] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const selectedDate = value.date ? parseISO(`${value.date}T00:00:00`) : undefined
+  const today = useMemo(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }, [])
+
+  useEffect(() => {
+    if (!publicId || !value.date) {
+      setSlots([])
+      return
+    }
+
+    const controller = new AbortController()
+    setLoading(true)
+    setAvailabilityError(null)
+    void fetch(
+      `${API_CLIENT_BASE}/public-forms/${publicId}/availability?date=${encodeURIComponent(value.date)}`,
+      { signal: controller.signal },
+    )
+      .then(async (response) => {
+        const output = await response.json()
+        if (!response.ok || !output.isValid) {
+          throw new Error(output.errorMessages?.join("; ") || "Não foi possível consultar horários")
+        }
+        setSlots(output.result.availableSlots ?? [])
+      })
+      .catch((requestError) => {
+        if (requestError instanceof DOMException && requestError.name === "AbortError") return
+        setAvailabilityError(
+          requestError instanceof Error ? requestError.message : "Não foi possível consultar horários",
+        )
+      })
+      .finally(() => setLoading(false))
+
+    return () => controller.abort()
+  }, [publicId, value.date])
+
+  return (
+    <FieldGroup className="gap-4 sm:grid sm:grid-cols-2">
+      <Field>
+        <FieldLabel htmlFor={`landing-date-${questionId}`}>Data</FieldLabel>
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              id={`landing-date-${questionId}`}
+              type="button"
+              variant="outline"
+              className="h-10 w-full justify-start border-input bg-background font-normal"
+            >
+              <CalendarIcon data-icon="inline-start" />
+              {value.date ? format(selectedDate!, "dd/MM/yyyy", { locale: ptBR }) : "Selecione a data"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              disabled={{ before: today }}
+              onSelect={(date) => {
+                onChange(date ? { date: format(date, "yyyy-MM-dd") } : {})
+                setCalendarOpen(false)
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`landing-time-${questionId}`}>Horário</FieldLabel>
+        <Select
+          disabled={loading || !value.date || slots.length === 0}
+          value={value.time ?? ""}
+          onValueChange={(time) => {
+            const selected = slots.find((slot) => slot.time === time)
+            onChange({ ...value, time, startsAt: selected?.startsAt })
+          }}
+        >
+          <SelectTrigger id={`landing-time-${questionId}`} className="border-input bg-background">
+            <SelectValue placeholder={!value.date ? "Selecione a data" : loading ? "Consultando..." : "Selecione"} />
+          </SelectTrigger>
+          <SelectContent>
+            {slots.map((slot) => <SelectItem key={slot.startsAt} value={slot.time}>{slot.time}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {availabilityError && <FieldDescription className="text-destructive">{availabilityError}</FieldDescription>}
+      </Field>
+    </FieldGroup>
+  )
 }
 
 export function LandingPageRenderer({ snapshot }: Props) {
@@ -229,7 +324,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
             {visibleQuestions.map((question) => (
               <label key={question.id} className="grid gap-2 text-sm font-medium">
                 <span>{question.title}{question.required && <span aria-hidden="true"> *</span>}</span>
-                <LandingQuestion question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
+            <LandingQuestion question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} publicId={snapshot.form.publicId} />
               </label>
             ))}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

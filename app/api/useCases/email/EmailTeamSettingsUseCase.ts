@@ -13,6 +13,7 @@ import {
   RESEND_TRACKING_POLICY,
 } from "@/lib/email/resend-domain-reconcile"
 import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
+import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   isSelfInflictedTrackingConflict,
   isTrackingSubdomainConflict,
@@ -261,6 +262,7 @@ export class EmailTeamSettingsUseCase {
       senders,
       defaultSenderId: defaultSender?.id ?? null,
       globalVariables,
+      sendingHealthStatus: settings?.sendingHealthStatus ?? "healthy",
     }
   }
 
@@ -710,6 +712,26 @@ export class EmailTeamSettingsUseCase {
             [
               `O subdomínio de tracking está mudando para ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}. Salve a troca com o rastreio de cliques desligado, aguarde o CNAME novo aparecer verificado no Resend e só então ligue o rastreio de cliques.`,
             ],
+            null
+          )
+        }
+
+        if (deriveTrackingDnsVerified(currentDomain.records) !== true) {
+          return new Output(
+            false,
+            [],
+            [
+              `O registro DNS de Tracking (CNAME ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}) ainda não está verificado no Resend. Verifique o DNS do domínio antes de ligar o rastreio de cliques.`,
+            ],
+            null
+          )
+        }
+
+        if (currentDomain.status !== "verified") {
+          return new Output(
+            false,
+            [],
+            ["O domínio precisa estar verificado no Resend antes de ligar o rastreio de cliques."],
             null
           )
         }

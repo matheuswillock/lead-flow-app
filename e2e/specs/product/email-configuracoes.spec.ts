@@ -454,7 +454,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toHaveCount(0)
     })
 
-    test("toggle de cliques fica disponível antes da verificação do DNS", async ({
+    test("mantém o toggle de cliques bloqueado antes da verificação do DNS", async ({
       page,
     }) => {
       await mockDomainRecordsRoute(page)
@@ -468,9 +468,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
-      await expect(clickSwitch).toBeEnabled()
+      await expect(clickSwitch).toBeDisabled()
+      await expect(clickSwitch).not.toBeChecked()
       await expect(
-        page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
+        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
           exact: false,
         })
       ).toBeVisible()
