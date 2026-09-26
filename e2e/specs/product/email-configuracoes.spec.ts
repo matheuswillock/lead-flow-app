@@ -458,7 +458,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await gotoEmailSettings(page)
 
       await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
-      await page.getByRole("button", { name: "Configurar" }).click()
+      await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
 
       await expect(
         page.getByRole("heading", { name: "Configurar métricas de tracking" })

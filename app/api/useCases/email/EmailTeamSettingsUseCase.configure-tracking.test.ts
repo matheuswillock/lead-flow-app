@@ -234,6 +234,23 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       },
       error: null,
     }))
+    domainsGetMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        name: "empresaxyz.com.br",
+        status: "verified",
+        region: "sa-east-1",
+        tracking_subdomain: "links",
+        open_tracking: true,
+        click_tracking: true,
+        records: [
+          { record: "DKIM", status: "verified" },
+          { record: "SPF", status: "verified" },
+          { record: "Tracking", status: "pending" },
+        ],
+      },
+      error: null,
+    }))
 
     const output = await buildUseCase().configureDomainTracking(
       { trackingSubdomain: "links", openTracking: true, clickTracking: true },
@@ -255,6 +272,19 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
         tracking_subdomain: "links",
         open_tracking: true,
         click_tracking: false,
+        records: VERIFIED_RECORDS,
+      },
+      error: null,
+    }))
+    domainsGetMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        name: "empresaxyz.com.br",
+        status: "pending",
+        region: "sa-east-1",
+        tracking_subdomain: "links",
+        open_tracking: true,
+        click_tracking: true,
         records: VERIFIED_RECORDS,
       },
       error: null,
