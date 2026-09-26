@@ -297,8 +297,14 @@ export class LeadScheduleService implements ILeadScheduleService {
       resendRecipients,
     };
     const manualLinkRequired = isOnlineMeeting && !canUseGoogleCalendar;
+    // Achado da revisão final do PR de A-E1c (R13-8, mesma raiz no backoffice) —
+    // o link não é usado fora de reunião online, então um valor herdado
+    // (possivelmente `http:` legado) não pode travar o agendamento por
+    // telefone/WhatsApp só por causa do esquema.
     const validatedMeetingLink = validateMeetingLinkValue(meetingLink, {
       required: manualLinkRequired,
+      allowLegacyHttp:
+        !isOnlineMeeting || (!!meetingLink && meetingLink === existingSchedule?.meetingLink),
     });
 
     if (!validatedMeetingLink.isValid) {

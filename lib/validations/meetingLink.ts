@@ -9,6 +9,17 @@ export type MeetingLinkValidationResult =
 
 interface ValidateMeetingLinkOptions {
   required?: boolean;
+  /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E1c — a DA8 só aceita `https:` em
+   * link novo. Uma reunião já gravada com link `http:` não pode passar a
+   * quebrar toda edição futura (mudar data, closer, título…) só porque o link
+   * em si não foi tocado. O chamador passa `true` só quando `rawValue` é
+   * exatamente o link já persistido (não editado nesta chamada); nesse caso o
+   * `http:` legado continua aceito, sem virar `<a href>` em nenhum template
+   * (isso é responsabilidade de `sanitizeEmailHref`/`buildMeetingLinkMarkup`,
+   * não desta validação).
+   */
+  allowLegacyHttp?: boolean;
 }
 
 function safeDecodeURIComponent(value: string): string {
@@ -34,7 +45,7 @@ export function validateMeetingLinkValue(
     if (required) {
       return {
         isValid: false,
-        error: "Informe um link da reunião válido (http/https).",
+        error: "Informe um link da reunião válido (https).",
       };
     }
 
@@ -74,11 +85,26 @@ export function validateMeetingLinkValue(
     return { isValid: false, error: "Link da reunião inválido." };
   }
 
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+  const isLegacyHttpCarryOver =
+    parsedUrl.protocol === "http:" && options.allowLegacyHttp === true;
+
+  if (parsedUrl.protocol !== "https:" && !isLegacyHttpCarryOver) {
     return {
       isValid: false,
-      error: "Informe um link da reunião válido (http/https).",
+      error: "Informe um link da reunião válido (https).",
     };
+  }
+
+  // Achado do Codex na revisão do PR (R13-9): `new URL(value).toString()`
+  // pode mudar a string (ex.: acrescenta "/" no fim de um host sem path).
+  // Quando o valor é o carry-over de um link `http:` legado, devolver a URL
+  // normalizada quebraria a comparação de igualdade que um chamador seguinte
+  // faz contra o valor já persistido (ex.: rota valida e repassa o
+  // `normalized` para o service, que valida de novo e compara de novo com o
+  // banco). Devolver o valor original (já trimado) preserva a identidade
+  // byte a byte por toda a cadeia de revalidações.
+  if (isLegacyHttpCarryOver) {
+    return { isValid: true, normalized: value };
   }
 
   return { isValid: true, normalized: parsedUrl.toString() };

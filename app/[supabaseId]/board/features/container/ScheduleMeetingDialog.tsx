@@ -172,8 +172,13 @@ export function ScheduleMeetingDialog({
     () =>
       validateMeetingLinkValue(meetingLink, {
         required: isOnlineMeeting && requiresManualMeetingLink,
+        // SPEC 13 (Agenda na Criação de Lead), A-E1c — o link só é revalidado
+        // como "novo" quando o usuário mexe nele. Reunião já gravada com link
+        // `http:` legado (`lead.meetingLink`) continua aceita sem editar, para
+        // não travar o reagendamento por outro motivo (data, título, closer…).
+        allowLegacyHttp: !!meetingLink && meetingLink === (lead.meetingLink || ""),
       }),
-    [meetingLink, requiresManualMeetingLink, isOnlineMeeting]
+    [meetingLink, requiresManualMeetingLink, isOnlineMeeting, lead.meetingLink]
   );
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   const isLeadEmailRequired = isLeadEmailRequiredForMeetingType(meetingType);
