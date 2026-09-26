@@ -1034,6 +1034,14 @@ failed failed
     
 
 
+        team_landing_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -1432,6 +1440,14 @@ failed failed
 
 
         PublicFormStatus {
+            draft draft
+published published
+archived archived
+        }
+    
+
+
+        landing_page_status {
             draft draft
 published published
 archived archived
@@ -3333,6 +3349,18 @@ completed completed
     }
   
 
+  "corretor_studio_team_landing_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamLandingDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "email_team_senders" {
     String id "🗝️"
     String name 
@@ -4122,6 +4150,28 @@ completed completed
     }
   
 
+  "corretor_studio_landing_pages" {
+    String id "🗝️"
+    String publicId 
+    String name 
+    LandingPageStatus status 
+    String templateSlug 
+    Json content 
+    Json offer 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_landing_page_publications" {
+    String id "🗝️"
+    Int version 
+    Json snapshot 
+    DateTime publishedAt 
+    DateTime endedAt "❓"
+    }
+  
+
   "corretor_studio_public_form_eligible_closers" {
     String id "🗝️"
     DateTime createdAt 
@@ -4723,6 +4773,8 @@ completed completed
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
+    "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
     "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"
@@ -4884,6 +4936,12 @@ completed completed
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "assignedSdr"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "reviewer"
     "corretor_studio_public_forms" }o--|o backoffice_users : "managedByBackofficeUser"
+    "corretor_studio_landing_pages" |o--|| "LandingPageStatus" : "enum:status"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_public_forms : "publicForm"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_profiles : "createdBy"
+    "corretor_studio_landing_page_publications" }o--|| corretor_studio_landing_pages : "landingPage"
+    "corretor_studio_landing_page_publications" }o--|| corretor_studio_profiles : "publishedBy"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"

@@ -1028,6 +1028,8 @@ model Profile {
   publicFormsReviewed                      PublicForm[]                                 @relation("PublicFormReviewer")
   publicFormCloserAssignments              PublicFormEligibleCloser[]
   publicFormPublications                   PublicFormPublication[]                      @relation("PublicFormPublisher")
+  landingPagesCreated                     LandingPage[]                                 @relation("LandingPageCreator")
+  landingPagePublications                 LandingPagePublication[]                      @relation("LandingPagePublisher")
   // Pending Operators relations
   pendingOperators                         PendingOperator[]                            @relation("PendingOperatorManager")
   pendingActions                           PendingAction[]                              @relation("PendingActionMaster")
@@ -2563,6 +2565,7 @@ model Team {
   automationRunLogs          TeamAutomationRunLog[]
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   publicForms                PublicForm[]
+  landingPages               LandingPage[]
   publicFormSettings         PublicFormSettings?
   publicFormTemplates        PublicFormTemplate[]
   transferRoutesFrom         TeamTransferRoute[]           @relation("TeamTransferRouteFrom")
@@ -2582,6 +2585,7 @@ model Team {
   emailSettings               EmailTeamSettings?            @relation("TeamEmailSettings")
   emailDomainEvents           EmailTeamDomainEvent[]        @relation("TeamEmailDomainEvents")
   formDomain                  TeamFormDomain?               @relation("TeamFormDomain")
+  landingDomain               TeamLandingDomain?            @relation("TeamLandingDomain")
   emailSenders                EmailTeamSender[]             @relation("TeamEmailSenders")
   emailVariables              EmailTeamVariable[]           @relation("TeamEmailVariables")
   emailTemplateHistory        EmailTemplateHistory[]
@@ -4346,6 +4350,33 @@ model TeamFormDomain {
   @@map("corretor_studio_team_form_domains")
 }
 
+enum TeamLandingDomainStatus {
+  pending
+  verified
+  failed
+
+  @@map("team_landing_domain_status")
+}
+
+/// Domínio próprio do time para servir landing pages de cotação
+/// (ex.: cotacao.imobiliariax.com.br). Um domínio por time nesta fase.
+model TeamLandingDomain {
+  id             String                   @id @default(uuid()) @db.Uuid
+  teamId         String                   @unique @db.Uuid
+  hostname       String                   @unique @db.Text
+  status         TeamLandingDomainStatus  @default(pending)
+  vercelDomainId String?                  @db.Text
+  verifiedAt     DateTime?                @db.Timestamptz(6)
+  lastCheckedAt  DateTime?                @db.Timestamptz(6)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  team Team @relation("TeamLandingDomain", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastCheckedAt])
+  @@map("corretor_studio_team_landing_domains")
+}
+
 model EmailTeamSender {
   id        String   @id @default(uuid()) @db.Uuid
   teamId    String   @db.Uuid
@@ -5949,6 +5980,14 @@ enum PublicFormStatus {
   archived
 }
 
+enum LandingPageStatus {
+  draft
+  published
+  archived
+
+  @@map("landing_page_status")
+}
+
 enum PublicFormApprovalStatus {
   draft
   pending_approval
@@ -6130,12 +6169,54 @@ model PublicForm {
   submissions                  PublicFormSubmission[]
   metricEvents                 PublicFormMetricEvent[]
   journeySessions              PublicFormJourneySession[]
+  landingPages                 LandingPage[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([teamId, approvalStatus, updatedAt(sort: Desc)])
   @@index([assignedSdrId])
   @@index([managedByBackofficeUserId])
   @@map("corretor_studio_public_forms")
+}
+
+model LandingPage {
+  id             String           @id @default(uuid()) @db.Uuid
+  teamId         String           @db.Uuid
+  publicFormId   String           @db.Uuid
+  createdById    String           @db.Uuid
+  publicId       String           @unique @default(uuid()) @db.Uuid
+  name           String           @db.Text
+  status         LandingPageStatus @default(draft)
+  templateSlug   String           @db.Text
+  content        Json             @default("{}")
+  offer          Json             @default("{}")
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  publicForm     PublicForm       @relation(fields: [publicFormId], references: [id], onDelete: Restrict)
+  createdBy      Profile          @relation("LandingPageCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  publications   LandingPagePublication[]
+
+  @@index([teamId, status, updatedAt(sort: Desc)])
+  @@index([publicFormId])
+  @@map("corretor_studio_landing_pages")
+}
+
+model LandingPagePublication {
+  id            String     @id @default(uuid()) @db.Uuid
+  landingPageId String     @db.Uuid
+  publishedById String     @db.Uuid
+  version       Int
+  snapshot      Json
+  publishedAt   DateTime   @default(now()) @db.Timestamptz(6)
+  endedAt       DateTime?  @db.Timestamptz(6)
+
+  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  publishedBy   Profile     @relation("LandingPagePublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+
+  @@unique([landingPageId, version])
+  @@index([landingPageId, endedAt, publishedAt(sort: Desc)])
+  @@map("corretor_studio_landing_page_publications")
 }
 
 model PublicFormEligibleCloser {

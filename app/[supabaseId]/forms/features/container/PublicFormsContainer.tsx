@@ -83,6 +83,7 @@ import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggr
 import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
 import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { canRequestPublicFormApproval } from "@/lib/public-forms/approval-actions"
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -151,6 +152,11 @@ export function PublicFormsContainer() {
               <Link href={`/${params.supabaseId}/forms/new`}>
                 <Plus data-icon="inline-start" />
                 Criar formulário
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/${params.supabaseId}/landing-pages/new`}>
+                Criar landing de cotação
               </Link>
             </Button>
           </div>
@@ -401,7 +407,7 @@ export function PublicFormsContainer() {
                             </DropdownMenuItem>
                           </>
                         ) : null}
-                        {forms.capabilities.canEdit && item.status !== "archived" && item.status !== "published" ? (
+                        {canRequestPublicFormApproval({ canEdit: forms.capabilities.canEdit, approvalRequired: forms.approvalRequired, status: item.status }) ? (
                           <DropdownMenuItem
                             onClick={() => void forms.action(item.id, "submit-approval")}
                           >

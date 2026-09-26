@@ -48,6 +48,7 @@ export function SiteHeader() {
   const isEmailSection = section === 'email'
   const isPerformanceSection = section === 'performance'
   const isFormsSection = section === 'forms'
+  const isLandingPagesSection = section === 'landing-pages'
   const isBackofficeClientDetails =
     pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
   const isBackofficeStudioBot =
@@ -81,6 +82,7 @@ export function SiteHeader() {
   const emailBaseHref = `/${supabaseId}/email`
   const performanceBaseHref = `/${supabaseId}/performance`
   const formsBaseHref = `/${supabaseId}/forms`
+  const landingPagesBaseHref = `/${supabaseId}/landing-pages`
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
@@ -124,6 +126,15 @@ export function SiteHeader() {
                   <BreadcrumbPage>E-mail</BreadcrumbPage>
                 </BreadcrumbItem>
               )}
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : isLandingPagesSection ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block"><BreadcrumbLink asChild><Link href={formsBaseHref}>Formulários</Link></BreadcrumbLink></BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbItem className="hidden md:block"><BreadcrumbLink asChild><Link href={landingPagesBaseHref}>Landing pages</Link></BreadcrumbLink></BreadcrumbItem>
+              {subsection ? <><BreadcrumbSeparator className="hidden md:block" /><BreadcrumbItem><BreadcrumbPage>{subsection === 'new' ? 'Nova landing' : 'Gerenciar'}</BreadcrumbPage></BreadcrumbItem></> : null}
             </BreadcrumbList>
           </Breadcrumb>
         ) : isFormsSection ? (

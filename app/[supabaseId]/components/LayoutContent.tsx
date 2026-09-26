@@ -16,6 +16,7 @@ import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/f
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
 import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
 import { TeamSwitchingScreen } from "./TeamSwitchingScreen";
+import { shouldContainLayoutContent } from "@/lib/layout/layout-content-overflow";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -125,6 +126,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
 
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlugs = getFeatureSlugsForAppPath(pathname);
+  const containsPageScroll = shouldContainLayoutContent(pathname);
   const isAssociadosRoute = isAssociadosAppPath(pathname);
   const shouldBlockByFeature =
     !shouldShowNoTeamsMessage &&
@@ -151,7 +153,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
         <SiteHeader />
         <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal} />
         <CampaignDispatchIndicator />
-        <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto">
+        <div className={`flex min-h-0 flex-1 flex-col ${containsPageScroll ? "overflow-hidden" : "overflow-auto"}`}>
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
             {shouldShowNoTeamsMessage ? (
               <div className="flex min-h-0 flex-1 items-center justify-center p-6">

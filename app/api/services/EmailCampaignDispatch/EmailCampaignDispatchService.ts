@@ -8,6 +8,7 @@ import {
   templateIncludesManualUnsubscribeLink,
 } from "@/lib/email/unsubscribe-link-embed"
 import { appendEmailLogIdToFormUrls } from "@/lib/email/append-email-log-to-form-urls"
+import { appendEmailLogIdToLandingPageUrls } from "@/lib/email/append-email-log-to-landing-page-urls"
 import { extractFormPublicIdsFromHtml } from "@/lib/email/form-links-in-html"
 import { rewriteFormUrlHostsToBase } from "@/lib/email/rewrite-form-urls-to-team-domain"
 import type { IPublicFormBaseUrlResolver } from "@/lib/public-forms/public-form-base-url-resolution"
@@ -297,6 +298,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
           const emailLogId = logIdByEmail?.get(recipient.email)
           if (emailLogId) {
             renderedHtml = appendEmailLogIdToFormUrls(renderedHtml, emailLogId)
+            renderedHtml = appendEmailLogIdToLandingPageUrls(renderedHtml, emailLogId)
           }
           const renderedSubject = interpolateEmailTemplate(
             params.subject,

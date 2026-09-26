@@ -822,7 +822,7 @@ export function PublicFormWizard({
                 change={change}
               />
             )}
-            <div className="mt-10 flex justify-between">
+            <div className="sticky bottom-0 z-10 -mx-5 mt-10 flex min-h-16 shrink-0 justify-between gap-3 border-t bg-background/95 px-5 py-4 backdrop-blur md:-mx-8 md:px-8">
               <Button variant="outline" disabled={step === 0} onClick={() => setStep(step - 1)}>
                 Voltar
               </Button>
