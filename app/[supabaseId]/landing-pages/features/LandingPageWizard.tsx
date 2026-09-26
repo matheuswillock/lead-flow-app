@@ -38,12 +38,12 @@ export function LandingPageWizard() {
   const [templateSlug, setTemplateSlug] = useState("cotacao-corretor-studio")
   const [content, setContent] = useState<LandingPageContent>(defaultContent)
   const [offer, setOffer] = useState<LandingPageOffer>({
-    enabled: true,
-    badge: "Condição para empresas",
-    percentage: 40,
-    title: "No plano de saúde do seu CNPJ",
-    items: ["Para quem ainda não tem plano", "Para quem quer reduzir o plano atual", "Para você, sua família e seus sócios"],
-    disclaimer: "Desconto sujeito à análise do perfil e às condições da operadora.",
+    enabled: false,
+    badge: "",
+    percentage: null,
+    title: "",
+    items: [],
+    disclaimer: "",
   })
   const editingLandingId = searchParams.get("edit")
   const publishedForms = useMemo(() => forms.items.filter((item) => item.status === "published"), [forms.items])

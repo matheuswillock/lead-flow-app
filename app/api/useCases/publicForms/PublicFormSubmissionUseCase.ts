@@ -91,13 +91,20 @@ function withFormCompletedScoreOrigin(
 }
 
 export class PublicFormSubmissionUseCase {
-  async accept(publicId: string, input: PublicFormSubmissionInput): Promise<Output> {
+  async accept(publicId: string, input: PublicFormSubmissionInput, pinnedPublicationId?: string): Promise<Output> {
     if (!isValidPublicFormId(publicId))
       return new Output(false, [], ["Formulário indisponível"], null)
-    const current = (await publicFormsService.getPublic(publicId)) as {
+    const currentPublication = (await publicFormsService.getPublic(publicId)) as {
       publicationId: string
       snapshot: PublicFormSnapshot
     } | null
+    const pinnedPublication = !currentPublication && pinnedPublicationId
+      ? await publicFormsRepository.findPublicationById(pinnedPublicationId)
+      : null
+    const pinnedSnapshot = pinnedPublication ? parsePublicFormSnapshot(pinnedPublication.snapshot) : null
+    const current = currentPublication ?? (pinnedPublication && pinnedSnapshot && pinnedSnapshot.publicId === publicId
+      ? { publicationId: pinnedPublication.publicationId, snapshot: pinnedSnapshot }
+      : null)
     if (!current) return new Output(false, [], ["Formulário indisponível"], null)
 
     const existing = await publicFormsRepository.findSubmissionByRequestKey(input.requestKey)

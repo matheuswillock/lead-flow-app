@@ -194,6 +194,9 @@ async function arrangeEmailLog(teamId) {
 }
 
 test.describe("app/forms/[publicId]", () => {
+  // O spec reescreve a mesma publicação e as mesmas perguntas no banco.
+  // Com fullyParallel, beforeAll de workers diferentes disputa os IDs fixos.
+  test.describe.configure({ mode: "serial" })
   test.setTimeout(60_000)
 
   let publicId

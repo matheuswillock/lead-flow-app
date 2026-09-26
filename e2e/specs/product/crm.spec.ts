@@ -146,6 +146,10 @@ async function waitForSeededLeadOnBoard(page: Page, name: string) {
 }
 
 test.describe("app/[supabaseId]/crm", () => {
+  // Os testes usam o mesmo time e a mesma cache de listagem de leads; a
+  // execução paralela permite que uma invalidação deixe o outro teste com um
+  // snapshot antigo durante o seed.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ context }) => {
