@@ -7,6 +7,8 @@ import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-for
 
 type Props = { snapshot: LandingPageSnapshot }
 
+type SchedulingAnswer = { startsAt?: string }
+
 function questionInputType(question: PublicFormSnapshot["questions"][number]) {
   if (question.type === "email") return "email"
   if (question.type === "phone") return "tel"
@@ -128,6 +130,11 @@ export function LandingPageRenderer({ snapshot }: Props) {
       return
     }
 
+    const schedulingAnswer = visibleQuestions
+      .filter((question) => question.type === "scheduling")
+      .map((question) => answers[question.id] as SchedulingAnswer | undefined)
+      .find((answer) => answer?.startsAt)
+
     setIsSubmitting(true)
     try {
       const params = new URLSearchParams(window.location.search)
@@ -144,6 +151,9 @@ export function LandingPageRenderer({ snapshot }: Props) {
           emailLogId: params.get("cs_el"),
           landingPageId: snapshot.landingPageId,
         },
+        scheduling: schedulingAnswer?.startsAt
+          ? { startsAt: schedulingAnswer.startsAt }
+          : undefined,
       }
       const response = await fetch(`/api/q/conversation/${snapshot.publicId}/submissions`, {
         method: "POST",
