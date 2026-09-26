@@ -217,7 +217,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
   })
 
   it("liga o clique mesmo com o CNAME de Tracking pendente", async () => {
-    domainsGetMock.mockImplementation(async () => ({
+    domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -234,7 +234,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       },
       error: null,
     }))
-    domainsGetMock.mockImplementationOnce(async () => ({
+    domainsGetMock.mockImplementation(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -263,7 +263,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
   })
 
   it("liga o clique com o domínio ainda não verificado", async () => {
-    domainsGetMock.mockImplementation(async () => ({
+    domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -276,7 +276,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       },
       error: null,
     }))
-    domainsGetMock.mockImplementationOnce(async () => ({
+    domainsGetMock.mockImplementation(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
