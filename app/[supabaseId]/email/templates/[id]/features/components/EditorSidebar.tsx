@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Braces, ChevronLeft, ChevronRight, ClipboardList, Clock3, ImageIcon, Lightbulb, MailX, PanelLeftClose, PanelLeftOpen, Video, AtSign } from "lucide-react";
+import { Braces, ChevronLeft, ChevronRight, ClipboardList, Clock3, ImageIcon, Lightbulb, MailX, PanelLeftClose, PanelLeftOpen, Video, AtSign, LayoutTemplate } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import type { SidebarSection } from "./EditorStudioTypes";
 import { EmailCreationTipsPanel } from "./EmailCreationTipsPanel";
 import { EmailTemplateAssetsPanel } from "./EmailTemplateAssetsPanel";
 import { EmailTemplateFormsPanel } from "./EmailTemplateFormsPanel";
+import { EmailTemplateLandingPagesPanel } from "./EmailTemplateLandingPagesPanel";
 import { EmailTemplateUnsubscribePanel } from "./EmailTemplateUnsubscribePanel";
 import { EmailTemplateVideosPanel } from "./EmailTemplateVideosPanel";
 import { EmailTemplateXPostPanel } from "./EmailTemplateXPostPanel";
@@ -35,6 +36,7 @@ const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   videos: "Vídeos",
   "x-post": "Post do X",
   forms: "Formulários",
+  "landing-pages": "Landing pages",
   unsubscribe: "Descadastro",
 };
 
@@ -191,6 +193,18 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             </span>
             <ChevronRight />
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto justify-between px-3 py-3"
+            onClick={() => setSection("landing-pages")}
+          >
+            <span className="flex items-center gap-2">
+              <LayoutTemplate data-icon="inline-start" />
+              Landing pages
+            </span>
+            <ChevronRight />
+          </Button>
             </>
           ) : null}
 
@@ -273,6 +287,7 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
         {section === "videos" ? <EmailTemplateVideosPanel embedded /> : null}
         {section === "x-post" ? <EmailTemplateXPostPanel embedded /> : null}
         {section === "forms" ? <EmailTemplateFormsPanel embedded /> : null}
+        {section === "landing-pages" ? <EmailTemplateLandingPagesPanel embedded /> : null}
         {section === "unsubscribe" ? <EmailTemplateUnsubscribePanel embedded /> : null}
       </div>
     </EditorFloatingPanel>
