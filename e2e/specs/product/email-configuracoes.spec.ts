@@ -95,7 +95,10 @@ async function resolveE2eTeamId(): Promise<string> {
   return profile.activeTeamId
 }
 
-async function seedConnectedDomain(status: "pending" | "verified" = "pending"): Promise<void> {
+async function seedConnectedDomain(
+  status: "pending" | "verified" = "pending",
+  clickTracking = true
+): Promise<void> {
   const teamId = await resolveE2eTeamId()
   const domainFields = {
     resendDomainId: DOMAIN_ID,
@@ -104,7 +107,7 @@ async function seedConnectedDomain(status: "pending" | "verified" = "pending"): 
     resendDomainRegion: "us-east-1",
     resendDomainConnectedAt: new Date(),
     resendOpenTracking: true,
-    resendClickTracking: true,
+    resendClickTracking: clickTracking,
   }
   await getPrisma().emailTeamSettings.upsert({
     where: { teamId },
@@ -476,7 +479,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
   test.describe("com domínio verificado e CNAME de Tracking resolvendo", () => {
     test.beforeEach(async () => {
-      await seedConnectedDomain("verified")
+      await seedConnectedDomain("verified", false)
     })
 
     test.afterEach(async () => {
