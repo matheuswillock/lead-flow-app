@@ -22540,6 +22540,100 @@
       ]
     },
     {
+      "name": "Email Deliverability e Warm-up",
+      "item": [
+        {
+          "name": "Analytics de deliverability do produto",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Autenticado e filtros aceitos', () => pm.expect(pm.response.code).to.be.oneOf([200, 401]));",
+              "if (pm.response.code === 200) { const body = pm.response.json(); pm.expect(body).to.have.property('result'); }"
+            ] }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/email/analytics/deliverability?period=30&domain={{senderDomain}}&provider={{recipientProvider}}&campaignId={{campaignId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "email", "analytics", "deliverability"],
+              "query": [
+                { "key": "period", "value": "30" },
+                { "key": "domain", "value": "{{senderDomain}}", "disabled": true },
+                { "key": "provider", "value": "{{recipientProvider}}", "disabled": true },
+                { "key": "campaignId", "value": "{{campaignId}}", "disabled": true }
+              ]
+            },
+            "description": "Agregados confiáveis de envio, entrega, bounce, complaint, abertura humana, clique e supressão. Resposta vazia é válida quando ainda não há eventos no período."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard backoffice de deliverability",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Exige acesso ao backoffice', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403]));",
+              "if (pm.response.code === 200) { pm.expect(pm.response.json()).to.have.property('result'); }"
+            ] }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/email-deliverability?period=30&teamId={{teamId}}&domain={{senderDomain}}&provider={{recipientProvider}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "email-deliverability"],
+              "query": [
+                { "key": "period", "value": "30" },
+                { "key": "teamId", "value": "{{teamId}}", "disabled": true },
+                { "key": "domain", "value": "{{senderDomain}}", "disabled": true },
+                { "key": "provider", "value": "{{recipientProvider}}", "disabled": true }
+              ]
+            },
+            "description": "Consulta a projeção diária isolada do backoffice. Retorna coleção vazia até o consumidor processar os eventos versionados."
+          },
+          "response": []
+        },
+        {
+          "name": "Cron — backfill do estado tipado",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{cronSecret}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/email/cron/backfill-deliverability-state",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "email", "cron", "backfill-deliverability-state"]
+            },
+            "description": "Backfill idempotente do JSON legado para warm-up e DMARC tipados. Requer CRON_SECRET."
+          },
+          "response": []
+        },
+        {
+          "name": "Cron — rebuild da projeção",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Rebuild é idempotente', () => pm.expect(pm.response.code).to.be.oneOf([200, 401]));",
+              "if (pm.response.code === 200) { pm.expect(pm.response.json()).to.have.property('result'); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{cronSecret}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/email/cron/rebuild-deliverability-metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "email", "cron", "rebuild-deliverability-metrics"]
+            },
+            "description": "Reconstrói de forma idempotente as métricas de produto e a projeção do backoffice. Requer CRON_SECRET."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Queues (Vercel PoC T1)",
       "item": [
         {

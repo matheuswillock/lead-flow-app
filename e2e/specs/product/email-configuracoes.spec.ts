@@ -228,12 +228,18 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
   test("carrega configurações de e-mail autenticado e passa nas checagens responsivas", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const consoleErrors: string[] = []
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text())
+    })
     await clearConnectedDomain()
     await gotoEmailSettings(page)
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
+    await page.screenshot({ path: testInfo.outputPath("email-settings-desktop.png"), fullPage: true })
+    expect(consoleErrors).toEqual([])
     await runResponsiveChecks(page)
   })
 
