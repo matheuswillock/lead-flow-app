@@ -125,6 +125,17 @@
         }
       ]
     },
+    "app/api/queues/backoffice-email-deliverability-events/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "backoffice-email-deliverability-events",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0,
+          "maxConcurrency": 2
+        }
+      ]
+    },
     "app/api/queues/asaas-webhook-events/route.ts": {
       "experimentalTriggers": [
         {
