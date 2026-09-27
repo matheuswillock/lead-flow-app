@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test"
 import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../../fixtures/auth"
 import { disconnectPrisma, getPrisma } from "../../../support/db"
+import { trackPageNoise } from "../../../support/console-noise"
 import { runResponsiveChecks } from "../../../support/responsive"
 
 test.describe("app/[supabaseId]/email/entregabilidade", () => {
@@ -62,14 +63,7 @@ test.describe("app/[supabaseId]/email/entregabilidade", () => {
   })
 
   test("renderiza métricas, filtros e mantém 360px sem overflow", async ({ page }, testInfo) => {
-    const consoleErrors: string[] = []
-    page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()) })
-    const failedRequests: string[] = []
-    page.on("response", (response) => {
-      if (response.status() >= 400) {
-        failedRequests.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`)
-      }
-    })
+    const { consoleErrors, failedRequests } = trackPageNoise(page)
     await page.route(/\/email\/analytics\/deliverability(?:\?|$)/, async (route) => {
       await route.fulfill({
         contentType: "application/json",

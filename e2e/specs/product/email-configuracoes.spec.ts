@@ -13,6 +13,7 @@ import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
+import { trackPageNoise } from "../../support/console-noise"
 import { runResponsiveChecks } from "../../support/responsive"
 
 const DOMAIN_NAME = "mail.e2e-corretor.com.br"
@@ -229,16 +230,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
   test("carrega configurações de e-mail autenticado e passa nas checagens responsivas", async ({
     page,
   }, testInfo) => {
-    const consoleErrors: string[] = []
-    page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text())
-    })
-    const failedRequests: string[] = []
-    page.on("response", (response) => {
-      if (response.status() >= 400) {
-        failedRequests.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`)
-      }
-    })
+    const { consoleErrors, failedRequests } = trackPageNoise(page)
     await clearConnectedDomain()
     await gotoEmailSettings(page)
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
