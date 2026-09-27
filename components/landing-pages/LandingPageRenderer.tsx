@@ -3,8 +3,11 @@
 import { useState } from "react"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
+import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
 
 type Props = { snapshot: LandingPageSnapshot }
+
+type SchedulingAnswer = { startsAt?: string }
 
 function questionInputType(question: PublicFormSnapshot["questions"][number]) {
   if (question.type === "email") return "email"
@@ -45,6 +48,46 @@ function LandingQuestion({
       </div>
     )
   }
+  if (question.type === "consent") {
+    return (
+      <label className="flex min-h-11 items-start gap-3 rounded-lg border border-border px-3 py-2">
+        <input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />
+        <span>Li e concordo com os termos apresentados.</span>
+      </label>
+    )
+  }
+  if (question.type === "scheduling") {
+    const scheduling = typeof value === "object" && value !== null ? value as { date?: string; time?: string; startsAt?: string } : {}
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          type="date"
+          value={scheduling.date ?? ""}
+          onChange={(event) => {
+            const date = event.target.value
+            onChange({ ...scheduling, date, startsAt: date && scheduling.time ? `${date}T${scheduling.time}:00` : undefined })
+          }}
+        />
+        <input
+          type="time"
+          value={scheduling.time ?? ""}
+          onChange={(event) => {
+            const time = event.target.value
+            onChange({ ...scheduling, time, startsAt: scheduling.date && time ? `${scheduling.date}T${time}:00` : undefined })
+          }}
+        />
+      </div>
+    )
+  }
+  if (question.type === "boolean") {
+    return (
+      <select value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Selecione uma opção</option>
+        <option value="sim">Sim</option>
+        <option value="nao">Não</option>
+      </select>
+    )
+  }
   if (question.type === "textarea") {
     return <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={question.placeholder ?? ""} />
   }
@@ -66,6 +109,9 @@ export function LandingPageRenderer({ snapshot }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [visitorSessionId] = useState(() => `landing_${crypto.randomUUID().replaceAll("-", "")}`)
   const formQuestions = snapshot.form.questions
+  const answerInputs = Object.entries(answers).map(([questionId, value]) => ({ questionId, value }))
+  const visibleQuestionIds = new Set(resolveVisibleQuestionIds(snapshot.form, answerInputs))
+  const visibleQuestions = formQuestions.filter((question) => visibleQuestionIds.has(question.id))
   const content = snapshot.content
   const offer = snapshot.offer
 
@@ -76,11 +122,18 @@ export function LandingPageRenderer({ snapshot }: Props) {
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    const missing = formQuestions.filter((question) => question.required && !String(answers[question.id] ?? "").trim())
-    if (missing.length > 0) {
-      setError("Preencha os campos obrigatórios para continuar.")
+    const issue = visibleQuestions
+      .map((question) => validateAnswerIssue(question, answers[question.id]))
+      .find((answerIssue) => answerIssue)
+    if (issue) {
+      setError(issue.message)
       return
     }
+
+    const schedulingAnswer = visibleQuestions
+      .filter((question) => question.type === "scheduling")
+      .map((question) => answers[question.id] as SchedulingAnswer | undefined)
+      .find((answer) => answer?.startsAt)
 
     setIsSubmitting(true)
     try {
@@ -89,7 +142,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
         requestKey: `landing_${crypto.randomUUID().replaceAll("-", "")}`,
         visitorSessionId,
         ...(snapshot.formPublicationId ? { publicationId: snapshot.formPublicationId } : {}),
-        answers: formQuestions.map((question): PublicFormAnswerInput => ({ questionId: question.id, value: answers[question.id] ?? "" })),
+        answers: visibleQuestions.map((question): PublicFormAnswerInput => ({ questionId: question.id, value: answers[question.id] ?? "" })),
         origin: {
           source: params.get("utm_source") ?? (params.get("cs_el") ? "email_campaign" : "direct"),
           medium: params.get("utm_medium"),
@@ -98,6 +151,9 @@ export function LandingPageRenderer({ snapshot }: Props) {
           emailLogId: params.get("cs_el"),
           landingPageId: snapshot.landingPageId,
         },
+        scheduling: schedulingAnswer?.startsAt
+          ? { startsAt: schedulingAnswer.startsAt }
+          : undefined,
       }
       const response = await fetch(`/api/q/conversation/${snapshot.publicId}/submissions`, {
         method: "POST",
@@ -170,7 +226,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
           </div>
         ) : (
           <form onSubmit={submit} className="grid gap-5" noValidate>
-            {formQuestions.map((question) => (
+            {visibleQuestions.map((question) => (
               <label key={question.id} className="grid gap-2 text-sm font-medium">
                 <span>{question.title}{question.required && <span aria-hidden="true"> *</span>}</span>
                 <LandingQuestion question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />

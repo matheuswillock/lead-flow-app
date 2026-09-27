@@ -78,9 +78,9 @@ function domainRecordsPayload(
       region: "us-east-1",
       dnsProvider,
       connectedAt: new Date().toISOString(),
-      openTracking: false,
-      clickTracking: false,
-      trackingSubdomain: null,
+      openTracking: true,
+      clickTracking: true,
+      trackingSubdomain: "links",
       records: MOCK_DNS_RECORDS,
       events: [],
     },
@@ -95,7 +95,10 @@ async function resolveE2eTeamId(): Promise<string> {
   return profile.activeTeamId
 }
 
-async function seedConnectedDomain(status: "pending" | "verified" = "pending"): Promise<void> {
+async function seedConnectedDomain(
+  status: "pending" | "verified" = "pending",
+  clickTracking = true
+): Promise<void> {
   const teamId = await resolveE2eTeamId()
   const domainFields = {
     resendDomainId: DOMAIN_ID,
@@ -103,8 +106,8 @@ async function seedConnectedDomain(status: "pending" | "verified" = "pending"): 
     resendDomainStatus: status,
     resendDomainRegion: "us-east-1",
     resendDomainConnectedAt: new Date(),
-    resendOpenTracking: status === "verified",
-    resendClickTracking: false,
+    resendOpenTracking: true,
+    resendClickTracking: clickTracking,
   }
   await getPrisma().emailTeamSettings.upsert({
     where: { teamId },
@@ -113,7 +116,7 @@ async function seedConnectedDomain(status: "pending" | "verified" = "pending"): 
   })
 }
 
-/** Registros todos verificados — o estado que destrava o toggle de cliques. */
+/** Registros todos verificados — usado para validar a configuração após o DNS. */
 const VERIFIED_DNS_RECORDS = MOCK_DNS_RECORDS.map((record) => ({
   ...record,
   status: "verified",
@@ -451,24 +454,23 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toHaveCount(0)
     })
 
-    test("toggle de cliques fica BLOQUEADO enquanto o CNAME de Tracking não verifica", async ({
+    test("toggle de cliques fica disponível antes da verificação do DNS", async ({
       page,
     }) => {
       await mockDomainRecordsRoute(page)
       await gotoEmailSettings(page)
 
       await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible({ timeout: 30_000 })
-      await page.getByRole("button", { name: "Configurar" }).click()
+      await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
 
       await expect(
         page.getByRole("heading", { name: "Configurar métricas de tracking" })
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
-      await expect(clickSwitch).toBeDisabled()
-      await expect(clickSwitch).not.toBeChecked()
+      await expect(clickSwitch).toBeEnabled()
       await expect(
-        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
+        page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
           exact: false,
         })
       ).toBeVisible()
@@ -477,7 +479,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
   test.describe("com domínio verificado e CNAME de Tracking resolvendo", () => {
     test.beforeEach(async () => {
-      await seedConnectedDomain("verified")
+      await seedConnectedDomain("verified", false)
     })
 
     test.afterEach(async () => {

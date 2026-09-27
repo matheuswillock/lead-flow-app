@@ -14,11 +14,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ lan
 
   const landing = await landingPageUseCase.getPublic(landingPageId)
   if (!landing.isValid || !landing.result) return NextResponse.json(landing, { status: 404 })
-  const snapshot = (landing.result as { snapshot: { form: { publicId: string } } }).snapshot
+  const snapshot = (landing.result as { snapshot: { form: { publicId: string }; formPublicationId?: string } }).snapshot
   const parsed = publicFormSubmissionSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json(new Output(false, [], parsed.error.issues.map((issue) => issue.message), null), { status: 400 })
 
-  const output = await publicFormSubmissionUseCase.accept(snapshot.form.publicId, parsed.data)
+  const output = await publicFormSubmissionUseCase.accept(snapshot.form.publicId, parsed.data, snapshot.formPublicationId)
   if (!output.isValid) return NextResponse.json(output, { status: 422 })
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)?.background
   if (background) after(() => publicFormSubmissionUseCase.queueForBackgroundProcessing(background))

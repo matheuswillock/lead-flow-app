@@ -81,7 +81,7 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {item.status === "published" && url ? <DropdownMenuItem onClick={() => void copyUrl()}><Copy data-icon="inline-start" />Copiar link</DropdownMenuItem> : null}
-          {item.status !== "published" ? <DropdownMenuItem onClick={() => void execute(() => publish(item.id))}><Send data-icon="inline-start" />Publicar</DropdownMenuItem> : null}
+          {item.status === "draft" ? <DropdownMenuItem onClick={() => void execute(() => publish(item.id))}><Send data-icon="inline-start" />Publicar</DropdownMenuItem> : null}
           {item.status !== "archived" ? <DropdownMenuItem onClick={() => void execute(() => archive(item.id))}><Archive data-icon="inline-start" />Arquivar</DropdownMenuItem> : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href={`/${params.supabaseId}/landing-pages/new?edit=${item.id}`}>Editar configuração</Link></DropdownMenuItem>

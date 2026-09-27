@@ -263,6 +263,25 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
     expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
   })
 
+  it("aceita a publicação pinada quando o formulário foi arquivado", async () => {
+    const pinnedSnapshot = makeSnapshot([{ id: "q-new" }], 1)
+    getPublic.mockResolvedValueOnce(null as never)
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      snapshot: pinnedSnapshot,
+    })
+
+    const output = await useCase.accept(
+      PUBLIC_ID,
+      { requestKey: "req-archived", answers: [{ questionId: "q-new", value: "Ana" }], origin: {} },
+      PREVIOUS_PUBLICATION_ID,
+    )
+
+    expect(output.isValid).toBe(true)
+    const createArg = createSubmission.mock.calls[0] as unknown as [{ publicationId: string }]
+    expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
+  })
+
   it("valida e grava a tela atual quando a sessão pertence à publicação anterior", async () => {
     const previousSnapshot = {
       ...makeSnapshot([{ id: "q-age" }, { id: "q-phone-old" }], 1),
