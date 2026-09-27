@@ -53,6 +53,7 @@ const settingsSelect = {
   resendOpenTracking: true,
   resendClickTracking: true,
   resendSendingDnsVerified: true,
+  sendingHealthStatus: true,
 } satisfies Prisma.EmailTeamSettingsSelect
 
 const senderSelect = {

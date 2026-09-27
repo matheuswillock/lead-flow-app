@@ -1,3 +1,5 @@
+import type { EmailSendingHealthStatus } from "@prisma/client"
+
 /**
  * Contrato de persistência das configurações de e-mail do time.
  *
@@ -41,6 +43,7 @@ export type EmailTeamSettingsRecord = {
   resendDomainConnectedAt: Date | null
   resendOpenTracking: boolean
   resendClickTracking: boolean
+  sendingHealthStatus?: EmailSendingHealthStatus
 }
 
 export type EmailTeamSenderRecord = {
