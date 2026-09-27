@@ -130,4 +130,14 @@ export type EmailSettings = {
   globalVariables: EmailGlobalVariable[]
   sendingHealthStatus?: "healthy" | "warned" | "paused" | "suspended"
   dmarcStatus?: "pending" | "aligned" | "attention" | "failed"
+  warmupStatus?: "warming" | "established" | "paused"
+  warmupStage?: number
+  warmupLimit?: number
+  warmupUsed?: number
+  warmupReserved?: number
+  warmupRemaining?: number
+  domainTemperature?: "warming" | "stable"
+  domainHealth?: "healthy" | "attention" | "paused"
+  warmupReason?: string | null
+  nextEvaluationAt?: string | null
 }

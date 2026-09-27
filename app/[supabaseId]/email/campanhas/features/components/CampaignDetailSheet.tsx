@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { formatEmailCreatorLabel } from "@/lib/email/format-email-creator"
 import {
   AlertDialog,
@@ -583,6 +584,18 @@ export function CampaignDetailSheet({
               progress={detailProgressForDisplay}
               className="max-w-md"
             />
+          ) : null}
+          {detailCampaign?.deferredRecipients?.pending ? (
+            <Alert>
+              <AlertCircle />
+              <AlertTitle>Envio em aquecimento</AlertTitle>
+              <AlertDescription>
+                {detailCampaign.deferredRecipients.pending.toLocaleString("pt-BR")} destinatários aguardam a próxima janela.
+                {detailCampaign.deferredRecipients.reason
+                  ? ` ${detailCampaign.deferredRecipients.reason}`
+                  : " O saldo será republicado automaticamente."}
+              </AlertDescription>
+            </Alert>
           ) : null}
         </SheetHeader>
 

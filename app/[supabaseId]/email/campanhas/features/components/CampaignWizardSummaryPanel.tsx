@@ -42,12 +42,15 @@ type CampaignWizardSummaryPanelProps = {
   tz: string
   warmup?: {
     status: "warming" | "established" | "paused"
+    stage: number
     limit: number | null
     used: number
+    reserved: number
     remaining: number | null
     temperature: "warming" | "stable"
     health: "healthy" | "attention" | "paused"
     reason: string | null
+    nextEvaluationAt: string
   } | null
 }
 
@@ -81,6 +84,10 @@ export function CampaignWizardSummaryPanel({
     unsubscribed: unsubscribedExcludedCount,
     complained: complainedExcludedCount,
   })
+  const availableToday = Math.max(0, warmup?.remaining ?? totalRecipients)
+  const deferredToday = warmup?.status === "warming"
+    ? Math.max(0, totalRecipients - availableToday)
+    : 0
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
@@ -99,8 +106,20 @@ export function CampaignWizardSummaryPanel({
             </Badge>
           </div>
           <AlertDescription>
-            {warmup.reason ??
-              `Limite de hoje: ${(warmup.limit ?? 0).toLocaleString("pt-BR")} e-mails. Restam ${(warmup.remaining ?? 0).toLocaleString("pt-BR")} após ${warmup.used.toLocaleString("pt-BR")} usados.`}
+            <span className="flex flex-col gap-1">
+              <span>
+                {warmup.reason ??
+                  `Este domínio está em aquecimento. O envio desta campanha respeitará o limite de ${(warmup.limit ?? 0).toLocaleString("pt-BR")} e-mails hoje.`}
+              </span>
+              <span>
+                Estágio {warmup.stage + 1} · {warmup.used.toLocaleString("pt-BR")} usados · {warmup.reserved.toLocaleString("pt-BR")} reservados · {(warmup.remaining ?? 0).toLocaleString("pt-BR")} disponíveis.
+              </span>
+              {deferredToday > 0 ? (
+                <span>
+                  Esta campanha tem {totalRecipients.toLocaleString("pt-BR")} destinatários, mas ainda há espaço para {availableToday.toLocaleString("pt-BR")} hoje. Os {deferredToday.toLocaleString("pt-BR")} restantes serão enviados nas próximas janelas.
+                </span>
+              ) : null}
+            </span>
           </AlertDescription>
         </Alert>
       ) : null}

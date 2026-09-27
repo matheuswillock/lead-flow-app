@@ -34,33 +34,15 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
 import { isClickTrackingEligibleDomain } from "@/lib/email/resend-domain-reconcile"
 import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
@@ -77,6 +59,9 @@ import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { SendDnsInstructionsDialog } from "./SendDnsInstructionsDialog"
 import { formatResendRegion } from "../utils/resend-region-labels"
+import { DomainDeliverabilityStatus } from "./DomainDeliverabilityStatus"
+import { DomainTrackingDialog } from "./DomainTrackingDialog"
+import { DomainIdentitySection } from "./DomainIdentitySection"
 
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
 const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
@@ -454,6 +439,7 @@ export function CustomDomainCard() {
               </AlertDescription>
             </Alert>
           ) : null}
+          <DomainDeliverabilityStatus />
           <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 flex-1 items-start gap-4">
@@ -800,106 +786,20 @@ export function CustomDomainCard() {
             )}
           </div>
 
-          <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
-            <DialogContent className="max-h-[90vh] flex flex-col gap-0 p-0 sm:max-w-lg">
-              <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
-                <DialogTitle>Configurar métricas de tracking</DialogTitle>
-                <DialogDescription>
-                  Defina o subdomínio e quais métricas deseja habilitar. Depois, adicione o registro DNS de
-                  Tracking e re-verifique.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="overflow-y-auto flex-1 px-6 py-4">
-                <FieldGroup className="gap-5">
-                  <Field>
-                    <FieldLabel htmlFor="tracking-subdomain-input">Subdomínio de tracking</FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="tracking-subdomain-input"
-                        value={trackingSubdomainInput}
-                        onChange={(event) => setTrackingSubdomainInput(event.target.value.toLowerCase())}
-                        placeholder={DEFAULT_TRACKING_SUBDOMAIN}
-                        disabled={configuringDomainTracking}
-                        autoComplete="off"
-                      />
-                      <FieldDescription>
-                        Preview: <span className="font-mono text-xs">{trackingPreviewHost}</span>
-                      </FieldDescription>
-                    </FieldContent>
-                  </Field>
-
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="open-tracking-switch">Abertura</FieldLabel>
-                      <FieldDescription>Rastreia quando o e-mail é aberto.</FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="open-tracking-switch"
-                      checked={openTrackingDraft}
-                      onCheckedChange={setOpenTrackingDraft}
-                      disabled={configuringDomainTracking}
-                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
-                    />
-                  </Field>
-
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor="click-tracking-switch">Cliques</FieldLabel>
-                      <FieldDescription>
-                        Rastreia cliques nos links do e-mail reescrevendo cada um
-                        para o subdomínio de tracking do seu domínio.
-                      </FieldDescription>
-                    </FieldContent>
-                    <Switch
-                      id="click-tracking-switch"
-                      checked={clickTrackingUnlockable ? clickTrackingDraft : false}
-                      onCheckedChange={setClickTrackingDraft}
-                      disabled={configuringDomainTracking || !clickTrackingUnlockable}
-                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
-                    />
-                  </Field>
-
-                  {clickTrackingUnlockable ? (
-                    <FieldDescription>
-                      O rastreio de cliques fica disponível quando o domínio e
-                      o CNAME de Tracking estiverem verificados no Resend.
-                    </FieldDescription>
-                  ) : (
-                    <FieldDescription>
-                      O rastreio de cliques fica disponível somente para um
-                      domínio próprio conectado.
-                    </FieldDescription>
-                  )}
-                </FieldGroup>
-              </div>
-
-              <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setTrackingDialogOpen(false)}
-                  disabled={configuringDomainTracking}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void submitTrackingConfig()}
-                  disabled={
-                    configuringDomainTracking ||
-                    !trackingSubdomainInput.trim() ||
-                    !openTrackingDraft
-                  }
-                >
-                  {configuringDomainTracking ? (
-                    <LoaderCircle data-icon="inline-start" className="animate-spin" />
-                  ) : null}
-                  Salvar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <DomainTrackingDialog
+            open={trackingDialogOpen}
+            onOpenChange={setTrackingDialogOpen}
+            subdomain={trackingSubdomainInput}
+            previewHost={trackingPreviewHost}
+            openTracking={openTrackingDraft}
+            clickTracking={clickTrackingDraft}
+            clickTrackingUnlockable={clickTrackingUnlockable}
+            saving={configuringDomainTracking}
+            onSubdomainChange={setTrackingSubdomainInput}
+            onOpenTrackingChange={setOpenTrackingDraft}
+            onClickTrackingChange={setClickTrackingDraft}
+            onSave={() => void submitTrackingConfig()}
+          />
 
           <SendDnsInstructionsDialog
             open={sendInstructionsDialogOpen}
@@ -910,44 +810,12 @@ export function CustomDomainCard() {
           />
         </>
       ) : (
-        <div className="rounded-2xl border border-border/60 bg-[color:var(--surface-1)] p-5">
-          <FieldGroup className="gap-5">
-            <Field>
-              <FieldLabel htmlFor="custom-domain-input">Adicionar domínio</FieldLabel>
-              <FieldContent>
-                <div className="flex flex-col gap-3 md:flex-row">
-                  <Input
-                    id="custom-domain-input"
-                    placeholder="Ex: mail.suaempresa.com.br"
-                    value={domainInput}
-                    onChange={(event) => setDomainInput(event.target.value)}
-                    disabled={connectingDomain}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void handleConnectDomain()
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    className="max-lg:h-11"
-                    onClick={() => void handleConnectDomain()}
-                    disabled={connectingDomain || !domainInput.trim()}
-                  >
-                    {connectingDomain ? (
-                      <LoaderCircle data-icon="inline-start" className="animate-spin" />
-                    ) : (
-                      <Globe data-icon="inline-start" />
-                    )}
-                    Conectar
-                  </Button>
-                </div>
-                <FieldDescription>
-                  Prefira um subdomínio (ex.: mail.suaempresa.com.br). Após conectar, copie os registros
-                  DNS e configure no host do domínio.
-                </FieldDescription>
-              </FieldContent>
-            </Field>
-          </FieldGroup>
-        </div>
+        <DomainIdentitySection
+          value={domainInput}
+          connecting={connectingDomain}
+          onChange={setDomainInput}
+          onConnect={() => void handleConnectDomain()}
+        />
       )}
     </EmailSettingsSectionCard>
   )

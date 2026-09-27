@@ -16,7 +16,7 @@ import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
 export function EmailSettingsContainer() {
   const { readOnly } = useStudioEmailRuntime()
   const { saving, loading, senders, handleSave, hasUnsavedChanges, domainStatus, settings } = useEmailSettingsContext()
-  const health = settings?.sendingHealthStatus ?? (domainStatus === "verified" ? "healthy" : "warned")
+  const health = settings?.domainHealth ?? (domainStatus === "verified" ? "healthy" : "attention")
 
   return (
     <div className="flex flex-col gap-8">
@@ -50,11 +50,12 @@ export function EmailSettingsContainer() {
             </p>
             <div className="flex flex-wrap gap-2" aria-label="Estado do domínio">
               <Badge variant={domainStatus === "verified" ? "outline" : "secondary"}>
-                Temperatura: {domainStatus === "verified" ? "estável" : "aquecendo"}
+                Temperatura: {settings?.domainTemperature === "stable" ? "estável" : "aquecendo"}
               </Badge>
               <Badge variant={health === "healthy" ? "outline" : "secondary"}>
-                Saúde: {health === "healthy" ? "saudável" : health === "paused" || health === "suspended" ? "pausada" : "atenção"}
+                Saúde: {health === "healthy" ? "saudável" : health === "paused" ? "pausada" : "atenção"}
               </Badge>
+              {settings?.warmupStatus === "warming" ? <Badge variant="secondary">Em aquecimento · {settings.warmupUsed ?? 0}/{settings.warmupLimit ?? 100}</Badge> : null}
               <Badge variant={settings?.dmarcStatus === "aligned" ? "outline" : "secondary"}>
                 DMARC: {settings?.dmarcStatus === "aligned" ? "alinhado" : settings?.dmarcStatus === "failed" ? "falhou" : settings?.dmarcStatus === "attention" ? "atenção" : "pendente"}
               </Badge>
@@ -77,7 +78,7 @@ export function EmailSettingsContainer() {
         ))}
       </nav>
 
-      <div className={readOnly ? "opacity-60" : undefined}>
+      <fieldset disabled={readOnly} className={readOnly ? "flex flex-col gap-6 opacity-60" : "flex flex-col gap-6"}>
         <section id="visao-geral" className="flex flex-col gap-6 scroll-mt-6">
           <div id="entrega"><CustomDomainCard /></div>
           <FormsDomainCard />
@@ -93,7 +94,7 @@ export function EmailSettingsContainer() {
           <AccessPermissionsCard />
           <TemplateApprovalCard />
         </section>
-      </div>
+      </fieldset>
 
       {!readOnly && hasUnsavedChanges ? (
       <div className="sticky bottom-4 z-10 mt-2">
@@ -118,11 +119,11 @@ export function EmailSettingsContainer() {
           </Button>
         </div>
       </div>
-      ) : (
+      ) : readOnly ? (
         <p className="text-sm text-muted-foreground">
           Você tem acesso somente leitura às configurações de e-mail deste cliente.
         </p>
-      )}
+      ) : null}
     </div>
   )
 }
