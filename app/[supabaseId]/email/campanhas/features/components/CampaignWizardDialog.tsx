@@ -201,6 +201,7 @@ export function CampaignWizardDialog() {
     wizardSubCampaignTemplateIds,
     wizardPreviewPlan,
     wizardPreviewLoading,
+    credits,
     wizardLinkedForm,
     wizardSaving,
     wizardHydrating,
@@ -1040,6 +1041,7 @@ export function CampaignWizardDialog() {
                       subCampaigns={summarySubCampaigns}
                       uniformTemplate={wizardUniformTemplate || previewSubCount <= 1}
                       tz={tz}
+                      warmup={credits?.warmup}
                     />
 
                     <FieldGroup>

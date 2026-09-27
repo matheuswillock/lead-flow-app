@@ -522,6 +522,7 @@ export function CampaignList({
                         <CampaignStatusBadge
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
+                          warmupStatus={campaign.warmupStatus}
                         />
                         {isSending ? (
                           <CampaignDispatchProgressLine

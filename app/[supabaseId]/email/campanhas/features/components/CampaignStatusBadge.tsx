@@ -67,9 +67,10 @@ const STATUS_CONFIG: Record<
 type CampaignStatusBadgeProps = {
   status: Campaign["status"]
   scheduledAt?: string | null
+  warmupStatus?: "warming" | "established" | "paused" | null
 }
 
-export function CampaignStatusBadge({ status, scheduledAt }: CampaignStatusBadgeProps) {
+export function CampaignStatusBadge({ status, scheduledAt, warmupStatus }: CampaignStatusBadgeProps) {
   const { tz } = useTimezone()
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft
   const Icon = cfg.icon
@@ -85,7 +86,8 @@ export function CampaignStatusBadge({ status, scheduledAt }: CampaignStatusBadge
   )
 
   return (
-    <Badge className={cn("w-fit shrink-0 gap-1", cfg.className)}>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Badge className={cn("w-fit shrink-0 gap-1", cfg.className)}>
       {status === "scheduled" && scheduledLabel ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -97,6 +99,8 @@ export function CampaignStatusBadge({ status, scheduledAt }: CampaignStatusBadge
         iconNode
       )}
       {cfg.label}
-    </Badge>
+      </Badge>
+      {warmupStatus === "warming" ? <Badge variant="secondary">Em aquecimento</Badge> : null}
+    </div>
   )
 }

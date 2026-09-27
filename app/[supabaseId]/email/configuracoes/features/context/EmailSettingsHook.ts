@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { toastUserError, toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import { EmailSettingsService } from "../services/EmailSettingsService"
@@ -51,6 +51,7 @@ export type EmailSettingsHookReturn = {
   settings: EmailSettings | null
   loading: boolean
   saving: boolean
+  hasUnsavedChanges: boolean
 
   dispatchBlockedDates: BlockedDateRange[]
   dispatchTimeFrom: string
@@ -922,10 +923,44 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     [sendingFormDomainDnsInstructions, service]
   )
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (!settings) return false
+    return JSON.stringify({
+      dispatchBlockedDates,
+      dispatchTimeFrom,
+      dispatchTimeTo,
+      blockedDispatchDays,
+      dispatchAllowedRoles,
+      templateCreateRoles,
+      templateApprovalRequired,
+      templateApprovalRoles,
+    }) !== JSON.stringify({
+      dispatchBlockedDates: settings.dispatchBlockedDates ?? [],
+      dispatchTimeFrom: settings.dispatchTimeFrom ?? "",
+      dispatchTimeTo: settings.dispatchTimeTo ?? "",
+      blockedDispatchDays: settings.blockedDispatchDays ?? [],
+      dispatchAllowedRoles: settings.dispatchAllowedRoles,
+      templateCreateRoles: settings.templateCreateRoles,
+      templateApprovalRequired: settings.templateApprovalRequired,
+      templateApprovalRoles: settings.templateApprovalRoles,
+    })
+  }, [
+    blockedDispatchDays,
+    dispatchAllowedRoles,
+    dispatchBlockedDates,
+    dispatchTimeFrom,
+    dispatchTimeTo,
+    settings,
+    templateApprovalRequired,
+    templateApprovalRoles,
+    templateCreateRoles,
+  ])
+
   return {
     settings,
     loading,
     saving,
+    hasUnsavedChanges,
     dispatchBlockedDates,
     dispatchTimeFrom,
     dispatchTimeTo,

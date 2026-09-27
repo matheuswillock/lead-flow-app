@@ -1,6 +1,7 @@
 import {
   appendCampaignUnsubscribeFooter,
   buildCampaignUnsubscribeUrl,
+  buildCampaignOneClickUnsubscribeUrl,
   buildListUnsubscribeHeaders,
 } from "@/lib/email/campaign-unsubscribe-footer"
 import {
@@ -314,7 +315,10 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
             if (!usesManualUnsubscribe) {
               htmlWithFooter = appendCampaignUnsubscribeFooter(renderedHtml, unsubscribeUrl)
             }
-            headers = buildListUnsubscribeHeaders(unsubscribeUrl)
+            headers = buildListUnsubscribeHeaders(
+              buildCampaignOneClickUnsubscribeUrl(recipient.contactId, params.teamId, params.campaignId),
+              unsubscribeUrl
+            )
           }
 
           return {

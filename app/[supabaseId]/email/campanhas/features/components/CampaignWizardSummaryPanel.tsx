@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Thermometer, ShieldCheck } from "lucide-react"
 import { formatIntimezone } from "@/lib/dates"
 import {
   formatPermanentBounceAlert,
@@ -39,6 +40,15 @@ type CampaignWizardSummaryPanelProps = {
   subCampaigns?: SummarySubCampaign[]
   uniformTemplate?: boolean
   tz: string
+  warmup?: {
+    status: "warming" | "established" | "paused"
+    limit: number | null
+    used: number
+    remaining: number | null
+    temperature: "warming" | "stable"
+    health: "healthy" | "attention" | "paused"
+    reason: string | null
+  } | null
 }
 
 const LIST_STRATEGY_LABELS: Record<"single" | "merge" | "per_list", string> = {
@@ -62,6 +72,7 @@ export function CampaignWizardSummaryPanel({
   subCampaigns = [],
   uniformTemplate = true,
   tz,
+  warmup = null,
 }: CampaignWizardSummaryPanelProps) {
   const hasAudience =
     selectedLists.length > 0 || Boolean(selectedSegment)
@@ -74,6 +85,25 @@ export function CampaignWizardSummaryPanel({
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <p className="font-medium">Resumo</p>
+
+      {warmup ? (
+        <Alert variant={warmup.health === "paused" ? "destructive" : "default"}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={warmup.temperature === "warming" ? "secondary" : "outline"}>
+              <Thermometer data-icon="inline-start" />
+              Temperatura: {warmup.temperature === "warming" ? "aquecendo" : "estável"}
+            </Badge>
+            <Badge variant={warmup.health === "healthy" ? "outline" : "secondary"}>
+              <ShieldCheck data-icon="inline-start" />
+              Saúde: {warmup.health === "healthy" ? "saudável" : warmup.health === "attention" ? "atenção" : "pausada"}
+            </Badge>
+          </div>
+          <AlertDescription>
+            {warmup.reason ??
+              `Limite de hoje: ${(warmup.limit ?? 0).toLocaleString("pt-BR")} e-mails. Restam ${(warmup.remaining ?? 0).toLocaleString("pt-BR")} após ${warmup.used.toLocaleString("pt-BR")} usados.`}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="flex flex-col gap-1">
         <span className="text-muted-foreground">Campanha</span>

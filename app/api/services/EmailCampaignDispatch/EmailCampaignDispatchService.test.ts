@@ -44,6 +44,7 @@ mock.module("@/lib/email", () => ({
 
 mock.module("@/lib/email/campaign-unsubscribe-footer", () => ({
   buildCampaignUnsubscribeUrl: () => "https://test.com/unsub/token",
+  buildCampaignOneClickUnsubscribeUrl: () => "https://test.com/api/unsub/token",
   appendCampaignUnsubscribeFooter: (html: string) => `${html}<!--AUTO_FOOTER-->`,
   buildListUnsubscribeHeaders: () => ({ "List-Unsubscribe": "<https://test.com/unsub>" }),
 }))

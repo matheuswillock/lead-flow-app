@@ -132,6 +132,7 @@ type BlocklistWriter = Prisma.TransactionClient
  * outro, senão a base fica com duas grafias para o mesmo motivo.
  */
 export const BLOCK_REASON_UNSUBSCRIBE = "Descadastro pelo destinatário"
+export const BLOCK_REASON_COMPLAINT = "Reclamação reportada pelo destinatário"
 /**
  * Só o backfill da migration grava este motivo. O carimbo de bounce
  * (`EmailLogRepository`) marca `isBounced` na linha existente e **não** insere
@@ -153,6 +154,7 @@ export const BLOCK_REASON_IMPORT = "Importado na lista de bloqueados"
  */
 const BLOCK_REASON_RANK: Record<string, number> = {
   [BLOCK_REASON_UNSUBSCRIBE]: 3,
+  [BLOCK_REASON_COMPLAINT]: 3,
   [BLOCK_REASON_BOUNCE]: 2,
   [BLOCK_REASON_MANUAL]: 1,
   [BLOCK_REASON_IMPORT]: 0,

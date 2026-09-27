@@ -1,5 +1,6 @@
 import { getFullUrl } from "@/lib/utils/app-url"
 import { generateEmailUnsubscribeToken } from "@/lib/email/unsubscribe-token"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 export function buildCampaignUnsubscribeUrl(
   contactId: string,
@@ -8,6 +9,16 @@ export function buildCampaignUnsubscribeUrl(
 ): string {
   const token = generateEmailUnsubscribeToken(contactId, teamId, campaignId)
   return getFullUrl(`/email-unsubscribe/${token}`)
+}
+
+/** URL direta usada pelo cliente de e-mail para RFC 8058 one-click. */
+export function buildCampaignOneClickUnsubscribeUrl(
+  contactId: string,
+  teamId: string,
+  campaignId?: string | null
+): string {
+  const token = generateEmailUnsubscribeToken(contactId, teamId, campaignId)
+  return getFullUrl(`${API_CLIENT_BASE}/email/public/unsubscribe?token=${encodeURIComponent(token)}`)
 }
 
 export function appendCampaignUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
@@ -25,9 +36,13 @@ export function appendCampaignUnsubscribeFooter(html: string, unsubscribeUrl: st
   return `${html}${footer}`
 }
 
-export function buildListUnsubscribeHeaders(unsubscribeUrl: string): Record<string, string> {
+export function buildListUnsubscribeHeaders(
+  oneClickUrl: string,
+  visibleUnsubscribeUrl = oneClickUrl
+): Record<string, string> {
+  void visibleUnsubscribeUrl
   return {
-    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+    "List-Unsubscribe": `<${oneClickUrl}>`,
     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
   }
 }

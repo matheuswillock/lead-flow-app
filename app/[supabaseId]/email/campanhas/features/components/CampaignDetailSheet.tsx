@@ -546,7 +546,7 @@ export function CampaignDetailSheet({
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <SheetTitle>{detailCampaign?.name ?? "Campanha"}</SheetTitle>
               <SheetDescription className="flex flex-wrap items-center gap-2">
-                {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} /> : null}
+                {detailCampaign ? <CampaignStatusBadge status={detailCampaign.status} warmupStatus={detailCampaign.warmupStatus} /> : null}
                 {isParentCampaign && detailCampaign?.status === "partially_sent" &&
                  detailCampaign.partiallySentCount != null &&
                  detailCampaign.partiallySentTotal != null ? (

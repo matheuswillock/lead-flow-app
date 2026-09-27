@@ -11,6 +11,7 @@ import type {
 import type { EmailEventType } from "@prisma/client"
 import { withDeadlockRetry } from "@/lib/email/with-deadlock-retry"
 import { shouldStampIsBouncedFromEventMetadata } from "@/lib/email/bounce-suppression"
+import { blockTeamEmail, BLOCK_REASON_COMPLAINT } from "@/lib/email/email-contact-blocklist"
 
 export class EmailLogRepository implements IEmailLogRepository {
   async findByResendEmailId(resendEmailId: string) {
@@ -261,13 +262,19 @@ export class EmailLogRepository implements IEmailLogRepository {
             })
 
             for (const { teamId } of teamIdsWithLogs) {
-              await tx.emailContact.updateMany({
-                where: {
-                  email: log.recipientEmail,
-                  list: { teamId },
-                },
-                data: { isComplained: true, isUnsubscribed: true },
+              const owner = await tx.emailContactList.findFirst({
+                where: { teamId, isArchived: false, isBlocklist: false },
+                select: { createdBy: true },
               })
+              if (owner) {
+                await blockTeamEmail(tx, {
+                  teamId,
+                  email: log.recipientEmail,
+                  createdBy: owner.createdBy,
+                  reason: BLOCK_REASON_COMPLAINT,
+                  markUnsubscribed: true,
+                })
+              }
             }
           }
 

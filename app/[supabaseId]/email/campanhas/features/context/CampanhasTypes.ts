@@ -82,6 +82,7 @@ export type SubCampaignSummary = {
   activeDispatch?: CampaignDispatchProgress | null
   latestDispatch?: CampaignDispatchProgress | null
   dispatchAvailability?: DispatchAvailability | null
+  warmupStatus?: "warming" | "established" | "paused" | null
 }
 
 export type Campaign = {
@@ -121,6 +122,7 @@ export type Campaign = {
   latestDispatch?: CampaignDispatchProgress | null
   dispatchProgressSummary?: CampaignDispatchProgressSummary | null
   dispatchAvailability?: DispatchAvailability | null
+  warmupStatus?: "warming" | "established" | "paused" | null
 }
 
 export type CreditStatus = {
@@ -148,6 +150,15 @@ export type CreditStatus = {
    * backoffice — a UI não pode oferecer ação que a API vai recusar.
    */
   canReleaseSendingHealth?: boolean
+  warmup?: {
+    status: "warming" | "established" | "paused"
+    limit: number | null
+    used: number
+    remaining: number | null
+    temperature: "warming" | "stable"
+    health: "healthy" | "attention" | "paused"
+    reason: string | null
+  }
 }
 
 export type Template = {

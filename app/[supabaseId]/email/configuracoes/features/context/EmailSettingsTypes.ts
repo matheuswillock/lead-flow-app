@@ -128,4 +128,5 @@ export type EmailSettings = {
   senders: EmailSender[]
   defaultSenderId: string | null
   globalVariables: EmailGlobalVariable[]
+  sendingHealthStatus?: "healthy" | "warned" | "paused" | "suspended"
 }
