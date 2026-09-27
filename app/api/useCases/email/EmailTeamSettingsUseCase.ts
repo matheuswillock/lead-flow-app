@@ -263,6 +263,7 @@ export class EmailTeamSettingsUseCase {
       defaultSenderId: defaultSender?.id ?? null,
       globalVariables,
       sendingHealthStatus: settings?.sendingHealthStatus ?? "healthy",
+      dmarcStatus: readDmarcStatus(settings?.sendingHealthMetrics),
     }
   }
 
@@ -1029,4 +1030,12 @@ export class EmailTeamSettingsUseCase {
       return new Output(false, [], ["Erro ao buscar registros DNS"], null)
     }
   }
+}
+
+function readDmarcStatus(value: unknown): "pending" | "aligned" | "attention" | "failed" {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "pending"
+  const status = (value as Record<string, unknown>).dmarc && typeof (value as Record<string, unknown>).dmarc === "object"
+    ? ((value as Record<string, unknown>).dmarc as Record<string, unknown>).status
+    : null
+  return status === "aligned" || status === "attention" || status === "failed" ? status : "pending"
 }

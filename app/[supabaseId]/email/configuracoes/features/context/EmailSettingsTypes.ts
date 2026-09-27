@@ -129,4 +129,5 @@ export type EmailSettings = {
   defaultSenderId: string | null
   globalVariables: EmailGlobalVariable[]
   sendingHealthStatus?: "healthy" | "warned" | "paused" | "suspended"
+  dmarcStatus?: "pending" | "aligned" | "attention" | "failed"
 }

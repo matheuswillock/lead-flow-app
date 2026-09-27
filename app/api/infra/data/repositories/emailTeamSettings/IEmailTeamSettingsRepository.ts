@@ -44,6 +44,7 @@ export type EmailTeamSettingsRecord = {
   resendOpenTracking: boolean
   resendClickTracking: boolean
   sendingHealthStatus?: EmailSendingHealthStatus
+  sendingHealthMetrics?: unknown
 }
 
 export type EmailTeamSenderRecord = {

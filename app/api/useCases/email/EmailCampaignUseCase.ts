@@ -130,6 +130,8 @@ import {
   type SuppressedAudienceCounts,
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import { notifyEmailWarmup } from "@/lib/email/notify-email-warmup"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import type { IEmailLogRepository } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
@@ -3171,6 +3173,22 @@ export class EmailCampaignUseCase {
         )
       }
 
+      const warmupState = await emailWarmupRepository.getState(ctx.teamId)
+      if (warmupState.status === "paused") {
+        void notifyEmailWarmup({ recipientProfileId: campaign.team.master.id, teamId: ctx.teamId, type: "paused", message: warmupState.reason ?? "Envio pausado: a saúde do domínio precisa melhorar antes do próximo disparo." })
+        return new Output(false, [], [warmupState.reason ?? "Envio pausado: a saúde do domínio precisa melhorar antes do próximo disparo."], null)
+      }
+      const warmupRemaining = warmupState.remaining
+      const warmupDeferred = Number.isSafeInteger(warmupRemaining)
+        ? Math.max(0, recipientCount - warmupRemaining)
+        : 0
+      if (warmupDeferred > 0) {
+        recipientCount = warmupRemaining
+        if (recipientCount === 0) {
+          return new Output(false, [], [`O domínio está em aquecimento e já atingiu o limite de ${warmupState.limit.toLocaleString("pt-BR")} e-mails hoje. O restante será enviado nas próximas janelas.`], null)
+        }
+      }
+
       const ownerTz = resolveTimezone(campaign.team.master.timezone)
       const dailyCap = await wouldExceedDailyEmailCap({
         teamId: ctx.teamId,
@@ -3197,6 +3215,12 @@ export class EmailCampaignUseCase {
       }
 
       const creditsToReserve = recipientCount
+
+      const warmupReservation = await emailWarmupRepository.reserve(ctx.teamId, recipientCount)
+      if (warmupReservation.accepted < recipientCount) {
+        await this.db.emailCampaign.update({ where: { id }, data: { status: previousStatus ?? "draft" } })
+        return new Output(false, [], ["O limite de warm-up foi atingido enquanto o disparo era preparado. Tente novamente na próxima janela."], null)
+      }
 
       const creditReservation = await this.reserveTeamCreditsForDispatch(
         ctx.teamId,
@@ -3240,6 +3264,10 @@ export class EmailCampaignUseCase {
       const dispatchWarnings = getResendDomainDispatchWarnings(
         resendDomainTrackingInputFromSettings(teamSettings)
       )
+      if (warmupDeferred > 0) {
+        void notifyEmailWarmup({ recipientProfileId: campaign.team.master.id, teamId: ctx.teamId, type: "limit", message: `Esta campanha está em aquecimento: ${warmupDeferred.toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`, limit: warmupState.limit, deferred: warmupDeferred })
+        dispatchWarnings.push(`Esta campanha está em aquecimento: ${warmupDeferred.toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`)
+      }
 
       const job: ManualDispatchJob = {
         campaignId: campaign.id,

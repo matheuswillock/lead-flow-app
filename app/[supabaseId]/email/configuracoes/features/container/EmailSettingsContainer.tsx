@@ -55,6 +55,9 @@ export function EmailSettingsContainer() {
               <Badge variant={health === "healthy" ? "outline" : "secondary"}>
                 Saúde: {health === "healthy" ? "saudável" : health === "paused" || health === "suspended" ? "pausada" : "atenção"}
               </Badge>
+              <Badge variant={settings?.dmarcStatus === "aligned" ? "outline" : "secondary"}>
+                DMARC: {settings?.dmarcStatus === "aligned" ? "alinhado" : settings?.dmarcStatus === "failed" ? "falhou" : settings?.dmarcStatus === "attention" ? "atenção" : "pendente"}
+              </Badge>
             </div>
           </div>
         </div>

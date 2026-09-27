@@ -20,6 +20,7 @@ import { featureAccessService } from "@/app/api/services/featureAccess/FeatureAc
 import { getTeamDailyDispatchStatus } from "@/lib/email/campaign-daily-dispatch-guard"
 import { resolveTimezone } from "@/lib/dates"
 import { assertResendDomainTrackingReady } from "@/lib/email/campaign-dispatch-guards"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
 import {
   formatSendingHealthBlockMessage,
   isSendingHealthBlocked,
@@ -98,6 +99,19 @@ export class EmailCreditUseCase {
             }),
           }
         : {}),
+    }
+  }
+
+  private async buildWarmupStatus(teamId: string) {
+    const state = await emailWarmupRepository.getState(teamId)
+    return {
+      status: state.status,
+      limit: Number.isSafeInteger(state.limit) ? state.limit : null,
+      used: state.used,
+      remaining: Number.isSafeInteger(state.remaining) ? state.remaining : null,
+      temperature: state.temperature,
+      health: state.health,
+      reason: state.reason,
     }
   }
 
@@ -193,6 +207,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+          warmup: await this.buildWarmupStatus(ctx.teamId),
           ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
@@ -213,6 +228,7 @@ export class EmailCreditUseCase {
           pricePerMonth: null,
           availablePlans: this.getAvailablePlans(),
           dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+          warmup: await this.buildWarmupStatus(ctx.teamId),
           ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
         })
       }
@@ -230,6 +246,7 @@ export class EmailCreditUseCase {
         pricePerMonth: status.plan ? PLAN_PRICES[status.plan] : null,
         availablePlans: this.getAvailablePlans(),
         dailyDispatch: await this.buildDailyDispatchStatus(ctx),
+        warmup: await this.buildWarmupStatus(ctx.teamId),
         ...(await this.buildTrackingDispatchGate(ctx.teamId, ctx.isMaster)),
       })
     } catch (error) {
