@@ -72,7 +72,7 @@ export function EmailSettingsContainer() {
           ["conteudo", "Conteúdo e variáveis"],
           ["governanca", "Governança"],
         ].map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <a key={id} href={`#${id}`} className="inline-flex min-h-11 items-center rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             {label}
           </a>
         ))}
