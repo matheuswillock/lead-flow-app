@@ -26,18 +26,29 @@ export function trackPageNoise(page: Page): {
 } {
   const consoleErrors: string[] = []
   const failedRequests: string[] = []
+  // Status vistos em URLs ambientais: o texto do console ("Failed to load
+  // resource ... status of 401") não traz a URL, então a correlação é pelo
+  // status — o evento `response` sempre precede o erro de console do recurso.
+  // Qualquer 401/404 de rota da feature continua falhando via failedRequests.
+  const environmentalStatuses = new Set<number>()
   page.on("console", (message) => {
-    if (message.type() === "error" && !isEnvironmentalNoise(message.text())) {
-      consoleErrors.push(message.text())
-    }
+    if (message.type() !== "error") return
+    const text = message.text()
+    const locationUrl = message.location()?.url ?? ""
+    if (isEnvironmentalNoise(text) || isEnvironmentalNoise(locationUrl)) return
+    const resourceStatus = /^Failed to load resource: the server responded with a status of (\d+)/.exec(text)
+    if (resourceStatus && environmentalStatuses.has(Number(resourceStatus[1]))) return
+    consoleErrors.push(text)
   })
   page.on("response", (response) => {
     if (response.status() < 400) return
     const url = new URL(response.url())
     const entry = `${response.status()} ${response.request().method()} ${url.pathname}`
-    if (!isEnvironmentalNoise(url.pathname) && !isEnvironmentalNoise(response.url())) {
-      failedRequests.push(entry)
+    if (isEnvironmentalNoise(url.pathname) || isEnvironmentalNoise(response.url())) {
+      environmentalStatuses.add(response.status())
+      return
     }
+    failedRequests.push(entry)
   })
   return { consoleErrors, failedRequests }
 }
