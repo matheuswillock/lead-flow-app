@@ -64,6 +64,12 @@ test.describe("app/[supabaseId]/email/entregabilidade", () => {
   test("renderiza métricas, filtros e mantém 360px sem overflow", async ({ page }, testInfo) => {
     const consoleErrors: string[] = []
     page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()) })
+    const failedRequests: string[] = []
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        failedRequests.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`)
+      }
+    })
     await page.route(/\/email\/analytics\/deliverability(?:\?|$)/, async (route) => {
       await route.fulfill({
         contentType: "application/json",
@@ -82,6 +88,7 @@ test.describe("app/[supabaseId]/email/entregabilidade", () => {
     await expect(page.getByRole("button", { name: "90 dias" })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath("product-deliverability-360.png"), fullPage: true })
     expect(consoleErrors).toEqual([])
+    expect(failedRequests).toEqual([])
     await runResponsiveChecks(page)
   })
 })

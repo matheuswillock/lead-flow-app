@@ -179,7 +179,15 @@ export class ResendWebhookUseCase {
           metadata,
         })
         if (deliverabilityEvent) {
-          await emailDeliverabilityEventPublisher.publish(deliverabilityEvent)
+          // Projeção do backoffice: fire-and-forget como o evento Radar abaixo.
+          // O publish exige OIDC da Vercel; fora dela (testes/CI) ele falha e
+          // não pode derrubar o processamento do webhook.
+          void emailDeliverabilityEventPublisher.publish(deliverabilityEvent).catch((publishError) => {
+            console.error(
+              "[ResendWebhookUseCase][deliverability] backoffice_email_deliverability_queue_publish_failed",
+              publishError
+            )
+          })
         }
 
         if (eventType === "bounced") {

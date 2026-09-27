@@ -107,7 +107,14 @@ export class EvaluateTeamSendingHealthUseCase {
               ? { status: transition.next, reason: transition.reason, changedAt: now }
               : undefined,
           })
-          await this.warmupRepository.evaluate(team.teamId, now)
+          // Warm-up é best-effort: as tabelas tipadas ainda estão em rollout e
+          // uma falha aqui não pode invalidar a avaliação de saúde do time.
+          await this.warmupRepository.evaluate(team.teamId, now).catch((warmupError) => {
+            console.error("[EvaluateTeamSendingHealthUseCase][warmup] falha ao avaliar warm-up", {
+              teamId: team.teamId,
+              error: warmupError instanceof Error ? warmupError.message : String(warmupError),
+            })
+          })
 
           if (!transition.changed) continue
 

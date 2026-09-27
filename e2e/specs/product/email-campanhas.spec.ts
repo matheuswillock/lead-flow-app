@@ -128,6 +128,12 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text())
     })
+    const failedRequests: string[] = []
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        failedRequests.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`)
+      }
+    })
     const profile = await findE2eMasterProfile()
     if (!profile?.activeTeamId) {
       throw new Error("Seed E2E sem time ativo")
@@ -232,11 +238,11 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       await expect(page.getByText("3 bounce permanente")).toBeVisible()
       await expect(page.getByText("Temperatura: aquecendo")).toBeVisible()
       await expect(page.getByText("Saúde: saudável")).toBeVisible()
-      await expect(page.getByText(/Limite diário: 250/)).toBeVisible()
-      await expect(page.getByText(/Reservado: 20/)).toBeVisible()
-      await expect(page.getByText(/Disponível: 150/)).toBeVisible()
+      await expect(page.getByText(/Estágio 3 · 80 usados · 20 reservados · 150 disponíveis/)).toBeVisible()
+      await expect(page.getByText("Este domínio está em aquecimento.")).toBeVisible()
       await page.screenshot({ path: testInfo.outputPath("campaign-warmup-wizard.png"), fullPage: true })
       expect(consoleErrors).toEqual([])
+      expect(failedRequests).toEqual([])
       await runResponsiveChecks(page)
     } finally {
       await prisma.emailContact.deleteMany({ where: { listId } }).catch(() => {})

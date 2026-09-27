@@ -233,6 +233,12 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(message.text())
     })
+    const failedRequests: string[] = []
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        failedRequests.push(`${response.status()} ${response.request().method()} ${new URL(response.url()).pathname}`)
+      }
+    })
     await clearConnectedDomain()
     await gotoEmailSettings(page)
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
@@ -240,6 +246,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
     await page.screenshot({ path: testInfo.outputPath("email-settings-desktop.png"), fullPage: true })
     expect(consoleErrors).toEqual([])
+    expect(failedRequests).toEqual([])
     await runResponsiveChecks(page)
   })
 
