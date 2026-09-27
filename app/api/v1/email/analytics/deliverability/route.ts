@@ -7,7 +7,15 @@ export async function GET(request: NextRequest) {
   try {
     const access = await getTeamAccess(request)
     if (access.error) return NextResponse.json(access.error, { status: access.status })
-    const output = await new EmailDeliverabilityAnalyticsUseCase().get(access.access)
+    const params = request.nextUrl.searchParams
+    const requestedDays = Number(params.get("days") ?? 30)
+    const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30
+    const output = await new EmailDeliverabilityAnalyticsUseCase().get(access.access, {
+      days,
+      senderDomain: params.get("domain")?.trim().toLowerCase() || undefined,
+      recipientProvider: params.get("provider")?.trim().toLowerCase() || undefined,
+      campaignId: params.get("campaignId")?.trim() || undefined,
+    })
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
   } catch (error) {
     console.error("[EmailDeliverabilityAnalyticsRoute][GET]", error)

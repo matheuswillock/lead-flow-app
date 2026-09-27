@@ -106,12 +106,15 @@ export class EmailCreditUseCase {
     const state = await emailWarmupRepository.getState(teamId)
     return {
       status: state.status,
+      stage: state.stage,
       limit: Number.isSafeInteger(state.limit) ? state.limit : null,
       used: state.used,
+      reserved: state.reserved ?? 0,
       remaining: Number.isSafeInteger(state.remaining) ? state.remaining : null,
       temperature: state.temperature,
       health: state.health,
       reason: state.reason,
+      nextEvaluationAt: state.nextEvaluationAt.toISOString(),
     }
   }
 

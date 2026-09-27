@@ -2,6 +2,8 @@ import { describe, expect, it, mock, beforeEach } from "bun:test"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import type { SuppressedAudienceCounts } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 
+mock.module("server-only", () => ({}))
+
 const EMPTY_SUPPRESSED_COUNTS: SuppressedAudienceCounts = {
   bounced: 0,
   unsubscribed: 0,
@@ -25,6 +27,30 @@ mock.module(
     },
   })
 )
+
+const warmupState = {
+  stage: 0,
+  limit: Number.MAX_SAFE_INTEGER,
+  used: 0,
+  health: "healthy" as const,
+  lastActivityAt: null,
+  isSharedPlatformDomain: true,
+  status: "established" as const,
+  temperature: "stable" as const,
+  remaining: Number.MAX_SAFE_INTEGER,
+  usageRatio: 0,
+  shouldAdvance: false,
+  reason: null,
+}
+mock.module("@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository", () => ({
+  emailWarmupRepository: {
+    getState: mock(async () => warmupState),
+    reserve: mock(async (_teamId: string, requested: number) => ({ ...warmupState, accepted: requested, deferred: 0 })),
+    release: mock(async () => undefined),
+    recordSent: mock(async () => undefined),
+    evaluate: mock(async () => warmupState),
+  },
+}))
 
 // --- EmailCampaignDispatchService ---
 const dispatchBatchMock = mock(async (_params: unknown) => ({
@@ -76,6 +102,10 @@ mock.module("@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientServ
     countActiveRecipients = async (...args: unknown[]) =>
       (await listActiveRecipientsMock(...args)).length ||
       ((await buildCampaignDispatchInputMock()).recipients?.length ?? 0)
+    filterEligibleRecipients = async (_teamId: string, recipients: Array<{ email: string }>) => {
+      const blocked = await findTeamBlocklistedEmailsMock()
+      return recipients.filter((recipient) => !blocked.has(recipient.email.trim().toLowerCase()))
+    }
     getGlobalDefaults = async () => ({})
     parseTemplateVariables = (variables: unknown) => (Array.isArray(variables) ? variables : [])
   },
@@ -263,7 +293,13 @@ mock.module("@/lib/email/email-rbac", () => ({
 const findTeamBlocklistedEmailsMock = mock(async () => new Set<string>())
 mock.module("@/lib/email/email-contact-blocklist", () => ({
   EMAIL_BLOCKLIST_NAME: "Bloqueados",
+  BLOCK_REASON_UNSUBSCRIBE: "Descadastro pelo destinatário",
+  BLOCK_REASON_COMPLAINT: "Reclamação reportada pelo destinatário",
+  BLOCK_REASON_BOUNCE: "Bounce reportado pelo provedor",
+  BLOCK_REASON_MANUAL: "Bloqueio manual",
+  BLOCK_REASON_IMPORT: "Importado na lista de bloqueados",
   ensureTeamEmailBlocklist: mock(async () => ({ id: "bl-1", isBlocklist: true })),
+  blockTeamEmail: mock(async () => undefined),
   findTeamBlocklistedEmails: findTeamBlocklistedEmailsMock,
   excludeBlocklistedEmails: <T extends { email: string }>(
     recipients: T[],

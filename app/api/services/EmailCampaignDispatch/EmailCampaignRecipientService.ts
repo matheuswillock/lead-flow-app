@@ -23,7 +23,7 @@ import type {
 } from "./IEmailCampaignRecipientService"
 import { enrichCampaignRecipientsWithRadar } from "@/lib/radar/enrich-campaign-recipients"
 import { listRadarSegmentEmailRecipients } from "@/lib/radar/list-segment-recipients"
-import { findTeamBlocklistedEmails } from "@/lib/email/email-contact-blocklist"
+import { filterEmailMarketingEligibleRows } from "@/lib/email/email-marketing-eligibility"
 
 export class EmailCampaignRecipientService implements IEmailCampaignRecipientService {
   constructor(
@@ -81,6 +81,28 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
     return this.repository.countActiveRecipientsForList(contactListId)
   }
 
+  async filterEligibleRecipients<T extends { email: string }>(
+    teamId: string,
+    recipients: T[]
+  ): Promise<T[]> {
+    const eligibilityRows = await this.repository.findEligibilityFlags(
+      teamId,
+      recipients.map((recipient) => recipient.email)
+    )
+    const flagsByEmail = new Map(
+      eligibilityRows.map((row) => [row.email, {
+        isBlocked: row.isBlocked,
+        isComplained: row.isComplained,
+        isUnsubscribed: row.isUnsubscribed,
+        isBounced: row.isBounced,
+      }])
+    )
+    const blockedEmails = new Set(
+      eligibilityRows.filter((row) => row.isBlocked).map((row) => row.email)
+    )
+    return filterEmailMarketingEligibleRows(recipients, blockedEmails, flagsByEmail)
+  }
+
   async listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]> {
     if (contactIds.length === 0) return []
     return this.dedupeRecipients(await this.repository.findActiveRecipientsByIds(contactIds))
@@ -121,13 +143,7 @@ export class EmailCampaignRecipientService implements IEmailCampaignRecipientSer
         : params.radarSegmentSlug
           ? await listRadarSegmentEmailRecipients(params.teamId, params.radarSegmentSlug)
           : await this.listActiveRecipients(params.teamId, params.contactListId!)
-    const blocklistedEmails = await findTeamBlocklistedEmails(params.teamId)
-    const eligibleRecipients =
-      blocklistedEmails.size > 0
-        ? baseRecipients.filter(
-            (recipient) => !blocklistedEmails.has(recipient.email.trim().toLowerCase())
-          )
-        : baseRecipients
+    const eligibleRecipients = await this.filterEligibleRecipients(params.teamId, baseRecipients)
     const enrichedRecipients = await enrichCampaignRecipientsWithRadar(params.teamId, eligibleRecipients)
     const globalDefaults = await this.getGlobalDefaults(params.teamId)
     const parsedVariables = this.parseTemplateVariables(params.template.variables)

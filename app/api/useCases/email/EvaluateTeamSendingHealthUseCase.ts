@@ -11,6 +11,8 @@ import {
   type EmailSendingHealthStatusValue,
   type SendingHealthWindowMetrics,
 } from "@/lib/email/sending-health"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import type { IEmailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/IEmailWarmupRepository"
 
 /**
  * Cron `evaluate-sending-health`: janelas móveis 7d/30d por time sobre
@@ -22,7 +24,8 @@ import {
  */
 export class EvaluateTeamSendingHealthUseCase {
   constructor(
-    private readonly repository: IEmailSendingHealthRepository = emailSendingHealthRepository
+    private readonly repository: IEmailSendingHealthRepository = emailSendingHealthRepository,
+    private readonly warmupRepository: IEmailWarmupRepository = emailWarmupRepository
   ) {}
 
   private buildTransitionMessage(
@@ -104,6 +107,7 @@ export class EvaluateTeamSendingHealthUseCase {
               ? { status: transition.next, reason: transition.reason, changedAt: now }
               : undefined,
           })
+          await this.warmupRepository.evaluate(team.teamId, now)
 
           if (!transition.changed) continue
 

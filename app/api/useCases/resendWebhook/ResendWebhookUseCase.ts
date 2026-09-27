@@ -22,6 +22,10 @@ import {
 } from "@/lib/email/email-event-origin-classifier"
 import { emailCampaignAudiencePruneUseCase } from "@/app/api/useCases/email/EmailCampaignAudiencePruneUseCase"
 import type { ResendWebhookPayload } from "@/app/api/useCases/resendWebhook/resendWebhookTypes"
+import {
+  buildDeliverabilityEvent,
+  emailDeliverabilityEventPublisher,
+} from "@/app/api/services/emailDeliverability/EmailDeliverabilityEventPublisher"
 
 const RESEND_WEBHOOK_RADAR_QUEUE_PUBLISH_FAILED_TAG =
   "resend_webhook_radar_queue_publish_failed"
@@ -164,6 +168,19 @@ export class ResendWebhookUseCase {
           svixId,
           origin,
         })
+
+        const deliverabilityEvent = buildDeliverabilityEvent({
+          logId: log.id,
+          teamId: log.teamId,
+          occurredAt,
+          eventType,
+          senderDomain: "platform",
+          recipientEmail: log.recipientEmail,
+          metadata,
+        })
+        if (deliverabilityEvent) {
+          await emailDeliverabilityEventPublisher.publish(deliverabilityEvent)
+        }
 
         if (eventType === "bounced") {
           emailCampaignAudiencePruneUseCase.queuePruneForSuppressedEmail(log.recipientEmail)

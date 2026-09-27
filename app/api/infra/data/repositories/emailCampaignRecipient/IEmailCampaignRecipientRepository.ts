@@ -17,6 +17,14 @@ export type SuppressedAudienceCounts = {
   total: number
 }
 
+export type RecipientEligibilityFlags = {
+  email: string
+  isBlocked: boolean
+  isComplained: boolean
+  isUnsubscribed: boolean
+  isBounced: boolean
+}
+
 export const EMPTY_SUPPRESSED_AUDIENCE_COUNTS: SuppressedAudienceCounts = {
   bounced: 0,
   unsubscribed: 0,
@@ -50,4 +58,5 @@ export interface IEmailCampaignRecipientRepository {
   ): Promise<SuppressedAudienceCounts>
   findActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipientRecord[]>
   findGlobalVariableDefaults(teamId: string): Promise<Record<string, string>>
+  findEligibilityFlags(teamId: string, emails: string[]): Promise<RecipientEligibilityFlags[]>
 }

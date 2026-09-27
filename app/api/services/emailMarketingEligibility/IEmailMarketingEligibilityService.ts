@@ -1,14 +1,6 @@
-export type EmailEligibilityFlags = {
-  isBlocked: boolean
-  isUnsubscribed: boolean
-  isBounced: boolean
-  isComplained: boolean
-}
+import type { EmailEligibilityDecision, EmailEligibilityFlags } from "@/lib/email/email-marketing-eligibility"
 
-export type EmailEligibilityDecision = {
-  eligible: boolean
-  reason: "blocked" | "complained" | "unsubscribed" | "bounced" | null
-}
+export type { EmailEligibilityDecision, EmailEligibilityFlags }
 
 export interface IEmailMarketingEligibilityService {
   decide(flags: EmailEligibilityFlags): EmailEligibilityDecision

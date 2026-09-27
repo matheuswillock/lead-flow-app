@@ -44,6 +44,9 @@ import {
   resendDomainTrackingInputFromSettings,
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import type { IEmailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/IEmailWarmupRepository"
+import { emailDmarcReportRepository } from "@/app/api/infra/data/repositories/emailDmarc/EmailDmarcReportRepository"
 
 // A definição vive na camada de persistência (é o formato gravado na coluna Json);
 // reexportada aqui porque os consumidores históricos importam deste módulo.
@@ -182,6 +185,8 @@ export type EmailTeamSettingsDependencies = {
   /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
   dnsProviderLookupService?: IDnsProviderLookupService
   waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
+  warmupRepository?: IEmailWarmupRepository
+  dmarcRepository?: Pick<typeof emailDmarcReportRepository, "getStatus">
 }
 
 export class EmailTeamSettingsUseCase {
@@ -194,6 +199,8 @@ export class EmailTeamSettingsUseCase {
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
   private readonly dnsProviderLookupService: IDnsProviderLookupService
   private readonly waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
+  private readonly warmupRepository: IEmailWarmupRepository
+  private readonly dmarcRepository: Pick<typeof emailDmarcReportRepository, "getStatus">
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -212,6 +219,8 @@ export class EmailTeamSettingsUseCase {
     this.dnsProviderLookupService =
       dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
     this.waitForTrackingConfirmation = dependencies.waitForTrackingConfirmation
+    this.warmupRepository = dependencies.warmupRepository ?? emailWarmupRepository
+    this.dmarcRepository = dependencies.dmarcRepository ?? emailDmarcReportRepository
   }
 
   private composeResult(
@@ -285,8 +294,25 @@ export class EmailTeamSettingsUseCase {
         snapshot.variables,
         domainEvents
       )
+      const [warmup, typedDmarcStatus] = await Promise.all([
+        this.warmupRepository.getState(ctx.teamId),
+        this.dmarcRepository.getStatus(ctx.teamId, snapshot.settings?.resendDomainName ?? null),
+      ])
 
-      return new Output(true, [], [], result)
+      return new Output(true, [], [], {
+        ...result,
+        dmarcStatus: typedDmarcStatus ?? result.dmarcStatus,
+        warmupStatus: warmup.status,
+        warmupStage: warmup.stage,
+        warmupLimit: warmup.limit,
+        warmupUsed: warmup.used,
+        warmupReserved: warmup.reserved ?? 0,
+        warmupRemaining: warmup.remaining,
+        domainTemperature: warmup.temperature,
+        domainHealth: warmup.health,
+        warmupReason: warmup.reason,
+        nextEvaluationAt: warmup.nextEvaluationAt.toISOString(),
+      })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][get]", error)
       return new Output(false, [], ["Erro ao buscar configurações de email"], null)
