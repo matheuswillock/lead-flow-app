@@ -476,7 +476,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(clickSwitch).toBeDisabled()
       await expect(clickSwitch).not.toBeChecked()
       await expect(
-        page.getByText("O rastreio de cliques fica disponível quando o domínio", {
+        page.getByText("O rastreio de cliques fica disponível após verificar um domínio próprio", {
           exact: false,
         })
       ).toBeVisible()
