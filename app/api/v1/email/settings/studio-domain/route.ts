@@ -26,11 +26,13 @@ export async function GET(request: NextRequest) {
   try {
     const context = await getContext(request)
     if (context.error) return NextResponse.json(context.error, { status: 401 })
-    const useCase = makeStudioDomainUseCase()
-    if (context.emailDomainStatus === "verified" && context.emailDomainName) {
-      await useCase.ensureForVerifiedEmailDomain(context.access!.teamId, context.emailDomainName)
-    }
-    const output = await useCase.get(context.access!, context.emailDomainName)
+    const output = await makeStudioDomainUseCase().getForEmailDomain(
+      context.access!,
+      {
+        name: context.emailDomainName,
+        status: context.emailDomainStatus,
+      },
+    )
     return NextResponse.json(output, { status: output.isValid ? 200 : 403 })
   } catch (error) {
     console.error("[EmailStudioDomainRoute][GET]", error)

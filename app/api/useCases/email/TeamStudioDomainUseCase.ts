@@ -4,6 +4,7 @@ import { isManagerLikeRole } from "@/lib/roles"
 import { checkFormDomainVerification } from "@/lib/public-forms/form-domain-verification"
 import { buildFormDomainDnsRecords } from "@/lib/public-forms/form-domain-dns-records"
 import { studioHostnameFromEmailDomain } from "@/lib/public-studio/studio-domain-hostname"
+import { hasLandingPageManagementAccess } from "@/app/api/useCases/landingPages/landingPageFeatureAccess"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
 import type { IVercelDomainsGateway } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
 import {
@@ -18,6 +19,11 @@ type StudioDomainDependencies = {
   repository?: ITeamStudioDomainRepository
   vercelGateway?: IVercelDomainsGateway
   invalidateCache?: (input: { hostname: string }) => void
+}
+
+type EmailDomainContext = {
+  name: string | null | undefined
+  status: string | null | undefined
 }
 
 const MAX_TRACKING_SCRIPT_LENGTH = 20000
@@ -36,6 +42,10 @@ function normalizeTrackingScript(value: unknown, label: string): string | null {
 
 function canManage(access: TeamAccess) {
   return access.isMaster || isManagerLikeRole(access.teamMember.role)
+}
+
+function accessDeniedOutput(): Output {
+  return new Output(false, [], ["Acesso negado"], null)
 }
 
 function toDto(domain: TeamStudioDomainRecord) {
@@ -69,13 +79,21 @@ export class TeamStudioDomainUseCase {
   }
 
   async get(access: TeamAccess, emailDomainName: string | null | undefined): Promise<Output> {
-    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return accessDeniedOutput()
     const domain = await this.repository.findByTeamId(access.teamId)
     const hostname = studioHostnameFromEmailDomain(emailDomainName)
     return new Output(true, [], [], {
       studioDomain: domain ? toDto(domain) : null,
       suggestedHostname: hostname,
     })
+  }
+
+  async getForEmailDomain(access: TeamAccess, emailDomain: EmailDomainContext): Promise<Output> {
+    if (!canManage(access)) return accessDeniedOutput()
+    if (emailDomain.status !== "verified" || !emailDomain.name) return this.get(access, null)
+
+    const ensureOutput = await this.ensureForVerifiedEmailDomain(access.teamId, emailDomain.name)
+    return ensureOutput.isValid ? this.get(access, emailDomain.name) : ensureOutput
   }
 
   async ensureForVerifiedEmailDomain(teamId: string, emailDomainName: string): Promise<Output> {
@@ -118,7 +136,7 @@ export class TeamStudioDomainUseCase {
   }
 
   async getRecords(access: TeamAccess, emailDomainName: string | null | undefined): Promise<Output> {
-    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return accessDeniedOutput()
     const domain = await this.repository.findByTeamId(access.teamId)
     const hostname = domain?.hostname ?? studioHostnameFromEmailDomain(emailDomainName)
     if (!hostname) return this.get(access, emailDomainName)
@@ -139,8 +157,16 @@ export class TeamStudioDomainUseCase {
     })
   }
 
+  async getRecordsForEmailDomain(access: TeamAccess, emailDomain: EmailDomainContext): Promise<Output> {
+    if (!canManage(access)) return accessDeniedOutput()
+    if (emailDomain.status !== "verified" || !emailDomain.name) return this.getRecords(access, null)
+
+    const ensureOutput = await this.ensureForVerifiedEmailDomain(access.teamId, emailDomain.name)
+    return ensureOutput.isValid ? this.getRecords(access, emailDomain.name) : ensureOutput
+  }
+
   async verify(access: TeamAccess): Promise<Output> {
-    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return accessDeniedOutput()
     const domain = await this.repository.findByTeamId(access.teamId)
     if (!domain) return new Output(false, [], ["Nenhum subdomínio studio conectado"], null)
     if (!this.vercelGateway.isConfigured()) return new Output(false, [], ["Integração de domínio não configurada."], null)
@@ -158,7 +184,10 @@ export class TeamStudioDomainUseCase {
   }
 
   async updateTracking(access: TeamAccess, input: { headScripts?: unknown; bodyStartScripts?: unknown; bodyEndScripts?: unknown }): Promise<Output> {
-    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return accessDeniedOutput()
+    if (!(await hasLandingPageManagementAccess(access))) {
+      return new Output(false, [], ["O rastreamento de landing pages não está disponível para esta conta"], null)
+    }
     try {
       if (!this.repository.updateTracking) return new Output(false, [], ["Configuração de rastreamento indisponível"], null)
       const domain = await this.repository.updateTracking(access.teamId, {
