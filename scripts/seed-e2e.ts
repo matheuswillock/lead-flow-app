@@ -346,15 +346,15 @@ async function grantE2eMasterRadarBeta(prisma: PrismaClient, profileId: string) 
   info("✓ Radar BETA liberado para o master E2E");
 }
 
-async function grantE2eMasterEmailCampaignsBeta(prisma: PrismaClient, profileId: string) {
-  step("Granting Email Campaigns BETA to E2E master");
+async function grantE2eMasterEmailBeta(prisma: PrismaClient, profileId: string) {
+  step("Granting Email BETA features to E2E master");
 
   const features = await prisma.backofficeFeature.findMany({
-    where: { slug: { in: ["email", "email-campaigns"] } },
+    where: { slug: { in: ["email", "email-campaigns", "email-landing-pages"] } },
     select: { id: true, slug: true },
   });
-  if (features.length !== 2) {
-    fail("Features email/email-campaigns ausentes no catálogo após seed-backoffice-products.");
+  if (features.length !== 3) {
+    fail("Features email/email-campaigns/email-landing-pages ausentes no catálogo após seed-backoffice-products.");
   }
 
   await Promise.all(
@@ -382,7 +382,7 @@ async function grantE2eMasterEmailCampaignsBeta(prisma: PrismaClient, profileId:
     )
   );
 
-  info("✓ Email Campaigns BETA liberado para o master E2E");
+  info("✓ Email BETA features liberadas para o master E2E");
 }
 
 async function main() {
@@ -400,7 +400,7 @@ async function main() {
   try {
     const profile = await upsertE2eMaster(prisma);
     await grantE2eMasterRadarBeta(prisma, profile.id);
-    await grantE2eMasterEmailCampaignsBeta(prisma, profile.id);
+    await grantE2eMasterEmailBeta(prisma, profile.id);
   } finally {
     await prisma.$disconnect();
   }

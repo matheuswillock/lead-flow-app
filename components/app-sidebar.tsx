@@ -138,7 +138,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Automações", url: `/${supabaseId}/automations`, icon: Zap, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_AUTOMATIONS },
     { title: "Radar", url: `/${supabaseId}/radar`, icon: Database, managerOnly: true, featureSlug: FEATURE_SLUGS.RADAR },
     { title: "Formulários", url: `/${supabaseId}/forms`, icon: FileText, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
-    { title: "Landing pages", url: `/${supabaseId}/landing-pages`, icon: PanelsTopLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.PUBLIC_FORMS },
   ];
 
   const emailItems: SidebarItem[] = [
@@ -148,6 +147,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Entrega e reputação", url: `/${supabaseId}/email/entregabilidade`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
     { title: "Descadastro", url: `/${supabaseId}/email/descadastro`, icon: Mail, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_UNSUBSCRIBE },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
+    { title: "Landing pages", url: `/${supabaseId}/landing-pages`, icon: PanelsTopLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_LANDING_PAGES },
   ];
 
   const whatsAppItems: SidebarItem[] = [
