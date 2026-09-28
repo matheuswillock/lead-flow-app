@@ -6,7 +6,7 @@ import { isPublicFormServableOnHost } from "@/lib/public-forms/team-form-domain-
 import { resolveLegacyPublicHostRedirect } from "@/lib/public-studio/team-studio-domain-tenancy"
 import { PublicFormViewProvider } from "./features/context/PublicFormViewContext";
 import { PublicFormViewContainer } from "./features/container/PublicFormViewContainer";
-import { PublicTrackingHead } from "@/components/public-tracking/PublicTrackingScripts"
+import { PublicTrackingBody, PublicTrackingHead } from "@/components/public-tracking/PublicTrackingScripts"
 
 /**
  * Guarda de tenancy do serving multi-tenant: em host custom (domínio de
@@ -72,6 +72,7 @@ export default async function PublicFormPage({
 
   return (<>
     <head><PublicTrackingHead tracking={tracking} /></head>
+    <PublicTrackingBody tracking={tracking} position="start" />
     <PublicFormViewProvider
       publicId={publicId}
       initialSnapshot={initialSnapshot}
@@ -79,5 +80,6 @@ export default async function PublicFormPage({
     >
       <PublicFormViewContainer />
     </PublicFormViewProvider>
+    <PublicTrackingBody tracking={tracking} position="end" />
   </>);
 }
