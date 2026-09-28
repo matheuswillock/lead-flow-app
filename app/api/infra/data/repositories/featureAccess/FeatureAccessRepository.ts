@@ -222,6 +222,14 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
   }
 
+  async findTeamMasterId(teamId: string): Promise<string | null> {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { masterId: true },
+    })
+    return team?.masterId ?? null
+  }
+
   private isMissingAccessRulesTable(error: unknown): boolean {
     const parsed = error as { code?: string; meta?: { table?: string } }
     return (

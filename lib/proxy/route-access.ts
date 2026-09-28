@@ -52,6 +52,7 @@ export const TENANT_ROUTE_PREFIXES = [
   "/manager-users",
   "/integrations",
   "/forms",
+  "/landing-pages",
   "/whatsapp/configuracoes",
   "/whatsapp/auto-respostas",
   "/whatsapp",
