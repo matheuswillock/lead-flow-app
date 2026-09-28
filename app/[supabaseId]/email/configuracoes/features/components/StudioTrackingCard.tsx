@@ -56,7 +56,7 @@ export function StudioTrackingCard() {
         <div className="flex flex-col gap-2"><Label htmlFor="studio-head-scripts">Cabeçalho HTML</Label><Textarea id="studio-head-scripts" value={tracking.headScripts ?? ""} onChange={(event) => setTracking((current) => ({ ...current, headScripts: event.target.value }))} placeholder={'<script>...</script> ou <meta ... />'} disabled={loading} className="min-h-28 font-mono text-xs" /></div>
         <div className="flex flex-col gap-2"><Label htmlFor="studio-body-start">Início do body</Label><Textarea id="studio-body-start" value={tracking.bodyStartScripts ?? ""} onChange={(event) => setTracking((current) => ({ ...current, bodyStartScripts: event.target.value }))} placeholder={'<noscript>...</noscript>'} disabled={loading} className="min-h-24 font-mono text-xs" /></div>
         <div className="flex flex-col gap-2"><Label htmlFor="studio-body-end">Fim do body</Label><Textarea id="studio-body-end" value={tracking.bodyEndScripts ?? ""} onChange={(event) => setTracking((current) => ({ ...current, bodyEndScripts: event.target.value }))} placeholder={'<script async src="..."></script>'} disabled={loading} className="min-h-24 font-mono text-xs" /></div>
-        <Button type="button" onClick={() => void save()} disabled={loading || saving} className="w-fit"><Save data-icon="inline-start" />{saving ? "Salvando..." : "Salvar códigos"}</Button>
+        <Button type="button" onClick={() => void save()} disabled={loading || saving} className="min-h-11 w-fit"><Save data-icon="inline-start" />{saving ? "Salvando..." : "Salvar códigos"}</Button>
       </CardContent>
     </Card>
   )
