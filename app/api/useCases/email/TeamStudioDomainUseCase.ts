@@ -120,19 +120,21 @@ export class TeamStudioDomainUseCase {
   async getRecords(access: TeamAccess, emailDomainName: string | null | undefined): Promise<Output> {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const domain = await this.repository.findByTeamId(access.teamId)
-    if (!domain) return this.get(access, emailDomainName)
+    const hostname = domain?.hostname ?? studioHostnameFromEmailDomain(emailDomainName)
+    if (!hostname) return this.get(access, emailDomainName)
 
     const projectDomain = this.vercelGateway.isConfigured()
-      ? await this.vercelGateway.getProjectDomain(domain.hostname)
+      ? await this.vercelGateway.getProjectDomain(hostname)
       : null
 
     return new Output(true, [], [], {
-      studioDomain: toDto(domain),
+      studioDomain: domain ? toDto(domain) : null,
+      suggestedHostname: hostname,
       records: buildFormDomainDnsRecords({
-        hostname: domain.hostname,
+        hostname,
         apexName: projectDomain?.ok ? projectDomain.data.apexName : null,
         verificationChallenges: projectDomain?.ok ? projectDomain.data.verification : null,
-        verified: domain.status === "verified",
+        verified: domain?.status === "verified",
       }),
     })
   }

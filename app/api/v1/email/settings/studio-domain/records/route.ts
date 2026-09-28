@@ -10,8 +10,12 @@ export async function GET(request: NextRequest) {
     const teamAccess = await getTeamAccess(request)
     if (teamAccess.error) return NextResponse.json(teamAccess.error, { status: teamAccess.status })
     const emailOutput = await new EmailTeamSettingsUseCase().get(teamAccess.access)
-    const emailResult = emailOutput.result as { resendDomainName?: string | null } | null
-    const output = await new TeamStudioDomainUseCase({ invalidateCache: invalidateTeamStudioDomainCache }).getRecords(
+    const emailResult = emailOutput.result as { resendDomainName?: string | null; resendDomainStatus?: string | null } | null
+    const useCase = new TeamStudioDomainUseCase({ invalidateCache: invalidateTeamStudioDomainCache })
+    if (emailResult?.resendDomainStatus === "verified" && emailResult.resendDomainName) {
+      await useCase.ensureForVerifiedEmailDomain(teamAccess.access.teamId, emailResult.resendDomainName)
+    }
+    const output = await useCase.getRecords(
       teamAccess.access,
       emailResult?.resendDomainName ?? null,
     )
