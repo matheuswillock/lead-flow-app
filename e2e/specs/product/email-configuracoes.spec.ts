@@ -603,7 +603,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
    * pela rota REAL contra o banco; POST connect e verify são interceptados
    * porque dependem da Vercel API (mesmo padrão dos mocks de records acima).
    */
-  test.describe("Domínio dos formulários", () => {
+  // O domínio dedicado de formulários foi substituído pelo domínio Studio
+  // compartilhado. Este bloco permanece como referência dos aliases legados
+  // até a remoção definitiva das tabelas de compatibilidade.
+  test.describe.skip("Domínio legado dos formulários", () => {
     const FORM_DOMAIN_HOSTNAME = "forms.e2e-corretor.com.br"
 
     async function seedFormDomain(status: "pending" | "verified" | "failed"): Promise<void> {
