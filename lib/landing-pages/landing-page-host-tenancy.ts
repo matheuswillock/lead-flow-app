@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
 import { classifyFormsHost, normalizeHostname } from "@/lib/proxy/forms-host"
+import { isPublicResourceServableOnStudioHost } from "@/lib/public-studio/team-studio-domain-tenancy"
 
 const FOREIGN_HOST_MESSAGE = "Landing page não encontrada"
 
@@ -11,6 +12,7 @@ export async function isLandingPageServableOnHost(input: {
   landingPageId: string
   hostHeader: string | null | undefined
 }): Promise<boolean> {
+  if (await isPublicResourceServableOnStudioHost({ resource: "landing", publicId: input.landingPageId, hostHeader: input.hostHeader })) return true
   if (classifyFormsHost(input.hostHeader) !== "custom") return true
   const hostname = normalizeHostname(input.hostHeader)
   if (!hostname) return false

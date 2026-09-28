@@ -20,9 +20,10 @@ import { useContactsContext } from "../context/ContactsContext";
 
 type ContactAddModalProps = {
   trigger: React.ReactNode
+  skipAudienceValidation?: boolean
 }
 
-export function ContactAddModal({ trigger }: ContactAddModalProps) {
+export function ContactAddModal({ trigger, skipAudienceValidation = false }: ContactAddModalProps) {
   const { handleAddContact } = useContactsContext();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -39,11 +40,10 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) return;
 
-    const validation = evaluateEmailForAudience(trimmedEmail);
+    const validation = skipAudienceValidation ? { ok: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail), email: trimmedEmail } : evaluateEmailForAudience(trimmedEmail);
     if (!validation.ok) {
-      toast.error(
-        `E-mail inválido. Este contato não será adicionado à base. (${validation.reason})`
-      );
+      const reason = "reason" in validation ? validation.reason : "formato inválido"
+      toast.error(`E-mail inválido. Este contato não será adicionado à base. (${reason})`);
       return;
     }
 

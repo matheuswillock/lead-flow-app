@@ -110,7 +110,12 @@ export function ContatosContainer() {
                   listName={selectedList?.name ?? ""}
                   activeImport={selectedList?.activeImport}
                   actions={
-                    !selectedList?.isBlocklist && !readOnly ? (
+                    selectedList?.isBlocklist && !readOnly ? (
+                      <ContactAddModal
+                        skipAudienceValidation
+                        trigger={<Button size="sm" variant="outline">+ Bloquear contato</Button>}
+                      />
+                    ) : !selectedList?.isBlocklist && !readOnly ? (
                       <div className="flex items-center gap-2">
                         <ContactAddModal
                           trigger={
@@ -121,7 +126,7 @@ export function ContatosContainer() {
                       </div>
                     ) : selectedList?.isBlocklist ? (
                       <p className="text-sm text-muted-foreground">
-                        Lista somente leitura — contatos entram via descadastro.
+                        Contatos entram via descadastro ou inclusão manual.
                       </p>
                     ) : null
                   }

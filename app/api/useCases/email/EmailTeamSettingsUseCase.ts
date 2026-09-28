@@ -13,6 +13,7 @@ import {
   RESEND_TRACKING_POLICY,
 } from "@/lib/email/resend-domain-reconcile"
 import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
+import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
 import {
   isSelfInflictedTrackingConflict,
   isTrackingSubdomainConflict,
@@ -43,6 +44,10 @@ import {
   resendDomainTrackingInputFromSettings,
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import type { IEmailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/IEmailWarmupRepository"
+import { emailDmarcReportRepository } from "@/app/api/infra/data/repositories/emailDmarc/EmailDmarcReportRepository"
+import { teamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 
 // A definição vive na camada de persistência (é o formato gravado na coluna Json);
 // reexportada aqui porque os consumidores históricos importam deste módulo.
@@ -181,6 +186,8 @@ export type EmailTeamSettingsDependencies = {
   /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
   dnsProviderLookupService?: IDnsProviderLookupService
   waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
+  warmupRepository?: IEmailWarmupRepository
+  dmarcRepository?: Pick<typeof emailDmarcReportRepository, "getStatus">
 }
 
 export class EmailTeamSettingsUseCase {
@@ -193,6 +200,8 @@ export class EmailTeamSettingsUseCase {
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
   private readonly dnsProviderLookupService: IDnsProviderLookupService
   private readonly waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
+  private readonly warmupRepository: IEmailWarmupRepository
+  private readonly dmarcRepository: Pick<typeof emailDmarcReportRepository, "getStatus">
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -211,6 +220,8 @@ export class EmailTeamSettingsUseCase {
     this.dnsProviderLookupService =
       dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
     this.waitForTrackingConfirmation = dependencies.waitForTrackingConfirmation
+    this.warmupRepository = dependencies.warmupRepository ?? emailWarmupRepository
+    this.dmarcRepository = dependencies.dmarcRepository ?? emailDmarcReportRepository
   }
 
   private composeResult(
@@ -261,6 +272,8 @@ export class EmailTeamSettingsUseCase {
       senders,
       defaultSenderId: defaultSender?.id ?? null,
       globalVariables,
+      sendingHealthStatus: settings?.sendingHealthStatus ?? "healthy",
+      dmarcStatus: readDmarcStatus(settings?.sendingHealthMetrics),
     }
   }
 
@@ -282,8 +295,25 @@ export class EmailTeamSettingsUseCase {
         snapshot.variables,
         domainEvents
       )
+      const [warmup, typedDmarcStatus] = await Promise.all([
+        this.warmupRepository.getState(ctx.teamId),
+        this.dmarcRepository.getStatus(ctx.teamId, snapshot.settings?.resendDomainName ?? null),
+      ])
 
-      return new Output(true, [], [], result)
+      return new Output(true, [], [], {
+        ...result,
+        dmarcStatus: typedDmarcStatus ?? result.dmarcStatus,
+        warmupStatus: warmup.status,
+        warmupStage: warmup.stage,
+        warmupLimit: warmup.limit,
+        warmupUsed: warmup.used,
+        warmupReserved: warmup.reserved ?? 0,
+        warmupRemaining: warmup.remaining,
+        domainTemperature: warmup.temperature,
+        domainHealth: warmup.health,
+        warmupReason: warmup.reason,
+        nextEvaluationAt: warmup.nextEvaluationAt.toISOString(),
+      })
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][get]", error)
       return new Output(false, [], ["Erro ao buscar configurações de email"], null)
@@ -714,6 +744,26 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
+        if (deriveTrackingDnsVerified(currentDomain.records) !== true) {
+          return new Output(
+            false,
+            [],
+            [
+              `O registro DNS de Tracking (CNAME ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}) ainda não está verificado no Resend. Verifique o DNS do domínio antes de ligar o rastreio de cliques.`,
+            ],
+            null
+          )
+        }
+
+        if (currentDomain.status !== "verified") {
+          return new Output(
+            false,
+            [],
+            ["O domínio precisa estar verificado no Resend antes de ligar o rastreio de cliques."],
+            null
+          )
+        }
+
       }
       const updatePayload: {
         id: string
@@ -895,6 +945,8 @@ export class EmailTeamSettingsUseCase {
         (domainDelivery !== null &&
           settings.fromEmail.trim().toLowerCase() === domainDelivery)
 
+      await teamStudioDomainUseCase.disconnectForTeam(ctx.teamId)
+
       // Método próprio do repositório, e não o `clearDomainSettings` do
       // EmailTeamDomainEventRepository: aquele limpa os campos resend* mas deixa
       // fromEmail/fromName apontando para um domínio que já saiu do Resend.
@@ -904,7 +956,6 @@ export class EmailTeamSettingsUseCase {
           ? { fromName: PLATFORM_FROM_NAME, fromEmail: PLATFORM_FROM_EMAIL }
           : null
       )
-
       return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][disconnectDomain]", error)
@@ -936,6 +987,10 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (synced.status === "verified" && domainData.name) {
+        await teamStudioDomainUseCase.ensureForVerifiedEmailDomain(ctx.teamId, domainData.name)
+      }
 
       return new Output(true, ["Verificação iniciada"], [], {
         status: synced.status as ResendDomainStatus,
@@ -1007,4 +1062,12 @@ export class EmailTeamSettingsUseCase {
       return new Output(false, [], ["Erro ao buscar registros DNS"], null)
     }
   }
+}
+
+function readDmarcStatus(value: unknown): "pending" | "aligned" | "attention" | "failed" {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "pending"
+  const status = (value as Record<string, unknown>).dmarc && typeof (value as Record<string, unknown>).dmarc === "object"
+    ? ((value as Record<string, unknown>).dmarc as Record<string, unknown>).status
+    : null
+  return status === "aligned" || status === "attention" || status === "failed" ? status : "pending"
 }

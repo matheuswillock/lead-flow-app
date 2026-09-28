@@ -9,7 +9,7 @@ import {
 } from "@/app/api/infra/data/repositories/emailCampaign/EmailCampaignRepository"
 import { prisma, getEmailCronPrisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
-import { publicFormBaseUrlResolverService } from "@/app/api/services/publicFormBaseUrl/PublicFormBaseUrlResolverService"
+import { publicStudioBaseUrlResolverService } from "@/app/api/services/publicStudioBaseUrl/PublicStudioBaseUrlResolverService"
 import { EmailCampaignRecipientService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignRecipientService"
 import type {
   CampaignRecipient,
@@ -63,10 +63,6 @@ import {
   formatProviderBatchFailureMessage,
 } from "@/lib/email/is-valid-resend-recipient-email"
 import { evaluateEmailForAudience, filterEmailsForAudience } from "@/lib/email/audience-prevalidation"
-import {
-  excludeBlocklistedEmails,
-  findTeamBlocklistedEmails,
-} from "@/lib/email/email-contact-blocklist"
 import type {
   DispatchAbortedReason,
   DispatchProviderError,
@@ -130,6 +126,8 @@ import {
   type SuppressedAudienceCounts,
 } from "@/app/api/infra/data/repositories/emailCampaignRecipient/IEmailCampaignRecipientRepository"
 import { emailContactListRepository } from "@/app/api/infra/data/repositories/emailContactList/EmailContactListRepository"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import { notifyEmailWarmup } from "@/lib/email/notify-email-warmup"
 import { emailLogRepository } from "@/app/api/infra/data/repositories/emailLog/EmailLogRepository"
 import type { IEmailLogRepository } from "@/app/api/infra/data/repositories/emailLog/IEmailLogRepository"
 import { emailContactRadarSyncOutboxRepository } from "@/app/api/infra/data/repositories/emailContactRadarSyncOutbox/EmailContactRadarSyncOutboxRepository"
@@ -409,7 +407,7 @@ function buildListPlanRows({
 export class EmailCampaignUseCase {
   // Resolver do domínio de formulários injetado aqui (camada UseCase) porque
   // Service não importa outro Service — ver lib/public-forms/public-form-base-url-resolution.ts.
-  private dispatchService = new EmailCampaignDispatchService(publicFormBaseUrlResolverService)
+  private dispatchService = new EmailCampaignDispatchService(publicStudioBaseUrlResolverService)
   private recipientService = new EmailCampaignRecipientService()
   private creditService = new EmailCreditService()
   private repository: IEmailCampaignRepository
@@ -890,11 +888,11 @@ export class EmailCampaignUseCase {
     return [...new Set(contacts.map((contact) => contact.email.trim().toLowerCase()).filter(Boolean))]
   }
 
-  private async excludeTeamBlocklisted<T extends { email: string }>(
+  private async filterEligibleRecipients<T extends { email: string }>(
     teamId: string,
     recipients: T[]
   ): Promise<T[]> {
-    return excludeBlocklistedEmails(recipients, await findTeamBlocklistedEmails(teamId))
+    return this.recipientService.filterEligibleRecipients(teamId, recipients)
   }
 
   private async countDispatchAudience(params: {
@@ -905,14 +903,14 @@ export class EmailCampaignUseCase {
   }): Promise<number> {
     const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
     if (audienceIds.length > 0) {
-      const recipients = await this.excludeTeamBlocklisted(
+      const recipients = await this.filterEligibleRecipients(
         params.teamId,
         await this.recipientService.listActiveRecipientsByIds(audienceIds)
       )
       return recipients.length
     }
     if (params.radarSegmentSlug) {
-      const recipients = await this.excludeTeamBlocklisted(
+      const recipients = await this.filterEligibleRecipients(
         params.teamId,
         await listRadarSegmentEmailRecipients(params.teamId, params.radarSegmentSlug)
       )
@@ -935,7 +933,7 @@ export class EmailCampaignUseCase {
     const audienceIds = params.audienceContactIds?.filter(Boolean) ?? []
     if (audienceIds.length > 0) {
       const slice = audienceIds.slice(params.skip, params.skip + params.take)
-      const recipients = await this.excludeTeamBlocklisted(
+      const recipients = await this.filterEligibleRecipients(
         params.teamId,
         await this.recipientService.listActiveRecipientsByIds(slice)
       )
@@ -947,7 +945,7 @@ export class EmailCampaignUseCase {
         params.radarSegmentSlug,
         { skip: params.skip, take: params.take }
       )
-      const recipients = await this.excludeTeamBlocklisted(
+      const recipients = await this.filterEligibleRecipients(
         params.teamId,
         page.recipients.map((recipient) => ({
           contactId: null,
@@ -967,7 +965,7 @@ export class EmailCampaignUseCase {
         take: params.take,
       }
     )
-    const recipients = await this.excludeTeamBlocklisted(params.teamId, listed)
+    const recipients = await this.filterEligibleRecipients(params.teamId, listed)
     return { recipients, exhausted: listed.length < params.take }
   }
 
@@ -1210,6 +1208,34 @@ export class EmailCampaignUseCase {
       const schedule = this.parseScheduleInput(data)
       const teamLimits = await resolveTeamEmailCampaignLimits(ctx.teamId)
       const maxPerSub = teamLimits.maxRecipientsPerSub
+      const warmupState = await emailWarmupRepository.getState(ctx.teamId)
+      const buildWarmupPreview = (totalRecipients: number) => {
+        const remaining = Number.isSafeInteger(warmupState.remaining)
+          ? warmupState.remaining
+          : totalRecipients
+        const pending = Math.max(0, totalRecipients - remaining)
+        return {
+          warmupStatus: warmupState.status,
+          warmupStage: warmupState.stage,
+          warmupLimit: Number.isSafeInteger(warmupState.limit) ? warmupState.limit : null,
+          warmupReserved: warmupState.reserved ?? 0,
+          warmupUsed: warmupState.used,
+          warmupRemaining: Number.isSafeInteger(warmupState.remaining)
+            ? warmupState.remaining
+            : null,
+          domainTemperature: warmupState.temperature,
+          domainHealth: warmupState.health,
+          warmupReason: warmupState.reason,
+          nextEvaluationAt: warmupState.nextEvaluationAt?.toISOString() ?? null,
+          deferredRecipients: {
+            total: totalRecipients,
+            pending,
+            nextWindowAt:
+              pending > 0 ? warmupState.nextEvaluationAt?.toISOString() ?? null : null,
+            reason: pending > 0 ? warmupState.reason ?? "Limite diário de warm-up" : null,
+          },
+        }
+      }
 
       // Somente segmento: rejeita acima do limite (DA11 — sem split)
       if (hasRadar && !hasLists) {
@@ -1248,6 +1274,7 @@ export class EmailCampaignUseCase {
           sourceContactListIds: [],
           isParentCampaign: false,
           audienceMode: "segment_only",
+          ...buildWarmupPreview(totalRecipients),
         })
       }
 
@@ -1292,6 +1319,7 @@ export class EmailCampaignUseCase {
             ...sub,
             audienceContactIds: undefined,
           })),
+          ...buildWarmupPreview(plan.totalRecipients),
         })
       }
 
@@ -1323,6 +1351,7 @@ export class EmailCampaignUseCase {
         ...plan,
         audienceMode: "list_only",
         ...this.previewSuppressionFields(suppressedCounts),
+        ...buildWarmupPreview(plan.totalRecipients),
       })
     } catch (error) {
       console.error("[EmailCampaignUseCase][previewPlan]", error)
@@ -1486,6 +1515,22 @@ export class EmailCampaignUseCase {
         ctx.teamId,
         leafCampaignMeta
       )
+      const warmupState = await emailWarmupRepository.getState(ctx.teamId)
+      const latestDeferrals = await this.db.emailCampaignDispatch.findMany({
+        where: { teamId: ctx.teamId, campaignId: { in: leafCampaignMeta.map((item) => item.id) } },
+        orderBy: [{ campaignId: "asc" }, { dispatchNumber: "desc" }],
+        distinct: ["campaignId"],
+        select: {
+          campaignId: true,
+          originalEligibleRecipients: true,
+          deferredRecipientsPending: true,
+          deferredNextWindowAt: true,
+          deferredReason: true,
+        },
+      })
+      const deferralByCampaignId = new Map(
+        latestDeferrals.map((dispatch) => [dispatch.campaignId, dispatch])
+      )
 
       const childIdsForCumulative = childCampaignsForProgress.map((child) => child.id)
       const cumulativeByCampaignId = await this.aggregateCumulativeLogCountersByCampaignId(
@@ -1603,6 +1648,7 @@ export class EmailCampaignUseCase {
             isCampaignFailedRetry({ status: effectiveStatus, totalSent })
 
           const leafProgress = progressByCampaignId.get(campaign.id)
+          const deferral = deferralByCampaignId.get(campaign.id)
           const childProgresses =
             subCampaignCount > 0
               ? (childrenByParentId.get(campaign.id) ?? []).map((child) => {
@@ -1655,6 +1701,26 @@ export class EmailCampaignUseCase {
               subCampaignCount === 0
                 ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
                 : null,
+            warmupStatus: warmupState.status,
+            warmupStage: warmupState.stage,
+            warmupLimit: Number.isSafeInteger(warmupState.limit) ? warmupState.limit : null,
+            warmupReserved: warmupState.reserved ?? 0,
+            warmupUsed: warmupState.used,
+            warmupRemaining: Number.isSafeInteger(warmupState.remaining)
+              ? warmupState.remaining
+              : null,
+            domainTemperature: warmupState.temperature,
+            domainHealth: warmupState.health,
+            warmupReason: warmupState.reason,
+            nextEvaluationAt: warmupState.nextEvaluationAt?.toISOString() ?? null,
+            deferredRecipients: deferral
+              ? {
+                  total: deferral.originalEligibleRecipients,
+                  pending: deferral.deferredRecipientsPending,
+                  nextWindowAt: deferral.deferredNextWindowAt?.toISOString() ?? null,
+                  reason: deferral.deferredReason,
+                }
+              : { total: 0, pending: 0, nextWindowAt: null, reason: null },
           })
         }),
         total,
@@ -1906,6 +1972,19 @@ export class EmailCampaignUseCase {
               },
             ],
       })
+      const warmupState = await emailWarmupRepository.getState(ctx.teamId)
+      const latestDeferral = !isParent
+        ? await this.db.emailCampaignDispatch.findFirst({
+            where: { teamId: ctx.teamId, campaignId: campaign.id },
+            orderBy: { dispatchNumber: "desc" },
+            select: {
+              originalEligibleRecipients: true,
+              deferredRecipientsPending: true,
+              deferredNextWindowAt: true,
+              deferredReason: true,
+            },
+          })
+        : null
 
       return new Output(true, [], [], resolveEmailCreator({
         ...campaign,
@@ -1933,6 +2012,24 @@ export class EmailCampaignUseCase {
         dispatchAvailability: !isParent
           ? dispatchAvailabilityByCampaignId.get(campaign.id) ?? null
           : null,
+        warmupStatus: warmupState.status,
+        warmupStage: warmupState.stage,
+        warmupLimit: Number.isSafeInteger(warmupState.limit) ? warmupState.limit : null,
+        warmupReserved: warmupState.reserved ?? 0,
+        warmupUsed: warmupState.used,
+        warmupRemaining: Number.isSafeInteger(warmupState.remaining) ? warmupState.remaining : null,
+        domainTemperature: warmupState.temperature,
+        domainHealth: warmupState.health,
+        warmupReason: warmupState.reason,
+        nextEvaluationAt: warmupState.nextEvaluationAt?.toISOString() ?? null,
+        deferredRecipients: latestDeferral
+          ? {
+              total: latestDeferral.originalEligibleRecipients,
+              pending: latestDeferral.deferredRecipientsPending,
+              nextWindowAt: latestDeferral.deferredNextWindowAt?.toISOString() ?? null,
+              reason: latestDeferral.deferredReason,
+            }
+          : { total: 0, pending: 0, nextWindowAt: null, reason: null },
         subCampaigns: campaign.subCampaigns.map((sub) => {
           const subProgress = progressByCampaignId.get(sub.id)
           return {
@@ -2947,6 +3044,7 @@ export class EmailCampaignUseCase {
   ): Promise<Output> {
     let previousStatus: EmailCampaignStatus | null = null
     let reservedCredits = 0
+    let reservedWarmupCapacity = 0
     let hasCampaignsBetaAccess = false
 
     try {
@@ -3171,6 +3269,30 @@ export class EmailCampaignUseCase {
         )
       }
 
+      if (!retryFailedOnly && (campaign.totalSent ?? 0) > 0) {
+        recipientCount = Math.max(0, recipientCount - (campaign.totalSent ?? 0))
+      }
+      if (recipientCount === 0) {
+        return new Output(false, [], ["Não há destinatários pendentes para esta campanha"], null)
+      }
+      const originalEligibleRecipientCount = recipientCount
+
+      const warmupState = await emailWarmupRepository.getState(ctx.teamId)
+      if (warmupState.status === "paused") {
+        void notifyEmailWarmup({ recipientProfileId: campaign.team.master.id, teamId: ctx.teamId, type: "paused", message: warmupState.reason ?? "Envio pausado: a saúde do domínio precisa melhorar antes do próximo disparo." })
+        return new Output(false, [], [warmupState.reason ?? "Envio pausado: a saúde do domínio precisa melhorar antes do próximo disparo."], null)
+      }
+      const warmupRemaining = warmupState.remaining
+      const warmupDeferred = Number.isSafeInteger(warmupRemaining)
+        ? Math.max(0, recipientCount - warmupRemaining)
+        : 0
+      if (warmupDeferred > 0) {
+        recipientCount = warmupRemaining
+        if (recipientCount === 0) {
+          return new Output(false, [], [`O domínio está em aquecimento e já atingiu o limite de ${warmupState.limit.toLocaleString("pt-BR")} e-mails hoje. O restante será enviado nas próximas janelas.`], null)
+        }
+      }
+
       const ownerTz = resolveTimezone(campaign.team.master.timezone)
       const dailyCap = await wouldExceedDailyEmailCap({
         teamId: ctx.teamId,
@@ -3198,12 +3320,21 @@ export class EmailCampaignUseCase {
 
       const creditsToReserve = recipientCount
 
+      const warmupReservation = await emailWarmupRepository.reserve(ctx.teamId, recipientCount)
+      if (warmupReservation.accepted < recipientCount) {
+        await this.db.emailCampaign.update({ where: { id }, data: { status: previousStatus ?? "draft" } })
+        return new Output(false, [], ["O limite de warm-up foi atingido enquanto o disparo era preparado. Tente novamente na próxima janela."], null)
+      }
+      reservedWarmupCapacity = warmupReservation.accepted
+
       const creditReservation = await this.reserveTeamCreditsForDispatch(
         ctx.teamId,
         creditsToReserve,
         hasCampaignsBetaAccess
       )
       if (!creditReservation.ok) {
+        await emailWarmupRepository.release(ctx.teamId, reservedWarmupCapacity)
+        reservedWarmupCapacity = 0
         await this.db.emailCampaign.update({
           where: { id },
           data: { status: previousStatus ?? "draft", errorMessage: creditReservation.message },
@@ -3229,6 +3360,12 @@ export class EmailCampaignUseCase {
           radarSegmentSlug: campaign.radarSegmentSlug,
           triggeredBy: ctx.profileId,
           totalRecipients: recipientCount,
+          originalEligibleRecipients: originalEligibleRecipientCount,
+          deferredRecipientsPending: warmupDeferred,
+          deferredNextWindowAt: warmupDeferred > 0 ? warmupState.nextEvaluationAt ?? null : null,
+          deferredReason: warmupDeferred > 0
+            ? `Este domínio está em aquecimento. ${warmupDeferred.toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`
+            : null,
           status: "sending",
           batchIdempotencyScheme: "contentHash",
           retryFailedOnly,
@@ -3240,6 +3377,10 @@ export class EmailCampaignUseCase {
       const dispatchWarnings = getResendDomainDispatchWarnings(
         resendDomainTrackingInputFromSettings(teamSettings)
       )
+      if (warmupDeferred > 0) {
+        void notifyEmailWarmup({ recipientProfileId: campaign.team.master.id, teamId: ctx.teamId, type: "limit", message: `Esta campanha está em aquecimento: ${warmupDeferred.toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`, limit: warmupState.limit, deferred: warmupDeferred })
+        dispatchWarnings.push(`Esta campanha está em aquecimento: ${warmupDeferred.toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`)
+      }
 
       const job: ManualDispatchJob = {
         campaignId: campaign.id,
@@ -3287,6 +3428,11 @@ export class EmailCampaignUseCase {
           hasCampaignsBetaAccess
         ).catch((releaseError) => {
           console.error("[EmailCampaignUseCase][startManualDispatch] falha ao liberar créditos", releaseError)
+        })
+      }
+      if (reservedWarmupCapacity > 0) {
+        await emailWarmupRepository.release(ctx.teamId, reservedWarmupCapacity).catch((releaseError) => {
+          console.error("[EmailCampaignUseCase][startManualDispatch] falha ao liberar warm-up", releaseError)
         })
       }
 
@@ -3989,6 +4135,9 @@ export class EmailCampaignUseCase {
         templateHtml: true,
         templateSubject: true,
         totalRecipients: true,
+        deferredRecipientsPending: true,
+        deferredNextWindowAt: true,
+        deferredReason: true,
         triggeredBy: true,
         contactListId: true,
         radarSegmentSlug: true,
@@ -4579,6 +4728,9 @@ export class EmailCampaignUseCase {
       campaignId: string
       teamId: string
       totalRecipients?: number
+      deferredRecipientsPending?: number
+      deferredNextWindowAt?: Date | null
+      deferredReason?: string | null
       reservedCredits: number
       hasCampaignsBetaAccess: boolean
     },
@@ -4607,6 +4759,23 @@ export class EmailCampaignUseCase {
       incrementDispatchCount: true,
     })
 
+    const deferredRecipientsPending = Math.max(0, dispatch.deferredRecipientsPending ?? 0)
+    if (deferredRecipientsPending > 0) {
+      await this.db.emailCampaign.update({
+        where: { id: dispatch.campaignId },
+        data: {
+          status: "scheduled",
+          scheduledAt:
+            dispatch.deferredNextWindowAt
+            ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+          sentAt: null,
+          errorMessage:
+            dispatch.deferredReason
+            ?? `${deferredRecipientsPending.toLocaleString("pt-BR")} destinatários aguardam a próxima janela de aquecimento.`,
+        },
+      })
+    }
+
     if (updatedCampaign.parentCampaignId) {
       await this.refreshParentCampaignStatus(updatedCampaign.parentCampaignId).catch((refreshError) => {
         console.error("[EmailCampaignUseCase][finalizeDispatchQueueBatch][refreshParent]", refreshError)
@@ -4620,6 +4789,15 @@ export class EmailCampaignUseCase {
       dispatch.hasCampaignsBetaAccess
     ).catch((releaseError) => {
       console.error("[EmailCampaignUseCase][finalizeDispatchQueueBatch][releaseCredits]", releaseError)
+    })
+
+    await emailWarmupRepository.recordSent(dispatch.teamId, sentCount).then(() =>
+      emailWarmupRepository.release(
+        dispatch.teamId,
+        Math.max(0, dispatch.reservedCredits - sentCount)
+      )
+    ).catch((warmupError) => {
+      console.error("[EmailCampaignUseCase][finalizeDispatchQueueBatch][warmup]", warmupError)
     })
 
     console.info("[EmailCampaignUseCase][finalizeDispatchQueueBatch] dispatch finalizado", {
@@ -4636,7 +4814,13 @@ export class EmailCampaignUseCase {
         dispatchId: dispatch.id,
         sent: sentCount,
         failed: Math.max(0, (dispatch.totalRecipients ?? sentCount) - sentCount),
-        hasMore: false,
+        hasMore: deferredRecipientsPending > 0,
+        deferredRecipients: {
+          total: deferredRecipientsPending,
+          pending: deferredRecipientsPending,
+          nextWindowAt: dispatch.deferredNextWindowAt?.toISOString() ?? null,
+          reason: dispatch.deferredReason ?? null,
+        },
       }
     )
   }
@@ -4976,7 +5160,7 @@ export class EmailCampaignUseCase {
         )
         const allowed = new Set(
           (
-            await this.excludeTeamBlocklisted(
+            await this.filterEligibleRecipients(
               dispatch.teamId,
               retryList.map((email) => ({ email }))
             )
@@ -4989,9 +5173,7 @@ export class EmailCampaignUseCase {
             exhausted = true
             break
           }
-          const existingEmails = await this.findExistingDispatchEmails(dispatch.id, slice)
           for (const email of slice) {
-            if (existingEmails.has(email)) continue
             selected.push({
               contactId: null,
               email,
@@ -5019,10 +5201,11 @@ export class EmailCampaignUseCase {
           sourceOffset += chunkSize
           continue
         }
-        const existingEmails = await this.findExistingDispatchEmails(
-          dispatch.id,
-          page.recipients.map((recipient) => recipient.email)
-        )
+        const existingEmails = await this.findExistingCampaignEmails({
+          campaignId: dispatch.campaignId,
+          dispatchId: dispatch.id,
+          emails: page.recipients.map((recipient) => recipient.email),
+        })
         for (const recipient of page.recipients) {
           if (existingEmails.has(recipient.email.trim().toLowerCase())) continue
           selected.push(recipient)
@@ -5091,16 +5274,24 @@ export class EmailCampaignUseCase {
     return { created: chunk.length, hasMore: !exhausted, nextOffset: sourceOffset }
   }
 
-  private async findExistingDispatchEmails(
-    dispatchId: string,
+  private async findExistingCampaignEmails(params: {
+    campaignId: string
+    dispatchId: string
     emails: string[]
-  ): Promise<Set<string>> {
-    const unique = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+  }): Promise<Set<string>> {
+    const unique = [
+      ...new Set(params.emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ]
     if (unique.length === 0) return new Set()
     const logs = await this.db.emailLog.findMany({
       where: {
-        dispatchId,
+        campaignId: params.campaignId,
         recipientEmail: { in: unique, mode: "insensitive" },
+        OR: [
+          { dispatchId: params.dispatchId },
+          { sentAt: { not: null } },
+          { status: { in: [...CAMPAIGN_PROVIDER_SUCCESS_LOG_STATUSES] } },
+        ],
       },
       select: { recipientEmail: true },
     })
@@ -5486,12 +5677,13 @@ export class EmailCampaignUseCase {
           continue
         }
 
-        const recipientCount = await this.countDispatchAudience({
+        const totalEligibleRecipientCount = await this.countDispatchAudience({
           teamId: campaign.teamId,
           contactListId: campaign.contactListId,
           radarSegmentSlug: campaign.radarSegmentSlug,
           audienceContactIds: campaign.audienceContactIds,
         })
+        const recipientCount = Math.max(0, totalEligibleRecipientCount - (campaign.totalSent ?? 0))
 
         if (recipientCount === 0) {
           const noRecipientsMessage = campaign.radarSegmentSlug
@@ -5501,11 +5693,33 @@ export class EmailCampaignUseCase {
           continue
         }
 
+        const warmupState = await emailWarmupRepository.getState(campaign.teamId)
+        if (warmupState.status === "paused") {
+          await this.db.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: "scheduled", errorMessage: warmupState.reason },
+          })
+          continue
+        }
+        const warmupRecipientCount = Number.isSafeInteger(warmupState.remaining)
+          ? Math.min(recipientCount, warmupState.remaining)
+          : recipientCount
+        if (warmupRecipientCount === 0) {
+          await this.db.emailCampaign.update({
+            where: { id: campaign.id },
+            data: {
+              status: "scheduled",
+              errorMessage: `O domínio está em aquecimento e já atingiu o limite de ${warmupState.limit.toLocaleString("pt-BR")} e-mails hoje. O restante será enviado nas próximas janelas.`,
+            },
+          })
+          continue
+        }
+
         const dailyCap = await wouldExceedDailyEmailCap({
           teamId: campaign.teamId,
           timezone: ownerTz,
           now,
-          additionalRecipients: recipientCount,
+          additionalRecipients: warmupRecipientCount,
         })
         if (dailyCap.exceeded) {
           const deferMessage =
@@ -5532,8 +5746,20 @@ export class EmailCampaignUseCase {
         // roda no primeiro chunk de materializeQueuedLogsChunk, com uma amostra
         // real de destinatários — não precisa da audiência inteira aqui.
 
+        const warmupReservation = await emailWarmupRepository.reserve(
+          campaign.teamId,
+          warmupRecipientCount
+        )
+        if (warmupReservation.accepted === 0) {
+          await this.db.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: "scheduled", errorMessage: "Limite de warm-up atingido durante a preparação. O envio foi adiado para a próxima janela." },
+          })
+          continue
+        }
+
         const dispatchNumber = await this.getNextDispatchNumber(campaign.id)
-        const reservedCredits = recipientCount
+        const reservedCredits = warmupReservation.accepted
 
         const creditReservation = await this.reserveTeamCreditsForDispatch(
           campaign.teamId,
@@ -5541,6 +5767,7 @@ export class EmailCampaignUseCase {
           hasCampaignsBetaAccess
         )
         if (!creditReservation.ok) {
+          await emailWarmupRepository.release(campaign.teamId, reservedCredits)
           await this.db.emailCampaign.update({
             where: { id: campaign.id },
             data: { status: "scheduled", errorMessage: creditReservation.message },
@@ -5567,7 +5794,15 @@ export class EmailCampaignUseCase {
             contactListName: campaign.contactList?.name ?? null,
             radarSegmentSlug: campaign.radarSegmentSlug,
             triggeredBy: campaign.createdBy,
-            totalRecipients: recipientCount,
+            totalRecipients: reservedCredits,
+            originalEligibleRecipients: recipientCount,
+            deferredRecipientsPending: Math.max(0, recipientCount - reservedCredits),
+            deferredNextWindowAt:
+              recipientCount > reservedCredits ? warmupState.nextEvaluationAt ?? null : null,
+            deferredReason:
+              recipientCount > reservedCredits
+                ? `Este domínio está em aquecimento. ${Math.max(0, recipientCount - reservedCredits).toLocaleString("pt-BR")} destinatários serão enviados nas próximas janelas.`
+                : null,
             status: "sending",
             batchIdempotencyScheme: "contentHash",
             retryFailedOnly: false,
@@ -5589,9 +5824,10 @@ export class EmailCampaignUseCase {
           ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
           : "sem data"
         console.info(
-          `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} encaminhada para a fila: ${recipientCount} destinatário(s) (agendada ${scheduledLabel} ${ownerTz})`
+          `[EmailCampaignUseCase][dispatchScheduled] campaignId=${campaign.id} encaminhada para a fila: ${reservedCredits} destinatário(s) (agendada ${scheduledLabel} ${ownerTz})`
         )
         } catch (createDispatchError) {
+          await emailWarmupRepository.release(campaign.teamId, reservedCredits).catch(() => null)
           await this.releaseUnusedTeamCredits(
             campaign.teamId,
             reservedCredits,

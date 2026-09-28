@@ -11,6 +11,8 @@ import {
   type EmailSendingHealthStatusValue,
   type SendingHealthWindowMetrics,
 } from "@/lib/email/sending-health"
+import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
+import type { IEmailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/IEmailWarmupRepository"
 
 /**
  * Cron `evaluate-sending-health`: janelas móveis 7d/30d por time sobre
@@ -22,7 +24,8 @@ import {
  */
 export class EvaluateTeamSendingHealthUseCase {
   constructor(
-    private readonly repository: IEmailSendingHealthRepository = emailSendingHealthRepository
+    private readonly repository: IEmailSendingHealthRepository = emailSendingHealthRepository,
+    private readonly warmupRepository: IEmailWarmupRepository = emailWarmupRepository
   ) {}
 
   private buildTransitionMessage(
@@ -103,6 +106,14 @@ export class EvaluateTeamSendingHealthUseCase {
             transition: transition.changed
               ? { status: transition.next, reason: transition.reason, changedAt: now }
               : undefined,
+          })
+          // Warm-up é best-effort: as tabelas tipadas ainda estão em rollout e
+          // uma falha aqui não pode invalidar a avaliação de saúde do time.
+          await this.warmupRepository.evaluate(team.teamId, now).catch((warmupError) => {
+            console.error("[EvaluateTeamSendingHealthUseCase][warmup] falha ao avaliar warm-up", {
+              teamId: team.teamId,
+              error: warmupError instanceof Error ? warmupError.message : String(warmupError),
+            })
           })
 
           if (!transition.changed) continue

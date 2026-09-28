@@ -57,5 +57,5 @@ export const cacheTags = {
   domainDnsProvider: (domainName: string) => `domain-dns-provider:${domainName}`,
   /** Dominio de formularios do time, chaveado por hostname (resolucao no serving publico). */
   teamFormDomain: (hostname: string) => `team-form-domain:${hostname}`,
+  teamStudioDomain: (hostname: string) => `team-studio-domain:${hostname}`,
 } as const;
-

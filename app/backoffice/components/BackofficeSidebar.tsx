@@ -167,6 +167,11 @@ const navigationItems: NavItem[] = [
         match: (pathname) => pathname.startsWith("/backoffice/emails/analytics"),
       },
       {
+        title: "Entrega e reputação",
+        url: "/backoffice/emails/entregabilidade",
+        match: (pathname) => pathname.startsWith("/backoffice/emails/entregabilidade"),
+      },
+      {
         title: "Limites por time",
         url: "/backoffice/emails/limites-por-time",
         match: (pathname) => pathname.startsWith("/backoffice/emails/limites-por-time"),

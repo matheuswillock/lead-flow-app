@@ -5,6 +5,7 @@ import {
   type CampaignRecipientRecord,
   type IEmailCampaignRecipientRepository,
   type RecipientListPage,
+  type RecipientEligibilityFlags,
   type SuppressedAudienceCounts,
 } from "./IEmailCampaignRecipientRepository"
 
@@ -288,6 +289,28 @@ export class EmailCampaignRecipientRepository implements IEmailCampaignRecipient
       if (variable.defaultValue != null) acc[variable.key] = variable.defaultValue
       return acc
     }, {})
+  }
+
+  async findEligibilityFlags(
+    teamId: string,
+    emails: string[]
+  ): Promise<RecipientEligibilityFlags[]> {
+    const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    if (normalized.length === 0) return []
+    return prisma.$queryRaw<RecipientEligibilityFlags[]>`
+      SELECT
+        LOWER(TRIM(c.email)) AS email,
+        BOOL_OR(l."isBlocklist") AS "isBlocked",
+        BOOL_OR(c."isComplained") AS "isComplained",
+        BOOL_OR(c."isUnsubscribed") AS "isUnsubscribed",
+        BOOL_OR(c."isBounced") AS "isBounced"
+      FROM "corretor_studio_email_contacts" c
+      INNER JOIN "corretor_studio_email_contact_lists" l ON l.id = c."listId"
+      WHERE l."teamId" = ${teamId}::uuid
+        AND l."isArchived" = false
+        AND LOWER(TRIM(c.email)) = ANY(${normalized}::text[])
+      GROUP BY LOWER(TRIM(c.email))
+    `
   }
 }
 

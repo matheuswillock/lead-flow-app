@@ -878,6 +878,38 @@ enum EmailCampaignBatchIdempotencyScheme {
   @@map("email_campaign_batch_idempotency_scheme")
 }
 
+enum EmailDomainWarmupStatus {
+  warming
+  established
+  paused
+
+  @@map("email_domain_warmup_status")
+}
+
+enum EmailDomainTemperature {
+  warming
+  stable
+
+  @@map("email_domain_temperature")
+}
+
+enum EmailDomainHealth {
+  healthy
+  attention
+  paused
+
+  @@map("email_domain_health")
+}
+
+enum EmailDmarcOperationalStatus {
+  pending
+  aligned
+  attention
+  failed
+
+  @@map("email_dmarc_operational_status")
+}
+
 enum EmailLogStatus {
   queued
   sent
@@ -1028,8 +1060,8 @@ model Profile {
   publicFormsReviewed                      PublicForm[]                                 @relation("PublicFormReviewer")
   publicFormCloserAssignments              PublicFormEligibleCloser[]
   publicFormPublications                   PublicFormPublication[]                      @relation("PublicFormPublisher")
-  landingPagesCreated                     LandingPage[]                                 @relation("LandingPageCreator")
-  landingPagePublications                 LandingPagePublication[]                      @relation("LandingPagePublisher")
+  landingPagesCreated                      LandingPage[]                                @relation("LandingPageCreator")
+  landingPagePublications                  LandingPagePublication[]                     @relation("LandingPagePublisher")
   // Pending Operators relations
   pendingOperators                         PendingOperator[]                            @relation("PendingOperatorManager")
   pendingActions                           PendingAction[]                              @relation("PendingActionMaster")
@@ -1109,8 +1141,8 @@ model Profile {
   subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
 
   // Backoffice: alteração de assinatura (E6/G1 de [[50 — Backoffice de Cobrança — Backend]])
-  subscriptionChangeOrders                BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderMaster")
-  subscriptionChangeOrderOverrideApprovals BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderOverrideApprover")
+  subscriptionChangeOrders                 BackofficeSubscriptionChangeOrder[]      @relation("BackofficeSubscriptionChangeOrderMaster")
+  subscriptionChangeOrderOverrideApprovals BackofficeSubscriptionChangeOrder[]      @relation("BackofficeSubscriptionChangeOrderOverrideApprover")
   subscriptionChangeOrderEventsAsActor     BackofficeSubscriptionChangeOrderEvent[] @relation("BackofficeSubscriptionChangeOrderEventActor")
 
   // User type (Comum / Member PRO)
@@ -1211,26 +1243,26 @@ model BackofficeUser {
   createdAt                     DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                     DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  profile                        Profile                      @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
-  creator                        Profile?                     @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  googleConnection               GoogleOAuthConnection?       @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
-  linkedCorretorStudioProfile    Profile?                     @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
-  generatedWebhookTokens         BackofficeWebhookToken[]     @relation("BackofficeWebhookTokenGenerator")
-  sdrLeads                       BackofficeLead[]             @relation("BackofficeLeadSdr")
-  closerLeads                    BackofficeLead[]             @relation("BackofficeLeadCloser")
-  schedulesAsCloser              BackofficeLeadSchedule[]     @relation("BackofficeLeadScheduleCloser")
-  sdrAdhesions                   BackofficeAdhesion[]         @relation("BackofficeAdhesionSdr")
-  closerAdhesions                BackofficeAdhesion[]         @relation("BackofficeAdhesionCloser")
-  createdAdhesions               BackofficeAdhesion[]         @relation("BackofficeAdhesionCreator")
+  profile                         Profile                             @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  creator                         Profile?                            @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  googleConnection                GoogleOAuthConnection?              @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
+  linkedCorretorStudioProfile     Profile?                            @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
+  generatedWebhookTokens          BackofficeWebhookToken[]            @relation("BackofficeWebhookTokenGenerator")
+  sdrLeads                        BackofficeLead[]                    @relation("BackofficeLeadSdr")
+  closerLeads                     BackofficeLead[]                    @relation("BackofficeLeadCloser")
+  schedulesAsCloser               BackofficeLeadSchedule[]            @relation("BackofficeLeadScheduleCloser")
+  sdrAdhesions                    BackofficeAdhesion[]                @relation("BackofficeAdhesionSdr")
+  closerAdhesions                 BackofficeAdhesion[]                @relation("BackofficeAdhesionCloser")
+  createdAdhesions                BackofficeAdhesion[]                @relation("BackofficeAdhesionCreator")
   createdSubscriptionChangeOrders BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderCreator")
-  emailCampaignsCreated          BackofficeEmailCampaign[]    @relation("BackofficeEmailCampaignCreator")
-  emailContactListsCreated       BackofficeEmailContactList[] @relation("BackofficeEmailContactListCreator")
-  emailImportJobsCreated         BackofficeEmailImportJob[]   @relation("BackofficeEmailImportJobCreator")
-  managedStudioEmailCampaigns    EmailCampaign[]              @relation("EmailCampaignManagedByBackoffice")
-  managedStudioEmailContactLists EmailContactList[]           @relation("EmailContactListManagedByBackoffice")
-  managedStudioEmailTemplates    EmailTemplate[]              @relation("EmailTemplateManagedByBackoffice")
-  managedStudioEmailImportJobs   EmailImportJob[]             @relation("EmailImportJobManagedByBackoffice")
-  managedStudioPublicForms       PublicForm[]                 @relation("PublicFormManagedByBackoffice")
+  emailCampaignsCreated           BackofficeEmailCampaign[]           @relation("BackofficeEmailCampaignCreator")
+  emailContactListsCreated        BackofficeEmailContactList[]        @relation("BackofficeEmailContactListCreator")
+  emailImportJobsCreated          BackofficeEmailImportJob[]          @relation("BackofficeEmailImportJobCreator")
+  managedStudioEmailCampaigns     EmailCampaign[]                     @relation("EmailCampaignManagedByBackoffice")
+  managedStudioEmailContactLists  EmailContactList[]                  @relation("EmailContactListManagedByBackoffice")
+  managedStudioEmailTemplates     EmailTemplate[]                     @relation("EmailTemplateManagedByBackoffice")
+  managedStudioEmailImportJobs    EmailImportJob[]                    @relation("EmailImportJobManagedByBackoffice")
+  managedStudioPublicForms        PublicForm[]                        @relation("PublicFormManagedByBackoffice")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
@@ -2566,6 +2598,7 @@ model Team {
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   publicForms                PublicForm[]
   landingPages               LandingPage[]
+  studioDomain               TeamStudioDomain?
   publicFormSettings         PublicFormSettings?
   publicFormTemplates        PublicFormTemplate[]
   transferRoutesFrom         TeamTransferRoute[]           @relation("TeamTransferRouteFrom")
@@ -2575,21 +2608,24 @@ model Team {
   portfolioEntries           LeadPortfolio[]
 
   // Email campaigns relations
-  emailTemplates              EmailTemplate[]               @relation("TeamEmailTemplates")
-  emailContactLists           EmailContactList[]            @relation("TeamEmailContactLists")
-  emailImportJobs             EmailImportJob[]              @relation("TeamEmailImportJobs")
-  emailContactRadarSyncOutbox EmailContactRadarSyncOutbox[] @relation("TeamEmailContactRadarSyncOutbox")
-  emailCampaigns              EmailCampaign[]               @relation("TeamEmailCampaigns")
-  emailCampaignDispatches     EmailCampaignDispatch[]       @relation("TeamEmailCampaignDispatches")
-  emailLogs                   EmailLog[]                    @relation("TeamEmailLogs")
-  emailSettings               EmailTeamSettings?            @relation("TeamEmailSettings")
-  emailDomainEvents           EmailTeamDomainEvent[]        @relation("TeamEmailDomainEvents")
-  formDomain                  TeamFormDomain?               @relation("TeamFormDomain")
-  landingDomain               TeamLandingDomain?            @relation("TeamLandingDomain")
-  emailSenders                EmailTeamSender[]             @relation("TeamEmailSenders")
-  emailVariables              EmailTeamVariable[]           @relation("TeamEmailVariables")
+  emailTemplates              EmailTemplate[]                  @relation("TeamEmailTemplates")
+  emailContactLists           EmailContactList[]               @relation("TeamEmailContactLists")
+  emailImportJobs             EmailImportJob[]                 @relation("TeamEmailImportJobs")
+  emailContactRadarSyncOutbox EmailContactRadarSyncOutbox[]    @relation("TeamEmailContactRadarSyncOutbox")
+  emailCampaigns              EmailCampaign[]                  @relation("TeamEmailCampaigns")
+  emailCampaignDispatches     EmailCampaignDispatch[]          @relation("TeamEmailCampaignDispatches")
+  emailLogs                   EmailLog[]                       @relation("TeamEmailLogs")
+  emailSettings               EmailTeamSettings?               @relation("TeamEmailSettings")
+  emailDomainEvents           EmailTeamDomainEvent[]           @relation("TeamEmailDomainEvents")
+  formDomain                  TeamFormDomain?                  @relation("TeamFormDomain")
+  landingDomain               TeamLandingDomain?               @relation("TeamLandingDomain")
+  emailSenders                EmailTeamSender[]                @relation("TeamEmailSenders")
+  emailVariables              EmailTeamVariable[]              @relation("TeamEmailVariables")
   emailTemplateHistory        EmailTemplateHistory[]
-  emailCreditSubscription     EmailCreditSubscription?      @relation("TeamEmailCreditSubscription")
+  emailCreditSubscription     EmailCreditSubscription?         @relation("TeamEmailCreditSubscription")
+  emailSendingDomainStates    EmailSendingDomainState[]        @relation("TeamEmailSendingDomainStates")
+  emailDeliverabilityMetrics  EmailDeliverabilityDailyMetric[] @relation("TeamEmailDeliverabilityMetrics")
+  emailDmarcDomainStates      EmailDmarcDomainState[]          @relation("TeamEmailDmarcDomainStates")
 
   // WhatsApp relations
   whatsappConfig                TeamWhatsAppConfig?
@@ -3061,14 +3097,14 @@ model AsaasNotificationBackfill {
 }
 
 model PendingAction {
-  id         String              @id @default(uuid()) @db.Uuid
-  masterId   String              @db.Uuid
-  teamId     String?             @db.Uuid
-  actionType PendingActionType
-  status     PendingActionStatus @default(pending)
-  payload    Json
-  checkoutId String?             @db.Text
-  paymentId  String?             @db.Text
+  id           String              @id @default(uuid()) @db.Uuid
+  masterId     String              @db.Uuid
+  teamId       String?             @db.Uuid
+  actionType   PendingActionType
+  status       PendingActionStatus @default(pending)
+  payload      Json
+  checkoutId   String?             @db.Text
+  paymentId    String?             @db.Text
   // Achado Codex (PR #1137, P1): master.asaasCustomerAccount é MUTÁVEL — o
   // fluxo de operador (E4) pode migrar o master de legacy pra primary
   // DEPOIS que esta cobrança já nasceu na conta antiga. Derivar a conta do
@@ -3077,9 +3113,9 @@ model PendingAction {
   // entre contas aplicar a ação errada. Default primary — mesmo motivo de
   // Profile.asaasCustomerAccount; só passa a valer algo quando paymentId é
   // preenchido (updatePaymentId grava os dois juntos).
-  asaasAccount AsaasAccount      @default(primary)
-  createdAt  DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
+  asaasAccount AsaasAccount        @default(primary)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
 
   master Profile @relation("PendingActionMaster", fields: [masterId], references: [id], onDelete: Cascade)
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -3184,16 +3220,16 @@ model EmailCreditSubscription {
 /// Ledger idempotente de pagamentos aplicados a créditos (paymentId Asaas + conta).
 /// Compra canônica fica em PlatformPurchase (purchaseType=email_credits); este grant evita reaplicar o mesmo paymentId.
 model EmailCreditPaymentGrant {
-  id        String          @id @default(uuid()) @db.Uuid
-  teamId    String          @db.Uuid
-  plan      EmailCreditPlan
-  paymentId String
+  id             String          @id @default(uuid()) @db.Uuid
+  teamId         String          @db.Uuid
+  plan           EmailCreditPlan
+  paymentId      String
   // Achado Codex (PR #1137, P1): paymentId sozinho pode colidir entre as
   // duas contas Asaas (C33) — sem esta coluna, a segunda compra paga (de
   // outra conta, mesmo paymentId) seria reportada como "já aplicada" e o
   // time correspondente nunca recebia os créditos. Default primary — mesmo
   // motivo de Profile.asaasCustomerAccount.
-  asaasAccount   AsaasAccount @default(primary)
+  asaasAccount   AsaasAccount    @default(primary)
   checkoutId     String?
   monthlyCredits Int
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
@@ -3303,18 +3339,18 @@ model EmailTemplateHistory {
 }
 
 model EmailContactList {
-  id                        String   @id @default(uuid()) @db.Uuid
-  teamId                    String   @db.Uuid
-  createdBy                 String   @db.Uuid
-  managedByBackofficeUserId String?  @db.Uuid
-  name                      String   @db.Text
-  description               String?  @db.Text
-  csvStoragePath            String?  @db.Text
-  totalContacts             Int      @default(0)
-  isSystemDefault           Boolean  @default(false)
-  isBlocklist               Boolean  @default(false)
-  isArchived                Boolean  @default(false)
-  radarSegmentId            String?  @db.Uuid
+  id                        String  @id @default(uuid()) @db.Uuid
+  teamId                    String  @db.Uuid
+  createdBy                 String  @db.Uuid
+  managedByBackofficeUserId String? @db.Uuid
+  name                      String  @db.Text
+  description               String? @db.Text
+  csvStoragePath            String? @db.Text
+  totalContacts             Int     @default(0)
+  isSystemDefault           Boolean @default(false)
+  isBlocklist               Boolean @default(false)
+  isArchived                Boolean @default(false)
+  radarSegmentId            String? @db.Uuid
 
   /// Quarentena do gate de importação: lista marcada por um EmailImportJob de
   /// risco ALTO não entra em audiência de campanha até liberação explícita
@@ -3325,8 +3361,8 @@ model EmailContactList {
   quarantineReleasedAt DateTime? @db.Timestamptz(6)
   quarantineReleasedBy String?   @db.Uuid
 
-  createdAt                 DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   team                    Team                    @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
   creator                 Profile                 @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
@@ -3346,23 +3382,23 @@ model EmailContactList {
 }
 
 model EmailImportJob {
-  id                        String   @id @default(uuid()) @db.Uuid
-  importId                  String   @unique @db.Text
-  teamId                    String   @db.Uuid
-  listId                    String   @db.Uuid
-  requestedBy               String   @db.Uuid
-  managedByBackofficeUserId String?  @db.Uuid
-  sourceFormat              String   @db.Text
-  storagePath               String   @db.Text
-  status                    String   @default("pending") @db.Text
-  totalRows                 Int      @default(0)
-  processedRows             Int      @default(0)
-  importedCount             Int      @default(0)
-  updatedCount              Int      @default(0)
-  skippedCount              Int      @default(0)
+  id                        String  @id @default(uuid()) @db.Uuid
+  importId                  String  @unique @db.Text
+  teamId                    String  @db.Uuid
+  listId                    String  @db.Uuid
+  requestedBy               String  @db.Uuid
+  managedByBackofficeUserId String? @db.Uuid
+  sourceFormat              String  @db.Text
+  storagePath               String  @db.Text
+  status                    String  @default("pending") @db.Text
+  totalRows                 Int     @default(0)
+  processedRows             Int     @default(0)
+  importedCount             Int     @default(0)
+  updatedCount              Int     @default(0)
+  skippedCount              Int     @default(0)
   skippedIssues             Json?
   failedBatches             Json?
-  batchSize                 Int      @default(500)
+  batchSize                 Int     @default(500)
   attemptsByBatch           Json?
 
   /// Veredito do gate de validação: contagens por categoria de remoção
@@ -3373,8 +3409,8 @@ model EmailImportJob {
   /// high (≥20% OU ≥500 absolutos). High quarentena a lista alvo.
   riskLevel        EmailImportRiskLevel?
 
-  createdAt                 DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt                 DateTime @updatedAt @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   team                    Team                          @relation("TeamEmailImportJobs", fields: [teamId], references: [id], onDelete: Cascade)
   list                    EmailContactList              @relation(fields: [listId], references: [id], onDelete: Cascade)
@@ -3537,6 +3573,10 @@ model EmailCampaignDispatch {
    * Cursor da fonte da audiência (IDs Radar / skip da lista / índice retry), não emailLog.count.
    */
   materializeSourceOffset Int                                 @default(0)
+  originalEligibleRecipients Int                              @default(0)
+  deferredRecipientsPending Int                               @default(0)
+  deferredNextWindowAt      DateTime?                          @db.Timestamptz(6)
+  deferredReason            String?                            @db.Text
   errorMessage            String?                             @map("errorMessage") @db.Text
   createdAt               DateTime                            @default(now()) @db.Timestamptz(6)
   updatedAt               DateTime                            @updatedAt @db.Timestamptz(6)
@@ -3833,39 +3873,39 @@ enum BackofficeSubscriptionChangeOrderOverrideStatus {
 /// `proratedAmount` a menos que `overrideAmount` esteja definido E aprovado
 /// (`overrideStatus = approved`) — nunca aceito do payload sem essa checagem.
 model BackofficeSubscriptionChangeOrder {
-  id                      String                                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  masterProfileId         String                                          @db.Uuid
-  status                  BackofficeSubscriptionChangeOrderStatus         @default(draft)
-  currentProductId        String?                                         @db.Uuid
-  currentCycle            BackofficeAdhesionBillingCycle?
-  currentChargedAmount    Decimal?                                        @db.Decimal(12, 2)
-  currentPeriodEnd        DateTime?                                       @db.Timestamptz(6)
-  targetProductId         String                                          @db.Uuid
-  targetCycle             BackofficeAdhesionBillingCycle
-  listAmount              Decimal                                         @db.Decimal(12, 2)
-  proratedAmount          Decimal                                         @db.Decimal(12, 2)
-  overrideAmount          Decimal?                                        @db.Decimal(12, 2)
-  overrideStatus          BackofficeSubscriptionChangeOrderOverrideStatus @default(not_required)
-  overrideApprovedByProfileId String?                                     @db.Uuid
-  overrideApprovedAt      DateTime?                                       @db.Timestamptz(6)
-  chargeAmount            Decimal                                         @db.Decimal(12, 2)
-  createdByBackofficeUserId String?                                       @db.Uuid
+  id                          String                                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  masterProfileId             String                                          @db.Uuid
+  status                      BackofficeSubscriptionChangeOrderStatus         @default(draft)
+  currentProductId            String?                                         @db.Uuid
+  currentCycle                BackofficeAdhesionBillingCycle?
+  currentChargedAmount        Decimal?                                        @db.Decimal(12, 2)
+  currentPeriodEnd            DateTime?                                       @db.Timestamptz(6)
+  targetProductId             String                                          @db.Uuid
+  targetCycle                 BackofficeAdhesionBillingCycle
+  listAmount                  Decimal                                         @db.Decimal(12, 2)
+  proratedAmount              Decimal                                         @db.Decimal(12, 2)
+  overrideAmount              Decimal?                                        @db.Decimal(12, 2)
+  overrideStatus              BackofficeSubscriptionChangeOrderOverrideStatus @default(not_required)
+  overrideApprovedByProfileId String?                                         @db.Uuid
+  overrideApprovedAt          DateTime?                                       @db.Timestamptz(6)
+  chargeAmount                Decimal                                         @db.Decimal(12, 2)
+  createdByBackofficeUserId   String?                                         @db.Uuid
   // G2 — cobrança da alteração (nasce sempre na conta nova, DA6/§3.2 da
   // auditoria). Default primary pelo mesmo motivo de Profile.asaasCustomerAccount.
-  asaasPaymentId          String?                                         @db.Text
-  asaasAccount            AsaasAccount                                    @default(primary)
-  paymentInvoiceUrl       String?                                         @db.Text
-  canceledAt              DateTime?                                       @db.Timestamptz(6)
-  appliedAt               DateTime?                                       @db.Timestamptz(6)
-  createdAt               DateTime                                        @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime                                        @updatedAt @db.Timestamptz(6)
+  asaasPaymentId              String?                                         @db.Text
+  asaasAccount                AsaasAccount                                    @default(primary)
+  paymentInvoiceUrl           String?                                         @db.Text
+  canceledAt                  DateTime?                                       @db.Timestamptz(6)
+  appliedAt                   DateTime?                                       @db.Timestamptz(6)
+  createdAt                   DateTime                                        @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime                                        @updatedAt @db.Timestamptz(6)
 
-  masterProfile         Profile           @relation("BackofficeSubscriptionChangeOrderMaster", fields: [masterProfileId], references: [id], onDelete: Restrict)
-  currentProduct        BackofficeProduct? @relation("BackofficeSubscriptionChangeOrderCurrentProduct", fields: [currentProductId], references: [id], onDelete: SetNull)
-  targetProduct         BackofficeProduct @relation("BackofficeSubscriptionChangeOrderTargetProduct", fields: [targetProductId], references: [id], onDelete: Restrict)
-  overrideApprovedBy    Profile?          @relation("BackofficeSubscriptionChangeOrderOverrideApprover", fields: [overrideApprovedByProfileId], references: [id], onDelete: SetNull)
-  createdByBackofficeUser BackofficeUser? @relation("BackofficeSubscriptionChangeOrderCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
-  events                BackofficeSubscriptionChangeOrderEvent[]
+  masterProfile           Profile                                  @relation("BackofficeSubscriptionChangeOrderMaster", fields: [masterProfileId], references: [id], onDelete: Restrict)
+  currentProduct          BackofficeProduct?                       @relation("BackofficeSubscriptionChangeOrderCurrentProduct", fields: [currentProductId], references: [id], onDelete: SetNull)
+  targetProduct           BackofficeProduct                        @relation("BackofficeSubscriptionChangeOrderTargetProduct", fields: [targetProductId], references: [id], onDelete: Restrict)
+  overrideApprovedBy      Profile?                                 @relation("BackofficeSubscriptionChangeOrderOverrideApprover", fields: [overrideApprovedByProfileId], references: [id], onDelete: SetNull)
+  createdByBackofficeUser BackofficeUser?                          @relation("BackofficeSubscriptionChangeOrderCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+  events                  BackofficeSubscriptionChangeOrderEvent[]
 
   @@index([masterProfileId], map: "backoffice_subscription_change_orders_master_profile_id_idx")
   @@index([status], map: "backoffice_subscription_change_orders_status_idx")
@@ -4320,6 +4360,130 @@ model EmailTeamDomainEvent {
   @@map("corretor_studio_email_team_domain_events")
 }
 
+model EmailSendingDomainState {
+  id               String                  @id @default(uuid()) @db.Uuid
+  teamId           String                  @db.Uuid
+  domain           String                  @db.Text
+  stage            Int                     @default(0)
+  dailyLimit       Int                     @default(100)
+  status           EmailDomainWarmupStatus @default(warming)
+  temperature      EmailDomainTemperature  @default(warming)
+  health           EmailDomainHealth       @default(healthy)
+  reason           String?                 @db.Text
+  startedAt        DateTime                @default(now()) @db.Timestamptz(6)
+  lastActivityAt   DateTime?               @db.Timestamptz(6)
+  lastProgressedAt DateTime?               @db.Timestamptz(6)
+  pausedAt         DateTime?               @db.Timestamptz(6)
+  nextEvaluationAt DateTime?               @db.Timestamptz(6)
+  createdAt        DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime                @updatedAt @db.Timestamptz(6)
+
+  team       Team                           @relation("TeamEmailSendingDomainStates", fields: [teamId], references: [id], onDelete: Cascade)
+  dailyUsage EmailSendingDomainDailyUsage[]
+
+  @@unique([teamId, domain])
+  @@index([status, nextEvaluationAt])
+  @@map("corretor_studio_email_sending_domain_states")
+}
+
+model EmailSendingDomainDailyUsage {
+  id            String   @id @default(uuid()) @db.Uuid
+  domainStateId String   @db.Uuid
+  usageDate     DateTime @db.Date
+  capacity      Int
+  reserved      Int      @default(0)
+  sent          Int      @default(0)
+  released      Int      @default(0)
+  delivered     Int      @default(0)
+  bounced       Int      @default(0)
+  complained    Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  domainState EmailSendingDomainState @relation(fields: [domainStateId], references: [id], onDelete: Cascade)
+
+  @@unique([domainStateId, usageDate])
+  @@index([usageDate])
+  @@map("corretor_studio_email_sending_domain_daily_usage")
+}
+
+model EmailDeliverabilityDailyMetric {
+  id                String   @id @default(uuid()) @db.Uuid
+  teamId            String   @db.Uuid
+  metricDate        DateTime @db.Date
+  senderDomain      String   @db.Text
+  recipientProvider String   @db.Text
+  campaignKey       String   @default("__all__") @db.Text
+  sent              Int      @default(0)
+  delivered         Int      @default(0)
+  hardBounced       Int      @default(0)
+  softBounced       Int      @default(0)
+  complained        Int      @default(0)
+  humanOpened       Int      @default(0)
+  clicked           Int      @default(0)
+  suppressed        Int      @default(0)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailDeliverabilityMetrics", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, metricDate, senderDomain, recipientProvider, campaignKey])
+  @@index([teamId, metricDate(sort: Desc)])
+  @@index([metricDate])
+  @@map("corretor_studio_email_deliverability_daily_metrics")
+}
+
+model BackofficeEmailDeliverabilityDailyMetric {
+  id                String   @id @default(uuid()) @db.Uuid
+  teamId            String   @db.Uuid
+  teamName          String?  @db.Text
+  metricDate        DateTime @db.Date
+  senderDomain      String   @db.Text
+  recipientProvider String   @db.Text
+  sent              Int      @default(0)
+  delivered         Int      @default(0)
+  hardBounced       Int      @default(0)
+  softBounced       Int      @default(0)
+  complained        Int      @default(0)
+  humanOpened       Int      @default(0)
+  clicked           Int      @default(0)
+  suppressed        Int      @default(0)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([teamId, metricDate, senderDomain, recipientProvider])
+  @@index([metricDate(sort: Desc)])
+  @@index([teamId, metricDate(sort: Desc)])
+  @@map("backoffice_email_deliverability_daily_metrics")
+}
+
+model BackofficeEmailDeliverabilityProcessedEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventKey    String   @unique @db.Text
+  processedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([processedAt])
+  @@map("backoffice_email_deliverability_processed_events")
+}
+
+model EmailDmarcDomainState {
+  id              String                      @id @default(uuid()) @db.Uuid
+  teamId          String                      @db.Uuid
+  domain          String                      @db.Text
+  status          EmailDmarcOperationalStatus @default(pending)
+  publishedPolicy String?                     @db.Text
+  diagnostic      String?                     @db.Text
+  lastCheckedAt   DateTime?                   @db.Timestamptz(6)
+  createdAt       DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                    @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailDmarcDomainStates", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, domain])
+  @@index([status, lastCheckedAt])
+  @@map("corretor_studio_email_dmarc_domain_states")
+}
+
 enum TeamFormDomainStatus {
   pending
   verified
@@ -4358,18 +4522,48 @@ enum TeamLandingDomainStatus {
   @@map("team_landing_domain_status")
 }
 
+enum TeamStudioDomainStatus {
+  pending
+  verified
+  failed
+
+  @@map("team_studio_domain_status")
+}
+
+/// Domínio compartilhado do produto público do time.
+/// Os caminhos `/forms/*` e `/conversao/*` são servidos pelo mesmo hostname.
+model TeamStudioDomain {
+  id             String                 @id @default(uuid()) @db.Uuid
+  teamId         String                 @unique @db.Uuid
+  hostname       String                 @unique @db.Text
+  status         TeamStudioDomainStatus @default(pending)
+  vercelDomainId String?                @db.Text
+  verifiedAt     DateTime?              @db.Timestamptz(6)
+  lastCheckedAt  DateTime?              @db.Timestamptz(6)
+  headScripts    String?                @db.Text
+  bodyStartScripts String?              @db.Text
+  bodyEndScripts String?                @db.Text
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastCheckedAt])
+  @@map("corretor_studio_team_studio_domains")
+}
+
 /// Domínio próprio do time para servir landing pages de cotação
 /// (ex.: cotacao.imobiliariax.com.br). Um domínio por time nesta fase.
 model TeamLandingDomain {
-  id             String                   @id @default(uuid()) @db.Uuid
-  teamId         String                   @unique @db.Uuid
-  hostname       String                   @unique @db.Text
-  status         TeamLandingDomainStatus  @default(pending)
-  vercelDomainId String?                  @db.Text
-  verifiedAt     DateTime?                @db.Timestamptz(6)
-  lastCheckedAt  DateTime?                @db.Timestamptz(6)
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id             String                  @id @default(uuid()) @db.Uuid
+  teamId         String                  @unique @db.Uuid
+  hostname       String                  @unique @db.Text
+  status         TeamLandingDomainStatus @default(pending)
+  vercelDomainId String?                 @db.Text
+  verifiedAt     DateTime?               @db.Timestamptz(6)
+  lastCheckedAt  DateTime?               @db.Timestamptz(6)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   team Team @relation("TeamLandingDomain", fields: [teamId], references: [id], onDelete: Cascade)
 
@@ -6179,23 +6373,23 @@ model PublicForm {
 }
 
 model LandingPage {
-  id             String           @id @default(uuid()) @db.Uuid
-  teamId         String           @db.Uuid
-  publicFormId   String           @db.Uuid
-  createdById    String           @db.Uuid
-  publicId       String           @unique @default(uuid()) @db.Uuid
-  name           String           @db.Text
-  status         LandingPageStatus @default(draft)
-  templateSlug   String           @db.Text
-  content        Json             @default("{}")
-  offer          Json             @default("{}")
-  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+  id           String            @id @default(uuid()) @db.Uuid
+  teamId       String            @db.Uuid
+  publicFormId String            @db.Uuid
+  createdById  String            @db.Uuid
+  publicId     String            @unique @default(uuid()) @db.Uuid
+  name         String            @db.Text
+  status       LandingPageStatus @default(draft)
+  templateSlug String            @db.Text
+  content      Json              @default("{}")
+  offer        Json              @default("{}")
+  createdAt    DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @db.Timestamptz(6)
 
-  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  publicForm     PublicForm       @relation(fields: [publicFormId], references: [id], onDelete: Restrict)
-  createdBy      Profile          @relation("LandingPageCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  publications   LandingPagePublication[]
+  team         Team                     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  publicForm   PublicForm               @relation(fields: [publicFormId], references: [id], onDelete: Restrict)
+  createdBy    Profile                  @relation("LandingPageCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  publications LandingPagePublication[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([publicFormId])
@@ -6203,16 +6397,16 @@ model LandingPage {
 }
 
 model LandingPagePublication {
-  id            String     @id @default(uuid()) @db.Uuid
-  landingPageId String     @db.Uuid
-  publishedById String     @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  landingPageId String    @db.Uuid
+  publishedById String    @db.Uuid
   version       Int
   snapshot      Json
-  publishedAt   DateTime   @default(now()) @db.Timestamptz(6)
-  endedAt       DateTime?  @db.Timestamptz(6)
+  publishedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  endedAt       DateTime? @db.Timestamptz(6)
 
-  landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
-  publishedBy   Profile     @relation("LandingPagePublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  landingPage LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  publishedBy Profile     @relation("LandingPagePublisher", fields: [publishedById], references: [id], onDelete: Restrict)
 
   @@unique([landingPageId, version])
   @@index([landingPageId, endedAt, publishedAt(sort: Desc)])

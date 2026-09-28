@@ -6,7 +6,8 @@ export function getLandingPagesApiUrl(teamId: string) {
 }
 
 export function getLandingDomainApiUrl(teamId: string) {
-  return `${getLandingPagesApiUrl(teamId)}/domain`
+  void teamId
+  return `${API_CLIENT_BASE}/email/settings/studio-domain`
 }
 
 export function getEmailSettingsApiUrl() {

@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Thermometer, ShieldCheck } from "lucide-react"
 import { formatIntimezone } from "@/lib/dates"
 import {
   formatPermanentBounceAlert,
@@ -39,6 +40,18 @@ type CampaignWizardSummaryPanelProps = {
   subCampaigns?: SummarySubCampaign[]
   uniformTemplate?: boolean
   tz: string
+  warmup?: {
+    status: "warming" | "established" | "paused"
+    stage: number
+    limit: number | null
+    used: number
+    reserved: number
+    remaining: number | null
+    temperature: "warming" | "stable"
+    health: "healthy" | "attention" | "paused"
+    reason: string | null
+    nextEvaluationAt: string
+  } | null
 }
 
 const LIST_STRATEGY_LABELS: Record<"single" | "merge" | "per_list", string> = {
@@ -62,6 +75,7 @@ export function CampaignWizardSummaryPanel({
   subCampaigns = [],
   uniformTemplate = true,
   tz,
+  warmup = null,
 }: CampaignWizardSummaryPanelProps) {
   const hasAudience =
     selectedLists.length > 0 || Boolean(selectedSegment)
@@ -70,10 +84,45 @@ export function CampaignWizardSummaryPanel({
     unsubscribed: unsubscribedExcludedCount,
     complained: complainedExcludedCount,
   })
+  const availableToday = Math.max(0, warmup?.remaining ?? totalRecipients)
+  const deferredToday = warmup?.status === "warming"
+    ? Math.max(0, totalRecipients - availableToday)
+    : 0
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <p className="font-medium">Resumo</p>
+
+      {warmup ? (
+        <Alert variant={warmup.health === "paused" ? "destructive" : "default"}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={warmup.temperature === "warming" ? "secondary" : "outline"}>
+              <Thermometer data-icon="inline-start" />
+              Temperatura: {warmup.temperature === "warming" ? "aquecendo" : "estável"}
+            </Badge>
+            <Badge variant={warmup.health === "healthy" ? "outline" : "secondary"}>
+              <ShieldCheck data-icon="inline-start" />
+              Saúde: {warmup.health === "healthy" ? "saudável" : warmup.health === "attention" ? "atenção" : "pausada"}
+            </Badge>
+          </div>
+          <AlertDescription>
+            <span className="flex flex-col gap-1">
+              <span>
+                {warmup.reason ??
+                  `Este domínio está em aquecimento. O envio desta campanha respeitará o limite de ${(warmup.limit ?? 0).toLocaleString("pt-BR")} e-mails hoje.`}
+              </span>
+              <span>
+                Estágio {warmup.stage + 1} · {warmup.used.toLocaleString("pt-BR")} usados · {warmup.reserved.toLocaleString("pt-BR")} reservados · {(warmup.remaining ?? 0).toLocaleString("pt-BR")} disponíveis.
+              </span>
+              {deferredToday > 0 ? (
+                <span>
+                  Esta campanha tem {totalRecipients.toLocaleString("pt-BR")} destinatários, mas ainda há espaço para {availableToday.toLocaleString("pt-BR")} hoje. Os {deferredToday.toLocaleString("pt-BR")} restantes serão enviados nas próximas janelas.
+                </span>
+              ) : null}
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="flex flex-col gap-1">
         <span className="text-muted-foreground">Campanha</span>

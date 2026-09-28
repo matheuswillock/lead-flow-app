@@ -27,6 +27,7 @@ const PREFIX_TO_FEATURE_SLUGS: Record<string, string | string[]> = {
   "/email/contatos": FEATURE_SLUGS.EMAIL_CONTACTS,
   "/email/campanhas": FEATURE_SLUGS.EMAIL_CAMPAIGNS,
   "/email/configuracoes": FEATURE_SLUGS.EMAIL_SETTINGS,
+  "/email/entregabilidade": FEATURE_SLUGS.EMAIL_CAMPAIGNS,
   "/email/descadastro": FEATURE_SLUGS.EMAIL_UNSUBSCRIBE,
   "/email": FEATURE_SLUGS.EMAIL,
 }

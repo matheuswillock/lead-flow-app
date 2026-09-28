@@ -6,7 +6,7 @@ export const EMAIL_LOG_LANDING_PAGE_QUERY_PARAM = "cs_el"
 
 export function appendEmailLogIdToLandingPageUrls(html: string, emailLogId: string): string {
   const token = emailLogId.trim()
-  if (!token || !html.includes("/conversation/")) return html
+  if (!token || (!html.includes("/conversation/") && !html.includes("/conversao/"))) return html
 
   return html.replace(createLandingPageHrefPattern(), (_match, prefix: string, quote: string, rawUrl: string) => {
     const nextUrl = appendQueryParam(rawUrl, EMAIL_LOG_LANDING_PAGE_QUERY_PARAM, token)

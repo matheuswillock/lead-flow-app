@@ -864,6 +864,38 @@ contentHash contentHash
     
 
 
+        email_domain_warmup_status {
+            warming warming
+established established
+paused paused
+        }
+    
+
+
+        email_domain_temperature {
+            warming warming
+stable stable
+        }
+    
+
+
+        email_domain_health {
+            healthy healthy
+attention attention
+paused paused
+        }
+    
+
+
+        email_dmarc_operational_status {
+            pending pending
+aligned aligned
+attention attention
+failed failed
+        }
+    
+
+
         email_log_status {
             queued queued
 sent sent
@@ -1035,6 +1067,14 @@ failed failed
 
 
         team_landing_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
+        team_studio_domain_status {
             pending pending
 verified verified
 failed failed
@@ -2920,6 +2960,10 @@ completed completed
     Int reservedCredits 
     Boolean hasCampaignsBetaAccess 
     Int materializeSourceOffset 
+    Int originalEligibleRecipients 
+    Int deferredRecipientsPending 
+    DateTime deferredNextWindowAt "❓"
+    String deferredReason "❓"
     String errorMessage "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -3337,6 +3381,98 @@ completed completed
     }
   
 
+  "corretor_studio_email_sending_domain_states" {
+    String id "🗝️"
+    String domain 
+    Int stage 
+    Int dailyLimit 
+    EmailDomainWarmupStatus status 
+    EmailDomainTemperature temperature 
+    EmailDomainHealth health 
+    String reason "❓"
+    DateTime startedAt 
+    DateTime lastActivityAt "❓"
+    DateTime lastProgressedAt "❓"
+    DateTime pausedAt "❓"
+    DateTime nextEvaluationAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_email_sending_domain_daily_usage" {
+    String id "🗝️"
+    DateTime usageDate 
+    Int capacity 
+    Int reserved 
+    Int sent 
+    Int released 
+    Int delivered 
+    Int bounced 
+    Int complained 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_email_deliverability_daily_metrics" {
+    String id "🗝️"
+    DateTime metricDate 
+    String senderDomain 
+    String recipientProvider 
+    String campaignKey 
+    Int sent 
+    Int delivered 
+    Int hardBounced 
+    Int softBounced 
+    Int complained 
+    Int humanOpened 
+    Int clicked 
+    Int suppressed 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_deliverability_daily_metrics" {
+    String id "🗝️"
+    String teamId 
+    String teamName "❓"
+    DateTime metricDate 
+    String senderDomain 
+    String recipientProvider 
+    Int sent 
+    Int delivered 
+    Int hardBounced 
+    Int softBounced 
+    Int complained 
+    Int humanOpened 
+    Int clicked 
+    Int suppressed 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_email_deliverability_processed_events" {
+    String id "🗝️"
+    String eventKey 
+    DateTime processedAt 
+    }
+  
+
+  "corretor_studio_email_dmarc_domain_states" {
+    String id "🗝️"
+    String domain 
+    EmailDmarcOperationalStatus status 
+    String publishedPolicy "❓"
+    String diagnostic "❓"
+    DateTime lastCheckedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_team_form_domains" {
     String id "🗝️"
     String hostname 
@@ -3344,6 +3480,21 @@ completed completed
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_studio_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamStudioDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    String headScripts "❓"
+    String bodyStartScripts "❓"
+    String bodyEndScripts "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4771,8 +4922,18 @@ completed completed
     "email_team_settings" |o--|| "EmailSendingHealthStatus" : "enum:sendingHealthStatus"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_sending_domain_states" |o--|| "EmailDomainWarmupStatus" : "enum:status"
+    "corretor_studio_email_sending_domain_states" |o--|| "EmailDomainTemperature" : "enum:temperature"
+    "corretor_studio_email_sending_domain_states" |o--|| "EmailDomainHealth" : "enum:health"
+    "corretor_studio_email_sending_domain_states" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_sending_domain_daily_usage" }o--|| corretor_studio_email_sending_domain_states : "domainState"
+    "corretor_studio_email_deliverability_daily_metrics" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_dmarc_domain_states" |o--|| "EmailDmarcOperationalStatus" : "enum:status"
+    "corretor_studio_email_dmarc_domain_states" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_studio_domains" |o--|| "TeamStudioDomainStatus" : "enum:status"
+    "corretor_studio_team_studio_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
     "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"

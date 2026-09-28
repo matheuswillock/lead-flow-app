@@ -18,6 +18,7 @@ import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
+import { trackPageNoise } from "../../support/console-noise"
 import { runResponsiveChecks } from "../../support/responsive"
 
 test.describe("app/[supabaseId]/email/campanhas", () => {
@@ -123,7 +124,8 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     }
   })
 
-  test("wizard avisa bounce permanente e subtrai da audiência", async ({ page }) => {
+  test("wizard avisa bounce permanente e mostra o contrato de warm-up", async ({ page }, testInfo) => {
+    const { consoleErrors, failedRequests } = trackPageNoise(page)
     const profile = await findE2eMasterProfile()
     if (!profile?.activeTeamId) {
       throw new Error("Seed E2E sem time ativo")
@@ -171,6 +173,36 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
     })
 
     try {
+      await page.route("**/email/credits/status**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: [],
+            errorMessages: [],
+            result: {
+              hasSubscription: true,
+              isBetaExempt: true,
+              creditsLimit: 10_000,
+              creditsUsed: 0,
+              creditsAvailable: 10_000,
+              warmup: {
+                status: "warming",
+                stage: 2,
+                limit: 250,
+                reserved: 20,
+                used: 80,
+                remaining: 150,
+                temperature: "warming",
+                health: "healthy",
+                reason: "Este domínio está em aquecimento.",
+                nextEvaluationAt: "2026-09-28T00:00:00.000Z",
+              },
+            },
+          }),
+        })
+      })
       await page.goto(`/${E2E_MASTER_SUPABASE_ID}/email/campanhas`, {
         waitUntil: "domcontentloaded",
       })
@@ -196,6 +228,14 @@ test.describe("app/[supabaseId]/email/campanhas", () => {
       })
       await expect(page.getByText("Total: 2 destinatários")).toBeVisible()
       await expect(page.getByText("3 bounce permanente")).toBeVisible()
+      await expect(page.getByText("Temperatura: aquecendo")).toBeVisible()
+      await expect(page.getByText("Saúde: saudável")).toBeVisible()
+      await expect(page.getByText(/Estágio 3 · 80 usados · 20 reservados · 150 disponíveis/)).toBeVisible()
+      await expect(page.getByText("Este domínio está em aquecimento.")).toBeVisible()
+      await page.screenshot({ path: testInfo.outputPath("campaign-warmup-wizard.png"), fullPage: true })
+      expect(consoleErrors).toEqual([])
+      expect(failedRequests).toEqual([])
+      await runResponsiveChecks(page)
     } finally {
       await prisma.emailContact.deleteMany({ where: { listId } }).catch(() => {})
       await prisma.emailContactList.delete({ where: { id: listId } }).catch(() => {})

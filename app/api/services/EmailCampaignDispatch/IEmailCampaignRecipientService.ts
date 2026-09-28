@@ -28,6 +28,7 @@ export interface IEmailCampaignRecipientService {
   ): Promise<CampaignRecipient[]>
   listActiveRecipientsByIds(contactIds: string[]): Promise<CampaignRecipient[]>
   countActiveRecipients(teamId: string, contactListId: string): Promise<number>
+  filterEligibleRecipients<T extends { email: string }>(teamId: string, recipients: T[]): Promise<T[]>
   getGlobalDefaults(teamId: string): Promise<Record<string, string>>
   parseTemplateVariables(variables: unknown): EmailTemplateVariableDefinition[]
   buildCampaignDispatchInput(params: {

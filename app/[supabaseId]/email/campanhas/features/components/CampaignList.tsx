@@ -522,7 +522,13 @@ export function CampaignList({
                         <CampaignStatusBadge
                           status={isSending ? "sending" : campaign.status}
                           scheduledAt={campaign.scheduledAt}
+                          warmupStatus={campaign.warmupStatus}
                         />
+                        {(campaign.deferredRecipients?.pending ?? 0) > 0 ? (
+                          <Badge variant="outline">
+                            {campaign.deferredRecipients?.pending.toLocaleString("pt-BR")} adiados
+                          </Badge>
+                        ) : null}
                         {isSending ? (
                           <CampaignDispatchProgressLine
                             progress={resolveCampaignDispatchProgressDisplay(campaign)}

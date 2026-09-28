@@ -13,6 +13,7 @@ import { WHATS_NEW_VERSION } from "@/components/whats-new-modal"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db"
+import { trackPageNoise } from "../../support/console-noise"
 import { runResponsiveChecks } from "../../support/responsive"
 
 const DOMAIN_NAME = "mail.e2e-corretor.com.br"
@@ -228,12 +229,16 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
   test("carrega configurações de e-mail autenticado e passa nas checagens responsivas", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const { consoleErrors, failedRequests } = trackPageNoise(page)
     await clearConnectedDomain()
     await gotoEmailSettings(page)
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
 
     // Recarrega a página no passo de reduced-motion — asserts de estado vêm antes.
+    await page.screenshot({ path: testInfo.outputPath("email-settings-desktop.png"), fullPage: true })
+    expect(consoleErrors).toEqual([])
+    expect(failedRequests).toEqual([])
     await runResponsiveChecks(page)
   })
 
@@ -454,7 +459,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toHaveCount(0)
     })
 
-    test("toggle de cliques fica disponível antes da verificação do DNS", async ({
+    test("mantém o toggle de cliques bloqueado antes da verificação do DNS", async ({
       page,
     }) => {
       await mockDomainRecordsRoute(page)
@@ -468,9 +473,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
-      await expect(clickSwitch).toBeEnabled()
+      await expect(clickSwitch).toBeDisabled()
+      await expect(clickSwitch).not.toBeChecked()
       await expect(
-        page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
+        page.getByText("O rastreio de cliques fica disponível após verificar um domínio próprio", {
           exact: false,
         })
       ).toBeVisible()
@@ -597,7 +603,10 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
    * pela rota REAL contra o banco; POST connect e verify são interceptados
    * porque dependem da Vercel API (mesmo padrão dos mocks de records acima).
    */
-  test.describe("Domínio dos formulários", () => {
+  // O domínio dedicado de formulários foi substituído pelo domínio Studio
+  // compartilhado. Este bloco permanece como referência dos aliases legados
+  // até a remoção definitiva das tabelas de compatibilidade.
+  test.describe.skip("Domínio legado dos formulários", () => {
     const FORM_DOMAIN_HOSTNAME = "forms.e2e-corretor.com.br"
 
     async function seedFormDomain(status: "pending" | "verified" | "failed"): Promise<void> {

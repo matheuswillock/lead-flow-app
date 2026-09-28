@@ -82,6 +82,22 @@ export type SubCampaignSummary = {
   activeDispatch?: CampaignDispatchProgress | null
   latestDispatch?: CampaignDispatchProgress | null
   dispatchAvailability?: DispatchAvailability | null
+  warmupStatus?: "warming" | "established" | "paused" | null
+  warmupStage?: number | null
+  warmupLimit?: number | null
+  warmupReserved?: number
+  warmupUsed?: number
+  warmupRemaining?: number | null
+  domainTemperature?: "warming" | "stable" | null
+  domainHealth?: "healthy" | "attention" | "paused" | null
+  warmupReason?: string | null
+  nextEvaluationAt?: string | null
+  deferredRecipients?: {
+    total: number
+    pending: number
+    nextWindowAt: string | null
+    reason: string | null
+  }
 }
 
 export type Campaign = {
@@ -121,6 +137,22 @@ export type Campaign = {
   latestDispatch?: CampaignDispatchProgress | null
   dispatchProgressSummary?: CampaignDispatchProgressSummary | null
   dispatchAvailability?: DispatchAvailability | null
+  warmupStatus?: "warming" | "established" | "paused" | null
+  warmupStage?: number | null
+  warmupLimit?: number | null
+  warmupReserved?: number
+  warmupUsed?: number
+  warmupRemaining?: number | null
+  domainTemperature?: "warming" | "stable" | null
+  domainHealth?: "healthy" | "attention" | "paused" | null
+  warmupReason?: string | null
+  nextEvaluationAt?: string | null
+  deferredRecipients?: {
+    total: number
+    pending: number
+    nextWindowAt: string | null
+    reason: string | null
+  }
 }
 
 export type CreditStatus = {
@@ -148,6 +180,18 @@ export type CreditStatus = {
    * backoffice — a UI não pode oferecer ação que a API vai recusar.
    */
   canReleaseSendingHealth?: boolean
+  warmup?: {
+    status: "warming" | "established" | "paused"
+    stage: number
+    limit: number | null
+    used: number
+    reserved: number
+    remaining: number | null
+    temperature: "warming" | "stable"
+    health: "healthy" | "attention" | "paused"
+    reason: string | null
+    nextEvaluationAt: string
+  }
 }
 
 export type Template = {
