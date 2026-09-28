@@ -81,26 +81,6 @@ function resolveBillingProductSlug(
 export class FeatureAccessService implements IFeatureAccessService {
   constructor(private readonly repository: IFeatureAccessRepository) {}
 
-  async hasTeamFeatureAccess(data: { teamId: string; featureSlug: string }): Promise<boolean> {
-    const managerId = await this.repository.findTeamMasterId(data.teamId)
-    if (!managerId) return false
-
-    const access = await this.resolveAllowedSlugs({
-      profileId: managerId,
-      managerId,
-      activeTeamId: data.teamId,
-      teamContext: {
-        isMaster: true,
-        role: "manager",
-        functions: [],
-        canManageAccountTeams: true,
-        canCreateAccountUsers: true,
-      },
-    })
-
-    return access.slugs.includes(data.featureSlug)
-  }
-
   async resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult> {
     const ownerProfileId = data.managerId || data.profileId
 

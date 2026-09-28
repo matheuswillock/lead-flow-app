@@ -31,7 +31,6 @@ export interface FeatureAccessResult {
 
 export interface IFeatureAccessService {
   resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult>
-  hasTeamFeatureAccess(data: { teamId: string; featureSlug: string }): Promise<boolean>
   /**
    * D8: isenção de créditos só quando a feature de e-mail está em beta
    * E o usuário/conta tem entitlement (EMAIL_CAMPAIGNS ou EMAIL).
@@ -43,3 +42,4 @@ export interface IFeatureAccessService {
    */
   resolveRadarBetaAccess(ctx: EmailBetaAccessContext): Promise<boolean>
 }
+

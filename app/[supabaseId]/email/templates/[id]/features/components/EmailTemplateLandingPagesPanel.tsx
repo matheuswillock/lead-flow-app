@@ -11,15 +11,12 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 type Landing = { id: string; publicId: string; name: string; status: string }
 
 export function EmailTemplateLandingPagesPanel({ embedded = false }: { embedded?: boolean }) {
   const params = useParams<{ supabaseId: string }>()
   const { activeTeamId } = useTeamContext()
-  const { hasAccess } = useFeatureAccess()
   const [landings, setLandings] = useState<Landing[]>([])
   const [hostname, setHostname] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState("")
@@ -40,8 +37,6 @@ export function EmailTemplateLandingPagesPanel({ embedded = false }: { embedded?
   const selected = landings.find((landing) => landing.id === selectedId) ?? null
   const landingUrl = selected && hostname ? `https://${hostname}/conversao/${selected.publicId}` : ""
   const copy = async (value: string, label: string) => { await navigator.clipboard.writeText(value); toast.success(`${label} copiado`) }
-
-  if (!hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)) return null
 
   return <div className={embedded ? "flex flex-col gap-4" : "flex flex-col gap-4 p-4"}>
     <div><h3 className="text-sm font-semibold">Landing pages de cotação</h3><p className="text-xs text-muted-foreground">Escolha uma landing publicada para inserir no e-mail.</p></div>

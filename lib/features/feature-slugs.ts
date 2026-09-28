@@ -18,7 +18,6 @@ export const FEATURE_SLUGS = {
   EMAIL_ANALYTICS: "email-analytics",
   EMAIL_SETTINGS: "email-settings",
   EMAIL_UNSUBSCRIBE: "email-unsubscribe",
-  EMAIL_LANDING_PAGES: "email-landing-pages",
   CONFIGURATION: "integration",
   PUBLIC_FORMS: "public-forms",
   FORM_TEMPLATES: "form-templates",

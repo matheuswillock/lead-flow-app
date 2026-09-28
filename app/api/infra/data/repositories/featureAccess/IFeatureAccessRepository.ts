@@ -71,5 +71,4 @@ export interface IFeatureAccessRepository {
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
   findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
-  findTeamMasterId(teamId: string): Promise<string | null>
 }

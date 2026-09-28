@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { Archive, BarChart3, Copy, Ellipsis, FileText, Plus, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
@@ -85,7 +84,6 @@ import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/use
 import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { canRequestPublicFormApproval } from "@/lib/public-forms/approval-actions"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -100,8 +98,6 @@ type Member = { profileId: string; name: string; functions: string[] }
 export function PublicFormsContainer() {
   const params = useParams<{ supabaseId: string }>()
   const forms = usePublicForms()
-  const { hasAccess } = useFeatureAccess()
-  const canManageLandingPages = hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)
   // Domínio de formulários VERIFICADO do time ATIVO (Frente C): copiar
   // link/iframe usa o mesmo host que o disparo de campanha vai usar. O teamId
   // entra na chave do cache — sem ele, trocar de time devolvia o domínio do
@@ -158,13 +154,11 @@ export function PublicFormsContainer() {
                 Criar formulário
               </Link>
             </Button>
-            {canManageLandingPages ? (
-              <Button asChild variant="outline">
-                <Link href={`/${params.supabaseId}/landing-pages/new`}>
-                  Criar landing de cotação
-                </Link>
-              </Button>
-            ) : null}
+            <Button asChild variant="outline">
+              <Link href={`/${params.supabaseId}/landing-pages/new`}>
+                Criar landing de cotação
+              </Link>
+            </Button>
           </div>
         ) : null}
       </div>

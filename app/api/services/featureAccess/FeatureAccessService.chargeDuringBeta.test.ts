@@ -100,10 +100,6 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   async findUserTypeAssignment(): Promise<OwnerUserTypeAssignment | null> {
     return null
   }
-
-  async findTeamMasterId() {
-    return PROFILE_ID
-  }
 }
 
 describe("FeatureAccessService chargeDuringBeta", () => {

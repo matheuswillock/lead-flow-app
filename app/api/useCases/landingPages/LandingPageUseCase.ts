@@ -5,9 +5,6 @@ import type { LandingPageDraftInput, LandingPageSnapshot } from "@/lib/landing-p
 import type { ILandingPageRepository } from "@/app/api/infra/data/repositories/landingPages/ILandingPageRepository"
 import { landingPageRepository } from "@/app/api/infra/data/repositories/landingPages/LandingPageRepository"
 import type { ILandingPageUseCase } from "./ILandingPageUseCase"
-import type { ITeamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/ITeamStudioDomainRepository"
-import { teamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
-import { hasLandingPageManagementAccess, hasLandingPagePublicAccess } from "./landingPageFeatureAccess"
 
 function canManage(access: TeamAccess) {
   return access.isMaster || isManagerLikeRole(access.teamMember.role)
@@ -25,19 +22,14 @@ function validateDraft(input: LandingPageDraftInput): string[] {
 }
 
 export class LandingPageUseCase implements ILandingPageUseCase {
-  constructor(
-    private readonly repository: ILandingPageRepository = landingPageRepository,
-    private readonly studioDomainRepository: ITeamStudioDomainRepository = teamStudioDomainRepository,
-  ) {}
+  constructor(private readonly repository: ILandingPageRepository = landingPageRepository) {}
 
   async list(access: TeamAccess) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado às landing pages"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado às landing pages"], null)
     return new Output(true, [], [], await this.repository.listByTeam(access.teamId))
   }
 
   async get(access: TeamAccess, id: string) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado às landing pages"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado às landing pages"], null)
     const landing = await this.repository.findById(access.teamId, id)
     return landing
@@ -46,7 +38,6 @@ export class LandingPageUseCase implements ILandingPageUseCase {
   }
 
   async create(access: TeamAccess, input: LandingPageDraftInput) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
@@ -66,7 +57,6 @@ export class LandingPageUseCase implements ILandingPageUseCase {
   }
 
   async update(access: TeamAccess, id: string, input: LandingPageDraftInput) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
@@ -84,10 +74,7 @@ export class LandingPageUseCase implements ILandingPageUseCase {
   }
 
   async publish(access: TeamAccess, id: string) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
-    const studioDomain = await this.studioDomainRepository.findByTeamId(access.teamId)
-    if (studioDomain?.status !== "verified") return new Output(false, [], ["Configure e verifique o subdomínio studio antes de publicar."], null)
     const publication = await this.repository.publish(access.teamId, id, access.profileId)
     return publication
       ? new Output(true, ["Landing page publicada"], [], publication)
@@ -95,7 +82,6 @@ export class LandingPageUseCase implements ILandingPageUseCase {
   }
 
   async archive(access: TeamAccess, id: string) {
-    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const landing = await this.repository.archive(access.teamId, id)
     return landing
@@ -107,17 +93,12 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     const landing = await this.repository.findPublic(publicId)
     const publication = landing?.publications[0]
     if (!landing || !publication) return new Output(false, [], ["Landing page indisponível"], null)
-    if (!(await hasLandingPagePublicAccess(landing.teamId))) return new Output(false, [], ["Landing page indisponível"], null)
 
     const snapshot = publication.snapshot as unknown as LandingPageSnapshot
-    const domain = await teamStudioDomainRepository.findByTeamId(landing.teamId)
     return new Output(true, [], [], {
       snapshot,
       teamId: landing.teamId,
       publicFormId: landing.publicFormId,
-      tracking: domain
-        ? { headScripts: domain.headScripts, bodyStartScripts: domain.bodyStartScripts, bodyEndScripts: domain.bodyEndScripts }
-        : null,
     })
   }
 }

@@ -61,7 +61,6 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
-  teamMasterId = PROFILE_ID
 
   async listActiveFeatures() {
     return this.features
@@ -98,10 +97,6 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
 
   async findUserTypeAssignment(): Promise<OwnerUserTypeAssignment | null> {
     return null
-  }
-
-  async findTeamMasterId() {
-    return this.teamMasterId
   }
 }
 
@@ -169,25 +164,5 @@ describe("FeatureAccessService.resolveAllowedSlugs beta gate", () => {
     expect(access.slugs).toContain("email-campaigns")
     expect(access.betaSlugs).toContain("email-campaigns")
     expect(access.betaLabelSlugs).toContain("email-campaigns")
-  })
-
-  it("resolve o acesso beta público do time usando o master como dono da elegibilidade", async () => {
-    repository.features = [
-      makeFeature({
-        id: "feature-landing-pages",
-        slug: "email-landing-pages",
-        accessMode: "ADDON",
-        parentId: EMAIL_FEATURE_ID,
-        inheritParentSettings: false,
-        accessRules: [{ principal: "MANAGER", accessLevel: "FULL" }],
-      }),
-    ]
-    repository.betaEligibleFeatureIds = new Set(["feature-landing-pages"])
-
-    await expect(
-      service.hasTeamFeatureAccess({ teamId: TEAM_ID, featureSlug: "email-landing-pages" }),
-    ).resolves.toBe(true)
-
-    expect(repository.teamMasterId).toBe(PROFILE_ID)
   })
 })
