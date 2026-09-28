@@ -117,6 +117,10 @@ export function invalidateTeamFormDomainCache(input: { hostname: string }) {
   revalidateDefinedTags([cacheTags.teamFormDomain(input.hostname)]);
 }
 
+export function invalidateTeamStudioDomainCache(input: { hostname: string }) {
+  revalidateDefinedTags([cacheTags.teamStudioDomain(input.hostname)]);
+}
+
 export function invalidateHealthPlansCache() {
   revalidateDefinedTags([cacheTags.healthPlans()]);
 }

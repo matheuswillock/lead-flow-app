@@ -1,10 +1,13 @@
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase";
 import type { PublicFormSnapshot } from "@/lib/public-forms/types";
 import { isPublicFormServableOnHost } from "@/lib/public-forms/team-form-domain-tenancy";
+import { resolveLegacyPublicHostRedirect } from "@/lib/public-studio/team-studio-domain-tenancy"
+import { serializePublicRedirectSearchParams, type PublicRedirectSearchParams } from "@/lib/public-studio/redirect-search-params"
 import { PublicFormViewProvider } from "./features/context/PublicFormViewContext";
 import { PublicFormViewContainer } from "./features/container/PublicFormViewContainer";
+import { PublicTrackingBody, PublicTrackingHead } from "@/components/public-tracking/PublicTrackingScripts"
 
 /**
  * Guarda de tenancy do serving multi-tenant: em host custom (domínio de
@@ -31,9 +34,17 @@ export default async function PublicFormPage({
   searchParams,
 }: {
   params: Promise<{ publicId: string }>;
-  searchParams: Promise<{ e2eSlowSnapshot?: string }>;
+  searchParams: Promise<PublicRedirectSearchParams>;
 }) {
   const { publicId } = await params;
+  const resolvedSearchParams = await searchParams
+
+  const redirectBase = await resolveLegacyPublicHostRedirect({
+    resource: "form",
+    publicId,
+    hostHeader: (await headers()).get("host"),
+  })
+  if (redirectBase) redirect(`${redirectBase}/forms/${publicId}${serializePublicRedirectSearchParams(resolvedSearchParams)}`)
 
   await assertFormBelongsToRequestHost(publicId);
 
@@ -42,7 +53,7 @@ export default async function PublicFormPage({
   // React chegar a emitir o Skeleton no stream antes do conteúdo final.
   // Duplo gate (env de teste + query param explícito) — impossível em produção.
   if (process.env.E2E_TEST_MODE === "true") {
-    const { e2eSlowSnapshot } = await searchParams;
+    const { e2eSlowSnapshot } = resolvedSearchParams;
     if (e2eSlowSnapshot === "1") {
       await new Promise((resolve) => setTimeout(resolve, 1_500));
     }
@@ -57,8 +68,13 @@ export default async function PublicFormPage({
     output.isValid && output.result
       ? (output.result as { publicationId: string }).publicationId
       : null;
+  const tracking = output.isValid && output.result
+    ? (output.result as { tracking?: Parameters<typeof PublicTrackingHead>[0]["tracking"] }).tracking ?? null
+    : null
 
-  return (
+  return (<>
+    <head><PublicTrackingHead tracking={tracking} /></head>
+    <PublicTrackingBody tracking={tracking} position="start" />
     <PublicFormViewProvider
       publicId={publicId}
       initialSnapshot={initialSnapshot}
@@ -66,5 +82,6 @@ export default async function PublicFormPage({
     >
       <PublicFormViewContainer />
     </PublicFormViewProvider>
-  );
+    <PublicTrackingBody tracking={tracking} position="end" />
+  </>);
 }

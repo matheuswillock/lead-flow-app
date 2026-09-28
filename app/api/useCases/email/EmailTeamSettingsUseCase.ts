@@ -43,6 +43,7 @@ import {
   resendDomainTrackingInputFromSettings,
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { teamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 
 // A definição vive na camada de persistência (é o formato gravado na coluna Json);
 // reexportada aqui porque os consumidores históricos importam deste módulo.
@@ -904,6 +905,7 @@ export class EmailTeamSettingsUseCase {
           ? { fromName: PLATFORM_FROM_NAME, fromEmail: PLATFORM_FROM_EMAIL }
           : null
       )
+      await teamStudioDomainUseCase.disconnectForTeam(ctx.teamId)
 
       return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
@@ -936,6 +938,10 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (synced.status === "verified" && domainData.name) {
+        await teamStudioDomainUseCase.ensureForVerifiedEmailDomain(ctx.teamId, domainData.name)
+      }
 
       return new Output(true, ["Verificação iniciada"], [], {
         status: synced.status as ResendDomainStatus,

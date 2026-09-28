@@ -30,7 +30,7 @@ function formatDate(value: string) {
 }
 
 function getLandingUrl(hostname: string | undefined, publicId: string) {
-  return hostname ? `https://${hostname}/conversation/${publicId}` : null
+  return hostname ? `https://${hostname}/conversao/${publicId}` : null
 }
 
 function LandingRow({ item }: { item: LandingPageListItem }) {
@@ -75,7 +75,7 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`Ações para ${item.name}`} disabled={isWorking}>
+          <Button variant="ghost" size="icon" className="size-11" aria-label={`Ações para ${item.name}`} disabled={isWorking}>
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
@@ -92,55 +92,19 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
 }
 
 function DomainCard() {
-  const params = useParams<{ supabaseId: string }>()
-  const { domain, emailDomainName, emailDomainStatus, connectDomain, verifyDomain } = useLandingPages()
-  const [isSaving, setIsSaving] = useState(false)
-  const hostname = emailDomainName ? `cotacao.${emailDomainName}` : ""
-
-  async function connect() {
-    setIsSaving(true)
-    if (!hostname) {
-      setIsSaving(false)
-      return
-    }
-    await connectDomain(hostname)
-    setIsSaving(false)
-  }
-
-  if (domain) {
-    return (
-      <Card>
-        <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Domínio de cotação</CardTitle>
-            <CardDescription>O endereço que seus contatos acessam a partir das campanhas.</CardDescription>
-          </div>
-          <Badge variant="outline" className={domain.status === "verified" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"}>
-            {domain.status === "verified" ? "Verificado" : "Aguardando DNS"}
-          </Badge>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="font-mono text-sm">https://{domain.hostname}</p>
-          {domain.status !== "verified" ? <Button variant="outline" onClick={() => void verifyDomain()}><RefreshCw data-icon="inline-start" />Verificar DNS</Button> : <span className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-4" />Pronto para publicar</span>}
-        </CardContent>
-      </Card>
-    )
-  }
-
+  const { domain } = useLandingPages()
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Conecte seu domínio de cotação</CardTitle>
-        <CardDescription>Use um subdomínio como <span className="font-mono">cotacao.suaempresa.com.br</span> para publicar suas páginas.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex flex-1 flex-col gap-2"><Label htmlFor="landing-domain">Subdomínio</Label><Input id="landing-domain" value={hostname} readOnly placeholder="Configure primeiro o domínio de e-mail" /></div>
-          <Button onClick={() => void connect()} disabled={isSaving || !hostname || emailDomainStatus !== "verified"}><Settings2 data-icon="inline-start" />{isSaving ? "Conectando…" : "Conectar domínio"}</Button>
+      <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Domínio studio</CardTitle>
+          <CardDescription>Formulários e páginas de conversão usam o mesmo subdomínio.</CardDescription>
         </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">Este endereço é gerado a partir do domínio verificado nas configurações de DNS do e-mail. A landing usará o prefixo <span className="font-medium text-foreground">cotacao.</span> para não criar um domínio independente.</p>
-        {!emailDomainName ? <p className="text-xs text-amber-600 dark:text-amber-400">Configure e verifique um domínio de envio em <Link className="underline underline-offset-4" href={`/${params.supabaseId}/email/configuracoes`}>Configurações de e-mail</Link> antes de conectar.</p> : null}
-        {emailDomainName && emailDomainStatus !== "verified" ? <p className="text-xs text-amber-600 dark:text-amber-400">O domínio de e-mail ainda não está verificado. Conclua o DNS em <Link className="underline underline-offset-4" href={`/${params.supabaseId}/email/configuracoes`}>Configurações de e-mail</Link>.</p> : null}
+        {domain ? <Badge variant="outline" className={domain.status === "verified" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"}>{domain.status === "verified" ? "Verificado" : "Aguardando DNS"}</Badge> : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {domain ? <p className="font-mono text-sm">https://{domain.hostname}</p> : <p className="text-sm text-muted-foreground">Configure e verifique o domínio de envio para gerar o subdomínio studio.</p>}
+        <p className="text-xs leading-relaxed text-muted-foreground">A configuração fica em Configurações de e-mail. Este espaço apenas mostra o status usado para publicar landings.</p>
       </CardContent>
     </Card>
   )
@@ -159,8 +123,8 @@ export function LandingPagesManagement() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><p className="mb-1 text-sm font-medium text-primary">Landing pages</p><h1 className="text-2xl font-semibold tracking-tight">Páginas de cotação</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Crie experiências de conversão para suas campanhas e acompanhe o que está pronto para receber contatos.</p></div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" aria-label="Configurar domínio de cotação" onClick={() => setDomainSheetOpen(true)}><Settings2 /></Button>
-          <Button asChild><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar landing</Link></Button>
+          <Button variant="outline" size="icon" className="size-11" aria-label="Configurar domínio de cotação" onClick={() => setDomainSheetOpen(true)}><Settings2 /></Button>
+          <Button asChild className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar landing</Link></Button>
         </div>
       </div>
 
@@ -176,12 +140,12 @@ export function LandingPagesManagement() {
       <Separator />
 
       <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-semibold">Suas landing pages</h2><p className="text-sm text-muted-foreground">Uma landing pode usar qualquer formulário publicado do seu time.</p></div><Button variant="ghost" size="sm" onClick={() => void refresh()}><RefreshCw data-icon="inline-start" />Atualizar</Button></div>
-        <div className="flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Buscar landing page" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="flex gap-2"><Button variant={statusFilter === "all" ? "secondary" : "outline"} onClick={() => setStatusFilter("all")}>Todas</Button><Button variant={statusFilter === "published" ? "secondary" : "outline"} onClick={() => setStatusFilter("published")}>Publicadas</Button><Button variant={statusFilter === "draft" ? "secondary" : "outline"} onClick={() => setStatusFilter("draft")}>Rascunhos</Button></div></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-semibold">Suas landing pages</h2><p className="text-sm text-muted-foreground">Uma landing pode usar qualquer formulário publicado do seu time.</p></div><Button variant="ghost" className="min-h-11" onClick={() => void refresh()}><RefreshCw data-icon="inline-start" />Atualizar</Button></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Buscar landing page" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="flex gap-2"><Button className="min-h-11" variant={statusFilter === "all" ? "secondary" : "outline"} onClick={() => setStatusFilter("all")}>Todas</Button><Button className="min-h-11" variant={statusFilter === "published" ? "secondary" : "outline"} onClick={() => setStatusFilter("published")}>Publicadas</Button><Button className="min-h-11" variant={statusFilter === "draft" ? "secondary" : "outline"} onClick={() => setStatusFilter("draft")}>Rascunhos</Button></div></div>
       </section>
 
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-      {isLoading ? <div className="flex flex-col gap-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full rounded-lg" />)}</div> : filteredItems.length > 0 ? <div className="flex flex-col gap-3">{filteredItems.map((item) => <LandingRow key={item.id} item={item} />)}</div> : <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><LayoutTemplate /></EmptyMedia><EmptyTitle>{items.length === 0 ? "Nenhuma landing criada" : "Nenhum resultado encontrado"}</EmptyTitle><EmptyDescription>{items.length === 0 ? "Crie uma página de cotação e conecte um formulário publicado para começar." : "Tente buscar por outro nome ou remova o filtro de status."}</EmptyDescription></EmptyHeader>{items.length === 0 ? <EmptyContent><Button asChild><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar primeira landing</Link></Button></EmptyContent> : null}</Empty>}
+      {isLoading ? <div className="flex flex-col gap-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full rounded-lg" />)}</div> : filteredItems.length > 0 ? <div className="flex flex-col gap-3">{filteredItems.map((item) => <LandingRow key={item.id} item={item} />)}</div> : <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><LayoutTemplate /></EmptyMedia><EmptyTitle>{items.length === 0 ? "Nenhuma landing criada" : "Nenhum resultado encontrado"}</EmptyTitle><EmptyDescription>{items.length === 0 ? "Crie uma página de cotação e conecte um formulário publicado para começar." : "Tente buscar por outro nome ou remova o filtro de status."}</EmptyDescription></EmptyHeader>{items.length === 0 ? <EmptyContent><Button asChild className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar primeira landing</Link></Button></EmptyContent> : null}</Empty>}
     </main>
   )
 }

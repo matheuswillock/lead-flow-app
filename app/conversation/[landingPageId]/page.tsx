@@ -1,10 +1,5 @@
-import { headers } from "next/headers"
-import { notFound } from "next/navigation"
-import { landingPageUseCase } from "@/app/api/useCases/landingPages/LandingPageUseCase"
-import { isLandingPageServableOnHost } from "@/lib/landing-pages/landing-page-host-tenancy"
-import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
-import { LandingPageViewContext } from "./features/context/LandingPageViewContext"
-import { LandingPageViewContainer } from "./features/container/LandingPageViewContainer"
+import { redirect } from "next/navigation"
+import { serializePublicRedirectSearchParams, type PublicRedirectSearchParams } from "@/lib/public-studio/redirect-search-params"
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -12,20 +7,12 @@ export const metadata = {
 
 export default async function LandingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ landingPageId: string }>
+  searchParams: Promise<PublicRedirectSearchParams>
 }) {
   const { landingPageId } = await params
-  const headerList = await headers()
-  const isAllowed = await isLandingPageServableOnHost({
-    landingPageId,
-    hostHeader: headerList.get("host"),
-  })
-  if (!isAllowed) notFound()
-
-  const output = await landingPageUseCase.getPublic(landingPageId)
-  if (!output.isValid || !output.result) notFound()
-
-  const result = output.result as { snapshot: LandingPageSnapshot }
-  return <LandingPageViewContext><LandingPageViewContainer snapshot={result.snapshot} /></LandingPageViewContext>
+  const resolvedSearchParams = await searchParams
+  redirect(`/conversao/${landingPageId}${serializePublicRedirectSearchParams(resolvedSearchParams)}`)
 }

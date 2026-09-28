@@ -48,11 +48,13 @@ function toPublishedSnapshot(publication: {
   id: string
   version: number
   snapshot: Prisma.JsonValue
+  teamId?: string
 }): PublicFormPublishedSnapshot {
   return {
     publicationId: publication.id,
     version: publication.version,
     snapshot: publication.snapshot,
+    teamId: publication.teamId,
   }
 }
 
@@ -590,6 +592,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     const form = await prisma.publicForm.findUnique({
       where: { publicId },
       select: {
+        teamId: true,
         status: true,
         publications: {
           where: { endedAt: null },
@@ -600,7 +603,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     if (!form || form.status !== "published" || !form.publications[0]) return null
-    return toPublishedSnapshot(form.publications[0])
+    return toPublishedSnapshot({ ...form.publications[0], teamId: form.teamId })
   }
 
   async findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null> {
