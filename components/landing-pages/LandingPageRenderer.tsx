@@ -11,10 +11,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
+import { PublicTrackingBody, type PublicTrackingScriptsValue } from "@/components/public-tracking/PublicTrackingScripts"
 import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 
-type Props = { snapshot: LandingPageSnapshot }
+type Props = { snapshot: LandingPageSnapshot; tracking?: PublicTrackingScriptsValue | null }
 
 type SchedulingAnswer = { date?: string; time?: string; startsAt?: string }
 
@@ -197,7 +198,7 @@ function LandingSchedulingQuestion({
   )
 }
 
-export function LandingPageRenderer({ snapshot }: Props) {
+export function LandingPageRenderer({ snapshot, tracking = null }: Props) {
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -250,7 +251,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
           ? { startsAt: schedulingAnswer.startsAt }
           : undefined,
       }
-      const response = await fetch(`/api/q/conversation/${snapshot.publicId}/submissions`, {
+      const response = await fetch(`/api/q/conversao/${snapshot.publicId}/submissions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -267,6 +268,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
 
   return (
     <main data-template={snapshot.templateSlug} className="landing-page min-h-screen bg-background text-foreground">
+      <PublicTrackingBody tracking={tracking} position="start" />
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-8 sm:px-6 sm:py-12 md:px-8 md:py-16">
         <header className="flex items-center justify-between gap-4">
           <span className="font-semibold tracking-tight">{content.brandName}</span>
@@ -334,6 +336,7 @@ export function LandingPageRenderer({ snapshot }: Props) {
         </section>
 
         <footer className="border-t border-border pt-6 text-sm text-muted-foreground">{content.footerText}</footer>
+        <PublicTrackingBody tracking={tracking} position="end" />
       </div>
     </main>
   )

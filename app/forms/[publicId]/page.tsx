@@ -1,10 +1,12 @@
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase";
 import type { PublicFormSnapshot } from "@/lib/public-forms/types";
 import { isPublicFormServableOnHost } from "@/lib/public-forms/team-form-domain-tenancy";
+import { resolveLegacyPublicHostRedirect } from "@/lib/public-studio/team-studio-domain-tenancy"
 import { PublicFormViewProvider } from "./features/context/PublicFormViewContext";
 import { PublicFormViewContainer } from "./features/container/PublicFormViewContainer";
+import { PublicTrackingHead } from "@/components/public-tracking/PublicTrackingScripts"
 
 /**
  * Guarda de tenancy do serving multi-tenant: em host custom (domínio de
@@ -35,6 +37,13 @@ export default async function PublicFormPage({
 }) {
   const { publicId } = await params;
 
+  const redirectBase = await resolveLegacyPublicHostRedirect({
+    resource: "form",
+    publicId,
+    hostHeader: (await headers()).get("host"),
+  })
+  if (redirectBase) redirect(`${redirectBase}/forms/${publicId}`)
+
   await assertFormBelongsToRequestHost(publicId);
 
   // Delay artificial só pra testar o fallback de loading.tsx (Suspense
@@ -57,8 +66,12 @@ export default async function PublicFormPage({
     output.isValid && output.result
       ? (output.result as { publicationId: string }).publicationId
       : null;
+  const tracking = output.isValid && output.result
+    ? (output.result as { tracking?: Parameters<typeof PublicTrackingHead>[0]["tracking"] }).tracking ?? null
+    : null
 
-  return (
+  return (<>
+    <head><PublicTrackingHead tracking={tracking} /></head>
     <PublicFormViewProvider
       publicId={publicId}
       initialSnapshot={initialSnapshot}
@@ -66,5 +79,5 @@ export default async function PublicFormPage({
     >
       <PublicFormViewContainer />
     </PublicFormViewProvider>
-  );
+  </>);
 }

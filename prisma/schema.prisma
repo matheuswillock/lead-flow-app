@@ -2598,6 +2598,7 @@ model Team {
   leadCustomFieldDefinitions LeadCustomFieldDefinition[]
   publicForms                PublicForm[]
   landingPages               LandingPage[]
+  studioDomain               TeamStudioDomain?
   publicFormSettings         PublicFormSettings?
   publicFormTemplates        PublicFormTemplate[]
   transferRoutesFrom         TeamTransferRoute[]           @relation("TeamTransferRouteFrom")
@@ -4519,6 +4520,36 @@ enum TeamLandingDomainStatus {
   failed
 
   @@map("team_landing_domain_status")
+}
+
+enum TeamStudioDomainStatus {
+  pending
+  verified
+  failed
+
+  @@map("team_studio_domain_status")
+}
+
+/// Domínio compartilhado do produto público do time.
+/// Os caminhos `/forms/*` e `/conversao/*` são servidos pelo mesmo hostname.
+model TeamStudioDomain {
+  id             String                 @id @default(uuid()) @db.Uuid
+  teamId         String                 @unique @db.Uuid
+  hostname       String                 @unique @db.Text
+  status         TeamStudioDomainStatus @default(pending)
+  vercelDomainId String?                @db.Text
+  verifiedAt     DateTime?              @db.Timestamptz(6)
+  lastCheckedAt  DateTime?              @db.Timestamptz(6)
+  headScripts    String?                @db.Text
+  bodyStartScripts String?              @db.Text
+  bodyEndScripts String?                @db.Text
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastCheckedAt])
+  @@map("corretor_studio_team_studio_domains")
 }
 
 /// Domínio próprio do time para servir landing pages de cotação

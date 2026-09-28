@@ -5,6 +5,8 @@ import type { LandingPageDraftInput, LandingPageSnapshot } from "@/lib/landing-p
 import type { ILandingPageRepository } from "@/app/api/infra/data/repositories/landingPages/ILandingPageRepository"
 import { landingPageRepository } from "@/app/api/infra/data/repositories/landingPages/LandingPageRepository"
 import type { ILandingPageUseCase } from "./ILandingPageUseCase"
+import type { ITeamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/ITeamStudioDomainRepository"
+import { teamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
 
 function canManage(access: TeamAccess) {
   return access.isMaster || isManagerLikeRole(access.teamMember.role)
@@ -22,7 +24,10 @@ function validateDraft(input: LandingPageDraftInput): string[] {
 }
 
 export class LandingPageUseCase implements ILandingPageUseCase {
-  constructor(private readonly repository: ILandingPageRepository = landingPageRepository) {}
+  constructor(
+    private readonly repository: ILandingPageRepository = landingPageRepository,
+    private readonly studioDomainRepository: ITeamStudioDomainRepository = teamStudioDomainRepository,
+  ) {}
 
   async list(access: TeamAccess) {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado às landing pages"], null)
@@ -75,6 +80,8 @@ export class LandingPageUseCase implements ILandingPageUseCase {
 
   async publish(access: TeamAccess, id: string) {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    const studioDomain = await this.studioDomainRepository.findByTeamId(access.teamId)
+    if (studioDomain?.status !== "verified") return new Output(false, [], ["Configure e verifique o subdomínio studio antes de publicar."], null)
     const publication = await this.repository.publish(access.teamId, id, access.profileId)
     return publication
       ? new Output(true, ["Landing page publicada"], [], publication)
@@ -95,10 +102,14 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!landing || !publication) return new Output(false, [], ["Landing page indisponível"], null)
 
     const snapshot = publication.snapshot as unknown as LandingPageSnapshot
+    const domain = await teamStudioDomainRepository.findByTeamId(landing.teamId)
     return new Output(true, [], [], {
       snapshot,
       teamId: landing.teamId,
       publicFormId: landing.publicFormId,
+      tracking: domain
+        ? { headScripts: domain.headScripts, bodyStartScripts: domain.bodyStartScripts, bodyEndScripts: domain.bodyEndScripts }
+        : null,
     })
   }
 }

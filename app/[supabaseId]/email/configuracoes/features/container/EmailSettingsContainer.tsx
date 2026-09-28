@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import { AccessPermissionsCard } from "../components/AccessPermissionsCard"
 import { CustomDomainCard } from "../components/CustomDomainCard"
-import { FormsDomainCard } from "../components/FormsDomainCard"
+import { StudioDomainCard } from "../components/StudioDomainCard"
+import { StudioTrackingCard } from "../components/StudioTrackingCard"
 import { DispatchRestrictionsCard } from "../components/DispatchRestrictionsCard"
 import { GlobalVariablesCard } from "../components/GlobalVariablesCard"
 import { SenderCard } from "../components/SenderCard"
@@ -81,7 +82,8 @@ export function EmailSettingsContainer() {
       <fieldset disabled={readOnly} className={readOnly ? "flex flex-col gap-6 opacity-60" : "flex flex-col gap-6"}>
         <section id="visao-geral" className="flex flex-col gap-6 scroll-mt-6">
           <div id="entrega"><CustomDomainCard /></div>
-          <FormsDomainCard />
+          <StudioDomainCard />
+          <StudioTrackingCard />
         </section>
         <section id="identidade" className="flex flex-col gap-6 scroll-mt-6">
           <SenderCard />

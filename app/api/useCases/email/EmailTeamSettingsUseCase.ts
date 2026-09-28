@@ -47,6 +47,7 @@ import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 import { emailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/EmailWarmupRepository"
 import type { IEmailWarmupRepository } from "@/app/api/infra/data/repositories/emailWarmup/IEmailWarmupRepository"
 import { emailDmarcReportRepository } from "@/app/api/infra/data/repositories/emailDmarc/EmailDmarcReportRepository"
+import { teamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 
 // A definição vive na camada de persistência (é o formato gravado na coluna Json);
 // reexportada aqui porque os consumidores históricos importam deste módulo.
@@ -944,6 +945,8 @@ export class EmailTeamSettingsUseCase {
         (domainDelivery !== null &&
           settings.fromEmail.trim().toLowerCase() === domainDelivery)
 
+      await teamStudioDomainUseCase.disconnectForTeam(ctx.teamId)
+
       // Método próprio do repositório, e não o `clearDomainSettings` do
       // EmailTeamDomainEventRepository: aquele limpa os campos resend* mas deixa
       // fromEmail/fromName apontando para um domínio que já saiu do Resend.
@@ -953,7 +956,6 @@ export class EmailTeamSettingsUseCase {
           ? { fromName: PLATFORM_FROM_NAME, fromEmail: PLATFORM_FROM_EMAIL }
           : null
       )
-
       return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
       console.error("[EmailTeamSettingsUseCase][disconnectDomain]", error)
@@ -985,6 +987,10 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (synced.status === "verified" && domainData.name) {
+        await teamStudioDomainUseCase.ensureForVerifiedEmailDomain(ctx.teamId, domainData.name)
+      }
 
       return new Output(true, ["Verificação iniciada"], [], {
         status: synced.status as ResendDomainStatus,

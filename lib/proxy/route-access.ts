@@ -30,6 +30,8 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/recursos/",
   "/lead-form/",
   "/forms/",
+  "/conversao/",
+  "/conversation/",
   "/agendamento/",
   "/backoffice-agendamento/",
   "/addon-checkout/",

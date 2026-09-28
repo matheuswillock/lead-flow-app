@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
-import type { ITeamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/ITeamFormDomainRepository"
-import { teamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/TeamFormDomainRepository"
+import type { ITeamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/ITeamStudioDomainRepository"
+import { teamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
 import {
   buildPublicFormPreviewSnapshot,
   mapPublicFormDraft,
@@ -43,12 +43,12 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
   return validatePublicFormDraft(mapPublicFormDraft(form), { mode: "form" })
 }
 
-const FORM_DOMAIN_REQUIRED_MESSAGE =
-  "Configure o subdomínio dos formulários antes de publicar. Depois que ele for verificado, você poderá publicar este formulário."
+const STUDIO_DOMAIN_REQUIRED_MESSAGE =
+  "Configure e verifique o subdomínio studio antes de publicar."
 
 export class PublicFormsUseCase {
   constructor(
-    private readonly formDomainRepository: ITeamFormDomainRepository = teamFormDomainRepository,
+    private readonly studioDomainRepository: ITeamStudioDomainRepository = teamStudioDomainRepository,
   ) {}
 
   async list(access: TeamAccess, filters: PublicFormListFilters) {
@@ -179,9 +179,9 @@ export class PublicFormsUseCase {
     if (!isManager(access) && !(await canApprove(access))) {
       return new Output(false, [], ["Acesso negado"], null)
     }
-    const formDomain = await this.formDomainRepository.findByTeamId(access.teamId)
-    if (formDomain?.status !== "verified") {
-      return new Output(false, [], [FORM_DOMAIN_REQUIRED_MESSAGE], null)
+    const studioDomain = await this.studioDomainRepository.findByTeamId(access.teamId)
+    if (studioDomain?.status !== "verified") {
+      return new Output(false, [], [STUDIO_DOMAIN_REQUIRED_MESSAGE], null)
     }
     const form = await publicFormsService.get(access.teamId, id)
     const errors = publicationErrors(form)
@@ -242,9 +242,14 @@ export class PublicFormsUseCase {
   async getPublic(publicId: string) {
     if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const result = await publicFormsService.getPublic(publicId)
-    return result
-      ? new Output(true, [], [], result)
-      : new Output(false, [], ["Formulário indisponível"], null)
+    if (!result) return new Output(false, [], ["Formulário indisponível"], null)
+    const domain = result.teamId ? await teamStudioDomainRepository.findByTeamId(result.teamId) : null
+    return new Output(true, [], [], {
+      ...result,
+      tracking: domain
+        ? { headScripts: domain.headScripts, bodyStartScripts: domain.bodyStartScripts, bodyEndScripts: domain.bodyEndScripts }
+        : null,
+    })
   }
 
   async getAvailabilityContext(publicId: string) {

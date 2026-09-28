@@ -1074,6 +1074,14 @@ failed failed
     
 
 
+        team_studio_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
@@ -3477,6 +3485,21 @@ completed completed
     }
   
 
+  "corretor_studio_team_studio_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamStudioDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    String headScripts "❓"
+    String bodyStartScripts "❓"
+    String bodyEndScripts "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_team_landing_domains" {
     String id "🗝️"
     String hostname 
@@ -4909,6 +4932,8 @@ completed completed
     "corretor_studio_email_dmarc_domain_states" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_studio_domains" |o--|| "TeamStudioDomainStatus" : "enum:status"
+    "corretor_studio_team_studio_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
     "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
