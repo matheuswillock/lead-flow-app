@@ -75,7 +75,7 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`Ações para ${item.name}`} disabled={isWorking}>
+          <Button variant="ghost" size="icon" className="size-11" aria-label={`Ações para ${item.name}`} disabled={isWorking}>
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
@@ -123,8 +123,8 @@ export function LandingPagesManagement() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><p className="mb-1 text-sm font-medium text-primary">Landing pages</p><h1 className="text-2xl font-semibold tracking-tight">Páginas de cotação</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Crie experiências de conversão para suas campanhas e acompanhe o que está pronto para receber contatos.</p></div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" aria-label="Configurar domínio de cotação" onClick={() => setDomainSheetOpen(true)}><Settings2 /></Button>
-          <Button asChild><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar landing</Link></Button>
+          <Button variant="outline" size="icon" className="size-11" aria-label="Configurar domínio de cotação" onClick={() => setDomainSheetOpen(true)}><Settings2 /></Button>
+          <Button asChild className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar landing</Link></Button>
         </div>
       </div>
 
@@ -140,12 +140,12 @@ export function LandingPagesManagement() {
       <Separator />
 
       <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-semibold">Suas landing pages</h2><p className="text-sm text-muted-foreground">Uma landing pode usar qualquer formulário publicado do seu time.</p></div><Button variant="ghost" size="sm" onClick={() => void refresh()}><RefreshCw data-icon="inline-start" />Atualizar</Button></div>
-        <div className="flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Buscar landing page" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="flex gap-2"><Button variant={statusFilter === "all" ? "secondary" : "outline"} onClick={() => setStatusFilter("all")}>Todas</Button><Button variant={statusFilter === "published" ? "secondary" : "outline"} onClick={() => setStatusFilter("published")}>Publicadas</Button><Button variant={statusFilter === "draft" ? "secondary" : "outline"} onClick={() => setStatusFilter("draft")}>Rascunhos</Button></div></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-semibold">Suas landing pages</h2><p className="text-sm text-muted-foreground">Uma landing pode usar qualquer formulário publicado do seu time.</p></div><Button variant="ghost" className="min-h-11" onClick={() => void refresh()}><RefreshCw data-icon="inline-start" />Atualizar</Button></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Buscar landing page" value={query} onChange={(event) => setQuery(event.target.value)} /></div><div className="flex gap-2"><Button className="min-h-11" variant={statusFilter === "all" ? "secondary" : "outline"} onClick={() => setStatusFilter("all")}>Todas</Button><Button className="min-h-11" variant={statusFilter === "published" ? "secondary" : "outline"} onClick={() => setStatusFilter("published")}>Publicadas</Button><Button className="min-h-11" variant={statusFilter === "draft" ? "secondary" : "outline"} onClick={() => setStatusFilter("draft")}>Rascunhos</Button></div></div>
       </section>
 
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-      {isLoading ? <div className="flex flex-col gap-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full rounded-lg" />)}</div> : filteredItems.length > 0 ? <div className="flex flex-col gap-3">{filteredItems.map((item) => <LandingRow key={item.id} item={item} />)}</div> : <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><LayoutTemplate /></EmptyMedia><EmptyTitle>{items.length === 0 ? "Nenhuma landing criada" : "Nenhum resultado encontrado"}</EmptyTitle><EmptyDescription>{items.length === 0 ? "Crie uma página de cotação e conecte um formulário publicado para começar." : "Tente buscar por outro nome ou remova o filtro de status."}</EmptyDescription></EmptyHeader>{items.length === 0 ? <EmptyContent><Button asChild><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar primeira landing</Link></Button></EmptyContent> : null}</Empty>}
+      {isLoading ? <div className="flex flex-col gap-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-24 w-full rounded-lg" />)}</div> : filteredItems.length > 0 ? <div className="flex flex-col gap-3">{filteredItems.map((item) => <LandingRow key={item.id} item={item} />)}</div> : <Empty className="min-h-72 border"><EmptyHeader><EmptyMedia variant="icon"><LayoutTemplate /></EmptyMedia><EmptyTitle>{items.length === 0 ? "Nenhuma landing criada" : "Nenhum resultado encontrado"}</EmptyTitle><EmptyDescription>{items.length === 0 ? "Crie uma página de cotação e conecte um formulário publicado para começar." : "Tente buscar por outro nome ou remova o filtro de status."}</EmptyDescription></EmptyHeader>{items.length === 0 ? <EmptyContent><Button asChild className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar primeira landing</Link></Button></EmptyContent> : null}</Empty>}
     </main>
   )
 }
