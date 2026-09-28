@@ -7,7 +7,7 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { useUserContext } from "@/app/context/UserContext"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import type { LandingDomain, LandingPageListItem, LandingPagesState } from "./LandingPagesTypes"
-import { getEmailSettingsApiUrl, getLandingDomainApiUrl, getLandingPagesApiUrl } from "../services/LandingPagesService"
+import { getLandingDomainApiUrl, getLandingPagesApiUrl } from "../services/LandingPagesService"
 
 type ApiOutput<T> = { isValid?: boolean; errorMessages?: string[]; result?: T }
 type LandingListResult = LandingPageListItem[]
@@ -22,8 +22,6 @@ export function useLandingPagesHook(): LandingPagesState {
   const { user } = useUserContext()
   const [items, setItems] = useState<LandingPageListItem[]>([])
   const [domain, setDomain] = useState<LandingDomain | null>(null)
-  const [emailDomainName, setEmailDomainName] = useState<string | null>(null)
-  const [emailDomainStatus, setEmailDomainStatus] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,21 +38,17 @@ export function useLandingPagesHook(): LandingPagesState {
     setIsLoading(true)
     setError(null)
     try {
-      const [landingsResponse, domainResponse, emailSettingsResponse] = await Promise.all([
+      const [landingsResponse, domainResponse] = await Promise.all([
         fetch(getLandingPagesApiUrl(activeTeamId), { headers }),
         fetch(getLandingDomainApiUrl(activeTeamId), { headers }),
-        fetch(getEmailSettingsApiUrl(), { headers }),
       ])
       const landingsOutput = (await landingsResponse.json()) as ApiOutput<LandingListResult>
-      const domainOutput = (await domainResponse.json()) as ApiOutput<{ landingDomain: LandingDomain | null }>
-      const emailSettingsOutput = (await emailSettingsResponse.json()) as ApiOutput<{ resendDomainName?: string | null; resendDomainStatus?: string | null }>
+      const domainOutput = (await domainResponse.json()) as ApiOutput<{ studioDomain: LandingDomain | null }>
       if (!landingsResponse.ok || landingsOutput.isValid === false) {
         throw new Error(getErrorMessage(landingsOutput, "Não foi possível carregar as landing pages."))
       }
       setItems(landingsOutput.result ?? [])
-      setDomain(domainOutput.result?.landingDomain ?? null)
-      setEmailDomainName(emailSettingsOutput.result?.resendDomainName ?? null)
-      setEmailDomainStatus(emailSettingsOutput.result?.resendDomainStatus ?? null)
+      setDomain(domainOutput.result?.studioDomain ?? null)
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Não foi possível carregar as landing pages."
       setError(message)
@@ -86,42 +80,5 @@ export function useLandingPagesHook(): LandingPagesState {
     }
   }, [activeTeamId, headers, refresh])
 
-  const connectDomain = useCallback(async (hostname: string) => {
-    if (!activeTeamId) return false
-    try {
-      const response = await fetch(getLandingDomainApiUrl(activeTeamId), {
-        method: "POST",
-        headers: { ...headers, "content-type": "application/json" },
-        body: JSON.stringify({ hostname }),
-      })
-      const output = (await response.json()) as ApiOutput<{ landingDomain: LandingDomain }>
-      if (!response.ok || output.isValid === false) throw new Error(getErrorMessage(output, "Não foi possível conectar o domínio."))
-      toast.success("Domínio conectado")
-      await refresh()
-      return true
-    } catch (reason) {
-      toastUserError(reason)
-      return false
-    }
-  }, [activeTeamId, headers, refresh])
-
-  const verifyDomain = useCallback(async () => {
-    if (!activeTeamId) return false
-    try {
-      const response = await fetch(getLandingDomainApiUrl(activeTeamId), {
-        method: "PATCH",
-        headers,
-      })
-      const output = (await response.json()) as ApiOutput<unknown>
-      if (!response.ok || output.isValid === false) throw new Error(getErrorMessage(output, "Não foi possível verificar o domínio."))
-      toast.success("Verificação solicitada")
-      await refresh()
-      return true
-    } catch (reason) {
-      toastUserError(reason)
-      return false
-    }
-  }, [activeTeamId, headers, refresh])
-
-  return { items, domain, emailDomainName, emailDomainStatus, isLoading, error, refresh, publish: (id) => runAction(id, "publish"), archive: (id) => runAction(id, "archive"), connectDomain, verifyDomain }
+  return { items, domain, isLoading, error, refresh, publish: (id) => runAction(id, "publish"), archive: (id) => runAction(id, "archive") }
 }

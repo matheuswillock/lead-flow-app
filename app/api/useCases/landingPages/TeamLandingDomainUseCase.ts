@@ -6,14 +6,17 @@ import { checkFormDomainVerification } from "@/lib/public-forms/form-domain-veri
 import { buildFormDomainDnsRecords } from "@/lib/public-forms/form-domain-dns-records"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
 import { teamLandingDomainRepository } from "@/app/api/infra/data/repositories/teamLandingDomain/TeamLandingDomainRepository"
+import { hasLandingPageManagementAccess } from "./landingPageFeatureAccess"
 
 export class TeamLandingDomainUseCase {
   async get(access: TeamAccess) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!isManagerLikeRole(access.teamMember.role) && !access.isMaster) return new Output(false, [], ["Acesso negado"], null)
     return new Output(true, [], [], { landingDomain: await teamLandingDomainRepository.findByTeamId(access.teamId) })
   }
 
   async connect(access: TeamAccess, rawHostname: string) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!isManagerLikeRole(access.teamMember.role) && !access.isMaster) return new Output(false, [], ["Acesso negado"], null)
     const validation = validateFormDomainHostname(rawHostname)
     if (!validation.ok) return new Output(false, [], [validation.error.replace("domínio de formulários", "domínio de landing")], null)
@@ -35,6 +38,7 @@ export class TeamLandingDomainUseCase {
   }
 
   async verify(access: TeamAccess) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!isManagerLikeRole(access.teamMember.role) && !access.isMaster) return new Output(false, [], ["Acesso negado"], null)
     const domain = await teamLandingDomainRepository.findByTeamId(access.teamId)
     if (!domain) return new Output(false, [], ["Nenhum domínio de landing conectado"], null)
@@ -45,6 +49,7 @@ export class TeamLandingDomainUseCase {
   }
 
   async disconnect(access: TeamAccess) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
     if (!isManagerLikeRole(access.teamMember.role) && !access.isMaster) return new Output(false, [], ["Acesso negado"], null)
     const domain = await teamLandingDomainRepository.findByTeamId(access.teamId)
     if (!domain) return new Output(false, [], ["Nenhum domínio de landing conectado"], null)

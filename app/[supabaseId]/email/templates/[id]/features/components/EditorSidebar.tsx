@@ -27,6 +27,8 @@ import { EmailTemplateXPostPanel } from "./EmailTemplateXPostPanel";
 import { TemplateHistoryPanel } from "./TemplateHistoryPanel";
 import { VariablesPanel } from "./VariablesPanel";
 import { useOptionalStudioEmailHost } from "@/lib/email/studio-email-host";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 
 const SECTION_TITLES: Record<Exclude<SidebarSection, "menu">, string> = {
   variables: "Variáveis",
@@ -50,6 +52,8 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
   const { draft, versions, restoringVersionId, restoreTemplateVersion } = useTemplateEditorContext();
   const host = useOptionalStudioEmailHost();
   const isStudioHost = Boolean(host);
+  const { hasAccess } = useFeatureAccess();
+  const canUseLandingPages = hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES);
 
   const [section, setSection] = useState<SidebarSection>("menu");
 
@@ -193,18 +197,20 @@ export function EditorSidebar({ history, collapsed, onCollapsedChange }: EditorS
             </span>
             <ChevronRight />
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-auto justify-between px-3 py-3"
-            onClick={() => setSection("landing-pages")}
-          >
-            <span className="flex items-center gap-2">
-              <LayoutTemplate data-icon="inline-start" />
-              Landing pages
-            </span>
-            <ChevronRight />
-          </Button>
+          {canUseLandingPages ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto justify-between px-3 py-3"
+              onClick={() => setSection("landing-pages")}
+            >
+              <span className="flex items-center gap-2">
+                <LayoutTemplate data-icon="inline-start" />
+                Landing pages
+              </span>
+              <ChevronRight />
+            </Button>
+          ) : null}
             </>
           ) : null}
 

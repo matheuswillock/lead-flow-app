@@ -20,7 +20,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if ("response" in resolved) return resolved.response
   const { landingPageId } = await params
   const output = await landingPageUseCase.get(resolved.access, landingPageId)
-  return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
+  const status = output.isValid ? 200 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : 404
+  return NextResponse.json(output, { status })
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ teamId: string; landingPageId: string }> }) {
@@ -33,7 +34,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json(new Output(false, [], parsed.error.issues.map((issue) => issue.message), null), { status: 400 })
   }
   const output = await landingPageUseCase.update(resolved.access, landingPageId, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  const status = output.isValid ? 200 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : 400
+  return NextResponse.json(output, { status })
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ teamId: string; landingPageId: string }> }) {
@@ -45,5 +47,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const output = action === "archive"
     ? await landingPageUseCase.archive(resolved.access, landingPageId)
     : await landingPageUseCase.publish(resolved.access, landingPageId)
-  return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  const status = output.isValid ? 200 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : 400
+  return NextResponse.json(output, { status })
 }

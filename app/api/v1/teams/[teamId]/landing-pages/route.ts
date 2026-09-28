@@ -31,5 +31,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json(new Output(false, [], parsed.error.issues.map((issue) => issue.message), null), { status: 400 })
   }
   const output = await landingPageUseCase.create(resolved.access, parsed.data)
-  return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
+  const status = output.isValid ? 201 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : 400
+  return NextResponse.json(output, { status })
 }

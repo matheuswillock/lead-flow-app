@@ -158,6 +158,7 @@ export type PublicFormPublishedSnapshot = {
   publicationId: string
   version: number
   snapshot: Prisma.JsonValue
+  teamId?: string
 }
 
 export type PublicFormSubmissionContext = {

@@ -52,7 +52,7 @@ describe("PublicFormsUseCase.publish", () => {
 
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toEqual([
-      "Configure o subdomínio dos formulários antes de publicar. Depois que ele for verificado, você poderá publicar este formulário.",
+        "Configure e verifique o subdomínio studio antes de publicar.",
     ])
     expect(getForm).not.toHaveBeenCalled()
     expect(transition).not.toHaveBeenCalled()

@@ -21,13 +21,9 @@ export type LandingDomain = {
 export type LandingPagesState = {
   items: LandingPageListItem[]
   domain: LandingDomain | null
-  emailDomainName: string | null
-  emailDomainStatus: string | null
   isLoading: boolean
   error: string | null
   refresh: () => Promise<void>
   publish: (id: string) => Promise<boolean>
   archive: (id: string) => Promise<boolean>
-  connectDomain: (hostname: string) => Promise<boolean>
-  verifyDomain: () => Promise<boolean>
 }
