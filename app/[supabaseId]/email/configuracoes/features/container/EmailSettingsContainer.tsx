@@ -79,7 +79,7 @@ export function EmailSettingsContainer() {
         ))}
       </nav>
 
-      <fieldset disabled={readOnly} className={readOnly ? "flex flex-col gap-6 opacity-60" : "flex flex-col gap-6"}>
+      <fieldset disabled={readOnly} className={readOnly ? "pointer-events-none flex flex-col gap-6 opacity-60" : "flex flex-col gap-6"}>
         <section id="visao-geral" className="flex flex-col gap-6 scroll-mt-6">
           <div id="entrega"><CustomDomainCard /></div>
           <StudioDomainCard />
