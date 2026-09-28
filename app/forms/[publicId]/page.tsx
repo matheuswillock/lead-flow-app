@@ -4,6 +4,7 @@ import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUs
 import type { PublicFormSnapshot } from "@/lib/public-forms/types";
 import { isPublicFormServableOnHost } from "@/lib/public-forms/team-form-domain-tenancy";
 import { resolveLegacyPublicHostRedirect } from "@/lib/public-studio/team-studio-domain-tenancy"
+import { serializePublicRedirectSearchParams, type PublicRedirectSearchParams } from "@/lib/public-studio/redirect-search-params"
 import { PublicFormViewProvider } from "./features/context/PublicFormViewContext";
 import { PublicFormViewContainer } from "./features/container/PublicFormViewContainer";
 import { PublicTrackingBody, PublicTrackingHead } from "@/components/public-tracking/PublicTrackingScripts"
@@ -33,16 +34,17 @@ export default async function PublicFormPage({
   searchParams,
 }: {
   params: Promise<{ publicId: string }>;
-  searchParams: Promise<{ e2eSlowSnapshot?: string }>;
+  searchParams: Promise<PublicRedirectSearchParams>;
 }) {
   const { publicId } = await params;
+  const resolvedSearchParams = await searchParams
 
   const redirectBase = await resolveLegacyPublicHostRedirect({
     resource: "form",
     publicId,
     hostHeader: (await headers()).get("host"),
   })
-  if (redirectBase) redirect(`${redirectBase}/forms/${publicId}`)
+  if (redirectBase) redirect(`${redirectBase}/forms/${publicId}${serializePublicRedirectSearchParams(resolvedSearchParams)}`)
 
   await assertFormBelongsToRequestHost(publicId);
 
@@ -51,7 +53,7 @@ export default async function PublicFormPage({
   // React chegar a emitir o Skeleton no stream antes do conteúdo final.
   // Duplo gate (env de teste + query param explícito) — impossível em produção.
   if (process.env.E2E_TEST_MODE === "true") {
-    const { e2eSlowSnapshot } = await searchParams;
+    const { e2eSlowSnapshot } = resolvedSearchParams;
     if (e2eSlowSnapshot === "1") {
       await new Promise((resolve) => setTimeout(resolve, 1_500));
     }
