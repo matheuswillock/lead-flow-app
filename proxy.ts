@@ -77,7 +77,12 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    if (pathname.startsWith("/conversation/") || pathname.startsWith("/api/q/conversation/")) {
+    if (
+      pathname.startsWith("/conversation/") ||
+      pathname.startsWith("/conversao/") ||
+      pathname.startsWith("/api/q/conversation/") ||
+      pathname.startsWith("/api/q/conversao/")
+    ) {
       return handleLandingHostRequest(request, pathname, isClientApiSlug)
     }
 

@@ -30,7 +30,7 @@ function formatDate(value: string) {
 }
 
 function getLandingUrl(hostname: string | undefined, publicId: string) {
-  return hostname ? `https://${hostname}/conversation/${publicId}` : null
+  return hostname ? `https://${hostname}/conversao/${publicId}` : null
 }
 
 function LandingRow({ item }: { item: LandingPageListItem }) {
@@ -92,55 +92,19 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
 }
 
 function DomainCard() {
-  const params = useParams<{ supabaseId: string }>()
-  const { domain, emailDomainName, emailDomainStatus, connectDomain, verifyDomain } = useLandingPages()
-  const [isSaving, setIsSaving] = useState(false)
-  const hostname = emailDomainName ? `cotacao.${emailDomainName}` : ""
-
-  async function connect() {
-    setIsSaving(true)
-    if (!hostname) {
-      setIsSaving(false)
-      return
-    }
-    await connectDomain(hostname)
-    setIsSaving(false)
-  }
-
-  if (domain) {
-    return (
-      <Card>
-        <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Domínio de cotação</CardTitle>
-            <CardDescription>O endereço que seus contatos acessam a partir das campanhas.</CardDescription>
-          </div>
-          <Badge variant="outline" className={domain.status === "verified" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"}>
-            {domain.status === "verified" ? "Verificado" : "Aguardando DNS"}
-          </Badge>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="font-mono text-sm">https://{domain.hostname}</p>
-          {domain.status !== "verified" ? <Button variant="outline" onClick={() => void verifyDomain()}><RefreshCw data-icon="inline-start" />Verificar DNS</Button> : <span className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="size-4" />Pronto para publicar</span>}
-        </CardContent>
-      </Card>
-    )
-  }
-
+  const { domain } = useLandingPages()
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Conecte seu domínio de cotação</CardTitle>
-        <CardDescription>Use um subdomínio como <span className="font-mono">cotacao.suaempresa.com.br</span> para publicar suas páginas.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex flex-1 flex-col gap-2"><Label htmlFor="landing-domain">Subdomínio</Label><Input id="landing-domain" value={hostname} readOnly placeholder="Configure primeiro o domínio de e-mail" /></div>
-          <Button onClick={() => void connect()} disabled={isSaving || !hostname || emailDomainStatus !== "verified"}><Settings2 data-icon="inline-start" />{isSaving ? "Conectando…" : "Conectar domínio"}</Button>
+      <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Domínio studio</CardTitle>
+          <CardDescription>Formulários e páginas de conversão usam o mesmo subdomínio.</CardDescription>
         </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">Este endereço é gerado a partir do domínio verificado nas configurações de DNS do e-mail. A landing usará o prefixo <span className="font-medium text-foreground">cotacao.</span> para não criar um domínio independente.</p>
-        {!emailDomainName ? <p className="text-xs text-amber-600 dark:text-amber-400">Configure e verifique um domínio de envio em <Link className="underline underline-offset-4" href={`/${params.supabaseId}/email/configuracoes`}>Configurações de e-mail</Link> antes de conectar.</p> : null}
-        {emailDomainName && emailDomainStatus !== "verified" ? <p className="text-xs text-amber-600 dark:text-amber-400">O domínio de e-mail ainda não está verificado. Conclua o DNS em <Link className="underline underline-offset-4" href={`/${params.supabaseId}/email/configuracoes`}>Configurações de e-mail</Link>.</p> : null}
+        {domain ? <Badge variant="outline" className={domain.status === "verified" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"}>{domain.status === "verified" ? "Verificado" : "Aguardando DNS"}</Badge> : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {domain ? <p className="font-mono text-sm">https://{domain.hostname}</p> : <p className="text-sm text-muted-foreground">Configure e verifique o domínio de envio para gerar o subdomínio studio.</p>}
+        <p className="text-xs leading-relaxed text-muted-foreground">A configuração fica em Configurações de e-mail. Este espaço apenas mostra o status usado para publicar landings.</p>
       </CardContent>
     </Card>
   )

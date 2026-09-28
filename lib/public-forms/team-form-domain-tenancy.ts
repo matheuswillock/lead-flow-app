@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { cacheTags } from "@/lib/cache/cacheTags"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { classifyFormsHost, normalizeHostname } from "@/lib/proxy/forms-host"
+import { isPublicResourceServableOnStudioHost } from "@/lib/public-studio/team-studio-domain-tenancy"
 
 /**
  * Guarda de tenancy do serving multi-tenant de formulários.
@@ -94,6 +95,7 @@ export async function isPublicFormServableOnHost(input: {
   publicId: string
   hostHeader: string | null | undefined
 }): Promise<boolean> {
+  if (await isPublicResourceServableOnStudioHost({ resource: "form", ...input })) return true
   if (classifyFormsHost(input.hostHeader) !== "custom") return true
 
   const hostname = normalizeHostname(input.hostHeader)

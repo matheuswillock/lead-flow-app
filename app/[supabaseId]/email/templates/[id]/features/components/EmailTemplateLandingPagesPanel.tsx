@@ -30,15 +30,15 @@ export function EmailTemplateLandingPagesPanel({ embedded = false }: { embedded?
     const headers = { "x-supabase-user-id": params.supabaseId, "x-team-id": activeTeamId }
     void Promise.all([
       fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/landing-pages`, { headers }).then((response) => response.json()),
-      fetch(`${API_CLIENT_BASE}/teams/${activeTeamId}/landing-pages/domain`, { headers }).then((response) => response.json()),
+      fetch(`${API_CLIENT_BASE}/email/settings/studio-domain`, { headers }).then((response) => response.json()),
     ]).then(([landingsOutput, domainOutput]) => {
       setLandings(Array.isArray(landingsOutput.result) ? landingsOutput.result.filter((landing: Landing) => landing.status === "published") : [])
-      setHostname(domainOutput.result?.landingDomain?.status === "verified" ? domainOutput.result.landingDomain.hostname : null)
+      setHostname(domainOutput.result?.studioDomain?.status === "verified" ? domainOutput.result.studioDomain.hostname : null)
     }).catch(() => toast.error("Não foi possível carregar as landing pages")).finally(() => setLoading(false))
   }, [activeTeamId, params.supabaseId])
 
   const selected = landings.find((landing) => landing.id === selectedId) ?? null
-  const landingUrl = selected && hostname ? `https://${hostname}/conversation/${selected.publicId}` : ""
+  const landingUrl = selected && hostname ? `https://${hostname}/conversao/${selected.publicId}` : ""
   const copy = async (value: string, label: string) => { await navigator.clipboard.writeText(value); toast.success(`${label} copiado`) }
 
   if (!hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)) return null
