@@ -4,6 +4,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { TeamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 import { invalidateTeamStudioDomainCache } from "@/lib/cache/invalidation"
+import { studioDomainOutputStatus } from "../response"
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
         status: emailResult?.resendDomainStatus,
       },
     )
-    return NextResponse.json(output, { status: output.isValid ? 200 : 403 })
+    return NextResponse.json(output, { status: studioDomainOutputStatus(output) })
   } catch (error) {
     console.error("[EmailStudioDomainRecordsRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
