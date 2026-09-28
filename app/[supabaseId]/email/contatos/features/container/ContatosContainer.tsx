@@ -112,6 +112,7 @@ export function ContatosContainer() {
                   actions={
                     selectedList?.isBlocklist && !readOnly ? (
                       <ContactAddModal
+                        skipAudienceValidation
                         trigger={<Button size="sm" variant="outline">+ Bloquear contato</Button>}
                       />
                     ) : !selectedList?.isBlocklist && !readOnly ? (

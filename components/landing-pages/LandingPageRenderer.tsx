@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { format, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon } from "lucide-react"
@@ -108,6 +108,7 @@ function LandingSchedulingQuestion({
   const [slots, setSlots] = useState<Array<{ time: string; startsAt: string }>>([])
   const [loading, setLoading] = useState(false)
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const requestSequence = useRef(0)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const selectedDate = value.date ? parseISO(`${value.date}T00:00:00`) : undefined
   const today = useMemo(() => {
@@ -122,7 +123,9 @@ function LandingSchedulingQuestion({
     }
 
     const controller = new AbortController()
+    const requestId = ++requestSequence.current
     setLoading(true)
+    setSlots([])
     setAvailabilityError(null)
     void fetch(
       `${API_CLIENT_BASE}/public-forms/${publicId}/availability?date=${encodeURIComponent(value.date)}`,
@@ -133,15 +136,13 @@ function LandingSchedulingQuestion({
         if (!response.ok || !output.isValid) {
           throw new Error(output.errorMessages?.join("; ") || "Não foi possível consultar horários")
         }
-        setSlots(output.result.availableSlots ?? [])
+        if (requestId === requestSequence.current) setSlots(output.result.availableSlots ?? [])
       })
       .catch((requestError) => {
         if (requestError instanceof DOMException && requestError.name === "AbortError") return
-        setAvailabilityError(
-          requestError instanceof Error ? requestError.message : "Não foi possível consultar horários",
-        )
+        if (requestId === requestSequence.current) setAvailabilityError(requestError instanceof Error ? requestError.message : "Não foi possível consultar horários")
       })
-      .finally(() => setLoading(false))
+      .finally(() => { if (requestId === requestSequence.current) setLoading(false) })
 
     return () => controller.abort()
   }, [publicId, value.date])
