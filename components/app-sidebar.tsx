@@ -424,7 +424,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
               </SidebarGroup>
             )}
             {(isManager || isTeamMaster || isCloser) &&
-              hasAccess(FEATURE_SLUGS.EMAIL) &&
+              (hasAccess(FEATURE_SLUGS.EMAIL) || hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)) &&
               visibleEmailItems.length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel
