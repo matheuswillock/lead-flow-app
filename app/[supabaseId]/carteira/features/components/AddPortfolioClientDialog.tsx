@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowRight, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Loader2, Plus, Trash2, UploadCloud } from 'lucide-react';
 import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import {
   Dialog,
@@ -39,6 +40,7 @@ import { useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { useHealthPlans } from '@/hooks/useHealthPlans';
 import type { ContractType, CreateCarteiraIdentityStepPayload } from '../context/CarteiraTypes';
 import { useCarteiraContext } from '../context/CarteiraContext';
+import { API_CLIENT_BASE } from '@/lib/route-map';
 
 const PARENTESCO_OPTIONS = [
   { value: 'pai',      label: 'Pai' },
@@ -61,6 +63,49 @@ function parseCurrencyInput(value: string): number {
   const clean = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
   const n = parseFloat(clean);
   return isNaN(n) ? 0 : n;
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function HealthPlanOption({
+  name,
+  iconUrl,
+  isDefault,
+}: {
+  name: string;
+  iconUrl?: string | null;
+  isDefault?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {iconUrl ? (
+        <img src={iconUrl} alt="" className="size-4 rounded-sm object-cover" />
+      ) : (
+        <span className="size-4 rounded-sm bg-muted" aria-hidden="true" />
+      )}
+      <span>{name}</span>
+      {isDefault ? <span className="text-xs text-muted-foreground">(Padrão)</span> : null}
+    </div>
+  );
+}
+
+function CloserOption({ name, avatarImageUrl }: { name: string; avatarImageUrl?: string | null }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar className="size-5">
+        <AvatarImage src={avatarImageUrl || undefined} alt="" />
+        <AvatarFallback className="text-[10px]">{getInitials(name)}</AvatarFallback>
+      </Avatar>
+      <span>{name}</span>
+    </div>
+  );
 }
 
 function StepItem({ index, label, state }: { index: number; label: string; state: StepState }) {
@@ -131,6 +176,8 @@ function AddDependentDialog({ open, onOpenChange, onAdd }: AddDependentDialogPro
             label="Data de Nascimento *"
             showTime={false}
             disablePastDates={false}
+            fromYear={1920}
+            toYear={new Date().getFullYear()}
           />
           <div className="flex flex-col gap-1.5">
             <Label>Parentesco *</Label>
@@ -178,6 +225,7 @@ interface ContractForm {
   operadora: string;
   productName: string;
   notes: string;
+  contractFile?: File;
   holderName: string;
   holderBirthDate: Date | undefined;
   holderDocument: string;
@@ -195,6 +243,7 @@ const emptyContract: ContractForm = {
   operadora: '',
   productName: '',
   notes: '',
+  contractFile: undefined,
   holderName: '',
   holderBirthDate: undefined,
   holderDocument: '',
@@ -212,7 +261,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId } = useTeamContext();
-  const { createEntry } = useCarteiraContext();
+  const { createEntry, updateEntryDetail } = useCarteiraContext();
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
   const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
 
@@ -221,6 +270,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
   const [contract, setContract] = useState<ContractForm>(emptyContract);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDependentOpen, setIsDependentOpen] = useState(false);
+  const [isLookingUpRazaoSocial, setIsLookingUpRazaoSocial] = useState(false);
+  const cnpjLookupSequenceRef = useRef(0);
+  const contractFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -248,6 +300,8 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
   const isIdentityValid = identityValidation.hasName && identityValidation.hasEmail && identityValidation.hasPhone;
 
   const isCorporate = contract.contractType === 'corporate';
+  const selectedCloser = closers.find((closer) => closer.id === contract.closerId);
+  const selectedHealthPlan = healthPlans.find((healthPlan) => healthPlan.name === contract.operadora);
 
   const isContractValid = useMemo(() => {
     const amount = parseCurrencyInput(contract.amount);
@@ -271,6 +325,39 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
     setContract((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleHolderCnpjChange = (value: string) => {
+    cnpjLookupSequenceRef.current += 1;
+    setIsLookingUpRazaoSocial(false);
+    patch('holderCnpj', sanitizeDocumentDigits(value));
+  };
+
+  const handleHolderCnpjBlur = async () => {
+    const cnpj = sanitizeDocumentDigits(contract.holderCnpj);
+    if (cnpj.length !== 14 || contract.holderRazaoSocial.trim()) return;
+
+    const requestSequence = ++cnpjLookupSequenceRef.current;
+    setIsLookingUpRazaoSocial(true);
+    try {
+      const response = await fetch(`${API_CLIENT_BASE}/portfolio/cnpj-lookup?cnpj=${cnpj}`, {
+        headers: {
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': activeTeamId ?? '',
+        },
+      });
+      const result = await response.json().catch(() => null);
+      const razaoSocial = result?.result?.razaoSocial;
+      if (requestSequence === cnpjLookupSequenceRef.current && response.ok && razaoSocial) {
+        patch('holderRazaoSocial', razaoSocial);
+      }
+    } catch {
+      // A consulta indisponível não impede o preenchimento manual da Razão Social.
+    } finally {
+      if (requestSequence === cnpjLookupSequenceRef.current) {
+        setIsLookingUpRazaoSocial(false);
+      }
+    }
+  };
+
   const addDependent = (dep: Omit<DependentEntry, '_key'>) => {
     setContract((prev) => ({
       ...prev,
@@ -285,11 +372,33 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
     }));
   };
 
+  const handleContractFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toastUserError(new Error('O arquivo deve ter no máximo 10MB.'));
+      return;
+    }
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toastUserError(new Error('Formato não permitido. Use PDF, imagem ou Word.'));
+      return;
+    }
+    patch('contractFile', file);
+  };
+
   const handleSubmit = async () => {
     if (!isContractValid || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await createEntry({
+      const created = await createEntry({
         name: identity.name.trim(),
         email: identity.email.trim(),
         phone: normalizeLeadPhoneDigits(identity.phone),
@@ -319,6 +428,27 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
           document: d.document ? sanitizeRgCpfDigits(d.document) : null,
         })),
       });
+
+      if (contract.contractFile) {
+        const formData = new FormData();
+        formData.append('file', contract.contractFile);
+        const uploadResponse = await fetch(`${API_CLIENT_BASE}/leads/${created.leadId}/attachments`, {
+          method: 'POST',
+          headers: {
+            'x-supabase-user-id': supabaseId,
+            'x-team-id': activeTeamId ?? '',
+          },
+          body: formData,
+        });
+        const uploadResult = await uploadResponse.json().catch(() => null);
+        if (!uploadResponse.ok || !uploadResult?.isValid) {
+          throw new Error(uploadResult?.errorMessages?.[0] ?? 'Erro ao fazer upload do contrato');
+        }
+        await updateEntryDetail(created.leadId, {
+          contractFileUrl: uploadResult.result?.fileUrl ?? null,
+          contractStoragePath: uploadResult.result?.storagePath ?? null,
+        });
+      }
       closeFlow();
     } catch (error) {
       toastUserError(error);
@@ -464,10 +594,18 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                     <div className="flex flex-col gap-1.5">
                       <Label>Closer *</Label>
                       <Select value={contract.closerId} onValueChange={(v) => patch('closerId', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar">
+                            {selectedCloser ? (
+                              <CloserOption name={selectedCloser.name} avatarImageUrl={selectedCloser.avatarImageUrl} />
+                            ) : null}
+                          </SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           {(closers ?? []).map((c) => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            <SelectItem key={c.id} value={c.id}>
+                              <CloserOption name={c.name} avatarImageUrl={c.avatarImageUrl} />
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -475,10 +613,22 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                     <div className="flex flex-col gap-1.5">
                       <Label>Operadora *</Label>
                       <Select value={contract.operadora} onValueChange={(v) => patch('operadora', v)}>
-                        <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar">
+                            {selectedHealthPlan ? (
+                              <HealthPlanOption
+                                name={selectedHealthPlan.name}
+                                iconUrl={selectedHealthPlan.iconUrl}
+                                isDefault={selectedHealthPlan.isDefault}
+                              />
+                            ) : null}
+                          </SelectValue>
+                        </SelectTrigger>
                         <SelectContent>
                           {(healthPlans ?? []).map((hp) => (
-                            <SelectItem key={hp.id ?? hp.name} value={hp.name}>{hp.name}</SelectItem>
+                            <SelectItem key={hp.id ?? hp.name} value={hp.name}>
+                              <HealthPlanOption name={hp.name} iconUrl={hp.iconUrl} isDefault={hp.isDefault} />
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -505,6 +655,45 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                       showTime={false}
                       disablePastDates={false}
                     />
+                    <div className="col-span-2 flex flex-col gap-1.5">
+                      <Label>Contrato</Label>
+                      <input
+                        ref={contractFileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                        onChange={handleContractFileChange}
+                      />
+                      {contract.contractFile ? (
+                        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                          <span className="flex-1 truncate">{contract.contractFile.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-destructive hover:text-destructive"
+                            onClick={() => {
+                              patch('contractFile', undefined);
+                              if (contractFileInputRef.current) contractFileInputRef.current.value = '';
+                            }}
+                          >
+                            Remover
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start gap-2 text-muted-foreground"
+                          onClick={() => contractFileInputRef.current?.click()}
+                          disabled={isSubmitting}
+                        >
+                          <UploadCloud className="size-4" data-icon="inline-start" />
+                          Anexar contrato (PDF, imagem ou Word — máx. 10MB)
+                        </Button>
+                      )}
+                    </div>
+
                     <div className="col-span-2 flex flex-col gap-1.5">
                       <Label>Observações</Label>
                       <Textarea
@@ -536,6 +725,8 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                       label="Data de nascimento *"
                       showTime={false}
                       disablePastDates={false}
+                      fromYear={1920}
+                      toYear={new Date().getFullYear()}
                     />
                     {isCorporate ? (
                       <>
@@ -543,7 +734,8 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                           <Label>CNPJ *</Label>
                           <Input
                             value={formatDocumentInput(contract.holderCnpj)}
-                            onChange={(e) => patch('holderCnpj', sanitizeDocumentDigits(e.target.value))}
+                            onChange={(e) => handleHolderCnpjChange(e.target.value)}
+                            onBlur={handleHolderCnpjBlur}
                             placeholder="00.000.000/0000-00"
                           />
                         </div>
@@ -553,7 +745,13 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                             value={contract.holderRazaoSocial}
                             onChange={(e) => patch('holderRazaoSocial', e.target.value)}
                             placeholder="Razão social da empresa"
+                            aria-busy={isLookingUpRazaoSocial}
                           />
+                          {isLookingUpRazaoSocial ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Loader2 className="size-3 animate-spin" /> Consultando CNPJ...
+                            </span>
+                          ) : null}
                         </div>
                       </>
                     ) : (

@@ -55,6 +55,22 @@ export function hasCalendarDayRestriction(params: {
   )
 }
 
+export function getDatePickerYearBounds(options: {
+  currentYear?: number
+  fromYear?: number
+  toYear?: number
+} = {}): {
+  fromYear: number
+  toYear: number
+} {
+  const currentYear = options.currentYear ?? new Date().getFullYear()
+
+  return {
+    fromYear: options.fromYear ?? 2020,
+    toYear: options.toYear ?? currentYear + 5,
+  }
+}
+
 interface DateTimePickerProps {
   date?: Date
   onDateChange: (date: Date | undefined) => void
@@ -71,6 +87,8 @@ interface DateTimePickerProps {
   timeLoadingText?: string
   invalid?: boolean
   tz?: string
+  fromYear?: number
+  toYear?: number
   /**
    * Piso de agendamento (opt-in). Quando presente: dias anteriores ao piso
    * ficam desabilitados, horários vencidos do dia do piso saem da lista/ganham
@@ -99,6 +117,8 @@ export function DateTimePicker({
   invalid = false,
   tz,
   minDateTime,
+  fromYear,
+  toYear,
 }: DateTimePickerProps) {
   const resolvedTz = tz ?? detectBrowserTimezone()
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
@@ -253,6 +273,7 @@ export function DateTimePicker({
         : undefined
   const isInvalid = invalid || isBelowMinDateTime
   const timeSlots = selectableTimes ?? []
+  const yearBounds = getDatePickerYearBounds({ fromYear, toYear })
 
   return (
     <div className={cn("grid gap-1", className)}>
@@ -305,8 +326,8 @@ export function DateTimePicker({
                 initialFocus
                 locale={ptBR}
                 captionLayout="dropdown"
-                fromYear={2020}
-                toYear={2030}
+                fromYear={yearBounds.fromYear}
+                toYear={yearBounds.toYear}
               />
             </PopoverContent>
           </Popover>
