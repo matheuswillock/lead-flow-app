@@ -13,7 +13,7 @@ describe("shouldShowDnsMissingAlerts", () => {
     ).toBe(false)
   })
 
-  it("mostra a ausência depois do clique em Verificar DNS", () => {
+  it("não mostra a ausência enquanto a verificação ainda está pendente", () => {
     expect(
       shouldShowDnsMissingAlerts({
         domainStatus: "pending",
@@ -21,7 +21,7 @@ describe("shouldShowDnsMissingAlerts", () => {
         domainEvents: [{ type: "domain_added" }],
         verificationRequested: true,
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it("preserva o alerta de uma verificação já falha ao reabrir a tela", () => {
@@ -38,13 +38,38 @@ describe("shouldShowDnsMissingAlerts", () => {
     ).toBe(true)
   })
 
-  it("mostra a ausência quando o domínio está parcialmente verificado", () => {
+  it("não mostra a ausência quando o domínio está parcialmente verificado sem uma falha registrada", () => {
     expect(
       shouldShowDnsMissingAlerts({
         domainStatus: "partially_verified",
         domainName: "mail.acme.com",
         domainEvents: [{ type: "domain_added" }],
         verificationRequested: false,
+      }),
+    ).toBe(false)
+  })
+
+  it("mostra a ausência quando a verificação parcial registrou falha para o domínio atual", () => {
+    expect(
+      shouldShowDnsMissingAlerts({
+        domainStatus: "partially_verified",
+        domainName: "mail.acme.com",
+        domainEvents: [
+          { type: "domain_added" },
+          { type: "domain_failed", metadata: { domainName: "mail.acme.com" } },
+        ],
+        verificationRequested: false,
+      }),
+    ).toBe(true)
+  })
+
+  it("mostra a ausência após verificar e receber status parcial", () => {
+    expect(
+      shouldShowDnsMissingAlerts({
+        domainStatus: "partially_verified",
+        domainName: "mail.acme.com",
+        domainEvents: [{ type: "domain_added" }],
+        verificationRequested: true,
       }),
     ).toBe(true)
   })
