@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarIcon, ChevronLeft, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
+import { ChevronLeft, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { toUserToastMessage } from '@/lib/ui/to-user-toast-message';
 import { useTimezone } from '@/app/context/TimezoneContext';
+import { useTeamContext } from '@/app/context/TeamContext';
 import { startOfDayInTz } from '@/lib/dates';
 import {
   Dialog,
@@ -29,11 +31,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { Calendar } from '@/components/ui/calendar';
+import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { Separator } from '@/components/ui/separator';
 import { formatDocumentInput, formatRgCpfInput, sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
+import { API_CLIENT_BASE } from '@/lib/route-map';
 import { AddDependentModal } from './AddDependentModal';
 import type { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 
@@ -149,6 +151,9 @@ export function FinalizeContractDialog({
   initialDependents,
 }: FinalizeContractDialogProps) {
   const { tz } = useTimezone();
+  const { activeTeamId } = useTeamContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [amount, setAmount]           = useState('');
@@ -172,6 +177,8 @@ export function FinalizeContractDialog({
   const [isLoading, setIsLoading]     = useState(false);
   const [error, setError]             = useState('');
   const [amountError, setAmountError] = useState('');
+  const [isLookingUpRazaoSocial, setIsLookingUpRazaoSocial] = useState(false);
+  const cnpjLookupSequenceRef = useRef(0);
 
   const toDisplayCurrency = (value: number | null | undefined): string => {
     if (value === null || value === undefined || Number.isNaN(value)) return '';
@@ -201,7 +208,8 @@ export function FinalizeContractDialog({
       setHolderRazaoSocial(initialHolderRazaoSocial ?? '');
       setHolderName(initialHolderName ?? '');
       setHolderBirthDate(parseInitialDate(initialHolderBirthDate));
-      setHolderDocument(sanitizeRgCpfDigits(initialHolderDocument ?? ''));
+      const initialDocument = initialHolderDocument ?? (sanitizeDocumentDigits(initialHolderCnpj ?? '').length === 11 ? initialHolderCnpj : '');
+      setHolderDocument(sanitizeRgCpfDigits(initialDocument));
       setHolderCnpj(sanitizeDocumentDigits(initialHolderCnpj ?? ''));
       setStartDate(parseInitialDate(initialStartDate) ?? new Date());
       setFinalizedDate(parseInitialDate(initialFinalizedDate));
@@ -210,6 +218,8 @@ export function FinalizeContractDialog({
       setDependents(initialDependents ?? []);
       setError('');
       setAmountError('');
+      setIsLookingUpRazaoSocial(false);
+      cnpjLookupSequenceRef.current += 1;
     }
   }, [
     open,
@@ -258,6 +268,39 @@ export function FinalizeContractDialog({
     }
     setAmountError('');
     setAmount(formatted);
+  };
+
+  const handleHolderCnpjChange = (value: string) => {
+    cnpjLookupSequenceRef.current += 1;
+    setIsLookingUpRazaoSocial(false);
+    setHolderCnpj(sanitizeDocumentDigits(value));
+  };
+
+  const handleHolderCnpjBlur = async () => {
+    const cnpj = sanitizeDocumentDigits(holderCnpj);
+    if (cnpj.length !== 14 || holderRazaoSocial.trim()) return;
+
+    const requestSequence = ++cnpjLookupSequenceRef.current;
+    setIsLookingUpRazaoSocial(true);
+    try {
+      const response = await fetch(`${API_CLIENT_BASE}/portfolio/cnpj-lookup?cnpj=${cnpj}`, {
+        headers: {
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': activeTeamId ?? '',
+        },
+      });
+      const result = await response.json().catch(() => null);
+      const razaoSocial = result?.result?.razaoSocial;
+      if (requestSequence === cnpjLookupSequenceRef.current && response.ok && razaoSocial) {
+        setHolderRazaoSocial(razaoSocial);
+      }
+    } catch {
+      // A consulta indisponível não impede o preenchimento manual da Razão Social.
+    } finally {
+      if (requestSequence === cnpjLookupSequenceRef.current) {
+        setIsLookingUpRazaoSocial(false);
+      }
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -532,69 +575,26 @@ export function FinalizeContractDialog({
                   />
                 </div>
 
-                {/* Data de Início */}
-                <div className="grid gap-2">
-                  <Label>Data de Início do Contrato *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={cn('justify-start text-left font-normal', !startDate && 'text-muted-foreground')}
-                        disabled={isLoading}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {startDate ? format(startDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        required={false}
-                        selected={startDate}
-                        onSelect={setStartDate}
-                        weekdayLabelFormat="short"
-                        locale={ptBR}
-                        captionLayout="dropdown"
-                        fromYear={2020}
-                        toYear={new Date().getFullYear() + 5}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {/* Data de Finalização */}
-                <div className="grid gap-2">
-                  <Label>Data de Finalização do Contrato *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={cn('justify-start text-left font-normal', !finalizedDate && 'text-muted-foreground')}
-                        disabled={isLoading}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {finalizedDate ? format(finalizedDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        required={false}
-                        selected={finalizedDate}
-                        onSelect={setFinalizedDate}
-                        weekdayLabelFormat="short"
-                        locale={ptBR}
-                        captionLayout="dropdown"
-                        fromYear={2020}
-                        toYear={new Date().getFullYear() + 5}
-                        initialFocus
-                        disabled={(date: Date) => startDate ? date < startDate : false}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                <div className="grid grid-cols-2 gap-3">
+                  <DateTimePicker
+                    date={startDate}
+                    onDateChange={setStartDate}
+                    label="Data de início do contrato *"
+                    showTime={false}
+                    disablePastDates={false}
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 5}
+                  />
+                  <DateTimePicker
+                    date={finalizedDate}
+                    onDateChange={setFinalizedDate}
+                    label="Data de finalização do contrato *"
+                    showTime={false}
+                    disablePastDates={false}
+                    minDateTime={startDate}
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 5}
+                  />
                 </div>
 
                 {/* Upload do Contrato */}
@@ -665,38 +665,29 @@ export function FinalizeContractDialog({
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>Data de Nascimento do Titular *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={cn('justify-start text-left font-normal', !holderBirthDate && 'text-muted-foreground')}
-                        disabled={isLoading}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {holderBirthDate ? format(holderBirthDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        required={false}
-                        selected={holderBirthDate}
-                        onSelect={setHolderBirthDate}
-                        locale={ptBR}
-                        captionLayout="dropdown"
-                        fromYear={1920}
-                        toYear={new Date().getFullYear()}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <DateTimePicker
+                  date={holderBirthDate}
+                  onDateChange={setHolderBirthDate}
+                  label="Data de nascimento do titular *"
+                  showTime={false}
+                  disablePastDates={false}
+                  fromYear={1920}
+                  toYear={new Date().getFullYear()}
+                />
 
                 {isCorporate ? (
                   <>
+                    <div className="grid gap-2">
+                      <Label htmlFor="holder-cnpj">CNPJ *</Label>
+                      <Input
+                        id="holder-cnpj"
+                        placeholder="00.000.000/0000-00"
+                        value={formatDocumentInput(holderCnpj)}
+                        onChange={(e) => handleHolderCnpjChange(e.target.value)}
+                        onBlur={handleHolderCnpjBlur}
+                        disabled={isLoading}
+                      />
+                    </div>
                     <div className="grid gap-2">
                       <Label htmlFor="holder-razao-social">Razão Social *</Label>
                       <Input
@@ -705,17 +696,11 @@ export function FinalizeContractDialog({
                         value={holderRazaoSocial}
                         onChange={(e) => setHolderRazaoSocial(e.target.value)}
                         disabled={isLoading}
+                        aria-busy={isLookingUpRazaoSocial}
                       />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="holder-cnpj">CNPJ *</Label>
-                      <Input
-                        id="holder-cnpj"
-                        placeholder="00.000.000/0000-00"
-                        value={formatDocumentInput(holderCnpj)}
-                        onChange={(e) => setHolderCnpj(sanitizeDocumentDigits(e.target.value))}
-                        disabled={isLoading}
-                      />
+                      {isLookingUpRazaoSocial ? (
+                        <span className="text-xs text-muted-foreground">Consultando CNPJ...</span>
+                      ) : null}
                     </div>
                   </>
                 ) : (
