@@ -664,7 +664,6 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     test("exibe o domínio compartilhado e a configuração de tracking", async ({ page }) => {
       await seedConnectedDomain("verified")
       await seedStudioDomain("verified")
-      await mockDomainRecordsRoute(page)
       await page.route("**/email/settings/studio-domain/records", (route) =>
         route.fulfill({
           status: 200,
@@ -695,7 +694,13 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
           }),
         }),
       )
-      await gotoEmailSettings(page)
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/landing-pages`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.getByRole("heading", { name: "Páginas de cotação" })).toBeVisible({
+        timeout: 30_000,
+      })
+      await page.getByRole("button", { name: "Configurar domínio de cotação" }).click()
 
       await expect(page.getByText(`https://${STUDIO_DOMAIN_HOSTNAME}`)).toBeVisible()
       await expect(page.getByText("Analytics e tráfego")).toBeVisible()
