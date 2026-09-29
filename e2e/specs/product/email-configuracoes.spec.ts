@@ -282,7 +282,9 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(verifyButton).toBeEnabled()
       await verifyButton.click()
       await expect(
-        page.getByText("Verificação iniciada. A tela será atualizada quando o DNS responder."),
+        page
+          .getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+          .last(),
       ).toBeVisible()
 
       const spfAlert = page
@@ -312,7 +314,9 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(restartButtons).toHaveCount(2)
       await restartButtons.first().click()
       await expect(
-        page.getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+        page
+          .getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+          .last(),
       ).toBeVisible()
       expect(verifyRequested).toBe(true)
     })
