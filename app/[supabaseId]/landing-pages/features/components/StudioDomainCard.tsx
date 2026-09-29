@@ -124,7 +124,7 @@ export function StudioDomainCard() {
               <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
                 Domínio studio
               </p>
-              <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/80">
+              <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/80">
                 <Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
