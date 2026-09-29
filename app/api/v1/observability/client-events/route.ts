@@ -6,8 +6,6 @@ import { CLIENT_EVENT_LIMIT, parseClientEvent } from "@/lib/observability/client
 const logger = createLogger("client-events");
 const MAX_BODY_BYTES = 8_192;
 
-export const runtime = "nodejs";
-
 export async function POST(request: Request): Promise<Response> {
   const rateLimit = await consumePublicFormRateLimit(
     `observability:client:${publicFormRequestFingerprint(request)}`,

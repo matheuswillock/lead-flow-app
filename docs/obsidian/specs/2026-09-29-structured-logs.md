@@ -28,6 +28,9 @@ Padronizar logs server-side em uma linha JSON por evento e capturar erros releva
 - Mensagens e campos acima do limite são reduzidos a um registro compacto válido.
 - O endpoint client-side aceita apenas `warn`/`error`, mensagem, stack, rota e `requestId`.
 - O endpoint não recebe cookies, headers, tokens ou corpo arbitrário.
+- A suíte focada é executada com `bun run test:observability` e cobre Node, Edge, bridge, endpoint e sanitização.
+- O sanitizador limita profundidade, coleções e strings; o serializador limita cada linha a 16 KiB por padrão.
+- O bridge cacheia um logger por scope para evitar alocações por chamada legada.
 
 ## Operação na Vercel
 
@@ -36,3 +39,7 @@ Filtrar por `scope`, `level`, `requestId` ou `source`. Em incidentes, começar p
 ## Limitações
 
 O rate limit baseado na tabela compartilhada protege o endpoint entre instâncias. A captura client-side é best-effort: falha de rede não altera o comportamento da aplicação.
+
+## Metadados operacionais
+
+Quando fornecidos pelo ambiente, cada evento inclui `environment`, `runtime` e `deployment`. O campo `source` identifica `legacy-console` ou `browser`; o `scope` identifica o domínio funcional.

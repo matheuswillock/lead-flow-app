@@ -17,6 +17,18 @@ type LoggerOptions = {
 const REDACTED = "[redacted]";
 const DEFAULT_MAX_BYTES = 16 * 1024;
 const MAX_SANITIZE_DEPTH = 8;
+const MAX_SANITIZE_ITEMS = 100;
+const MAX_STRING_BYTES = 8 * 1024;
+const textEncoder = new TextEncoder();
+
+type RuntimeProcess = {
+  env?: Record<string, string | undefined>;
+  stdout?: { write(value: string): void };
+};
+
+function getRuntimeProcess(): RuntimeProcess | undefined {
+  return (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
+}
 const SECRET_KEY_PATTERN = /token|secret|cookie|password|passwd|pwd|pass|authorization|api[_-]?key|access[_-]?key|service[_-]?role|database[_-]?url|connection[_-]?string/i;
 const SECRET_VALUE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /Bearer\s+[A-Za-z0-9\-._~+/=]+/gi, replacement: "Bearer [redacted]" },
@@ -33,7 +45,12 @@ function redactText(value: string): string {
 }
 
 function sanitizeValue(value: unknown, activeObjects: WeakSet<object>, depth: number): unknown {
-  if (typeof value === "string") return redactText(value);
+  if (typeof value === "string") {
+    const redacted = redactText(value);
+    return textEncoder.encode(redacted).byteLength <= MAX_STRING_BYTES
+      ? redacted
+      : `${truncateToBytes(redacted, MAX_STRING_BYTES)}…[truncated]`;
+  }
   if (typeof value === "bigint") return value.toString();
   if (value instanceof Error) {
     const error: LogFields = { name: value.name, message: sanitizeValue(value.message, activeObjects, depth + 1) };
@@ -45,25 +62,36 @@ function sanitizeValue(value: unknown, activeObjects: WeakSet<object>, depth: nu
   if (Array.isArray(value)) {
     if (activeObjects.has(value)) return "[circular]";
     activeObjects.add(value);
-    const result = value.map((item) => sanitizeValue(item, activeObjects, depth + 1));
+    const result = value.slice(0, MAX_SANITIZE_ITEMS).map((item) => sanitizeValue(item, activeObjects, depth + 1));
+    if (value.length > MAX_SANITIZE_ITEMS) result.push(`[${value.length - MAX_SANITIZE_ITEMS} items truncated]`);
     activeObjects.delete(value);
     return result;
   }
   if (value instanceof Map) {
-    return sanitizeValue(Object.fromEntries(value.entries()), activeObjects, depth + 1);
+    if (activeObjects.has(value)) return "[circular]";
+    activeObjects.add(value);
+    const result = sanitizeValue(Object.fromEntries(Array.from(value.entries()).slice(0, MAX_SANITIZE_ITEMS)), activeObjects, depth + 1);
+    activeObjects.delete(value);
+    return result;
   }
   if (value instanceof Set) {
-    return sanitizeValue(Array.from(value), activeObjects, depth + 1);
+    if (activeObjects.has(value)) return "[circular]";
+    activeObjects.add(value);
+    const result = sanitizeValue(Array.from(value).slice(0, MAX_SANITIZE_ITEMS), activeObjects, depth + 1);
+    activeObjects.delete(value);
+    return result;
   }
   if (typeof value !== "object" || value === null) return value;
   if (activeObjects.has(value)) return "[circular]";
   activeObjects.add(value);
+  const entries = Object.entries(value);
   const result = Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
+    entries.slice(0, MAX_SANITIZE_ITEMS).map(([key, item]) => [
       key,
       SECRET_KEY_PATTERN.test(key) ? REDACTED : sanitizeValue(item, activeObjects, depth + 1),
     ]),
   );
+  if (entries.length > MAX_SANITIZE_ITEMS) result.__truncated = `[${entries.length - MAX_SANITIZE_ITEMS} fields truncated]`;
   activeObjects.delete(value);
   return result;
 }
@@ -77,16 +105,23 @@ export function sanitize(value: unknown): unknown {
   }
 }
 
+const nativeConsole = globalThis.console;
+
 function defaultWriter(line: string): void {
-  if (typeof process !== "undefined" && process.stdout?.write) {
-    process.stdout.write(`${line}\n`);
+  const runtimeProcess = getRuntimeProcess();
+  if (runtimeProcess?.stdout?.write) {
+    runtimeProcess.stdout.write(`${line}\n`);
     return;
   }
-  globalThis.console.info(line);
+  nativeConsole.info.call(nativeConsole, line);
+}
+
+export function hasNodeStdout(): boolean {
+  return Boolean(getRuntimeProcess()?.stdout?.write);
 }
 
 function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
+  return textEncoder.encode(value).byteLength;
 }
 
 function truncateToBytes(value: string, maxBytes: number): string {
@@ -119,39 +154,54 @@ function serializeEntry(entry: LogFields, maxBytes: number): string {
   return byteLength(compact) <= maxBytes ? compact : JSON.stringify({ level: entry.level, msg: "log truncated" });
 }
 
-function writeLine(
-  write: (line: string) => void,
-  maxBytes: number,
-  level: LogLevel,
-  scope: string,
-  base: LogFields,
-  message: string,
-  fields: LogFields,
-): void {
+type WriteLineOptions = {
+  write: (line: string) => void;
+  maxBytes: number;
+  level: LogLevel;
+  scope: string;
+  base: LogFields;
+  message: string;
+  fields: LogFields;
+};
+
+function writeLine(options: WriteLineOptions): void {
   try {
     const entry = {
       ts: new Date().toISOString(),
-      level,
-      scope,
-      msg: redactText(message),
-      ...base,
-      ...(sanitize(fields) as LogFields),
+      ...getOperationalMetadata(),
+      level: options.level,
+      scope: options.scope,
+      msg: redactText(options.message),
+      ...options.base,
+      ...(sanitize(options.fields) as LogFields),
     };
-    write(serializeEntry(entry, maxBytes));
+    options.write(serializeEntry(entry, options.maxBytes));
   } catch {
     try {
-      write(JSON.stringify({ level, scope: redactText(scope), msg: "log failed" }));
+      options.write(JSON.stringify({ level: options.level, scope: redactText(options.scope), msg: "log failed" }));
     } catch {
       // Observability must never break the request being observed.
     }
   }
 }
 
+function getOperationalMetadata(): LogFields {
+  const environmentVariables = getRuntimeProcess()?.env ?? {};
+  const environment = environmentVariables.VERCEL_ENV ?? environmentVariables.APP_ENV ?? environmentVariables.NODE_ENV;
+  const runtime = environmentVariables.NEXT_RUNTIME;
+  const deployment = environmentVariables.VERCEL_DEPLOYMENT_ID ?? environmentVariables.VERCEL_GIT_COMMIT_SHA;
+  return {
+    ...(runtime ? { runtime } : {}),
+    ...(environment ? { environment } : {}),
+    ...(deployment ? { deployment } : {}),
+  };
+}
+
 function createLoggerWithContext(scope: string, write: (line: string) => void, maxBytes: number, base: LogFields): Logger {
   return {
-    info: (message, fields = {}) => writeLine(write, maxBytes, "info", scope, base, message, fields),
-    warn: (message, fields = {}) => writeLine(write, maxBytes, "warn", scope, base, message, fields),
-    error: (message, fields = {}) => writeLine(write, maxBytes, "error", scope, base, message, fields),
+    info: (message, fields = {}) => writeLine({ write, maxBytes, level: "info", scope, base, message, fields }),
+    warn: (message, fields = {}) => writeLine({ write, maxBytes, level: "warn", scope, base, message, fields }),
+    error: (message, fields = {}) => writeLine({ write, maxBytes, level: "error", scope, base, message, fields }),
     child: (fields) => createLoggerWithContext(scope, write, maxBytes, { ...base, ...(sanitize(fields) as LogFields) }),
   };
 }

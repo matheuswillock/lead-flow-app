@@ -1,4 +1,4 @@
-import { createLogger } from "./logger";
+import { createLogger, hasNodeStdout } from "./logger";
 
 type ConsoleLevel = "info" | "warn" | "error";
 
@@ -38,11 +38,19 @@ export function installStructuredConsoleBridge(options: ConsoleBridgeOptions = {
     warn: globalThis.console.warn,
     error: globalThis.console.error,
   };
+  const nativeWriter = (line: string) => originals.info.call(globalThis.console, line);
+  const write = options.write ?? (hasNodeStdout() ? undefined : nativeWriter);
+  const loggerCache = new Map<string, ReturnType<typeof createLogger>>();
 
   (Object.keys({ info: true, warn: true, error: true }) as ConsoleLevel[]).forEach((level) => {
     globalThis.console[level] = (...args: unknown[]) => {
       const { scope, message, fields } = getMessageAndFields(args);
-      createLogger(scope, options).child({ source: "legacy-console" })[level](message, fields);
+      let logger = loggerCache.get(scope);
+      if (!logger) {
+        logger = (write ? createLogger(scope, { write }) : createLogger(scope)).child({ source: "legacy-console" });
+        loggerCache.set(scope, logger);
+      }
+      logger[level](message, fields);
     };
   });
 

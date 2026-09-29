@@ -38,6 +38,19 @@ describe("structured logger", () => {
     expect(JSON.parse(lines[0]).error).toEqual({ name: "Error", message: "boom" });
   });
 
+  test("sanitizes an error cause and stack-like secret text", () => {
+    const lines: string[] = [];
+    const logger = createLogger("test", { write: (line) => lines.push(line) });
+    const error = new Error("outer Bearer outer-secret", { cause: new Error("postgresql://admin:db-secret@db.internal/app") });
+
+    logger.error("failed", { error, stack: "Authorization: Bearer stack-secret" });
+
+    expect(lines[0]).not.toContain("outer-secret");
+    expect(lines[0]).not.toContain("db-secret");
+    expect(lines[0]).not.toContain("stack-secret");
+    expect(lines[0]).toContain("db.internal");
+  });
+
   test("redacts secret keys and secret patterns recursively", () => {
     const value = sanitize({
       accessToken: "abc",
@@ -60,14 +73,20 @@ describe("structured logger", () => {
 
   test("handles errors, special values, repeated references and cycles", () => {
     const repeated = { value: "safe" };
-    const circular: Record<string, unknown> = { repeated, bigint: BigInt(3), date: new Date("2026-01-01T00:00:00.000Z") };
+    const map = new Map<string, unknown>([["safe", repeated]]);
+    const set = new Set(["safe", "Bearer set-secret"]);
+    const nested: Record<string, unknown> = {};
+    const circular: Record<string, unknown> = { repeated, bigint: BigInt(3), date: new Date("2026-01-01T00:00:00.000Z"), map, set, nested };
     circular.self = circular;
     circular.again = repeated;
+    nested.parent = circular;
 
     expect(() => sanitize(circular)).not.toThrow();
     expect(sanitize(circular)).toMatchObject({
       bigint: "3",
       date: "2026-01-01T00:00:00.000Z",
+      map: { safe: { value: "safe" } },
+      set: ["safe", "Bearer [redacted]"],
       self: "[circular]",
       repeated: { value: "safe" },
       again: { value: "safe" },
@@ -96,5 +115,17 @@ describe("structured logger", () => {
     logger.info("x".repeat(2_000), { details: "y".repeat(2_000) });
 
     expect(new TextEncoder().encode(lines[0]).byteLength).toBeLessThanOrEqual(512);
+    expect(JSON.parse(lines[0]).details).toBeUndefined();
+  });
+
+  test("limits deeply nested and oversized collections", () => {
+    const sanitized = sanitize({
+      values: Array.from({ length: 101 }, (_, index) => index),
+      fields: Object.fromEntries(Array.from({ length: 101 }, (_, index) => [`field${index}`, index])),
+      deep: { one: { two: { three: { four: { five: { six: { seven: { eight: { nine: "too deep" } } } } } } } } },
+    }) as Record<string, unknown>;
+
+    expect((sanitized.values as unknown[]).at(-1)).toBe("[1 items truncated]");
+    expect((sanitized.fields as Record<string, unknown>).__truncated).toBe("[1 fields truncated]");
   });
 });

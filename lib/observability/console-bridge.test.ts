@@ -20,4 +20,19 @@ describe("structured console bridge", () => {
     expect(entry.msg).toBe("[GET] loaded");
     expect(entry.source).toBe("legacy-console");
   });
+
+  test("is idempotent and restores all console methods", () => {
+    const originalInfo = console.info;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    const restore = installStructuredConsoleBridge({ write: () => undefined });
+    const secondRestore = installStructuredConsoleBridge({ write: () => { throw new Error("must not install twice"); } });
+
+    secondRestore();
+    expect(console.info).not.toBe(originalInfo);
+    restore();
+    expect(console.info).toBe(originalInfo);
+    expect(console.warn).toBe(originalWarn);
+    expect(console.error).toBe(originalError);
+  });
 });
