@@ -1,5 +1,4 @@
 type DomainVerificationVisibilityInput = {
-  domainStatus: string | null
   domainName: string | null
   domainEvents: Array<{ type: string; metadata?: Record<string, unknown> | null }>
   verificationRequested: boolean
