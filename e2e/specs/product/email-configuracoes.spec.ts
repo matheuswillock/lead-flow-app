@@ -267,6 +267,16 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       await gotoEmailSettings(page)
 
+      // Os alertas de DNS ausente só ficam visíveis depois que a verificação é
+      // iniciada; isso evita alertar sobre registros antes da primeira consulta.
+      const verifyButton = page.getByRole("button", { name: "Verificar DNS", exact: true })
+      await expect(verifyButton).toBeVisible({ timeout: 30_000 })
+      await expect(verifyButton).toBeEnabled()
+      await verifyButton.click()
+      await expect(
+        page.getByText("Verificação iniciada. A tela será atualizada quando o DNS responder."),
+      ).toBeVisible()
+
       const spfAlert = page
         .getByRole("alert")
         .filter({ hasText: "Registros de envio (SPF) não encontrados" })
