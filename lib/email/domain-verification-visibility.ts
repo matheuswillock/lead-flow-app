@@ -5,15 +5,12 @@ type DomainVerificationVisibilityInput = {
   verificationRequested: boolean
 }
 
-const FAILED_DOMAIN_STATUSES = new Set(["failed", "temporary_failure", "partially_failed", "partially_verified"])
-
 export function shouldShowDnsMissingAlerts({
-  domainStatus,
   domainName,
   domainEvents,
   verificationRequested,
 }: DomainVerificationVisibilityInput): boolean {
-  if (verificationRequested && FAILED_DOMAIN_STATUSES.has(domainStatus ?? "")) return true
+  if (verificationRequested) return true
 
   return domainEvents.some(
     (event) =>
