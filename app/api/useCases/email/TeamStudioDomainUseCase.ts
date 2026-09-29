@@ -14,6 +14,7 @@ import type {
   ITeamStudioDomainRepository,
   TeamStudioDomainRecord,
 } from "@/app/api/infra/data/repositories/teamStudioDomain/ITeamStudioDomainRepository"
+import type { VercelProjectDomain } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
 
 type StudioDomainDependencies = {
   repository?: ITeamStudioDomainRepository
@@ -78,6 +79,14 @@ export class TeamStudioDomainUseCase {
     this.invalidateCache = dependencies.invalidateCache ?? (() => undefined)
   }
 
+  private async registerOrReuseProjectDomain(hostname: string): Promise<VercelProjectDomain | null> {
+    const registration = await this.vercelGateway.addProjectDomain(hostname)
+    if (registration.ok) return registration.data
+
+    const existingRegistration = await this.vercelGateway.getProjectDomain(hostname)
+    return existingRegistration.ok ? existingRegistration.data : null
+  }
+
   async get(access: TeamAccess, emailDomainName: string | null | undefined): Promise<Output> {
     if (!canManage(access)) return accessDeniedOutput()
     const domain = await this.repository.findByTeamId(access.teamId)
@@ -112,24 +121,31 @@ export class TeamStudioDomainUseCase {
       return new Output(false, [], ["Integração de domínio não configurada."], null)
     }
 
-    const registration = await this.vercelGateway.addProjectDomain(hostname)
-    if (!registration.ok) {
+    const projectDomain = await this.registerOrReuseProjectDomain(hostname)
+    if (!projectDomain) {
       return new Output(false, [], ["Não foi possível registrar o subdomínio studio agora."], null)
     }
 
-    const domain = await this.repository.create({
-      teamId,
-      hostname,
-      vercelDomainId: registration.data.name ?? hostname,
-    })
+    let domain: TeamStudioDomainRecord
+    try {
+      domain = await this.repository.create({
+        teamId,
+        hostname,
+        vercelDomainId: projectDomain.name ?? hostname,
+      })
+    } catch (error) {
+      const concurrentDomain = await this.repository.findByTeamId(teamId)
+      if (!concurrentDomain || concurrentDomain.hostname !== hostname) throw error
+      domain = concurrentDomain
+    }
     this.invalidateCache({ hostname })
 
     return new Output(true, ["Subdomínio studio registrado. Crie o CNAME para ativá-lo."], [], {
       studioDomain: toDto(domain),
       records: buildFormDomainDnsRecords({
         hostname,
-        apexName: registration.data.apexName,
-        verificationChallenges: registration.data.verification,
+        apexName: projectDomain.apexName,
+        verificationChallenges: projectDomain.verification,
         verified: false,
       }),
     })

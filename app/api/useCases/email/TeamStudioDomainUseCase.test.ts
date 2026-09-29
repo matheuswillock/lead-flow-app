@@ -6,12 +6,12 @@ import { TeamStudioDomainUseCase } from "./TeamStudioDomainUseCase"
 
 const teamAccess = { teamId: "team-1", isMaster: true, teamMember: { role: "manager" } } as TeamAccess
 
-function makeDomain(): TeamStudioDomainRecord {
+function makeDomain(hostname = "studio.acme.com"): TeamStudioDomainRecord {
   const now = new Date("2026-09-29T12:00:00.000Z")
   return {
     id: "studio-1",
     teamId: "team-1",
-    hostname: "studio.acme.com",
+    hostname,
     status: "pending",
     vercelDomainId: "studio.acme.com",
     verifiedAt: null,
@@ -65,5 +65,59 @@ describe("TeamStudioDomainUseCase", () => {
       hostname: "studio.mail.acme.com",
       vercelDomainId: "studio.acme.com",
     })
+  })
+
+  it("reutiliza o domínio quando duas inicializações acontecem ao mesmo tempo", async () => {
+    let storedDomain: TeamStudioDomainRecord | null = null
+    let initialFinds = 0
+    let releaseInitialFinds!: () => void
+    const initialFindsReleased = new Promise<void>((resolve) => {
+      releaseInitialFinds = resolve
+    })
+    let createCalls = 0
+    const repository = {
+      ...makeRepository(),
+      findByTeamId: mock(async () => {
+        if (!storedDomain) {
+          initialFinds += 1
+          if (initialFinds === 2) releaseInitialFinds()
+          await initialFindsReleased
+        }
+        return storedDomain
+      }),
+      create: mock(async () => {
+        createCalls += 1
+        if (createCalls === 2) throw new Error("team_studio_domain_team_id_key")
+        storedDomain = makeDomain("studio.mail.acme.com")
+        return storedDomain
+      }),
+    }
+    let registrationCalls = 0
+    const vercelGateway = {
+      ...makeVercelGateway(),
+      addProjectDomain: mock(async () => {
+        registrationCalls += 1
+        return registrationCalls === 1
+          ? {
+              ok: true as const,
+              data: { name: "studio.mail.acme.com", apexName: "acme.com", verified: false, verification: [] },
+            }
+          : { ok: false as const, status: 409, errorMessage: "Domínio já registrado" }
+      }),
+      getProjectDomain: mock(async () => ({
+        ok: true as const,
+        data: { name: "studio.mail.acme.com", apexName: "acme.com", verified: false, verification: [] },
+      })),
+    }
+    const useCase = new TeamStudioDomainUseCase({ repository, vercelGateway })
+
+    const results = await Promise.all([
+      useCase.getForEmailDomain(teamAccess, { name: "mail.acme.com", status: "pending" }),
+      useCase.getForEmailDomain(teamAccess, { name: "mail.acme.com", status: "pending" }),
+    ])
+
+    expect(results.every((result) => result.isValid)).toBe(true)
+    expect(repository.create).toHaveBeenCalledTimes(2)
+    expect(vercelGateway.getProjectDomain).toHaveBeenCalledWith("studio.mail.acme.com")
   })
 })
