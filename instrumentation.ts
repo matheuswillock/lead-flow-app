@@ -13,6 +13,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
 
+    const { installStructuredConsoleBridge } = await import("./lib/observability/console-bridge");
+    installStructuredConsoleBridge();
+
     const { validateEnvironmentOnStartup } = await import("./lib/env/startup-validation");
     validateEnvironmentOnStartup();
 
