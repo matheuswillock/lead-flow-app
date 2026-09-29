@@ -3,21 +3,21 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useParams } from "next/navigation"
-import { Archive, CheckCircle2, Copy, Globe2, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2 } from "lucide-react"
+import { Archive, Copy, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useLandingPages } from "../context/LandingPagesContext"
 import type { LandingPageListItem } from "../context/LandingPagesTypes"
+import { StudioDomainCard } from "./StudioDomainCard"
+import { StudioTrackingCard } from "./StudioTrackingCard"
 
 const statusConfig = {
   draft: { label: "Rascunho", className: "border-border bg-muted text-muted-foreground" },
@@ -91,25 +91,6 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
   )
 }
 
-function DomainCard() {
-  const { domain } = useLandingPages()
-  return (
-    <Card>
-      <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <CardTitle className="flex items-center gap-2 text-base"><Globe2 className="size-4 text-primary" />Domínio studio</CardTitle>
-          <CardDescription>Formulários e páginas de conversão usam o mesmo subdomínio.</CardDescription>
-        </div>
-        {domain ? <Badge variant="outline" className={domain.status === "verified" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"}>{domain.status === "verified" ? "Verificado" : "Aguardando DNS"}</Badge> : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {domain ? <p className="font-mono text-sm">https://{domain.hostname}</p> : <p className="text-sm text-muted-foreground">Configure e verifique o domínio de envio para gerar o subdomínio studio.</p>}
-        <p className="text-xs leading-relaxed text-muted-foreground">A configuração fica em Configurações de e-mail. Este espaço apenas mostra o status usado para publicar landings.</p>
-      </CardContent>
-    </Card>
-  )
-}
-
 export function LandingPagesManagement() {
   const params = useParams<{ supabaseId: string }>()
   const { items, isLoading, error, refresh } = useLandingPages()
@@ -129,12 +110,12 @@ export function LandingPagesManagement() {
       </div>
 
       <Sheet open={domainSheetOpen} onOpenChange={setDomainSheetOpen}>
-        <SheetContent side="right" className="w-full gap-0 sm:max-w-lg">
+        <SheetContent side="right" className="flex h-full w-full flex-col gap-0 sm:max-w-lg">
           <SheetHeader className="border-b pb-5">
             <SheetTitle>Domínio de cotação</SheetTitle>
             <SheetDescription>Conecte e verifique o endereço usado nos links das suas campanhas.</SheetDescription>
           </SheetHeader>
-          <div className="overflow-y-auto py-6"><DomainCard /></div>
+          <div className="min-h-0 flex-1 overflow-y-auto py-6"><div className="flex flex-col gap-6"><StudioDomainCard /><StudioTrackingCard /></div></div>
         </SheetContent>
       </Sheet>
       <Separator />

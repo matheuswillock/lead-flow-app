@@ -1,6 +1,19 @@
 import { describe, expect, it } from "bun:test"
 
-import { hasCalendarDayRestriction } from "./date-time-picker"
+import { getDatePickerYearBounds, hasCalendarDayRestriction } from "./date-time-picker"
+
+describe("getDatePickerYearBounds", () => {
+  it("mantém o calendário aberto para os próximos cinco anos", () => {
+    expect(getDatePickerYearBounds({ currentYear: 2026 })).toEqual({ fromYear: 2020, toYear: 2031 })
+  })
+
+  it("permite configurar uma faixa histórica para datas de nascimento", () => {
+    expect(getDatePickerYearBounds({ currentYear: 2026, fromYear: 1920, toYear: 2026 })).toEqual({
+      fromYear: 1920,
+      toYear: 2026,
+    })
+  })
+})
 
 /**
  * Regressão do achado P2 do Codex no PR #1177.

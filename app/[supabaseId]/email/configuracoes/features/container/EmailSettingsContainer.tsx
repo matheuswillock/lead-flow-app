@@ -5,21 +5,15 @@ import { Button } from "@/components/ui/button"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import { AccessPermissionsCard } from "../components/AccessPermissionsCard"
 import { CustomDomainCard } from "../components/CustomDomainCard"
-import { StudioDomainCard } from "../components/StudioDomainCard"
-import { StudioTrackingCard } from "../components/StudioTrackingCard"
 import { DispatchRestrictionsCard } from "../components/DispatchRestrictionsCard"
 import { GlobalVariablesCard } from "../components/GlobalVariablesCard"
 import { SenderCard } from "../components/SenderCard"
 import { TemplateApprovalCard } from "../components/TemplateApprovalCard"
 import { useStudioEmailRuntime } from "@/lib/email/use-studio-email-runtime"
-import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
-import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 export function EmailSettingsContainer() {
   const { readOnly } = useStudioEmailRuntime()
   const { saving, loading, senders, handleSave } = useEmailSettingsContext()
-  const { hasAccess, isLoading: featureAccessLoading } = useFeatureAccess()
-  const canUseLandingPageAnalytics = !featureAccessLoading && hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)
 
   return (
     <div className="flex flex-col gap-8">
@@ -57,8 +51,6 @@ export function EmailSettingsContainer() {
 
       <div className={readOnly ? "pointer-events-none opacity-60" : undefined}>
         <CustomDomainCard />
-        <StudioDomainCard />
-        {canUseLandingPageAnalytics ? <StudioTrackingCard /> : null}
         <SenderCard />
         <GlobalVariablesCard />
         <DispatchRestrictionsCard />
