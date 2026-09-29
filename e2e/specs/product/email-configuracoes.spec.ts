@@ -369,11 +369,26 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
     test("mantém a tela intacta quando a resolução de hospedagem falha", async ({ page }) => {
       await mockDomainRecordsRoute(page, null)
+      await page.route("**/email/settings/domain/verify**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: ["Verificação iniciada"],
+            errorMessages: [],
+            result: { status: "pending" },
+          }),
+        })
+      )
       await gotoEmailSettings(page)
 
       // Degradação silenciosa: o campo mostra "—" e o resto do card segue igual.
       await expect(domainField(page, "Hospedagem")).toContainText("—", { timeout: 30_000 })
       await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible()
+      const verifyButton = page.getByRole("button", { name: "Verificar DNS", exact: true })
+      await expect(verifyButton).toBeEnabled()
+      await verifyButton.click()
       await expect(
         page.getByRole("alert").filter({ hasText: "Registros de envio (SPF) não encontrados" })
       ).toBeVisible()
