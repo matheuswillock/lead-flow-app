@@ -82,7 +82,7 @@ function defaultWriter(line: string): void {
     process.stdout.write(`${line}\n`);
     return;
   }
-  console.log(line);
+  globalThis.console.info(line);
 }
 
 function byteLength(value: string): number {

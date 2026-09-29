@@ -34,13 +34,13 @@ export function installStructuredConsoleBridge(options: ConsoleBridgeOptions = {
   if (globalState[INSTALLATION_KEY]) return () => undefined;
 
   const originals = {
-    info: console.info,
-    warn: console.warn,
-    error: console.error,
+    info: globalThis.console.info,
+    warn: globalThis.console.warn,
+    error: globalThis.console.error,
   };
 
   (Object.keys({ info: true, warn: true, error: true }) as ConsoleLevel[]).forEach((level) => {
-    console[level] = (...args: unknown[]) => {
+    globalThis.console[level] = (...args: unknown[]) => {
       const { scope, message, fields } = getMessageAndFields(args);
       createLogger(scope, options).child({ source: "legacy-console" })[level](message, fields);
     };
@@ -50,9 +50,9 @@ export function installStructuredConsoleBridge(options: ConsoleBridgeOptions = {
   return () => {
     const state = globalState[INSTALLATION_KEY];
     if (!state) return;
-    console.info = state.originals.info;
-    console.warn = state.originals.warn;
-    console.error = state.originals.error;
+    globalThis.console.info = state.originals.info;
+    globalThis.console.warn = state.originals.warn;
+    globalThis.console.error = state.originals.error;
     delete globalState[INSTALLATION_KEY];
   };
 }
