@@ -333,7 +333,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
 
   const handleHolderCnpjBlur = async () => {
     const cnpj = sanitizeDocumentDigits(contract.holderCnpj);
-    if (cnpj.length !== 14 || holderRazaoSocial.trim()) return;
+    if (cnpj.length !== 14 || contract.holderRazaoSocial.trim()) return;
 
     const requestSequence = ++cnpjLookupSequenceRef.current;
     setIsLookingUpRazaoSocial(true);

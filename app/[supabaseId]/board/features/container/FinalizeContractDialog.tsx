@@ -208,7 +208,7 @@ export function FinalizeContractDialog({
       setHolderRazaoSocial(initialHolderRazaoSocial ?? '');
       setHolderName(initialHolderName ?? '');
       setHolderBirthDate(parseInitialDate(initialHolderBirthDate));
-      const initialDocument = initialHolderDocument ?? (sanitizeDocumentDigits(initialHolderCnpj ?? '').length === 11 ? initialHolderCnpj : '');
+      const initialDocument = initialHolderDocument ?? (sanitizeDocumentDigits(initialHolderCnpj ?? '').length === 11 ? initialHolderCnpj ?? '' : '');
       setHolderDocument(sanitizeRgCpfDigits(initialDocument));
       setHolderCnpj(sanitizeDocumentDigits(initialHolderCnpj ?? ''));
       setStartDate(parseInitialDate(initialStartDate) ?? new Date());
