@@ -4,6 +4,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
 import { TeamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 import { invalidateTeamStudioDomainCache } from "@/lib/cache/invalidation"
+import { studioDomainOutputStatus } from "./response"
 
 function makeStudioDomainUseCase() {
   return new TeamStudioDomainUseCase({ invalidateCache: invalidateTeamStudioDomainCache })
@@ -26,12 +27,14 @@ export async function GET(request: NextRequest) {
   try {
     const context = await getContext(request)
     if (context.error) return NextResponse.json(context.error, { status: 401 })
-    const useCase = makeStudioDomainUseCase()
-    if (context.emailDomainStatus === "verified" && context.emailDomainName) {
-      await useCase.ensureForVerifiedEmailDomain(context.access!.teamId, context.emailDomainName)
-    }
-    const output = await useCase.get(context.access!, context.emailDomainName)
-    return NextResponse.json(output, { status: output.isValid ? 200 : 403 })
+    const output = await makeStudioDomainUseCase().getForEmailDomain(
+      context.access!,
+      {
+        name: context.emailDomainName,
+        status: context.emailDomainStatus,
+      },
+    )
+    return NextResponse.json(output, { status: studioDomainOutputStatus(output) })
   } catch (error) {
     console.error("[EmailStudioDomainRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
