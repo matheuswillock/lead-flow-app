@@ -249,8 +249,16 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     test("mostra alerta destrutivo por seção pendente e reinicia a verificação", async ({
       page,
     }) => {
-      await mockDomainRecordsRoute(page)
       let verifyRequested = false
+      await page.route("**/email/settings/domain/records**", (route) => {
+        const payload = domainRecordsPayload()
+        payload.result.status = verifyRequested ? "failed" : "pending"
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(payload),
+        })
+      })
       await page.route("**/email/settings/domain/verify**", (route) => {
         verifyRequested = true
         return route.fulfill({
