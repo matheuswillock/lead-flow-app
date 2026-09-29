@@ -387,7 +387,6 @@ export function CustomDomainCard() {
   // verificação DNS confirma a entrega, mas não deve bloquear a configuração.
   const clickTrackingUnlockable = isConnected && isClickTrackingEligibleDomain(domainName)
   const showDnsMissingAlerts = shouldShowDnsMissingAlerts({
-    domainStatus,
     domainName,
     domainEvents,
     verificationRequested,
