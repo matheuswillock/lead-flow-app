@@ -388,6 +388,7 @@ export function CustomDomainCard() {
   const clickTrackingUnlockable = isConnected && isClickTrackingEligibleDomain(domainName)
   const showDnsMissingAlerts = shouldShowDnsMissingAlerts({
     domainStatus,
+    domainName,
     domainEvents,
     verificationRequested,
   })
