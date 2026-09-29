@@ -329,6 +329,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
     cnpjLookupSequenceRef.current += 1;
     setIsLookingUpRazaoSocial(false);
     patch('holderCnpj', sanitizeDocumentDigits(value));
+    patch('holderRazaoSocial', '');
   };
 
   const handleHolderCnpjBlur = async () => {
