@@ -110,12 +110,12 @@ export function LandingPagesManagement() {
       </div>
 
       <Sheet open={domainSheetOpen} onOpenChange={setDomainSheetOpen}>
-        <SheetContent side="right" className="w-full gap-0 sm:max-w-lg">
+        <SheetContent side="right" className="flex h-full w-full flex-col gap-0 sm:max-w-lg">
           <SheetHeader className="border-b pb-5">
             <SheetTitle>Domínio de cotação</SheetTitle>
             <SheetDescription>Conecte e verifique o endereço usado nos links das suas campanhas.</SheetDescription>
           </SheetHeader>
-          <div className="flex flex-col gap-6 overflow-y-auto py-6"><StudioDomainCard /><StudioTrackingCard /></div>
+          <div className="min-h-0 flex-1 overflow-y-auto py-6"><div className="flex flex-col gap-6"><StudioDomainCard /><StudioTrackingCard /></div></div>
         </SheetContent>
       </Sheet>
       <Separator />
