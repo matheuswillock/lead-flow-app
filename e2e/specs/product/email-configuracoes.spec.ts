@@ -249,8 +249,16 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     test("mostra alerta destrutivo por seção pendente e reinicia a verificação", async ({
       page,
     }) => {
-      await mockDomainRecordsRoute(page)
       let verifyRequested = false
+      await page.route("**/email/settings/domain/records**", (route) => {
+        const payload = domainRecordsPayload()
+        payload.result.status = verifyRequested ? "failed" : "pending"
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(payload),
+        })
+      })
       await page.route("**/email/settings/domain/verify**", (route) => {
         verifyRequested = true
         return route.fulfill({
@@ -266,6 +274,18 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       })
 
       await gotoEmailSettings(page)
+
+      // Os alertas de DNS ausente só ficam visíveis depois que a verificação é
+      // iniciada; isso evita alertar sobre registros antes da primeira consulta.
+      const verifyButton = page.getByRole("button", { name: "Verificar DNS", exact: true })
+      await expect(verifyButton).toBeVisible({ timeout: 30_000 })
+      await expect(verifyButton).toBeEnabled()
+      await verifyButton.click()
+      await expect(
+        page
+          .getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+          .last(),
+      ).toBeVisible()
 
       const spfAlert = page
         .getByRole("alert")
@@ -294,7 +314,9 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(restartButtons).toHaveCount(2)
       await restartButtons.first().click()
       await expect(
-        page.getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+        page
+          .getByText("Verificação iniciada. A tela será atualizada quando o DNS responder.")
+          .last(),
       ).toBeVisible()
       expect(verifyRequested).toBe(true)
     })
@@ -347,11 +369,26 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
     test("mantém a tela intacta quando a resolução de hospedagem falha", async ({ page }) => {
       await mockDomainRecordsRoute(page, null)
+      await page.route("**/email/settings/domain/verify**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: ["Verificação iniciada"],
+            errorMessages: [],
+            result: { status: "pending" },
+          }),
+        })
+      )
       await gotoEmailSettings(page)
 
       // Degradação silenciosa: o campo mostra "—" e o resto do card segue igual.
       await expect(domainField(page, "Hospedagem")).toContainText("—", { timeout: 30_000 })
       await expect(page.getByText(DOMAIN_NAME, { exact: true })).toBeVisible()
+      const verifyButton = page.getByRole("button", { name: "Verificar DNS", exact: true })
+      await expect(verifyButton).toBeEnabled()
+      await verifyButton.click()
       await expect(
         page.getByRole("alert").filter({ hasText: "Registros de envio (SPF) não encontrados" })
       ).toBeVisible()
@@ -627,7 +664,6 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
     test("exibe o domínio compartilhado e a configuração de tracking", async ({ page }) => {
       await seedConnectedDomain("verified")
       await seedStudioDomain("verified")
-      await mockDomainRecordsRoute(page)
       await page.route("**/email/settings/studio-domain/records", (route) =>
         route.fulfill({
           status: 200,
@@ -658,7 +694,13 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
           }),
         }),
       )
-      await gotoEmailSettings(page)
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/landing-pages`, {
+        waitUntil: "domcontentloaded",
+      })
+      await expect(page.getByRole("heading", { name: "Páginas de cotação" })).toBeVisible({
+        timeout: 30_000,
+      })
+      await page.getByRole("button", { name: "Configurar domínio de cotação" }).click()
 
       await expect(page.getByText(`https://${STUDIO_DOMAIN_HOSTNAME}`)).toBeVisible()
       await expect(page.getByText("Analytics e tráfego")).toBeVisible()

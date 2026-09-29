@@ -72,12 +72,12 @@ export function StudioDomainCard() {
         <CardDescription>Um único subdomínio para formulários e páginas de conversão.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {!domain && !suggestedHostname ? <p className="text-sm text-muted-foreground">Verifique o domínio de envio para gerar automaticamente o subdomínio studio.</p> : <>
+        {!domain && !suggestedHostname ? <p className="text-sm text-muted-foreground">Conecte um domínio de envio para gerar automaticamente o subdomínio studio.</p> : <>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
             <span className="font-mono text-sm">https://{domain?.hostname ?? suggestedHostname}</span>
             <Badge variant="outline" className="gap-1">{domain?.status === "verified" ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}{domain?.status === "verified" ? "Verificado" : "Aguardando DNS"}</Badge>
           </div>
-          {!domain ? <p className="text-xs text-muted-foreground">O endereço foi calculado a partir do domínio de envio verificado. Após a integração de domínio, o registro será acompanhado automaticamente.</p> : null}
+          {!domain ? <p className="text-xs text-muted-foreground">O endereço foi calculado a partir do domínio de envio conectado. O registro será acompanhado automaticamente.</p> : null}
           <p className="text-xs text-muted-foreground">Estes são registros adicionais, separados de DKIM, SPF e tracking. Adicione-os no provedor DNS do domínio de envio para apontar o subdomínio studio para a aplicação pública.</p>
           {records.length > 0 ? <div className="flex flex-col gap-2 rounded-lg border p-3 text-xs"><p className="font-medium text-foreground">Registros DNS do domínio studio</p><div className="grid grid-cols-[80px_minmax(0,1fr)_auto] gap-3 font-medium text-muted-foreground"><span>Tipo</span><span>Nome → valor</span><span /></div>{records.map((record) => <div className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-3" key={`${record.record}-${record.name}`}><span>{record.record}</span><span className="break-all font-mono">{record.name} → {record.value}</span><Button type="button" variant="ghost" size="icon" aria-label={`Copiar registro ${record.name}`} onClick={() => void copy(`${record.name} ${record.value}`)}><Clipboard /></Button></div>)}</div> : null}
           {domain ? <>

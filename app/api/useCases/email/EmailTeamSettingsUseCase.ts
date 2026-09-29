@@ -940,7 +940,7 @@ export class EmailTeamSettingsUseCase {
       )
 
       if (synced.status === "verified" && domainData.name) {
-        await teamStudioDomainUseCase.ensureForVerifiedEmailDomain(ctx.teamId, domainData.name)
+        await teamStudioDomainUseCase.ensureForEmailDomain(ctx.teamId, domainData.name)
       }
 
       return new Output(true, ["Verificação iniciada"], [], {
