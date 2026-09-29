@@ -1,8 +1,9 @@
 "use client";
 
 import { parseClientEvent } from "./client-events";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
-const ENDPOINT = "/api/v1/observability/client-events";
+const ENDPOINT = `${API_CLIENT_BASE}/observability/client-events`;
 let installed = false;
 
 function report(level: "warn" | "error", error: unknown): void {
