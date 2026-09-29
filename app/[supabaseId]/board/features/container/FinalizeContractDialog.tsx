@@ -274,6 +274,7 @@ export function FinalizeContractDialog({
     cnpjLookupSequenceRef.current += 1;
     setIsLookingUpRazaoSocial(false);
     setHolderCnpj(sanitizeDocumentDigits(value));
+    setHolderRazaoSocial('');
   };
 
   const handleHolderCnpjBlur = async () => {

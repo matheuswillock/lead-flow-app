@@ -90,13 +90,13 @@ export class TeamStudioDomainUseCase {
 
   async getForEmailDomain(access: TeamAccess, emailDomain: EmailDomainContext): Promise<Output> {
     if (!canManage(access)) return accessDeniedOutput()
-    if (emailDomain.status !== "verified" || !emailDomain.name) return this.get(access, null)
+    if (!emailDomain.name) return this.get(access, null)
 
-    const ensureOutput = await this.ensureForVerifiedEmailDomain(access.teamId, emailDomain.name)
+    const ensureOutput = await this.ensureForEmailDomain(access.teamId, emailDomain.name)
     return ensureOutput.isValid ? this.get(access, emailDomain.name) : ensureOutput
   }
 
-  async ensureForVerifiedEmailDomain(teamId: string, emailDomainName: string): Promise<Output> {
+  async ensureForEmailDomain(teamId: string, emailDomainName: string): Promise<Output> {
     const hostname = studioHostnameFromEmailDomain(emailDomainName)
     if (!hostname) return new Output(false, [], ["Domínio de envio inválido"], null)
 
@@ -159,9 +159,9 @@ export class TeamStudioDomainUseCase {
 
   async getRecordsForEmailDomain(access: TeamAccess, emailDomain: EmailDomainContext): Promise<Output> {
     if (!canManage(access)) return accessDeniedOutput()
-    if (emailDomain.status !== "verified" || !emailDomain.name) return this.getRecords(access, null)
+    if (!emailDomain.name) return this.getRecords(access, null)
 
-    const ensureOutput = await this.ensureForVerifiedEmailDomain(access.teamId, emailDomain.name)
+    const ensureOutput = await this.ensureForEmailDomain(access.teamId, emailDomain.name)
     return ensureOutput.isValid ? this.getRecords(access, emailDomain.name) : ensureOutput
   }
 
