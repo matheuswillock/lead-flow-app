@@ -1,6 +1,6 @@
 import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { productHasFeatureSlug } from "@/lib/backoffice-products/product-feature-slugs"
-import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
+import { createAsaasClient, type AsaasAccountId, type AsaasClient } from "@/lib/asaas"
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
@@ -65,6 +65,27 @@ import type {
 
 function isE2eOrCiBypass(): boolean {
   return isE2eTestMode() || process.env.CI === "true" || process.env.APP_ENV === "test"
+}
+
+/**
+ * Falha do cancelamento de cobrança Asaas (DA5/C31). A `message` é
+ * deliberadamente operacional — cita id de cobrança, conta Asaas e ledger de
+ * migração — porque o destinatário é quem opera a migração, pelo
+ * `console.error` e pelo Sentry.
+ *
+ * O tipo existe para que essa copy **não** seja confundida com copy de negócio
+ * ao atravessar o UseCase: `cancelAsaasPayments` só é alcançado por
+ * `createCheckout`, que é a rota **pública** do token de adesão
+ * (`app/api/v1/public-adhesions/[token]/checkout/route.ts`). Sem o marcador, o
+ * cliente que troca de forma de pagamento leria "cancele manualmente no painel
+ * Asaas e registre a exceção no ledger" num toast. Ver
+ * `BackofficeAdhesionUseCase.createCheckout`.
+ */
+export class AsaasPaymentCancellationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "AsaasPaymentCancellationError"
+  }
 }
 
 const CRM_MODULES = ["crm"]
@@ -2261,38 +2282,113 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return [...ids]
   }
 
-  // E5 (C21): 404 na conta certa = já cancelada (segue, só loga); qualquer
-  // outro erro MUST propagar — engolir aqui é o modo exato de dupla
-  // cobrança (cobrança legada viva sem cancelamento registrado).
+  // E5 (C21) + E8/DA5/C31: o DELETE não engole erro nenhum. Um 404 só é
+  // aceitável quando a própria conta confirma que a cobrança existe ali e já
+  // está removida (`deleted: true`). 404 sem essa confirmação significa "a
+  // cobrança não está nesta conta" — no mundo multi-conta ela provavelmente
+  // vive na outra conta e segue PENDING/pagável, que é exatamente a dupla
+  // cobrança que o DA5 manda bloquear e encaminhar ao painel Asaas.
   private async cancelAsaasPayments(paymentIds: string[], account: AsaasAccountId): Promise<void> {
     // C33: cancela na conta em que as cobranças foram criadas.
     const asaasClient = createAsaasClient(account)
-    const realErrors: Array<{ paymentId: string; error: unknown }> = []
+    const failures: string[] = []
 
     for (const paymentId of [...new Set(paymentIds)]) {
-      try {
-        await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
-          method: "DELETE",
-        })
-      } catch (error) {
-        const statusCode = (error as { statusCode?: number } | null)?.statusCode
-        if (statusCode === 404) {
-          console.info(
-            "[BackofficeAdhesionService][cancelAsaasPayments] já cancelada (404)",
-            { paymentId, account }
-          )
-          continue
-        }
-        console.error("[BackofficeAdhesionService][cancelAsaasPayments]", { paymentId, error })
-        realErrors.push({ paymentId, error })
+      const failure = await this.cancelSingleAsaasPayment(asaasClient, paymentId, account)
+      if (failure) {
+        failures.push(failure)
       }
     }
 
-    if (realErrors.length > 0) {
-      throw new Error(
-        `Falha ao cancelar ${realErrors.length} cobrança(s) Asaas (conta ${account}): ` +
-          realErrors.map((entry) => entry.paymentId).join(", ")
+    if (failures.length > 0) {
+      throw new AsaasPaymentCancellationError(
+        `Falha ao cancelar ${failures.length} cobrança(s) Asaas (conta ${account}): ` +
+          failures.join(" | ")
       )
+    }
+  }
+
+  /** `null` quando o cancelamento foi confirmado; a descrição da falha caso contrário. */
+  private async cancelSingleAsaasPayment(
+    asaasClient: AsaasClient,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<string | null> {
+    try {
+      await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
+        method: "DELETE",
+      })
+      return null
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number } | null)?.statusCode
+      if (statusCode !== 404) {
+        console.error("[BackofficeAdhesionService][cancelAsaasPayments]", {
+          paymentId,
+          account,
+          error,
+        })
+        return `${paymentId}: ${(error as Error | null)?.message ?? "erro desconhecido"}`
+      }
+      return this.describeUnconfirmedAsaasCancellation(asaasClient, paymentId, account)
+    }
+  }
+
+  /**
+   * Discrimina os dois 404 possíveis no DELETE (DA5/C31):
+   * - a cobrança existe nesta conta e já está removida → cancelamento legítimo
+   *   já efetivado (retry de um cancelamento parcial), segue sem falhar;
+   * - a cobrança não existe nesta conta (ou ainda está viva) → o cancelamento
+   *   NÃO aconteceu, a cobrança pode seguir pagável na outra conta e recriar
+   *   aqui é dupla cobrança. Bloqueia com mensagem operacional.
+   */
+  private async describeUnconfirmedAsaasCancellation(
+    asaasClient: AsaasClient,
+    paymentId: string,
+    account: AsaasAccountId
+  ): Promise<string | null> {
+    const payment = await this.findAsaasPaymentOrNull(asaasClient, paymentId)
+
+    if (payment?.deleted === true) {
+      console.info(
+        "[BackofficeAdhesionService][cancelAsaasPayments] cobrança já removida na mesma conta (404 confirmado)",
+        { paymentId, account }
+      )
+      return null
+    }
+
+    console.error(
+      "[BackofficeAdhesionService][cancelAsaasPayments] 404 sem cancelamento confirmado (DA5/C31)",
+      {
+        paymentId,
+        account,
+        existeNaConta: payment !== null,
+        status: payment?.status ?? null,
+      }
+    )
+
+    return (
+      `${paymentId}: DELETE retornou 404 e a conta "${account}" não confirma a remoção — ` +
+      "o cancelamento NÃO aconteceu. A cobrança pode estar viva na outra conta Asaas e seguir pagável " +
+      "(risco de dupla cobrança). Cancele manualmente no painel Asaas da conta correta, registre a " +
+      "exceção operacional no ledger de migração e só então repita a operação."
+    )
+  }
+
+  private async findAsaasPaymentOrNull(
+    asaasClient: AsaasClient,
+    paymentId: string
+  ): Promise<{ deleted?: boolean; status?: string } | null> {
+    try {
+      // O 404 aqui é um resultado esperado da sonda, não um ponteiro morto —
+      // sem o opt-out ele dobraria a contagem do alerta `asaas-legacy-404` de
+      // E7/X3 (o DELETE que originou a sonda já alertou).
+      return await asaasClient.request(`${asaasClient.endpoints.payments}/${paymentId}`, {
+        suppressLegacy404Alert: true,
+      })
+    } catch {
+      // 404 (não existe nesta conta) ou indisponibilidade: em ambos os casos a
+      // remoção não pôde ser confirmada, e não confirmar é bloquear.
+      return null
     }
   }
 

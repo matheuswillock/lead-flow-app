@@ -1606,7 +1606,16 @@ describe("EmailCampaignUseCase.send", () => {
     expect(releaseCreditsMock).toHaveBeenCalledTimes(1)
     expect((releaseCreditsMock.mock.calls[0] as unknown as [string, number])[0]).toBe("team-1")
     expect((releaseCreditsMock.mock.calls[0] as unknown as [string, number])[1]).toBe(100)
-  })
+    // Teto de tempo explícito, mesmo motivo do C1 acima — este caso ficou de
+    // fora daquele ajuste e seguia no limite padrão de 5s. Medido: 1,53s numa
+    // máquina ociosa (idêntico ao C1, que também mede 1,53s — o cenário não é
+    // mais pesado, só a contenção do runner varia) contra 22,3s no runner
+    // compartilhado da VPS (run 35296846572), onde estourou. 60s em vez dos
+    // 30s do C1 porque o pior caso já observado aqui é 22,3s: 30s deixaria só
+    // 1,35x de folga e voltaria a falhar na próxima disputa de CPU. Nenhuma
+    // asserção acima foi afrouxada — o que muda é só o teto, que ali media a
+    // CPU do runner e não o comportamento do código.
+  }, 60_000)
 
   // ---------------------------------------------------------------------------
   // C14 — retryFailedOnly: só destinatários com falha (sem sucesso no provedor)

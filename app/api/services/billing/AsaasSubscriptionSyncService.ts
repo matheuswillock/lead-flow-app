@@ -62,7 +62,12 @@ export class AsaasSubscriptionSyncService {
       subscriptionLastSyncedAt: syncedAt,
     };
 
-    await asaasSubscriptionSyncRepository.saveSyncData(profileId, syncSnapshot.asaasSubscriptionId, data);
+    await asaasSubscriptionSyncRepository.saveSyncData(
+      profileId,
+      syncSnapshot.asaasSubscriptionId,
+      syncSnapshot.asaasSubscriptionAccount,
+      data
+    );
 
     return syncedAt;
   }

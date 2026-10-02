@@ -75,11 +75,17 @@ export interface SubscriptionInvoice {
 }
 
 // Context Types
+export type SubscriptionEmptyStateReason = 'none' | 'pending-change';
+
 export interface ISubscriptionState {
   subscription: SubscriptionData | null;
   invoices: SubscriptionInvoice[];
   isLoading: boolean;
   error: string | null;
+  /** DA2: motivo de `subscription === null` — só populado quando não há erro de fetch. */
+  emptyStateReason: SubscriptionEmptyStateReason | null;
+  /** DA3: falha ao carregar faturas, distinta do array vazio real. */
+  invoicesError: string | null;
 }
 
 export interface ISubscriptionActions {

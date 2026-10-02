@@ -217,6 +217,66 @@ describe("IncrementalBillingService — roteamento por conta e fim do self-heal 
     expect(pixResult.billingType).toBe("PIX")
   })
 
+  it("achado P1 PRRT_...CUk4: syncRecurringSubscription com override de data grava a MESMA conta da assinatura reaproveitada (legacy)", async () => {
+    requestImplByAccount.legacy = async (url: string) => {
+      if (url.includes("/customers?")) return {}
+      if (url.includes("/subscriptions?")) {
+        return { id: "sub_legacy_1", billingType: "PIX", cycle: "MONTHLY" }
+      }
+      return {}
+    }
+
+    const service = new IncrementalBillingService()
+
+    await service.syncRecurringSubscription({
+      master: baseMaster,
+      targetRecurringTotal: 199,
+      reason: "teste override de data",
+      nextDueDateOverride: new Date("2026-12-01T00:00:00.000Z"),
+    })
+
+    expect(updateSubscriptionDataMock).toHaveBeenCalledWith(
+      baseMaster.id,
+      expect.objectContaining({
+        asaasSubscriptionId: "sub_legacy_1",
+        asaasSubscriptionAccount: "legacy",
+      })
+    )
+  })
+
+  it("controle negativo: mesmo fluxo com assinatura já primary continua gravando primary (não regride o caminho comum)", async () => {
+    requestImplByAccount.primary = async (url: string) => {
+      if (url.includes("/customers?")) return {}
+      if (url.includes("/subscriptions?")) {
+        return { id: "sub_primary_1", billingType: "PIX", cycle: "MONTHLY" }
+      }
+      return {}
+    }
+    const primaryMaster = {
+      ...baseMaster,
+      asaasCustomerAccount: "primary" as const,
+      asaasSubscriptionAccount: "primary" as const,
+      asaasSubscriptionId: "sub_primary_1",
+    }
+
+    const service = new IncrementalBillingService()
+
+    await service.syncRecurringSubscription({
+      master: primaryMaster,
+      targetRecurringTotal: 199,
+      reason: "teste override de data",
+      nextDueDateOverride: new Date("2026-12-01T00:00:00.000Z"),
+    })
+
+    expect(updateSubscriptionDataMock).toHaveBeenCalledWith(
+      primaryMaster.id,
+      expect.objectContaining({
+        asaasSubscriptionId: "sub_primary_1",
+        asaasSubscriptionAccount: "primary",
+      })
+    )
+  })
+
   it("T-40.8: fallback de ensureOrSyncRecurringSubscription não cria assinatura nova para sub legacy nem sobrescreve asaasSubscriptionId", async () => {
     const legacyPlaceholderMaster = {
       ...baseMaster,

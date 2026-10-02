@@ -1,3 +1,7 @@
+export interface PaymentStatusLookup {
+  status: string | null;
+}
+
 export interface ICheckoutReturnService {
-  getRedirectUrl(): string
+  getPaymentStatus(paymentReference: string): Promise<PaymentStatusLookup>;
 }

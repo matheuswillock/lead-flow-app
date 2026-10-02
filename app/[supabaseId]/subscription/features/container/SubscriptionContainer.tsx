@@ -2,6 +2,7 @@
 
 import { useRouter, useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { useSubscriptionContext } from '../context/SubscriptionContext';
 import { useFeatureAccess } from '@/app/context/FeatureAccessContext';
 import { useTeamContext } from '@/app/context/TeamContext';
@@ -42,8 +43,10 @@ export function SubscriptionContainer() {
   const {
     subscription,
     invoices,
+    invoicesError,
     isLoading,
     error,
+    emptyStateReason,
     fetchSubscription,
     fetchInvoices,
     syncSubscription,
@@ -85,6 +88,10 @@ export function SubscriptionContainer() {
     setIsSyncing(true);
     try {
       await syncSubscription();
+    } catch (err) {
+      // E2 (item 5): falha de sync é um toast, não uma troca da tela inteira
+      // por `SubscriptionError` — os dados já renderizados permanecem visíveis.
+      toastUserError(err);
     } finally {
       setIsSyncing(false);
     }
@@ -107,10 +114,44 @@ export function SubscriptionContainer() {
   }
 
   if (!subscription) {
+    // DA2: durante a janela dual-account, a assinatura antiga some antes da
+    // nova ficar visível. Nesse intervalo, mostrar o CTA de "criar
+    // assinatura" convida a uma segunda cobrança — a heurística de atividade
+    // recente (`emptyStateReason`) suprime o CTA e oferece só "Atualizar".
+    if (emptyStateReason === 'pending-change') {
+      return (
+        <div className="flex flex-col gap-6">
+          <SubscriptionHeader />
+
+          <Card className="mx-auto max-w-2xl">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl">Atualizando sua assinatura</CardTitle>
+              <CardDescription>
+                Se você acabou de contratar ou trocar de plano, aguarde alguns minutos e atualize.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4">
+              <Button
+                size="lg"
+                className="max-lg:h-11"
+                onClick={() => {
+                  fetchSubscription();
+                  fetchInvoices();
+                }}
+              >
+                <RefreshCw data-icon="inline-start" />
+                Atualizar
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-6">
         <SubscriptionHeader />
-        
+
         <Card className="mx-auto max-w-2xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">Nenhuma assinatura ativa</CardTitle>
@@ -124,6 +165,7 @@ export function SubscriptionContainer() {
             </p>
             <Button
               size="lg"
+              className="max-lg:h-11"
               onClick={() => router.push(`/${supabaseId}/account`)}
             >
               Ir para Minha Conta
@@ -135,6 +177,7 @@ export function SubscriptionContainer() {
   }
 
   const isCanceled = subscription.status === 'canceled';
+  const isPastDue = subscription.status === 'past_due';
 
   return (
     <div className="flex flex-col gap-6">
@@ -144,7 +187,7 @@ export function SubscriptionContainer() {
         <Alert variant="destructive">
           <AlertCircle className="size-4" />
           <AlertTitle>Assinatura Cancelada</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Sua assinatura foi cancelada. Reative para continuar usando a plataforma.
             </span>
@@ -152,10 +195,30 @@ export function SubscriptionContainer() {
               variant="outline"
               size="sm"
               onClick={handleReactivate}
-              className="ml-4"
+              className="w-fit max-lg:h-11"
             >
               <RefreshCw data-icon="inline-start" />
               Reativar Assinatura
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isPastDue && (
+        <Alert variant="destructive">
+          <AlertCircle className="size-4" />
+          <AlertTitle>Pagamento Atrasado</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Sua última fatura está vencida. Regularize o pagamento para evitar a suspensão do acesso.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveTab('faturas')}
+              className="w-fit max-lg:h-11"
+            >
+              Ver faturas
             </Button>
           </AlertDescription>
         </Alert>
@@ -166,7 +229,7 @@ export function SubscriptionContainer() {
           <TabsTrigger
             value="resumo"
             className={cn(
-              "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+              "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
               "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
             )}
           >
@@ -176,7 +239,7 @@ export function SubscriptionContainer() {
             <TabsTrigger
               value="creditos-email"
               className={cn(
-                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
                 "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
               )}
             >
@@ -187,7 +250,7 @@ export function SubscriptionContainer() {
             <TabsTrigger
               value="faturas"
               className={cn(
-                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none",
+                "rounded-t-lg rounded-b-none border border-transparent px-3.5 py-2.5 shadow-none max-lg:h-11",
                 "data-[state=active]:border-border data-[state=active]:border-b-background data-[state=active]:bg-card data-[state=active]:shadow-none"
               )}
             >
@@ -239,7 +302,7 @@ export function SubscriptionContainer() {
                     <CardDescription>Adicione ou remova capacidade disponível.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button className="w-full" onClick={() => setCreditsOpen(true)}>
+                    <Button className="w-full max-lg:h-11" onClick={() => setCreditsOpen(true)}>
                       Atualizar créditos
                     </Button>
                   </CardContent>
@@ -259,7 +322,7 @@ export function SubscriptionContainer() {
 
         {!isPermanentSubscription ? (
           <TabsContent value="faturas" className="mt-0">
-            <SubscriptionInvoices invoices={invoices} />
+            <SubscriptionInvoices invoices={invoices} error={invoicesError} onRetry={fetchInvoices} />
           </TabsContent>
         ) : null}
       </Tabs>

@@ -69,7 +69,9 @@ mock.module("@/lib/queues/asaas-webhook-events", () => ({
   publishAsaasWebhookEvent: publishAsaasWebhookEventMock,
 }))
 
-const consumeBillingRateLimitMock = mock(async () => ({ allowed: true, retryAfterSeconds: 1 }))
+const consumeBillingRateLimitMock = mock(
+  async (_key: string) => ({ allowed: true, retryAfterSeconds: 1 })
+)
 
 mock.module("@/lib/billing/billing-rate-limit", () => ({
   consumeBillingRateLimit: consumeBillingRateLimitMock,
@@ -175,6 +177,27 @@ describe("Asaas webhook route", () => {
       expect.any(String),
       expect.objectContaining({
         tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      })
+    )
+  })
+
+  it("T-30.24 (E7/C36): N 401 na mesma janela horária escalam a severidade do alerta", async () => {
+    resetMocks()
+    consumeBillingRateLimitMock.mockImplementation(
+      async (key: string) =>
+        key === "asaas-webhook-auth-failure-escalation"
+          ? { allowed: false, retryAfterSeconds: 3600 }
+          : { allowed: true, retryAfterSeconds: 1 }
+    )
+
+    await POST(makeRequest(VALID_BODY, { "asaas-access-token": "wrong-token" }))
+
+    expect(captureMessageMock).toHaveBeenCalledTimes(1)
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        level: "fatal",
+        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected", escalated: "true" },
       })
     )
   })

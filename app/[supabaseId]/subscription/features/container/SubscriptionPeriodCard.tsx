@@ -41,7 +41,7 @@ export function SubscriptionPeriodCard({ subscription, isSyncing, onSync }: Subs
             <span className="text-right font-medium">{formatDateTime(subscription.lastSyncedAt)}</span>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void onSync()} disabled={isSyncing}>
+        <Button variant="outline" size="sm" className="max-lg:h-11" onClick={() => void onSync()} disabled={isSyncing}>
           <RefreshCw data-icon="inline-start" />
           {isSyncing ? 'Atualizando...' : 'Atualizar agora'}
         </Button>

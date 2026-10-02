@@ -111,6 +111,11 @@ export async function processAsaasWebhookEvent(
     const paymentValidationOutput = await paymentValidationUseCase.processWebhook({
       event: body.event ?? "",
       payment: webhookPayload,
+      // Achado P1 (thread PRRT_...YP_y): a conta já está resolvida aqui e
+      // era descartada neste boundary — o SUBSCRIPTION_CREATED/UPDATED
+      // legado acabava gravando um `sub_` da conta legacy rotulado como
+      // `primary` pelo default do schema.
+      account,
     });
 
     const result =

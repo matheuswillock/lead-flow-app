@@ -4,7 +4,7 @@ import { SubscriptionContainer } from './features/container/SubscriptionContaine
 export default function SubscriptionPage() {
   return (
     <SubscriptionProvider>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto flex flex-col gap-6 p-6">
         <SubscriptionContainer />
       </div>
     </SubscriptionProvider>

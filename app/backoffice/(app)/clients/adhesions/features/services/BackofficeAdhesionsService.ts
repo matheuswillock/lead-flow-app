@@ -7,6 +7,7 @@ import type {
 } from "../context/BackofficeAdhesionsTypes"
 import type { IBackofficeAdhesionsService } from "./IBackofficeAdhesionsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
 
 interface OutputResponse<T> {
   isValid: boolean
@@ -15,13 +16,20 @@ interface OutputResponse<T> {
   result?: T
 }
 
-export class BackofficeAdhesionsRequestError extends Error {
+/**
+ * Estende `ApiRequestError` para etiquetar a mensagem como "veio da nossa rota":
+ * `toUserToastMessage` só deixa passar intacto o que satisfaz `isApiRequestError`.
+ * Herdando de `Error` puro, a mensagem caía na heurística de acento/marcador e
+ * copy legítima sem acento virava o genérico "Ocorreu um erro." — medido em
+ * `BackofficeAdhesionsService.error-propagation.test.ts`.
+ */
+export class BackofficeAdhesionsRequestError extends ApiRequestError {
   constructor(
     message: string,
-    readonly status: number,
+    status: number,
     readonly isValidationError: boolean
   ) {
-    super(message)
+    super(message, status)
     this.name = "BackofficeAdhesionsRequestError"
   }
 }

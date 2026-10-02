@@ -63,7 +63,8 @@ export class PaymentValidationUseCase implements IPaymentValidationUseCase {
     try {
       const result = await this.paymentValidationService.processWebhook(
         dto.event,
-        dto.payment
+        dto.payment,
+        dto.account
       );
 
       return this.createOutput(

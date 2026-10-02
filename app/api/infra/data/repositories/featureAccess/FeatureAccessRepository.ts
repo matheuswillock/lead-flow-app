@@ -56,12 +56,20 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
   }
 
-  async findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null> {
+  async findOwnerProfile(
+    ownerProfileId: string
+  ): Promise<Pick<
+    Profile,
+    "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+  > | null> {
     return prisma.profile.findUnique({
       where: { id: ownerProfileId },
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
+        // Fallback do degrau de inadimplência: o webhook do Asaas grava a due
+        // date aqui, não na ProfileSubscription — ver `resolveEffectiveNextDueDate`.
+        subscriptionNextDueDate: true,
       },
     })
   }
@@ -69,7 +77,10 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
   async findOwnerProfileSubscription(
     ownerProfileId: string
   ): Promise<
-    (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
+    (Pick<
+      ProfileSubscription,
+      "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+    > & {
       product: { featureSlugs: string[] } | null
     }) | null
   > {
@@ -78,6 +89,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
+        subscriptionNextDueDate: true,
         product: { select: { featureSlugs: true } },
       },
     })

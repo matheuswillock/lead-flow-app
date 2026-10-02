@@ -86,6 +86,14 @@ describe("Email credits tab visibility (Ticket 6 T01–T07)", () => {
     expect(shouldShowEmailCreditsPurchasePlans({ isBetaExempt: false })).toBe(true)
   })
 
+  it("T-21.4/DA3: falha ao carregar o status esconde os planos mesmo sem isenção beta (nunca 'Comprar' sobre erro)", () => {
+    expect(shouldShowEmailCreditsPurchasePlans({ isBetaExempt: false, hasError: true })).toBe(false)
+  })
+
+  it("DA3: falha ao carregar o status esconde os planos mesmo com isenção beta", () => {
+    expect(shouldShowEmailCreditsPurchasePlans({ isBetaExempt: true, hasError: true })).toBe(false)
+  })
+
   it("catálogo canônico inclui Upgrade e Business 50k/R$650", () => {
     expect(EMAIL_CREDIT_PLAN_CATALOG).toHaveLength(5)
     const upgrade = EMAIL_CREDIT_PLAN_CATALOG.find((p) => p.id === "upgrade")

@@ -25,9 +25,7 @@ interface PaymentsContextValue {
   error: string | null
   canManage: boolean
   fetchPayments: () => Promise<void>
-  createPayment: (
-    data: CreatePaymentFormData
-  ) => Promise<{ isValid: boolean; errorMessages: string[]; result?: BackofficePaymentItem }>
+  createPayment: (data: CreatePaymentFormData) => Promise<BackofficePaymentItem>
 }
 
 const BackofficePaymentsContext = createContext<PaymentsContextValue | undefined>(undefined)
@@ -76,11 +74,9 @@ export function BackofficePaymentsProvider({ children, paymentsService }: Props)
     async (data: CreatePaymentFormData) => {
       setIsCreating(true)
       try {
-        const result = await paymentsService.create(data)
-        if (result.isValid) {
-          await fetchPayments()
-        }
-        return result
+        const created = await paymentsService.create(data)
+        await fetchPayments()
+        return created
       } finally {
         setIsCreating(false)
       }

@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditCard, UserRound } from 'lucide-react';
 import type { SubscriptionData } from '../types/subscription.types';
+import { formatBillingType } from './subscription-format';
 
 interface SubscriptionCustomerCardProps {
   subscription: SubscriptionData;
@@ -31,7 +32,7 @@ export function SubscriptionCustomerCard({ subscription }: SubscriptionCustomerC
           <span className="text-sm text-muted-foreground">Método</span>
           <span className="inline-flex items-center gap-2 font-medium">
             <CreditCard className="size-4 text-muted-foreground" />
-            {subscription.billingType}
+            {formatBillingType(subscription.billingType)}
           </span>
         </div>
         <div className="flex flex-col gap-1">

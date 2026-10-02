@@ -4,6 +4,7 @@ import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
+import { subscriptionPointerRepository } from "@/app/api/infra/data/repositories/subscriptions/SubscriptionPointerRepository";
 import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 import { getEmailService } from "@/lib/services/EmailService";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
@@ -1324,14 +1325,23 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           }
         }
 
-        await prisma.profile.update({
-          where: { id: manager.id },
-          data: {
-            asaasSubscriptionId: newSubscription.subscriptionId,
-            asaasSubscriptionAccount: 'primary',
-            subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
-            operatorCount: manager.operators.length,
-          }
+        // Achado P1 da revisão do PR #1207 (chatgpt-codex-connector, threads
+        // PRRT_...CUk2 e PRRT_...YP_r): ProfileSubscription é ponteiro irmão
+        // (30 — Migração de Conta E3) e, quando mirrora o MESMO sub_ do
+        // Profile, fica órfão apontando para a assinatura legada
+        // recém-inativada se não acompanhar essa troca — o backfill
+        // 20260918150645 não tem como descobrir a migração depois do fato,
+        // porque o ponteiro do Profile já mudou. As duas escritas vão numa
+        // transação só: uma falha parcial deixaria o Profile na primary e a
+        // ProfileSubscription no id legado, e `getSyncSnapshot` combina o id
+        // de uma com a conta da outra — consulta na conta errada.
+        await subscriptionPointerRepository.migrateSubscriptionPointers({
+          profileId: manager.id,
+          previousSubscriptionId: manager.asaasSubscriptionId,
+          newSubscriptionId: newSubscription.subscriptionId,
+          account: 'primary',
+          subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+          operatorCount: manager.operators.length,
         });
 
         return new Output(
