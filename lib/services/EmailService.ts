@@ -13,6 +13,11 @@ import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import { resolveTransactionalQuotaFailure } from "@/lib/email/resend-quota-incident";
 import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
 import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
+import {
+  buildCloserScheduleNotificationEmailTemplate,
+  buildMeetingContactNotificationEmailTemplate,
+  buildMeetingInviteEmailTemplate,
+} from "@/lib/email/meeting-schedule-templates";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -1862,63 +1867,14 @@ export class EmailService {
   }
 
   async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
-    const linkMarkup = data.meetingLink
-      ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
-      : "Link não informado";
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Convite de reunião</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${title}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      Você foi convidado para uma reunião com <strong>${data.leadName}</strong>.
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Organizador:</strong> ${data.organizerName}</p>
-                      <p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
-                    </div>
-                    <p style="margin: 20px 0 0 0; color: #737373; font-size: 13px; line-height: 1.6;">
-                      Este convite foi reenviado pelo Corretor Studio.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { title, html } = buildMeetingInviteEmailTemplate({
+      leadName: data.leadName,
+      meetingTitle: data.meetingTitle,
+      meetingDate: data.meetingDate,
+      meetingLink: data.meetingLink,
+      organizerName: data.organizerName,
+      timezone: data.timezone,
+    });
 
     const recipients = data.to.filter(Boolean);
     if (recipients.length === 0) {
@@ -1981,64 +1937,14 @@ export class EmailService {
   }
 
   async sendMeetingContactNotificationEmail(data: MeetingContactNotificationEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const formatLabel = data.meetingType === "call" ? "Ligação" : "WhatsApp";
-    const title = `Reunião por ${formatLabel} com ${data.closerName}`;
-    const closerPhoneMarkup = data.closerPhone?.trim()
-      ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Telefone:</strong> ${data.closerPhone.trim()}</p>`
-      : "";
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Agendamento confirmado</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${title}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      Olá <strong>${data.leadName}</strong>, você tem uma reunião marcada com <strong>${data.closerName}</strong> por <strong>${formatLabel}</strong>.
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Contato:</strong> ${data.closerName}</p>
-                      ${closerPhoneMarkup}
-                    </div>
-                    <p style="margin: 20px 0 0 0; color: #737373; font-size: 13px; line-height: 1.6;">
-                      Fique atento ao horário combinado.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { title, html } = buildMeetingContactNotificationEmailTemplate({
+      leadName: data.leadName,
+      meetingDate: data.meetingDate,
+      meetingType: data.meetingType,
+      closerName: data.closerName,
+      closerPhone: data.closerPhone,
+      timezone: data.timezone,
+    });
 
     const baseOptions = {
       to: [data.to],
@@ -2060,102 +1966,20 @@ export class EmailService {
   }
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
-    const subject = `${subjectPrefix}: ${data.meetingTitle}`;
-    const scheduleIntroText = data.isReschedule
-      ? `Olá <strong>${data.closerName}</strong>, você tem um novo reagendamento com o lead <strong>${data.leadName}</strong>.`
-      : `Olá <strong>${data.closerName}</strong>, você tem um novo agendamento com o lead <strong>${data.leadName}</strong>.`;
-    const leadCrmUrl = data.leadCode
-      ? getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`)
-      : null;
-    const leadCrmMarkup = leadCrmUrl
-      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
-      : "";
-    const leadPhoneMarkup = data.leadPhone?.trim()
-      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Telefone:</strong> ${data.leadPhone.trim()}</p>`
-      : "";
-    const isOnlineMeeting = (data.meetingType ?? "online") === "online";
-    const linkRowLabel = isOnlineMeeting ? "Link" : "Formato";
-    const linkRowValue = isOnlineMeeting
-      ? data.meetingLink
-        ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
-        : "Link não informado"
-      : data.meetingType === "call"
-        ? "Ligação por telefone"
-        : "Contato via WhatsApp";
-    const attendeesMarkup =
-      data.attendees.length > 0
-        ? `<ul style="margin: 8px 0 0 20px; padding: 0; color: #7c2d12; font-size: 14px;">${data.attendees
-            .map((attendee) => `<li style="margin-bottom: 4px;">${attendee}</li>`)
-            .join("")}</ul>`
-        : `<p style="margin: 8px 0 0 0; color: #7c2d12; font-size: 14px;">Nenhum participante informado.</p>`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Confirmação de agendamento</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${data.meetingTitle}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      ${scheduleIntroText}
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px; font-weight: 600;">Infos do agendamento</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> ${data.leadName}</p>
-                      ${leadPhoneMarkup}
-                      ${leadCrmMarkup}
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>${linkRowLabel}:</strong> ${linkRowValue}</p>
-                      <div style="margin: 0; color: #7c2d12; font-size: 14px;">
-                        <strong>Participantes:</strong>
-                        ${attendeesMarkup}
-                      </div>
-                    </div>
-                    ${
-                      data.notes
-                        ? `
-                    <div style="background-color: #fafafa; border: 1px solid #e5e5e5; padding: 16px; border-radius: 12px; margin-top: 16px;">
-                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 14px; font-weight: 600;">Notas</p>
-                      <p style="margin: 0; color: #525252; font-size: 14px; white-space: pre-wrap;">${data.notes}</p>
-                    </div>
-                    `
-                        : ""
-                    }
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { subject, html } = buildCloserScheduleNotificationEmailTemplate({
+      closerName: data.closerName,
+      leadName: data.leadName,
+      leadCode: data.leadCode,
+      leadPhone: data.leadPhone,
+      meetingTitle: data.meetingTitle,
+      meetingDate: data.meetingDate,
+      meetingLink: data.meetingLink,
+      meetingType: data.meetingType,
+      isReschedule: data.isReschedule,
+      attendees: data.attendees,
+      notes: data.notes,
+      timezone: data.timezone,
+    });
 
     return this.sendEmail({
       to: [data.to],
