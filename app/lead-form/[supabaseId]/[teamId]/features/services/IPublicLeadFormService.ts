@@ -17,13 +17,6 @@ export interface SdrOption {
   avatarImageUrl: string;
 }
 
-export interface GuestCandidateOption {
-  id: string;
-  name: string;
-  email: string;
-  avatarImageUrl: string;
-}
-
 export interface SubmitPublicLeadPayload {
   teamId: string;
   supabaseId?: string;
@@ -75,7 +68,9 @@ export interface PublicLeadFormBootstrapData {
   healthPlans: HealthPlanOption[];
   closers: CloserOption[];
   sdrs: SdrOption[];
-  guestCandidates: GuestCandidateOption[];
+  // SPEC 40 DA3/T-40.5 (V8): `guestCandidates` (e-mail de membro do time)
+  // removido do bootstrap público sem autenticação. Ver
+  // `PublicLeadFormUseCase.ts`.
   timezone: string;
   hasTransferTargets: boolean;
   customFieldDefinitions: LeadCustomFieldDefinitionDTO[];

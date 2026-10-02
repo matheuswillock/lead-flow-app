@@ -9,7 +9,18 @@ export const PublicLeadFormRequestSchema = z
 
     // Lead fields
     name: z.string().min(2, "Nome inválido"),
-    email: z.string().email("Email inválido").nullish().transform((val) => val || undefined),
+    // SPEC 40: achado incidental ao escrever o E2E (T-40.9) — o front manda
+    // "" quando o e-mail fica em branco (`email: data.email ?? ""` em
+    // `PublicLeadForm.tsx`), e `.nullish()` sozinho não isenta string vazia
+    // de `.email()`, então todo envio sem e-mail vinha com 400 "Email
+    // inválido". Mesmo padrão já usado para e-mail opcional em
+    // `lib/validations/validationForms.ts`.
+    email: z
+      .string()
+      .email("Email inválido")
+      .nullish()
+      .or(z.literal(""))
+      .transform((val) => val || undefined),
     phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
     cnpj: z
       .string()

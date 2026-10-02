@@ -2,7 +2,6 @@ import type {
   HealthPlanOption,
   CloserOption,
   SdrOption,
-  GuestCandidateOption,
 } from "../services/IPublicLeadFormService";
 import type { LeadCustomFieldDefinitionDTO } from "@/lib/leadCustomFields/types";
 
@@ -19,7 +18,6 @@ export interface PublicLeadFormState {
   closers: CloserOption[];
   closersLoading: boolean;
   sdrs: SdrOption[];
-  guestCandidates: GuestCandidateOption[];
   timezone: string;
   hasTransferTargets: boolean;
   customFieldDefinitions: LeadCustomFieldDefinitionDTO[];

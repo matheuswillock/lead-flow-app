@@ -3,6 +3,10 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import {
+  consumePublicFormRateLimit,
+  publicFormRequestFingerprint,
+} from "@/lib/public-forms/rate-limit";
 
 const schema = z.object({
   teamId: z.string().uuid(),
@@ -27,6 +31,20 @@ export async function POST(request: NextRequest) {
     }
 
     const { teamId, supabaseId, closerId, date } = validation.data;
+
+    // SPEC 40 A-E1/R40-9 (V3): a SPEC declara este endpoint "protegido pela
+    // A-E1" — sem teto, dá para varrer a agenda de todos os closers do time
+    // sem limite.
+    const rate = await consumePublicFormRateLimit(
+      `lead-form-availability:${teamId}:${publicFormRequestFingerprint(request)}`,
+      { limit: 60, windowMs: 60_000 }
+    );
+    if (!rate.allowed) {
+      return NextResponse.json(
+        new Output(false, [], ["Recebemos muitos envios agora. Tente de novo em alguns minutos."], null),
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+      );
+    }
 
     const output = await publicLeadFormUseCase.getCloserAvailability(
       teamId,

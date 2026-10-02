@@ -51,6 +51,15 @@ export interface ILeadRepository {
   findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null>;
   /** Lead do mesmo time com o CNPJ informado, ignorando opcionalmente um id. */
   findCnpjConflictInTeam(input: { teamId: string; cnpj: string; excludeLeadId?: string }): Promise<LeadConflictRef | null>;
+  /**
+   * SPEC 40 R40-17: lead do mesmo TIME com o e-mail informado — mesmo escopo
+   * do índice único `@@unique([teamId, email])` que gera a corrida em
+   * `LeadUseCase.createLeadInternal`. `findDuplicateByManagerAndEmail`
+   * filtra por `managerId` (dono da conta, que pode ter vários times) e por
+   * isso podia devolver o lead de OUTRO time do mesmo master — a atividade
+   * de duplicata caía no CRM errado.
+   */
+  findEmailConflictInTeam(input: { teamId: string; email: string; excludeLeadId?: string }): Promise<LeadConflictRef | null>;
   /** Leads do time destino que conflitam com o lead transferido. */
   findTransferConflictsInTeam(input: { targetTeamId: string; excludeLeadId: string; filters: Prisma.LeadWhereInput[] }): Promise<LeadTransferConflict[]>;
   /** Desmarca o estado de transferencia pendente do lead. */

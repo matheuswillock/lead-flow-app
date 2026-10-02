@@ -7,15 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -24,7 +16,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
-import type { GuestCandidateOption } from "../services/IPublicLeadFormService";
 import {
   formatLocalDateValue,
   formatLocalTimeValue,
@@ -44,7 +35,6 @@ interface SchedulingSectionProps {
   extraGuests: string;
   extraGuestsError?: string | null;
   onExtraGuestsChange: (value: string) => void;
-  guestCandidates: GuestCandidateOption[];
   disabled?: boolean;
 }
 
@@ -84,7 +74,6 @@ export function SchedulingSection({
   extraGuests,
   extraGuestsError,
   onExtraGuestsChange,
-  guestCandidates,
   disabled = false,
 }: SchedulingSectionProps) {
   const {
@@ -295,50 +284,6 @@ export function SchedulingSection({
               className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               disabled={disabled || !schedulingReady}
             />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>Adicionar membros do time:</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={disabled || !schedulingReady}>
-                  Selecionar
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-60">
-                {guestCandidates.map((candidate) => {
-                  const email = candidate.email;
-                  const checked = selectedGuestEmails.includes(email.toLowerCase());
-
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={candidate.id}
-                      checked={checked}
-                      onCheckedChange={(nextChecked) => {
-                        const next = nextChecked
-                          ? [...selectedGuestEmails, email]
-                          : selectedGuestEmails.filter((item) => item !== email.toLowerCase());
-                        onExtraGuestsChange(buildEmailValue(next));
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={candidate.avatarImageUrl || undefined} />
-                          <AvatarFallback className="text-[10px]">
-                            {candidate.name
-                              .split(" ")
-                              .map((name) => name[0])
-                              .join("")
-                              .toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="truncate">{candidate.name}</span>
-                      </div>
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
           <p className="text-xs text-muted-foreground">
