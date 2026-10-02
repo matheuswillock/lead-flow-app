@@ -4,6 +4,8 @@ import { assertResend, buildResendIdempotencyKey } from "@/lib/email"
 import { buildBackofficeResendTags } from "@/lib/email/build-backoffice-resend-tags"
 import { getResendOwnerEmail } from "@/lib/email/resend-owner-email"
 import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from"
+import { escapeHtml, escapeHtmlAttribute } from "@/lib/email/escape-html"
+import { escapeIcsText } from "@/lib/email/escape-ics-text"
 import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
@@ -50,29 +52,6 @@ function formatIcsDate(date: Date): string {
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z")
-}
-
-function escapeIcsText(value?: string | null): string {
-  if (!value) return ""
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/;/g, "\\;")
-    .replace(/,/g, "\\,")
-}
-
-function escapeHtml(value?: string | null): string {
-  if (!value) return ""
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}
-
-function escapeHtmlAttribute(value?: string | null): string {
-  return escapeHtml(value)
 }
 
 function meetingFormatLabel(meetingType: SendBackofficeLeadScheduleInviteInput["meetingType"]): string | null {
