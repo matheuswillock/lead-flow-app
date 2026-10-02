@@ -13,6 +13,7 @@
  */
 
 import { CLOUDFLARE_DNS_PROVIDER_NAME } from "./dns-provider-map"
+import { escapeHtml } from "./escape-html"
 
 export type CustomDomainDnsRecord = {
   /** Propósito reportado pelo provedor: DKIM, SPF, Tracking, Receiving… */
@@ -183,15 +184,6 @@ export type DnsInstructionsEmailContent = {
   subject: string
   text: string
   html: string
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
 }
 
 /**

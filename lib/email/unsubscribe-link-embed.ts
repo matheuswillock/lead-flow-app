@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape-html"
+
 export const EMAIL_UNSUBSCRIBE_LINK_VARIABLE_KEY = "link_descadastro"
 
 export const EMAIL_UNSUBSCRIBE_LINK_ALIAS_KEYS = ["unsubscribe_url", "unsubscribe_link"] as const
@@ -69,11 +71,3 @@ export function suggestUnsubscribeTokenHint(unresolvedTokens: string[]): string 
   return `Se {{${lookalike}}} deveria ser o link de descadastro, use ${EMAIL_UNSUBSCRIBE_LINK_TOKEN} (variável nativa da plataforma).`
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}

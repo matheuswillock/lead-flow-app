@@ -13,6 +13,18 @@ import { teamEmailDispatchLogger } from "@/lib/email/team-email-dispatch-logger"
 import { resolveTransactionalQuotaFailure } from "@/lib/email/resend-quota-incident";
 import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from "@/lib/supabase/email-auth-link";
 import { PLATFORM_FROM_HEADER } from "@/lib/email/resolve-campaign-from";
+import { escapeHtml, sanitizeEmailHref } from "@/lib/email/escape-html";
+import {
+  buildCloserScheduleNotificationEmailTemplate,
+  buildMeetingContactNotificationEmailTemplate,
+  buildMeetingInviteEmailTemplate,
+} from "@/lib/email/meeting-schedule-templates";
+import {
+  buildLeadNotificationEmailTemplate,
+  buildLeadProposalPendingUrgentEmailTemplate,
+  buildLeadTransferActivatedEmailTemplate,
+} from "@/lib/email/lead-notification-templates";
+import { escapeIcsText } from "@/lib/email/escape-ics-text";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -303,12 +315,7 @@ export class EmailService {
   }
 
   private escapeIcsText(value?: string | null) {
-    if (!value) return "";
-    return value
-      .replace(/\\/g, "\\\\")
-      .replace(/\n/g, "\\n")
-      .replace(/;/g, "\\;")
-      .replace(/,/g, "\\,");
+    return escapeIcsText(value);
   }
 
   private buildCheckoutLinkEmailHtml(input: {
@@ -1216,39 +1223,16 @@ export class EmailService {
 
   // Notificação de novo lead para managers
   async sendLeadNotification(data: LeadNotificationData) {
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #333;">Novo Lead Recebido!</h1>
-        
-        <p>Olá <strong>${data.managerName}</strong>,</p>
-        
-        <p>Um novo lead foi registrado em sua plataforma:</p>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: #333;">Dados do Lead:</h3>
-          <p><strong>Nome:</strong> ${data.leadName}</p>
-          <p><strong>Email:</strong> ${data.leadEmail}</p>
-          ${data.leadPhone ? `<p><strong>Telefone:</strong> ${data.leadPhone}</p>` : ''}
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${getFullUrl('/dashboard')}" 
-             style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            Ver Lead no Dashboard
-          </a>
-        </div>
-        
-        <p>Entre na plataforma para visualizar e gerenciar este novo lead.</p>
-        
-        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um e-mail automático do Corretor Studio.</p>
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadNotificationEmailTemplate({
+      leadName: data.leadName,
+      leadEmail: data.leadEmail,
+      leadPhone: data.leadPhone,
+      managerName: data.managerName,
+    });
 
     return this.sendEmail({
       to: [data.managerEmail],
-      subject: `Novo Lead: ${data.leadName}`,
+      subject,
       html,
       tracking: {
         teamId: data.teamId,
@@ -1259,48 +1243,21 @@ export class EmailService {
   }
 
   async sendLeadProposalPendingUrgentEmail(data: LeadProposalPendingUrgentEmailData) {
-    const leadName = data.leadName || "Lead sem nome";
-    const leadEmail = data.leadEmail || "Não informado";
-    const leadPhone = data.leadPhone || "Não informado";
-    const sdrName = data.sdrName || "Não informado";
-    const closerName = data.closerName || "Não informado";
-    const notes = (data.notes || "Sem observações adicionais").trim();
-    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
-    const proposalPendingTitle = `Você tem uma proposta pendente no Corretor Studio - ID: ${data.leadCode}`;
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
-        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0; font-size: 22px;">${proposalPendingTitle}</h1>
-          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
-            ${data.actorName} moveu um lead para o status de proposta pendente.
-          </p>
-        </div>
-
-        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
-          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${leadName}</p>
-          <p style="margin: 0 0 8px;"><strong>E-mail:</strong> ${leadEmail}</p>
-          <p style="margin: 0 0 14px;"><strong>Telefone:</strong> ${leadPhone}</p>
-
-          <p style="margin: 0 0 8px;"><strong>SDR:</strong> ${sdrName}</p>
-          <p style="margin: 0 0 14px;"><strong>Closer:</strong> ${closerName}</p>
-
-          <div style="margin: 0 0 14px;">
-            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
-          </div>
-
-          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
-            <p style="margin: 0; white-space: pre-wrap;">${notes}</p>
-          </div>
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadProposalPendingUrgentEmailTemplate({
+      leadCode: data.leadCode,
+      leadName: data.leadName,
+      leadEmail: data.leadEmail,
+      leadPhone: data.leadPhone,
+      sdrName: data.sdrName,
+      closerName: data.closerName,
+      notes: data.notes,
+      actorName: data.actorName,
+    });
 
     return this.sendEmail({
       to: data.to,
       cc: data.cc,
-      subject: proposalPendingTitle,
+      subject,
       html,
       attachments: data.attachments,
       tracking: {
@@ -1862,63 +1819,14 @@ export class EmailService {
   }
 
   async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
-    const linkMarkup = data.meetingLink
-      ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
-      : "Link não informado";
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Convite de reunião</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${title}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      Você foi convidado para uma reunião com <strong>${data.leadName}</strong>.
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Organizador:</strong> ${data.organizerName}</p>
-                      <p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
-                    </div>
-                    <p style="margin: 20px 0 0 0; color: #737373; font-size: 13px; line-height: 1.6;">
-                      Este convite foi reenviado pelo Corretor Studio.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { title, html } = buildMeetingInviteEmailTemplate({
+      leadName: data.leadName,
+      meetingTitle: data.meetingTitle,
+      meetingDate: data.meetingDate,
+      meetingLink: data.meetingLink,
+      organizerName: data.organizerName,
+      timezone: data.timezone,
+    });
 
     const recipients = data.to.filter(Boolean);
     if (recipients.length === 0) {
@@ -1981,64 +1889,14 @@ export class EmailService {
   }
 
   async sendMeetingContactNotificationEmail(data: MeetingContactNotificationEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const formatLabel = data.meetingType === "call" ? "Ligação" : "WhatsApp";
-    const title = `Reunião por ${formatLabel} com ${data.closerName}`;
-    const closerPhoneMarkup = data.closerPhone?.trim()
-      ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Telefone:</strong> ${data.closerPhone.trim()}</p>`
-      : "";
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Agendamento confirmado</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${title}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      Olá <strong>${data.leadName}</strong>, você tem uma reunião marcada com <strong>${data.closerName}</strong> por <strong>${formatLabel}</strong>.
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Contato:</strong> ${data.closerName}</p>
-                      ${closerPhoneMarkup}
-                    </div>
-                    <p style="margin: 20px 0 0 0; color: #737373; font-size: 13px; line-height: 1.6;">
-                      Fique atento ao horário combinado.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { title, html } = buildMeetingContactNotificationEmailTemplate({
+      leadName: data.leadName,
+      meetingDate: data.meetingDate,
+      meetingType: data.meetingType,
+      closerName: data.closerName,
+      closerPhone: data.closerPhone,
+      timezone: data.timezone,
+    });
 
     const baseOptions = {
       to: [data.to],
@@ -2060,102 +1918,20 @@ export class EmailService {
   }
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
-    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
-    const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
-    const subject = `${subjectPrefix}: ${data.meetingTitle}`;
-    const scheduleIntroText = data.isReschedule
-      ? `Olá <strong>${data.closerName}</strong>, você tem um novo reagendamento com o lead <strong>${data.leadName}</strong>.`
-      : `Olá <strong>${data.closerName}</strong>, você tem um novo agendamento com o lead <strong>${data.leadName}</strong>.`;
-    const leadCrmUrl = data.leadCode
-      ? getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`)
-      : null;
-    const leadCrmMarkup = leadCrmUrl
-      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
-      : "";
-    const leadPhoneMarkup = data.leadPhone?.trim()
-      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Telefone:</strong> ${data.leadPhone.trim()}</p>`
-      : "";
-    const isOnlineMeeting = (data.meetingType ?? "online") === "online";
-    const linkRowLabel = isOnlineMeeting ? "Link" : "Formato";
-    const linkRowValue = isOnlineMeeting
-      ? data.meetingLink
-        ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
-        : "Link não informado"
-      : data.meetingType === "call"
-        ? "Ligação por telefone"
-        : "Contato via WhatsApp";
-    const attendeesMarkup =
-      data.attendees.length > 0
-        ? `<ul style="margin: 8px 0 0 20px; padding: 0; color: #7c2d12; font-size: 14px;">${data.attendees
-            .map((attendee) => `<li style="margin-bottom: 4px;">${attendee}</li>`)
-            .join("")}</ul>`
-        : `<p style="margin: 8px 0 0 0; color: #7c2d12; font-size: 14px;">Nenhum participante informado.</p>`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Confirmação de agendamento</p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 40px 32px;">
-                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${data.meetingTitle}</h2>
-                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      ${scheduleIntroText}
-                    </p>
-                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px; font-weight: 600;">Infos do agendamento</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> ${data.leadName}</p>
-                      ${leadPhoneMarkup}
-                      ${leadCrmMarkup}
-                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>${linkRowLabel}:</strong> ${linkRowValue}</p>
-                      <div style="margin: 0; color: #7c2d12; font-size: 14px;">
-                        <strong>Participantes:</strong>
-                        ${attendeesMarkup}
-                      </div>
-                    </div>
-                    ${
-                      data.notes
-                        ? `
-                    <div style="background-color: #fafafa; border: 1px solid #e5e5e5; padding: 16px; border-radius: 12px; margin-top: 16px;">
-                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 14px; font-weight: 600;">Notas</p>
-                      <p style="margin: 0; color: #525252; font-size: 14px; white-space: pre-wrap;">${data.notes}</p>
-                    </div>
-                    `
-                        : ""
-                    }
-                  </td>
-                </tr>
-                <tr>
-                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
-                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                      Este é um e-mail automático do Corretor Studio
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
+    const { subject, html } = buildCloserScheduleNotificationEmailTemplate({
+      closerName: data.closerName,
+      leadName: data.leadName,
+      leadCode: data.leadCode,
+      leadPhone: data.leadPhone,
+      meetingTitle: data.meetingTitle,
+      meetingDate: data.meetingDate,
+      meetingLink: data.meetingLink,
+      meetingType: data.meetingType,
+      isReschedule: data.isReschedule,
+      attendees: data.attendees,
+      notes: data.notes,
+      timezone: data.timezone,
+    });
 
     return this.sendEmail({
       to: [data.to],
@@ -2419,62 +2195,21 @@ export class EmailService {
   }
 
   async sendLeadTransferActivatedEmail(data: LeadTransferActivatedEmailData) {
-    const leadName = data.leadName || "Lead sem nome";
-    const leadPhone = data.leadPhone || "Não informado";
-    const leadCnpj = data.leadCnpj || "Não informado";
-    const leadCurrentHealthPlan = data.leadCurrentHealthPlan || "Não informado";
-    const leadCurrentValue =
-      data.leadCurrentValue != null
-        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.leadCurrentValue)
-        : "Não informado";
-    const sdrName = data.sdrName || "Não informado";
-    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
-    const leadNotes = (data.leadNotes || "Sem observações").trim();
-    const scheduleShareUrl = data.scheduleShareUrl?.trim() || "";
-    const scheduleShareBlock = scheduleShareUrl
-      ? `
-          <div style="margin-top: 16px; background: #fff7ed; border: 1px solid #fed7aa; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 8px;"><strong>Link do formulário da reunião</strong></p>
-            <p style="margin: 0;">
-              <a href="${scheduleShareUrl}" style="color: #ff6900; text-decoration: none;">Abrir agendamento</a>
-            </p>
-          </div>
-        `
-      : "";
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
-        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
-          <h1 style="margin: 0; font-size: 22px;">Lead para transferência adicionado</h1>
-          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
-            Um novo lead foi marcado para transferência no Corretor Studio.
-          </p>
-        </div>
-
-        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
-          <p style="margin: 0 0 8px;"><strong>Lead:</strong> ${leadName}</p>
-          <p style="margin: 0 0 8px;"><strong>Telefone:</strong> ${leadPhone}</p>
-          <p style="margin: 0 0 8px;"><strong>CNPJ:</strong> ${leadCnpj}</p>
-          <p style="margin: 0 0 8px;"><strong>Plano atual:</strong> ${leadCurrentHealthPlan}</p>
-          <p style="margin: 0 0 8px;"><strong>Valor atual:</strong> ${leadCurrentValue}</p>
-          <p style="margin: 0 0 14px;"><strong>SDR:</strong> ${sdrName}</p>
-
-          <div style="margin: 0 0 14px;">
-            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
-          </div>
-
-          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
-            <p style="margin: 0; white-space: pre-wrap;">${leadNotes}</p>
-          </div>
-          ${scheduleShareBlock}
-        </div>
-      </div>
-    `;
+    const { subject, html } = buildLeadTransferActivatedEmailTemplate({
+      leadCode: data.leadCode,
+      leadName: data.leadName,
+      leadPhone: data.leadPhone,
+      leadCnpj: data.leadCnpj,
+      leadCurrentHealthPlan: data.leadCurrentHealthPlan,
+      leadCurrentValue: data.leadCurrentValue,
+      leadNotes: data.leadNotes,
+      sdrName: data.sdrName,
+      scheduleShareUrl: data.scheduleShareUrl,
+    });
 
     return this.sendEmail({
       to: data.to,
-      subject: `Novo lead para transferência: ${leadName}`,
+      subject,
       html,
       tracking: {
         teamId: data.teamId,
@@ -2492,10 +2227,27 @@ export class EmailService {
         ? `${data.leadCount} ${meetingLabel} aguardando confirmação`
         : `Time: ${data.leadCount} ${meetingLabel} pendentes há mais de 3 dias`;
 
+    const safeRecipientName = escapeHtml(data.recipientName);
+    const safeTeamName = escapeHtml(data.teamName ?? "do time");
+    const safeCrmUrl = sanitizeEmailHref(data.crmUrl);
+
     const introText =
       data.role === "closer"
-        ? `Olá <strong>${data.recipientName}</strong>, você tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação. Marque como realizada ou no-show no Corretor Studio.`
-        : `Olá <strong>${data.recipientName}</strong>, o time <strong>${data.teamName ?? "do time"}</strong> tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação há mais de 3 dias.`;
+        ? `Olá <strong>${safeRecipientName}</strong>, você tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação. Marque como realizada ou no-show no Corretor Studio.`
+        : `Olá <strong>${safeRecipientName}</strong>, o time <strong>${safeTeamName}</strong> tem <strong>${data.leadCount}</strong> ${meetingLabel} aguardando confirmação há mais de 3 dias.`;
+
+    // Achado da revisão xhigh do PR de A-E1c (R13-6): `crmUrl` é `http://localhost`
+    // em dev/E2E (não tem CTA nem log nesses ambientes). Em produção é sempre
+    // `https:`, então nunca cai neste fallback.
+    const ctaMarkup = safeCrmUrl
+      ? `<div style="text-align: center; margin: 32px 0;">
+                      <a href="${safeCrmUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 16px;">
+                        Abrir board no CRM
+                      </a>
+                    </div>`
+      : `<p style="margin: 0 0 24px 0; color: #a3a3a3; font-size: 13px; text-align: center;">
+                      ${escapeHtml(data.crmUrl)}
+                    </p>`;
 
     const html = `
       <!DOCTYPE html>
@@ -2520,11 +2272,7 @@ export class EmailService {
                     <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6;">
                       ${introText}
                     </p>
-                    <div style="text-align: center; margin: 32px 0;">
-                      <a href="${data.crmUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 600; font-size: 16px;">
-                        Abrir board no CRM
-                      </a>
-                    </div>
+                    ${ctaMarkup}
                   </td>
                 </tr>
                 <tr>
