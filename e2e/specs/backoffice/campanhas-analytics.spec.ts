@@ -407,10 +407,12 @@ test.describe("app/backoffice/(app)/campanhas-analytics", () => {
 
     const sortedDays = (
       await enabledDayButtons.evaluateAll((elements) =>
-        elements.map((element) => {
-          const attr = element.getAttribute("data-day") ?? "";
-          return { attr, time: new Date(attr).getTime() };
-        })
+        elements
+          .filter((element) => !element.closest("[data-outside]"))
+          .map((element) => {
+            const attr = element.getAttribute("data-day") ?? "";
+            return { attr, time: new Date(attr).getTime() };
+          })
       )
     ).sort((a, b) => a.time - b.time);
 
@@ -421,8 +423,23 @@ test.describe("app/backoffice/(app)/campanhas-analytics", () => {
     });
     expect(end, "calendário visível não cobre um span entre 31 e 92 dias a partir do primeiro dia habilitado").toBeTruthy();
 
-    await page.locator(`button[data-day="${start.attr}"]`).click();
-    await page.locator(`button[data-day="${end!.attr}"]`).click();
+    const clickCalendarDay = async (day: { attr: string; time: number }) => {
+      const date = new Date(day.time);
+      const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(date);
+      const dayLabel = new Intl.DateTimeFormat("pt-BR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }).format(date);
+
+      await page
+        .getByRole("grid", { name: monthLabel })
+        .getByRole("button", { name: new RegExp(dayLabel, "i") })
+        .click();
+    };
+
+    await clickCalendarDay(start);
+    await clickCalendarDay(end!);
     await page.keyboard.press("Escape");
 
     const summaryResponse = page.waitForResponse(
