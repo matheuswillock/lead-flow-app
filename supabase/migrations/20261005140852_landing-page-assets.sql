@@ -31,7 +31,3 @@ drop policy if exists "landing_page_assets_authenticated_delete" on storage.obje
 create policy "landing_page_assets_authenticated_delete"
 on storage.objects for delete to authenticated
 using (bucket_id = 'landing-page-assets' and (storage.foldername(name))[1] = auth.uid()::text);
-
-create index if not exists storage_objects_landing_page_assets_bucket_name_index
-on storage.objects (bucket_id, name)
-where bucket_id = 'landing-page-assets';
