@@ -28,7 +28,7 @@ describe("normalizeLandingAttribution", () => {
         campaign_id: " ",
         cs_el: "email-log-99",
         utm_source: "email\nforged-header",
-        referrer: "javascript:alert(1)",
+        referrer: "javascript:blocked(1)",
       }),
     ).toEqual({ emailLogId: "email-log-99" })
   })

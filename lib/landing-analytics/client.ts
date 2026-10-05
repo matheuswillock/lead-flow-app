@@ -1,5 +1,6 @@
 import { normalizeLandingAttribution } from "./attribution"
 import { sanitizeLandingEvent, type LandingAnalyticsEvent } from "./events"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 export type LandingAnalyticsContext = {
   landingPageId: string
@@ -29,5 +30,5 @@ export function createLandingAnalyticsEvent(
 }
 
 export function landingAnalyticsEndpoint(publicId: string): string {
-  return `/api/v1/public-landing-pages/${encodeURIComponent(publicId)}/analytics/events`
+  return `${API_CLIENT_BASE}/public-landing-pages/${encodeURIComponent(publicId)}/analytics/events`
 }
