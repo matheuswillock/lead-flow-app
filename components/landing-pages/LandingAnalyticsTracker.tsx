@@ -15,6 +15,17 @@ function sessionId() {
   return created
 }
 
+function hasAnalyticsConsent() {
+  const consent = Object.entries(window.localStorage).find(([key]) => key.includes("cookie-consent"))?.[1]
+  if (!consent) return false
+  if (consent === "all") return true
+  try {
+    return Boolean((JSON.parse(consent) as { analytics?: boolean }).analytics)
+  } catch {
+    return false
+  }
+}
+
 export function LandingAnalyticsTracker({ snapshot, children }: Props) {
   const startedAt = useRef(Date.now())
   const sentMilestones = useRef(new Set<number>())
@@ -29,6 +40,7 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
       visitorSessionId,
       attribution: Object.fromEntries(new URLSearchParams(window.location.search).entries()),
     }
+    if (!hasAnalyticsConsent()) return
     const send = (eventType: Parameters<typeof createLandingAnalyticsEvent>[1], metadata?: Record<string, unknown>) => {
       const payload = createLandingAnalyticsEvent(context, eventType, metadata)
       void fetch(endpoint, {

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useParams } from "next/navigation"
-import { Archive, Copy, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2 } from "lucide-react"
+import { Archive, BarChart3, Copy, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -104,6 +104,7 @@ export function LandingPagesManagement() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div><p className="mb-1 text-sm font-medium text-primary">Landing pages</p><h1 className="text-2xl font-semibold tracking-tight">Páginas de cotação</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Crie experiências de conversão para suas campanhas e acompanhe o que está pronto para receber contatos.</p></div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="outline" className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/analytics`}><BarChart3 data-icon="inline-start" />Analytics</Link></Button>
           <Button variant="outline" size="icon" className="size-11" aria-label="Configurar domínio de cotação" onClick={() => setDomainSheetOpen(true)}><Settings2 /></Button>
           <Button asChild className="min-h-11"><Link href={`/${params.supabaseId}/landing-pages/new`}><Plus data-icon="inline-start" />Criar landing</Link></Button>
         </div>
