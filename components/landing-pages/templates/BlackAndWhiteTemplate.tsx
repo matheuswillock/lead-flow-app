@@ -1,5 +1,6 @@
 "use client"
 
+import "./black-and-white.css"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
 import { PublicTrackingBody, type PublicTrackingScriptsValue } from "@/components/public-tracking/PublicTrackingScripts"
 import AnalysisLanding from "../imported-sources/black-and-white-components/analysis-landing"

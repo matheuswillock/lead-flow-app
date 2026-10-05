@@ -1,5 +1,6 @@
 "use client"
 
+import "./alvora.css"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
 import { PublicTrackingBody, type PublicTrackingScriptsValue } from "@/components/public-tracking/PublicTrackingScripts"
 import AlvoraLanding from "../imported-sources/alvora-app/page"
