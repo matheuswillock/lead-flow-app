@@ -62,36 +62,7 @@ function createTemplateConfig(templateSlug: string): LandingTemplateConfig {
         ? {
             statistics: { enabled: true, items: [] },
             operators: { enabled: true, items: [] },
-            differentials: {
-              enabled: true,
-              title: "Mais que uma corretora, um time ao seu lado.",
-              items: [
-                {
-                  title: "Consultoria gratuita",
-                  description: "Orientação sem custo para ajudar você a escolher.",
-                },
-                {
-                  title: "Opções para empresários",
-                  description: "Alternativas pelo CNPJ, conforme a sua elegibilidade.",
-                },
-                {
-                  title: "Comparação de operadoras",
-                  description: "Análise de preços, coberturas e rede para o seu perfil.",
-                },
-                {
-                  title: "Acompanhamento no pós-venda",
-                  description: "Suporte com dúvidas, reajustes e possibilidades de troca.",
-                },
-                {
-                  title: "Análise personalizada",
-                  description: "Sua idade, sua família e suas prioridades entram na comparação.",
-                },
-                {
-                  title: "Atendimento humano",
-                  description: "Uma equipe preparada para conversar e acompanhar sua decisão.",
-                },
-              ],
-            },
+            differentials: { enabled: false, items: [] },
             faq: { enabled: true, title: "Plano de saúde sem complicação", items: [] },
             testimonials: { enabled: false, items: [] },
           }
@@ -198,14 +169,30 @@ export function TemplateLandingPageWizard() {
         const output = (await response.json()) as {
           isValid: boolean
           errorMessages?: string[]
-          result?: { name: string; publicFormId: string; templateSlug: string; content: { templateConfig?: LandingTemplateConfig } }
+          result?: {
+            name: string
+            publicFormId: string
+            templateSlug: string
+            content: { templateConfig?: LandingTemplateConfig; brandName?: string; heroTitle?: string; heroDescription?: string }
+          }
         }
-        if (!response.ok || !output.isValid || !output.result?.content.templateConfig)
+        if (!response.ok || !output.isValid || !output.result)
           throw new Error(output.errorMessages?.[0] ?? "Não foi possível carregar a landing.")
         if (cancelled) return
         setName(output.result.name)
         setPublicFormId(output.result.publicFormId)
-        const loadedConfig = output.result.content.templateConfig
+        const loadedConfig = output.result.content.templateConfig ?? {
+          ...createTemplateConfig(output.result.templateSlug),
+          identity: {
+            ...createTemplateConfig(output.result.templateSlug).identity,
+            tradeName: output.result.content.brandName ?? output.result.name,
+          },
+          hero: {
+            ...createTemplateConfig(output.result.templateSlug).hero,
+            title: output.result.content.heroTitle ?? undefined,
+            description: output.result.content.heroDescription ?? undefined,
+          },
+        }
         setTemplateSlug(loadedConfig.templateSlug === "alvora" ? "alvora" : "black-and-white")
         setConfig(loadedConfig)
         setStep(2)
@@ -221,25 +208,21 @@ export function TemplateLandingPageWizard() {
   }, [editingLandingId, forms.ids?.supabaseId, forms.ids?.teamId])
   async function uploadLogo(file: File) {
     if (!forms.ids) return
-    const body = new FormData()
-    body.set("asset", file)
-    const response = await fetch(
-      `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/assets`,
-      {
+    try {
+      const body = new FormData()
+      body.set("asset", file)
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/assets`, {
         method: "POST",
         headers: { "x-supabase-user-id": forms.ids.supabaseId, "x-team-id": forms.ids.teamId },
         body,
-      },
-    )
-    const output = (await response.json()) as {
-      isValid: boolean
-      result?: { publicUrl: string }
-      errorMessages?: string[]
+      })
+      const output = (await response.json()) as { isValid: boolean; result?: { publicUrl: string }; errorMessages?: string[] }
+      if (!response.ok || !output.isValid || !output.result) throw new Error(output.errorMessages?.[0] ?? "Não foi possível enviar o logo.")
+      updateIdentity("logoUrl", output.result.publicUrl)
+      toast.success("Logo enviado")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o logo.")
     }
-    if (!response.ok || !output.isValid || !output.result)
-      return toast.error(output.errorMessages?.[0] ?? "Não foi possível enviar o logo.")
-    updateIdentity("logoUrl", output.result.publicUrl)
-    toast.success("Logo enviado")
   }
   async function createLanding() {
     if (!forms.ids || !name.trim() || !publicFormId || !config.identity.tradeName.trim())

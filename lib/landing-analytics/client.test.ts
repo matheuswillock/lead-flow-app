@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createLandingAnalyticsEvent, landingAnalyticsEndpoint } from "./client"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 describe("landing analytics client contract", () => {
   test("builds an attributed event without leaking raw values", () => {
@@ -21,7 +22,7 @@ describe("landing analytics client contract", () => {
 
   test("uses the public landing endpoint", () => {
     expect(landingAnalyticsEndpoint("landing/1")).toBe(
-      "/api/v1/public-landing-pages/landing%2F1/analytics/events",
+      `${API_CLIENT_BASE}/public-landing-pages/landing%2F1/analytics/events`,
     )
   })
 })
