@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { FormEvent, Ref } from 'react'
+import type { ReactNode } from 'react'
 import { ArrowRight, Check, ChevronDown, CircleCheck, ClipboardCheck, FileSearch, RotateCcw, RotateCw, ShieldCheck } from 'lucide-react'
 import SiteFooter from './site-footer'
 import { CookieConsent } from './cookie-consent'
@@ -20,56 +20,22 @@ const faqs = [
   ['Como funciona carência?', 'As condições variam conforme produto, operadora e situação. O especialista poderá explicar o cenário aplicável.'],
 ]
 
-type LeadData = {
-  name: string
-  email: string
-  phone: string
+function Button({ children, light = false }: { children: ReactNode; light?: boolean }) {
+  return <a href="#analise" className={`button ${light ? "button-light" : ""}`}>{children}<ArrowRight size={17} aria-hidden="true" /></a>
 }
 
-const emptyLead: LeadData = { name: '', email: '', phone: '' }
-
-function Button({ children, light = false }: { children: React.ReactNode; light?: boolean }) {
-  return <a href="#analise" className={`button ${light ? 'button-light' : ''}`}>{children}<ArrowRight size={17} aria-hidden="true" /></a>
-}
-function Brand() {
-  return <a href="#top" className="brand" aria-label="Voltar ao início">Sua marca</a>
+function Brand({ name }: { name: string }) {
+  return <a href="#top" className="brand" aria-label="Voltar ao início">{name}</a>
 }
 
-function LeadForm({ idPrefix, lead, nameRef, compact = false, onChange, onSubmit }: {
-  idPrefix: string
-  lead: LeadData
-  nameRef?: Ref<HTMLInputElement>
-  compact?: boolean
-  onChange: (field: keyof LeadData, value: string) => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-}) {
-  return <form className={`lead-form ${compact ? 'lead-form-compact' : ''}`} onSubmit={onSubmit}>
-    <label htmlFor={`${idPrefix}-name`}>Nome<input ref={nameRef} id={`${idPrefix}-name`} name="name" required autoComplete="name" placeholder="Como podemos chamar você?" value={lead.name} onChange={event => onChange('name', event.target.value)} /></label>
-    <label htmlFor={`${idPrefix}-phone`}>Telefone<input id={`${idPrefix}-phone`} name="phone" required type="tel" autoComplete="tel" inputMode="tel" placeholder="(00) 00000-0000" value={lead.phone} onChange={event => onChange('phone', event.target.value)} /></label>
-    <label htmlFor={`${idPrefix}-email`}>E-mail<input id={`${idPrefix}-email`} name="email" required type="email" autoComplete="email" placeholder="voce@email.com" value={lead.email} onChange={event => onChange('email', event.target.value)} /></label>
-    <button className="button form-button" type="submit">Solicitar minha análise <ArrowRight size={17} aria-hidden="true" /></button>
-  </form>
-}
-
-function SuccessState({ headingRef, onBackToScenario }: { headingRef?: Ref<HTMLHeadingElement>; onBackToScenario?: () => void }) {
-  return <div className="success-state"><div className="success-icon"><CircleCheck size={28} aria-hidden="true" /></div><h2 ref={headingRef} tabIndex={-1}>Recebemos suas informações.</h2><p>Agora um especialista poderá analisar o seu cenário antes da conversa.</p><div className="status-list"><span><Check size={15} aria-hidden="true" /> Solicitação enviada</span><span><Check size={15} aria-hidden="true" /> Informações recebidas</span><span className="pending">○ Análise do cenário</span><span className="pending">○ Contato do especialista</span></div>{onBackToScenario ? <button type="button" className="back-link hero-success-back" onClick={onBackToScenario}>Voltar ao cenário atual <RotateCcw size={15} aria-hidden="true" /></button> : <a href="#top" className="back-link">Voltar ao início <ArrowRight size={15} aria-hidden="true" /></a>}</div>
-}
-
-export default function AnalysisLanding() {
+export default function AnalysisLanding({ brandName, renderForm }: { brandName: string; renderForm: (compact: boolean) => ReactNode }) {
   const [openFaq, setOpenFaq] = useState(0)
-  const [submitted, setSubmitted] = useState(false)
-  const [lead, setLead] = useState<LeadData>(emptyLead)
   const [heroFlipped, setHeroFlipped] = useState(false)
-  const [submissionSource, setSubmissionSource] = useState<'hero' | 'section' | null>(null)
   const heroCardRef = useRef<HTMLDivElement>(null)
-  const heroNameRef = useRef<HTMLInputElement>(null)
   const heroBackRef = useRef<HTMLButtonElement>(null)
-  const heroSuccessRef = useRef<HTMLHeadingElement>(null)
-  const sectionSuccessRef = useRef<HTMLHeadingElement>(null)
   const lastHeroTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const updateLead = (field: keyof LeadData, value: string) => setLead(current => ({ ...current, [field]: value }))
   const openHeroForm = (trigger: HTMLButtonElement) => {
     lastHeroTriggerRef.current = trigger
     setHeroFlipped(true)
@@ -78,11 +44,6 @@ export default function AnalysisLanding() {
     const trigger = lastHeroTriggerRef.current
     setHeroFlipped(false)
     window.setTimeout(() => trigger?.focus({ preventScroll: true }), prefersReducedMotion() ? 0 : 340)
-  }
-  const submitLead = (source: 'hero' | 'section') => (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmissionSource(source)
-    setSubmitted(true)
   }
 
   useEffect(() => {
@@ -96,19 +57,12 @@ export default function AnalysisLanding() {
       cardNeedsScroll = !isVisible
       if (cardNeedsScroll) card.scrollIntoView({ block: 'center', behavior: 'auto' })
     }
-    const timer = window.setTimeout(() => {
-      if (submitted) heroSuccessRef.current?.focus({ preventScroll: !cardNeedsScroll })
-      else heroNameRef.current?.focus({ preventScroll: !cardNeedsScroll })
-    }, reduceMotion ? 0 : 340)
-    return () => window.clearTimeout(timer)
-  }, [heroFlipped, submitted])
+    return undefined
+  }, [heroFlipped])
 
-  useEffect(() => {
-    if (submitted && submissionSource === 'section') sectionSuccessRef.current?.focus()
-  }, [submitted, submissionSource])
 
-  return <>
-    <header className="site-header"><div className="container header-inner"><Brand /><nav aria-label="Navegação principal"><a href="#processo">Como funciona</a><a href="#analise" className="header-cta">Analisar opções <ArrowRight size={15} aria-hidden="true" /></a></nav></div></header>
+  return <div className="bw-source">
+    <header className="site-header"><div className="container header-inner"><Brand name={brandName} /><nav aria-label="Navegação principal"><a href="#processo">Como funciona</a><a href="#analise" className="header-cta">Analisar opções <ArrowRight size={15} aria-hidden="true" /></a></nav></div></header>
     <main id="top">
       <section className="hero">
         <div className="container hero-grid">
@@ -137,7 +91,7 @@ export default function AnalysisLanding() {
               </div>
               <div id="hero-scenario-form" className="analysis-window scenario-face scenario-back hero-form-face" aria-hidden={!heroFlipped} inert={!heroFlipped}>
                 <div className="hero-form-top"><span className="window-label"><RotateCw size={14} aria-hidden="true" /> seu cenário</span><button ref={heroBackRef} type="button" className="hero-back-button" onClick={closeHeroForm}>Voltar ao cenário atual <RotateCcw size={14} aria-hidden="true" /></button></div>
-                {submitted ? <SuccessState headingRef={heroSuccessRef} onBackToScenario={closeHeroForm} /> : <><p className="mini-label hero-form-label">Análise personalizada</p><h2>Conte um pouco sobre o seu cenário.</h2><LeadForm idPrefix="hero" lead={lead} nameRef={heroNameRef} compact onChange={updateLead} onSubmit={submitLead('hero')} /><p className="privacy-copy">Seus dados serão utilizados para retornar esta solicitação e conversar sobre opções relacionadas à sua análise.</p></>}
+                {renderForm(true)}
               </div>
             </div>
             <span className="sr-only" aria-live="polite">{heroFlipped ? 'Formulário de análise aberto no card.' : 'Cenário atual exibido no card.'}</span>
@@ -194,10 +148,12 @@ export default function AnalysisLanding() {
 
       <section className="section trust"><div className="container trust-inner"><p className="eyebrow">Confiança</p><h2>Entender suas opções não obriga você a mudar de plano.</h2><div className="trust-grid">{[['Sem pressão', 'A análise existe para ajudar você a entender o cenário.'], ['Com contexto', 'Você conhece diferenças relevantes antes de considerar qualquer mudança.'], ['A decisão continua sendo sua', 'Depois de entender as alternativas, você escolhe o que faz sentido.']].map(([t, d]) => <div key={t}><h3>{t}</h3><p>{d}</p></div>)}</div></div></section>
 
-      <section id="analise" className="form-section"><div className="container form-grid"><div className="form-intro"><p className="eyebrow">Análise personalizada</p><h2>Conte um pouco sobre o seu cenário.</h2><p>Essas informações ajudam o especialista a chegar à conversa com mais contexto.</p><div className="next-steps">{['Você envia as informações.', 'Seu cenário é analisado.', 'Vocês conversam sobre as possibilidades.'].map((x, i) => <div key={x}><span>0{i + 1}</span><p>{x}</p></div>)}</div></div><div className="form-card">{submitted ? <SuccessState headingRef={sectionSuccessRef} /> : <><p className="mini-label">Comece sua análise</p><h2>Leva poucos minutos.</h2><LeadForm idPrefix="section" lead={lead} onChange={updateLead} onSubmit={submitLead('section')} /><p className="privacy-copy">Seus dados serão utilizados para retornar esta solicitação e conversar sobre opções relacionadas à sua análise.</p></>}</div></div></section>
+      <section id="analise" className="form-section"><div className="container form-grid"><div className="form-intro"><p className="eyebrow">Análise personalizada</p><h2>Conte um pouco sobre o seu cenário.</h2><p>Essas informações ajudam o especialista a chegar à conversa com mais contexto.</p><div className="next-steps">{['Você envia as informações.', 'Seu cenário é analisado.', 'Vocês conversam sobre as possibilidades.'].map((x, i) => <div key={x}><span>0{i + 1}</span><p>{x}</p></div>)}</div></div><div className="form-card">{renderForm(false)}</div></div></section>
 
       <section className="section faq"><div className="container faq-grid"><div><p className="eyebrow">Ainda ficou com uma dúvida?</p><h2>Antes de fazer sua análise...</h2><p className="section-lede">A primeira conversa existe para esclarecer, não para pressionar.</p></div><div className="faq-list">{faqs.map(([q, a], i) => { const id = `faq-answer-${i}`; return <div className={`faq-item ${openFaq === i ? 'open' : ''}`} key={q}><button type="button" onClick={() => setOpenFaq(openFaq === i ? -1 : i)} aria-expanded={openFaq === i} aria-controls={id}><span>{q}</span><ChevronDown size={18} aria-hidden="true" /></button><div id={id} role="region" hidden={openFaq !== i}><p>{a}</p></div></div> })}</div></div></section>
       <section className="final-cta"><div className="container center"><p className="eyebrow">Antes de decidir</p><h2>Entenda suas opções antes de escolher.</h2><p>Uma análise pode ajudar você a comparar o cenário com mais clareza.</p><Button light>Quero analisar minhas opções</Button></div></section>
     </main>
-    <SiteFooter />\n    <CookieConsent />\n  </>
+    <SiteFooter />
+    <CookieConsent />
+  </div>
 }

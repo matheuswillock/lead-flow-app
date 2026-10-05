@@ -87,7 +87,9 @@ export const envSchema = z.object({
     .describe('Supabase bucket name for support request image attachments'),
 
   // Database PostgreSQL
-  SUPABASE_LANDING_PAGE_ASSETS_BUCKET: nonEmptyString.describe('Supabase bucket name for landing page assets'),
+  SUPABASE_LANDING_PAGE_ASSETS_BUCKET: nonEmptyString
+    .default('landing-page-assets')
+    .describe('Supabase bucket name for landing page assets'),
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),
   POSTGRES_PASSWORD: nonEmptyString.describe('PostgreSQL password'),
   POSTGRES_HOST: nonEmptyString.describe('PostgreSQL host'),

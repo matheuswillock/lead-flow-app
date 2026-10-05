@@ -50,6 +50,9 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
+    if (await this.repository.findByName(access.teamId, input.name)) {
+      return new Output(false, [], ["Já existe uma landing page com este nome neste time"], null)
+    }
     const form = await this.repository.findPublicFormForTeam(access.teamId, input.publicFormId)
     if (!form) return new Output(false, [], ["Formulário não encontrado neste time"], null)
     try {
@@ -70,6 +73,9 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
+    if (await this.repository.findByName(access.teamId, input.name, id)) {
+      return new Output(false, [], ["Já existe uma landing page com este nome neste time"], null)
+    }
     const form = await this.repository.findPublicFormForTeam(access.teamId, input.publicFormId)
     if (!form) return new Output(false, [], ["Formulário não encontrado neste time"], null)
     try {
@@ -105,13 +111,27 @@ export class LandingPageUseCase implements ILandingPageUseCase {
       : new Output(false, [], ["Landing page não encontrada"], null)
   }
 
+  async deleteArchived(access: TeamAccess, id: string) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    const result = await this.repository.deleteArchived(access.teamId, id)
+    if (result === "deleted") return new Output(true, ["Landing page excluída"], [], null)
+    if (result === "not_archived") {
+      return new Output(false, [], ["Apenas landing pages arquivadas podem ser excluídas"], null)
+    }
+    return new Output(false, [], ["Landing page não encontrada"], null)
+  }
+
   async getPublic(publicId: string) {
     const landing = await this.repository.findPublic(publicId)
     const publication = landing?.publications[0]
     if (!landing || !publication) return new Output(false, [], ["Landing page indisponível"], null)
     if (!(await hasLandingPagePublicAccess(landing.teamId))) return new Output(false, [], ["Landing page indisponível"], null)
 
-    const snapshot = publication.snapshot as unknown as LandingPageSnapshot
+    const snapshot = {
+      ...(publication.snapshot as unknown as LandingPageSnapshot),
+      publicationId: publication.id,
+    }
     const domain = await this.studioDomainRepository.findByTeamId(landing.teamId)
     return new Output(true, [], [], {
       snapshot,

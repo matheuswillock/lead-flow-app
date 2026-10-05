@@ -710,6 +710,7 @@ lead_assigned lead_assigned
 appointment_created appointment_created
 appointment_reminder appointment_reminder
 activity_created activity_created
+landing_analytics_event landing_analytics_event
         }
     
 
@@ -4195,6 +4196,26 @@ completed completed
     }
   
 
+  "corretor_studio_landing_analytics_events" {
+    String id "🗝️"
+    String formId "❓"
+    String eventId 
+    String eventType 
+    Int schemaVersion 
+    String templateSlug 
+    String visitorSessionId 
+    String campaignId "❓"
+    String emailLogId "❓"
+    Json attribution 
+    Json metadata 
+    String ipHash "❓"
+    String userAgent "❓"
+    String referrer "❓"
+    DateTime occurredAt 
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_public_form_eligible_closers" {
     String id "🗝️"
     DateTime createdAt 
@@ -4967,6 +4988,9 @@ completed completed
     "corretor_studio_landing_pages" }o--|| corretor_studio_profiles : "createdBy"
     "corretor_studio_landing_page_publications" }o--|| corretor_studio_landing_pages : "landingPage"
     "corretor_studio_landing_page_publications" }o--|| corretor_studio_profiles : "publishedBy"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_landing_pages : "landingPage"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_landing_page_publications : "publication"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"

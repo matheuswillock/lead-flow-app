@@ -43,6 +43,17 @@ export class LandingPageRepository implements ILandingPageRepository {
     })
   }
 
+  async findByName(teamId: string, name: string, excludeId?: string) {
+    return prisma.landingPage.findFirst({
+      where: {
+        teamId,
+        name: { equals: name.trim(), mode: "insensitive" },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    })
+  }
+
   async findPublicFormForTeam(teamId: string, publicFormId: string) {
     return prisma.publicForm.findFirst({
       where: { id: publicFormId, teamId },
@@ -150,6 +161,7 @@ export class LandingPageRepository implements ILandingPageRepository {
     const snapshot = {
       landingPageId: landing.id,
       publicId: landing.publicId,
+      publicationId: undefined,
       version,
       publishedAt: new Date().toISOString(),
       name: landing.name,
@@ -166,9 +178,14 @@ export class LandingPageRepository implements ILandingPageRepository {
         data: { endedAt: new Date() },
       })
       await transaction.landingPage.update({ where: { id: landing.id }, data: { status: "published" } })
-      return transaction.landingPagePublication.create({
+      const publication = await transaction.landingPagePublication.create({
         data: { landingPageId: landing.id, publishedById, version, snapshot },
       })
+      await transaction.landingPagePublication.update({
+        where: { id: publication.id },
+        data: { snapshot: { ...snapshot, publicationId: publication.id } },
+      })
+      return publication
     })
   }
 
@@ -192,6 +209,22 @@ export class LandingPageRepository implements ILandingPageRepository {
         createdAt: true,
         updatedAt: true,
       },
+    })
+  }
+
+  async deleteArchived(teamId: string, id: string) {
+    return prisma.$transaction(async (transaction) => {
+      const landing = await transaction.landingPage.findFirst({
+        where: { id, teamId },
+        select: { status: true },
+      })
+      if (!landing) return "not_found" as const
+      if (landing.status !== "archived") return "not_archived" as const
+
+      const deleted = await transaction.landingPage.deleteMany({
+        where: { id, teamId, status: "archived" },
+      })
+      return deleted.count === 1 ? "deleted" as const : "not_found" as const
     })
   }
 }

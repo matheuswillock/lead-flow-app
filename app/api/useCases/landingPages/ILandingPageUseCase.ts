@@ -9,5 +9,6 @@ export interface ILandingPageUseCase {
   update(access: TeamAccess, id: string, input: LandingPageDraftInput): Promise<Output>
   publish(access: TeamAccess, id: string): Promise<Output>
   archive(access: TeamAccess, id: string): Promise<Output>
+  deleteArchived(access: TeamAccess, id: string): Promise<Output>
   getPublic(publicId: string): Promise<Output>
 }

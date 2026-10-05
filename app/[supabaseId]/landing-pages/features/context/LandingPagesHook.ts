@@ -80,5 +80,20 @@ export function useLandingPagesHook(): LandingPagesState {
     }
   }, [activeTeamId, headers, refresh])
 
-  return { items, domain, isLoading, error, refresh, publish: (id) => runAction(id, "publish"), archive: (id) => runAction(id, "archive") }
+  const deleteArchived = useCallback(async (id: string) => {
+    if (!activeTeamId) return false
+    try {
+      const response = await fetch(`${getLandingPagesApiUrl(activeTeamId)}/${id}`, { method: "DELETE", headers })
+      const output = (await response.json()) as ApiOutput<unknown>
+      if (!response.ok || output.isValid === false) throw new Error(getErrorMessage(output, "Não foi possível excluir a landing page."))
+      setItems((currentItems) => currentItems.filter((item) => item.id !== id))
+      toast.success("Landing page excluída")
+      return true
+    } catch (reason) {
+      toastUserError(reason)
+      return false
+    }
+  }, [activeTeamId, headers])
+
+  return { items, domain, isLoading, error, refresh, publish: (id) => runAction(id, "publish"), archive: (id) => runAction(id, "archive"), deleteArchived }
 }

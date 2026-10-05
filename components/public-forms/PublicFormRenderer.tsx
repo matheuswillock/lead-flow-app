@@ -48,6 +48,7 @@ import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldInd
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
 import { API_CLIENT_BASE } from "@/lib/route-map"
+import { dispatchLandingFormAnalytics } from "@/lib/landing-analytics/client"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
 import type {
@@ -392,6 +393,26 @@ export function PublicFormRenderer({
           ? { validationCodes: journey.validationCodes }
           : {}),
       }
+      const landingEventType =
+        eventType === "form_started"
+          ? "landing.form_start"
+          : eventType === "question_viewed" || eventType === "page_viewed"
+            ? "landing.form_step_view"
+            : eventType === "form_validation_failed"
+              ? "landing.form_validation_failure"
+              : eventType === "form_submit_attempted"
+                ? "landing.form_submit_attempt"
+                : undefined
+      if (landingEventType) {
+        dispatchLandingFormAnalytics({
+          eventType: landingEventType,
+          formId: publicId,
+          ...(questionId ? { questionId } : {}),
+          ...(journey?.pageId ? { pageId: journey.pageId } : {}),
+          ...(journey?.pageIndex !== undefined ? { pageIndex: journey.pageIndex } : {}),
+          ...(journey?.validationCodes ? { validationCodes: journey.validationCodes } : {}),
+        })
+      }
       const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
       void sendWithOutbox("behavior", url, body)
     },
@@ -519,6 +540,12 @@ export function PublicFormRenderer({
       if (question && question.type === "phone") {
         setError(getPhoneFieldInlineError(value))
       }
+      dispatchLandingFormAnalytics({
+        eventType: "landing.form_answer_change",
+        formId: publicId,
+        questionId,
+        answerPresent: value !== undefined && value !== null && value !== "",
+      })
     },
     [preview, publicId, publicationId, sendWithOutbox, session, snapshot.questions],
   )
@@ -670,6 +697,7 @@ export function PublicFormRenderer({
         throw new Error(output.errorMessages?.join("; ") || "Não foi possível enviar")
       }
       setDone(true)
+      dispatchLandingFormAnalytics({ eventType: "landing.form_submitted", formId: publicId })
     } catch (submitError) {
       submitLockRef.current = false
       setError(
