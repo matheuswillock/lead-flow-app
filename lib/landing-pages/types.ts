@@ -11,6 +11,50 @@ export type LandingPageContent = {
   processSteps?: Array<{ id: string; title: string; description: string }>
   testimonialsEnabled?: boolean
   footerText?: string
+  templateConfig?: LandingTemplateConfig
+}
+
+export type LandingTemplateSlug = "cotacao-corretor-studio" | "black-and-white" | "alvora"
+
+export type LandingTemplateConfig = {
+  templateSlug: Exclude<LandingTemplateSlug, "cotacao-corretor-studio">
+  identity: {
+    tradeName: string
+    legalName?: string
+    cnpj?: string
+    logoUrl?: string | null
+    copyright?: string
+  }
+  contact: {
+    phoneDisplay?: string
+    phoneE164?: string
+    whatsappE164?: string
+    whatsappMessage?: string
+    email?: string
+  }
+  seo?: { title?: string; description?: string; canonical?: string; socialImageUrl?: string | null }
+  hero?: {
+    eyebrow?: string
+    title?: string
+    description?: string
+    primaryCta?: string
+    secondaryCta?: string
+  }
+  sections?: Record<
+    string,
+    {
+      enabled?: boolean
+      title?: string
+      description?: string
+      items?: Array<{
+        title: string
+        description?: string
+        value?: string | number
+        imageUrl?: string | null
+      }>
+    }
+  >
+  media?: Record<string, { url?: string | null; alt?: string }>
 }
 
 export type LandingPageOffer = {
