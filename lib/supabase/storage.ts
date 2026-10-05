@@ -22,6 +22,7 @@ export const STORAGE_BUCKETS = {
   EMAIL_TEMPLATE_ASSETS:
     process.env.SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET || "email-template-assets",
   CONTRACTS: process.env.SUPABASE_CONTRACTS_BUCKET || "backoffice-contracts",
+  LANDING_PAGE_ASSETS: process.env.SUPABASE_LANDING_PAGE_ASSETS_BUCKET || "landing-page-assets",
   SUPPORT_REQUEST_ATTACHMENTS:
     process.env.SUPABASE_SUPPORT_ATTACHMENTS_BUCKET || "support-request-attachments",
   WHATSAPP_MEDIA: process.env.SUPABASE_WHATSAPP_MEDIA_BUCKET || "whatsapp-media",
@@ -74,6 +75,11 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
     maxFileSize: 2 * 1024 * 1024, // 2MB
     allowedTypes: ["image/jpeg", "image/png", "image/webp"],
     description: "Imagens PNG/JPG para templates de e-mail",
+  },
+  [STORAGE_BUCKETS.LANDING_PAGE_ASSETS]: {
+    maxFileSize: 5 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp", "image/svg+xml", "image/x-icon"],
+    description: "Assets públicos de landing pages",
   },
   [STORAGE_BUCKETS.CONTRACTS]: {
     maxFileSize: 10 * 1024 * 1024, // 10MB

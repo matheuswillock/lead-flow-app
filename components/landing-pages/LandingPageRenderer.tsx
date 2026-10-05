@@ -3,10 +3,19 @@
 import { useState } from "react"
 import type { PublicFormAnswerInput, PublicFormSnapshot } from "@/lib/public-forms/types"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
-import { PublicTrackingBody, type PublicTrackingScriptsValue } from "@/components/public-tracking/PublicTrackingScripts"
+import {
+  PublicTrackingBody,
+  type PublicTrackingScriptsValue,
+} from "@/components/public-tracking/PublicTrackingScripts"
 import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
+import { BlackAndWhiteTemplate } from "./templates/BlackAndWhiteTemplate"
+import { AlvoraTemplate } from "./templates/AlvoraTemplate"
 
-type Props = { snapshot: LandingPageSnapshot; tracking?: PublicTrackingScriptsValue | null }
+type Props = {
+  snapshot: LandingPageSnapshot
+  tracking?: PublicTrackingScriptsValue | null
+  formOnly?: boolean
+}
 
 type SchedulingAnswer = { startsAt?: string }
 
@@ -32,7 +41,10 @@ function LandingQuestion({
     return (
       <div className="grid gap-3" role="group" aria-label={question.title}>
         {options.map((option) => (
-          <label key={option.id ?? option.value} className="flex min-h-11 items-center gap-3 rounded-lg border border-border px-3 py-2">
+          <label
+            key={option.id ?? option.value}
+            className="flex min-h-11 items-center gap-3 rounded-lg border border-border px-3 py-2"
+          >
             <input
               type="checkbox"
               checked={selectedValues.includes(option.value)}
@@ -52,13 +64,20 @@ function LandingQuestion({
   if (question.type === "consent") {
     return (
       <label className="flex min-h-11 items-start gap-3 rounded-lg border border-border px-3 py-2">
-        <input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={value === true}
+          onChange={(event) => onChange(event.target.checked)}
+        />
         <span>Li e concordo com os termos apresentados.</span>
       </label>
     )
   }
   if (question.type === "scheduling") {
-    const scheduling = typeof value === "object" && value !== null ? value as { date?: string; time?: string; startsAt?: string } : {}
+    const scheduling =
+      typeof value === "object" && value !== null
+        ? (value as { date?: string; time?: string; startsAt?: string })
+        : {}
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <input
@@ -66,7 +85,11 @@ function LandingQuestion({
           value={scheduling.date ?? ""}
           onChange={(event) => {
             const date = event.target.value
-            onChange({ ...scheduling, date, startsAt: date && scheduling.time ? `${date}T${scheduling.time}:00` : undefined })
+            onChange({
+              ...scheduling,
+              date,
+              startsAt: date && scheduling.time ? `${date}T${scheduling.time}:00` : undefined,
+            })
           }}
         />
         <input
@@ -74,7 +97,11 @@ function LandingQuestion({
           value={scheduling.time ?? ""}
           onChange={(event) => {
             const time = event.target.value
-            onChange({ ...scheduling, time, startsAt: scheduling.date && time ? `${scheduling.date}T${time}:00` : undefined })
+            onChange({
+              ...scheduling,
+              time,
+              startsAt: scheduling.date && time ? `${scheduling.date}T${time}:00` : undefined,
+            })
           }}
         />
       </div>
@@ -90,20 +117,41 @@ function LandingQuestion({
     )
   }
   if (question.type === "textarea") {
-    return <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={question.placeholder ?? ""} />
+    return (
+      <textarea
+        value={String(value ?? "")}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={question.placeholder ?? ""}
+      />
+    )
   }
   if (options.length > 0) {
     return (
       <select value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
         <option value="">Selecione uma opção</option>
-        {options.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+        {options.map((option) => (
+          <option key={option.id} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
     )
   }
-  return <input type={questionInputType(question)} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={question.placeholder ?? ""} />
+  return (
+    <input
+      type={questionInputType(question)}
+      value={String(value ?? "")}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={question.placeholder ?? ""}
+    />
+  )
 }
 
-export function LandingPageRenderer({ snapshot, tracking = null }: Props) {
+export function LandingPageRenderer({ snapshot, tracking = null, formOnly = false }: Props) {
+  if (snapshot.templateSlug === "black-and-white")
+    return <BlackAndWhiteTemplate snapshot={snapshot} tracking={tracking} />
+  if (snapshot.templateSlug === "alvora")
+    return <AlvoraTemplate snapshot={snapshot} tracking={tracking} />
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -143,7 +191,12 @@ export function LandingPageRenderer({ snapshot, tracking = null }: Props) {
         requestKey: `landing_${crypto.randomUUID().replaceAll("-", "")}`,
         visitorSessionId,
         ...(snapshot.formPublicationId ? { publicationId: snapshot.formPublicationId } : {}),
-        answers: visibleQuestions.map((question): PublicFormAnswerInput => ({ questionId: question.id, value: answers[question.id] ?? "" })),
+        answers: visibleQuestions.map(
+          (question): PublicFormAnswerInput => ({
+            questionId: question.id,
+            value: answers[question.id] ?? "",
+          }),
+        ),
         origin: {
           source: params.get("utm_source") ?? (params.get("cs_el") ? "email_campaign" : "direct"),
           medium: params.get("utm_medium"),
@@ -162,40 +215,134 @@ export function LandingPageRenderer({ snapshot, tracking = null }: Props) {
         body: JSON.stringify(payload),
       })
       const result = (await response.json()) as { isValid: boolean; errorMessages?: string[] }
-      if (!response.ok || !result.isValid) throw new Error(result.errorMessages?.[0] ?? "Não foi possível enviar suas respostas.")
+      if (!response.ok || !result.isValid)
+        throw new Error(result.errorMessages?.[0] ?? "Não foi possível enviar suas respostas.")
       setSubmitted(true)
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Não foi possível enviar suas respostas.")
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Não foi possível enviar suas respostas.",
+      )
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  if (formOnly)
+    return (
+      <section
+        id="landing-form"
+        aria-labelledby="landing-form-title"
+        className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8"
+      >
+        <h2 id="landing-form-title" className="text-2xl font-semibold tracking-tight">
+          {snapshot.form.name}
+        </h2>
+        {snapshot.form.description && (
+          <p className="mt-2 text-muted-foreground">{snapshot.form.description}</p>
+        )}
+        {submitted ? (
+          <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
+            <h3 className="text-2xl font-semibold tracking-tight">{snapshot.form.successTitle}</h3>
+            <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+              {snapshot.form.successDescription ?? "Recebemos suas respostas."}
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="grid gap-5" noValidate>
+            {visibleQuestions.map((question) => (
+              <label key={question.id} className="grid gap-2 text-sm font-medium">
+                <span>
+                  {question.title}
+                  {question.required && <span aria-hidden="true"> *</span>}
+                </span>
+                <LandingQuestion
+                  question={question}
+                  value={answers[question.id]}
+                  onChange={(value) => updateAnswer(question.id, value)}
+                />
+              </label>
+            ))}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <button
+              disabled={isSubmitting}
+              className="min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              {isSubmitting ? "Enviando..." : snapshot.form.ctaLabel}
+            </button>
+          </form>
+        )}
+      </section>
+    )
   return (
-    <main data-template={snapshot.templateSlug} className="landing-page min-h-screen bg-background text-foreground">
+    <main
+      data-template={snapshot.templateSlug}
+      className="landing-page min-h-screen bg-background text-foreground"
+    >
       <PublicTrackingBody tracking={tracking} position="start" />
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-8 sm:px-6 sm:py-12 md:px-8 md:py-16">
         <header className="flex items-center justify-between gap-4">
           <span className="font-semibold tracking-tight">{content.brandName}</span>
-          <a href="#landing-form" className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted">{snapshot.form.ctaLabel}</a>
+          <a
+            href="#landing-form"
+            className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            {snapshot.form.ctaLabel}
+          </a>
         </header>
 
         <section aria-labelledby="landing-hero-title" className="grid gap-5 md:max-w-4xl">
-          {content.heroEyebrow && <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">{content.heroEyebrow}</p>}
-          {content.heroTitle && <h1 id="landing-hero-title" className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-5xl">{content.heroTitle}</h1>}
-          {content.heroDescription && <p className="max-w-3xl text-base leading-relaxed text-muted-foreground sm:text-lg">{content.heroDescription}</p>}
-          <a href="#landing-form" className="inline-flex min-h-11 w-fit items-center rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90">{snapshot.form.ctaLabel}</a>
+          {content.heroEyebrow && (
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">
+              {content.heroEyebrow}
+            </p>
+          )}
+          {content.heroTitle && (
+            <h1
+              id="landing-hero-title"
+              className="max-w-4xl text-3xl font-semibold tracking-tight sm:text-5xl"
+            >
+              {content.heroTitle}
+            </h1>
+          )}
+          {content.heroDescription && (
+            <p className="max-w-3xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              {content.heroDescription}
+            </p>
+          )}
+          <a
+            href="#landing-form"
+            className="inline-flex min-h-11 w-fit items-center rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+          >
+            {snapshot.form.ctaLabel}
+          </a>
         </section>
 
         {offer.enabled && (
-          <section aria-labelledby="landing-offer-title" className="grid gap-4 rounded-2xl border border-border bg-card p-5 sm:p-8">
+          <section
+            aria-labelledby="landing-offer-title"
+            className="grid gap-4 rounded-2xl border border-border bg-card p-5 sm:p-8"
+          >
             <div className="grid gap-2">
               <p className="text-sm font-semibold text-primary">{offer.badge}</p>
-              <h2 id="landing-offer-title" className="text-2xl font-semibold tracking-tight">{offer.title}</h2>
-              {offer.percentage !== null && <p className="text-4xl font-semibold tracking-tight text-primary">{offer.percentage}% OFF</p>}
+              <h2 id="landing-offer-title" className="text-2xl font-semibold tracking-tight">
+                {offer.title}
+              </h2>
+              {offer.percentage !== null && (
+                <p className="text-4xl font-semibold tracking-tight text-primary">
+                  {offer.percentage}% OFF
+                </p>
+              )}
             </div>
             <ul className="grid gap-2 text-sm text-muted-foreground">
-              {offer.items.map((item) => <li key={item}>{item}</li>)}
+              {offer.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
             <p className="text-xs text-muted-foreground">{offer.disclaimer}</p>
           </section>
@@ -204,43 +351,84 @@ export function LandingPageRenderer({ snapshot, tracking = null }: Props) {
         {content.processSteps && content.processSteps.length > 0 && (
           <section aria-labelledby="landing-process-title" className="grid gap-5">
             <div className="grid gap-2">
-              {content.processTitle && <h2 id="landing-process-title" className="text-2xl font-semibold tracking-tight">{content.processTitle}</h2>}
-              {content.processDescription && <p className="max-w-3xl text-muted-foreground">{content.processDescription}</p>}
+              {content.processTitle && (
+                <h2 id="landing-process-title" className="text-2xl font-semibold tracking-tight">
+                  {content.processTitle}
+                </h2>
+              )}
+              {content.processDescription && (
+                <p className="max-w-3xl text-muted-foreground">{content.processDescription}</p>
+              )}
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               {content.processSteps.map((step) => (
-                <article key={step.id} className="grid gap-2 rounded-2xl border border-border bg-card p-5">
+                <article
+                  key={step.id}
+                  className="grid gap-2 rounded-2xl border border-border bg-card p-5"
+                >
                   <h3 className="font-semibold">{step.title}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{step.description}</p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {step.description}
+                  </p>
                 </article>
               ))}
             </div>
           </section>
         )}
 
-        <section id="landing-form" aria-labelledby="landing-form-title" className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8">
-          <h2 id="landing-form-title" className="text-2xl font-semibold tracking-tight">{snapshot.form.name}</h2>
-          {snapshot.form.description && <p className="mt-2 text-muted-foreground">{snapshot.form.description}</p>}
-        {submitted ? (
-          <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
-            <h2 className="text-2xl font-semibold tracking-tight">{snapshot.form.successTitle}</h2>
-            <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{snapshot.form.successDescription ?? "Recebemos suas respostas."}</p>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="grid gap-5" noValidate>
-            {visibleQuestions.map((question) => (
-              <label key={question.id} className="grid gap-2 text-sm font-medium">
-                <span>{question.title}{question.required && <span aria-hidden="true"> *</span>}</span>
-                <LandingQuestion question={question} value={answers[question.id]} onChange={(value) => updateAnswer(question.id, value)} />
-              </label>
-            ))}
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <button disabled={isSubmitting} className="min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60">{isSubmitting ? "Enviando..." : snapshot.form.ctaLabel}</button>
-          </form>
-        )}
+        <section
+          id="landing-form"
+          aria-labelledby="landing-form-title"
+          className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8"
+        >
+          <h2 id="landing-form-title" className="text-2xl font-semibold tracking-tight">
+            {snapshot.form.name}
+          </h2>
+          {snapshot.form.description && (
+            <p className="mt-2 text-muted-foreground">{snapshot.form.description}</p>
+          )}
+          {submitted ? (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
+              <h2 className="text-2xl font-semibold tracking-tight">
+                {snapshot.form.successTitle}
+              </h2>
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+                {snapshot.form.successDescription ?? "Recebemos suas respostas."}
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="grid gap-5" noValidate>
+              {visibleQuestions.map((question) => (
+                <label key={question.id} className="grid gap-2 text-sm font-medium">
+                  <span>
+                    {question.title}
+                    {question.required && <span aria-hidden="true"> *</span>}
+                  </span>
+                  <LandingQuestion
+                    question={question}
+                    value={answers[question.id]}
+                    onChange={(value) => updateAnswer(question.id, value)}
+                  />
+                </label>
+              ))}
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              <button
+                disabled={isSubmitting}
+                className="min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+              >
+                {isSubmitting ? "Enviando..." : snapshot.form.ctaLabel}
+              </button>
+            </form>
+          )}
         </section>
 
-        <footer className="border-t border-border pt-6 text-sm text-muted-foreground">{content.footerText}</footer>
+        <footer className="border-t border-border pt-6 text-sm text-muted-foreground">
+          {content.footerText}
+        </footer>
         <PublicTrackingBody tracking={tracking} position="end" />
       </div>
     </main>
