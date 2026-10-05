@@ -8,6 +8,7 @@ const BASE_VALID_ENV: Record<string, string> = {
   SUPABASE_LEAD_ATTACHMENTS_BUCKET: "lead-attachments",
   SUPABASE_PROFILE_ICONS_BUCKET: "profile-icons",
   SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET: "email-template-assets",
+  SUPABASE_LANDING_PAGE_ASSETS_BUCKET: "landing-page-assets",
   POSTGRES_USER: "postgres",
   POSTGRES_PASSWORD: "postgres",
   POSTGRES_HOST: "localhost",
