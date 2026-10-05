@@ -35,7 +35,12 @@ Eventos da LP:
 - `landing.page_view` — primeira visualização de uma sessão/publicação;
 - `landing.returning_visit` — nova visita da mesma sessão identificada por cookie;
 - `landing.scroll_depth` — marcos de 25%, 50%, 75% e 100%, cada um no máximo uma vez por sessão/publicação;
-- `landing.cta_click` — CTA, âncora, telefone ou WhatsApp, com identificador do elemento e destino;
+- `landing.page_milestone` — marcos de 25%, 50%, 75% e conclusão efetiva da página, com o marco de 100% emitido somente quando o fim do conteúdo for realmente alcançado;
+- `landing.cta_click` — CTA, telefone, WhatsApp ou âncora de conversão, com identificador do elemento e destino;
+- `landing.button_click` — clique em botão não classificado como CTA, com identificador semântico e seção;
+- `landing.link_click` — clique em link interno ou externo, com destino normalizado e seção;
+- `landing.menu_click` — abertura ou seleção de item de menu, com identificador do menu e destino;
+- `landing.policy_navigation` — navegação para privacidade, cookies, termos, consentimento ou outras páginas institucionais, com tipo e destino;
 - `landing.form_start` — primeira interação com o formulário;
 - `landing.form_step_view` — etapa exibida, quando o formulário tiver etapas;
 - `landing.form_answer_change` — pergunta alterada, sem enviar valores sensíveis em texto aberto;
@@ -134,6 +139,10 @@ Visualizações e tabelas:
 - indicador de tracking degradado quando eventos foram descartados, bloqueados por consentimento ou sofreram falha de entrega.
 
 Os dados devem respeitar os mesmos limites de acesso do time e não expor IP, cookies, tokens ou respostas completas. Exportação CSV/XLSX pode reutilizar o padrão do analytics de e-mail, mas fica condicionada à confirmação do contrato final dos dados.
+
+Todos os eventos aceitos devem ser enviados ao Radar pelo mesmo pipeline assíncrono de ingestão, normalização, idempotência e webhook. O payload deve distinguir `eventType`, `elementType`, `elementId`, `section`, `destination`, `landingPageId`, campanha, sessão e publicação. URLs devem ser sanitizadas para remover tokens, dados pessoais e parâmetros sensíveis antes do envio.
+
+O marco de conclusão não será inferido apenas por `scrollY`: será emitido quando um sentinel no final do conteúdo ficar visível ou quando o navegador confirmar que o limite inferior da página foi alcançado. Eventos de navegação para políticas devem ser disparados antes da troca de página usando `sendBeacon`/fila local, sem bloquear a navegação.
 
 ### Contrato de consulta
 
