@@ -96,6 +96,71 @@ Não será criado um segundo sistema paralelo de webhook. O motor deve reutiliza
 - conversão por campanha e por template;
 - atraso entre visita, submissão e criação do lead.
 
+## Tela de Analytics das LPs
+
+Será criada uma tela de analytics das landing pages seguindo o mesmo padrão visual e de interação da tela de analytics de e-mail existente: cards de resumo, seletor de período, filtros, estados de carregamento/erro/vazio, gráficos e tabelas responsivos. A tela não altera o design público das LPs.
+
+Filtros obrigatórios:
+
+- período inicial e final, com presets equivalentes ao analytics de e-mail;
+- campanha de e-mail, com opção de todas as campanhas;
+- landing page/template;
+- opcionalmente formulário publicado, quando a análise exigir recorte do formulário.
+
+Todos os filtros devem ser aplicados no servidor e refletidos na URL para permitir compartilhamento e retorno à mesma consulta. A ausência de campanha representa tráfego direto/orgânico e não deve ser misturada silenciosamente com campanhas identificadas.
+
+Cards principais:
+
+- visitas totais;
+- sessões únicas;
+- visitas recorrentes;
+- taxa de retorno;
+- sessões que iniciaram o formulário;
+- submissões aceitas;
+- leads criados;
+- conversão visita → lead;
+- conversão formulário iniciado → lead.
+
+Visualizações e tabelas:
+
+- série temporal de visitas, sessões, inícios, submissões e leads;
+- funil `visita → CTA → formulário iniciado → submissão → lead`;
+- desempenho por campanha de e-mail;
+- desempenho por LP/template;
+- cliques por CTA e destino;
+- scroll depth por marco;
+- abandono por etapa e pergunta, sem exibir respostas sensíveis;
+- tabela de submissões/leads com campanha, LP, sessão, timestamps e status;
+- indicador de tracking degradado quando eventos foram descartados, bloqueados por consentimento ou sofreram falha de entrega.
+
+Os dados devem respeitar os mesmos limites de acesso do time e não expor IP, cookies, tokens ou respostas completas. Exportação CSV/XLSX pode reutilizar o padrão do analytics de e-mail, mas fica condicionada à confirmação do contrato final dos dados.
+
+### Contrato de consulta
+
+A camada de serviço da tela receberá um único filtro tipado, no mínimo:
+
+```ts
+type LandingAnalyticsFilters = {
+  from: string
+  to: string
+  campaignId?: string
+  landingPageId?: string
+  templateSlug?: "black-and-white" | "alvora"
+  formId?: string
+}
+```
+
+O backend deve expor resumo, série temporal, funil, campanhas, CTAs, scroll e abandono por endpoints separados ou por uma resposta agregada versionada, mantendo o padrão já usado em `CampanhasAnalyticsService`. Consultas sem dados retornam estruturas vazias estáveis, nunca erro de renderização.
+
+## Ordem de entrega
+
+1. Contrato de eventos, atribuição e consentimento.
+2. Ingestão, deduplicação, outbox e entrega ao Radar.
+3. Instrumentação dos dois templates e do formulário compartilhado.
+4. Projeções/consultas agregadas para os filtros de período e campanha.
+5. Tela de analytics visualmente alinhada ao analytics de e-mail.
+6. Exportações e otimizações somente após validar as métricas do funil.
+
 ## Falhas e segurança
 
 - O tracking nunca pode bloquear a renderização da LP ou o envio do formulário.
