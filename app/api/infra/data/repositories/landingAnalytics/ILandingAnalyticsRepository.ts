@@ -22,6 +22,7 @@ export type CreateLandingAnalyticsEventInput = {
 
 export interface ILandingAnalyticsRepository {
   createIfAbsent(input: CreateLandingAnalyticsEventInput): Promise<LandingAnalyticsEvent | null>
+  findByEventId(eventId: string): Promise<LandingAnalyticsEvent | null>
   summarize(input: LandingAnalyticsSummaryInput): Promise<LandingAnalyticsSummary>
 }
 

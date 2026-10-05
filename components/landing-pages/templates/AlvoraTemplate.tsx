@@ -7,6 +7,7 @@ import {
 } from "@/components/public-tracking/PublicTrackingScripts"
 import { hasPublishableSection } from "@/lib/landing-pages/publishable"
 import { LandingPageRenderer } from "../LandingPageRenderer"
+import { CookieConsent } from "../imported-sources/black-and-white-components/cookie-consent"
 
 export function AlvoraTemplate({
   snapshot,
@@ -96,6 +97,7 @@ export function AlvoraTemplate({
         />
       </section>
       <footer>{config?.identity.copyright ?? config?.identity.tradeName}</footer>
+      <CookieConsent />
       <PublicTrackingBody tracking={tracking} position="end" />
     </main>
   )

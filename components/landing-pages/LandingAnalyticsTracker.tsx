@@ -1,7 +1,13 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { createLandingAnalyticsEvent, landingAnalyticsEndpoint } from "@/lib/landing-analytics/client"
+import {
+  createLandingAnalyticsEvent,
+  LANDING_CONSENT_ANALYTICS_EVENT,
+  LANDING_FORM_ANALYTICS_EVENT,
+  landingAnalyticsEndpoint,
+  type LandingFormAnalyticsDetail,
+} from "@/lib/landing-analytics/client"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
 
 type Props = { snapshot: LandingPageSnapshot; children: React.ReactNode }
@@ -52,6 +58,24 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
     }
 
     send("landing.page_view", { referrer: document.referrer || undefined })
+    const onFormAnalytics = (event: Event) => {
+      const detail = (event as CustomEvent<LandingFormAnalyticsDetail>).detail
+      if (!detail?.eventType) return
+      send(detail.eventType, {
+        ...(detail.formId ? { formId: detail.formId } : {}),
+        ...(detail.questionId ? { questionId: detail.questionId } : {}),
+        ...(detail.pageId ? { pageId: detail.pageId } : {}),
+        ...(detail.pageIndex !== undefined ? { pageIndex: detail.pageIndex } : {}),
+        ...(detail.validationCodes ? { validationCodes: detail.validationCodes } : {}),
+        ...(detail.answerPresent !== undefined ? { answerPresent: detail.answerPresent } : {}),
+      })
+    }
+    window.addEventListener(LANDING_FORM_ANALYTICS_EVENT, onFormAnalytics)
+    const onConsent = (event: Event) => {
+      const choice = (event as CustomEvent<{ choice?: string }>).detail?.choice
+      send("landing.consent_updated", { choice: choice ?? "unknown" })
+    }
+    window.addEventListener(LANDING_CONSENT_ANALYTICS_EVENT, onConsent)
     const onScroll = () => {
       const scrollable = document.documentElement.scrollHeight - window.innerHeight
       if (scrollable <= 0) return
@@ -68,13 +92,20 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
       if (!target) return
       const destination = target instanceof HTMLAnchorElement ? target.href : undefined
       const label = target.textContent?.trim().slice(0, 120)
-      send("landing.cta_click", { destination, label, elapsedMs: Date.now() - startedAt.current })
+      const policyLink = destination && /\/(privacidade|cookies|termos)(\/|$)/i.test(new URL(destination).pathname)
+      send(policyLink ? "landing.policy_navigation" : "landing.cta_click", {
+        destination,
+        label,
+        elapsedMs: Date.now() - startedAt.current,
+      })
     }
     window.addEventListener("scroll", onScroll, { passive: true })
     document.addEventListener("click", onClick)
     return () => {
       window.removeEventListener("scroll", onScroll)
       document.removeEventListener("click", onClick)
+      window.removeEventListener(LANDING_FORM_ANALYTICS_EVENT, onFormAnalytics)
+      window.removeEventListener(LANDING_CONSENT_ANALYTICS_EVENT, onConsent)
     }
   }, [snapshot.landingPageId, snapshot.publicId, snapshot.templateSlug, snapshot.version])
 

@@ -13,6 +13,7 @@ export const LANDING_ANALYTICS_EVENT_TYPES = [
   "landing.form_start",
   "landing.form_step_view",
   "landing.form_answer_change",
+  "landing.form_validation_failure",
   "landing.form_submit_attempt",
   "landing.form_submitted",
   "landing.lead_created",

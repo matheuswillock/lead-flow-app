@@ -22,6 +22,10 @@ export class LandingAnalyticsRepository implements ILandingAnalyticsRepository {
     }
   }
 
+  async findByEventId(eventId: string) {
+    return prisma.landingAnalyticsEvent.findUnique({ where: { eventId } })
+  }
+
   async summarize(input: LandingAnalyticsSummaryInput) {
     const where = {
       teamId: input.teamId,
