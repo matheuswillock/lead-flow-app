@@ -102,12 +102,12 @@ Será criada uma tela de analytics das landing pages seguindo o mesmo padrão vi
 
 Filtros obrigatórios:
 
-- período inicial e final, com presets equivalentes ao analytics de e-mail;
+- período inicial e final com data **e horário**, incluindo presets equivalentes ao analytics de e-mail;
 - campanha de e-mail, com opção de todas as campanhas;
 - landing page/template;
 - opcionalmente formulário publicado, quando a análise exigir recorte do formulário.
 
-Todos os filtros devem ser aplicados no servidor e refletidos na URL para permitir compartilhamento e retorno à mesma consulta. A ausência de campanha representa tráfego direto/orgânico e não deve ser misturada silenciosamente com campanhas identificadas.
+Todos os filtros devem ser aplicados no servidor e refletidos na URL para permitir compartilhamento e retorno à mesma consulta. O intervalo será enviado como instantes ISO 8601 com offset explícito; a tela exibirá e editará os horários no fuso configurado da conta/time. O limite inicial será inclusivo e o limite final será exclusivo (`from <= eventAt < to`), evitando dupla contagem ao consultar períodos consecutivos. Presets como “hoje”, “últimas 24 horas”, “últimos 7 dias” e “últimos 30 dias” devem ser calculados no fuso da conta, inclusive em transições de horário de verão. A ausência de campanha representa tráfego direto/orgânico e não deve ser misturada silenciosamente com campanhas identificadas.
 
 Cards principais:
 
@@ -141,8 +141,9 @@ A camada de serviço da tela receberá um único filtro tipado, no mínimo:
 
 ```ts
 type LandingAnalyticsFilters = {
-  from: string
-  to: string
+  from: string // ISO 8601 com offset; limite inclusivo
+  to: string // ISO 8601 com offset; limite exclusivo
+  timezone: string // IANA, por exemplo America/Sao_Paulo
   campaignId?: string
   landingPageId?: string
   templateSlug?: "black-and-white" | "alvora"
