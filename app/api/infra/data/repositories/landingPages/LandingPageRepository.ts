@@ -43,6 +43,17 @@ export class LandingPageRepository implements ILandingPageRepository {
     })
   }
 
+  async findByName(teamId: string, name: string, excludeId?: string) {
+    return prisma.landingPage.findFirst({
+      where: {
+        teamId,
+        name: { equals: name.trim(), mode: "insensitive" },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    })
+  }
+
   async findPublicFormForTeam(teamId: string, publicFormId: string) {
     return prisma.publicForm.findFirst({
       where: { id: publicFormId, teamId },

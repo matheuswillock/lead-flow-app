@@ -50,6 +50,9 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
+    if (await this.repository.findByName(access.teamId, input.name)) {
+      return new Output(false, [], ["Já existe uma landing page com este nome neste time"], null)
+    }
     const form = await this.repository.findPublicFormForTeam(access.teamId, input.publicFormId)
     if (!form) return new Output(false, [], ["Formulário não encontrado neste time"], null)
     try {
@@ -70,6 +73,9 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
     const errors = validateDraft(input)
     if (errors.length > 0) return new Output(false, [], errors, null)
+    if (await this.repository.findByName(access.teamId, input.name, id)) {
+      return new Output(false, [], ["Já existe uma landing page com este nome neste time"], null)
+    }
     const form = await this.repository.findPublicFormForTeam(access.teamId, input.publicFormId)
     if (!form) return new Output(false, [], ["Formulário não encontrado neste time"], null)
     try {
