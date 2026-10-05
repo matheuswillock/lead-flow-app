@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -163,6 +163,7 @@ function createTemplateConfig(templateSlug: string): LandingTemplateConfig {
 
 export function TemplateLandingPageWizard() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const forms = usePublicForms()
   const publishedForms = useMemo(
     () => forms.items.filter((form) => form.status === "published"),
@@ -175,12 +176,49 @@ export function TemplateLandingPageWizard() {
     useState<Exclude<LandingTemplateSlug, "cotacao-corretor-studio">>("black-and-white")
   const [config, setConfig] = useState(() => createTemplateConfig("black-and-white"))
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false)
+  const editingLandingId = searchParams.get("edit")
   const updateIdentity = (key: keyof LandingTemplateConfig["identity"], value: string) =>
     setConfig((current) => ({ ...current, identity: { ...current.identity, [key]: value } }))
   const updateContact = (key: keyof LandingTemplateConfig["contact"], value: string) =>
     setConfig((current) => ({ ...current, contact: { ...current.contact, [key]: value } }))
   const updateHero = (key: keyof NonNullable<LandingTemplateConfig["hero"]>, value: string) =>
     setConfig((current) => ({ ...current, hero: { ...current.hero, [key]: value } }))
+
+  useEffect(() => {
+    if (!editingLandingId || !forms.ids) return
+    let cancelled = false
+    setIsLoadingEdit(true)
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${API_CLIENT_BASE}/teams/${forms.ids!.teamId}/landing-pages/${editingLandingId}`,
+          { headers: { "x-supabase-user-id": forms.ids!.supabaseId, "x-team-id": forms.ids!.teamId } },
+        )
+        const output = (await response.json()) as {
+          isValid: boolean
+          errorMessages?: string[]
+          result?: { name: string; publicFormId: string; templateSlug: string; content: { templateConfig?: LandingTemplateConfig } }
+        }
+        if (!response.ok || !output.isValid || !output.result?.content.templateConfig)
+          throw new Error(output.errorMessages?.[0] ?? "Não foi possível carregar a landing.")
+        if (cancelled) return
+        setName(output.result.name)
+        setPublicFormId(output.result.publicFormId)
+        const loadedConfig = output.result.content.templateConfig
+        setTemplateSlug(loadedConfig.templateSlug === "alvora" ? "alvora" : "black-and-white")
+        setConfig(loadedConfig)
+        setStep(2)
+      } catch (error) {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Não foi possível carregar a landing.")
+      } finally {
+        if (!cancelled) setIsLoadingEdit(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [editingLandingId, forms.ids?.supabaseId, forms.ids?.teamId])
   async function uploadLogo(file: File) {
     if (!forms.ids) return
     const body = new FormData()
@@ -207,9 +245,19 @@ export function TemplateLandingPageWizard() {
     if (!forms.ids || !name.trim() || !publicFormId || !config.identity.tradeName.trim())
       return toast.error("Informe o nome, o formulário e a identidade da corretora.")
     setIsSaving(true)
+    const normalizedConfig: LandingTemplateConfig = {
+      ...config,
+      contact: { ...config.contact, email: config.contact.email?.trim() || undefined },
+      seo: config.seo
+        ? { ...config.seo, canonical: config.seo.canonical?.trim() || undefined }
+        : undefined,
+    }
     try {
-      const response = await fetch(`${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages`, {
-        method: "POST",
+      const endpoint = editingLandingId
+        ? `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/${editingLandingId}`
+        : `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages`
+      const response = await fetch(endpoint, {
+        method: editingLandingId ? "PUT" : "POST",
         headers: {
           "content-type": "application/json",
           "x-supabase-user-id": forms.ids.supabaseId,
@@ -224,7 +272,7 @@ export function TemplateLandingPageWizard() {
             heroTitle: config.hero?.title,
             heroDescription: config.hero?.description,
             footerText: config.identity.copyright,
-            templateConfig: config,
+            templateConfig: normalizedConfig,
           },
           offer: {
             enabled: false,
@@ -251,7 +299,7 @@ export function TemplateLandingPageWizard() {
         },
       )
       if (!publication.ok) throw new Error("Landing criada, mas não publicada.")
-      toast.success("Landing criada e publicada")
+      toast.success(editingLandingId ? "Landing atualizada e publicada" : "Landing criada e publicada")
       router.push(`/${forms.ids.supabaseId}/landing-pages`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível criar a landing.")
@@ -262,7 +310,9 @@ export function TemplateLandingPageWizard() {
   return (
     <main className="container mx-auto flex max-w-4xl flex-1 flex-col gap-8 p-4 md:p-8">
       <div className="grid gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Criar landing de cotação</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {editingLandingId ? "Editar landing de cotação" : "Criar landing de cotação"}
+        </h1>
         <p className="text-muted-foreground">
           {step === 1
             ? "Escolha o template e o formulário que receberá os contatos."
@@ -315,8 +365,8 @@ export function TemplateLandingPageWizard() {
               </div>
             </Field>
             <div className="flex justify-end">
-              <Button type="button" onClick={() => setStep(2)}>
-                Continuar
+              <Button type="button" disabled={isLoadingEdit} onClick={() => setStep(2)}>
+                {isLoadingEdit ? "Carregando..." : "Continuar"}
               </Button>
             </div>
           </FieldGroup>
@@ -419,8 +469,8 @@ export function TemplateLandingPageWizard() {
               <Button type="button" variant="outline" onClick={() => setStep(1)}>
                 Voltar
               </Button>
-              <Button type="button" disabled={isSaving} onClick={() => void createLanding()}>
-                {isSaving ? "Criando..." : "Criar landing"}
+              <Button type="button" disabled={isSaving || isLoadingEdit} onClick={() => void createLanding()}>
+                {isSaving ? "Salvando..." : editingLandingId ? "Salvar alterações" : "Criar landing"}
               </Button>
             </div>
           </FieldGroup>

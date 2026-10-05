@@ -2,9 +2,11 @@ import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { Output } from "@/lib/output"
 import { isManagerLikeRole } from "@/lib/roles"
 import { STORAGE_BUCKETS, SupabaseStorageService } from "@/lib/supabase/storage"
+import { hasLandingPageManagementAccess } from "@/app/api/useCases/landingPages/landingPageFeatureAccess"
 
 export class LandingPageAssetUseCase {
   async upload(access: TeamAccess, file: File) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado às landing pages"], null)
     if (!access.isMaster && !isManagerLikeRole(access.teamMember.role)) return new Output(false, [], ["Acesso negado às landing pages"], null)
     const result = await SupabaseStorageService.uploadFile(file, STORAGE_BUCKETS.LANDING_PAGE_ASSETS, access.profileId, file.name, `team-${access.teamId}`)
     return result.success
