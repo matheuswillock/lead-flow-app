@@ -32,4 +32,5 @@ export interface ILandingPageRepository {
   ): Promise<LandingPage | null>
   publish(teamId: string, id: string, publishedById: string): Promise<LandingPagePublication | null>
   archive(teamId: string, id: string): Promise<LandingPage | null>
+  deleteArchived(teamId: string, id: string): Promise<"deleted" | "not_archived" | "not_found">
 }

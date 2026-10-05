@@ -3,9 +3,10 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useParams } from "next/navigation"
-import { Archive, BarChart3, Copy, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2 } from "lucide-react"
+import { Archive, BarChart3, Copy, LayoutTemplate, MoreHorizontal, Plus, RefreshCw, Search, Send, Settings2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -35,8 +36,9 @@ function getLandingUrl(hostname: string | undefined, publicId: string) {
 
 function LandingRow({ item }: { item: LandingPageListItem }) {
   const params = useParams<{ supabaseId: string }>()
-  const { domain, publish, archive } = useLandingPages()
+  const { domain, publish, archive, deleteArchived } = useLandingPages()
   const [isWorking, setIsWorking] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const url = getLandingUrl(domain?.hostname, item.publicId)
   const status = statusConfig[item.status]
 
@@ -85,8 +87,21 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
           {item.status !== "archived" ? <DropdownMenuItem onClick={() => void execute(() => archive(item.id))}><Archive data-icon="inline-start" />Arquivar</DropdownMenuItem> : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href={`/${params.supabaseId}/landing-pages/new?edit=${item.id}`}>Editar configuração</Link></DropdownMenuItem>
+          {item.status === "archived" ? <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setIsDeleteDialogOpen(true)}><Trash2 data-icon="inline-start" />Excluir permanentemente</DropdownMenuItem> : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir “{item.name}” permanentemente?</AlertDialogTitle>
+            <AlertDialogDescription>Essa ação não pode ser desfeita. A landing page e seu histórico de publicação serão removidos.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isWorking}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={isWorking} onClick={() => void execute(async () => { const deleted = await deleteArchived(item.id); if (deleted) setIsDeleteDialogOpen(false); return deleted })}>Excluir permanentemente</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

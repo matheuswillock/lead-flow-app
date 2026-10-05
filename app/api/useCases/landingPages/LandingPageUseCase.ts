@@ -111,6 +111,17 @@ export class LandingPageUseCase implements ILandingPageUseCase {
       : new Output(false, [], ["Landing page não encontrada"], null)
   }
 
+  async deleteArchived(access: TeamAccess, id: string) {
+    if (!(await hasLandingPageManagementAccess(access))) return new Output(false, [], ["Acesso negado"], null)
+    if (!canManage(access)) return new Output(false, [], ["Acesso negado"], null)
+    const result = await this.repository.deleteArchived(access.teamId, id)
+    if (result === "deleted") return new Output(true, ["Landing page excluída"], [], null)
+    if (result === "not_archived") {
+      return new Output(false, [], ["Apenas landing pages arquivadas podem ser excluídas"], null)
+    }
+    return new Output(false, [], ["Landing page não encontrada"], null)
+  }
+
   async getPublic(publicId: string) {
     const landing = await this.repository.findPublic(publicId)
     const publication = landing?.publications[0]

@@ -26,4 +26,5 @@ export type LandingPagesState = {
   refresh: () => Promise<void>
   publish: (id: string) => Promise<boolean>
   archive: (id: string) => Promise<boolean>
+  deleteArchived: (id: string) => Promise<boolean>
 }

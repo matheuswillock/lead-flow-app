@@ -211,6 +211,22 @@ export class LandingPageRepository implements ILandingPageRepository {
       },
     })
   }
+
+  async deleteArchived(teamId: string, id: string) {
+    return prisma.$transaction(async (transaction) => {
+      const landing = await transaction.landingPage.findFirst({
+        where: { id, teamId },
+        select: { status: true },
+      })
+      if (!landing) return "not_found" as const
+      if (landing.status !== "archived") return "not_archived" as const
+
+      const deleted = await transaction.landingPage.deleteMany({
+        where: { id, teamId, status: "archived" },
+      })
+      return deleted.count === 1 ? "deleted" as const : "not_found" as const
+    })
+  }
 }
 
 export const landingPageRepository = new LandingPageRepository()
