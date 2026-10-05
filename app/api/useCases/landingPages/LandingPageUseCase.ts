@@ -111,7 +111,10 @@ export class LandingPageUseCase implements ILandingPageUseCase {
     if (!landing || !publication) return new Output(false, [], ["Landing page indisponível"], null)
     if (!(await hasLandingPagePublicAccess(landing.teamId))) return new Output(false, [], ["Landing page indisponível"], null)
 
-    const snapshot = publication.snapshot as unknown as LandingPageSnapshot
+    const snapshot = {
+      ...(publication.snapshot as unknown as LandingPageSnapshot),
+      publicationId: publication.id,
+    }
     const domain = await this.studioDomainRepository.findByTeamId(landing.teamId)
     return new Output(true, [], [], {
       snapshot,

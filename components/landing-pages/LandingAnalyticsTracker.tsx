@@ -24,7 +24,7 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
     const endpoint = landingAnalyticsEndpoint(snapshot.publicId)
     const context = {
       landingPageId: snapshot.landingPageId,
-      publicationId: `${snapshot.landingPageId}:${snapshot.version}`,
+      publicationId: snapshot.publicationId ?? snapshot.landingPageId,
       templateSlug: snapshot.templateSlug as "black-and-white" | "alvora",
       visitorSessionId,
       attribution: Object.fromEntries(new URLSearchParams(window.location.search).entries()),

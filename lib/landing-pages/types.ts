@@ -69,6 +69,7 @@ export type LandingPageOffer = {
 export type LandingPageSnapshot = {
   landingPageId: string
   publicId: string
+  publicationId?: string
   version: number
   publishedAt: string
   name: string

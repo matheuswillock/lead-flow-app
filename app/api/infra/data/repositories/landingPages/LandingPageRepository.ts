@@ -150,6 +150,7 @@ export class LandingPageRepository implements ILandingPageRepository {
     const snapshot = {
       landingPageId: landing.id,
       publicId: landing.publicId,
+      publicationId: undefined,
       version,
       publishedAt: new Date().toISOString(),
       name: landing.name,
@@ -166,9 +167,14 @@ export class LandingPageRepository implements ILandingPageRepository {
         data: { endedAt: new Date() },
       })
       await transaction.landingPage.update({ where: { id: landing.id }, data: { status: "published" } })
-      return transaction.landingPagePublication.create({
+      const publication = await transaction.landingPagePublication.create({
         data: { landingPageId: landing.id, publishedById, version, snapshot },
       })
+      await transaction.landingPagePublication.update({
+        where: { id: publication.id },
+        data: { snapshot: { ...snapshot, publicationId: publication.id } },
+      })
+      return publication
     })
   }
 
