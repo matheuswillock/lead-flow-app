@@ -1,7 +1,7 @@
 "use client"
 
-import { LandingPageWizard } from "../../../features/LandingPageWizard"
+import { TemplateLandingPageWizard } from "../TemplateLandingPageWizard"
 
 export function LandingPageWizardContainer() {
-  return <LandingPageWizard />
+  return <TemplateLandingPageWizard />
 }

@@ -38,6 +38,12 @@ create table if not exists storage.objects (
   updated_at timestamptz not null default now()
 );
 
+
+create or replace function storage.foldername(object_name text)
+returns text[]
+language sql
+immutable
+as $$ select string_to_array(object_name, '/') $$;
 alter table storage.objects enable row level security;
 
 -- Este script roda como supabase_admin (bootstrap role da imagem
@@ -47,3 +53,4 @@ alter table storage.objects enable row level security;
 alter schema storage owner to postgres;
 alter table storage.buckets owner to postgres;
 alter table storage.objects owner to postgres;
+alter function storage.foldername(text) owner to postgres;
