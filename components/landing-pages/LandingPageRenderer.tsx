@@ -10,6 +10,7 @@ import {
 import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
 import { BlackAndWhiteTemplate } from "./templates/BlackAndWhiteTemplate"
 import { AlvoraTemplate } from "./templates/AlvoraTemplate"
+import { LandingAnalyticsTracker } from "./LandingAnalyticsTracker"
 
 type Props = {
   snapshot: LandingPageSnapshot
@@ -149,9 +150,17 @@ function LandingQuestion({
 
 export function LandingPageRenderer({ snapshot, tracking = null, formOnly = false }: Props) {
   if (snapshot.templateSlug === "black-and-white")
-    return <BlackAndWhiteTemplate snapshot={snapshot} tracking={tracking} />
+    return (
+      <LandingAnalyticsTracker snapshot={snapshot}>
+        <BlackAndWhiteTemplate snapshot={snapshot} tracking={tracking} />
+      </LandingAnalyticsTracker>
+    )
   if (snapshot.templateSlug === "alvora")
-    return <AlvoraTemplate snapshot={snapshot} tracking={tracking} />
+    return (
+      <LandingAnalyticsTracker snapshot={snapshot}>
+        <AlvoraTemplate snapshot={snapshot} tracking={tracking} />
+      </LandingAnalyticsTracker>
+    )
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
