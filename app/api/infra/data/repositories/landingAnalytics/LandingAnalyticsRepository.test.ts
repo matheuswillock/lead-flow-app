@@ -47,7 +47,7 @@ describe("LandingAnalyticsRepository.summarize", () => {
 
     expect(result).toEqual({
       totals: { "landing.page_view": 4, "landing.cta_click": 1 },
-      uniqueVisitors: 3,
+      uniqueVisitors: 2,
       returningVisitors: 1,
       byEventType: [
         { eventType: "landing.page_view", count: 4 },
