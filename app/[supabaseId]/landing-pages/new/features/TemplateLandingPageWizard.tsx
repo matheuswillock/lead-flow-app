@@ -427,7 +427,7 @@ export function TemplateLandingPageWizard() {
                 }}
               />
               <Field>
-              </FieldDescription>
+              <FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="cnpj">CNPJ</FieldLabel>
