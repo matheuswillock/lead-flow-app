@@ -426,8 +426,7 @@ export function TemplateLandingPageWizard() {
                   if (file) void uploadLogo(file)
                 }}
               />
-              <Field>
-              <FieldDescription>
+              <FieldDescription>Opcional. Quando enviada, a logo substitui a marca textual do template.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="cnpj">CNPJ</FieldLabel>
