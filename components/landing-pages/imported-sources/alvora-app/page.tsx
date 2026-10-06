@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import Link from "next/link"
 import { CookieConsent } from "../black-and-white-components/cookie-consent"
 import Image, { getImageProps } from 'next/image'
 import { ArrowRight, BriefcaseBusiness, Building2, Check, ChevronDown, Clock3, Heart, HeartHandshake, HeartPulse, Medal, Menu, MessageCircle, PhoneCall, ShieldCheck, Smile, Stethoscope, UserRoundPlus, Users, UsersRound, X } from 'lucide-react'
@@ -123,7 +124,7 @@ export default function Page({ brandName, phoneDisplay, phoneE164, whatsappUrl, 
           <h3 className="footer-title">SOBRE A ALVORA</h3>
           <nav className="footer-links" aria-label="Sobre a Alvora">
             <a href="#pessoa-fisica">Nossa atuação</a><a href="#como-funciona">Quem somos</a><a href="#contato">Trabalhe conosco</a>
-            <a href="/privacidade">Política de privacidade</a><a href="/cookies">Política de Cookies</a><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
+            <Link href="/privacidade">Política de privacidade</Link><Link href="/cookies">Política de Cookies</Link><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
           </nav>
         </div>
         <div className="footer-column footer-contact">

@@ -427,7 +427,6 @@ export function TemplateLandingPageWizard() {
                 }}
               />
               <Field>
-                Opcional. Quando enviada, a logo substitui a marca textual do template.
               </FieldDescription>
             </Field>
             <Field>
