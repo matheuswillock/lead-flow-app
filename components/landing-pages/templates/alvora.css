@@ -287,3 +287,11 @@ h1 { font-size:80px; line-height:.88; letter-spacing:-.075em; margin:7px 0 48px;
 }
 
 @keyframes operators-scroll { to { transform:translateX(-50%); } }
+
+
+/* Cookie consent keeps the Alvorá visual language while remaining visible above the page. */
+.alvora-source .cookie-consent { position: fixed; inset: auto 1.5rem 1.5rem auto; z-index: 40; max-width:  30rem; padding: 1.5rem; border-radius: 1rem; background: #fff; color: #17256b; box-shadow: 0 1rem 3rem rgba(14, 27, 92, .25); }
+.alvora-source .cookie-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 1rem; background: rgba(10, 21, 75, .55); }
+.alvora-source .cookie-dialog { width: min(100%, 34rem); max-height: min(90vh, 42rem); overflow: auto; padding: 1.5rem; border-radius: 1rem; background: #fff; color: #17256b; box-shadow: 0 1rem 3rem rgba(14, 27, 92, .25); }
+.alvora-source .cookie-actions, .alvora-source .dialog-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+@media (max-width: 40rem) { .alvora-source .cookie-consent { inset: auto .75rem .75rem; max-width: none; } }

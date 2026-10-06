@@ -31,6 +31,7 @@ export type LandingTemplateConfig = {
     whatsappE164?: string
     whatsappMessage?: string
     email?: string
+    businessHours?: string
   }
   seo?: { title?: string; description?: string; canonical?: string; socialImageUrl?: string | null }
   hero?: {
