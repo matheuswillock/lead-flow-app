@@ -44,7 +44,7 @@ export class LandingAnalyticsRepository implements ILandingAnalyticsRepository {
     const totals = Object.fromEntries(eventGroups.map((item) => [item.eventType, item._count._all]))
     return {
       totals,
-      uniqueVisitors: sessionGroups.length,
+      uniqueVisitors: pageViewGroups.length,
       returningVisitors: pageViewGroups.filter((group) => group._count._all > 1).length,
       byEventType: eventGroups.map((item) => ({ eventType: item.eventType, count: item._count._all })),
     }
