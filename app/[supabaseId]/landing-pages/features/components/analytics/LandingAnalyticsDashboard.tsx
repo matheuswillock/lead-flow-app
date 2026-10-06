@@ -20,7 +20,7 @@ import { landingAnalyticsService, type LandingAnalyticsFilterOption, type Landin
 
 type DateRange = { from?: Date; to?: Date }
 
-function initialFilters(tz: string, landingPageId?: string): LandingAnalyticsFilters {
+function initialFilters(landingPageId?: string): LandingAnalyticsFilters {
   const to = new Date()
   const from = new Date(to.getTime() - 30 * 60 * 1000)
   return { from: from.toISOString(), to: to.toISOString(), landingPageId }
@@ -46,7 +46,7 @@ export function LandingAnalyticsDashboard({ teamId, headers }: { teamId: string;
 import { combineDateAndTimeInTz, formatLocalTimeValue } from "@/lib/dates"
   const searchParams = useSearchParams()
   const requestedLandingId = searchParams.get("landingPageId") ?? undefined
-  const [filters, setFilters] = useState(() => initialFilters(tz, requestedLandingId))
+  const [filters, setFilters] = useState(() => initialFilters(requestedLandingId))
   const [range, setRange] = useState<DateRange>(() => ({ from: new Date(filters.from), to: new Date(filters.to) }))
   const [startTime, setStartTime] = useState(() => formatLocalTimeValue(new Date(filters.from), tz))
   const [endTime, setEndTime] = useState(() => formatLocalTimeValue(new Date(filters.to), tz))
