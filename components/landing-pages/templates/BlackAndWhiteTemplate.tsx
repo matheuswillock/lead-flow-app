@@ -12,6 +12,7 @@ export function BlackAndWhiteTemplate({ snapshot, tracking }: { snapshot: Landin
     <>
       <PublicTrackingBody tracking={tracking} position="start" />
       <AnalysisLanding
+        landingPageId={snapshot.landingPageId}
         brandName={brandName} templateConfig={snapshot.content.templateConfig}
         renderForm={(compact) => (
           <LandingPageRenderer

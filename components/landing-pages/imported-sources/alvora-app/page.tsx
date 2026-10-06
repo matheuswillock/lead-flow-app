@@ -96,7 +96,7 @@ function BusinessHealthSection() {
   </section>
 }
 
-export default function Page({ brandName, phoneDisplay, phoneE164, whatsappUrl, renderForm }: { brandName: string; phoneDisplay?: string; phoneE164?: string; whatsappUrl: string; renderForm: () => ReactNode }) {
+export default function Page({ landingPageId, brandName, phoneDisplay, phoneE164, whatsappUrl, renderForm }: { landingPageId?: string; brandName: string; phoneDisplay?: string; phoneE164?: string; whatsappUrl: string; renderForm: () => ReactNode }) {
   const displayPhone = (value?: string) => { const digits = value?.replace(/\D/g, "") ?? ""; return digits.length === 11 ? `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}` : value ?? "Atendimento" }
   const maskedPhone = displayPhone(phoneDisplay)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -124,7 +124,7 @@ export default function Page({ brandName, phoneDisplay, phoneE164, whatsappUrl, 
           <h3 className="footer-title">SOBRE A ALVORA</h3>
           <nav className="footer-links" aria-label="Sobre a Alvora">
             <a href="#pessoa-fisica">Nossa atuação</a><a href="#como-funciona">Quem somos</a><a href="#contato">Trabalhe conosco</a>
-            <Link href="/privacidade">Política de privacidade</Link><Link href="/cookies">Política de Cookies</Link><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
+            <Link href={`/conversao/${landingPageId}/privacidade`}>Política de privacidade</Link><Link href={`/conversao/${landingPageId}/cookies`}>Política de Cookies</Link><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
           </nav>
         </div>
         <div className="footer-column footer-contact">
