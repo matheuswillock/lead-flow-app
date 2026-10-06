@@ -10,11 +10,13 @@ import {
 import { resolveVisibleQuestionIds, validateAnswerIssue } from "@/lib/public-forms/engine"
 import { BlackAndWhiteTemplate } from "./templates/BlackAndWhiteTemplate"
 import { AlvoraTemplate } from "./templates/AlvoraTemplate"
+import { LandingAnalyticsTracker } from "./LandingAnalyticsTracker"
 
 type Props = {
   snapshot: LandingPageSnapshot
   tracking?: PublicTrackingScriptsValue | null
   formOnly?: boolean
+  formPresentation?: "default" | "black-and-white" | "black-and-white-compact" | "alvora"
 }
 
 type SchedulingAnswer = { startsAt?: string }
@@ -147,11 +149,19 @@ function LandingQuestion({
   )
 }
 
-export function LandingPageRenderer({ snapshot, tracking = null, formOnly = false }: Props) {
+export function LandingPageRenderer({ snapshot, tracking = null, formOnly = false, formPresentation = "default" }: Props) {
   if (snapshot.templateSlug === "black-and-white")
-    return <BlackAndWhiteTemplate snapshot={snapshot} tracking={tracking} />
+    return (
+      <LandingAnalyticsTracker snapshot={snapshot}>
+        <BlackAndWhiteTemplate snapshot={snapshot} tracking={tracking} />
+      </LandingAnalyticsTracker>
+    )
   if (snapshot.templateSlug === "alvora")
-    return <AlvoraTemplate snapshot={snapshot} tracking={tracking} />
+    return (
+      <LandingAnalyticsTracker snapshot={snapshot}>
+        <AlvoraTemplate snapshot={snapshot} tracking={tracking} />
+      </LandingAnalyticsTracker>
+    )
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -234,14 +244,12 @@ export function LandingPageRenderer({ snapshot, tracking = null, formOnly = fals
       <section
         id="landing-form"
         aria-labelledby="landing-form-title"
-        className="w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8"
+        className={formPresentation === "default" ? "w-full rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8" : `template-form template-form--${formPresentation}`}
       >
-        <h2 id="landing-form-title" className="text-2xl font-semibold tracking-tight">
-          {snapshot.form.name}
-        </h2>
-        {snapshot.form.description && (
-          <p className="mt-2 text-muted-foreground">{snapshot.form.description}</p>
-        )}
+        <div className="template-form__heading">
+          <h2 id="landing-form-title" className="text-2xl font-semibold tracking-tight">{snapshot.form.name}</h2>
+          {snapshot.form.description && <p className="text-muted-foreground">{snapshot.form.description}</p>}
+        </div>
         {submitted ? (
           <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
             <h3 className="text-2xl font-semibold tracking-tight">{snapshot.form.successTitle}</h3>
@@ -250,7 +258,7 @@ export function LandingPageRenderer({ snapshot, tracking = null, formOnly = fals
             </p>
           </div>
         ) : (
-          <form onSubmit={submit} className="grid gap-5" noValidate>
+          <form onSubmit={submit} className="lead-form grid gap-5" noValidate>
             {visibleQuestions.map((question) => (
               <label key={question.id} className="grid gap-2 text-sm font-medium">
                 <span>
@@ -271,7 +279,7 @@ export function LandingPageRenderer({ snapshot, tracking = null, formOnly = fals
             )}
             <button
               disabled={isSubmitting}
-              className="min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+              className="template-form__submit min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
             >
               {isSubmitting ? "Enviando..." : snapshot.form.ctaLabel}
             </button>
@@ -397,7 +405,7 @@ export function LandingPageRenderer({ snapshot, tracking = null, formOnly = fals
               </p>
             </div>
           ) : (
-            <form onSubmit={submit} className="grid gap-5" noValidate>
+            <form onSubmit={submit} className="lead-form grid gap-5" noValidate>
               {visibleQuestions.map((question) => (
                 <label key={question.id} className="grid gap-2 text-sm font-medium">
                   <span>
@@ -418,7 +426,7 @@ export function LandingPageRenderer({ snapshot, tracking = null, formOnly = fals
               )}
               <button
                 disabled={isSubmitting}
-                className="min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+                className="template-form__submit min-h-11 rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-60"
               >
                 {isSubmitting ? "Enviando..." : snapshot.form.ctaLabel}
               </button>

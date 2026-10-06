@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { maskPhone, formatDocumentInput, normalizeLeadPhoneDigits, sanitizeDocumentDigits, isValidCNPJ, isValidPhone } from "@/lib/masks"
 import { usePublicForms } from "../../../forms/features/context/PublicFormsContext"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 import type { LandingTemplateConfig, LandingTemplateSlug } from "@/lib/landing-pages/types"
@@ -62,36 +62,7 @@ function createTemplateConfig(templateSlug: string): LandingTemplateConfig {
         ? {
             statistics: { enabled: true, items: [] },
             operators: { enabled: true, items: [] },
-            differentials: {
-              enabled: true,
-              title: "Mais que uma corretora, um time ao seu lado.",
-              items: [
-                {
-                  title: "Consultoria gratuita",
-                  description: "Orientação sem custo para ajudar você a escolher.",
-                },
-                {
-                  title: "Opções para empresários",
-                  description: "Alternativas pelo CNPJ, conforme a sua elegibilidade.",
-                },
-                {
-                  title: "Comparação de operadoras",
-                  description: "Análise de preços, coberturas e rede para o seu perfil.",
-                },
-                {
-                  title: "Acompanhamento no pós-venda",
-                  description: "Suporte com dúvidas, reajustes e possibilidades de troca.",
-                },
-                {
-                  title: "Análise personalizada",
-                  description: "Sua idade, sua família e suas prioridades entram na comparação.",
-                },
-                {
-                  title: "Atendimento humano",
-                  description: "Uma equipe preparada para conversar e acompanhar sua decisão.",
-                },
-              ],
-            },
+            differentials: { enabled: false, items: [] },
             faq: { enabled: true, title: "Plano de saúde sem complicação", items: [] },
             testimonials: { enabled: false, items: [] },
           }
@@ -177,13 +148,39 @@ export function TemplateLandingPageWizard() {
   const [config, setConfig] = useState(() => createTemplateConfig("black-and-white"))
   const [isSaving, setIsSaving] = useState(false)
   const [isLoadingEdit, setIsLoadingEdit] = useState(false)
+  const [isLookingUpCompany, setIsLookingUpCompany] = useState(false)
   const editingLandingId = searchParams.get("edit")
   const updateIdentity = (key: keyof LandingTemplateConfig["identity"], value: string) =>
     setConfig((current) => ({ ...current, identity: { ...current.identity, [key]: value } }))
   const updateContact = (key: keyof LandingTemplateConfig["contact"], value: string) =>
     setConfig((current) => ({ ...current, contact: { ...current.contact, [key]: value } }))
-  const updateHero = (key: keyof NonNullable<LandingTemplateConfig["hero"]>, value: string) =>
-    setConfig((current) => ({ ...current, hero: { ...current.hero, [key]: value } }))
+  const updatePhone = (value: string) =>
+    setConfig((current) => ({
+      ...current,
+      contact: { ...current.contact, phoneDisplay: value, phoneE164: value },
+    }))
+
+  async function lookupCompany(cnpjValue: string) {
+    if (!forms.ids) return
+    const cnpj = sanitizeDocumentDigits(cnpjValue)
+    if (!isValidCNPJ(cnpj)) return
+    setIsLookingUpCompany(true)
+    try {
+      const response = await fetch(`${API_CLIENT_BASE}/portfolio/cnpj-lookup?cnpj=${cnpj}`, {
+        headers: { "x-supabase-user-id": forms.ids.supabaseId, "x-team-id": forms.ids.teamId },
+      })
+      const output = (await response.json()) as { isValid?: boolean; result?: { razaoSocial?: string } }
+      if (response.ok && output.isValid && output.result?.razaoSocial) {
+        updateIdentity("legalName", output.result.razaoSocial)
+      } else {
+        toast.error("Não foi possível consultar a Razão Social.")
+      }
+    } catch {
+      toast.error("Não foi possível consultar a Razão Social.")
+    } finally {
+      setIsLookingUpCompany(false)
+    }
+  }
 
   useEffect(() => {
     if (!editingLandingId || !forms.ids) return
@@ -198,14 +195,30 @@ export function TemplateLandingPageWizard() {
         const output = (await response.json()) as {
           isValid: boolean
           errorMessages?: string[]
-          result?: { name: string; publicFormId: string; templateSlug: string; content: { templateConfig?: LandingTemplateConfig } }
+          result?: {
+            name: string
+            publicFormId: string
+            templateSlug: string
+            content: { templateConfig?: LandingTemplateConfig; brandName?: string; heroTitle?: string; heroDescription?: string }
+          }
         }
-        if (!response.ok || !output.isValid || !output.result?.content.templateConfig)
+        if (!response.ok || !output.isValid || !output.result)
           throw new Error(output.errorMessages?.[0] ?? "Não foi possível carregar a landing.")
         if (cancelled) return
         setName(output.result.name)
         setPublicFormId(output.result.publicFormId)
-        const loadedConfig = output.result.content.templateConfig
+        const loadedConfig = output.result.content.templateConfig ?? {
+          ...createTemplateConfig(output.result.templateSlug),
+          identity: {
+            ...createTemplateConfig(output.result.templateSlug).identity,
+            tradeName: output.result.content.brandName ?? output.result.name,
+          },
+          hero: {
+            ...createTemplateConfig(output.result.templateSlug).hero,
+            title: output.result.content.heroTitle ?? undefined,
+            description: output.result.content.heroDescription ?? undefined,
+          },
+        }
         setTemplateSlug(loadedConfig.templateSlug === "alvora" ? "alvora" : "black-and-white")
         setConfig(loadedConfig)
         setStep(2)
@@ -221,38 +234,53 @@ export function TemplateLandingPageWizard() {
   }, [editingLandingId, forms.ids?.supabaseId, forms.ids?.teamId])
   async function uploadLogo(file: File) {
     if (!forms.ids) return
-    const body = new FormData()
-    body.set("asset", file)
-    const response = await fetch(
-      `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/assets`,
-      {
+    try {
+      const body = new FormData()
+      body.set("asset", file)
+      const response = await fetch(`${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/assets`, {
         method: "POST",
         headers: { "x-supabase-user-id": forms.ids.supabaseId, "x-team-id": forms.ids.teamId },
         body,
-      },
-    )
-    const output = (await response.json()) as {
-      isValid: boolean
-      result?: { publicUrl: string }
-      errorMessages?: string[]
+      })
+      const output = (await response.json()) as { isValid: boolean; result?: { publicUrl: string }; errorMessages?: string[] }
+      if (!response.ok || !output.isValid || !output.result) throw new Error(output.errorMessages?.[0] ?? "Não foi possível enviar o logo.")
+      updateIdentity("logoUrl", output.result.publicUrl)
+      toast.success("Logo enviado")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o logo.")
     }
-    if (!response.ok || !output.isValid || !output.result)
-      return toast.error(output.errorMessages?.[0] ?? "Não foi possível enviar o logo.")
-    updateIdentity("logoUrl", output.result.publicUrl)
-    toast.success("Logo enviado")
   }
   async function createLanding() {
     if (!forms.ids || !name.trim() || !publicFormId || !config.identity.tradeName.trim())
       return toast.error("Informe o nome, o formulário e a identidade da corretora.")
+    const cnpj = sanitizeDocumentDigits(config.identity.cnpj ?? "")
+    const phone = normalizeLeadPhoneDigits(config.contact.phoneDisplay ?? config.contact.phoneE164 ?? "")
+    const whatsapp = normalizeLeadPhoneDigits(config.contact.whatsappE164 ?? "")
+    if (cnpj && !isValidCNPJ(cnpj)) return toast.error("CNPJ inválido.")
+    if (phone && !isValidPhone(phone)) return toast.error("Telefone inválido.")
+    if (whatsapp && !isValidPhone(whatsapp)) return toast.error("WhatsApp inválido.")
     setIsSaving(true)
     const normalizedConfig: LandingTemplateConfig = {
       ...config,
-      contact: { ...config.contact, email: config.contact.email?.trim() || undefined },
+      identity: { ...config.identity, cnpj },
+      contact: { ...config.contact, phoneDisplay: phone, phoneE164: phone, whatsappE164: whatsapp, email: config.contact.email?.trim() || undefined },
       seo: config.seo
         ? { ...config.seo, canonical: config.seo.canonical?.trim() || undefined }
         : undefined,
     }
     try {
+      const domainResponse = await fetch(`${API_CLIENT_BASE}/email/settings/studio-domain`, {
+        headers: { "x-supabase-user-id": forms.ids.supabaseId, "x-team-id": forms.ids.teamId },
+      })
+      const domainOutput = (await domainResponse.json()) as {
+        isValid?: boolean
+        result?: { studioDomain?: { status?: string } | null }
+        errorMessages?: string[]
+      }
+      if (!domainResponse.ok || domainOutput.isValid === false)
+        throw new Error(domainOutput.errorMessages?.[0] ?? "Não foi possível verificar o domínio studio.")
+      if (domainOutput.result?.studioDomain?.status !== "verified")
+        throw new Error("Configure e verifique o subdomínio studio antes de criar a landing.")
       const endpoint = editingLandingId
         ? `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages/${editingLandingId}`
         : `${API_CLIENT_BASE}/teams/${forms.ids.teamId}/landing-pages`
@@ -298,7 +326,8 @@ export function TemplateLandingPageWizard() {
           headers: { "x-supabase-user-id": forms.ids.supabaseId, "x-team-id": forms.ids.teamId },
         },
       )
-      if (!publication.ok) throw new Error("Landing criada, mas não publicada.")
+      const publicationOutput = (await publication.json()) as { errorMessages?: string[] }
+      if (!publication.ok) throw new Error(publicationOutput.errorMessages?.[0] ?? "Não foi possível publicar a landing.")
       toast.success(editingLandingId ? "Landing atualizada e publicada" : "Landing criada e publicada")
       router.push(`/${forms.ids.supabaseId}/landing-pages`)
     } catch (error) {
@@ -384,11 +413,7 @@ export function TemplateLandingPageWizard() {
             </Field>
             <Field>
               <FieldLabel htmlFor="legal-name">Razão social</FieldLabel>
-              <Input
-                id="legal-name"
-                value={config.identity.legalName ?? ""}
-                onChange={(event) => updateIdentity("legalName", event.target.value)}
-              />
+              <Input id="legal-name" value={config.identity.legalName ?? ""} readOnly disabled={isLookingUpCompany} placeholder="Preenchida automaticamente pelo CNPJ" />
             </Field>
             <Field>
               <FieldLabel htmlFor="landing-logo">Logo</FieldLabel>
@@ -409,33 +434,39 @@ export function TemplateLandingPageWizard() {
               <FieldLabel htmlFor="cnpj">CNPJ</FieldLabel>
               <Input
                 id="cnpj"
-                value={config.identity.cnpj ?? ""}
-                onChange={(event) => updateIdentity("cnpj", event.target.value)}
+                value={formatDocumentInput(config.identity.cnpj ?? "")}
+                onChange={(event) => updateIdentity("cnpj", sanitizeDocumentDigits(event.target.value))}
+                onBlur={(event) => void lookupCompany(event.target.value)}
+                inputMode="numeric"
+                maxLength={18}
               />
+              {isLookingUpCompany ? <FieldDescription>Consultando Razão Social...</FieldDescription> : null}
             </Field>
             <Field>
-              <FieldLabel htmlFor="phone">Telefone</FieldLabel>
+              <FieldLabel htmlFor="phone">Telefone para contato</FieldLabel>
               <Input
                 id="phone"
-                value={config.contact.phoneDisplay ?? ""}
-                onChange={(event) => updateContact("phoneDisplay", event.target.value)}
+                value={maskPhone(normalizeLeadPhoneDigits(config.contact.phoneDisplay ?? config.contact.phoneE164 ?? ""))}
+                onChange={(event) => {
+                  const digits = normalizeLeadPhoneDigits(event.target.value)
+                  updatePhone(digits)
+                }}
+                inputMode="tel"
+                type="tel"
+                maxLength={16}
+                placeholder="(11) 91234-1234"
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="phone-e164">Telefone para ligação (E.164)</FieldLabel>
-              <Input
-                id="phone-e164"
-                placeholder="551131784000"
-                value={config.contact.phoneE164 ?? ""}
-                onChange={(event) => updateContact("phoneE164", event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="whatsapp">WhatsApp E.164</FieldLabel>
+              <FieldLabel htmlFor="whatsapp">WhatsApp</FieldLabel>
               <Input
                 id="whatsapp"
-                value={config.contact.whatsappE164 ?? ""}
-                onChange={(event) => updateContact("whatsappE164", event.target.value)}
+                value={maskPhone(normalizeLeadPhoneDigits(config.contact.whatsappE164 ?? ""))}
+                onChange={(event) => updateContact("whatsappE164", normalizeLeadPhoneDigits(event.target.value))}
+                inputMode="tel"
+                type="tel"
+                maxLength={16}
+                placeholder="(11) 91234-1234"
               />
             </Field>
             <Field>
@@ -446,23 +477,8 @@ export function TemplateLandingPageWizard() {
                 value={config.contact.email ?? ""}
                 onChange={(event) => updateContact("email", event.target.value)}
               />
-              <Field></Field>
-              <FieldLabel htmlFor="hero-title">Título da hero</FieldLabel>
-              <Textarea
-                id="hero-title"
-                value={config.hero?.title ?? ""}
-                onChange={(event) => updateHero("title", event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="hero-description">Descrição da hero</FieldLabel>
-              <Textarea
-                id="hero-description"
-                value={config.hero?.description ?? ""}
-                onChange={(event) => updateHero("description", event.target.value)}
-              />
               <FieldDescription>
-                Os demais blocos são opcionais: quando não configurados, não serão publicados.
+                O título e a descrição da hero seguem a copy aprovada do template. Os demais blocos são opcionais.
               </FieldDescription>
             </Field>
             <div className="flex justify-between gap-3">

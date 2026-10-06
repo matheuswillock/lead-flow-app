@@ -720,6 +720,7 @@ enum TeamWebhookEventKey {
   appointment_created
   appointment_reminder
   activity_created
+  landing_analytics_event
 
   @@map("team_webhook_event_key")
 }
@@ -2559,6 +2560,7 @@ model Team {
   teamWebhooks               TeamWebhook[]
   teamWebhookEventLogs       TeamWebhookEventLog[]
   teamWebhookOutbox          TeamWebhookOutbox[]
+  landingAnalyticsEvents     LandingAnalyticsEvent[]
   filterPresets              TeamFilterPreset[]
   statusRules                TeamStatusRule[]
   automationRules            TeamAutomationRule[]
@@ -6227,6 +6229,7 @@ model LandingPage {
   publicForm     PublicForm       @relation(fields: [publicFormId], references: [id], onDelete: Restrict)
   createdBy      Profile          @relation("LandingPageCreator", fields: [createdById], references: [id], onDelete: Restrict)
   publications   LandingPagePublication[]
+  analyticsEvents LandingAnalyticsEvent[]
 
   @@index([teamId, status, updatedAt(sort: Desc)])
   @@index([publicFormId])
@@ -6244,10 +6247,44 @@ model LandingPagePublication {
 
   landingPage   LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
   publishedBy   Profile     @relation("LandingPagePublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  analyticsEvents LandingAnalyticsEvent[]
 
   @@unique([landingPageId, version])
   @@index([landingPageId, endedAt, publishedAt(sort: Desc)])
   @@map("corretor_studio_landing_page_publications")
+}
+
+model LandingAnalyticsEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  teamId           String   @db.Uuid
+  landingPageId    String   @db.Uuid
+  publicationId    String   @db.Uuid
+  formId           String?  @db.Uuid
+  eventId          String   @unique @db.Text
+  eventType        String   @db.Text
+  schemaVersion    Int      @default(1)
+  templateSlug     String   @db.Text
+  visitorSessionId String   @db.Text
+  campaignId       String?  @db.Uuid
+  emailLogId       String?  @db.Uuid
+  attribution      Json     @default("{}")
+  metadata         Json     @default("{}")
+  ipHash           String?  @db.Text
+  userAgent        String?  @db.Text
+  referrer         String?  @db.Text
+  occurredAt       DateTime @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  team        Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  landingPage LandingPage            @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  publication LandingPagePublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, occurredAt(sort: Desc)])
+  @@index([landingPageId, occurredAt(sort: Desc)])
+  @@index([campaignId, occurredAt(sort: Desc)])
+  @@index([publicationId, eventType, occurredAt(sort: Desc)])
+  @@index([visitorSessionId, occurredAt(sort: Desc)])
+  @@map("corretor_studio_landing_analytics_events")
 }
 
 model PublicFormEligibleCloser {

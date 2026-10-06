@@ -7,6 +7,7 @@ export type LandingPageWithPublication = LandingPage & {
 export interface ILandingPageRepository {
   listByTeam(teamId: string): Promise<LandingPage[]>
   findById(teamId: string, id: string): Promise<LandingPage | null>
+  findByName(teamId: string, name: string, excludeId?: string): Promise<Pick<LandingPage, "id"> | null>
   findPublicFormForTeam(teamId: string, publicFormId: string): Promise<{ id: string; status: string } | null>
   findPublic(publicId: string): Promise<LandingPageWithPublication | null>
   create(input: {
@@ -31,4 +32,5 @@ export interface ILandingPageRepository {
   ): Promise<LandingPage | null>
   publish(teamId: string, id: string, publishedById: string): Promise<LandingPagePublication | null>
   archive(teamId: string, id: string): Promise<LandingPage | null>
+  deleteArchived(teamId: string, id: string): Promise<"deleted" | "not_archived" | "not_found">
 }

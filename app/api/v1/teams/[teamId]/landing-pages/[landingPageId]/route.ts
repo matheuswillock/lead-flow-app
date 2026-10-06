@@ -50,3 +50,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const status = output.isValid ? 200 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : 400
   return NextResponse.json(output, { status })
 }
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ teamId: string; landingPageId: string }> }) {
+  console.info("[LandingPageRoute][DELETE]")
+  const resolved = await resolveAccess(request, params)
+  if ("response" in resolved) return resolved.response
+  const { landingPageId } = await params
+  const output = await landingPageUseCase.deleteArchived(resolved.access, landingPageId)
+  const isConflict = output.errorMessages.some((message) => message.startsWith("Apenas"))
+  const status = output.isValid ? 200 : output.errorMessages.some((message) => message.startsWith("Acesso negado")) ? 403 : isConflict ? 409 : 404
+  return NextResponse.json(output, { status })
+}

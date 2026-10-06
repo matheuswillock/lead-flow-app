@@ -50,6 +50,14 @@ const EXAMPLE_EVENT_DATA: Record<TeamWebhookEventKey, Record<string, unknown>> =
       body: "Cliente solicitou retorno amanhã.",
     },
   },
+  landing_analytics_event: {
+    event_id: "evt_landing_exemplo",
+    event_type: "landing.page_view",
+    landing_page_id: "landing_exemplo",
+    publication_id: "publication_exemplo",
+    campaign_id: "campaign_exemplo",
+    visitor_session_id: "visitor_exemplo",
+  },
 };
 
 export function buildOutboundPayloadExample(
