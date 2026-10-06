@@ -71,6 +71,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
     return this.features
   }
 
+  async findTeamMasterId() {
+    return MANAGER_ID
+  }
+
   async findOwnerProfile() {
     return {
       hasPermanentSubscription: false,
