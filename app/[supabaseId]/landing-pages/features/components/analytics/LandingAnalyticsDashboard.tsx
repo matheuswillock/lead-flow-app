@@ -16,9 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { combineDateAndTimeInTz, formatLocalTimeValue } from "@/lib/dates"
+import type { DateRange } from "react-day-picker"
 import { landingAnalyticsService, type LandingAnalyticsFilterOption, type LandingAnalyticsFilters, type LandingAnalyticsSummary } from "../../services/LandingAnalyticsService"
-
-type DateRange = { from?: Date; to?: Date }
 
 function initialFilters(landingPageId?: string): LandingAnalyticsFilters {
   const to = new Date()
@@ -28,22 +27,9 @@ function initialFilters(landingPageId?: string): LandingAnalyticsFilters {
 
 function formatNumber(value: number | undefined) { return new Intl.NumberFormat("pt-BR").format(value ?? 0) }
 function optionLabel(option: LandingAnalyticsFilterOption) { return option.context ? `${option.name} · ${option.context}` : option.name }
-function formatLocalTimeValue(value: Date, timezone: string) { return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: timezone }).format(value) }
-function combineDateAndTimeInTz(date: Date, time: string, timezone: string) {
-  const [hour, minute] = time.split(":").map(Number)
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date)
-  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]))
-  const wallClock = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), hour, minute)
-  const offsetParts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, timeZoneName: "longOffset", hour: "2-digit" }).formatToParts(new Date(wallClock))
-  const offset = offsetParts.find((part) => part.type === "timeZoneName")?.value ?? "GMT"
-  const match = offset.match(/GMT([+-])(\d{2}):?(\d{2})?/)
-  const offsetMinutes = match ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "+" ? 1 : -1) : 0
-  return new Date(wallClock - offsetMinutes * 60_000)
-}
 
 export function LandingAnalyticsDashboard({ teamId, headers }: { teamId: string; headers: HeadersInit }) {
   const { tz } = useTimezone()
-import { combineDateAndTimeInTz, formatLocalTimeValue } from "@/lib/dates"
   const searchParams = useSearchParams()
   const requestedLandingId = searchParams.get("landingPageId") ?? undefined
   const [filters, setFilters] = useState(() => initialFilters(requestedLandingId))
