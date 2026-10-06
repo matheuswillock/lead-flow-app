@@ -82,6 +82,7 @@ function LandingRow({ item }: { item: LandingPageListItem }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {item.status === "published" ? <DropdownMenuItem asChild><Link href={`/${params.supabaseId}/landing-pages/analytics?landingPageId=${encodeURIComponent(item.publicId)}`}><BarChart3 data-icon="inline-start" />Métricas</Link></DropdownMenuItem> : null}
           {item.status === "published" && url ? <DropdownMenuItem onClick={() => void copyUrl()}><Copy data-icon="inline-start" />Copiar link</DropdownMenuItem> : null}
           {item.status === "draft" ? <DropdownMenuItem onClick={() => void execute(() => publish(item.id))}><Send data-icon="inline-start" />Publicar</DropdownMenuItem> : null}
           {item.status !== "archived" ? <DropdownMenuItem onClick={() => void execute(() => archive(item.id))}><Archive data-icon="inline-start" />Arquivar</DropdownMenuItem> : null}

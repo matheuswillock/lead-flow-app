@@ -24,6 +24,21 @@ export interface ILandingAnalyticsRepository {
   createIfAbsent(input: CreateLandingAnalyticsEventInput): Promise<LandingAnalyticsEvent | null>
   findByEventId(eventId: string): Promise<LandingAnalyticsEvent | null>
   summarize(input: LandingAnalyticsSummaryInput): Promise<LandingAnalyticsSummary>
+  listFilterOptions(teamId: string): Promise<LandingAnalyticsFilterOptions>
+}
+
+export type LandingAnalyticsFilterOption = {
+  value: string
+  label: string
+  description?: string
+}
+
+export type LandingAnalyticsFilterOptions = {
+  campaigns: LandingAnalyticsFilterOption[]
+  landingPages: LandingAnalyticsFilterOption[]
+  templates: LandingAnalyticsFilterOption[]
+  forms: LandingAnalyticsFilterOption[]
+  publications: LandingAnalyticsFilterOption[]
 }
 
 export type LandingAnalyticsSummaryInput = {
