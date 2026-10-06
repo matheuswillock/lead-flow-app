@@ -6,16 +6,22 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Download, Search } from 'lucide-react';
+import { FileText, Download, Search, CreditCard } from 'lucide-react';
 import type { SubscriptionInvoice } from '../types/subscription.types';
 import { useTimezone } from '@/app/context/TimezoneContext';
 import { formatIntimezone, parseDateKeyToUtc } from '@/lib/dates';
+import { formatCurrency } from './subscription-format';
 
 interface SubscriptionInvoicesProps {
   invoices: SubscriptionInvoice[];
+  /** DA3: falha ao carregar faturas, distinta do array vazio real. */
+  error?: string | null;
+  onRetry?: () => void;
 }
 
-export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
+const PAYABLE_STATUSES = new Set(['OVERDUE', 'PENDING']);
+
+export function SubscriptionInvoices({ invoices, error, onRetry }: SubscriptionInvoicesProps) {
   const { tz } = useTimezone();
   const [query, setQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState('all');
@@ -43,13 +49,6 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
     return formatIntimezone(parseDateKeyToUtc(dateString, tz), 'dd/MM/yyyy', tz);
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
   };
 
   const invoicesWithYear = useMemo(
@@ -114,12 +113,34 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
     [invoicesWithYear, normalizedQuery, selectedYear]
   );
 
+  // DA3: erro de fetch nunca pode se disfarçar de "sem faturas" — card
+  // dedicado com retry, antes de qualquer checagem de lista vazia.
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="size-5" />
+            Histórico de Faturas
+          </CardTitle>
+          <CardDescription>Não foi possível carregar suas faturas</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" className="w-fit max-lg:h-11" onClick={onRetry}>
+            Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (invoices.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+            <FileText className="size-5" />
             Histórico de Faturas
           </CardTitle>
           <CardDescription>Suas faturas aparecerão aqui</CardDescription>
@@ -137,16 +158,16 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
+          <FileText className="size-5" />
           Histórico de Faturas
         </CardTitle>
         <CardDescription>Suas últimas faturas e pagamentos</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative w-full lg:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -173,36 +194,61 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
             </div>
           ) : null}
 
-          {filteredInvoices.map((invoice) => (
-            <div 
-              key={invoice.id}
-              className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{invoice.description}</span>
-                  {getStatusBadge(invoice.status)}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Vencimento: {formatDate(invoice.dueDate)}
-                  {invoice.paymentDate && ` • Pago em: ${formatDate(invoice.paymentDate)}`}
-                </div>
-              </div>
+          {filteredInvoices.map((invoice) => {
+            // E5: fatura vencida/pendente ganha ação primária "Pagar fatura"
+            // apontando para `invoiceUrl` (página de pagamento do Asaas) — a
+            // ação mais importante da tela não pode ficar rotulada "Baixar".
+            const isPayable = PAYABLE_STATUSES.has(invoice.status);
 
-              <div className="flex items-center gap-4">
-                <span className="text-lg font-bold">{formatCurrency(invoice.value)}</span>
-                
-                {invoice.invoiceUrl && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={invoice.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4 mr-2" />
-                      Baixar
-                    </a>
-                  </Button>
-                )}
+            return (
+              <div
+                key={invoice.id}
+                className="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{invoice.description}</span>
+                    {getStatusBadge(invoice.status)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Vencimento: {formatDate(invoice.dueDate)}
+                    {invoice.paymentDate && ` • Pago em: ${formatDate(invoice.paymentDate)}`}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-lg font-bold">{formatCurrency(invoice.value)}</span>
+
+                  {isPayable && invoice.invoiceUrl && (
+                    <Button size="sm" className="max-lg:h-11" asChild>
+                      <a href={invoice.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                        <CreditCard data-icon="inline-start" />
+                        Pagar fatura
+                      </a>
+                    </Button>
+                  )}
+
+                  {invoice.bankSlipUrl && (
+                    <Button variant="outline" size="sm" className="max-lg:h-11" asChild>
+                      <a href={invoice.bankSlipUrl} target="_blank" rel="noopener noreferrer">
+                        <Download data-icon="inline-start" />
+                        Baixar
+                      </a>
+                    </Button>
+                  )}
+
+                  {!isPayable && !invoice.bankSlipUrl && invoice.invoiceUrl && (
+                    <Button variant="outline" size="sm" className="max-lg:h-11" asChild>
+                      <a href={invoice.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                        <Download data-icon="inline-start" />
+                        Baixar
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>

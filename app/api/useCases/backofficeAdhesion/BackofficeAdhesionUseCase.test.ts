@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { BackofficeAdhesionUseCase } from "./BackofficeAdhesionUseCase"
+import { AsaasPaymentCancellationError } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
 import type { IBackofficeAdhesionService } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import type { IBackofficeSponsorAuthorizationService } from "@/app/api/services/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationService"
 
@@ -48,5 +49,226 @@ describe("BackofficeAdhesionUseCase.create", () => {
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toContain("Patrocinador não autorizado")
     expect(created).toBe(false)
+  })
+})
+
+/**
+ * `BackofficeAdhesionsRequestError` (client) estende `ApiRequestError`, então
+ * `toUserToastMessage` repassa `Output.errorMessages[0]` ao toast sem passar pelo
+ * filtro de sinal técnico. Se o UseCase colocasse `error.message` cru em
+ * `errorMessages` para uma falha inesperada (Prisma, Supabase Admin, SDK do Asaas),
+ * esse detalhe interno vazaria verbatim para o usuário do backoffice — achado P2 do
+ * PR #1203 (thread PRRT_kwDOPrEc6s6jyVkp, "Keep untrusted backend errors out of user
+ * toasts"). Os testes abaixo travam a defesa: erro fora do allowlist de
+ * `KNOWN_SAFE_ADHESION_ERROR_MESSAGES` é substituído pelo fallback genérico do
+ * método; erro de negócio conhecido continua chegando intacto.
+ */
+describe("BackofficeAdhesionUseCase — sanitiza erro inesperado antes de expor no toast", () => {
+  it("update: erro inesperado (ex.: driver do banco) não chega cru em errorMessages", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("Unique constraint failed on the fields: (`email`)")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Erro ao atualizar adesão"])
+    expect(output.errorMessages.join(" ")).not.toContain("Unique constraint")
+  })
+
+  it("update: mensagem de negócio conhecida (adesão paga) chega intacta ao toast", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("Adesões pagas não podem ser editadas")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Adesões pagas não podem ser editadas"])
+  })
+
+  it("resend: erro inesperado (ex.: timeout do Asaas) não chega cru em errorMessages", async () => {
+    const service = {
+      resend: async () => {
+        throw new Error("connect ETIMEDOUT 203.0.113.10:443")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.resend("adh-1")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Erro ao reenviar adesão"])
+  })
+
+  it("resend: mensagem de negócio conhecida (assinatura já ativada) chega intacta ao toast", async () => {
+    const service = {
+      resend: async () => {
+        throw new Error("Adesões pagas não podem ser reenviadas")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.resend("adh-1")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Adesões pagas não podem ser reenviadas"])
+  })
+
+  it("getPublicUrl: erro inesperado não chega cru em errorMessages", async () => {
+    const service = {
+      getPublicUrl: async () => {
+        throw new Error("TypeError: Cannot read properties of undefined (reading 'tokenPlain')")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.getPublicUrl("adh-1")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Erro ao copiar link"])
+  })
+
+  it("getPendingInvoiceUrls: mensagem de negócio conhecida chega intacta ao toast", async () => {
+    const service = {
+      getPendingInvoiceUrls: async () => {
+        throw new Error("Não há parcelas pendentes para cobrança")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.getPendingInvoiceUrls("adh-1")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Não há parcelas pendentes para cobrança"])
+  })
+
+  /**
+   * Regressão apontada pela revisão do cursor[bot] na 1ª versão deste fix: o
+   * allowlist inicial só cobria as mensagens literais já existentes em
+   * `EXPECTED_CREATE_ERROR_MESSAGES` e não incluía toda a copy de validação que
+   * `BackofficeAdhesionService.create`/`update` ainda lançam de propósito — o
+   * operador perdia o motivo acionável (e-mail do guest, CPF/CNPJ, produto/ciclo)
+   * e via só o fallback genérico.
+   */
+  it("create: e-mail obrigatório para conta Convidado chega intacta ao toast", async () => {
+    const service = {
+      create: async () => {
+        throw new Error("E-mail é obrigatório para conta Convidado")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    // userType "common" evita o early-return de patrocinador do UseCase (guest/
+    // associate) — o objetivo aqui é isolar a sanitização de `service.create`,
+    // não reproduzir a regra de negócio completa de conta convidado.
+    const output = await useCase.create(
+      { leadId: "lead-1", userType: "common", cycle: "monthly", extraTeams: 0, extraUsers: 0, fullName: "Guest" },
+      null
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["E-mail é obrigatório para conta Convidado"])
+  })
+
+  it("update: CPF/CNPJ inválido para pagamento por fora chega intacta ao toast", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("CPF/CNPJ inválido para pagamento por fora")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["CPF/CNPJ inválido para pagamento por fora"])
+  })
+
+  it("create: produto obrigatório indisponível (mensagem template) chega intacta ao toast", async () => {
+    const service = {
+      create: async () => {
+        throw new Error("Produto obrigatório indisponível: crm")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.create(
+      { leadId: "lead-1", cycle: "monthly", extraTeams: 0, extraUsers: 0, fullName: "Lead" },
+      null
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Produto obrigatório indisponível: crm"])
+  })
+
+  it("update: ciclo indisponível na precificação (mensagem template) chega intacta ao toast", async () => {
+    const service = {
+      update: async () => {
+        throw new Error("O ciclo quarterly não está disponível na precificação selecionada")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.update("adh-1", {})
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual([
+      "O ciclo quarterly não está disponível na precificação selecionada",
+    ])
+  })
+})
+
+/**
+ * Achado de integração do lote unificado da rodada Pagamentos: `createCheckout`
+ * é o **único** catch do UseCase que repassa `error.message` cru — e é também o
+ * único cujo leitor é o cliente final, pela rota pública
+ * `app/api/v1/public-adhesions/[token]/checkout/route.ts`. O PR #1196 passou a
+ * lançar dali uma mensagem operacional do DA5 (painel Asaas, ledger de
+ * migração) endereçada a quem opera a migração. Isoladamente nenhum dos dois
+ * PRs erra; juntos, o pagador lê instrução de painel interno.
+ */
+describe("BackofficeAdhesionUseCase.createCheckout — copy operacional do DA5 não vaza para o pagador", () => {
+  it("troca a mensagem operacional do cancelamento por copy de cliente final", async () => {
+    const operationalMessage =
+      'Falha ao cancelar 1 cobrança(s) Asaas (conta legacy): pay_123: DELETE retornou 404 e a conta "legacy" ' +
+      "não confirma a remoção — o cancelamento NÃO aconteceu. Cancele manualmente no painel Asaas da conta " +
+      "correta, registre a exceção operacional no ledger de migração e só então repita a operação."
+
+    const service = {
+      createCheckout: async () => {
+        throw new AsaasPaymentCancellationError(operationalMessage)
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.createCheckout("token-1", {} as never)
+
+    expect(output.isValid).toBe(false)
+    const message = output.errorMessages.join(" ")
+    expect(message).not.toContain("painel Asaas")
+    expect(message).not.toContain("ledger de migração")
+    expect(message).not.toContain("pay_123")
+    expect(message).toContain("pagar duas vezes")
+  })
+
+  it("erro de negócio comum do checkout continua chegando intacto ao pagador", async () => {
+    const service = {
+      createCheckout: async () => {
+        throw new Error("Já existe uma conta cadastrada com este e-mail")
+      },
+    } as unknown as IBackofficeAdhesionService
+
+    const useCase = new BackofficeAdhesionUseCase(service)
+    const output = await useCase.createCheckout("token-1", {} as never)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Já existe uma conta cadastrada com este e-mail"])
   })
 })

@@ -2,18 +2,24 @@ import { API_CLIENT_BASE } from "@/lib/route-map"
 import type {
   EmailCreditsBillingType,
   EmailCreditsStatus,
+  EmailCreditsStatusResult,
   EmailCreditsSubscribeResult,
   EmailCreditPlanId,
   IEmailCreditsService,
 } from "./IEmailCreditsService"
 
 class EmailCreditsServiceImpl implements IEmailCreditsService {
-  async getStatus(): Promise<EmailCreditsStatus | null> {
-    const res = await fetch(`${API_CLIENT_BASE}/email/credits/status`)
-    if (!res.ok) return null
-    const json = await res.json()
-    if (!json.isValid) return null
-    return json.result as EmailCreditsStatus
+  async getStatus(): Promise<EmailCreditsStatusResult> {
+    try {
+      const res = await fetch(`${API_CLIENT_BASE}/email/credits/status`)
+      if (!res.ok) return { ok: false }
+      const json = await res.json()
+      if (!json.isValid) return { ok: false }
+      return { ok: true, status: json.result as EmailCreditsStatus }
+    } catch (err) {
+      console.error("[EmailCreditsService] getStatus network error", err)
+      return { ok: false }
+    }
   }
 
   async subscribe(
