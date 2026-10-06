@@ -18,8 +18,15 @@ export class LandingAnalyticsQueryUseCase {
     if (input.to.getTime() - input.from.getTime() > MAX_RANGE_MS) {
       return new Output(false, [], ["O período máximo é de 90 dias"], null)
     }
-    const summary = await landingAnalyticsRepository.summarize(input)
-    return new Output(true, [], [], { period: { from: input.from.toISOString(), to: input.to.toISOString() }, ...summary })
+    const [summary, filterOptions] = await Promise.all([
+      landingAnalyticsRepository.summarize(input),
+      landingAnalyticsRepository.listFilterOptions(input.teamId),
+    ])
+    return new Output(true, [], [], {
+      period: { from: input.from.toISOString(), to: input.to.toISOString() },
+      ...summary,
+      filterOptions,
+    })
   }
 }
 
