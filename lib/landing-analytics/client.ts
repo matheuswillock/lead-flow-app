@@ -28,6 +28,8 @@ export type LandingFormAnalyticsDetail = {
 }
 
 export const LANDING_FORM_ANALYTICS_EVENT = "landing-form-analytics"
+export const LANDING_CONSENT_STORAGE_PREFIX = "landing-cookie-consent"
+export function landingConsentStorageKey(landingPageId: string): string { return `${LANDING_CONSENT_STORAGE_PREFIX}:${landingPageId || "default"}` }
 export const LANDING_CONSENT_ANALYTICS_EVENT = "landing-consent-analytics"
 
 export function dispatchLandingFormAnalytics(detail: LandingFormAnalyticsDetail): void {

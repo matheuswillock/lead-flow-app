@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Cookie, X } from 'lucide-react'
 import Link from 'next/link'
-import { dispatchLandingConsentAnalytics } from '@/lib/landing-analytics/client'
+import { dispatchLandingConsentAnalytics, landingConsentStorageKey } from '@/lib/landing-analytics/client'
 
-const STORAGE_KEY_PREFIX = 'landing-cookie-consent'
 
 export function CookieConsent({ landingPageId = "" }: { landingPageId?: string }) {
   const [visible, setVisible] = useState(false)
-  const storageKey = `${STORAGE_KEY_PREFIX}:${landingPageId || "default"}`
+  const storageKey = landingConsentStorageKey(landingPageId)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [analytics, setAnalytics] = useState(false)
   const [marketing, setMarketing] = useState(false)
