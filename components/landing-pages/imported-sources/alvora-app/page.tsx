@@ -123,7 +123,6 @@ export default function Page({ landingPageId, brandName, phoneDisplay, phoneE164
         <div className="footer-column">
           <h3 className="footer-title">SOBRE A ALVORA</h3>
           <nav className="footer-links" aria-label="Sobre a Alvora">
-            <a href="#pessoa-fisica">Nossa atuação</a><a href="#como-funciona">Quem somos</a><a href="#contato">Trabalhe conosco</a>
             <Link href={`/conversao/${landingPageId}/privacidade`}>Política de privacidade</Link><Link href={`/conversao/${landingPageId}/cookies`}>Política de Cookies</Link><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
           </nav>
         </div>
