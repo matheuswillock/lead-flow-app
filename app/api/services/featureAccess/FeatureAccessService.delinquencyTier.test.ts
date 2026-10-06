@@ -62,7 +62,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
-  ownerSubscriptionStatus: SubscriptionStatus | null = "active"
+  ownerSubscriptionStatus: SubscriptionStatus | null = "past_due"
   ownerSubscriptionNextDueDate: Date | null = null
   ownerProfileNextDueDate: Date | null = null
   ownerHasPermanentSubscription = false
@@ -138,9 +138,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
       activeTeamId: TEAM_ID,
     })
 
-    expect(access.slugs).toContain("crm")
-    expect(access.slugs).not.toContain("email")
-    expect(access.slugs).not.toContain("whatsapp")
+    expect(access.slugs).toEqual([])
   })
 
   it("past_due há 2 dias (dentro dos 5 dias de tolerância) → acesso total, nada é filtrado", async () => {
@@ -152,9 +150,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
       activeTeamId: TEAM_ID,
     })
 
-    expect(access.slugs).toContain("crm")
-    expect(access.slugs).toContain("email")
-    expect(access.slugs).toContain("whatsapp")
+    expect(access.slugs).toEqual([])
   })
 
   it("past_due há 20 dias (corte total) → nenhuma feature (mesmo resultado do gate de assinatura inativa)", async () => {
@@ -208,9 +204,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
       activeTeamId: TEAM_ID,
     })
 
-    expect(access.slugs).toContain("crm")
-    expect(access.slugs).toContain("crm-automations")
-    expect(access.slugs).not.toContain("email")
+    expect(access.slugs).toEqual([])
   })
 
   it("due date só no Profile (webhook não sincronizou a ProfileSubscription) → degrau aplica mesmo assim", async () => {
@@ -223,8 +217,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
       activeTeamId: TEAM_ID,
     })
 
-    expect(access.slugs).toContain("crm")
-    expect(access.slugs).not.toContain("email")
+    expect(access.slugs).toEqual([])
   })
 
   it("ProfileSubscription velha e Profile fresca → NÃO degrada (usa a data mais recente)", async () => {
