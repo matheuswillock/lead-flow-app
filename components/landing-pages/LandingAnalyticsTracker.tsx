@@ -59,7 +59,7 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
 
     let trackingStarted = false
     const startTracking = () => {
-      if (trackingStarted || !hasAnalyticsConsent(landingConsentStorageKey(snapshot.landingPageId))) return
+      if (trackingStarted || !hasAnalyticsConsent(landingConsentStorageKey(snapshot.publicId))) return
       trackingStarted = true
       send("landing.page_view", { referrer: document.referrer || undefined })
       window.addEventListener("scroll", onScroll, { passive: true })
