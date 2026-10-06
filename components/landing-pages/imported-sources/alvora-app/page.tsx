@@ -145,6 +145,6 @@ export default function Page({ landingPageId, brandName, phoneDisplay, phoneE164
       <div className="footer-bottom"><span>© {currentYear} {brandName}. Todos os direitos reservados.</span><span className="footer-credit">Made with <Heart aria-hidden="true" size={13} fill="currentColor" /> by <a href="https://willockshouse.com" target="_blank" rel="noreferrer">Willock's House</a></span></div>
     </footer>
     <a className="floating-whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp"><MessageCircle size={22} /></a>
-    <CookieConsent />
+    <CookieConsent landingPageId={landingPageId} />
   </div>
 }
