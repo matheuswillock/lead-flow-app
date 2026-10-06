@@ -230,7 +230,6 @@ describe("FeatureAccessService.resolveAllowedSlugs — degrau de inadimplência 
       activeTeamId: TEAM_ID,
     })
 
-    expect(access.slugs).toContain("email")
-    expect(access.slugs).toContain("whatsapp")
+    expect(access.slugs).toEqual([])
   })
 })
