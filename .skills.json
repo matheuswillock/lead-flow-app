@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-devkit-tdd": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:48:39.908Z",
+      "platform": "opencode",
+      "contentHash": "df14fca6e521786a61090330019373b25f77d26deeadd096c79c6abcc053f845"
+    },
+    "ai-devkit-dev-commit": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:48:54.686Z",
+      "platform": "opencode",
+      "contentHash": "918dca9c76c39012f9310ffe77bda573fe2fde56ddc789a85bc2ecbe7ebfd1da"
+    },
+    "ai-devkit-ai-devkit-setup": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:49:19.020Z",
+      "platform": "opencode",
+      "contentHash": "77346c9d81a65e2e37c0a7967ab8c066510e545ef6efc209f6b9fa9b6654b5c8"
+    },
+    "ai-devkit-dev-implementation": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:49:34.242Z",
+      "platform": "opencode",
+      "contentHash": "6e246af46b20236e8f408c36f1a39e66335f1c3bd0bc9c470d014bd9a83b1ef7"
+    },
+    "ai-devkit-agent-orchestration": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:49:56.076Z",
+      "platform": "opencode",
+      "contentHash": "56ecf160bb4803fb4b5ac7011c91ef1a3d520ad85ac8551a5e16b6ceca33ecf3"
+    },
+    "ai-devkit-dev-testing": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:50:57.488Z",
+      "platform": "opencode",
+      "contentHash": "8bdf3d2c0cd1993afdd849ff32615e60d7fda524a30f63d4c4e825c800e7e0fe"
+    },
+    "ai-devkit-security-review": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:51:10.451Z",
+      "platform": "opencode",
+      "contentHash": "346ad3f474c0d912a96674bd9b82be92deea020fe97f9ec8921ad469c8606313"
+    },
+    "ai-devkit-brainstorm": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:51:19.491Z",
+      "platform": "opencode",
+      "contentHash": "cdade367bf71775fcc28a9ef24aef97e2b0fe8ffd04522ee1fe4c0e68cea7edc"
+    },
+    "ai-devkit-memory": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:51:44.749Z",
+      "platform": "opencode",
+      "contentHash": "3782570948e6150aa9224660595ce044ef64958cbbddbfaff730626c89d07ff4"
+    },
+    "ai-devkit-refactor": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:51:53.623Z",
+      "platform": "opencode",
+      "contentHash": "686b11dd7e89ad334b3efc0158dd0227c3ea62bb10a296f1787f8189bd3f6267"
+    },
+    "ai-devkit-changelog": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:52:24.234Z",
+      "platform": "opencode",
+      "contentHash": "9f8f6f568b8c0f939ee2baf61dc0ae4291675a1e4992e8fe492fe6d88fcf8466"
+    },
+    "ai-devkit-dev-requirements": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:52:48.285Z",
+      "platform": "opencode",
+      "contentHash": "39502bfe3006d5ad6400ace39033fbcc1db1b20335cc71ac76907f99d00a9682"
+    },
+    "ai-devkit-technical-writer": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:53:03.800Z",
+      "platform": "opencode",
+      "contentHash": "6a39bd702dd295d31303f1826d3c561ca862e041ad8758f02d6b9bd31f09253c"
+    },
+    "ai-devkit-session-compact": {
+      "version": "1.0.0",
+      "installedAt": "2026-10-06T18:53:23.094Z",
+      "platform": "opencode",
+      "contentHash": "94cceded9f579080101cd6c62153b0cc3970a5ea85fcc75209a4993a3a127bc6"
+    },
+    "alirezarezvani-senior-frontend": {
+      "version": "1.0.2",
+      "installedAt": "2026-10-06T18:53:47.396Z",
+      "platform": "opencode"
+    },
+    "alirezarezvani-senior-backend": {
+      "version": "1.0.2",
+      "installedAt": "2026-10-06T18:54:01.690Z",
+      "platform": "opencode"
+    },
+    "dark-mode": {
+      "version": "2.0.1",
+      "installedAt": "2026-10-06T18:54:47.028Z",
+      "platform": "opencode"
+    }
+  }
+}
