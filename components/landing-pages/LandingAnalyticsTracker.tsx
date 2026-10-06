@@ -46,7 +46,6 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
       visitorSessionId,
       attribution: Object.fromEntries(new URLSearchParams(window.location.search).entries()),
     }
-    if (!hasAnalyticsConsent()) return
     const send = (eventType: Parameters<typeof createLandingAnalyticsEvent>[1], metadata?: Record<string, unknown>) => {
       const payload = createLandingAnalyticsEvent(context, eventType, metadata)
       void fetch(endpoint, {
@@ -57,7 +56,14 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
       }).catch(() => undefined)
     }
 
-    send("landing.page_view", { referrer: document.referrer || undefined })
+    let trackingStarted = false
+    const startTracking = () => {
+      if (trackingStarted || !hasAnalyticsConsent()) return
+      trackingStarted = true
+      send("landing.page_view", { referrer: document.referrer || undefined })
+      window.addEventListener("scroll", onScroll, { passive: true })
+      document.addEventListener("click", onClick)
+    }
     const onFormAnalytics = (event: Event) => {
       const detail = (event as CustomEvent<LandingFormAnalyticsDetail>).detail
       if (!detail?.eventType) return
@@ -74,6 +80,7 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
     const onConsent = (event: Event) => {
       const choice = (event as CustomEvent<{ choice?: string }>).detail?.choice
       send("landing.consent_updated", { choice: choice ?? "unknown" })
+      startTracking()
     }
     window.addEventListener(LANDING_CONSENT_ANALYTICS_EVENT, onConsent)
     const onScroll = () => {
@@ -99,11 +106,12 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
         elapsedMs: Date.now() - startedAt.current,
       })
     }
-    window.addEventListener("scroll", onScroll, { passive: true })
-    document.addEventListener("click", onClick)
+    startTracking()
     return () => {
-      window.removeEventListener("scroll", onScroll)
-      document.removeEventListener("click", onClick)
+      if (trackingStarted) {
+        window.removeEventListener("scroll", onScroll)
+        document.removeEventListener("click", onClick)
+      }
       window.removeEventListener(LANDING_FORM_ANALYTICS_EVENT, onFormAnalytics)
       window.removeEventListener(LANDING_CONSENT_ANALYTICS_EVENT, onConsent)
     }

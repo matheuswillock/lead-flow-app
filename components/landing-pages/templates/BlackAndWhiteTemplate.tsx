@@ -12,7 +12,7 @@ export function BlackAndWhiteTemplate({ snapshot, tracking }: { snapshot: Landin
     <>
       <PublicTrackingBody tracking={tracking} position="start" />
       <AnalysisLanding
-        brandName={brandName}
+        brandName={brandName} templateConfig={snapshot.content.templateConfig}
         renderForm={(compact) => (
           <LandingPageRenderer
             snapshot={{ ...snapshot, templateSlug: "cotacao-corretor-studio" }}

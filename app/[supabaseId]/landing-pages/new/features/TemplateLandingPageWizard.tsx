@@ -39,7 +39,7 @@ function createTemplateConfig(templateSlug: string): LandingTemplateConfig {
   return {
     templateSlug: templateSlug === "alvora" ? "alvora" : "black-and-white",
     identity: { tradeName: "Sua marca", legalName: "", cnpj: "", logoUrl: null, copyright: "" },
-    contact: { phoneDisplay: "", phoneE164: "", whatsappE164: "", whatsappMessage: "", email: "" },
+    contact: { phoneDisplay: "", phoneE164: "", whatsappE164: "", whatsappMessage: "", email: "", businessHours: "" },
     seo: { title: "", description: "", canonical: "", socialImageUrl: null },
     hero:
       templateSlug === "alvora"
@@ -426,7 +426,7 @@ export function TemplateLandingPageWizard() {
                   if (file) void uploadLogo(file)
                 }}
               />
-              <FieldDescription>
+              <Field>
                 Opcional. Quando enviada, a logo substitui a marca textual do template.
               </FieldDescription>
             </Field>
@@ -477,6 +477,10 @@ export function TemplateLandingPageWizard() {
                 value={config.contact.email ?? ""}
                 onChange={(event) => updateContact("email", event.target.value)}
               />
+              <Field>
+                <FieldLabel htmlFor="business-hours">Horário de atendimento</FieldLabel>
+                <Input id="business-hours" value={config.contact.businessHours ?? ""} onChange={(event) => updateContact("businessHours", event.target.value)} placeholder="Segunda a sexta, das 9h às 18h" />
+              </Field>
               <FieldDescription>
                 O título e a descrição da hero seguem a copy aprovada do template. Os demais blocos são opcionais.
               </FieldDescription>
