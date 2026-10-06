@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { LandingTemplateConfig } from "@/lib/landing-pages/types"
 import { ArrowRight, Check, ChevronDown, CircleCheck, ClipboardCheck, FileSearch, RotateCcw, RotateCw, ShieldCheck } from 'lucide-react'
 import SiteFooter from './site-footer'
 import { CookieConsent } from './cookie-consent'
@@ -28,7 +29,7 @@ function Brand({ name }: { name: string }) {
   return <a href="#top" className="brand" aria-label="Voltar ao início">{name}</a>
 }
 
-export default function AnalysisLanding({ brandName, renderForm }: { brandName: string; renderForm: (compact: boolean) => ReactNode }) {
+export default function AnalysisLanding({ landingPageId, brandName, renderForm, templateConfig }: { landingPageId?: string; brandName: string; renderForm: (compact: boolean) => ReactNode; templateConfig?: LandingTemplateConfig }) {
   const [openFaq, setOpenFaq] = useState(0)
   const [heroFlipped, setHeroFlipped] = useState(false)
   const heroCardRef = useRef<HTMLDivElement>(null)
@@ -153,7 +154,7 @@ export default function AnalysisLanding({ brandName, renderForm }: { brandName: 
       <section className="section faq"><div className="container faq-grid"><div><p className="eyebrow">Ainda ficou com uma dúvida?</p><h2>Antes de fazer sua análise...</h2><p className="section-lede">A primeira conversa existe para esclarecer, não para pressionar.</p></div><div className="faq-list">{faqs.map(([q, a], i) => { const id = `faq-answer-${i}`; return <div className={`faq-item ${openFaq === i ? 'open' : ''}`} key={q}><button type="button" onClick={() => setOpenFaq(openFaq === i ? -1 : i)} aria-expanded={openFaq === i} aria-controls={id}><span>{q}</span><ChevronDown size={18} aria-hidden="true" /></button><div id={id} role="region" hidden={openFaq !== i}><p>{a}</p></div></div> })}</div></div></section>
       <section className="final-cta"><div className="container center"><p className="eyebrow">Antes de decidir</p><h2>Entenda suas opções antes de escolher.</h2><p>Uma análise pode ajudar você a comparar o cenário com mais clareza.</p><Button light>Quero analisar minhas opções</Button></div></section>
     </main>
-    <SiteFooter />
+    <SiteFooter landingPageId={landingPageId} brandName={brandName} legalName={templateConfig?.identity.legalName} cnpj={templateConfig?.identity.cnpj} whatsapp={templateConfig?.contact.whatsappE164} email={templateConfig?.contact.email} businessHours={templateConfig?.contact.businessHours} />
     <CookieConsent />
   </div>
 }

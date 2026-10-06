@@ -13,6 +13,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const query = request.nextUrl.searchParams
   const from = new Date(query.get("from") ?? Date.now() - 7 * 24 * 60 * 60 * 1000)
   const to = new Date(query.get("to") ?? Date.now())
+  if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) {
+    return NextResponse.json(new Output(false, [], ["Intervalo de datas inválido"], null), { status: 400 })
+  }
   const output = await landingAnalyticsQueryUseCase.execute({
     teamId,
     from,

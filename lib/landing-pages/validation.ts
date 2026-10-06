@@ -37,6 +37,7 @@ export const landingPageDraftSchema = z.object({
           whatsappE164: z.string().optional(),
           whatsappMessage: z.string().optional(),
           email: z.string().email().optional(),
+          businessHours: z.string().optional(),
         }),
         seo: z
           .object({

@@ -1,0 +1,1 @@
+export { useLegalPage } from "./LegalPageContext"

@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import Link from "next/link"
+import { CookieConsent } from "../black-and-white-components/cookie-consent"
 import Image, { getImageProps } from 'next/image'
 import { ArrowRight, BriefcaseBusiness, Building2, Check, ChevronDown, Clock3, Heart, HeartHandshake, HeartPulse, Medal, Menu, MessageCircle, PhoneCall, ShieldCheck, Smile, Stethoscope, UserRoundPlus, Users, UsersRound, X } from 'lucide-react'
 
@@ -94,42 +96,42 @@ function BusinessHealthSection() {
   </section>
 }
 
-export default function Page({ brandName, phoneDisplay, phoneE164, whatsappUrl, renderForm }: { brandName: string; phoneDisplay?: string; phoneE164?: string; whatsappUrl: string; renderForm: () => ReactNode }) {
+export default function Page({ landingPageId, brandName, phoneDisplay, phoneE164, whatsappUrl, renderForm }: { landingPageId?: string; brandName: string; phoneDisplay?: string; phoneE164?: string; whatsappUrl: string; renderForm: () => ReactNode }) {
+  const displayPhone = (value?: string) => { const digits = value?.replace(/\D/g, "") ?? ""; return digits.length === 11 ? `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}` : value ?? "Atendimento" }
+  const maskedPhone = displayPhone(phoneDisplay)
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const currentYear = new Date().getFullYear()
   const nav = [['Pessoa Física', '#pessoa-fisica'], ['PME & Empresarial', '#empresarial'], ['Como Funciona', '#como-funciona'], ['Diferenciais', '#diferenciais'], ['FAQ', '#faq']]
   return <div className="site-shell alvora-source">
     <header className="site-header">
-      <div className="header-top"><a className="brand" href="#top"><span>corretora</span><b>{brandName}</b></a><div className="header-actions"><a className="header-phone" href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{phoneDisplay ?? "Atendimento"}</a><a className="header-whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={15} /> WhatsApp</a><a className="header-simulate" href="#contato">Simule agora</a></div><button className="menu-button" aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button></div>
+      <div className="header-top"><a className="brand" href="#top"><span>corretora</span><b>{brandName}</b></a><div className="header-actions"><a className="header-phone" href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{maskedPhone}</a><a className="header-whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer"><MessageCircle size={15} /> WhatsApp</a><a className="header-simulate" href="#contato">Simule agora</a></div><button className="menu-button" aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button></div>
       <nav className={menuOpen ? 'nav mobile-open' : 'nav'}>{nav.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>)}<a href="#contato" onClick={() => setMenuOpen(false)}>Fale conosco</a></nav>
     </header>
     <main id="top">
-      <section className="hero"><div className="hero-photo"><HeroPicture /></div><div className="hero-inner"><div className="hero-copy"><p className="hero-pretitle">Compare planos de saúde</p><p className="hero-pretitle hero-health">para você e sua família.</p><h1>para você<br /><span>e sua família.</span></h1><p className="hero-description">Descubra opções pelo seu CNPJ, além de alternativas individuais e por adesão. Nossa equipe ajuda você a comparar valores, coberturas e operadoras.</p><div className="hero-actions"><div><small>ATENDIMENTO</small><a href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{phoneDisplay ?? "Atendimento"}</a></div><a className="whatsapp-link" href="#contato"><MessageCircle size={18} /> Quero comparar os planos</a></div></div><div className="hero-form"><div className="form-heading"><span>01</span><div><h2>Precisa de ajuda para escolher?</h2><p>Nossos especialistas entram em contato com você.</p></div></div>{renderForm()}</div></div></section>
+      <section className="hero"><div className="hero-photo"><HeroPicture /></div><div className="hero-inner"><div className="hero-copy"><p className="hero-pretitle">Compare planos de saúde</p><p className="hero-pretitle hero-health">para você e sua família.</p><h1>para você<br /><span>e sua família.</span></h1><p className="hero-description">Descubra opções pelo seu CNPJ, além de alternativas individuais e por adesão. Nossa equipe ajuda você a comparar valores, coberturas e operadoras.</p><div className="hero-actions"><div><small>ATENDIMENTO</small><a href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{maskedPhone}</a></div><a className="whatsapp-link" href="#contato"><MessageCircle size={18} /> Quero comparar os planos</a></div></div><div className="hero-form"><div className="form-heading"><span>01</span><div><h2>Precisa de ajuda para escolher?</h2><p>Nossos especialistas entram em contato com você.</p></div></div>{renderForm()}</div></div></section>
       <section className="operator-strip"><p>PRINCIPAIS OPERADORAS PARCEIRAS DE PLANO DE SAÚDE</p><div className="operators-viewport"><div className="operators-track"><OperatorGroup /><OperatorGroup hidden /></div></div></section>
       <BusinessHealthSection />
       <section className="steps-section" id="como-funciona"><div className="section-intro"><p className="eyebrow">COMO FUNCIONA</p><h2>Seu plano de saúde<br /><em>em quatro passos.</em></h2><p>Simples, rápido e com acompanhamento de um especialista.</p></div><div className="steps">{[['01','Conte seu perfil','Informe se deseja contratar pelo CNPJ ou como pessoa física e quais são suas necessidades.'],['02','Receba as opções','Nossa equipe identifica os planos disponíveis para o seu perfil entre as operadoras parceiras.'],['03','Compare os planos','Avalie preços, rede credenciada, coberturas, carências e condições de contratação.'],['04','Contrate com apoio','Receba orientação durante a contratação e conte com acompanhamento no pós-venda.']].map(([n,t,d], i) => <div className="step" key={n}><span className="step-number">{n}</span><div><h3>{t}</h3><p>{d}</p></div>{i < 3 && <span className="step-line" />}</div>)}</div></section>
       <PersonHealthSection />
       <section className="differentials" id="diferenciais"><div className="differentials-inner"><div className="section-intro"><p className="eyebrow">POR QUE ESCOLHER A SUA CORRETORA</p><h2>Mais que uma corretora,<br />um time ao seu lado.</h2></div><div className="diff-grid">{[[HeartHandshake, 'Consultoria gratuita', 'Orientação sem custo para ajudar você a escolher.'],[Users, 'Opções para empresários', 'Alternativas pelo CNPJ, conforme a sua elegibilidade.'],[Building2, 'Comparação de operadoras', 'Análise de preços, coberturas e rede para o seu perfil.'],[ShieldCheck, 'Acompanhamento no pós-venda', 'Suporte com dúvidas, reajustes e possibilidades de troca.'],[Medal, 'Análise personalizada', 'Sua idade, sua família e suas prioridades entram na comparação.'],[Smile, 'Atendimento humano', 'Uma equipe preparada para conversar e acompanhar sua decisão.']].map(([Icon, title, description]) => <article className="diff-item" key={title as string}><Icon aria-hidden="true" /><h3>{title as string}</h3><p>{description as string}</p></article>)}</div></div></section>
       <section className="faq" id="faq"><div className="faq-inner"><div className="faq-intro"><p className="eyebrow">DÚVIDAS FREQUENTES</p><h2>Plano de saúde sem complicação</h2></div><div className="faq-list">{faqs.map(([q,a], i) => <div className={openFaq === i ? 'faq-item open' : 'faq-item'} key={q}><button onClick={() => setOpenFaq(openFaq === i ? null : i)} aria-expanded={openFaq === i}><span>{q}</span><ChevronDown aria-hidden="true" /></button>{openFaq === i && <p>{a}</p>}</div>)}</div></div></section>
-      <section className="contact-section" id="contato"><div className="contact-inner"><div className="contact-copy"><h2>Descubra qual plano<br />faz sentido <em>para você.</em></h2><p>Conte um pouco sobre seu perfil e nossa equipe ajudará você a comparar as alternativas disponíveis, seja para contratação pelo CNPJ ou como pessoa física.</p><div className="contact-numbers"><a href={phoneE164 ? `tel:${phoneE164}` : "#contato"}><PhoneCall aria-hidden="true" size={17} /> {phoneDisplay ?? "Atendimento"}</a></div></div><div className="contact-form">{renderForm()}</div></div></section>
+      <section className="contact-section" id="contato"><div className="contact-inner"><div className="contact-copy"><h2>Descubra qual plano<br />faz sentido <em>para você.</em></h2><p>Conte um pouco sobre seu perfil e nossa equipe ajudará você a comparar as alternativas disponíveis, seja para contratação pelo CNPJ ou como pessoa física.</p><div className="contact-numbers"><a href={phoneE164 ? `tel:${phoneE164}` : "#contato"}><PhoneCall aria-hidden="true" size={17} /> {maskedPhone}</a></div></div><div className="contact-form">{renderForm()}</div></div></section>
     </main>
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-column">
           <h3 className="footer-title">SOBRE A ALVORA</h3>
           <nav className="footer-links" aria-label="Sobre a Alvora">
-            <span className="footer-placeholder">Quem somos</span>
-            <span className="footer-placeholder">Trabalhe conosco</span>
-            <a href="#pessoa-fisica">Nossa atuação</a>
-            <span className="footer-placeholder">Portal de privacidade</span>
+            <a href="#pessoa-fisica">Nossa atuação</a><a href="#como-funciona">Quem somos</a><a href="#contato">Trabalhe conosco</a>
+            <Link href={`/conversao/${landingPageId}/privacidade`}>Política de privacidade</Link><Link href={`/conversao/${landingPageId}/cookies`}>Política de Cookies</Link><button type="button" onClick={() => window.dispatchEvent(new Event("open-cookie-preferences"))}>Preferências de Cookies</button>
           </nav>
         </div>
         <div className="footer-column footer-contact">
           <h3 className="footer-title">CONTATO</h3>
           <div className="footer-contact-item">
             <span className="footer-label">Atendimento</span>
-            <a className="footer-phone" href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{phoneDisplay ?? "Atendimento"}</a>
+            <a className="footer-phone" href={phoneE164 ? `tel:${phoneE164}` : "#contato"}>{maskedPhone}</a>
           </div>
           <div className="footer-contact-item">
             <span className="footer-label">WhatsApp comercial</span>
@@ -144,5 +146,6 @@ export default function Page({ brandName, phoneDisplay, phoneE164, whatsappUrl, 
       <div className="footer-bottom"><span>© {currentYear} {brandName}. Todos os direitos reservados.</span><span className="footer-credit">Made with <Heart aria-hidden="true" size={13} fill="currentColor" /> by <a href="https://willockshouse.com" target="_blank" rel="noreferrer">Willock's House</a></span></div>
     </footer>
     <a className="floating-whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp"><MessageCircle size={22} /></a>
+    <CookieConsent />
   </div>
 }

@@ -181,6 +181,11 @@ export function sanitizeDocumentDigits(value: string): string {
  * Ex.: "55 11 99999-9999" | "5511999999999" → "11999999999"
  * Ex.: "+55 11 3333-4444" → "1133334444" (não usa slice(-11), que geraria "51133334444")
  */
+export function normalizeBrazilPhoneE164(value: string): string {
+  const digits = normalizeLeadPhoneDigits(value)
+  return digits ? `55${digits}` : ""
+}
+
 export function normalizeLeadPhoneDigits(value: string): string {
   if (!value) return "";
   let digits = value.replace(/\D/g, "");

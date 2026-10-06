@@ -29,7 +29,12 @@ export function LandingAnalyticsDashboard({ teamId, headers }: { teamId: string;
   }, [teamId, filters, headers])
   useEffect(() => { void load() }, [load])
   const maxEvent = useMemo(() => Math.max(...(summary?.byEventType.map((item) => item.count) ?? [1]), 1), [summary])
-  function updateDate(key: "from" | "to", value: string) { setFilters((current) => ({ ...current, [key]: new Date(value).toISOString() })) }
+  function updateDate(key: "from" | "to", value: string) {
+    if (!value) return
+    const date = new Date(value)
+    if (!Number.isFinite(date.getTime())) return
+    setFilters((current) => ({ ...current, [key]: date.toISOString() }))
+  }
   function exportCsv() {
     if (!summary) return
     const blob = new Blob([landingAnalyticsService.buildCsv(summary)], { type: "text/csv;charset=utf-8" })
