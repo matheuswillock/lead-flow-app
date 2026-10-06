@@ -155,6 +155,6 @@ export default function AnalysisLanding({ landingPageId, brandName, renderForm, 
       <section className="final-cta"><div className="container center"><p className="eyebrow">Antes de decidir</p><h2>Entenda suas opções antes de escolher.</h2><p>Uma análise pode ajudar você a comparar o cenário com mais clareza.</p><Button light>Quero analisar minhas opções</Button></div></section>
     </main>
     <SiteFooter landingPageId={landingPageId} brandName={brandName} legalName={templateConfig?.identity.legalName} cnpj={templateConfig?.identity.cnpj} whatsapp={templateConfig?.contact.whatsappE164} email={templateConfig?.contact.email} businessHours={templateConfig?.contact.businessHours} />
-    <CookieConsent />
+    <CookieConsent landingPageId={landingPageId} />
   </div>
 }

@@ -6,6 +6,7 @@ import {
   LANDING_CONSENT_ANALYTICS_EVENT,
   LANDING_FORM_ANALYTICS_EVENT,
   landingAnalyticsEndpoint,
+  landingConsentStorageKey,
   type LandingFormAnalyticsDetail,
 } from "@/lib/landing-analytics/client"
 import type { LandingPageSnapshot } from "@/lib/landing-pages/types"
@@ -21,8 +22,8 @@ function sessionId() {
   return created
 }
 
-function hasAnalyticsConsent() {
-  const consent = Object.entries(window.localStorage).find(([key]) => key.includes("cookie-consent"))?.[1]
+function hasAnalyticsConsent(storageKey: string) {
+  const consent = window.localStorage.getItem(storageKey)
   if (!consent) return false
   if (consent === "all") return true
   try {
@@ -58,7 +59,7 @@ export function LandingAnalyticsTracker({ snapshot, children }: Props) {
 
     let trackingStarted = false
     const startTracking = () => {
-      if (trackingStarted || !hasAnalyticsConsent()) return
+      if (trackingStarted || !hasAnalyticsConsent(landingConsentStorageKey(snapshot.landingPageId))) return
       trackingStarted = true
       send("landing.page_view", { referrer: document.referrer || undefined })
       window.addEventListener("scroll", onScroll, { passive: true })

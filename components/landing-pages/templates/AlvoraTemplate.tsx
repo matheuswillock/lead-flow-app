@@ -20,7 +20,7 @@ export function AlvoraTemplate({ snapshot, tracking }: { snapshot: LandingPageSn
     <>
       <PublicTrackingBody tracking={tracking} position="start" />
       <AlvoraLanding
-        landingPageId={snapshot.landingPageId}
+        landingPageId={snapshot.publicId}
         brandName={brandName}
         phoneDisplay={config?.contact.phoneDisplay}
         phoneE164={config?.contact.phoneE164}
