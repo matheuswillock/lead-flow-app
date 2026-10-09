@@ -86,10 +86,10 @@ const buildInviteDispatchBody = ({
     return "Reenvio de convite confirmado via Google Calendar.";
   }
   if (status === "sent_resend" && fallbackUsed) {
-    return "Reenvio de convite enviado por e-mail (Resend) após falha no Google Calendar.";
+    return "Reenvio de convite enviado por e-mail após falha no Google Calendar.";
   }
   if (status === "sent_resend") {
-    return "Reenvio de convite enviado por e-mail (Resend).";
+    return "Reenvio de convite enviado por e-mail.";
   }
   if (provider === "google") {
     return error
@@ -98,12 +98,12 @@ const buildInviteDispatchBody = ({
   }
   if (fallbackUsed) {
     return error
-      ? `Falha ao reenviar convite por e-mail (Resend) após falha no Google Calendar. Motivo: ${error}`
-      : "Falha ao reenviar convite por e-mail (Resend) após falha no Google Calendar.";
+      ? `Falha ao reenviar convite por e-mail após falha no Google Calendar. Motivo: ${error}`
+      : "Falha ao reenviar convite por e-mail após falha no Google Calendar.";
   }
   return error
-    ? `Falha ao reenviar convite por e-mail (Resend). Motivo: ${error}`
-    : "Falha ao reenviar convite por e-mail (Resend).";
+    ? `Falha ao reenviar convite por e-mail. Motivo: ${error}`
+    : "Falha ao reenviar convite por e-mail.";
 };
 
 const registerInviteDispatchActivity = async ({
@@ -480,7 +480,7 @@ export async function POST(
         successMessages.push("Convites reenviados para todos os participantes elegíveis");
         if (canUseGoogleCalendar && resendRecipients.length > 0) {
           successMessages.push(
-            "Aviso: Participantes sem Google conectado receberam convite via e-mail (Resend)."
+            "Aviso: Participantes sem Google conectado receberam convite via e-mail."
           );
         }
       }
