@@ -5,8 +5,9 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
-import { getAccountAccessStatus } from "@/lib/account/getAccountAccessStatus";
 import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -91,6 +92,23 @@ const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
   });
 });
 
+async function resolveTeamAccountAccess(profileId: string, teamId: string): Promise<TeamAccessResult | null> {
+  const output = await accountAccessDecisionUseCase.execute({ profileId, teamId });
+  const decision = output.result as AccountAccessDecision | null;
+  if (output.isValid && decision?.state === "allowed") {
+    return null;
+  }
+
+  const message = decision?.state === "restricted" && decision.reason === "banned"
+    ? ACCOUNT_MASTER_BANNED_MESSAGE
+    : "O acesso desta conta está pausado. Entre em contato com o time de assinaturas.";
+
+  return {
+    error: new Output(false, [], [message], null),
+    status: 403,
+  };
+}
+
 export async function getTeamAccess(request: NextRequest): Promise<TeamAccessResult> {
   const supabaseId = request.headers.get("x-supabase-user-id");
   if (!supabaseId) {
@@ -150,24 +168,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     }
 
     const accountMasterId = teamForSponsor.masterId;
-    const accountAccess = await getAccountAccessStatus(accountMasterId);
-    if (!accountAccess.subscriptionActive) {
-      return {
-        error: new Output(
-          false,
-          [],
-          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
-          null
-        ),
-        status: 403,
-      };
-    }
-
-    if (accountAccess.banned) {
-      return {
-        error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
-        status: 403,
-      };
+    const accessDenied = await resolveTeamAccountAccess(profile.id, teamId);
+    if (accessDenied) {
+      return accessDenied;
     }
 
     return {
@@ -193,25 +196,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   }
 
   const accountMasterId = teamMember.team.masterId;
-  const accountAccess = await getAccountAccessStatus(accountMasterId);
-
-  if (!accountAccess.subscriptionActive) {
-    return {
-      error: new Output(
-        false,
-        [],
-        ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
-        null
-      ),
-      status: 403,
-    };
-  }
-
-  if (accountAccess.banned) {
-    return {
-      error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
-      status: 403,
-    };
+  const accessDenied = await resolveTeamAccountAccess(profile.id, teamId);
+  if (accessDenied) {
+    return accessDenied;
   }
 
   const resolvedCanViewAllTeams =

@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -11,6 +12,11 @@ export async function GET(request: NextRequest) {
     const supabaseId = request.headers.get("x-supabase-user-id");
     if (!supabaseId) {
       return NextResponse.json(new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null), { status: 401 });
+    }
+
+    const accessDeniedResponse = await requireActiveAccountAccess(supabaseId);
+    if (accessDeniedResponse) {
+      return accessDeniedResponse;
     }
 
     const profile = await prisma.profile.findUnique({
