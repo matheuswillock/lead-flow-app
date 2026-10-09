@@ -6,7 +6,6 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 
 export const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
@@ -17,7 +16,7 @@ export function AccountAccessPausedScreen() {
     <main className="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Seu acesso está pausado</CardTitle>
+          <h1 className="leading-none font-semibold">Seu acesso está pausado</h1>
           <CardDescription>
             A assinatura desta conta precisa ser renovada para continuar usando o Corretor Studio.
           </CardDescription>

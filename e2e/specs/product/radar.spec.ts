@@ -325,7 +325,7 @@ test.describe("app/[supabaseId]/radar", () => {
   test("carrega o Radar autenticado com heading e CTA de segmentos", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/radar`, { waitUntil: "domcontentloaded" })
 
-    await expect(page.locator("h1.text-xl", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("h1.text-xl:visible", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText("Acesso não liberado")).toHaveCount(0)
     await expect(page.getByText("Você não tem acesso a esta funcionalidade.")).toHaveCount(0)
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0)
@@ -347,7 +347,7 @@ test.describe("app/[supabaseId]/radar", () => {
       waitUntil: "domcontentloaded",
     })
 
-    await expect(page.locator("h1.text-xl", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator("h1.text-xl:visible", { hasText: "Radar" })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole("heading", { name: "Detalhe do perfil" })).toBeVisible()
 
     await page.getByRole("tab", { name: "Formulários" }).click()
