@@ -114,6 +114,10 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
           configured: false,
           teamId: input.teamId,
           leadFormUrl,
+          // SPEC 40 B-E2 (W25): destino real do link curto, exibido como
+          // texto de apoio na tela de Integrações. O link copiado continua
+          // sendo o curto (`leadFormUrl`).
+          leadFormFullUrl,
           tokenMode: "auto",
           tokenPreview: null,
           expiryMode: "indeterminate",
@@ -139,6 +143,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         configured: true,
         teamId: input.teamId,
         leadFormUrl,
+        leadFormFullUrl,
         tokenMode,
         tokenPreview: webhookConfig.tokenPreview,
         expiryMode: webhookConfig.expiryMode,
@@ -371,7 +376,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         );
 
         if (!leadOutput.isValid) {
-          return leadOutput;
+          return this.restoreV1LeadErrorContract(leadOutput);
         }
 
         const created = leadOutput.result as { id: string; leadCode: string | null };
@@ -467,7 +472,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       );
 
       if (!leadOutput.isValid) {
-        return leadOutput;
+        return this.restoreV1LeadErrorContract(leadOutput);
       }
 
       await this.service.touchWebhookLastUsed(input.teamId);
@@ -591,6 +596,32 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
     } catch (error) {
       console.error("[StudioWebhookIntegrationUseCase] Erro ao registrar log do webhook:", error);
     }
+  }
+
+  /**
+   * SPEC 11 DA1/T-11.1: o contrato v1 do webhook é congelado — a resposta de
+   * erro precisa continuar byte a byte igual à de antes da SPEC 40.
+   *
+   * `LeadUseCase.createLead` passou a devolver `isDuplicateConflict` e
+   * `existingLeadId` no `result` de erro (SPEC 40 D25, para o formulário
+   * público resolver o lead que recebe a atividade de duplicata). Este
+   * método remove só esses dois campos novos — nunca o `result` inteiro.
+   * R40-20 (achado da revisão): zerar tudo quebrava o contrato no sentido
+   * oposto, porque o pre-check de telefone/e-mail (`LeadUseCase.ts`, quando
+   * `duplicateCandidates.length > 0`) já devolvia `requiresDuplicateConfirmation`
+   * e `duplicateCandidates` antes da SPEC 40, e `handleStudioWebhookLeadRequest.ts`
+   * serializa esse `result` inteiro pro chamador do webhook. Removendo só os
+   * campos do D25: sobra `null` nos casos que já eram `null` (CNPJ e corrida
+   * de índice único) e sobra `{ requiresDuplicateConfirmation, duplicateCandidates }`
+   * no caso de pre-check de duplicata, exatamente como antes.
+   */
+  private restoreV1LeadErrorContract(leadOutput: Output): Output {
+    const { isDuplicateConflict: _isDuplicateConflict, existingLeadId: _existingLeadId, ...rest } =
+      (leadOutput.result && typeof leadOutput.result === "object"
+        ? (leadOutput.result as Record<string, unknown>)
+        : {});
+    const sanitizedResult = Object.keys(rest).length > 0 ? rest : null;
+    return new Output(false, leadOutput.successMessages, leadOutput.errorMessages, sanitizedResult);
   }
 }
 

@@ -1,7 +1,8 @@
 import { Output } from "@/lib/output";
-import { LeadStatus, UserFunction } from "@prisma/client";
+import { ActivityType, LeadStatus, UserFunction } from "@prisma/client";
 import { prisma } from "../../infra/data/prisma";
 import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
+import { leadActivityRepository } from "../../infra/data/repositories/leadActivity/LeadActivityRepository";
 import { RegisterNewUserProfile } from "../profiles/ProfileUseCase";
 import { LeadUseCase } from "../leads/LeadUseCase";
 import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
@@ -16,8 +17,41 @@ import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreSchedu
 import { leadCustomFieldService } from "../../services/leadCustomField/LeadCustomFieldService";
 import { mapLeadCustomFieldDefinitionToDTO } from "../../infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
 import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
+import { buildStudioActivityData } from "@/lib/studio-feed-identity";
 
 const SLOT_MINUTES = 30;
+
+// SPEC 40 DA2 (V8): a rota pública nunca confirma se o lead já existia.
+// Duplicata por telefone (`requiresDuplicateConfirmation`), e-mail ou CNPJ
+// (mensagens abaixo, vindas de `LeadUseCase.createLeadInternal`) recebem a
+// MESMA resposta de um lead novo — sem id, nome, telefone, e-mail, CNPJ ou
+// status do lead existente. D25 (decidida pelo owner em 22/09): o
+// tratamento interno registra uma atividade "Novo envio pelo formulário
+// público" no lead existente (ver `recordDuplicateSubmissionActivity`) —
+// nenhum lead novo é criado, e a resposta pública continua idêntica à de um
+// lead novo.
+// SPEC 40 R40-1: exportado — `lead-form/route.ts` usa a MESMA constante para
+// forçar essa mensagem (e `result: null`) em QUALQUER resposta 201, sucesso
+// ou duplicata. O `Output.result` de um lead criado com sucesso
+// (`LeadUseCase.createLead`) inclui `manager`/`assignee`/`closer` com
+// e-mail — nunca deixar isso sair pela rota pública, mesmo sem duplicata.
+export const PUBLIC_LEAD_FORM_NEUTRAL_SUCCESS_MESSAGE = "Lead cadastrado com sucesso!";
+// SPEC 40 R40-3: string matching é defesa em profundidade, não a fonte da
+// verdade — o discriminador tipado `isDuplicateConflict`/
+// `requiresDuplicateConfirmation` no `result` (ver `isDuplicateLeadOutcome`)
+// é quem decide. Esta lista cobre o texto real hoje emitido por
+// `LeadUseCase.createLeadInternal`, incluindo as duas variantes sem acento
+// do catch de unique constraint (`:` sem "Já"/"únicos" — texto pré-existente
+// naquele arquivo, fora do escopo desta SPEC corrigir a acentuação).
+const PUBLIC_LEAD_FORM_DUPLICATE_MESSAGE_PREFIXES = [
+  "Já existe um lead com este CNPJ neste time",
+  "Já existe um lead com este e-mail neste time",
+  "Já existe um lead com estes dados neste time",
+  "Possível lead duplicado neste time",
+  "Ja existe um lead com este e-mail",
+  "Ja existe um lead com este CNPJ",
+  "Ja existe um lead com estes dados unicos",
+];
 
 const formatTimeSlot = (minutes: number) => {
   const hour = Math.floor(minutes / 60);
@@ -44,7 +78,6 @@ type TeamMemberSnapshot = {
   profile: {
     id: string;
     fullName: string | null;
-    email: string | null;
     profileIconUrl: string | null;
   };
 };
@@ -185,7 +218,6 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           select: {
             id: true,
             fullName: true,
-            email: true,
             profileIconUrl: true,
           },
         },
@@ -197,22 +229,111 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     return members
       .map((member) => ({
         id: member.profile.id,
-        name: member.profile.fullName || member.profile.email || "Membro do time",
+        // SPEC 40 DA3/T-40.5 (V8): sem fallback para e-mail — nome de
+        // exibição no bootstrap público nunca pode virar um e-mail de membro.
+        name: member.profile.fullName || "Membro do time",
         avatarImageUrl: member.profile.profileIconUrl || "",
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
   }
 
-  private mapMembersToGuestCandidates(members: TeamMemberSnapshot[]) {
-    return members
-      .filter((member) => !!member.profile.email)
-      .map((member) => ({
-        id: member.profile.id,
-        name: member.profile.fullName || member.profile.email || "Membro do time",
-        email: member.profile.email as string,
-        avatarImageUrl: member.profile.profileIconUrl || "",
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+  // SPEC 40 DA3/T-40.5 (V8): removido `mapMembersToGuestCandidates` — devolvia
+  // e-mail de qualquer membro do time (não só closer/SDR) no bootstrap
+  // público, sem autenticação. O seletor "Adicionar membros do time" no
+  // formulário foi removido junto (`SchedulingSection.tsx`); o campo de
+  // convidados manual por e-mail continua funcionando. Restringir convidados
+  // a membros do time (D11) é da A-E3, bloqueada por [[13]].
+
+  /**
+   * SPEC 40 DA2/T-40.3/T-40.4/R40-3 (V8): decide se o `Output` de
+   * `leadUseCase.createLead` é uma rejeição por duplicata (telefone via
+   * `requiresDuplicateConfirmation`, e-mail/CNPJ via `isDuplicateConflict` —
+   * ambos discriminadores tipados vindos de `LeadUseCase.ts`) — caso em que
+   * a resposta pública precisa ser neutralizada antes de sair daqui. O
+   * casamento de mensagem é só defesa em profundidade: um discriminador
+   * ausente por engano em algum retorno futuro de `LeadUseCase` não deixa a
+   * checagem inteira sem rede.
+   */
+  private isDuplicateLeadOutcome(output: Output): boolean {
+    const result = output.result as
+      | { requiresDuplicateConfirmation?: boolean; isDuplicateConflict?: boolean }
+      | null;
+    if (result?.requiresDuplicateConfirmation === true) return true;
+    if (result?.isDuplicateConflict === true) return true;
+    return output.errorMessages.some((message) =>
+      PUBLIC_LEAD_FORM_DUPLICATE_MESSAGE_PREFIXES.some((prefix) => message.startsWith(prefix))
+    );
+  }
+
+  private buildNeutralAcceptedResponse(): Output {
+    return new Output(true, [PUBLIC_LEAD_FORM_NEUTRAL_SUCCESS_MESSAGE], [], null);
+  }
+
+  private extractExistingLeadId(output: Output): string | null {
+    const result = output.result as
+      | { existingLeadId?: string | null; duplicateCandidates?: Array<{ id?: string }> }
+      | null;
+    return result?.existingLeadId ?? result?.duplicateCandidates?.[0]?.id ?? null;
+  }
+
+  /**
+   * SPEC 40 D25 (decidida pelo owner em 22/09): quando o envio público bate
+   * num lead existente, nenhum lead novo é criado e a resposta pública
+   * continua neutra — mas o time precisa saber que houve um novo envio.
+   * Registra uma atividade "Studio" (sem autor humano) no lead existente,
+   * com os dados enviados e a origem (mesmo formato de
+   * `originContext.payload` usado na criação de um lead novo por este
+   * formulário, ver `createPublicLead`). Best-effort: se a gravação falhar,
+   * loga e segue — nunca derruba a resposta neutra por causa disso.
+   */
+  private async recordDuplicateSubmissionActivity(
+    existingLeadId: string,
+    data: PublicLeadFormRequest,
+    originContext?: PublicLeadFormOriginContext
+  ): Promise<void> {
+    try {
+      await leadActivityRepository.create({
+        leadId: existingLeadId,
+        ...buildStudioActivityData({
+          type: ActivityType.note,
+          body: "Novo envio pelo formulário público",
+          payload: {
+            kind: "duplicate_submission",
+            channel: "public_lead_form",
+            submittedData: {
+              name: data.name,
+              email: data.email ?? null,
+              phone: data.phone,
+              cnpj: data.cnpj ?? null,
+              currentHealthPlan: data.currentHealthPlan ?? null,
+              notes: data.notes ?? null,
+            },
+            origin: originContext
+              ? {
+                  source: originContext.source,
+                  utm: {
+                    source: originContext.utmSource ?? null,
+                    medium: originContext.utmMedium ?? null,
+                    campaign: originContext.utmCampaign ?? null,
+                    content: originContext.utmContent ?? null,
+                    term: originContext.utmTerm ?? null,
+                  },
+                  landingUrl: originContext.landingUrl ?? null,
+                  referrer: originContext.referrer ?? null,
+                  userAgent: originContext.userAgent ?? null,
+                  ip: originContext.ip ?? null,
+                  submittedAt: originContext.submittedAt ?? new Date().toISOString(),
+                }
+              : null,
+          },
+        }),
+      });
+    } catch (error) {
+      console.error(
+        "[PublicLeadFormUseCase] Erro ao registrar atividade de envio duplicado no lead existente:",
+        error
+      );
+    }
   }
 
   async createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output> {
@@ -334,6 +455,24 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       );
 
       if (!leadOutput.isValid) {
+        // SPEC 40 DA2/T-40.3/T-40.4 (V8): duplicata (telefone, e-mail ou
+        // CNPJ) recebe a MESMA resposta pública de um lead novo. NUNCA
+        // repassar `leadOutput` inteiro aqui para esse caso — ele carrega
+        // `duplicateCandidates` (id, nome, telefone, e-mail, status).
+        if (this.isDuplicateLeadOutcome(leadOutput)) {
+          // SPEC 40 D25 (decidida pelo owner em 22/09): nenhum lead novo
+          // nasce, a resposta pública é neutra, mas o lead existente recebe
+          // uma atividade registrando o novo envio.
+          const existingLeadId = this.extractExistingLeadId(leadOutput);
+          console.info(
+            "[PublicLeadFormUseCase] Envio público neutralizado — duplicata bloqueada por dentro, atividade registrada no lead existente (D25)",
+            { teamId: access.teamId, existingLeadId }
+          );
+          if (existingLeadId) {
+            await this.recordDuplicateSubmissionActivity(existingLeadId, data, originContext);
+          }
+          return this.buildNeutralAcceptedResponse();
+        }
         return leadOutput;
       }
 
@@ -400,13 +539,18 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       if (error instanceof Error) {
         const normalizedError = error.message.toLowerCase();
         if (normalizedError.includes("unique constraint")) {
-          if (normalizedError.includes("email")) {
-            return new Output(false, [], ["Já existe um lead com este e-mail neste time"], null);
-          }
-          if (normalizedError.includes("cnpj")) {
-            return new Output(false, [], ["Já existe um lead com este CNPJ neste time"], null);
-          }
-          return new Output(false, [], ["Já existe um lead com estes dados neste time"], null);
+          // SPEC 40 DA2/T-40.4 (V8): mesma neutralização quando a duplicata só
+          // aparece como conflito de índice único do Postgres (corrida entre
+          // o pre-check em `LeadUseCase` e o insert) — nunca devolver "Já
+          // existe um lead com..." para quem preenche o formulário público.
+          // D25: sem `leadOutput.result` aqui (é uma exceção crua, não um
+          // `Output`), não há como resolver o lead existente pra registrar
+          // atividade sem uma consulta extra — e este caminho é, na prática,
+          // inatingível hoje: `LeadUseCase.createLeadInternal` já captura o
+          // P2002 internamente e nunca deixa a exceção chegar até aqui (ver
+          // `LeadUseCase.ts` catch em `createLeadInternal`, que já resolve e
+          // registra `existingLeadId`). Mantido como rede de segurança.
+          return this.buildNeutralAcceptedResponse();
         }
       }
 
@@ -440,14 +584,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       const sdrs = this.mapMembersToAssignableOptions(
         teamMembers.filter((member) => member.functions.includes(UserFunction.SDR))
       );
-      const guestCandidates = this.mapMembersToGuestCandidates(teamMembers);
 
       return new Output(true, [], [], {
         teamName: access.teamName,
         healthPlans,
         closers,
         sdrs,
-        guestCandidates,
         timezone: access.timezone,
         hasTransferTargets: transferRoutesCount > 0,
         customFieldDefinitions: publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO),

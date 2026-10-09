@@ -6,7 +6,6 @@ import type {
   HealthPlanOption,
   CloserOption,
   SdrOption,
-  GuestCandidateOption,
 } from "../services/IPublicLeadFormService";
 import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from "./PublicLeadFormTypes";
 import { DEFAULT_TZ } from "@/lib/dates";
@@ -19,7 +18,6 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const [closers, setClosers] = useState<CloserOption[]>([]);
   const [closersLoading, setClosersLoading] = useState(true);
   const [sdrs, setSdrs] = useState<SdrOption[]>([]);
-  const [guestCandidates, setGuestCandidates] = useState<GuestCandidateOption[]>([]);
   const [timezone, setTimezone] = useState(DEFAULT_TZ);
   const [hasTransferTargets, setHasTransferTargets] = useState(false);
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<
@@ -71,7 +69,6 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setHealthPlans(bootstrapData.healthPlans);
         setClosers(bootstrapData.closers);
         setSdrs(bootstrapData.sdrs);
-        setGuestCandidates(bootstrapData.guestCandidates);
         setTimezone(bootstrapData.timezone);
         setHasTransferTargets(bootstrapData.hasTransferTargets);
         setCustomFieldDefinitions(bootstrapData.customFieldDefinitions);
@@ -85,7 +82,6 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setHealthPlans([]);
         setClosers([]);
         setSdrs([]);
-        setGuestCandidates([]);
         setTimezone(DEFAULT_TZ);
         setHasTransferTargets(false);
         setCustomFieldDefinitions([]);
@@ -235,7 +231,6 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     closers,
     closersLoading,
     sdrs,
-    guestCandidates,
     timezone,
     hasTransferTargets,
     customFieldDefinitions,
