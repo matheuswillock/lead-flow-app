@@ -16,6 +16,8 @@ import { GET as getTeamsRouteHandler } from "@/app/api/v1/teams/route";
 import type { UserData } from "@/app/context/UserContext";
 import type { TeamSummary } from "@/app/context/TeamContext";
 import type { UserRoleData } from "@/app/context/FeatureAccessContext";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
 
 export type LayoutFeatureAccessBootstrap = {
   slugs: string[];
@@ -36,6 +38,7 @@ export type AuthenticatedLayoutBootstrapData = {
   activeTeamId: string | null;
   featureAccess: LayoutFeatureAccessBootstrap | null;
   operationalAccess: OperationalAccessInitialData | null;
+  accountAccessDecision: AccountAccessDecision | null;
 };
 
 type SubscriptionCheckResult = {
@@ -168,7 +171,7 @@ export async function getAuthenticatedLayoutBootstrapData(
     const activeTeam = teamsPayload?.teams.find((team) => team.id === activeTeamId) ?? null;
     const managerId = activeTeam?.masterId ?? user.managerId ?? user.id;
 
-    const [subscriptionCheck, featureAccess, operationalAccessResult] = await Promise.all([
+    const [subscriptionCheck, featureAccess, operationalAccessResult, accountAccessOutput] = await Promise.all([
       fetchSubscriptionCheck(user),
       fetchFeatureAccess(user, activeTeamId, managerId),
       meOperationalAccessUseCase.resolve(user.id, activeTeamId).then((output) =>
@@ -184,6 +187,7 @@ export async function getAuthenticatedLayoutBootstrapData(
             }
           : null
       ),
+      accountAccessDecisionUseCase.execute({ profileId: user.id, teamId: activeTeamId }),
     ]);
 
     return {
@@ -196,6 +200,9 @@ export async function getAuthenticatedLayoutBootstrapData(
       activeTeamId,
       featureAccess,
       operationalAccess: operationalAccessResult,
+      accountAccessDecision: accountAccessOutput.isValid
+        ? (accountAccessOutput.result as AccountAccessDecision)
+        : null,
     };
   } catch (error) {
     console.error("[LayoutBootstrap] Erro no bootstrap server-side:", error);

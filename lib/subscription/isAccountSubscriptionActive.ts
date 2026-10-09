@@ -36,15 +36,19 @@ export async function getAccountSubscriptionStatus(
     return { isActive: false, hasPermanentSubscription: false };
   }
 
-  if (profile.hasPermanentSubscription || profileSubscription?.hasPermanentSubscription) {
+  if (
+    profileSubscription
+      ? profileSubscription.hasPermanentSubscription
+      : profile.hasPermanentSubscription
+  ) {
     return { isActive: true, hasPermanentSubscription: true };
   }
 
-  const modernStatus = profileSubscription?.subscriptionStatus ?? null;
-  const legacyStatus = profile.subscriptionStatus ?? null;
-
-  // Prefer PS; só usa Profile se PS ausente (cutover incompleto)
-  const status = modernStatus ?? legacyStatus;
+  // ProfileSubscription é canônica inclusive quando o status ainda não foi
+  // preenchido: usar Profile nesse caso reabre uma conta com estado desconhecido.
+  const status = profileSubscription
+    ? profileSubscription.subscriptionStatus
+    : profile.subscriptionStatus;
   const isActive = isActiveSubscriptionStatus(status);
 
   return { isActive, hasPermanentSubscription: false };

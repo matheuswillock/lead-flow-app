@@ -20,10 +20,20 @@ mock.module("@/app/api/useCases/billingQuote/billingQuoteFactory", () => ({
   billingQuoteUseCase: { executeForAuthenticatedSupabaseId },
 }))
 
+const requireActiveAccountAccess = mock<
+  (authenticatedSupabaseId: string) => Promise<NextResponse | null>
+>(async () => null)
+
+mock.module("@/app/api/v1/utils/requireActiveAccountAccess", () => ({
+  requireActiveAccountAccess,
+}))
+
 const { GET } = await import("./route")
 
 beforeEach(() => {
   executeForAuthenticatedSupabaseId.mockReset()
+  requireActiveAccountAccess.mockReset()
+  requireActiveAccountAccess.mockResolvedValue(null)
   executeForAuthenticatedSupabaseId.mockResolvedValue(
     new Output(true, ["Projeção de cobrança calculada"], [], { billingOwnerId: "owner-1" })
   )
@@ -67,5 +77,25 @@ describe("GET /api/v1/billing/quote", () => {
     )
 
     expect(response.status).toBe(403)
+  })
+
+  it("não expõe a projeção quando o acesso da conta está pausado", async () => {
+    requireActiveAccountAccess.mockResolvedValue(
+      NextResponse.json(new Output(false, [], ["O acesso desta conta está pausado."], null), {
+        status: 403,
+      })
+    )
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/v1/billing/quote", {
+        headers: { "x-supabase-user-id": "past-due-master" },
+      })
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual(
+      expect.objectContaining({ result: null, errorMessages: ["O acesso desta conta está pausado."] })
+    )
+    expect(executeForAuthenticatedSupabaseId).not.toHaveBeenCalled()
   })
 })

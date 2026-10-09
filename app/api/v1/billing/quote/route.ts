@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest, connection } from "next/server"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { billingQuoteUseCase } from "@/app/api/useCases/billingQuote/billingQuoteFactory"
+import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess"
 
 function getErrorStatus(errorMessage: string | undefined): number {
   if (errorMessage === "Conta de cobrança não encontrada") {
@@ -23,6 +24,11 @@ export async function GET(request: NextRequest) {
     const supabaseId = request.headers.get("x-supabase-user-id")
     if (!supabaseId) {
       return NextResponse.json(new Output(false, [], ["Não autenticado"], null), { status: 401 })
+    }
+
+    const accessDeniedResponse = await requireActiveAccountAccess(supabaseId)
+    if (accessDeniedResponse) {
+      return accessDeniedResponse
     }
 
     const output = await billingQuoteUseCase.executeForAuthenticatedSupabaseId(supabaseId)
