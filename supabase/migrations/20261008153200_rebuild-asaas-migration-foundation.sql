@@ -1,5 +1,7 @@
 create type "public"."asaas_account_migration_status" as enum ('pending', 'customer_created', 'subscription_created', 'legacy_deactivated', 'done', 'requires_card_reauth', 'failed');
 
+drop index if exists "public"."backoffice_clients_asaasCustomerId_key";
+
   create table "public"."corretor_studio_asaas_account_migrations" (
     "id" uuid not null default gen_random_uuid(),
     "profile_id" uuid not null,
@@ -26,6 +28,8 @@ create type "public"."asaas_account_migration_status" as enum ('pending', 'custo
 alter table "public"."backoffice_clients" add column "asaasAccount" public.asaas_account not null default 'primary'::public.asaas_account;
 
 alter table "public"."corretor_studio_profile_subscriptions" add column "asaasSubscriptionAccount" public.asaas_account not null default 'primary'::public.asaas_account;
+
+CREATE UNIQUE INDEX backoffice_clients_asaas_customer_account_key ON public.backoffice_clients USING btree ("asaasCustomerId", "asaasAccount");
 
 CREATE UNIQUE INDEX corretor_studio_asaas_account_migrations_legacy_customer_id_key ON public.corretor_studio_asaas_account_migrations USING btree (legacy_customer_id);
 

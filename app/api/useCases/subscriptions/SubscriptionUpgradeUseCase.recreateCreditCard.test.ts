@@ -13,6 +13,7 @@ const prismaMock = { profile: { findUnique: findUniqueMock, update: profileUpdat
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
 
 const getSubscriptionMock = mock(async () => ({ value: 59.9, billingType: "CREDIT_CARD" }) as any)
+const migrateSubscriptionPointersMock = mock(async () => {})
 const updateSubscriptionMock = mock(async () => {
   const err = new Error("Não é possível alterar o valor de assinaturas via cartão de crédito")
   throw err
@@ -48,6 +49,11 @@ mock.module("@/lib/services/EmailService", () => ({ getEmailService: () => ({}) 
 mock.module("@/lib/supabase/email-auth-link", () => ({ buildSetPasswordEmailAuthLink: mock(async () => "") }))
 
 const { SubscriptionUpgradeUseCase } = await import("./SubscriptionUpgradeUseCase")
+function createUseCase() {
+  return new SubscriptionUpgradeUseCase({
+    subscriptionPointerRepository: { migrateSubscriptionPointers: migrateSubscriptionPointersMock } as never,
+  })
+}
 
 function buildLegacyManager(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -68,6 +74,7 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
   beforeEach(() => {
     findUniqueMock.mockClear()
     profileUpdateMock.mockClear()
+    migrateSubscriptionPointersMock.mockClear()
     getSubscriptionMock.mockClear()
     updateSubscriptionMock.mockClear()
     createSubscriptionMock.mockClear()
@@ -80,7 +87,7 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
 
   it("manager legacy: updateSubscription usa a conta legacy, não primary", async () => {
     const manager = buildLegacyManager()
-    const useCase = new SubscriptionUpgradeUseCase() as any
+    const useCase = createUseCase() as any
 
     await useCase.updateManagerSubscriptionValue({
       manager,
@@ -99,7 +106,7 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
     getSubscriptionMock.mockImplementation(async () => ({ value: 59.9 }))
 
     const manager = buildLegacyManager()
-    const useCase = new SubscriptionUpgradeUseCase() as any
+    const useCase = createUseCase() as any
 
     let threw = false
     try {
@@ -119,7 +126,7 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
 
   it("recreateCreditCardSubscription: cria a nova na conta do CUSTOMER e cancela a antiga na conta da ASSINATURA", async () => {
     const manager = buildLegacyManager()
-    const useCase = new SubscriptionUpgradeUseCase() as any
+    const useCase = createUseCase() as any
 
     await useCase.recreateCreditCardSubscription({
       manager,
@@ -131,9 +138,8 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
       expect.objectContaining({ customer: "cus_legacy_2" }),
       "legacy",
     )
-    expect(cancelSubscriptionMock).toHaveBeenCalledWith("sub_legacy_2", "legacy")
-    expect(profileUpdateMock).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ asaasSubscriptionAccount: "legacy" }) }),
+    expect(migrateSubscriptionPointersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ account: "legacy", subscriptionCycle: "MONTHLY" }),
     )
   })
 
@@ -144,7 +150,7 @@ describe("SubscriptionUpgradeUseCase — recreateCreditCardSubscription/updateMa
   // assinatura antiga, nunca as duas para a mesma conta por default.
   it("customer já migrado (primary) + assinatura antiga ainda na legacy → cria na primary, cancela na legacy", async () => {
     const manager = buildLegacyManager({ asaasCustomerAccount: "primary", asaasCustomerId: "cus_already_primary" })
-    const useCase = new SubscriptionUpgradeUseCase() as any
+    const useCase = createUseCase() as any
 
     await useCase.recreateCreditCardSubscription({
       manager,

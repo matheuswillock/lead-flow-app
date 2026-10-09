@@ -12,6 +12,7 @@ class PrismaSubscriptionPointerRepository implements ISubscriptionPointerReposit
       newSubscriptionId,
       account,
       subscriptionNextDueDate,
+      subscriptionCycle,
       operatorCount,
     } = input;
 
@@ -25,17 +26,20 @@ class PrismaSubscriptionPointerRepository implements ISubscriptionPointerReposit
           asaasSubscriptionId: newSubscriptionId,
           asaasSubscriptionAccount: account,
           subscriptionNextDueDate,
+          subscriptionCycle,
           operatorCount,
         },
       });
 
-      await tx.profileSubscription.updateMany({
-        where: { profileId, asaasSubscriptionId: previousSubscriptionId },
-        data: {
-          asaasSubscriptionId: newSubscriptionId,
-          asaasSubscriptionAccount: account,
-        },
-      });
+      if (previousSubscriptionId) {
+        await tx.profileSubscription.updateMany({
+          where: { profileId, asaasSubscriptionId: previousSubscriptionId },
+          data: {
+            asaasSubscriptionId: newSubscriptionId,
+            asaasSubscriptionAccount: account,
+          },
+        });
+      }
     });
   }
 }

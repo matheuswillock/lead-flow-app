@@ -8,15 +8,9 @@ const prismaMock = {
 }
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
 
-// Achados P1 da revisão do PR #1207 (chatgpt-codex-connector, threads
-// PRRT_...CUk2 e PRRT_...YP_r): ProfileSubscription é ponteiro irmão que
-// precisa acompanhar o Profile quando a migração de upgrade troca o sub_,
-// e as duas escritas têm de ser atômicas — por isso saíram do UseCase para
-// um repository transacional.
+// Achados P1 da revisão do PR #1207: ProfileSubscription é ponteiro irmão
+// e precisa acompanhar o Profile na mesma transação.
 const migrateSubscriptionPointersMock = mock(async (_input: Record<string, unknown>) => {})
-mock.module("@/app/api/infra/data/repositories/subscriptions/SubscriptionPointerRepository", () => ({
-  subscriptionPointerRepository: { migrateSubscriptionPointers: migrateSubscriptionPointersMock },
-}))
 
 const createSubscriptionMock = mock(async (_data: unknown, accountId?: string) => ({
   success: true,
@@ -61,6 +55,11 @@ mock.module("@/lib/services/EmailService", () => ({ getEmailService: () => ({}) 
 mock.module("@/lib/supabase/email-auth-link", () => ({ buildSetPasswordEmailAuthLink: mock(async () => "") }))
 
 const { SubscriptionUpgradeUseCase } = await import("./SubscriptionUpgradeUseCase")
+function createUseCase() {
+  return new SubscriptionUpgradeUseCase({
+    subscriptionPointerRepository: { migrateSubscriptionPointers: migrateSubscriptionPointersMock } as never,
+  })
+}
 
 function buildLegacyManager(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -79,7 +78,7 @@ function buildLegacyManager(overrides: Partial<Record<string, unknown>> = {}) {
     asaasSubscriptionAccount: "legacy",
     subscriptionNextDueDate: new Date("2026-10-01T00:00:00.000Z"),
     timezone: "America/Sao_Paulo",
-    operators: [{ id: "op-1" }],
+    operatorCount: 1,
     ...overrides,
   }
 }
@@ -99,7 +98,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
   it("assinatura legada: cria a nova na primary ANTES de inativar a antiga na legacy — nunca cancela primeiro", async () => {
     findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
@@ -125,7 +124,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
       buildLegacyManager({ asaasCustomerAccount: "legacy" }),
     )
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
@@ -144,7 +143,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
       buildLegacyManager({ asaasCustomerAccount: "primary", asaasCustomerId: "cus_already_primary" }),
     )
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
@@ -158,7 +157,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
   it("achado P1 PRRT_...CUk2: mirror em ProfileSubscription (mesmo sub_ antigo) é atualizado junto do Profile", async () => {
     findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
@@ -171,6 +170,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
       previousSubscriptionId: "sub_legacy_1",
       newSubscriptionId: "sub_primary_new",
       account: "primary",
+      subscriptionCycle: "MONTHLY",
       subscriptionNextDueDate: new Date("2026-11-01"),
       operatorCount: 1,
     })
@@ -194,7 +194,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
     // do profile.
     findUniqueMock.mockImplementationOnce(async () => buildLegacyManager())
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)
@@ -212,7 +212,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
       throw new Error("db down")
     })
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(false)
@@ -228,7 +228,7 @@ describe("SubscriptionUpgradeUseCase.updateManagerSubscription — migração no
       }),
     )
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.updateManagerSubscription("manager-legacy-1")
 
     expect(result.isValid).toBe(true)

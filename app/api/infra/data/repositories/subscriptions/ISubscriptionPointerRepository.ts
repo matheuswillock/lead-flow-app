@@ -9,11 +9,12 @@ export interface MigrateSubscriptionPointersInput {
    * (`prisma/schema.prisma`, comentário de `ProfileSubscription.
    * asaasSubscriptionAccount`).
    */
-  previousSubscriptionId: string;
+  previousSubscriptionId: string | null;
   newSubscriptionId: string;
   /** Conta Asaas dona do `newSubscriptionId`. */
   account: AsaasAccountId;
   subscriptionNextDueDate: Date;
+  subscriptionCycle?: string;
   operatorCount: number;
 }
 

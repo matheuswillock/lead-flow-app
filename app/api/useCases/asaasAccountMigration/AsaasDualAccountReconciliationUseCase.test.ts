@@ -133,7 +133,7 @@ describe("AsaasDualAccountReconciliationUseCase (T-30.25 — E7/X3)", () => {
     expect(captureMessageMock).toHaveBeenCalledTimes(1)
   })
 
-  it("linha do ledger envelhecida (>24h fora de done/failed/requires_card_reauth) dispara alerta", async () => {
+  it("linha do ledger envelhecida (>24h fora de done) dispara alerta", async () => {
     const deps = buildDeps({
       staleRows: [
         {

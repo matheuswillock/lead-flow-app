@@ -4,7 +4,7 @@
 -- O cutover de 2026-08-31 (20260831232456_flip-pre-cutover-legacy.sql)
 -- relabelou para 'legacy' TODO ponteiro Asaas que já existia, porque depois
 -- do flip de envs "primary" passou a significar a conta NOVA. As duas
--- colunas criadas agora em 20260918010221_asaas-account-migration.sql
+-- colunas criadas agora em 20261008153200_rebuild-asaas-migration-foundation.sql
 -- (`backoffice_clients.asaasAccount` e
 -- `corretor_studio_profile_subscriptions.asaasSubscriptionAccount`) não
 -- existiam naquele dia, então nasceram com o default 'primary' aplicado a

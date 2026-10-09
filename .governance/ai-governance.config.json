@@ -91,7 +91,6 @@
       "app/api/useCases/email/EmailCampaignUseCase.ts",
       "app/api/useCases/email/EmailCreditUseCase.ts",
       "app/api/useCases/leadAttachments/LeadAttachmentUseCase.ts",
-      "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/v1/email/cron/dispatch-scheduled/route.ts",
       "app/api/v1/email/cron/reset-credits/route.ts",
       "app/api/v1/email/logs/[logId]/route.ts",
@@ -120,7 +119,6 @@
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
-      "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/useCases/teamAutomations/EvaluateIdleLeadsUseCase.ts"
     ],
     "useCaseWithoutOutputAllowlist": [],
@@ -280,7 +278,6 @@
       "app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase.ts",
       "app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase.ts",
       "app/api/useCases/subscriptions/GetSubscriptionBySupabaseIdUseCase.ts",
-      "app/api/useCases/subscriptions/SubscriptionUpgradeUseCase.ts",
       "app/api/webhooks/asaas/processAsaasWebhookEvent.ts",
       "app/api/services/EmailCredit/EmailCreditService.ts",
       "app/api/useCases/email/EmailCampaignUseCase.ts",

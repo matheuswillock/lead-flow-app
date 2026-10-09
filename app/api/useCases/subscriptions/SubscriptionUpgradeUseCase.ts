@@ -1,23 +1,46 @@
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
-import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
-import { subscriptionPointerRepository } from "@/app/api/infra/data/repositories/subscriptions/SubscriptionPointerRepository";
+import { asaasCustomerGateway as defaultAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
+import { subscriptionPointerRepository as defaultSubscriptionPointerRepository } from "@/app/api/infra/data/repositories/subscriptions/SubscriptionPointerRepository";
+import type { ISubscriptionPointerRepository } from "@/app/api/infra/data/repositories/subscriptions/ISubscriptionPointerRepository";
 import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
 import { getEmailService } from "@/lib/services/EmailService";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from '@/lib/utils/app-url';
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
-import type { 
-  ISubscriptionUpgradeUseCase, 
+import type {
+  ISubscriptionUpgradeUseCase,
   AddOperatorPaymentData,
   SubscriptionUpgradeResult,
-  ReactivateSubscriptionData 
+  ReactivateSubscriptionData
 } from "./ISubscriptionUpgradeUseCase";
+import type { ISubscriptionUpgradeRepository } from "@/app/api/infra/data/repositories/subscriptionUpgrade/ISubscriptionUpgradeRepository";
+import { subscriptionUpgradeRepository } from "@/app/api/infra/data/repositories/subscriptionUpgrade/SubscriptionUpgradeRepository";
+import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
+
+interface SubscriptionUpgradeUseCaseDependencies {
+  repository?: ISubscriptionUpgradeRepository;
+  asaasCustomerGateway?: IAsaasCustomerGateway;
+  subscriptionPointerRepository?: ISubscriptionPointerRepository;
+}
 
 export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
+  private readonly repository: ISubscriptionUpgradeRepository;
+  private readonly asaasCustomerGateway: IAsaasCustomerGateway;
+  private readonly subscriptionPointerRepository: ISubscriptionPointerRepository;
+
+  constructor({
+    repository = subscriptionUpgradeRepository,
+    asaasCustomerGateway = defaultAsaasCustomerGateway,
+    subscriptionPointerRepository = defaultSubscriptionPointerRepository,
+  }: SubscriptionUpgradeUseCaseDependencies = {}) {
+    this.repository = repository;
+    this.asaasCustomerGateway = asaasCustomerGateway;
+    this.subscriptionPointerRepository = subscriptionPointerRepository;
+  }
+
   private resolveAsaasNextDueDate(referenceDate: Date | null | undefined, timezone?: string | null) {
     const ownerTz = resolveTimezone(timezone);
     const now = new Date();
@@ -62,9 +85,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
   async createOperatorPayment(data: AddOperatorPaymentData): Promise<Output> {
     try {
       // 1. Validar manager
-      const manager = await prisma.profile.findUnique({
-        where: { supabaseId: data.managerId },
-      });
+      const manager = await this.repository.findManagerProfileBySupabaseId(data.managerId);
 
       if (!manager) {
         return new Output(false, [], ['Manager não encontrado'], null);
@@ -79,51 +100,45 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       // 2. Verificar se email do operador já existe
-      const existingUser = await prisma.profile.findFirst({
-        where: { 
-          email: data.operatorData.email
-        }
-      });
+      const existingUser = await this.repository.findProfileByEmail(data.operatorData.email);
 
       if (existingUser) {
         return new Output(false, [], ['Email já está em uso'], null);
       }
 
       // 3. Salvar dados temporários do operador no banco (pending)
-      const pendingOperator = await prisma.pendingOperator.create({
-        data: {
-          managerId: manager.id,
-          name: data.operatorData.name,
-          email: data.operatorData.email,
-          role: data.operatorData.role,
-          functions: data.operatorData.functions ?? [],
-          paymentId: 'pending', // Será atualizado após criação do checkout
-          subscriptionId: null,
-          paymentStatus: 'PENDING',
-          paymentMethod: data.paymentMethod,
-        }
+      const pendingOperator = await this.repository.createPendingOperator({
+        managerId: manager.id,
+        teamId: null,
+        name: data.operatorData.name,
+        email: data.operatorData.email,
+        role: data.operatorData.role,
+        functions: data.operatorData.functions ?? [],
+        paymentId: 'pending',
+        subscriptionId: null,
+        paymentStatus: 'PENDING',
+        paymentMethod: data.paymentMethod,
+        asaasAccount: 'primary',
       });
 
       console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
       // 4. Validar ou criar customer no Asaas
       let asaasCustomerId = manager.asaasCustomerId;
-      
+
       if (!asaasCustomerId) {
         console.error('❌ [createOperatorPayment] Manager sem asaasCustomerId:', {
           managerId: manager.id,
           managerEmail: manager.email
         });
-        
+
         // Deletar pendingOperator
-        await prisma.pendingOperator.delete({
-          where: { id: pendingOperator.id }
-        });
-        
+        await this.repository.deletePendingOperatorById(pendingOperator.id);
+
         return new Output(
-          false, 
-          [], 
-          ['Erro: Sua conta não possui customer Asaas. Por favor, entre em contato com o suporte.'], 
+          false,
+          [],
+          ['Erro: Sua conta não possui customer Asaas. Por favor, entre em contato com o suporte.'],
           null
         );
       }
@@ -150,10 +165,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         // um 6º criador silencioso fora do censo do plano de migração).
         console.info('🔄 [createOperatorPayment] Criando novo customer via gateway...');
 
-        const newCustomer = await asaasCustomerGateway.createCustomer({
+        const newCustomer = await this.asaasCustomerGateway.createCustomer({
           name: manager.fullName || manager.email,
           email: manager.email,
-          cpfCnpj: manager.cpfCnpj || '00000000000', // CPF genérico se não tiver
+          cpfCnpj: manager.cpfCnpj || '00000000000',
           phone: manager.phone ?? undefined,
           postalCode: manager.postalCode ?? undefined,
           address: manager.address ?? undefined,
@@ -165,10 +180,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         // Atualizar profile com novo customerId — o gateway cria sempre na
         // primary (não há parâmetro de conta), então o ponteiro de conta
         // acompanha.
-        await prisma.profile.update({
-          where: { id: manager.id },
-          data: { asaasCustomerId: newCustomer.id, asaasCustomerAccount: 'primary' }
-        });
+        await this.repository.updateManagerCustomerId(manager.id, newCustomer.id, 'primary');
 
         asaasCustomerId = newCustomer.id;
         operatorPaymentCustomerAccount = 'primary';
@@ -178,9 +190,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // Garantir que temos um customerId válido neste ponto
       if (!asaasCustomerId) {
         console.error('❌ [createOperatorPayment] asaasCustomerId é null após validações');
-        await prisma.pendingOperator.delete({
-          where: { id: pendingOperator.id }
-        });
+        await this.repository.deletePendingOperatorById(pendingOperator.id);
         return new Output(false, [], ['Erro: Customer ID inválido'], null);
       }
 
@@ -201,9 +211,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       if (!checkoutLink.success) {
         // Deletar pendingOperator se falhar
-        await prisma.pendingOperator.delete({
-          where: { id: pendingOperator.id }
-        });
+        await this.repository.deletePendingOperatorById(pendingOperator.id);
         return new Output(false, [], [checkoutLink.error || 'Erro ao criar checkout'], null);
       }
 
@@ -240,12 +248,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // conhece a conta (webhook passa a conta do evento), o filtro por
       // (paymentId, asaasAccount) evita selecionar a linha da OUTRA conta
       // numa colisão C33 e provisionar operador para o manager errado.
-      let pendingOperator = await prisma.pendingOperator.findFirst({
-        where: account ? { paymentId, asaasAccount: account } : { paymentId },
-        include: {
-          manager: true
-        }
-      });
+      let pendingOperator = await this.repository.findPendingOperatorByPaymentIdWithManager(
+        paymentId,
+        account ?? 'primary'
+      );
 
       console.info('🔍 [confirmPaymentAndCreateOperator] Resultado busca por paymentId:', {
         found: !!pendingOperator,
@@ -268,20 +274,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             const pendingOperatorId = externalRef.replace('pending-operator-', '');
             console.info('🆔 [confirmPaymentAndCreateOperator] Buscando por ID:', pendingOperatorId);
 
-            pendingOperator = await prisma.pendingOperator.findUnique({
-              where: { id: pendingOperatorId },
-              include: { manager: true }
-            });
+            pendingOperator = await this.repository.findPendingOperatorByIdWithManager(pendingOperatorId);
 
             // Atualizar paymentId no PendingOperator — persistindo JUNTO a
             // conta onde o payment foi de fato encontrado (C33: paymentId e
             // conta são um par, nunca gravados separados).
             if (pendingOperator) {
               console.info('✅ [confirmPaymentAndCreateOperator] PendingOperator encontrado por externalReference');
-              await prisma.pendingOperator.update({
-                where: { id: pendingOperatorId },
-                data: { paymentId, asaasAccount: paymentStatus.account ?? account ?? 'primary' }
-              });
+              await this.repository.updatePendingOperatorPaymentId(
+                pendingOperatorId,
+                paymentId,
+                paymentStatus.account ?? account ?? 'primary'
+              );
             }
           }
         }
@@ -312,12 +316,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 1. Buscar operador pendente pela assinatura
-      const pendingOperator = await prisma.pendingOperator.findFirst({
-        where: { subscriptionId },
-        include: {
-          manager: true
-        }
-      });
+      const pendingOperator = await this.repository.findPendingOperatorBySubscriptionId(subscriptionId);
 
       if (!pendingOperator) {
         console.warn('⚠️ [confirmPaymentAndCreateOperatorBySubscription] PendingOperator não encontrado para subscriptionId:', subscriptionId);
@@ -435,18 +434,16 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 5. CRÍTICO: Atualizar valor da assinatura do master no Asaas ANTES de criar operador
       console.info('💰 [createOperatorFromPending] Atualizando valor da assinatura do master...');
       console.info('👤 [createOperatorFromPending] Manager ID tentando atualizar:', pendingOperator.managerId);
-      
+
       try {
-        const manager = await prisma.profile.findUnique({
-          where: { id: pendingOperator.managerId }
-        });
+        const manager = await this.repository.findManagerProfileById(pendingOperator.managerId);
 
         if (!manager) {
           console.error('❌ [createOperatorFromPending] Manager não encontrado:', pendingOperator.managerId);
           return new Output(
-            false, 
-            [], 
-            ['Erro: Usuário master não encontrado para atualizar assinatura'], 
+            false,
+            [],
+            ['Erro: Usuário master não encontrado para atualizar assinatura'],
             null
           );
         }
@@ -481,7 +478,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           manager.asaasSubscriptionId,
           managerSubscriptionAccount,
         );
-        
+
         if (!currentSubscription) {
           console.error('❌ [createOperatorFromPending] Assinatura não encontrada no Asaas:', {
             managerId: manager.id,
@@ -498,7 +495,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
         // Calcular novo valor (atual + R$ 19,90 do novo operador)
         const newValue = currentSubscription.value + 19.90;
-        
+
         console.info('💵 [createOperatorFromPending] Detalhes da atualização:', {
           managerId: manager.id,
           managerName: manager.fullName,
@@ -527,7 +524,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           operadorEmail: pendingOperator.email
         });
         console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
-        
+
         return new Output(
           false,
           [],
@@ -536,11 +533,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         );
       }
 
-      // 6. Criar operador no banco (só chega aqui se assinatura foi atualizada)
+      const defaultTeam = pendingOperator.teamId
+        ? { id: pendingOperator.teamId }
+        : await this.repository.findDefaultTeamByMasterId(pendingOperator.managerId);
+
+      if (!defaultTeam) {
+        return new Output(false, [], ["Não foi possível localizar o time do operador"], null);
+      }
+
       let operator;
       try {
-        operator = await prisma.profile.create({
-          data: {
+        operator = await this.repository.provisionConfirmedOperator({
+          pendingOperatorId: pendingOperator.id,
+          managerId: pendingOperator.managerId,
+          teamId: defaultTeam.id,
+          operator: {
             supabaseId: supabaseUser.userId,
             fullName: pendingOperator.name,
             email: pendingOperator.email,
@@ -548,106 +555,15 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             functions: pendingOperator.functions ?? [],
             managerId: pendingOperator.managerId,
             asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
-            subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
-          }
-        });
-
-        console.info('✅ [createOperatorFromPending] Perfil criado:', {
-          id: operator.id,
-          supabaseId: operator.supabaseId,
-          fullName: operator.fullName,
-          email: operator.email,
-          role: operator.role,
-          managerId: operator.managerId
+            subscriptionCycle: pendingOperator.subscriptionId ? "MONTHLY" : undefined,
+          },
         });
       } catch (error) {
-        console.error('❌ [createOperatorFromPending] Erro ao criar perfil no banco:', error);
-        console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
-        return new Output(false, [], ['Erro ao criar perfil do operador'], null);
+        console.error("[createOperatorFromPending] Falha ao provisionar operador de forma atômica", error);
+        return new Output(false, [], ["Não foi possível provisionar o operador no time"], null);
       }
 
-      // 6.1 Vincular operador ao time
-      try {
-        let targetTeamId = pendingOperator.teamId as string | null | undefined;
-        if (!targetTeamId) {
-          const defaultTeam = await prisma.team.findFirst({
-            where: { masterId: pendingOperator.managerId, isDefault: true },
-            select: { id: true },
-          });
-          targetTeamId = defaultTeam?.id || null;
-        }
-
-        if (targetTeamId) {
-          const existingMember = await prisma.teamMember.findUnique({
-            where: {
-              teamId_profileId: {
-                teamId: targetTeamId,
-                profileId: operator.id,
-              },
-            },
-          });
-
-          if (!existingMember) {
-            await prisma.teamMember.create({
-              data: {
-                teamId: targetTeamId,
-                profileId: operator.id,
-                role: (pendingOperator.role || 'operator') as any,
-                functions: pendingOperator.functions ?? [],
-              },
-            });
-          }
-        }
-      } catch (error) {
-        console.error('❌ [createOperatorFromPending] Erro ao vincular operador ao time:', error);
-        // Não bloqueia o fluxo, operador já foi criado
-      }
-
-      // 7. Atualizar status do operador pendente (CRÍTICO - deve ser bem-sucedido)
-      console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
-      try {
-        const updated = await prisma.pendingOperator.update({
-          where: { id: pendingOperator.id },
-          data: {
-            operatorCreated: true,
-            operatorId: operator.id,
-            paymentStatus: 'CONFIRMED',
-            updatedAt: new Date()
-          }
-        });
-        console.info('✅ [createOperatorFromPending] PendingOperator atualizado com sucesso:', {
-          id: updated.id,
-          operatorCreated: updated.operatorCreated,
-          operatorId: updated.operatorId,
-          paymentStatus: updated.paymentStatus
-        });
-      } catch (error) {
-        console.error('❌ [createOperatorFromPending] ERRO CRÍTICO ao atualizar PendingOperator:', error);
-        console.error('⚠️ [createOperatorFromPending] ATENÇÃO: Operador foi criado mas PendingOperator não foi marcado como criado!');
-        console.error('🔧 [createOperatorFromPending] Dados para debug:', {
-          pendingOperatorId: pendingOperator.id,
-          operatorId: operator.id,
-          errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
-        });
-        // Não retorna erro pois o operador já foi criado, mas loga claramente o problema
-      }
-
-      // 8. Incrementar contador de operadores no manager
-      console.info('📊 [createOperatorFromPending] Incrementando contador do manager...');
-      try {
-        await prisma.profile.update({
-          where: { id: pendingOperator.managerId },
-          data: {
-            operatorCount: {
-              increment: 1
-            }
-          }
-        });
-        console.info('✅ [createOperatorFromPending] Contador do manager incrementado');
-      } catch (error) {
-        console.error('❌ [createOperatorFromPending] Erro ao incrementar contador:', error);
-        // Não retorna erro pois o operador já foi criado
-      }
+      console.info("[createOperatorFromPending] Operador provisionado atomicamente", { operatorId: operator.id });
 
       // Nota: A exclusão do PendingOperator é feita pelo webhook do Asaas após confirmação
 
@@ -690,9 +606,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // PR #1137, round 7) — findFirst preserva o comportamento anterior
       // (rota legada sem consumidor real — D15; plumbar account pela rota
       // aguarda a decisão do owner).
-      const pendingOperator = await prisma.pendingOperator.findFirst({
-        where: { paymentId }
-      });
+      const pendingOperator = await this.repository.findPendingOperatorByPaymentIdWithManager(paymentId);
 
       if (!pendingOperator) {
         console.info('[checkOperatorPaymentStatus] PendingOperator não encontrado');
@@ -714,13 +628,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       if (asaasStatus.success) {
         // Atualizar status local
-        await prisma.pendingOperator.update({
-          where: { id: pendingOperator.id },
-          data: { paymentStatus: asaasStatus.status }
-        });
-
-        console.info('[checkOperatorPaymentStatus] Retornando status:', asaasStatus.status);
-
+        await this.repository.updatePendingOperatorPaymentStatus(
+          pendingOperator.id,
+          asaasStatus.status
+        );
         return new Output(
           true,
           ['Status verificado'],
@@ -802,10 +713,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // Atualizar pendingOperator com paymentId
-      await prisma.pendingOperator.update({
-        where: { id: data.pendingOperatorId },
-        data: { paymentId: payment.id },
-      });
+      await this.repository.updatePendingOperatorPaymentId(
+        data.pendingOperatorId,
+        payment.id,
+        account
+      );
 
       // Retornar URL do checkout
       return {
@@ -1159,14 +1071,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
     const newSubscription = await AsaasSubscriptionService.createSubscription(payload, customerAccount);
 
-    await prisma.profile.update({
-      where: { id: manager.id },
-      data: {
-        asaasSubscriptionId: newSubscription.subscriptionId,
-        asaasSubscriptionAccount: customerAccount,
-        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
-        subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
-      }
+    await this.subscriptionPointerRepository.migrateSubscriptionPointers({
+      profileId: manager.id,
+      previousSubscriptionId: currentSubscription.id,
+      newSubscriptionId: newSubscription.subscriptionId,
+      account: customerAccount,
+      subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+      subscriptionCycle: currentSubscription.cycle || "MONTHLY",
+      operatorCount: manager.operatorCount,
     });
 
     try {
@@ -1200,16 +1112,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🔄 [updateManagerSubscription] Iniciando atualização para managerId:', managerId);
 
       // 1. Buscar manager
-      const manager = await prisma.profile.findUnique({
-        where: { id: managerId },
-        include: {
-          operators: {
-            where: {
-              role: 'operator'
-            }
-          }
-        }
-      });
+      const manager = await this.repository.findManagerProfileById(managerId);
 
       if (!manager) {
         return new Output(false, [], ['Manager não encontrado'], null);
@@ -1218,7 +1121,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('📊 [updateManagerSubscription] Manager encontrado:', {
         id: manager.id,
         email: manager.email,
-        operatorCount: manager.operators.length,
+        operatorCount: manager.operatorCount,
         currentSubscriptionId: manager.asaasSubscriptionId
       });
 
@@ -1232,10 +1135,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       // 3. Calcular novo valor
-      const { value, description } = this.calculateSubscriptionValue(manager.operators.length);
+      const { value, description } = this.calculateSubscriptionValue(manager.operatorCount);
 
       console.info('💰 [updateManagerSubscription] Novo valor calculado:', {
-        operatorCount: manager.operators.length,
+        operatorCount: manager.operatorCount,
         value,
         description
       });
@@ -1259,7 +1162,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       if (subscriptionAccount === 'legacy') {
         let primaryCustomerId = customerAccount === 'primary' ? manager.asaasCustomerId : null;
         if (!primaryCustomerId) {
-          const createdCustomer = await asaasCustomerGateway.createCustomer({
+          const createdCustomer = await this.asaasCustomerGateway.createCustomer({
             name: manager.fullName || manager.email,
             email: manager.email,
             cpfCnpj: manager.cpfCnpj ?? undefined,
@@ -1271,10 +1174,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             profileId: manager.id,
           });
           primaryCustomerId = createdCustomer.id;
-          await prisma.profile.update({
-            where: { id: manager.id },
-            data: { asaasCustomerId: primaryCustomerId, asaasCustomerAccount: 'primary' },
-          });
+          await this.repository.updateManagerCustomerId(manager.id, primaryCustomerId, 'primary');
           console.info('✅ [updateManagerSubscription] Customer criado na primary para migração de upgrade', {
             managerId: manager.id,
             asaasCustomerId: primaryCustomerId,
@@ -1335,13 +1235,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         // transação só: uma falha parcial deixaria o Profile na primary e a
         // ProfileSubscription no id legado, e `getSyncSnapshot` combina o id
         // de uma com a conta da outra — consulta na conta errada.
-        await subscriptionPointerRepository.migrateSubscriptionPointers({
+        await this.subscriptionPointerRepository.migrateSubscriptionPointers({
           profileId: manager.id,
           previousSubscriptionId: manager.asaasSubscriptionId,
           newSubscriptionId: newSubscription.subscriptionId,
           account: 'primary',
           subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
-          operatorCount: manager.operators.length,
+          subscriptionCycle: "MONTHLY",
+          operatorCount: manager.operatorCount,
         });
 
         return new Output(
@@ -1356,7 +1257,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             oldSubscriptionId: manager.asaasSubscriptionId,
             newSubscriptionId: newSubscription.subscriptionId,
             newValue: value,
-            operatorCount: manager.operators.length,
+            operatorCount: manager.operatorCount,
             nextDueDate: newSubscription.data.nextDueDate,
             legacyDeactivationFailed,
           }
@@ -1397,7 +1298,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       const newSubscriptionData = {
         customer: manager.asaasCustomerId,
-        billingType: 'CREDIT_CARD' as const, // Assumindo cartão, pode ser ajustado
+        billingType: 'CREDIT_CARD' as const,
         value,
         cycle: 'MONTHLY' as const,
         nextDueDate: nextDueDateStr,
@@ -1423,13 +1324,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 6. Atualizar Profile com novo subscriptionId
-      await prisma.profile.update({
-        where: { id: manager.id },
-        data: {
-          asaasSubscriptionId: newSubscription.subscriptionId,
-          subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
-          operatorCount: manager.operators.length,
-        }
+      await this.subscriptionPointerRepository.migrateSubscriptionPointers({
+        profileId: manager.id,
+        previousSubscriptionId: manager.asaasSubscriptionId,
+        newSubscriptionId: newSubscription.subscriptionId,
+        account: subscriptionAccount,
+        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+        subscriptionCycle: 'MONTHLY',
+        operatorCount: manager.operatorCount,
       });
 
       console.info('💾 [updateManagerSubscription] Profile atualizado com nova assinatura');
@@ -1442,7 +1344,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           oldSubscriptionId: manager.asaasSubscriptionId,
           newSubscriptionId: newSubscription.subscriptionId,
           newValue: value,
-          operatorCount: manager.operators.length,
+          operatorCount: manager.operatorCount,
           nextDueDate: newSubscription.data.nextDueDate
         }
       );
@@ -1461,12 +1363,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🗑️ [removeOperatorAndUpdateSubscription] Removendo operador:', operatorId);
 
       // 1. Buscar operador
-      const operator = await prisma.profile.findUnique({
-        where: { id: operatorId },
-        include: {
-          manager: true
-        }
-      });
+      const operator = await this.repository.findProfileById(operatorId);
 
       if (!operator) {
         return new Output(false, [], ['Operador não encontrado'], null);
@@ -1478,32 +1375,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('✅ [removeOperatorAndUpdateSubscription] Operador encontrado:', {
         id: operator.id,
-        email: operator.email,
         managerId: operator.managerId
       });
 
-      // 2. Desativar operador (soft delete ou marcar como inativo)
-      await prisma.profile.update({
-        where: { id: operatorId },
-        data: {
-          // Podemos adicionar um campo 'active' ou 'deletedAt' no futuro
-          // Por enquanto, vamos manter mas decrementar o contador
-        }
-      });
-
-      // 3. Decrementar contador do manager
-      await prisma.profile.update({
-        where: { id: operator.managerId },
-        data: {
-          operatorCount: {
-            decrement: 1
-          }
-        }
-      });
+      // 2. Decrementar contador do manager
+      await this.repository.decrementManagerOperatorCount(operator.managerId);
 
       console.info('📉 [removeOperatorAndUpdateSubscription] Contador decrementado');
 
-      // 4. Atualizar assinatura do manager
       const updateResult = await this.updateManagerSubscription(operator.managerId);
 
       if (!updateResult.isValid) {
@@ -1541,9 +1420,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🔄 [reactivateSubscription] Iniciando reativação para supabaseId:', data.supabaseId);
 
       // 1. Buscar manager pelo supabaseId
-      const manager = await prisma.profile.findUnique({
-        where: { supabaseId: data.supabaseId }
-      });
+      const manager = await this.repository.findManagerProfileBySupabaseId(data.supabaseId);
 
       if (!manager) {
         return new Output(false, [], ['Manager não encontrado'], null);
@@ -1636,15 +1513,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 6. Atualizar Profile no banco
-      await prisma.profile.update({
-        where: { id: manager.id },
-        data: {
-          asaasSubscriptionId: newSubscription.data.id,
-          subscriptionNextDueDate: nextDueDate,
-          subscriptionCycle: 'MONTHLY',
-          operatorCount: data.operatorCount,
-          updatedAt: new Date()
-        }
+      await this.subscriptionPointerRepository.migrateSubscriptionPointers({
+        profileId: manager.id,
+        previousSubscriptionId: manager.asaasSubscriptionId,
+        newSubscriptionId: newSubscription.data.id,
+        account: reactivateSubscriptionAccount,
+        subscriptionNextDueDate: nextDueDate,
+        subscriptionCycle: 'MONTHLY',
+        operatorCount: data.operatorCount,
       });
 
       console.info('✅ [reactivateSubscription] Profile atualizado no banco');

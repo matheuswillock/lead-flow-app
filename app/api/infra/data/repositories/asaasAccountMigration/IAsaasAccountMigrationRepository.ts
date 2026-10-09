@@ -46,12 +46,12 @@ export interface IAsaasAccountMigrationRepository {
   countAll(): Promise<number>
 
   /**
-   * E7 (X3, T-30.25): linhas presas fora dos estados terminais
-   * (`done`/`failed`/`requires_card_reauth`) há mais que `olderThan` —
+   * E7 (X3, T-30.25): linhas presas fora do único estado terminal (`done`)
+   * há mais que `olderThan` —
    * sintoma de migração travada no meio (ex.: processo morreu entre
    * `customer_created` e `subscription_created`) sem que ninguém tenha
-   * percebido. `failed` e `requires_card_reauth` são estados "parados"
-   * esperados (aguardam retry manual/ação do cliente) — não entram aqui.
+   * percebido. `failed` e `requires_card_reauth` também entram no alerta,
+   * até que uma ação explícita os resolva.
    */
   listNonTerminalStaleSince(olderThan: Date): Promise<AsaasAccountMigration[]>
 
