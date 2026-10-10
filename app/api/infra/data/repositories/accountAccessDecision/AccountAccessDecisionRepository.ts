@@ -1,0 +1,97 @@
+import { prisma } from "@/app/api/infra/data/prisma"
+import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import type {
+  AccountAccessRecord,
+  IAccountAccessDecisionRepository,
+} from "@/app/api/shared/accountAccessDecision/types"
+
+export class AccountAccessDecisionRepository implements IAccountAccessDecisionRepository {
+  async resolveProfileId(supabaseId: string): Promise<string | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true },
+    })
+
+    return profile?.id ?? null
+  }
+
+  async resolveAccount(input: {
+    profileId: string
+    teamId?: string | null
+  }): Promise<AccountAccessRecord | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: input.profileId },
+      select: { id: true, managerId: true, activeTeamId: true },
+    })
+
+    if (!profile) {
+      return null
+    }
+
+    const billingOwnerId = await this.resolveBillingOwnerId({
+      profile,
+      teamId: input.teamId,
+    })
+    const [billingOwner, isBanned] = await Promise.all([
+      prisma.profile.findUnique({
+        where: { id: billingOwnerId },
+        select: {
+          hasPermanentSubscription: true,
+          subscriptionStatus: true,
+          subscription: {
+            select: {
+              hasPermanentSubscription: true,
+              subscriptionStatus: true,
+            },
+          },
+        },
+      }),
+      isAccountMasterBanned(billingOwnerId),
+    ])
+
+    if (!billingOwner) {
+      return null
+    }
+
+    const subscription = billingOwner.subscription
+    return {
+      billingOwnerId,
+      subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
+      hasPermanentSubscription: subscription
+        ? subscription.hasPermanentSubscription
+        : billingOwner.hasPermanentSubscription,
+      isBanned,
+    }
+  }
+
+  private async resolveBillingOwnerId(input: {
+    profile: { id: string; managerId: string | null; activeTeamId: string | null }
+    teamId?: string | null
+  }): Promise<string> {
+    const teamId = input.teamId ?? input.profile.activeTeamId
+    if (!teamId) {
+      return input.profile.managerId ?? input.profile.id
+    }
+
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: {
+        masterId: true,
+        master: { select: { sponsorMasterId: true } },
+      },
+    })
+    if (!team) {
+      return input.profile.managerId ?? input.profile.id
+    }
+
+    const membership = await prisma.teamMember.findFirst({
+      where: { teamId, profileId: input.profile.id },
+      select: { id: true },
+    })
+    if (membership || team.master.sponsorMasterId === input.profile.id) {
+      return team.masterId
+    }
+
+    return input.profile.managerId ?? input.profile.id
+  }
+}

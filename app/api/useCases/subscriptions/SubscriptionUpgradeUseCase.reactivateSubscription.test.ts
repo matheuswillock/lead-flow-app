@@ -9,11 +9,12 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 // silenciosamente.
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
 const profileUpdateMock = mock(async () => ({}))
+const migrateSubscriptionPointersMock = mock(async () => {})
 const prismaMock = { profile: { findUnique: findUniqueMock, update: profileUpdateMock } }
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
 
 const cancelSubscriptionMock = mock(async () => ({ deleted: true }))
-const createSubscriptionMock = mock(async (_data: unknown, accountId?: string) => ({
+const createSubscriptionMock = mock(async (_data: unknown, _accountId?: string) => ({
   success: true,
   subscriptionId: "sub_new",
   data: { id: "sub_new", value: 59.9, status: "PENDING" },
@@ -49,6 +50,11 @@ mock.module("@/lib/services/EmailService", () => ({ getEmailService: () => ({}) 
 mock.module("@/lib/supabase/email-auth-link", () => ({ buildSetPasswordEmailAuthLink: mock(async () => "") }))
 
 const { SubscriptionUpgradeUseCase } = await import("./SubscriptionUpgradeUseCase")
+function createUseCase() {
+  return new SubscriptionUpgradeUseCase({
+    subscriptionPointerRepository: { migrateSubscriptionPointers: migrateSubscriptionPointersMock } as never,
+  })
+}
 
 function buildManager(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -68,6 +74,7 @@ describe("SubscriptionUpgradeUseCase.reactivateSubscription — PIX roteado por 
   beforeEach(() => {
     findUniqueMock.mockClear()
     profileUpdateMock.mockClear()
+    migrateSubscriptionPointersMock.mockClear()
     cancelSubscriptionMock.mockClear()
     createSubscriptionMock.mockClear()
     getSubscriptionPaymentsMock.mockClear()
@@ -77,7 +84,7 @@ describe("SubscriptionUpgradeUseCase.reactivateSubscription — PIX roteado por 
   it("manager legacy reativando via PIX: busca payments/QR na conta legacy, não primary", async () => {
     findUniqueMock.mockImplementationOnce(async () => buildManager())
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.reactivateSubscription({
       supabaseId: "sb-reactivate-1",
       operatorCount: 0,
@@ -90,7 +97,9 @@ describe("SubscriptionUpgradeUseCase.reactivateSubscription — PIX roteado por 
     expect(getSubscriptionPaymentsMock).toHaveBeenCalledWith("sub_new", undefined, "legacy")
     expect(getPixQrCodeMock).toHaveBeenCalledWith("pay_new", "legacy")
     expect((result.result as any).pixQrCode).toBe("base64img")
-    expect((result.result as any).pixCopyPaste).toBe("pix-copy-paste")
+    expect(migrateSubscriptionPointersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ account: "legacy", subscriptionCycle: "MONTHLY" }),
+    )
   })
 
   it("manager primary reativando via PIX: busca payments/QR na conta primary", async () => {
@@ -98,7 +107,7 @@ describe("SubscriptionUpgradeUseCase.reactivateSubscription — PIX roteado por 
       buildManager({ asaasCustomerAccount: "primary", asaasSubscriptionAccount: "primary" }),
     )
 
-    const useCase = new SubscriptionUpgradeUseCase()
+    const useCase = createUseCase()
     const result = await useCase.reactivateSubscription({
       supabaseId: "sb-reactivate-1",
       operatorCount: 0,

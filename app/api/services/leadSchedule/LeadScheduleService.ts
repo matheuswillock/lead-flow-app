@@ -97,10 +97,10 @@ const buildInviteDispatchBody = ({
     return "Convite de agendamento enviado via Google Calendar.";
   }
   if (status === "sent_resend" && fallbackUsed) {
-    return "Convite enviado por e-mail (Resend) após falha no Google Calendar.";
+    return "Convite enviado por e-mail após falha no Google Calendar.";
   }
   if (status === "sent_resend") {
-    return "Convite enviado por e-mail (Resend).";
+    return "Convite enviado por e-mail";
   }
   if (provider === "google") {
     return error
@@ -109,12 +109,12 @@ const buildInviteDispatchBody = ({
   }
   if (fallbackUsed) {
     return error
-      ? `Falha ao enviar convite por e-mail (Resend) após falha no Google Calendar. Motivo: ${error}`
-      : "Falha ao enviar convite por e-mail (Resend) após falha no Google Calendar.";
+      ? `Falha ao enviar convite por e-mail após falha no Google Calendar. Motivo: ${error}`
+      : "Falha ao enviar convite por e-mail após falha no Google Calendar.";
   }
   return error
-    ? `Falha ao enviar convite por e-mail (Resend). Motivo: ${error}`
-    : "Falha ao enviar convite por e-mail (Resend).";
+    ? `Falha ao enviar convite por e-mail. Motivo: ${error}`
+    : "Falha ao enviar convite por e-mail.";
 };
 
 const registerInviteDispatchActivity = async ({
@@ -1032,7 +1032,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     const successMessages = [persisted.message, ...scheduleWarnings];
     if (canUseGoogleCalendar && resendRecipients.length > 0) {
       successMessages.push(
-        "Aviso: Participantes sem Google conectado receberam convite via e-mail (Resend)."
+        "Aviso: Participantes sem Google conectado receberam convite via e-mail ."
       );
     }
 

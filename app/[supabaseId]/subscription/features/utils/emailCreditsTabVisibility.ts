@@ -23,10 +23,18 @@ export function shouldShowEmailCreditsTeamSelector(input: {
   return input.isMaster && input.teamCount > 1
 }
 
-/** T06/T07: isenção beta gratuita esconde compra; beta cobrado (sem isenção) mostra planos. */
+/**
+ * T06/T07: isenção beta gratuita esconde compra; beta cobrado (sem isenção)
+ * mostra planos. DA3 (SPEC 21, T-21.5): falha ao carregar o status (500,
+ * rede) também esconde os planos — sem isso, um erro transitório virava
+ * "Nenhum plano ativo" com o botão "Comprar" habilitado, risco de segundo
+ * checkout do mesmo add-on.
+ */
 export function shouldShowEmailCreditsPurchasePlans(input: {
   isBetaExempt: boolean
+  hasError?: boolean
 }): boolean {
+  if (input.hasError) return false
   return !input.isBetaExempt
 }
 

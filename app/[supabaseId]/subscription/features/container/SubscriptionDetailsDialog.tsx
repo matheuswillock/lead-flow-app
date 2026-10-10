@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import type { SubscriptionData } from '../types/subscription.types';
-import { formatCurrency, formatDate } from './subscription-format';
+import { formatBillingType, formatCurrency, formatDate } from './subscription-format';
 
 interface SubscriptionDetailsDialogProps {
   open: boolean;
@@ -43,7 +43,7 @@ export function SubscriptionDetailsDialog({ open, onOpenChange, subscription }: 
             <Separator />
             <div className="grid gap-4 md:grid-cols-2">
               <DetailItem label="Base inclusa" value="1 time + 1 usuário" />
-              <DetailItem label="Método de pagamento" value={subscription.billingType} />
+              <DetailItem label="Método de pagamento" value={formatBillingType(subscription.billingType)} />
               <DetailItem
                 label="Créditos extras de times"
                 value={isPermanent ? 'Ilimitado' : String(summary?.contractedExtraTeams ?? 0)}
