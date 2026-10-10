@@ -17,4 +17,5 @@ test("não renderiza sidebar, header ou conteúdo da plataforma para conta restr
   expect(markup).not.toContain("dados financeiros e CRM")
   expect(markup).toContain("w-full max-w-md")
   expect(markup).toContain("p-4")
+  expect(markup).toContain("h-11 w-full")
 })

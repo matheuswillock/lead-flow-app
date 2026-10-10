@@ -27,7 +27,7 @@ export function AccountAccessPausedScreen() {
           </p>
         </CardContent>
         <CardFooter>
-          <Button asChild className="w-full">
+          <Button asChild className="h-11 w-full">
             <a href={SUBSCRIPTION_SUPPORT_WHATSAPP_URL} target="_blank" rel="noreferrer">
               <MessageCircle data-icon="inline-start" />
               Falar com o time de assinaturas
