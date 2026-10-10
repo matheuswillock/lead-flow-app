@@ -80,7 +80,7 @@ export class AsaasCustomerSilencingGateway implements IAsaasCustomerSilencingGat
     )
 
     const result = await this.client.request(this.endpoints.notificationsBatch, {
-      method: "POST",
+      method: "PUT",
       body: JSON.stringify({ customer: customerId, notifications: patch }),
     })
 

@@ -1,4 +1,4 @@
-/** Status locais que concedem acesso (Estágio 8 / D8). */
+/** Status locais que concedem acesso operacional; inadimplência bloqueia imediatamente. */
 export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trial"] as const;
 
 export type ActiveSubscriptionStatus = (typeof ACTIVE_SUBSCRIPTION_STATUSES)[number];

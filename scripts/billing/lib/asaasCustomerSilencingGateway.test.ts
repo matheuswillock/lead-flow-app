@@ -76,9 +76,11 @@ describe("AsaasCustomerSilencingGateway (T-30.6)", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("disableNotificationChannelsBatch: POST com patch de todos os canais desabilitados", async () => {
+  it("disableNotificationChannelsBatch: PUT com patch de todos os canais desabilitados", async () => {
+    let capturedMethod: string | undefined
     let capturedBody: { customer: string; notifications: Array<Record<string, unknown>> } | undefined
     const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      capturedMethod = init?.method
       capturedBody = init?.body ? JSON.parse(init.body as string) : undefined
       return new Response(JSON.stringify({ data: [] }), { status: 200 })
     })
@@ -90,6 +92,7 @@ describe("AsaasCustomerSilencingGateway (T-30.6)", () => {
       { id: "notif_1", customer: "cus_1", enabled: true },
     ])
 
+    expect(capturedMethod).toBe("PUT")
     expect(capturedBody?.customer).toBe("cus_1")
     expect(capturedBody?.notifications).toEqual([
       {
