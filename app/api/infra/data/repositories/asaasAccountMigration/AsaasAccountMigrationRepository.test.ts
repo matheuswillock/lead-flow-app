@@ -331,6 +331,86 @@ describe("AsaasAccountMigrationRepository", () => {
     })
   })
 
+  describe("execution lease", () => {
+    it("claims only an unleased migration and returns the owner", async () => {
+      const current = { ...baseSnapshot(), id: "migration-1", status: "awaiting_due_date", attemptCount: 2 }
+      updateManyMock.mockImplementation(async () => ({ count: 1 }))
+      findUniqueMock.mockImplementation(async () => current)
+      const now = new Date("2026-10-10T12:00:00.000Z")
+      const repo = new AsaasAccountMigrationRepository()
+
+      const claim = await repo.claimForExecution("cus_legacy_1", "worker-1", now, 600_000)
+
+      expect(claim?.leaseOwner).toBe("worker-1")
+      expect(updateManyMock).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          legacyCustomerId: "cus_legacy_1",
+          OR: expect.any(Array),
+        }),
+        data: expect.objectContaining({ leaseOwner: "worker-1" }),
+      }))
+    })
+
+    it("returns null when another active lease owns the migration", async () => {
+      updateManyMock.mockImplementation(async () => ({ count: 0 }))
+      const repo = new AsaasAccountMigrationRepository()
+
+      const claim = await repo.claimForExecution("cus_legacy_1", "worker-2", new Date(), 600_000)
+
+      expect(claim).toBeNull()
+    })
+
+    it("inclui owner e validade do lease no CAS protegido", async () => {
+      const current = { ...baseSnapshot(), status: "awaiting_due_date", attemptCount: 2 }
+      findUniqueMock.mockImplementation(async () => current)
+      updateManyMock.mockImplementation(async () => ({ count: 1 }))
+      const repo = new AsaasAccountMigrationRepository()
+      const leaseNow = new Date("2026-10-10T12:00:00.000Z")
+
+      await repo.transition({
+        legacyCustomerId: "cus_legacy_1",
+        toStatus: "paused_awaiting_card",
+        leaseOwner: "worker-1",
+        leaseNow,
+      })
+
+      expect(updateManyMock).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          leaseOwner: "worker-1",
+          leaseExpiresAt: { gt: leaseNow },
+        }),
+      }))
+    })
+  })
+
+  describe("markReauthorizationRequested", () => {
+    it("registra o lembrete também quando a conta já está pausada aguardando cartão", async () => {
+      updateManyMock.mockImplementation(async () => ({ count: 1 }))
+      const repo = new AsaasAccountMigrationRepository()
+      const requestedAt = new Date("2026-10-10T12:00:00.000Z")
+
+      const updated = await repo.markReauthorizationRequested(
+        "cus_legacy_1",
+        requestedAt,
+      )
+
+      expect(updated).toBe(true)
+      expect(updateManyMock).toHaveBeenCalledWith({
+        where: {
+          legacyCustomerId: "cus_legacy_1",
+          status: {
+            in: [
+              "requires_card_reauth",
+              "legacy_removed",
+              "paused_awaiting_card",
+            ],
+          },
+        },
+        data: { reauthorizationRequestedAt: requestedAt },
+      })
+    })
+  })
+
   describe("listNonTerminalStaleSince (T-30.25 — E7/X3)", () => {
     it("filtra todo status exceto done e updatedAt antes do corte", async () => {
       const cutoff = new Date("2026-09-17T00:00:00.000Z")

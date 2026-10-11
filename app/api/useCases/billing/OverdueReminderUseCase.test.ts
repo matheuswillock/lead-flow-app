@@ -364,9 +364,14 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     // Dia 1 processou até `antigo-0004`. Entre as execuções, as 3 primeiras
     // linhas pagam e somem da query. Com offset (skip: 5) o dia 2 começaria
     // em `antigo-0007`, pulando 0005 e 0006 — que nunca foram avisados.
+    // Use a single timestamp for every row and the persisted cursor. Calling
+    // daysAgo() repeatedly introduces millisecond drift, which can make the
+    // keyset compare the first remaining row as newer than the cursor and
+    // makes this concurrency regression test flaky under the full suite.
+    const dueDate = daysAgo(40)
     const persisted = {
       profileId: "antigo-0004",
-      subscriptionNextDueDate: daysAgo(40).toISOString(),
+      subscriptionNextDueDate: dueDate.toISOString(),
     }
     cronExecutionFindManyMock.mockImplementation(async () => [
       { metadata: { nextDunningScanCursor: persisted } },
@@ -374,7 +379,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     const remaining = Array.from({ length: 10 }, (_, i) =>
       makeRow({
         profileId: `antigo-${String(i).padStart(4, "0")}`,
-        subscriptionNextDueDate: daysAgo(40),
+        subscriptionNextDueDate: dueDate,
       })
       // as 3 primeiras pagaram e saíram do conjunto
     ).slice(3)
