@@ -408,7 +408,7 @@ describe("MigrateAsaasAccountUseCase", () => {
       quote,
       creditCardToken: "token",
       remoteIp: "203.0.113.10",
-      paymentExternalReference: "remote-attempt-42",
+      internalPaymentReference: "remote-attempt-42",
       now: new Date("2026-10-10T12:00:00.000Z"),
     })
 

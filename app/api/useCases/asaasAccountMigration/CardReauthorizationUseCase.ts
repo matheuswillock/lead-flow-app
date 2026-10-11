@@ -61,7 +61,7 @@ export class CardReauthorizationUseCase {
         quote,
         creditCardToken,
         remoteIp: input.remoteIp,
-        paymentExternalReference: claim.attemptReference,
+        internalPaymentReference: claim.attemptReference,
       })
       if (result.isValid) {
         await this.completeAttempt(claim.attemptId, "confirmed", null)

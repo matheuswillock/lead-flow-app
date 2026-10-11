@@ -16,7 +16,10 @@ export type MigrationInput = {
   now?: Date
   creditCardToken?: string
   remoteIp?: string
-  paymentExternalReference?: string
+  /** Referência gerada por um use case interno; rotas não devem preencher. */
+  internalPaymentReference?: string
+  /** Owner interno do lease; nunca vem de rota. */
+  leaseOwner?: string
 }
 
 type MigrationFailureReason = "declined" | "unknown" | "manual_review"
@@ -115,7 +118,7 @@ export class MigrateAsaasAccountUseCase {
     try {
       let migration = await this.dependencies.ledgerRepository.findByLegacyCustomerId(input.legacyCustomerId)
       if (!migration) return new Output(false, [], ["Registro de migração não encontrado"], null)
-      if (input.paymentExternalReference && !/^[A-Za-z0-9:_-]{1,100}$/.test(input.paymentExternalReference)) {
+      if (input.internalPaymentReference && !/^[A-Za-z0-9:_-]{1,100}$/.test(input.internalPaymentReference)) {
         return new Output(false, [], ["Referência externa de pagamento inválida"], { reason: "manual_review" })
       }
       if (migration.profileId !== input.quote.billingOwnerId) return new Output(false, [], ["Quote não pertence ao cliente da migração"], null)
@@ -158,6 +161,7 @@ export class MigrateAsaasAccountUseCase {
           { reason: "already_processing" },
         )
       }
+      input.leaseOwner = leaseOwner
 
       const now = input.now ?? new Date()
       let current = migration
@@ -316,7 +320,7 @@ export class MigrateAsaasAccountUseCase {
         }
         if (!current.primaryCustomerId || !input.remoteIp) return this.fail(input, "Dados da cobrança primária incompletos")
         const paymentReference =
-          input.paymentExternalReference ??
+          input.internalPaymentReference ??
           `asaas-migration:${current.id}:initial-payment:${current.attemptCount}`
         await renewLease()
         const payment = (await this.dependencies.migrationGateway.findPaymentByExternalReference?.(paymentReference)) ??
@@ -453,6 +457,8 @@ export class MigrateAsaasAccountUseCase {
         failureStep: current.status,
         failureCode,
         resumeStatus: current.status,
+        leaseOwner: input.leaseOwner,
+        leaseNow: new Date(),
       })
     }
     return new Output(false, [], [message], {
