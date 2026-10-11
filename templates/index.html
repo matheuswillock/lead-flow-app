@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Biblioteca de E-mails · Corretor Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+  body{ background:#EEEDF3; font-family:'Inter',-apple-system,Arial,sans-serif; color:#1C1B22; -webkit-font-smoothing:antialiased; }
+
+  /* Topo */
+  .top{ background:linear-gradient(135deg,#ff6900 0%,#e57082 48%,#cd6cdd 100%); padding:44px 24px 40px; text-align:center; color:#fff; }
+  .top-wm{ display:flex; align-items:center; justify-content:center; gap:11px; margin-bottom:18px; }
+  .top-wm svg{ width:30px; height:29px; color:#fff; }
+  .top-wm span{ font-family:'Poppins',sans-serif; font-weight:600; font-size:20px; letter-spacing:-0.01em; }
+  .top h1{ font-family:'Poppins',sans-serif; font-weight:700; font-size:34px; letter-spacing:-0.02em; line-height:1.15; margin-bottom:10px; }
+  .top p{ font-size:15px; color:rgba(255,255,255,.9); max-width:560px; margin:0 auto; line-height:1.6; }
+
+  .page{ max-width:1180px; margin:0 auto; padding:40px 24px 80px; }
+
+  /* Legenda de arquétipos */
+  .legend{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:44px; }
+  .leg{ display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #E2E1E8; border-radius:999px; padding:7px 14px; font-size:12.5px; font-weight:500; color:#3D3C44; }
+  .leg .dot{ width:12px; height:12px; border-radius:4px; flex-shrink:0; }
+
+  /* Seções */
+  .section{ margin-bottom:46px; }
+  .section-head{ display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+  .section-head h2{ font-family:'Poppins',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.01em; }
+  .section-head .count{ font-family:'Inter',sans-serif; font-size:12px; font-weight:600; color:#9A99A6; background:#fff; border:1px solid #E2E1E8; border-radius:999px; padding:3px 10px; }
+  .section-head .rule{ flex:1; height:1px; background:#E2E1E8; }
+
+  /* Grid de cards */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:22px; }
+
+  .card{ background:#fff; border:1px solid #E2E1E8; border-radius:16px; overflow:hidden; box-shadow:0 10px 24px -20px rgba(40,40,80,.4); display:flex; flex-direction:column; transition:transform .15s ease, box-shadow .15s ease; }
+  .card:hover{ transform:translateY(-3px); box-shadow:0 18px 34px -22px rgba(40,40,80,.5); }
+
+  /* Preview (iframe escalado) */
+  .thumb{ position:relative; height:230px; overflow:hidden; background:#F0EFF5; border-bottom:1px solid #EFEFF2; }
+  .thumb iframe{ position:absolute; top:0; left:0; width:560px; height:920px; border:0; transform:scale(.482); transform-origin:top left; pointer-events:none; }
+  .thumb .tag{ position:absolute; top:10px; left:10px; z-index:2; font-family:'Inter',sans-serif; font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#fff; padding:3px 9px; border-radius:999px; backdrop-filter:blur(4px); }
+  .thumb .open{ position:absolute; inset:0; z-index:3; display:flex; align-items:flex-end; justify-content:center; padding-bottom:14px; opacity:0; transition:opacity .15s ease; background:linear-gradient(180deg,rgba(20,20,30,0) 55%,rgba(20,20,30,.42)); text-decoration:none; }
+  .card:hover .thumb .open{ opacity:1; }
+  .thumb .open span{ background:#fff; color:#1C1B22; font-family:'Poppins',sans-serif; font-size:12.5px; font-weight:600; padding:8px 18px; border-radius:999px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+
+  .card-body{ padding:14px 16px 16px; flex:1; display:flex; flex-direction:column; }
+  .card-title{ font-family:'Poppins',sans-serif; font-size:14.5px; font-weight:600; letter-spacing:-0.01em; margin-bottom:4px; }
+  .card-file{ font-family:'JetBrains Mono','SF Mono',Menlo,monospace; font-size:10.5px; color:#A1A1AA; margin-bottom:8px; word-break:break-all; }
+  .card-desc{ font-size:12.5px; color:#6E6D7A; line-height:1.5; }
+
+  a.bare{ text-decoration:none; color:inherit; }
+
+  @media (max-width:640px){ .top h1{ font-size:26px; } .grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div class="top-wm">
+      <svg viewBox="90 140 322 285" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" fill-rule="evenodd" d="M 291.25,157.68 Q 294.00,146.00 282.31,148.69 L 163.84,175.96 Q 146.30,180.00 138.38,187.88 L 136.62,189.62 Q 128.70,197.50 124.14,214.91 L 101.86,300.05 Q 96.80,319.40 111.92,332.49 L 125.79,344.51 Q 139.40,356.30 156.97,352.41 L 228.84,336.50 Q 234.70,335.20 236.51,329.48 L 252.30,279.60 L 348.10,257.60 L 326.40,336.00 L 226.21,361.90 Q 220.40,363.40 218.99,369.23 L 209.71,407.73 Q 206.90,419.40 218.59,416.69 L 319.60,393.30 Q 353.70,385.40 360.99,376.81 L 362.61,374.89 Q 369.90,366.30 379.33,332.59 L 400.61,256.56 Q 406.00,237.30 391.90,223.12 L 386.30,217.48 Q 372.20,203.30 352.67,207.61 L 274.86,224.81 Q 269.00,226.10 267.11,231.80 L 251.40,279.20 L 157.90,300.30 L 177.80,228.20 L 275.20,202.72 Q 281.00,201.20 282.38,195.36 Z"></path></svg>
+      <span>Corretor Studio</span>
+    </div>
+    <h1>Biblioteca de E-mails</h1>
+    <p>Todos os templates do produto, organizados por intenção. Clique em qualquer card para abrir o e-mail em tamanho real.</p>
+  </div>
+
+  <div class="page">
+
+    <div class="legend">
+      <div class="leg"><span class="dot" style="background:linear-gradient(135deg,#ff6900,#cd6cdd)"></span>Celebração</div>
+      <div class="leg"><span class="dot" style="background:#fff;border:1px solid #E2E1E8"></span>Informativo</div>
+      <div class="leg"><span class="dot" style="background:#E07400"></span>Ação &amp; cobrança</div>
+      <div class="leg"><span class="dot" style="background:#3A3FC4"></span>Segurança</div>
+      <div class="leg"><span class="dot" style="background:#221B26"></span>Sério</div>
+      <div class="leg"><span class="dot" style="background:#FFE2CC"></span>Lifecycle</div>
+      <div class="leg"><span class="dot" style="background:linear-gradient(135deg,#e57082,#cd6cdd)"></span>Marketing</div>
+    </div>
+
+    <div id="sections"></div>
+
+  </div>
+
+<script>
+  const C = {
+    celeb:'linear-gradient(135deg,#ff6900,#cd6cdd)', info:'#A1A1AA', acao:'#E07400',
+    seg:'#3A3FC4', serio:'#221B26', life:'#E08A3C', mkt:'linear-gradient(135deg,#e57082,#cd6cdd)'
+  };
+  const LBL = { celeb:'Celebração', info:'Informativo', acao:'Ação', seg:'Segurança', serio:'Sério', life:'Lifecycle', mkt:'Marketing' };
+
+  const sections = [
+    { title:'Onboarding & acesso', items:[
+      ['welcome.html','Boas-vindas','celeb','Conta criada, acesso liberado.'],
+      ['operator-invite.html','Convite de operador','info','Convite para entrar na equipe.'],
+      ['adhesion-completed.html','Adesão concluída','celeb','Adesão feita, definir senha.'],
+      ['password-reset.html','Redefinir senha','seg','Link de redefinição de senha.'],
+      ['onboarding-day-1.html','Onboarding · Dia 1','life','Primeiro passo na plataforma.'],
+      ['onboarding-day-3.html','Onboarding · Dia 3','life','Dica para acelerar resultados.'],
+      ['onboarding-day-7.html','Onboarding · Dia 7','life','KPIs da primeira semana.'],
+    ]},
+    { title:'Assinatura, cobrança & renovação', items:[
+      ['subscription-confirmation.html','Assinatura confirmada','celeb','Confirmação de assinatura.'],
+      ['backoffice-adhesion-checkout.html','Checkout de adesão','acao','Link de checkout pendente.'],
+      ['addon-pending-payment.html','Add-on pendente','acao','Cobrança de add-on a pagar.'],
+      ['addon-confirmed.html','Add-on ativado','celeb','Add-on ativado com sucesso.'],
+      ['pending-account-user-payment.html','Cobrança de novo usuário','acao','Cobrança incremental pendente.'],
+      ['master-invoice-status-notification.html','Status da fatura','acao','Fatura vencida / a vencer.'],
+      ['subscription-renewal-30-days.html','Renovação · 30 dias','acao','Lembrete ameno de renovação.'],
+      ['subscription-renewal-15-days.html','Renovação · 15 dias','acao','Lembrete de renovação.'],
+      ['subscription-renewal-7-days.html','Renovação · 7 dias','acao','Última semana, urgência alta.'],
+      ['subscription-renewed-confirmation.html','Renovação confirmada','celeb','Resumo completo do plano.'],
+      ['access-expired-partial-restriction.html','Vencido · restrição parcial','acao','Vencido há 15 dias.'],
+      ['access-suspended-data-deletion.html','Suspenso · exclusão de dados','serio','30 dias inadimplente.'],
+      ['team-added-charge.html','Novo time · cobrança','acao','Time criado com cobrança adicional.'],
+      ['team-added-free.html','Novo time · sem custo','celeb','Time criado, incluso no plano.'],
+      ['user-added-free.html','Novo usuário · sem custo','celeb','Usuário incluído, sem custo.'],
+    ]},
+    { title:'Leads & agendamentos', items:[
+      ['lead-notification-new.html','Novo lead','info','Lead registrado na plataforma.'],
+      ['lead-follow-up.html','Follow-up de lead','info','Lead parado, retomar contato.'],
+      ['lead-proposal-pending-urgent.html','Proposta pendente','acao','Lead movido para proposta.'],
+      ['meeting-invite.html','Convite de reunião','info','Reunião agendada (+ .ics).'],
+      ['closer-schedule-notification.html','Agendamento do closer','info','Novo agendamento / reagendamento.'],
+      ['backoffice-lead-schedule-invite-closer.html','Apresentação · closer','info','Apresentação agendada.'],
+      ['backoffice-lead-schedule-invite-participants.html','Convite de demonstração','info','Demo para participantes.'],
+      ['performance-export.html','Relatório de performance','info','Export .zip pronto.'],
+    ]},
+    { title:'Encerramento', items:[
+      ['operator-access-removed.html','Acesso removido','serio','Operador removido da conta.'],
+      ['account-deletion-farewell.html','Conta encerrada','serio','Despedida, conta excluída.'],
+    ]},
+    { title:'Marketing & relacionamento', items:[
+      ['promo-campaign.html','Campanha promocional','mkt','Oferta com cupom.'],
+      ['winback.html','Win-back','mkt','Reengajamento de inativos.'],
+      ['product-announcement.html','Novidade no produto','mkt','Lançamento de recurso.'],
+    ]},
+    { title:'Campanhas, eventos & relacionamento', items:[
+      ['receba-leads-pme.html','Receba leads PME','mkt','Leads PME sem gastar com anúncio.'],
+      ['dia-do-corretor-12-outubro.html','Dia do Corretor','mkt','Homenagem de 12 de outubro.'],
+      ['abordagem-comercial-1.html','Abordagem comercial 1','mkt','Primeiro contato pós-cadastro.'],
+      ['abordagem-comercial-2.html','Abordagem comercial 2','mkt','Veja funcionando na prática.'],
+      ['abordagem-comercial-followup.html','Abordagem · follow-up','mkt','Convite de pé para conversar.'],
+      ['convite-lancamento.html','Convite de lançamento','mkt','Evento ao vivo de lançamento.'],
+      ['card-live-recorrente.html','Live recorrente','mkt','Por dentro do Corretor Studio.'],
+      ['confirme-sua-presenca-live-09jul.html','Confirme sua presença','mkt','Lembrete da live.'],
+      ['convite-live-09jul-segunda-chance.html','Live · segunda chance','mkt','Nova chance de participar.'],
+      ['welcome-associado.html','Boas-vindas associado','celeb','Acesso de associado liberado.'],
+      ['cliente-sem-acesso-ativacao.html','Cliente sem acesso','life','Comprou e ainda não acessou.'],
+      ['periodo-gratuito-encerrado.html','Período gratuito encerrado','acao','Fim do teste, falar no WhatsApp.'],
+      ['no-show-reagendar.html','No-show · reagendar','acao','Reunião sem comparecimento.'],
+    ]},
+    { title:'Referência', items:[
+      ['Sistema de Headers.html','Sistema de Headers','celeb','Os 5 arquétipos lado a lado.'],
+    ]},
+  ];
+
+  const host = document.getElementById('sections');
+  sections.forEach(sec=>{
+    const wrap = document.createElement('div'); wrap.className='section';
+    wrap.innerHTML = '<div class="section-head"><h2>'+sec.title+'</h2><span class="count">'+sec.items.length+'</span><span class="rule"></span></div>';
+    const grid = document.createElement('div'); grid.className='grid';
+    sec.items.forEach(([file,title,arch,desc])=>{
+      const col = C[arch], lbl = LBL[arch];
+      const card = document.createElement('div'); card.className='card';
+      const href = encodeURI(file);
+      card.innerHTML =
+        '<div class="thumb">'+
+          '<span class="tag" style="background:'+(arch==='info'?'rgba(90,90,100,.7)':col)+'">'+lbl+'</span>'+
+          '<iframe loading="lazy" src="'+href+'" scrolling="no" tabindex="-1" aria-hidden="true"></iframe>'+
+          '<a class="open" href="'+href+'" target="_blank" rel="noopener"><span>Abrir e-mail →</span></a>'+
+        '</div>'+
+        '<a class="bare" href="'+href+'" target="_blank" rel="noopener"><div class="card-body">'+
+          '<div class="card-title">'+title+'</div>'+
+          '<div class="card-file">'+file+'</div>'+
+          '<div class="card-desc">'+desc+'</div>'+
+        '</div></a>';
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid); host.appendChild(wrap);
+  });
+</script>
+
+</body>
+</html>

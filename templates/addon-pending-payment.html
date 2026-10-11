@@ -1,106 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Pagamento pendente · Corretor Studio</title>
 <!--
   Fluxo: Add-on (usuário/time) com pagamento pendente
   Fonte: lib/services/EmailService.ts → sendAddOnPendingPaymentEmail (via buildCheckoutLinkEmailHtml)
-  Assunto: {{addonLabel}} pendente de pagamento — Corretor Studio
+  Assunto: {{{addonLabel}}} pendente de pagamento, Corretor Studio
   Variáveis:
-    {{addonLabel}}, {{addonLabelLower}}, {{requesterInfo}} (ex: " por João" ou ""),
-    {{masterName}}, {{checkoutUrl}}, {{addonDetail}} (opcional),
-    {{totalChargeFormatted}}, {{remainingMonthsLabel}} (ex: "3 meses" ou "1 mês"),
-    {{currentYear}}
+    {{{addonLabel}}}, {{{addonLabelLower}}}, {{{requesterInfo}}} (ex: " por João" ou ""),
+    {{{masterName}}}, {{{checkoutUrl}}}, {{{addonDetail}}} (opcional),
+    {{{totalChargeFormatted}}}, {{{remainingMonthsLabel}}} (ex: "3 meses" ou "1 mês"),
+    {{{currentYear}}}
 -->
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Existe uma cobrança adicional pendente. Finalize o pagamento para ativar.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);">
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
+
           <tr>
-            <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 32px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Corretor Studio</h1>
-              <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.92); font-size: 15px;">Pagamento pendente para adicionar {{addonLabel}}</p>
+            <td bgcolor="#E68200" style="background-color:#E68200; background-image:linear-gradient(160deg,#F0931F 0%,#E07400 100%); padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783702974383-yrzu5g.png" width="27" height="24" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /><span style="display:inline-block; vertical-align:middle; margin-left:9px; font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:18px; color:rgba(255,255,255,0.94);">Corretor Studio</span>
+        </td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:1.1px; text-transform:uppercase; color:rgba(255,255,255,0.88);">Pagamento pendente</td></tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="padding: 36px 32px;">
-              <h2 style="margin: 0 0 14px 0; color: #171717; font-size: 24px; font-weight: 600;">Olá, {{masterName}}</h2>
-              <p style="margin: 0 0 18px 0; color: #525252; font-size: 16px; line-height: 1.7;">
-                Foi solicitado um novo {{addonLabelLower}}{{requesterInfo}} para sua conta. Existe uma cobrança adicional pendente.
-              </p>
-
-              <div style="text-align: center; margin: 24px 0;">
-                <a href="{{checkoutUrl}}" target="_blank" rel="noreferrer" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 12px; font-weight: 700;">
-                  Abrir checkout
-                </a>
-              </div>
-
-              <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; margin: 24px 0;">
-                <p style="margin: 0 0 12px 0; color: #111827; font-size: 14px; font-weight: 700;">Resumo</p>
-                <table role="presentation" style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 0 0 10px 0; color: #111827; font-size: 14px; font-weight: 600;">
-                      Atenção
-                    </td>
-                    <td style="padding: 0 0 10px 0; color: #111827; font-size: 14px; text-align: right;">
-                      O link é válido por 24 horas.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600;">
-                      Item
-                    </td>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; text-align: right;">
-                      {{addonLabel}}
-                    </td>
-                  </tr>
-                  <!-- Linha opcional: renderizada apenas quando {{addonDetail}} estiver presente -->
-                  <tr>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600;">
-                      Detalhe
-                    </td>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; text-align: right;">
-                      {{addonDetail}}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600;">
-                      Total
-                    </td>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; text-align: right;">
-                      {{totalChargeFormatted}}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600;">
-                      Período
-                    </td>
-                    <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; text-align: right;">
-                      {{remainingMonthsLabel}}
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              <p style="margin: 0; color: #737373; font-size: 13px; line-height: 1.6;">
-                Se você não solicitou isso, pode ignorar este e-mail.
-              </p>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; ">Olá, <span style="color:#E07400;">{{{masterName}}}</span></td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; ">Foi solicitado um novo <strong style="color:#1C1B22;">{{{addonLabelLower}}}</strong>{{{requesterInfo}}} para sua conta. Existe uma <strong style="color:#1C1B22;">cobrança adicional pendente</strong>, finalize o pagamento abaixo para ativar.</td></tr>
+<!-- Linha "Detalhe" opcional: renderize apenas quando {{{addonDetail}}} existir -->
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6EE" style="background-color:#FFF6EE; border:1px solid #F8CFA6; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#7A3B00; padding:10px 0 2px;">Resumo da cobrança</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Item</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{addonLabel}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Detalhe</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{addonDetail}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Período</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{remainingMonthsLabel}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; ">Total</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:17px; font-weight:bold; color:#E07400; padding:11px 0; word-break:break-word; ">{{{totalChargeFormatted}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td align="center" style="padding:4px 0 10px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{{checkoutUrl}}}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="30%" strokecolor="#E07400" fillcolor="#E07400">
+        <w:anchorlock/><center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:14px;font-weight:bold;">Abrir checkout &#8594;</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{{checkoutUrl}}}" style="display:inline-block; background-color:#E07400; color:#ffffff; text-decoration:none; padding:14px 36px; border-radius:999px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold;">Abrir checkout &#8594;</a>
+        <!--<![endif]-->
+      </td></tr>
+<tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; color:#9A99A6; padding-bottom:22px;">Este link expira em <strong style="color:#1C1B22;">24 horas</strong></td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Se você não solicitou esta inclusão, basta ignorar este e-mail, nada será cobrado.</td></tr></table></td></tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="background-color: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #737373; font-size: 12px;">
-                Este é um e-mail automático do Corretor Studio
-              </p>
-              <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
-                © {{currentYear}} Corretor Studio. Todos os direitos reservados.
-              </p>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
             </td>
           </tr>
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>
