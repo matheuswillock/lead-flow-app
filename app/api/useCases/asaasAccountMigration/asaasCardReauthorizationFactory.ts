@@ -6,18 +6,11 @@ import { RequestCardReauthorizationUseCase } from "./RequestCardReauthorizationU
 
 const notifier = {
   async send(input: { to: string; name: string; url: string; expiresAt: Date }) {
-    const result = await createEmailService().sendEmail({
+    const result = await createEmailService().sendEmailUntracked({
       from: process.env.EMAIL_FROM ?? "Corretor Studio <contato@mail.corretorstudio.com>",
       to: [input.to],
       subject: "Atualize seu cartão para continuar no Corretor Studio",
       html: `<p>Olá, ${escapeHtml(input.name)}.</p><p>Para continuar usando o Corretor Studio, atualize o cartão da sua assinatura na conta nova.</p><p><a href="${escapeHtml(input.url)}">Atualizar cartão</a></p><p>Este link expira em ${escapeHtml(input.expiresAt.toLocaleDateString("pt-BR"))}.</p>`,
-      tracking: {
-        teamId: "billing-migration",
-        category: "transactional",
-        sourceType: "asaas-card-reauthorization",
-        sourceId: "asaas-card-reauthorization",
-        recipientName: input.name,
-      },
     })
     if (!result.success) throw new Error(result.error ?? "Falha ao enviar e-mail de reautorização")
   },

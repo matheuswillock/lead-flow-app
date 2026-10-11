@@ -75,7 +75,7 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
       where: {
         nextDueDate: { lt: nextCivilDay },
         OR: [
-          { status: { in: ["customer_created", "awaiting_due_date", "requires_card_reauth"] } },
+          { status: { in: ["customer_created", "awaiting_due_date", "initial_payment_confirmed", "subscription_created", "legacy_removed", "requires_card_reauth", "paused_awaiting_card"] } },
           {
             status: "failed",
             resumeStatus: { in: ["awaiting_due_date", "requires_card_reauth", "paused_awaiting_card"] },
@@ -159,7 +159,8 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
       !current.resumeStatus ||
       !current.failureCode ||
       (!current.failureCode.startsWith("TRANSIENT:") &&
-        !current.failureCode.startsWith("REMOTE_UNKNOWN:"))
+        !current.failureCode.startsWith("REMOTE_UNKNOWN:") &&
+        !current.failureCode.startsWith("DECLINED:"))
     ) return null
     const updated = await prisma.asaasAccountMigration.updateMany({
       where: {

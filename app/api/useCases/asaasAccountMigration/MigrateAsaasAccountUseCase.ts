@@ -92,6 +92,11 @@ function daysUntilDue(now: Date, dueDate: Date | null): number | null {
   return Math.ceil((dueCivil.getTime() - nowCivil.getTime()) / 86_400_000)
 }
 
+function isCurrentCyclePayment(paymentDueDate: string | null | undefined, nextDueDate: Date | null): boolean {
+  if (!paymentDueDate || !nextDueDate) return false
+  return paymentDueDate.slice(0, 10) === persistedCivilDate(nextDueDate)
+}
+
 const CONFIRMED_PAYMENT_STATUSES = new Set(["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"])
 const PAYABLE_PAYMENT_STATUSES = new Set(["PENDING", "OVERDUE"])
 
@@ -194,7 +199,7 @@ export class MigrateAsaasAccountUseCase {
           const payments = await this.dependencies.migrationGateway.listLegacySubscriptionPayments(
             current.legacySubscriptionId,
           )
-          if (payments.some((payment) => CONFIRMED_PAYMENT_STATUSES.has(payment.status))) {
+          if (payments.some((payment) => CONFIRMED_PAYMENT_STATUSES.has(payment.status) && isCurrentCyclePayment(payment.dueDate, current.nextDueDate))) {
             return this.fail(
               input,
               "Pagamento legado confirmado no ciclo; revisão manual necessária",
