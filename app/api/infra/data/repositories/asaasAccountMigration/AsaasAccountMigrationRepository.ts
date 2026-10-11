@@ -38,7 +38,7 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
   async recordQuoteSnapshot(legacyCustomerId: string, quote: object): Promise<void> {
     const serialized = JSON.stringify(quote)
     await prisma.asaasAccountMigration.updateMany({
-      where: { legacyCustomerId, quoteSnapshot: { equals: Prisma.JsonNull } },
+      where: { legacyCustomerId, quoteSnapshot: { equals: Prisma.DbNull } },
       data: { quoteSnapshot: quote, quoteHash: createHash("sha256").update(serialized).digest("hex") },
     })
   }

@@ -61,7 +61,7 @@ export class CardReauthorizationUseCase {
         quote,
         creditCardToken,
         remoteIp: input.remoteIp,
-        paymentExternalReference: `asaas-card-migration:${record.migration.legacyCustomerId}`,
+        paymentExternalReference: claim.attemptReference,
       })
       if (result.isValid) {
         await this.completeAttempt(claim.attemptId, "confirmed", null)

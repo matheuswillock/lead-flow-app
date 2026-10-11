@@ -115,6 +115,9 @@ export class MigrateAsaasAccountUseCase {
     try {
       let migration = await this.dependencies.ledgerRepository.findByLegacyCustomerId(input.legacyCustomerId)
       if (!migration) return new Output(false, [], ["Registro de migração não encontrado"], null)
+      if (input.paymentExternalReference && !/^[A-Za-z0-9:_-]{1,100}$/.test(input.paymentExternalReference)) {
+        return new Output(false, [], ["Referência externa de pagamento inválida"], { reason: "manual_review" })
+      }
       if (migration.profileId !== input.quote.billingOwnerId) return new Output(false, [], ["Quote não pertence ao cliente da migração"], null)
       if (input.quote.status === "blocked") return new Output(false, [], ["Quote bloqueado; migração interrompida"], null)
       if (this.dependencies.readinessService) {
