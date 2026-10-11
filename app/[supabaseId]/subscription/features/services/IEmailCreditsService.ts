@@ -28,8 +28,18 @@ export type EmailCreditsSubscribeResult = {
 
 export type EmailCreditsBillingType = "PIX" | "CREDIT_CARD"
 
+/**
+ * DA3 (SPEC 21): resultado discriminado — `getStatus()` deixa de devolver
+ * `null` tanto para "sem plano" quanto para "falha de fetch". Um 500
+ * transitório não pode mais virar "Nenhum plano ativo" com o botão
+ * "Comprar" habilitado (risco de segundo checkout do mesmo add-on).
+ */
+export type EmailCreditsStatusResult =
+  | { ok: true; status: EmailCreditsStatus }
+  | { ok: false }
+
 export interface IEmailCreditsService {
-  getStatus(): Promise<EmailCreditsStatus | null>
+  getStatus(): Promise<EmailCreditsStatusResult>
   subscribe(
     plan: EmailCreditPlanId,
     billingType?: EmailCreditsBillingType

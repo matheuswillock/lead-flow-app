@@ -390,6 +390,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       if (formattedOverride) {
         await billingRepository.updateSubscriptionData(master.id, {
           asaasSubscriptionId: master.asaasSubscriptionId!,
+          // Mesma assinatura, mesma conta — nenhuma migração acontece aqui.
+          asaasSubscriptionAccount: account,
           subscriptionNextDueDate: new Date(formattedOverride),
           subscriptionCycle: currentSubscription.cycle || master.subscriptionCycle || "MONTHLY",
         });
@@ -402,6 +404,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       if (formattedOverride) {
         await billingRepository.updateSubscriptionData(master.id, {
           asaasSubscriptionId: master.asaasSubscriptionId!,
+          asaasSubscriptionAccount: account,
           subscriptionNextDueDate: new Date(formattedOverride),
           subscriptionCycle: currentSubscription.cycle || master.subscriptionCycle || "MONTHLY",
         });
@@ -449,6 +452,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
     await billingRepository.updateSubscriptionData(master.id, {
       asaasSubscriptionId: newSubscription.subscriptionId,
+      // createAsaasSubscription (acima) nasce sempre na conta primary (DA1).
+      asaasSubscriptionAccount: "primary",
       subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
       subscriptionCycle: newSubscription.data.cycle || "MONTHLY",
     });
@@ -531,6 +536,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
           await billingRepository.updateSubscriptionData(master.id, {
             asaasSubscriptionId: newSubscription.subscriptionId,
+            // createAsaasSubscription (acima) nasce sempre na conta primary (DA1).
+            asaasSubscriptionAccount: "primary",
             subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
             subscriptionCycle: newSubscription.data.cycle || cycle,
           });
@@ -556,6 +563,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
     await billingRepository.updateSubscriptionData(master.id, {
       asaasSubscriptionId: newSubscription.subscriptionId,
+      // createAsaasSubscription (acima) nasce sempre na conta primary (DA1).
+      asaasSubscriptionAccount: "primary",
       subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
       subscriptionCycle: newSubscription.data.cycle || cycle,
     });

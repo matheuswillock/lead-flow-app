@@ -66,7 +66,7 @@ runs:
           -p 55322:5432 \
           -v "$PWD/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro" \
           -v "$PWD/docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro" \
-          supabase/postgres:17.6.1.149 \
+          ghcr.io/supabase/postgres:17.6.1.149 \
           postgres \
           -c listen_addresses=* \
           -c wal_level=logical \

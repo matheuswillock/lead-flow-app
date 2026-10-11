@@ -1,9 +1,18 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Convite · Corretor Studio</title>
 <!--
   Fluxo: Convite para novo operador/manager
   Fonte: lib/services/EmailService.ts → sendOperatorInviteEmail
-  Assunto: Convite: Você foi adicionado ao Corretor Studio por {{managerName}}
-  Variáveis: {{operatorName}}, {{managerName}}, {{operatorRole}}, {{roleLabel}},
-            {{inviteUrl}}, {{roleCapabilitiesHtml}} (varia conforme role: operator|manager)
+  Assunto: Convite: Você foi adicionado ao Corretor Studio por {{{managerName}}}
+  Variáveis: {{{operatorName}}}, {{{managerName}}}, {{{operatorRole}}}, {{{roleLabel}}},
+            {{{inviteUrl}}}, {{{currentYear}}},
+            {{{roleCapabilitiesHtml}}} (varia conforme role: operator|manager)
 
   Bloco roleCapabilitiesHtml (operator):
     <h3 style="color: #333; margin-top: 20px;">Como Operador, você poderá:</h3>
@@ -27,110 +36,122 @@
       <li>✅ Controlar assinaturas e pagamentos</li>
     </ul>
 -->
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style type="text/css">
+
+  .mk a { color:#ff6900 !important; text-decoration:none !important; font-weight:bold !important; word-break:break-all; }
+  .mk p { margin:0 !important; font-family:Arial, Helvetica, sans-serif !important; font-size:14px !important; color:#1C1B22 !important; }
+  .mk-crm p strong { display:none !important; }
+  .mk-list ul { list-style:none !important; margin:0 !important; padding:0 !important; }
+  .mk-list li { font-family:'Courier New',monospace !important; font-size:12.5px !important; color:#3D3C44 !important; padding:4px 0 !important; margin:0 !important; word-break:break-all; }
+  .mk-list p { margin:0 !important; font-size:13px !important; color:#9A99A6 !important; font-style:italic; }
+  .mk-caps h3 { margin:0 0 8px !important; font-family:Arial, Helvetica, sans-serif !important; font-size:11px !important; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22 !important; }
+  .mk-caps ul { list-style:none !important; margin:0 !important; padding:0 !important; }
+  .mk-caps li { font-family:Arial, Helvetica, sans-serif !important; font-size:13.5px !important; line-height:1.55 !important; color:#3D3C44 !important; padding:6px 0 !important; border-bottom:1px solid #ECECF0; }
+  .mk-pay p { margin:0 0 10px !important; font-family:Arial, Helvetica, sans-serif !important; font-size:13.5px !important; line-height:1.6 !important; color:#3D3C44 !important; }
+
+</style>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Você foi convidado para a equipe no Corretor Studio. Defina sua senha para acessar.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
 
           <tr>
-            <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
-              <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Gestão Inteligente de Leads</p>
+            <td bgcolor="#ffffff" style="background-color:#ffffff; border-top:3px solid #ff6900; border-bottom:1px solid #EDEDF1; padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783703588900-w41ywg.png" width="27" height="24" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /><span style="display:inline-block; vertical-align:middle; margin-left:9px; font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:18px; color:#1C1B22;">Corretor Studio</span>
+        </td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:1.1px; text-transform:uppercase; color:#9A99A6;">Você foi convidado</td></tr>
+              </table>
             </td>
           </tr>
-
           <tr>
-            <td style="padding: 48px 32px;">
-              <div style="text-align: center; margin-bottom: 32px;">
-                <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 50%; border: 2px solid #ff6900; text-align: center; line-height: 72px; margin-bottom: 16px;">
-                  <span style="font-size: 32px;">🎉</span>
-                </div>
-              </div>
-
-              <h2 style="margin: 0 0 24px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Bem-vindo ao Corretor Studio!</h2>
-
-              <p style="margin: 0 0 16px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
-                Olá <strong>{{operatorName}}</strong>,
-              </p>
-
-              <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
-                Você foi convidado por <strong>{{managerName}}</strong> para fazer parte da equipe no <strong>Corretor Studio</strong>.
-              </p>
-
-              <div style="background-color: #fff7ed; border-left: 4px solid #ff6900; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 0; color: #ea580c; font-weight: 600;">Sua função: {{roleLabel}}</p>
-              </div>
-
-              {{roleCapabilitiesHtml}}
-
-              <div style="background-color: #f9fafb; border-radius: 12px; padding: 24px; margin: 24px 0;">
-                <h3 style="margin: 0 0 16px 0; color: #171717; font-size: 18px; font-weight: 600;">🚀 Por que usar o Corretor Studio?</h3>
-                <ul style="margin: 0; padding: 0; list-style: none;">
-                  <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Dashboard com métricas em tempo real</span>
-                  </li>
-                  <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Funil de vendas visual e intuitivo</span>
-                  </li>
-                  <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Interface responsiva para qualquer dispositivo</span>
-                  </li>
-                  <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Notificações automáticas de leads</span>
-                  </li>
-                  <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Gestão de documentos anexados</span>
-                  </li>
-                  <li style="margin-bottom: 0; color: #525252; font-size: 15px; display: flex; align-items: start;">
-                    <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
-                    <span>Atualizações instantâneas</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="{{inviteUrl}}" style="display: inline-block; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);">
-                  🔐 Acessar Plataforma e Definir Senha
-                </a>
-              </div>
-
-              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
-                  <strong>⚠️ Importante:</strong> Este link expira em 24 horas. Clique no botão acima para definir sua senha e começar a usar a plataforma.
-                </p>
-              </div>
-
-              <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 32px 0;" />
-
-              <p style="margin: 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
-                Se você tiver alguma dúvida, entre em contato com <strong>{{managerName}}</strong> ou com o suporte do Corretor Studio.
-              </p>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; ">Bem-vindo, <span style="color:#e57082;">{{{operatorName}}}</span>!</td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; "><strong style="color:#1C1B22;">{{{managerName}}}</strong> convidou você para fazer parte da equipe no <strong style="color:#1C1B22;">Corretor Studio</strong>. Confira sua função e o que você poderá fazer na plataforma abaixo.</td></tr>
+<tr><td style="padding-bottom:24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6F1" style="background-color:#FFF6F1; border:1px solid #FBD3B8; border-radius:14px;"><tr><td style="padding:18px 20px;">
+        <div style="font-family:Arial, Helvetica, sans-serif; font-size:10.5px; font-weight:bold; letter-spacing:1px; text-transform:uppercase; color:#9A99A6; padding-bottom:4px;">Sua função</div>
+        <div style="font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; color:#1C1B22;">{{{roleLabel}}}</div>
+        
+      </td></tr></table></td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td class="mk-caps" style="padding:16px 20px; font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.55; color:#3D3C44;">{{{roleCapabilitiesHtml}}}</td></tr></table></td></tr>
+<tr><td style="padding-bottom:24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:16px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding-bottom:8px;">Por que usar o Corretor Studio</td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Dashboard com métricas em tempo real</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Funil de vendas visual e intuitivo</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Interface responsiva para qualquer dispositivo</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Notificações automáticas de leads</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Gestão de documentos anexados</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:6px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+                  <td width="30" valign="top">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="20" height="20" align="center" valign="middle" bgcolor="#E4F6EF" style="background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:50%; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; color:#00a87e; line-height:20px;">&#10003;</td></tr></table>
+                  </td>
+                  <td valign="middle" style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.45; color:#3D3C44;">Atualizações instantâneas</td>
+                </tr></table>
+              </td></tr></table></td></tr></table></td></tr>
+<tr><td align="center" style="padding:4px 0 10px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{{inviteUrl}}}" style="height:48px;v-text-anchor:middle;width:320px;" arcsize="30%" strokecolor="#e57082" fillcolor="#e57082">
+        <w:anchorlock/><center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:14px;font-weight:bold;">Acessar e definir minha senha &#8594;</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{{inviteUrl}}}" style="display:inline-block; background-color:#e57082; color:#ffffff; text-decoration:none; padding:14px 36px; border-radius:999px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold;">Acessar e definir minha senha &#8594;</a>
+        <!--<![endif]-->
+      </td></tr>
+<tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; color:#9A99A6; padding-bottom:22px;">Este convite expira em <strong style="color:#1C1B22;">24 horas</strong></td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Dúvidas? Fale com <strong style="color:#1C1B22;">{{{managerName}}}</strong> ou com o suporte do Corretor Studio.</td></tr></table></td></tr>
+              </table>
             </td>
           </tr>
-
           <tr>
-            <td style="background-color: #f9fafb; padding: 24px 32px; text-align: center; border-top: 1px solid #e5e5e5;">
-              <p style="margin: 0; color: #737373; font-size: 12px;">
-                Este é um e-mail automático do Corretor Studio
-              </p>
-              <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
-                © 2026 Corretor Studio. Todos os direitos reservados.
-              </p>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
             </td>
           </tr>
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>

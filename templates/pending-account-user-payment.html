@@ -1,20 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Cobrança pendente · Corretor Studio</title>
 <!--
   Fluxo: Cobrança incremental pendente para criar novo usuário na conta
   Fonte: lib/services/EmailService.ts → sendPendingAccountUserPaymentEmail
-  Assunto: Pagamento pendente para adicionar {{requestedUserName}} à conta
+  Assunto: Pagamento pendente para adicionar {{{requestedUserName}}} à conta
   Variáveis:
-    {{masterName}}, {{requesterName}}, {{requesterEmail}},
-    {{requestedUserName}}, {{requestedUserEmail}}, {{requestedRole}},
-    {{amountFormatted}}, {{newRecurringTotalFormatted}},
-    {{paymentId}}, {{billingTypeLabel}}, {{manageUrl}},
-    {{paymentInstructionsHtml}} (varia conforme billingType: PIX | BOLETO | outro)
+    {{{masterName}}}, {{{requesterName}}}, {{{requesterEmail}}},
+    {{{requestedUserName}}}, {{{requestedUserEmail}}}, {{{requestedRole}}},
+    {{{amountFormatted}}}, {{{newRecurringTotalFormatted}}},
+    {{{paymentId}}}, {{{billingTypeLabel}}}, {{{manageUrl}}}, {{{currentYear}}},
+    {{{paymentInstructionsHtml}}} (varia conforme billingType: PIX | BOLETO | outro)
 
   paymentInstructionsHtml (PIX):
     <p style="margin: 0 0 12px 0; color: #525252; font-size: 15px; line-height: 1.6;">
       Copie o código PIX abaixo para concluir a cobrança adicional:
     </p>
     <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #171717;">
-      {{pixPayload}}
+      {{{pixPayload}}}
     </div>
 
   paymentInstructionsHtml (BOLETO):
@@ -22,66 +30,107 @@
       A cobrança foi gerada em boleto. Use o link abaixo para visualizar e pagar:
     </p>
     <div style="margin-bottom: 16px;">
-      <a href="{{boletoUrl}}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
+      <a href="{{{boletoUrl}}}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
         Abrir boleto
       </a>
     </div>
     <p style="margin: 0; color: #737373; font-size: 14px;">
-      Vencimento: {{boletoDueDate}}
+      Vencimento: {{{boletoDueDate}}}
     </p>
 
   paymentInstructionsHtml (CREDIT_CARD / UNDEFINED):
     <p style="margin: 0 0 12px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-      A cobrança incremental foi enviada ao {{billingTypeLabel}}. Assim que o pagamento for confirmado, o novo usuário será criado automaticamente.
+      A cobrança incremental foi enviada ao {{{billingTypeLabel}}}. Assim que o pagamento for confirmado, o novo usuário será criado automaticamente.
     </p>
 -->
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style type="text/css">
+
+  .mk a { color:#ff6900 !important; text-decoration:none !important; font-weight:bold !important; word-break:break-all; }
+  .mk p { margin:0 !important; font-family:Arial, Helvetica, sans-serif !important; font-size:14px !important; color:#1C1B22 !important; }
+  .mk-crm p strong { display:none !important; }
+  .mk-list ul { list-style:none !important; margin:0 !important; padding:0 !important; }
+  .mk-list li { font-family:'Courier New',monospace !important; font-size:12.5px !important; color:#3D3C44 !important; padding:4px 0 !important; margin:0 !important; word-break:break-all; }
+  .mk-list p { margin:0 !important; font-size:13px !important; color:#9A99A6 !important; font-style:italic; }
+  .mk-caps h3 { margin:0 0 8px !important; font-family:Arial, Helvetica, sans-serif !important; font-size:11px !important; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22 !important; }
+  .mk-caps ul { list-style:none !important; margin:0 !important; padding:0 !important; }
+  .mk-caps li { font-family:Arial, Helvetica, sans-serif !important; font-size:13.5px !important; line-height:1.55 !important; color:#3D3C44 !important; padding:6px 0 !important; border-bottom:1px solid #ECECF0; }
+  .mk-pay p { margin:0 0 10px !important; font-family:Arial, Helvetica, sans-serif !important; font-size:13.5px !important; line-height:1.6 !important; color:#3D3C44 !important; }
+
+</style>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Um novo usuário foi solicitado e aguarda a confirmação da cobrança incremental.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);">
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
+
           <tr>
-            <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 32px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Corretor Studio</h1>
-              <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.92); font-size: 15px;">Cobrança incremental pendente</p>
+            <td bgcolor="#E68200" style="background-color:#E68200; background-image:linear-gradient(160deg,#F0931F 0%,#E07400 100%); padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783702974383-yrzu5g.png" width="27" height="24" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /><span style="display:inline-block; vertical-align:middle; margin-left:9px; font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:18px; color:rgba(255,255,255,0.94);">Corretor Studio</span>
+        </td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:1.1px; text-transform:uppercase; color:rgba(255,255,255,0.88);">Cobrança pendente</td></tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="padding: 36px 32px;">
-              <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 24px; font-weight: 600;">Olá, {{masterName}}</h2>
-              <p style="margin: 0 0 20px 0; color: #525252; font-size: 16px; line-height: 1.7;">
-                {{requesterName}} solicitou a criação de um novo usuário na sua conta. A conta ficará pendente até a confirmação da cobrança adicional.
-              </p>
-
-              <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; margin-bottom: 20px;">
-                <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Usuário solicitado:</strong> {{requestedUserName}}</p>
-                <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>E-mail:</strong> {{requestedUserEmail}}</p>
-                <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Nível:</strong> {{requestedRole}}</p>
-                <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Solicitado por:</strong> {{requesterName}} ({{requesterEmail}})</p>
-                <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Valor adicional:</strong> {{amountFormatted}}</p>
-                <p style="margin: 0; color: #171717; font-size: 15px;"><strong>Novo valor recorrente:</strong> {{newRecurringTotalFormatted}}</p>
-              </div>
-
-              <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
-                <p style="margin: 0 0 8px 0; color: #9a3412; font-size: 15px;"><strong>ID da cobrança:</strong> {{paymentId}}</p>
-                <p style="margin: 0 0 16px 0; color: #9a3412; font-size: 15px;"><strong>Forma de cobrança:</strong> {{billingTypeLabel}}</p>
-                {{paymentInstructionsHtml}}
-              </div>
-
-              <div style="text-align: center;">
-                <a href="{{manageUrl}}" style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
-                  Abrir assinatura
-                </a>
-              </div>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; ">Olá, <span style="color:#E07400;">{{{masterName}}}</span></td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; "><strong style="color:#1C1B22;">{{{requesterName}}}</strong> solicitou a criação de um novo usuário na sua conta. A criação ficará pendente até a confirmação da <strong style="color:#1C1B22;">cobrança incremental</strong> gerada abaixo.</td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding:10px 0 2px;">Usuário solicitado</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Nome</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{requestedUserName}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">E-mail</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{requestedUserEmail}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Nível</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#E07400; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{requestedRole}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; ">Solicitado por</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{requesterName}}}<br /><span style="font-weight:normal; font-size:12px; color:#6E6D7A;">{{{requesterEmail}}}</span></td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding:10px 0 2px;">Cobrança incremental</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Valor adicional</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:17px; font-weight:bold; color:#E07400; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{amountFormatted}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; ">Novo total recorrente</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{newRecurringTotalFormatted}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6EE" style="background-color:#FFF6EE; border:1px solid #F8CFA6; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#7A3B00; padding:10px 0 2px;">Aguardando pagamento</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Forma</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{billingTypeLabel}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; ">ID</td>
+                  <td align="right" valign="top" style="font-family:'Courier New',monospace; font-size:12.5px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{paymentId}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td style="padding:10px 0 22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6EE" style="background-color:#FFF6EE; border:1px solid #F8CFA6; border-radius:12px;"><tr><td class="mk mk-pay" style="padding:14px 18px; font-family:Arial, Helvetica, sans-serif; font-size:13.5px; line-height:1.6; color:#3D3C44;">{{{paymentInstructionsHtml}}}</td></tr></table></td></tr>
+<tr><td align="center" style="padding:4px 0 20px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{{manageUrl}}}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="30%" strokecolor="#E07400" fillcolor="#E07400">
+        <w:anchorlock/><center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:14px;font-weight:bold;">Abrir assinatura &#8594;</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{{manageUrl}}}" style="display:inline-block; background-color:#E07400; color:#ffffff; text-decoration:none; padding:14px 36px; border-radius:999px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold;">Abrir assinatura &#8594;</a>
+        <!--<![endif]-->
+      </td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Assim que a cobrança for confirmada, o novo usuário será criado automaticamente. Caso não reconheça esta solicitação, entre em contato com o suporte.</td></tr></table></td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
             </td>
           </tr>
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>

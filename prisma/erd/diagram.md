@@ -162,6 +162,31 @@ legacy legacy
     
 
 
+        asaas_account_migration_status {
+            pending pending
+customer_created customer_created
+awaiting_due_date awaiting_due_date
+subscription_created subscription_created
+legacy_removed legacy_removed
+paused_awaiting_card paused_awaiting_card
+initial_payment_confirmed initial_payment_confirmed
+legacy_deactivated legacy_deactivated
+done done
+requires_card_reauth requires_card_reauth
+failed failed
+        }
+    
+
+
+        asaas_card_reauthorization_attempt_status {
+            processing processing
+confirmed confirmed
+declined declined
+unknown unknown
+        }
+    
+
+
         backoffice_webhook_token_status {
             active active
 replaced replaced
@@ -1797,6 +1822,7 @@ completed completed
     String cpfCnpj "❓"
     String notes "❓"
     String asaasCustomerId "❓"
+    AsaasAccount asaasAccount 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -3260,6 +3286,7 @@ completed completed
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
     String asaasSubscriptionId "❓"
+    AsaasAccount asaasSubscriptionAccount 
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
@@ -3293,6 +3320,84 @@ completed completed
     DateTime capturedAt 
     String schemaVersion 
     Json payload 
+    }
+  
+
+  "corretor_studio_asaas_account_migrations" {
+    String id "🗝️"
+    String profile_id 
+    String client_name 
+    String client_email 
+    String legacy_customer_id 
+    String legacy_subscription_id "❓"
+    String primary_customer_id "❓"
+    String primary_subscription_id "❓"
+    String primary_payment_id "❓"
+    String billing_type "❓"
+    String cycle "❓"
+    Decimal value "❓"
+    DateTime next_due_date "❓"
+    Boolean notifications_disabled 
+    String anomaly_notes "❓"
+    AsaasAccountMigrationStatus status 
+    Int attempt_count 
+    String last_error "❓"
+    DateTime migrated_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    Json quote_snapshot "❓"
+    String quote_hash "❓"
+    DateTime legacy_removed_at "❓"
+    DateTime reauthorization_requested_at "❓"
+    DateTime reauthorization_completed_at "❓"
+    AsaasAccountMigrationStatus resume_status "❓"
+    String failure_step "❓"
+    String failure_code "❓"
+    String lease_owner "❓"
+    DateTime lease_expires_at "❓"
+    }
+  
+
+  "corretor_studio_asaas_migration_execution_manifests" {
+    String id "🗝️"
+    String migration_id 
+    Boolean approved 
+    String approved_by 
+    String value_mode 
+    String inventory_hash 
+    DateTime gate_run_at 
+    DateTime valid_until 
+    Json gate_evidence 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "corretor_studio_asaas_card_reauthorizations" {
+    String id "🗝️"
+    String migration_id 
+    String token_hash 
+    DateTime expires_at 
+    DateTime used_at "❓"
+    Int attempt_count 
+    String last_error "❓"
+    String processing_owner "❓"
+    DateTime processing_expires_at "❓"
+    DateTime last_attempt_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "corretor_studio_asaas_card_reauthorization_attempts" {
+    String id "🗝️"
+    String reauthorization_id 
+    String master_profile_id 
+    String attempt_reference 
+    AsaasCardReauthorizationAttemptStatus status 
+    String failure_code "❓"
+    DateTime created_at 
+    DateTime completed_at "❓"
     }
   
 
@@ -4498,6 +4603,7 @@ completed completed
     "backoffice_team_email_limit_grants" }o--|| corretor_studio_profiles : "grantedBy"
     "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
+    "backoffice_clients" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -4803,6 +4909,7 @@ completed completed
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "corretor_studio_profile_subscriptions" |o--|| "AsaasAccount" : "enum:asaasSubscriptionAccount"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
@@ -4811,6 +4918,12 @@ completed completed
     "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
+    "corretor_studio_asaas_account_migrations" |o--|| "AsaasAccountMigrationStatus" : "enum:status"
+    "corretor_studio_asaas_account_migrations" |o--|o "AsaasAccountMigrationStatus" : "enum:resume_status"
+    "corretor_studio_asaas_migration_execution_manifests" |o--|| corretor_studio_asaas_account_migrations : "migration"
+    "corretor_studio_asaas_card_reauthorizations" |o--|| corretor_studio_asaas_account_migrations : "migration"
+    "corretor_studio_asaas_card_reauthorization_attempts" |o--|| "AsaasCardReauthorizationAttemptStatus" : "enum:status"
+    "corretor_studio_asaas_card_reauthorization_attempts" }o--|| corretor_studio_asaas_card_reauthorizations : "reauthorization"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| "EmailSendingHealthStatus" : "enum:sendingHealthStatus"
     "email_team_settings" |o--|| corretor_studio_teams : "team"

@@ -155,6 +155,7 @@ class PrismaBillingRepository implements IBillingRepository {
   ): Promise<void> {
     const subData = {
       asaasSubscriptionId: data.asaasSubscriptionId,
+      asaasSubscriptionAccount: data.asaasSubscriptionAccount,
       subscriptionNextDueDate: data.subscriptionNextDueDate,
       subscriptionCycle: data.subscriptionCycle,
     };

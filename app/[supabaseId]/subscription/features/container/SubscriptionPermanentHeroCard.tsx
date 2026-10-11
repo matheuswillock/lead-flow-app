@@ -25,7 +25,7 @@ export function SubscriptionPermanentHeroCard({ subscription, onOpenDetails }: S
             <CardDescription>{subscription.customer.name} possui acesso permanente sem cobrança mensal.</CardDescription>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={onOpenDetails}>
+        <Button variant="outline" size="sm" className="max-lg:h-11" onClick={onOpenDetails}>
           <FileText data-icon="inline-start" />
           Detalhes
         </Button>

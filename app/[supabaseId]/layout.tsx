@@ -12,6 +12,7 @@ import { WebPushConsentPrompt } from "./notifications/features/components/WebPus
 import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
 import { getAuthenticatedLayoutBootstrapData } from "@/lib/bootstrap/getAuthenticatedLayoutBootstrapData"
 import { CampaignDispatchRealtimeProvider } from "./email/campanhas/features/context/CampaignDispatchRealtimeContext"
+import { AccountAccessGate } from "./components/AccountAccessGate"
 
 export const metadata: Metadata = NO_INDEX_METADATA
 
@@ -36,6 +37,7 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   const bootstrap = await getAuthenticatedLayoutBootstrapData(supabaseId)
 
   return (
+    <AccountAccessGate decision={bootstrap?.accountAccessDecision}>
     <UserProvider
       supabaseId={supabaseId}
       initialUser={bootstrap?.user ?? null}
@@ -64,5 +66,6 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
         </FeatureAccessProvider>
       </TeamProvider>
     </UserProvider>
+    </AccountAccessGate>
   )
 }

@@ -8,10 +8,10 @@ describe("isBlockedFromAutomaticMigration — gate C5 dos permanentes+ativos (T-
     ).toBe(true);
   });
 
-  it("permanente + past_due → marcado (ex.: Matheus/Corretor Seguro — casos reais)", () => {
+  it("permanente + past_due → não é marcado: C5 só interrompe a migração automática de assinaturas ativas", () => {
     expect(
       isBlockedFromAutomaticMigration({ hasPermanentSubscription: true, subscriptionStatus: "past_due" }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("permanente sem assinatura (status null) → NÃO marcado", () => {

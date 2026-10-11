@@ -11,7 +11,7 @@ import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featu
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial", "past_due"])
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 
 type ActiveFeature = ActiveFeatureRecord
 
@@ -178,6 +178,7 @@ export class FeatureAccessService implements IFeatureAccessService {
     if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
+
 
     const betaEligibleFeatureIds = await this.repository.resolveBetaEligibleFeatureIds({
       profileId: data.profileId,

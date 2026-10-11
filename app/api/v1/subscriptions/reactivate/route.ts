@@ -2,9 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
 import { Output } from '@/lib/output';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function POST(request: NextRequest) {
   try {
+    const authenticatedSupabaseId = request.headers.get("x-supabase-user-id");
+    if (!authenticatedSupabaseId) {
+      return NextResponse.json(new Output(false, [], ["Não autenticado"], null), { status: 401 });
+    }
+
+    const accessDeniedResponse = await requireActiveAccountAccess(authenticatedSupabaseId);
+    if (accessDeniedResponse) {
+      return accessDeniedResponse;
+    }
+
     const body = await request.json();
     const { 
       supabaseId, 
@@ -16,9 +27,11 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validações básicas
-    if (!supabaseId) {
-      const error = new Output(false, [], ['supabaseId é obrigatório'], null);
-      return NextResponse.json(error, { status: 400 });
+    if (supabaseId && supabaseId !== authenticatedSupabaseId) {
+      return NextResponse.json(
+        new Output(false, [], ["Acesso negado para reativar a assinatura de outro usuário"], null),
+        { status: 403 }
+      );
     }
 
     if (operatorCount === undefined || operatorCount === null) {
@@ -38,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Chamar UseCase para reativar assinatura (cancelar antiga + criar nova)
     const result = await subscriptionUpgradeUseCase.reactivateSubscription({
-      supabaseId,
+      supabaseId: authenticatedSupabaseId,
       operatorCount,
       paymentMethod,
       creditCard,

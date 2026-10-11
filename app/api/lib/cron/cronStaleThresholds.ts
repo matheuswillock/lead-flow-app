@@ -58,6 +58,12 @@ export const MANUALLY_TRIGGERED_CRON_KEYS: ReadonlySet<string> = new Set([
  * manual (`MANUALLY_TRIGGERED_CRON_KEYS`).
  */
 export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
+  // A rota não declara `maxDuration` (mesmo caso de member-pro-expiration),
+  // então vale o default da plataforma — 30 — Migração de Conta (execução)
+  // E7/X3. Reconcilia banco × 2 contas Asaas + varre o ledger, diariamente.
+  "asaas-dual-account-reconciliation": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  "asaas-card-reauthorization-reminder": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  "asaas-due-date-cutover": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "asaas-webhook-retry": 60,
   "backoffice-email-import": 60,
   "cleanup-orphan-media": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
