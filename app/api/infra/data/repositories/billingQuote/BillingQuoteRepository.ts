@@ -83,6 +83,17 @@ function toCatalogItem(
   return { productId: product.id, slug, name: product.name, unitAmount }
 }
 
+function withContractedBaseAmount(
+  catalogItem: BillingQuoteCatalogItem | null,
+  monthlyBaseAmount: { toString(): string } | null | undefined
+): BillingQuoteCatalogItem | null {
+  if (!catalogItem || !monthlyBaseAmount) return catalogItem
+  const unitAmount = Number(monthlyBaseAmount.toString())
+  if (!Number.isFinite(unitAmount) || unitAmount <= 0) return catalogItem
+
+  return { ...catalogItem, unitAmount }
+}
+
 export class BillingQuoteRepository implements IBillingQuoteRepository {
   constructor(private readonly productRepository: IBackofficeProductRepository) {}
 
@@ -132,6 +143,11 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
           asaasSubscriptionAccount: true,
           subscriptionCycle: true,
           product: { select: productPriceSelect },
+          adhesion: {
+            select: {
+              monthlyBaseAmount: true,
+            },
+          },
           capacity: {
             select: {
               includedExtraTeams: true,
@@ -178,7 +194,10 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
     return {
       billingOwnerId,
       billingCycle,
-      baseProduct: toCatalogItem(baseProduct, "crm", billingCycle),
+      baseProduct: withContractedBaseAmount(
+        toCatalogItem(baseProduct, "crm", billingCycle),
+        subscription?.adhesion?.monthlyBaseAmount
+      ),
       extraUserProduct: toCatalogItem(extraUserProduct, "extra-user", billingCycle),
       extraTeamProduct: toCatalogItem(extraTeamProduct, "extra-team", billingCycle),
       billableActiveMembers: distinctMemberIds.size,

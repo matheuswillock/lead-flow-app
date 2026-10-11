@@ -37,10 +37,12 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         where: { id: billingOwnerId },
         select: {
           hasPermanentSubscription: true,
+          subscriptionNextDueDate: true,
           subscriptionStatus: true,
           subscription: {
             select: {
               hasPermanentSubscription: true,
+              subscriptionNextDueDate: true,
               subscriptionStatus: true,
             },
           },
@@ -57,6 +59,9 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
+      subscriptionNextDueDate: subscription
+        ? subscription.subscriptionNextDueDate
+        : billingOwner.subscriptionNextDueDate,
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,

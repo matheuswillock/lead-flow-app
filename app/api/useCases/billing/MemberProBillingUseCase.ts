@@ -12,6 +12,7 @@ import type {
 } from "@/app/api/services/billing/IMemberProBillingService";
 import {
   buildMemberProContextFromAssignment,
+  resolveHasUnlimitedUsers,
   resolveMemberProBypass,
 } from "@/app/api/shared/billing/memberProBillingRules";
 import { createEmailService } from "@/lib/services/EmailService";
@@ -46,8 +47,10 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
       : { slug: "common", isActive: false, accessExpiresAt: null };
     return {
       ...base,
-      hasUnlimitedUsers:
-        owner?.hasUnlimitedUsers === true || owner?.hasPermanentSubscription === true,
+      hasUnlimitedUsers: resolveHasUnlimitedUsers({
+        hasUnlimitedUsersFlag: owner?.hasUnlimitedUsers,
+        billingCycle: owner?.subscriptionCycle,
+      }),
     };
   }
 

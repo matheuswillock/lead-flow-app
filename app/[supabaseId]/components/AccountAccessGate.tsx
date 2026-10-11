@@ -8,7 +8,7 @@ type AccountAccessGateProps = {
 
 export function AccountAccessGate({ decision, children }: AccountAccessGateProps) {
   if (decision?.state === "restricted") {
-    return <AccountAccessPausedScreen />
+    return <AccountAccessPausedScreen isBillingOwner={decision.isBillingOwner} reason={decision.reason} />
   }
 
   return children

@@ -19,7 +19,15 @@ export class AccountAccessDecisionUseCase {
         return new Output(false, [], ["Conta de assinatura não encontrada"], null)
       }
 
-      return new Output(true, [], [], this.service.decide(account))
+      const decision = this.service.decide(account)
+      if (decision.state === "allowed") {
+        return new Output(true, [], [], decision)
+      }
+
+      return new Output(true, [], [], {
+        ...decision,
+        isBillingOwner: account.billingOwnerId === input.profileId,
+      })
     } catch (error) {
       console.error("[AccountAccessDecisionUseCase][execute]", error)
       return new Output(false, [], ["Erro ao resolver o acesso da conta"], null)

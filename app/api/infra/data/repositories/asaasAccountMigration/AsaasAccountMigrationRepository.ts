@@ -69,6 +69,16 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
     return prisma.asaasAccountMigration.findUnique({ where: { legacyCustomerId } })
   }
 
+  async findActiveMasterContact(profileId: string) {
+    return prisma.profile.findFirst({
+      where: { id: profileId, isMaster: true, deletedAt: null },
+      select: { email: true, fullName: true },
+    }).then((profile) => {
+      if (!profile) return null
+      return { email: profile.email, name: profile.fullName ?? "" }
+    })
+  }
+
   async listDueForCutover(now: Date) {
     const nextCivilDay = persistedCivilBoundary(now, 1)
     return prisma.asaasAccountMigration.findMany({

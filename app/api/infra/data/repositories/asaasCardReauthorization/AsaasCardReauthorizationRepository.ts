@@ -26,6 +26,23 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
     return token
   }
 
+  async findRecoveryMigrationForAuthenticatedMaster(supabaseId: string) {
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true } } },
+    })
+    if (!profile || !profile.isMaster || profile.deletedAt) return null
+
+    const migration = await prisma.asaasAccountMigration.findFirst({
+      where: { profileId: profile.id },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, primaryCustomerId: true, status: true, quoteSnapshot: true },
+    })
+    if (!migration) return null
+
+    return { ...migration, isBanned: await isAccountMasterBanned(profile.id), isPaymentPaused: profile.subscription?.subscriptionStatus === "past_due" }
+  }
+
   async findForMaster(token: string, supabaseId: string) {
     const record = await prisma.asaasCardReauthorization.findUnique({
       where: { tokenHash: hashToken(token) },

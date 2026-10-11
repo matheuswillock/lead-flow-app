@@ -114,13 +114,8 @@ describe("resolveHasUnlimitedUsers", () => {
     ).toBe(true);
   });
 
-  it("retorna true para assinatura vitalícia", () => {
-    expect(
-      resolveHasUnlimitedUsers({
-        hasUnlimitedUsersFlag: false,
-        hasPermanentSubscription: true,
-      })
-    ).toBe(true);
+  it("retorna true somente para o ciclo anual", () => {
+    expect(resolveHasUnlimitedUsers({ hasUnlimitedUsersFlag: false, billingCycle: "annual" })).toBe(true);
   });
 
   it("retorna false sem flag e sem vitalício", () => {

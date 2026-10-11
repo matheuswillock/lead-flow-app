@@ -15,6 +15,11 @@ const getContext = mock(async () => new Output(true, [], [], {
 }))
 const submit = mock(async () => new Output(true, [], [], { status: "done" }))
 
+const getAuthenticatedSupabaseId = mock(async () => ({ supabaseId: "master-1" }))
+mock.module("@/app/api/v1/utils/getAuthenticatedSupabaseId", () => ({
+  getAuthenticatedSupabaseId,
+}))
+
 mock.module("@/app/api/useCases/asaasAccountMigration/cardReauthorizationFactory", () => ({
   cardReauthorizationUseCase: { getContext, submit },
 }))

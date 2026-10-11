@@ -7,11 +7,16 @@ export type AccountAccessRestrictionReason =
 
 export type AccountAccessDecision =
   | { state: "allowed" }
-  | { state: "restricted"; reason: AccountAccessRestrictionReason }
+  | {
+      state: "restricted"
+      reason: AccountAccessRestrictionReason
+      isBillingOwner?: boolean
+    }
 
 export type AccountAccessRecord = {
   billingOwnerId: string
   subscriptionStatus: string | null
+  subscriptionNextDueDate?: Date | null
   hasPermanentSubscription: boolean
   isBanned: boolean
 }

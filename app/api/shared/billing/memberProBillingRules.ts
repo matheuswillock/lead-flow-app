@@ -35,10 +35,11 @@ export function buildMemberProContextFromAssignment(
   return { slug, isActive, accessExpiresAt };
 }
 
-/** Fonte de verdade: flag persistida ou assinatura vitalícia. Sem fallback annual/YEARLY/Member PRO. */
+/** Fonte de verdade: flag persistida ou ciclo anual; Member PRO não concede ilimitado. */
 export function resolveHasUnlimitedUsers(input: {
   hasUnlimitedUsersFlag?: boolean;
   hasPermanentSubscription?: boolean;
+  billingCycle?: string | null;
 }): boolean {
-  return input.hasUnlimitedUsersFlag === true || input.hasPermanentSubscription === true;
+  return input.hasUnlimitedUsersFlag === true || input.billingCycle?.toLowerCase() === "annual";
 }
