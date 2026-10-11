@@ -82,6 +82,7 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
             OR: [
               { failureCode: { startsWith: "TRANSIENT:" } },
               { failureCode: { startsWith: "REMOTE_UNKNOWN:" } },
+              { failureCode: { startsWith: "DECLINED:" } },
             ],
           },
         ],
