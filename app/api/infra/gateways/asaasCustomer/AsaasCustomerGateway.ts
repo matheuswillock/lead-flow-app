@@ -1,4 +1,4 @@
-import { asaasApi, asaasFetch } from "@/lib/asaas"
+import { asaasApi, asaasFetch, createAsaasClient } from "@/lib/asaas"
 import type {
   CreateAsaasCustomerInput,
   CreatedAsaasCustomer,
@@ -14,6 +14,18 @@ function resolveExternalReference(input: CreateAsaasCustomerInput): string {
 }
 
 export class AsaasCustomerGateway implements IAsaasCustomerGateway {
+  async findCustomerByExternalReference(externalReference: string): Promise<CreatedAsaasCustomer | null> {
+    const client = createAsaasClient("primary")
+    const response = await client.request(
+      `${client.endpoints.customers}?externalReference=${encodeURIComponent(externalReference)}`,
+      { method: "GET" },
+    )
+    const records = Array.isArray(response?.data) ? response.data : []
+    if (records.length > 1) throw new Error(`Asaas retornou múltiplos customers para externalReference=${externalReference}`)
+    const id = records[0]?.id
+    return typeof id === "string" && id.length > 0 ? { id } : null
+  }
+
   async createCustomer(input: CreateAsaasCustomerInput): Promise<CreatedAsaasCustomer> {
     const externalReference = resolveExternalReference(input)
 

@@ -264,6 +264,14 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/v1/billing/cron/asaas-card-reauthorization-reminder",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/v1/billing/cron/asaas-due-date-cutover",
+      "schedule": "15 12 * * *"
+    },
+    {
       "path": "/api/v1/notifications/cron/studio-bot-ai-rollup",
       "schedule": "15 */6 * * *"
     },

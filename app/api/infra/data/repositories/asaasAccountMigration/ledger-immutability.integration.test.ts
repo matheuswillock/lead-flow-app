@@ -112,6 +112,34 @@ describe.skipIf(!RUN_INTEGRATION)(
       expect(message).toMatch(/legacy_customer_id is immutable/)
     })
 
+    it("UPDATE em profile_id, client_name e client_email é bloqueado", async () => {
+      const row = await createLedgerRow()
+      createdIds.push(row.id)
+
+      const profileMessage = await captureErrorMessage(
+        prisma.asaasAccountMigration.update({
+          where: { id: row.id },
+          data: { profileId: randomUUID() },
+        })
+      )
+      const nameMessage = await captureErrorMessage(
+        prisma.asaasAccountMigration.update({
+          where: { id: row.id },
+          data: { clientName: "Nome adulterado" },
+        })
+      )
+      const emailMessage = await captureErrorMessage(
+        prisma.asaasAccountMigration.update({
+          where: { id: row.id },
+          data: { clientEmail: "adulterado@example.test" },
+        })
+      )
+
+      expect(profileMessage).toMatch(/profile_id is immutable/)
+      expect(nameMessage).toMatch(/client_name is immutable/)
+      expect(emailMessage).toMatch(/client_email is immutable/)
+    })
+
     it("UPDATE em next_due_date/cycle/billing_type já preenchidos é bloqueado", async () => {
       const row = await createLedgerRow()
       createdIds.push(row.id)

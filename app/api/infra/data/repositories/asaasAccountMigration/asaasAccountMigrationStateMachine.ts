@@ -17,12 +17,16 @@ export const ASAAS_ACCOUNT_MIGRATION_TRANSITIONS: Record<
   AsaasAccountMigrationStatus[]
 > = {
   pending: ["customer_created", "failed"],
-  customer_created: ["subscription_created", "requires_card_reauth", "failed"],
+  customer_created: ["awaiting_due_date", "subscription_created", "requires_card_reauth", "failed"],
+  awaiting_due_date: ["requires_card_reauth", "paused_awaiting_card", "failed"],
+  legacy_removed: ["requires_card_reauth", "paused_awaiting_card", "initial_payment_confirmed", "failed"],
+  paused_awaiting_card: ["initial_payment_confirmed", "failed"],
+  requires_card_reauth: ["subscription_created", "paused_awaiting_card", "initial_payment_confirmed", "failed"],
+  initial_payment_confirmed: ["subscription_created", "failed"],
   subscription_created: ["legacy_deactivated", "failed"],
   legacy_deactivated: ["done"],
-  requires_card_reauth: ["subscription_created"],
   done: [],
-  failed: ["pending"],
+  failed: ["pending", "awaiting_due_date", "requires_card_reauth", "paused_awaiting_card", "initial_payment_confirmed", "subscription_created"],
 }
 
 export class InvalidAsaasAccountMigrationTransitionError extends Error {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 const asaasFetchMock = mock(
-  async (_endpoint: string, _options?: RequestInit): Promise<{ id?: string }> => ({
+  async (_endpoint: string, _options?: RequestInit): Promise<any> => ({
     id: "cus_generated",
   })
 )
@@ -98,5 +98,12 @@ describe("AsaasCustomerGateway (E5 — DA5, T-10.13)", () => {
     const result = await gateway.createCustomer({ profileId: "prof-1", name: "X" })
 
     expect(result).toEqual({ id: "cus_abc123" })
+  })
+
+  it("consulta customer existente por externalReference antes de recriar", async () => {
+    asaasFetchMock.mockImplementation(async () => ({ data: [{ id: "cus_existing" }] }))
+    const gateway = new AsaasCustomerGateway()
+
+    await expect(gateway.findCustomerByExternalReference?.("prof-existing")).resolves.toEqual({ id: "cus_existing" })
   })
 })

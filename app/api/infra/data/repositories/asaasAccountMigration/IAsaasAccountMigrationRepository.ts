@@ -1,4 +1,5 @@
 import type { AsaasAccountMigration, AsaasAccountMigrationStatus } from "@prisma/client"
+import type { BillingQuote } from "@/app/api/shared/billing/billingQuoteTypes"
 
 /** Snapshot do legado gravado na criação da linha do ledger (M5.3, §9.3). */
 export type AsaasAccountMigrationSnapshotInput = {
@@ -19,9 +20,23 @@ export type AsaasAccountMigrationTransitionInput = {
   toStatus: AsaasAccountMigrationStatus
   primaryCustomerId?: string | null
   primarySubscriptionId?: string | null
+  primaryPaymentId?: string | null
+  legacyRemovedAt?: Date | null
+  reauthorizationRequestedAt?: Date | null
+  reauthorizationCompletedAt?: Date | null
   lastError?: string | null
   anomalyNotes?: string | null
   migratedAt?: Date | null
+  resumeStatus?: AsaasAccountMigrationStatus | null
+  failureStep?: string | null
+  failureCode?: string | null
+  leaseOwner?: string
+  leaseNow?: Date
+}
+
+export type AsaasMigrationExecutionClaim = {
+  migration: AsaasAccountMigration
+  leaseOwner: string
 }
 
 export interface IAsaasAccountMigrationRepository {
@@ -34,6 +49,22 @@ export interface IAsaasAccountMigrationRepository {
   upsertSnapshot(snapshot: AsaasAccountMigrationSnapshotInput): Promise<AsaasAccountMigration>
 
   findByLegacyCustomerId(legacyCustomerId: string): Promise<AsaasAccountMigration | null>
+
+  recordQuoteSnapshot?(legacyCustomerId: string, quote: BillingQuote): Promise<void>
+
+  listDueForCutover?(now: Date): Promise<AsaasAccountMigration[]>
+
+  listForReauthorizationReminder?(now: Date): Promise<AsaasAccountMigration[]>
+
+  claimForExecution?(legacyCustomerId: string, leaseOwner: string, now: Date, leaseDurationMs: number): Promise<AsaasMigrationExecutionClaim | null>
+
+  renewExecutionLease?(legacyCustomerId: string, leaseOwner: string, now: Date, leaseDurationMs: number): Promise<boolean>
+
+  releaseExecutionLease?(legacyCustomerId: string, leaseOwner: string): Promise<boolean>
+
+  resumeFailedExecution?(legacyCustomerId: string): Promise<AsaasAccountMigration | null>
+
+  markReauthorizationRequested?(legacyCustomerId: string, requestedAt: Date): Promise<boolean>
 
   /**
    * Aplica uma transição de estado validada contra
