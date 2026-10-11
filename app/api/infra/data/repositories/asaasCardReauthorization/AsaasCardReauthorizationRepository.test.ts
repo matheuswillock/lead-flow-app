@@ -10,7 +10,7 @@ const findUniqueMock = mock(async () => ({
 const declinedCountMock = mock(async () => 0)
 const oldestDeclineMock = mock(async () => ({ createdAt: new Date("2026-10-10T08:00:00.000Z") }))
 const createAttemptMock = mock(async () => ({ id: "attempt-1" }))
-const updateAttemptMock = mock(async () => ({ id: "attempt-1" }))
+const updateAttemptMock = mock(async (): Promise<{ count: number }> => ({ count: 1 }))
 const findForMasterRecordMock = mock(async () => null as any)
 const findProfileMock = mock(async () => null as any)
 const isAccountMasterBannedMock = mock(async () => false)
