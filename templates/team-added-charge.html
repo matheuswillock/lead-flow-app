@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Novo time adicionado · Corretor Studio</title>
+<!--
+  Fluxo: Novo time adicionado com cobrança adicional
+  Fonte: lib/services/EmailService.ts → sendTeamAddedChargeEmail
+  Assunto: Novo time adicionado, verifique a cobrança gerada
+  Variáveis: {{{masterName}}}, {{{teamName}}}, {{{requesterName}}}, {{{memberCount}}},
+            {{{amountFormatted}}}, {{{newRecurringTotalFormatted}}}, {{{billingCycle}}},
+            {{{paymentMethod}}}, {{{checkoutUrl}}}, {{{currentYear}}}
+  Arquétipo: Ação & cobrança (header âmbar)
+-->
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Um novo time foi criado na sua conta e uma cobrança adicional foi gerada.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
+    <tr>
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
+
+          <tr>
+            <td bgcolor="#E68200" style="background-color:#E68200; background-image:linear-gradient(160deg,#F0931F 0%,#E07400 100%); padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783702974383-yrzu5g.png" width="27" height="24" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /><span style="display:inline-block; vertical-align:middle; margin-left:9px; font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:18px; color:rgba(255,255,255,0.94);">Corretor Studio</span>
+        </td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:1.1px; text-transform:uppercase; color:rgba(255,255,255,0.88);">Novo time · cobrança gerada</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; text-align:center;">Novo time adicionado, <span style="color:#E07400;">verifique a cobrança</span></td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; text-align:center;">Olá, <strong style="color:#1C1B22;">{{{masterName}}}</strong>. Um novo time foi criado na sua conta por <strong style="color:#1C1B22;">{{{requesterName}}}</strong>. Uma cobrança adicional foi gerada conforme o seu plano.</td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding:10px 0 2px;">Detalhes do time</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Time</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#e57082; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{teamName}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Criado por</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{requesterName}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; ">Membros incluídos</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{memberCount}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6EE" style="background-color:#FFF6EE; border:1px solid #F8CFA6; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#7A3B00; padding:10px 0 2px;">Cobrança gerada</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Valor adicional</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:17px; font-weight:bold; color:#E07400; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{amountFormatted}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Novo total recorrente</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{newRecurringTotalFormatted}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; border-bottom:1px solid #F8DDC2;">Ciclo</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #F8DDC2;">{{{billingCycle}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#B8651A; padding:11px 12px 11px 0; ">Forma de pagamento</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{paymentMethod}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td align="center" style="padding:4px 0 20px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{{checkoutUrl}}}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="30%" strokecolor="#E07400" fillcolor="#E07400">
+        <w:anchorlock/><center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:14px;font-weight:bold;">Visualizar cobrança &#8594;</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{{checkoutUrl}}}" style="display:inline-block; background-color:#E07400; color:#ffffff; text-decoration:none; padding:14px 36px; border-radius:999px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold;">Visualizar cobrança &#8594;</a>
+        <!--<![endif]-->
+      </td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Dúvidas sobre a cobrança ou quer gerenciar seus times? Fale com o nosso suporte.</td></tr></table></td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
+            </td>
+          </tr>
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

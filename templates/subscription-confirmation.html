@@ -1,95 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Assinatura confirmada · Corretor Studio</title>
 <!--
   Fluxo: Confirmação de assinatura
   Fonte: lib/services/EmailService.ts → sendSubscriptionConfirmationEmail
-  Assunto: Corretor Studio — Assinatura confirmada
-  Variáveis: {{userName}}, {{subscriptionId}}, {{planName}}, {{price}}, {{nextDue}}, {{manageUrl}}
+  Assunto: Corretor Studio, Assinatura confirmada
+  Variáveis: {{{userName}}}, {{{subscriptionId}}}, {{{planName}}}, {{{price}}}, {{{nextDue}}}, {{{manageUrl}}}, {{{currentYear}}}
 -->
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Sua assinatura foi confirmada. Confira os detalhes do seu plano.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
 
           <tr>
-            <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+            <td bgcolor="#e8674f" style="background-color:#e8674f; background-image:linear-gradient(135deg,#ff6900 0%,#e57082 48%,#cd6cdd 100%); padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td width="64" height="64" align="center" valign="middle" bgcolor="#ffffff" style="width:64px; height:64px; background-color:#ffffff; border-radius:50%;"><img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783703588900-w41ywg.png" width="30" height="27" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /></td>
+          </tr></table>
+        </td></tr>
+        <tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:20px; color:#ffffff; padding-bottom:4px;">Corretor Studio</td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:13px; color:rgba(255,255,255,0.82);">Gestão inteligente de leads</td></tr><tr><td align="center" style="padding-top:14px;"><span style="display:inline-block; font-family:Arial, Helvetica, sans-serif; font-size:10.5px; font-weight:bold; letter-spacing:1px; text-transform:uppercase; color:#ffffff; background-color:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.30); border-radius:20px; padding:5px 13px;">Assinatura confirmada</span></td></tr>
+              </table>
             </td>
           </tr>
-
           <tr>
-            <td style="padding: 48px 32px;">
-              <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); border-radius: 50%; margin-bottom: 16px;">
-                  <span style="font-size: 40px; line-height: 72px; display: block;">🎉</span>
-                </div>
-              </div>
-
-              <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Assinatura Confirmada!</h2>
-
-              <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
-                Olá <strong>{{userName}}</strong>, sua assinatura no Corretor Studio foi confirmada com sucesso.
-              </p>
-
-              <div style="background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border: 2px solid #ff6900; border-radius: 12px; padding: 24px; margin: 24px 0;">
-                <h3 style="margin: 0 0 16px 0; color: #7c2d12; font-size: 16px; font-weight: 600; text-align: center;">📋 Detalhes da Assinatura</h3>
-
-                <!-- Bloco opcional: renderizado quando {{subscriptionId}} estiver presente -->
-                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #fdba74;">
-                  <p style="margin: 0; color: #7c2d12; font-size: 13px; font-weight: 500;">ID da Assinatura</p>
-                  <p style="margin: 4px 0 0 0; color: #9a3412; font-size: 15px; font-family: monospace;">{{subscriptionId}}</p>
-                </div>
-
-                <!-- Bloco opcional: renderizado quando {{planName}} estiver presente -->
-                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #fdba74;">
-                  <p style="margin: 0; color: #7c2d12; font-size: 13px; font-weight: 500;">Plano</p>
-                  <p style="margin: 4px 0 0 0; color: #9a3412; font-size: 16px; font-weight: 600;">{{planName}}</p>
-                </div>
-
-                <!-- Bloco opcional: renderizado quando {{price}} estiver presente (formatado em BRL) -->
-                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #fdba74;">
-                  <p style="margin: 0; color: #7c2d12; font-size: 13px; font-weight: 500;">Valor Mensal</p>
-                  <p style="margin: 4px 0 0 0; color: #9a3412; font-size: 20px; font-weight: 700;">{{price}}</p>
-                </div>
-
-                <!-- Bloco opcional: renderizado quando {{nextDue}} estiver presente -->
-                <div style="margin-bottom: 0;">
-                  <p style="margin: 0; color: #7c2d12; font-size: 13px; font-weight: 500;">Próximo Vencimento</p>
-                  <p style="margin: 4px 0 0 0; color: #9a3412; font-size: 16px; font-weight: 600;">{{nextDue}}</p>
-                </div>
-              </div>
-
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="{{manageUrl}}"
-                   style="display: inline-block; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);">
-                  🚀 Acessar Plataforma
-                </a>
-              </div>
-
-              <p style="margin: 24px 0 0 0; color: #525252; font-size: 15px; line-height: 1.6; text-align: center;">
-                Obrigado por escolher o <strong>Corretor Studio</strong>!<br>
-                Estamos prontos para impulsionar seu processo comercial.
-              </p>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; ">Tudo certo, <span style="color:#e57082;">{{{userName}}}</span>!</td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; ">Sua assinatura foi <strong style="color:#1C1B22;">confirmada</strong> com sucesso. Estamos prontos para impulsionar seu processo comercial, abaixo você confere os detalhes do seu plano.</td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding:10px 0 2px;">Detalhes da assinatura</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Plano</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{planName}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Valor mensal</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:17px; font-weight:bold; color:#e57082; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{price}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Próximo vencimento</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{nextDue}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; ">ID</td>
+                  <td align="right" valign="top" style="font-family:'Courier New',monospace; font-size:12.5px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{subscriptionId}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td align="center" style="padding:4px 0 20px;">
+        <!--[if mso]>
+        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{{manageUrl}}}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="30%" strokecolor="#e57082" fillcolor="#e57082">
+        <w:anchorlock/><center style="color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:14px;font-weight:bold;">Acessar a plataforma &#8594;</center>
+        </v:roundrect>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <a href="{{{manageUrl}}}" style="display:inline-block; background-color:#e57082; color:#ffffff; text-decoration:none; padding:14px 36px; border-radius:999px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold;">Acessar a plataforma &#8594;</a>
+        <!--<![endif]-->
+      </td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Precisa gerenciar sua assinatura ou tem alguma dúvida? Estamos aqui para ajudar.</td></tr></table></td></tr>
+              </table>
             </td>
           </tr>
-
           <tr>
-            <td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e5e5e5;">
-              <p style="margin: 0 0 8px 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                Este é um e-mail automático do Corretor Studio
-              </p>
-              <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
-                © {{currentYear}} Corretor Studio. Todos os direitos reservados.
-              </p>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
             </td>
           </tr>
-
         </table>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>
