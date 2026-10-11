@@ -1113,14 +1113,9 @@ export class EmailService {
     const appUrl = getAppUrl({ removeTrailingSlash: true });
     const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
 
-    const isCutOff = data.tier === 'cut_off';
-    const subject = isCutOff
-      ? 'Corretor Studio — Acesso suspenso por falta de pagamento'
-      : 'Corretor Studio — Acesso reduzido por falta de pagamento';
-    const headline = isCutOff ? 'Seu acesso foi suspenso' : 'Seu acesso foi reduzido';
-    const bodyText = isCutOff
-      ? 'Sua assinatura está em atraso há mais de 15 dias e o acesso à plataforma foi totalmente suspenso. Regularize o pagamento para voltar a usar o Corretor Studio.'
-      : 'Sua assinatura está em atraso há mais de 5 dias. Enquanto isso, o acesso fica limitado ao CRM — os demais módulos (E-mail, WhatsApp, Radar) ficam pausados até a regularização.';
+    const subject = 'Corretor Studio — Acesso pausado por falta de pagamento';
+    const headline = 'Seu acesso está pausado';
+    const bodyText = 'Sua assinatura está em atraso e o acesso à plataforma está pausado. Fale com o time de assinaturas para receber orientação e renovar o Corretor Studio.';
 
     const html = `
       <!DOCTYPE html>
