@@ -21,6 +21,20 @@ describe("AccountAccessDecisionUseCase", () => {
     expect(output.result).toEqual({ state: "restricted", reason: "past_due", isBillingOwner: false })
   })
 
+  it("não expõe regularização por cartão durante o bloqueio", async () => {
+    const output = await new AccountAccessDecisionUseCase({
+      resolveProfileId: async () => "owner-1",
+      resolveAccount: async () => ({
+        billingOwnerId: "owner-1",
+        subscriptionStatus: "past_due",
+        hasPermanentSubscription: false,
+        isBanned: false,
+      }),
+    }).execute({ profileId: "owner-1" })
+
+    expect(output.result).toEqual({ state: "restricted", reason: "past_due", isBillingOwner: true })
+  })
+
   it("prioriza banimento mesmo para assinatura permanente", async () => {
     const bannedRepository = {
       resolveProfileId: async () => "owner-1",
