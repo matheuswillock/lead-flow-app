@@ -15,6 +15,11 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     return profile?.id ?? null
   }
 
+  async resolveTeamMasterProfileId(teamId: string): Promise<string | null> {
+    const team = await prisma.team.findFirst({ where: { id: teamId, deletedAt: null }, select: { masterId: true } })
+    return team?.masterId ?? null
+  }
+
   async resolveAccount(input: {
     profileId: string
     teamId?: string | null

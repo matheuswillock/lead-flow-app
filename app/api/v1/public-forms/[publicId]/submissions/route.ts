@@ -4,6 +4,7 @@ import {
   type PublicFormSubmissionBackgroundJob,
 } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
 import { Output } from "@/lib/output"
+import { publicFormAccountAccessUseCase } from "@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase"
 import { publicFormSubmissionSchema } from "@/lib/public-forms/validation"
 import {
   consumePublicFormRateLimit,
@@ -17,6 +18,8 @@ export async function POST(
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
+  const accountAccess = await publicFormAccountAccessUseCase.execute(publicId)
+  if (!accountAccess.isValid) return NextResponse.json(accountAccess, { status: 403 })
   // SPEC 40 E6/H18: mesmo guard de `/progress` e `/events`. Esta rota era a
   // única das três sem ele — e é a que cria lead. Vem antes do rate limit para
   // que POST forjado de terceiro nem consuma cota do visitante legítimo.

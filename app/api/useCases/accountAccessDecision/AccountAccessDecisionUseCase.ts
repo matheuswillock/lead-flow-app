@@ -34,6 +34,12 @@ export class AccountAccessDecisionUseCase {
     }
   }
 
+  async executeForTeam(teamId: string): Promise<Output> {
+    const profileId = await this.repository.resolveTeamMasterProfileId?.(teamId)
+    if (!profileId) return new Output(false, [], ["Conta de assinatura não encontrada"], null)
+    return this.execute({ profileId, teamId })
+  }
+
   async executeForAuthenticatedSupabaseId(supabaseId: string): Promise<Output> {
     try {
       const profileId = await this.repository.resolveProfileId(supabaseId)

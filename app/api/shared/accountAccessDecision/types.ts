@@ -27,4 +27,5 @@ export interface IAccountAccessDecisionRepository {
     teamId?: string | null
   }): Promise<AccountAccessRecord | null>
   resolveProfileId(supabaseId: string): Promise<string | null>
+  resolveTeamMasterProfileId?(teamId: string): Promise<string | null>
 }
