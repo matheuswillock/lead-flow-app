@@ -29,7 +29,7 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
   async findRecoveryMigrationForAuthenticatedMaster(supabaseId: string) {
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true } } },
+      select: { id: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true, subscriptionNextDueDate: true } } },
     })
     if (!profile || !profile.isMaster || profile.deletedAt) return null
 
@@ -40,7 +40,7 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
     })
     if (!migration) return null
 
-    return { ...migration, isBanned: await isAccountMasterBanned(profile.id), isPaymentPaused: profile.subscription?.subscriptionStatus === "past_due" }
+    return { ...migration, isBanned: await isAccountMasterBanned(profile.id), isPaymentPaused: profile.subscription?.subscriptionStatus === "past_due" || Boolean(profile.subscription?.subscriptionNextDueDate && profile.subscription.subscriptionNextDueDate < new Date()) }
   }
 
   async findForMaster(token: string, supabaseId: string) {
@@ -67,9 +67,11 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
     if (!record) return null
     const profile = await prisma.profile.findUnique({
       where: { id: record.migration.profileId },
-      select: { supabaseId: true, isMaster: true },
+      select: { supabaseId: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true, subscriptionNextDueDate: true } } },
     })
-    if (!profile || profile.supabaseId !== supabaseId || !profile.isMaster) return null
+    if (!profile || profile.supabaseId !== supabaseId || !profile.isMaster || profile.deletedAt) return null
+    const isPaymentPaused = profile.subscription?.subscriptionStatus === "past_due" || Boolean(profile.subscription?.subscriptionNextDueDate && profile.subscription.subscriptionNextDueDate < new Date())
+    if (record.migration.status !== "paused_awaiting_card" || !record.migration.primaryCustomerId || !record.migration.quoteSnapshot || !isPaymentPaused) return null
     const isBanned = await isAccountMasterBanned(record.migration.profileId)
     return { ...record, isBanned, migration: { ...record.migration, profile } }
   }

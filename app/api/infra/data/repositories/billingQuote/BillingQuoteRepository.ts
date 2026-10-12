@@ -85,10 +85,11 @@ function toCatalogItem(
 
 function withContractedBaseAmount(
   catalogItem: BillingQuoteCatalogItem | null,
-  monthlyBaseAmount: { toString(): string } | null | undefined
+  monthlyBaseAmount: { toString(): string } | null | undefined,
+  billingCycle: BillingCycle | null
 ): BillingQuoteCatalogItem | null {
   if (!catalogItem || !monthlyBaseAmount) return catalogItem
-  const unitAmount = Number(monthlyBaseAmount.toString())
+  const unitAmount = Number((Number(monthlyBaseAmount.toString()) * ({ monthly: 1, quarterly: 3, quadrimester: 4, semiannual: 6, annual: 12 }[billingCycle ?? "monthly"])).toFixed(2))
   if (!Number.isFinite(unitAmount) || unitAmount <= 0) return catalogItem
 
   return { ...catalogItem, unitAmount }
@@ -196,7 +197,7 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
       billingCycle,
       baseProduct: withContractedBaseAmount(
         toCatalogItem(baseProduct, "crm", billingCycle),
-        subscription?.adhesion?.monthlyBaseAmount
+        subscription?.adhesion?.monthlyBaseAmount, billingCycle
       ),
       extraUserProduct: toCatalogItem(extraUserProduct, "extra-user", billingCycle),
       extraTeamProduct: toCatalogItem(extraTeamProduct, "extra-team", billingCycle),
@@ -210,6 +211,7 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
       hasUnlimitedUsers: resolveHasUnlimitedUsers({
         hasUnlimitedUsersFlag: profile.hasUnlimitedUsers,
         hasPermanentSubscription,
+        billingCycle,
       }),
       asaasSubscriptionId: subscription
         ? subscription.asaasSubscriptionId

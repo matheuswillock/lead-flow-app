@@ -41,5 +41,5 @@ export function resolveHasUnlimitedUsers(input: {
   hasPermanentSubscription?: boolean;
   billingCycle?: string | null;
 }): boolean {
-  return input.hasUnlimitedUsersFlag === true || input.billingCycle?.toLowerCase() === "annual";
+  return input.hasUnlimitedUsersFlag === true || ["annual", "yearly"].includes(input.billingCycle?.toLowerCase() ?? "");
 }

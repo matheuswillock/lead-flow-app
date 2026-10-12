@@ -68,7 +68,7 @@ describe("BillingQuoteRepository", () => {
     expect(projection?.asaasSubscriptionId).toBe("sub_subscription")
     expect(projection?.asaasSubscriptionAccount).toBe("primary")
     expect(projection?.billingCycle).toBe("quarterly")
-    expect(projection?.baseProduct?.unitAmount).toBe(79.9)
+    expect(projection?.baseProduct?.unitAmount).toBe(239.7)
     expect(teamMemberFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { team: { masterId: "owner-1", deletedAt: null }, profile: { deletedAt: null } },

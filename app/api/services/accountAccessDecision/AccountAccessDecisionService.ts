@@ -7,6 +7,11 @@ import type { IAccountAccessDecisionService } from "./IAccountAccessDecisionServ
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 const RESTRICTED_SUBSCRIPTION_STATUSES = new Set(["past_due", "suspended", "canceled"])
 
+function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
+  const today = now.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
+  return dueDate.toISOString().slice(0, 10) < today
+}
+
 export class AccountAccessDecisionService implements IAccountAccessDecisionService {
   decide(account: AccountAccessRecord, now = new Date()): AccountAccessDecision {
     if (account.isBanned) {
@@ -17,7 +22,7 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       return { state: "allowed" }
     }
 
-    if (account.subscriptionNextDueDate && account.subscriptionNextDueDate < now) {
+    if (account.subscriptionNextDueDate && isDueDateBeforeTodayInSaoPaulo(account.subscriptionNextDueDate, now)) {
       return { state: "restricted", reason: "past_due" }
     }
 

@@ -59,7 +59,7 @@ describe("AccountAccessDecisionService", () => {
       subscriptionNextDueDate: new Date("2026-10-10T23:59:59.000Z"),
       hasPermanentSubscription: false,
       isBanned: false,
-    }, new Date("2026-10-11T00:00:00.000Z"))
+    }, new Date("2026-10-11T04:00:00.000Z"))
 
     expect(decision).toEqual({ state: "restricted", reason: "past_due" })
   })
