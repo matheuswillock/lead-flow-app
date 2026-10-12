@@ -134,7 +134,7 @@ export default function ReauthorizePaymentPage({ params }: Props) {
       <Card className="mx-auto w-full max-w-2xl">
         <CardHeader>
           <CardTitle>Atualize o cartão da sua assinatura</CardTitle>
-          <CardDescription>Olá, {clientName || "master"}. Seus dados serão enviados com segurança para autorizar a cobrança na nova conta do Corretor Studio.</CardDescription>
+          <CardDescription>Olá, {clientName || "master"}. Seus dados serão enviados com segurança para autorizar a renovação da sua assinatura.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-6" autoComplete="on">
@@ -154,7 +154,7 @@ export default function ReauthorizePaymentPage({ params }: Props) {
               </div>
               <Field><FieldLabel htmlFor="addressNumber">Número do endereço</FieldLabel><Input id="addressNumber" autoComplete="address-line2" required value={form.addressNumber} onChange={(event) => update("addressNumber", event.target.value)} /></Field>
             </FieldGroup>
-            <p className="text-sm text-muted-foreground">A cobrança inicial será processada na conta nova. Nenhuma cobrança será feita na conta antiga.</p>
+            <p className="text-sm text-muted-foreground">Você verá a confirmação assim que a renovação da assinatura for autorizada.</p>
             {message && <p role="alert" className="text-sm text-destructive">{message}</p>}
             <Button type="submit" size="lg" disabled={state === "submitting"}>{state === "submitting" ? "Autorizando…" : "Autorizar cartão e renovar assinatura"}</Button>
           </form>

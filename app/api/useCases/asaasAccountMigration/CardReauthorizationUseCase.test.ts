@@ -9,7 +9,7 @@ function record() {
     isBanned: false,
     migration: {
       clientName: "Cliente",
-      status: "requires_card_reauth",
+      status: "paused_awaiting_card",
       quoteSnapshot: { billingOwnerId: "profile-1", recurringAmount: 79.8, billingCycle: "monthly" },
       legacyCustomerId: "cus_legacy",
       primaryCustomerId: "cus_primary",

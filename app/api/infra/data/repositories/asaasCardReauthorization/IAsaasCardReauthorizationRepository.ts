@@ -15,6 +15,14 @@ export type AuthorizedCardReauthorization = {
   }
 }
 
+export type AuthenticatedCardRecoveryMigration = {
+  id: string
+  isBanned: boolean
+  primaryCustomerId: string | null
+  status: string
+}
+
+
 export type CardProcessingClaim =
   | { kind: "claimed"; attemptId: string; attemptReference: string }
   | { kind: "already_processing" }
@@ -38,6 +46,9 @@ export type CompleteCardAttemptInput = {
 
 export interface IAsaasCardReauthorizationRepository {
   createToken(migrationId: string, expiresAt: Date): Promise<string>
+  findRecoveryMigrationForAuthenticatedMaster(
+    supabaseId: string
+  ): Promise<AuthenticatedCardRecoveryMigration | null>
   findForMaster(token: string, supabaseId: string): Promise<AuthorizedCardReauthorization | null>
   markUsed(id: string): Promise<void>
   claimForProcessing(input: ClaimCardProcessingInput): Promise<CardProcessingClaim>

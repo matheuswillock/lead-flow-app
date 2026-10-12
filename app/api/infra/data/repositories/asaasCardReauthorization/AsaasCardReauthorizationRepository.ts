@@ -26,6 +26,31 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
     return token
   }
 
+  async findRecoveryMigrationForAuthenticatedMaster(supabaseId: string) {
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true, subscriptionNextDueDate: true } } },
+    })
+    if (!profile || !profile.isMaster || profile.deletedAt) return null
+
+    const migration = await prisma.asaasAccountMigration.findFirst({
+      where: { profileId: profile.id },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, primaryCustomerId: true, status: true, quoteSnapshot: true },
+    })
+    if (!migration) return null
+
+    return {
+      ...migration,
+      isBanned: await isAccountMasterBanned(profile.id),
+      isPaymentPaused:
+        migration.status === "requires_card_reauth" ||
+        migration.status === "paused_awaiting_card" ||
+        profile.subscription?.subscriptionStatus === "past_due" ||
+        Boolean(profile.subscription?.subscriptionNextDueDate && profile.subscription.subscriptionNextDueDate < new Date()),
+    }
+  }
+
   async findForMaster(token: string, supabaseId: string) {
     const record = await prisma.asaasCardReauthorization.findUnique({
       where: { tokenHash: hashToken(token) },
@@ -50,9 +75,17 @@ export class AsaasCardReauthorizationRepository implements IAsaasCardReauthoriza
     if (!record) return null
     const profile = await prisma.profile.findUnique({
       where: { id: record.migration.profileId },
-      select: { supabaseId: true, isMaster: true },
+      select: { supabaseId: true, isMaster: true, deletedAt: true, subscription: { select: { subscriptionStatus: true, subscriptionNextDueDate: true } } },
     })
-    if (!profile || profile.supabaseId !== supabaseId || !profile.isMaster) return null
+    if (!profile || profile.supabaseId !== supabaseId || !profile.isMaster || profile.deletedAt) return null
+    const isPaymentPaused =
+      ["requires_card_reauth", "paused_awaiting_card"].includes(record.migration.status) ||
+      profile.subscription?.subscriptionStatus === "past_due" ||
+      Boolean(profile.subscription?.subscriptionNextDueDate && profile.subscription.subscriptionNextDueDate < new Date())
+    if (![
+      "requires_card_reauth",
+      "paused_awaiting_card",
+    ].includes(record.migration.status) || !record.migration.primaryCustomerId || !record.migration.quoteSnapshot || !isPaymentPaused) return null
     const isBanned = await isAccountMasterBanned(record.migration.profileId)
     return { ...record, isBanned, migration: { ...record.migration, profile } }
   }

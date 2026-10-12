@@ -24,6 +24,10 @@ export class RequestCardReauthorizationUseCase {
       return new Output(false, [], ["Migração ainda não está aguardando reautorização"], null)
     }
 
+    const masterContact = await this.dependencies.ledgerRepository.findActiveMasterContact?.(migration.profileId)
+    if (!masterContact) {
+      return new Output(false, [], ["Master ativo não encontrado para a notificação"], null)
+    }
     const civilDay = (date: Date) => new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
       year: "numeric",
@@ -52,8 +56,8 @@ export class RequestCardReauthorizationUseCase {
         reauthorizationRequestedAt: requestedAt,
       })
     }
-    const url = `${this.dependencies.publicAppUrl.replace(/\/$/, "")}/reautorizar-pagamento/${encodeURIComponent(token)}`
-    await this.dependencies.notifier.send({ to: migration.clientEmail, name: migration.clientName, url, expiresAt })
+    const url = this.dependencies.publicAppUrl.replace(/\/$/, "")
+    await this.dependencies.notifier.send({ to: masterContact.email, name: masterContact.name, url, expiresAt })
     return new Output(true, ["Link de reautorização enviado"], [], { expiresAt })
   }
 }

@@ -18,7 +18,7 @@ describe("AccountAccessDecisionUseCase", () => {
     })
 
     expect(output.isValid).toBe(true)
-    expect(output.result).toEqual({ state: "restricted", reason: "past_due" })
+    expect(output.result).toEqual({ state: "restricted", reason: "past_due", isBillingOwner: false })
   })
 
   it("prioriza banimento mesmo para assinatura permanente", async () => {
@@ -36,7 +36,7 @@ describe("AccountAccessDecisionUseCase", () => {
       profileId: "owner-1",
     })
 
-    expect(output.result).toEqual({ state: "restricted", reason: "banned" })
+    expect(output.result).toEqual({ state: "restricted", reason: "banned", isBillingOwner: true })
   })
 
   it("não usa o status legado quando existe assinatura moderna sem status", async () => {
@@ -54,7 +54,7 @@ describe("AccountAccessDecisionUseCase", () => {
       profileId: "owner-1",
     })
 
-    expect(output.result).toEqual({ state: "restricted", reason: "subscription_unavailable" })
+    expect(output.result).toEqual({ state: "restricted", reason: "subscription_unavailable", isBillingOwner: true })
   })
 
   it("mantém o time solicitado na resolução do master da cobrança", async () => {

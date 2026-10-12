@@ -40,6 +40,7 @@ export type AsaasMigrationExecutionClaim = {
 }
 
 export interface IAsaasAccountMigrationRepository {
+  findActiveMasterContact?(profileId: string): Promise<{ email: string; name: string } | null>
   /**
    * Idempotente por `legacyCustomerId` (`@unique` no schema, DA2/§9.3):
    * cria a linha na primeira chamada; chamadas seguintes com o mesmo

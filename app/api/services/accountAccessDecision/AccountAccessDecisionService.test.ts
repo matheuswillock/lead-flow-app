@@ -52,4 +52,15 @@ describe("AccountAccessDecisionService", () => {
 
     expect(decision).toEqual({ state: "restricted", reason: "subscription_unavailable" })
   })
+  it("bloqueia uma assinatura ativa cuja data de vencimento já passou", () => {
+    const decision = new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "active",
+      subscriptionNextDueDate: new Date("2026-10-10T23:59:59.000Z"),
+      hasPermanentSubscription: false,
+      isBanned: false,
+    }, new Date("2026-10-11T04:00:00.000Z"))
+
+    expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+  })
 })
