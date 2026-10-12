@@ -16,9 +16,14 @@ export const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
 type AccountAccessPausedScreenProps = {
   reason?: AccountAccessRestrictionReason
   isBillingOwner?: boolean
+  canRecoverCard?: boolean
 }
 
-export function AccountAccessPausedScreen({ isBillingOwner = false, reason }: AccountAccessPausedScreenProps) {
+export function AccountAccessPausedScreen({
+  isBillingOwner = false,
+  canRecoverCard = false,
+  reason,
+}: AccountAccessPausedScreenProps) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
@@ -36,7 +41,7 @@ export function AccountAccessPausedScreen({ isBillingOwner = false, reason }: Ac
           </p>
         </CardContent>
         <CardFooter className="flex-col gap-3">
-          {isBillingOwner && reason === "past_due" ? (
+          {isBillingOwner && reason === "past_due" && canRecoverCard ? (
             <AccountAccessRecoveryButton />
           ) : null}
           <Button asChild className="h-11 w-full" variant={isBillingOwner ? "outline" : "default"}>

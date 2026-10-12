@@ -56,7 +56,8 @@ export class RequestCardReauthorizationUseCase {
         reauthorizationRequestedAt: requestedAt,
       })
     }
-    const url = this.dependencies.publicAppUrl.replace(/\/$/, "")
+    const appUrl = this.dependencies.publicAppUrl.replace(/\/$/, "")
+    const url = `${appUrl}/reautorizar-pagamento/${encodeURIComponent(token)}`
     await this.dependencies.notifier.send({ to: masterContact.email, name: masterContact.name, url, expiresAt })
     return new Output(true, ["Link de reautorização enviado"], [], { expiresAt })
   }

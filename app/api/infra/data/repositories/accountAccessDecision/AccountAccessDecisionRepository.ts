@@ -61,6 +61,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     }
 
     const subscription = billingOwner.subscription
+    const canRecoverCard = await this.hasEligibleCardRecovery(billingOwnerId)
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
@@ -71,7 +72,22 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,
       isBanned,
+      canRecoverCard,
     }
+  }
+
+  private async hasEligibleCardRecovery(profileId: string): Promise<boolean> {
+    const migration = await prisma.asaasAccountMigration.findFirst({
+      where: {
+        profileId,
+        status: "paused_awaiting_card",
+        primaryCustomerId: { not: null },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { quoteSnapshot: true },
+    })
+
+    return migration?.quoteSnapshot !== null && migration?.quoteSnapshot !== undefined
   }
 
   private async resolveBillingOwnerId(input: {
