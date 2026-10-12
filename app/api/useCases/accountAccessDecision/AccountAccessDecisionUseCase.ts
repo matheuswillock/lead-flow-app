@@ -27,9 +27,6 @@ export class AccountAccessDecisionUseCase {
       return new Output(true, [], [], {
         ...decision,
         isBillingOwner: account.billingOwnerId === input.profileId,
-        ...(account.billingOwnerId === input.profileId && account.canRecoverCard
-          ? { canRecoverCard: true }
-          : {}),
       })
     } catch (error) {
       console.error("[AccountAccessDecisionUseCase][execute]", error)

@@ -21,7 +21,7 @@ describe("AccountAccessDecisionUseCase", () => {
     expect(output.result).toEqual({ state: "restricted", reason: "past_due", isBillingOwner: false })
   })
 
-  it("expõe regularização somente quando o owner tem uma migração pausada elegível", async () => {
+  it("não expõe regularização por cartão durante o bloqueio", async () => {
     const output = await new AccountAccessDecisionUseCase({
       resolveProfileId: async () => "owner-1",
       resolveAccount: async () => ({
@@ -29,16 +29,10 @@ describe("AccountAccessDecisionUseCase", () => {
         subscriptionStatus: "past_due",
         hasPermanentSubscription: false,
         isBanned: false,
-        canRecoverCard: true,
       }),
     }).execute({ profileId: "owner-1" })
 
-    expect(output.result).toEqual({
-      state: "restricted",
-      reason: "past_due",
-      isBillingOwner: true,
-      canRecoverCard: true,
-    })
+    expect(output.result).toEqual({ state: "restricted", reason: "past_due", isBillingOwner: true })
   })
 
   it("prioriza banimento mesmo para assinatura permanente", async () => {

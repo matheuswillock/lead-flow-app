@@ -16,21 +16,19 @@ test("usa o WhatsApp de assinaturas com a mensagem humanizada codificada", () =>
   )
 })
 
-test("mostra a regularização pelo checkout apenas para o master", () => {
+test("não oferece checkout durante o bloqueio, inclusive ao master", () => {
   const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
     isBillingOwner: true,
-    canRecoverCard: true,
     reason: "past_due",
   }))
 
-  expect(markup).toContain("Regularizar assinatura")
+  expect(markup).not.toContain("Regularizar assinatura")
   expect(markup).toContain("Falar com o time de assinaturas")
 })
 
 test("não exibe checkout para master past_due sem migração elegível", () => {
   const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
     isBillingOwner: true,
-    canRecoverCard: false,
     reason: "past_due",
   }))
 

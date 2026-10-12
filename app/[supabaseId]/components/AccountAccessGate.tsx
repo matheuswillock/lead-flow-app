@@ -11,7 +11,6 @@ export function AccountAccessGate({ decision, children }: AccountAccessGateProps
     return (
       <AccountAccessPausedScreen
         isBillingOwner={decision.isBillingOwner}
-        canRecoverCard={decision.canRecoverCard}
         reason={decision.reason}
       />
     )

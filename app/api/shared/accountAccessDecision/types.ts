@@ -11,7 +11,6 @@ export type AccountAccessDecision =
       state: "restricted"
       reason: AccountAccessRestrictionReason
       isBillingOwner?: boolean
-      canRecoverCard?: boolean
     }
 
 export type AccountAccessRecord = {
@@ -20,7 +19,6 @@ export type AccountAccessRecord = {
   subscriptionNextDueDate?: Date | null
   hasPermanentSubscription: boolean
   isBanned: boolean
-  canRecoverCard?: boolean
 }
 
 export interface IAccountAccessDecisionRepository {

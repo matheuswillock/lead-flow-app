@@ -35,7 +35,7 @@ mock.module("@/lib/account/isAccountMasterBanned", () => ({
 
 const { AccountAccessDecisionRepository } = await import("./AccountAccessDecisionRepository")
 
-describe("AccountAccessDecisionRepository card recovery", () => {
+describe("AccountAccessDecisionRepository bloqueio sem recuperação por cartão", () => {
   beforeEach(() => {
     profileFindUnique.mockClear()
     migrationFindFirst.mockClear()
@@ -44,24 +44,10 @@ describe("AccountAccessDecisionRepository card recovery", () => {
     accountMasterBanned.mockResolvedValue(false)
   })
 
-  it("marca somente uma migração pausada com snapshot como recuperável", async () => {
+  it("não consulta migrações de cartão ao resolver uma conta inadimplente", async () => {
     const record = await new AccountAccessDecisionRepository().resolveAccount({ profileId: "owner-1" })
 
-    expect(record?.canRecoverCard).toBe(true)
-    expect(migrationFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        profileId: "owner-1",
-        status: "paused_awaiting_card",
-        primaryCustomerId: { not: null },
-      }),
-    }))
-  })
-
-  it("não marca recuperação quando o snapshot está ausente", async () => {
-    migrationFindFirst.mockResolvedValueOnce({ quoteSnapshot: null })
-
-    const record = await new AccountAccessDecisionRepository().resolveAccount({ profileId: "owner-1" })
-
-    expect(record?.canRecoverCard).toBe(false)
+    expect(record?.subscriptionStatus).toBe("past_due")
+    expect(migrationFindFirst).not.toHaveBeenCalled()
   })
 })
