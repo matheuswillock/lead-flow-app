@@ -75,6 +75,18 @@ export interface IAsaasAccountMigrationRepository {
    */
   transition(input: AsaasAccountMigrationTransitionInput): Promise<AsaasAccountMigration>
 
+  /**
+   * Reabre, de forma explícita e auditável, uma migração marcada como `done`
+   * quando uma assinatura primary foi criada antes do vencimento. Isso não é
+   * uma transição normal da máquina: é a compensação idempotente da
+   * reconciliação pré-vencimento.
+   */
+  reopenAfterPrematureReconciliation?(input: {
+    legacyCustomerId: string
+    primarySubscriptionId: string
+    anomalyNotes: string
+  }): Promise<AsaasAccountMigration>
+
   countAll(): Promise<number>
 
   /**

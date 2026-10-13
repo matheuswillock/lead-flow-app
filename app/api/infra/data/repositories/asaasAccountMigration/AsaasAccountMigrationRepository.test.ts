@@ -331,6 +331,49 @@ describe("AsaasAccountMigrationRepository", () => {
     })
   })
 
+  describe("reopenAfterPrematureReconciliation", () => {
+    it("reabre apenas a migração done que aponta para a assinatura primary informada", async () => {
+      const current = {
+        ...baseSnapshot(),
+        legacyCustomerId: "cus_legacy_1",
+        id: "migration-1",
+        status: "done",
+        attemptCount: 4,
+        primarySubscriptionId: "sub_primary_1",
+        primaryCustomerId: "cus_primary_1",
+        migratedAt: new Date("2026-10-01T00:00:00.000Z"),
+        anomalyNotes: null,
+      }
+      let reads = 0
+      findUniqueMock.mockImplementation(async () => {
+        reads += 1
+        return reads === 1 ? current : { ...current, status: "awaiting_due_date", migratedAt: null }
+      })
+      updateManyMock.mockImplementation(async () => ({ count: 1 }))
+
+      const repo = new AsaasAccountMigrationRepository()
+      await repo.reopenAfterPrematureReconciliation({
+        legacyCustomerId: "cus_legacy_1",
+        primarySubscriptionId: "sub_primary_1",
+        anomalyNotes: "assinatura criada antes do vencimento",
+      })
+
+      expect(updateManyMock).toHaveBeenCalledWith({
+        where: {
+          legacyCustomerId: "cus_legacy_1",
+          status: "done",
+          attemptCount: 4,
+          primarySubscriptionId: "sub_primary_1",
+        },
+        data: expect.objectContaining({
+          status: "awaiting_due_date",
+          migratedAt: null,
+          anomalyNotes: "assinatura criada antes do vencimento",
+        }),
+      })
+    })
+  })
+
   describe("execution lease", () => {
     it("claims only an unleased migration and returns the owner", async () => {
       const current = { ...baseSnapshot(), id: "migration-1", status: "awaiting_due_date", attemptCount: 2 }
