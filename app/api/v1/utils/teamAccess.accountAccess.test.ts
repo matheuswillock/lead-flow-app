@@ -55,7 +55,7 @@ beforeEach(() => {
 
 describe("getTeamAccess com gate de cobrança", () => {
   it("nega past_due antes de retornar TeamAccess", async () => {
-    execute.mockResolvedValue(new Output(true, [], [], { state: "restricted", reason: "past_due" }))
+    execute.mockResolvedValue(new Output(true, [], [], { state: "restricted", reason: "past_due", isBillingOwner: false }))
 
     const result = await getTeamAccess(
       new NextRequest(`http://localhost/api/v1/leads?teamId=${teamId}`, {
@@ -66,6 +66,21 @@ describe("getTeamAccess com gate de cobrança", () => {
     expect(result.status).toBe(403)
     expect(result.access).toBeUndefined()
     expect(result.error?.result).toBeNull()
+    expect(result.error?.errorMessages[0]).toContain("Avise o administrador desta conta")
+  })
+
+  it("orienta o master a falar diretamente com assinaturas", async () => {
+    execute.mockResolvedValue(new Output(true, [], [], { state: "restricted", reason: "past_due", isBillingOwner: true }))
+
+    const result = await getTeamAccess(
+      new NextRequest(`http://localhost/api/v1/leads?teamId=${teamId}`, {
+        headers: { "x-supabase-user-id": "supabase-member" },
+      })
+    )
+
+    expect(result.status).toBe(403)
+    expect(result.error?.errorMessages[0]).toContain("time de assinaturas")
+    expect(result.error?.errorMessages[0]).not.toContain("Avise o administrador")
   })
 
   it("prioriza a mensagem de banimento", async () => {

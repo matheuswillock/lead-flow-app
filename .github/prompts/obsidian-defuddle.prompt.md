@@ -1,9 +1,12 @@
 ---
-name: obsidian-defuddle
+mode: 'agent'
 description: "Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to save tokens. Use instead of WebFetch when the user provides a URL to read or analyze, for online documentation, articles, blog posts, or any standard web page. Do NOT use for URLs ending in .md — those are already markdown, use WebFetch directly."
-metadata:
-  source: obsidian@obsidian-skills plugin — obsidian/1.0.1/skills/defuddle/SKILL.md
 ---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/obsidian-defuddle/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 
 # Defuddle
 

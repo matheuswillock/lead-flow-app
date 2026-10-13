@@ -143,6 +143,16 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           {
             teamsOwned: {
               some: {
+                name: {
+                  contains: q,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+          {
+            teamsOwned: {
+              some: {
                 members: {
                   some: {
                     profile: {

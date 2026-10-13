@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.333.0",
+  "version": "0.334.1",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -30,6 +30,7 @@
     "governance:check-api-masking": "bun scripts/ai-governance.ts check-api-masking",
     "governance:check-e2e-pages": "bun scripts/ai-governance.ts check-e2e-pages",
     "governance:check-responsive": "bun scripts/ai-governance.ts check-responsive",
+    "governance:context-report": "bun scripts/ai-governance.ts context-report",
     "governance:warn-allowlist": "bun scripts/ai-governance.ts warn-allowlist",
     "validate:implementation": "bun run governance:sync && git diff --exit-code -- .github/copilot-instructions.md .cursor/rules/lead-flow-agents.mdc CLAUDE.md && bun run governance:check && bun run governance:check-e2e-pages && bun run governance:check-responsive && bun run governance:check-api-masking && bun run lint && bun run lint:pt-br:strict && bun run typecheck && bun run test:observability && bun run test:proxy",
     "hooks:install": "bun scripts/install-git-hooks.ts",
@@ -202,7 +203,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tldts": "^7.4.11",
     "vaul": "^1.1.2",
-    "vercel": "^59.10.0",
+    "vercel": "^63.1.2",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"

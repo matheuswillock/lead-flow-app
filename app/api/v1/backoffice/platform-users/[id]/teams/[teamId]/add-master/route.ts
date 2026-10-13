@@ -25,7 +25,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (denied) return denied
 
     const { id, teamId } = await params
-    const output = await backofficePlatformUsersUseCase.addMasterUserToTeam(id, teamId)
+    const output = await backofficePlatformUsersUseCase.addMasterUserToTeam(id, teamId, {
+      profileId: access.access.profileId,
+      backofficeUserId: access.access.backofficeUserId,
+      backofficeEmail: access.access.backofficeEmail,
+    })
     if (output.isValid) {
       invalidateTeamMembersCache({ teamId })
     }

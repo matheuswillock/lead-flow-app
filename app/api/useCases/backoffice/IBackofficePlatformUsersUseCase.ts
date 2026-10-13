@@ -1,5 +1,11 @@
 import type { Output } from "@/lib/output"
 
+export interface BackofficeAuditActor {
+  profileId: string
+  backofficeUserId: string | null
+  backofficeEmail: string
+}
+
 export interface IBackofficePlatformUsersUseCase {
   listMasterUsers(
     filters: { name?: string; email?: string; team?: string; plan?: "lifetime" | "monthly" | "trial" | "none"; userType?: "common" | "member_pro" } | undefined,
@@ -96,14 +102,20 @@ export interface IBackofficePlatformUsersUseCase {
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
       generateCharge?: boolean
-    }
+    },
+    actor?: BackofficeAuditActor
   ): Promise<Output>
 
-  addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output>
+  addMasterUserToTeam(
+    masterProfileId: string,
+    teamId: string,
+    actor?: BackofficeAuditActor
+  ): Promise<Output>
 
   addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string; generateCharge?: boolean }
+    data: { name: string; generateCharge?: boolean },
+    actor?: BackofficeAuditActor
   ): Promise<Output>
 
   updateTeamForMasterUser(

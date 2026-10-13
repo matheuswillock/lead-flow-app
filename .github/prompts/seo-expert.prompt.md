@@ -1,23 +1,12 @@
 ---
-name: seo-expert
+mode: 'agent'
 description: "SEO and search engine optimization expert. PROACTIVELY use when working with meta tags, structured data, Core Web Vitals, sitemap, robots.txt, canonical URLs. Triggers: SEO, meta tags, schema markup, search ranking"
-allowed-tools: Read, Grep, Glob, Edit, Write
-autoInvoke: true
-priority: high
-triggers:
-  - seo
-  - search engine
-  - meta tags
-  - structured data
-  - schema markup
-  - sitemap
-  - robots.txt
-  - canonical
-  - google search
-  - search ranking
-metadata:
-  mcpmarket-version: 1.0.0
 ---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/seo-expert/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 # SEO Expert Skill
 
 Expert-level Search Engine Optimization for modern web applications. Covers technical SEO, on-page optimization, and structured data implementation.

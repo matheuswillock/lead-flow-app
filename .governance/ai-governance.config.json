@@ -6,17 +6,67 @@
       "SHOULD",
       "LEGACY EXCEPTIONS",
       "FOR NEW FEATURES",
-      "canonical `app/api` layout",
-      "canonical `features/` layout",
-      "window.alert",
-      "E2E Tests",
-      "governance:check-e2e-pages",
-      "governance:check-responsive",
-      "mobile-first"
+      "Context routing",
+      "Automated coverage",
+      "governance:check"
     ]
   },
   "warnings": {
     "maxExamplesPerCategory": 5
+  },
+  "contextBudgets": {
+    "canonicalMaxWords": 2000,
+    "alwaysOnInstructionsMaxWords": 500,
+    "skillMaxWords": {
+      ".claude/skills/clean-code.md": 450
+    },
+    "profiles": [
+      {
+        "name": "codex-project-discovery",
+        "maxWords": 3500,
+        "paths": [
+          "agents.md",
+          ".agents/skills/clean-code/SKILL.md",
+          ".github/instructions/project-context.instructions.md"
+        ]
+      },
+      {
+        "name": "codex-backend",
+        "maxWords": 3500,
+        "paths": [
+          "agents.md",
+          ".agents/skills/clean-code/SKILL.md",
+          ".governance/ai/backend.md"
+        ]
+      },
+      {
+        "name": "codex-database",
+        "maxWords": 3500,
+        "paths": [
+          "agents.md",
+          ".agents/skills/clean-code/SKILL.md",
+          ".governance/ai/database.md"
+        ]
+      },
+      {
+        "name": "codex-frontend",
+        "maxWords": 3500,
+        "paths": [
+          "agents.md",
+          ".agents/skills/clean-code/SKILL.md",
+          ".governance/ai/frontend.md",
+          ".governance/ai/testing.md"
+        ]
+      },
+      {
+        "name": "copilot-always-on",
+        "maxWords": 3500,
+        "paths": [
+          ".github/copilot-instructions.md",
+          ".github/instructions/project-context.instructions.md"
+        ]
+      }
+    ]
   },
   "adapters": [
     {

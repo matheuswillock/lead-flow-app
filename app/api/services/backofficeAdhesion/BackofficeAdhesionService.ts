@@ -26,6 +26,8 @@ import {
 } from "@/lib/backoffice-adhesions/installment-ledger"
 import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
 import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter"
+import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor"
 import { validateAdhesionSubscriptionWrite } from "@/lib/billing/adhesion-guards"
 import { resolveMemberProAccessWindow } from "@/app/api/shared/billing/memberProBillingRules"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
@@ -413,10 +415,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
   private async resolveAssignedByProfileId(
     createdByBackofficeUserId: string | null | undefined
-  ): Promise<string | null> {
-    if (!createdByBackofficeUserId) return null
+  ): Promise<{ profileId: string | null; email: string | null }> {
+    if (!createdByBackofficeUserId) return { profileId: null, email: null }
     const creator = await this.backofficeUserRepo.findById(createdByBackofficeUserId)
-    return creator?.profileId ?? null
+    return {
+      profileId: creator?.profileId ?? null,
+      email: creator?.email ?? null,
+    }
   }
 
   async list(input: {
@@ -1990,9 +1995,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         createdSupabaseId: createdProfile.supabaseId,
       })
 
-      const assignedByProfileId = await this.resolveAssignedByProfileId(
+      const assignedBy = await this.resolveAssignedByProfileId(
         adhesion.createdByBackofficeUserId
       )
+      const assignedByProfileId = assignedBy.profileId
 
       if (adhesion.requestedUserTypeSlug === "member_pro") {
         const memberProWindow = resolveMemberProAccessWindow({ start: subscriptionStartDate })
@@ -2046,6 +2052,34 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           subscriptionEndDate,
         },
         metadata: { adhesionId: adhesion.id, productId: crmProduct.id },
+      })
+
+      await auditLogWriter.logAudit({
+        entityType: "PROFILE",
+        entityId: createdProfile.profileId,
+        action: "CREATE",
+        actorProfileId: assignedByProfileId,
+        before: null,
+        after: {
+          email: adhesion.email,
+          fullName: adhesion.fullName,
+          role: "manager",
+          isMaster: true,
+          source: "backoffice_adhesion",
+        },
+        metadata: buildAuditActorMetadata(
+          {
+            profileId: assignedByProfileId,
+            backofficeUserId: adhesion.createdByBackofficeUserId,
+            backofficeEmail: assignedBy.email,
+          },
+          {
+            operation: "master_account_created",
+            adhesionId: adhesion.id,
+            createdProfileId: createdProfile.profileId,
+            requestedUserTypeSlug: adhesion.requestedUserTypeSlug,
+          }
+        ),
       })
 
       provisionedProfileId = createdProfile.profileId

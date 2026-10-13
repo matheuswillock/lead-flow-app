@@ -3,7 +3,10 @@ description: "Create and edit JSON Canvas files (.canvas) with nodes, edges, gro
 alwaysApply: false
 ---
 
-<!-- SOURCE: obsidian@obsidian-skills plugin — obsidian/1.0.1/skills/json-canvas/SKILL.md -->
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/obsidian-json-canvas/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 
 # JSON Canvas Skill
 

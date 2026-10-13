@@ -12,8 +12,9 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
-import { getAccountSubscriptionStatus } from "@/lib/subscription/isAccountSubscriptionActive";
-import { findActiveAccountBannedMasterIds } from "@/lib/account/isAccountMasterBanned";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
+import { resolveActiveTeamId } from "@/lib/account/teamAccessDecision";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
 
@@ -214,15 +215,6 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const subscriptionByMasterId = new Map<string, boolean>();
-    const uniqueMasterIds = [...new Set(memberships.map((item) => item.team.masterId))];
-    await Promise.all(
-      uniqueMasterIds.map(async (masterId) => {
-        const status = await getAccountSubscriptionStatus(masterId);
-        subscriptionByMasterId.set(masterId, status.isActive);
-      })
-    );
-
     const activeTeamIds = new Set(memberships.map((m) => m.team.id));
 
     const memberTeamIds = memberships.map((m) => m.team.id);
@@ -234,6 +226,7 @@ export async function GET(request: NextRequest) {
 
     const sponsoredTeams = await prisma.team.findMany({
       where: {
+        deletedAt: null,
         master: {
           sponsorMasterId: profile.id,
         },
@@ -251,20 +244,32 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    for (const masterId of sponsoredTeams.map((t) => t.masterId)) {
-      if (!subscriptionByMasterId.has(masterId)) {
-        const status = await getAccountSubscriptionStatus(masterId);
-        subscriptionByMasterId.set(masterId, status.isActive);
-      }
+    const teamIdByMasterId = new Map<string, string>();
+    for (const membership of memberships) {
+      teamIdByMasterId.set(membership.team.masterId, membership.team.id);
+    }
+    for (const team of sponsoredTeams) {
+      teamIdByMasterId.set(team.masterId, team.id);
     }
 
-    const bannedMasterIds = await findActiveAccountBannedMasterIds([
-      ...subscriptionByMasterId.keys(),
-    ]);
+    const accountDecisionByMasterId = new Map<string, AccountAccessDecision>();
+    await Promise.all(
+      [...teamIdByMasterId.entries()].map(async ([masterId, teamId]) => {
+        const output = await accountAccessDecisionUseCase.execute({
+          profileId: profile.id,
+          teamId,
+        });
+        const rawDecision = output.result as AccountAccessDecision | null;
+        const decision = output.isValid && rawDecision?.state
+          ? rawDecision
+          : ({ state: "restricted", reason: "subscription_unavailable" } satisfies AccountAccessDecision);
+        accountDecisionByMasterId.set(masterId, decision);
+      })
+    );
 
     const accountTeamsCountByMasterId = new Map<string, number>();
     await Promise.all(
-      [...subscriptionByMasterId.keys()].map(async (masterId) => {
+      [...teamIdByMasterId.keys()].map(async (masterId) => {
         const count = await prisma.team.count({ where: { masterId } });
         accountTeamsCountByMasterId.set(masterId, count);
       })
@@ -272,9 +277,14 @@ export async function GET(request: NextRequest) {
 
     const activeTeams = memberships.map((membership) => {
       const accountMasterId = membership.team.masterId;
-      const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
-      const accountMasterBanned = bannedMasterIds.has(accountMasterId);
-      const isAccessible = accountSubscriptionActive && !accountMasterBanned;
+      const accountAccessDecision = accountDecisionByMasterId.get(accountMasterId) ?? {
+        state: "restricted" as const,
+        reason: "subscription_unavailable" as const,
+      };
+      const accountSubscriptionActive = accountAccessDecision.state === "allowed";
+      const accountMasterBanned =
+        accountAccessDecision.state === "restricted" && accountAccessDecision.reason === "banned";
+      const isAccessible = accountSubscriptionActive;
 
       return {
         id: membership.team.id,
@@ -292,6 +302,7 @@ export async function GET(request: NextRequest) {
         isAccessible,
         accountSubscriptionActive,
         accountMasterBanned,
+        accountAccessDecision,
         isDefault: membership.team.isDefault,
         role: membership.role,
         functions: membership.functions,
@@ -311,9 +322,14 @@ export async function GET(request: NextRequest) {
       .filter((team) => !activeTeamIds.has(team.id))
       .map((team) => {
         const accountMasterId = team.masterId;
-        const accountSubscriptionActive = subscriptionByMasterId.get(accountMasterId) ?? false;
-        const accountMasterBanned = bannedMasterIds.has(accountMasterId);
-        const isAccessible = accountSubscriptionActive && !accountMasterBanned;
+        const accountAccessDecision = accountDecisionByMasterId.get(accountMasterId) ?? {
+          state: "restricted" as const,
+          reason: "subscription_unavailable" as const,
+        };
+        const accountSubscriptionActive = accountAccessDecision.state === "allowed";
+        const accountMasterBanned =
+          accountAccessDecision.state === "restricted" && accountAccessDecision.reason === "banned";
+        const isAccessible = accountSubscriptionActive;
         const associateAccountName = team.master.fullName ?? team.master.email;
 
         return {
@@ -329,6 +345,7 @@ export async function GET(request: NextRequest) {
           isAccessible,
           accountSubscriptionActive,
           accountMasterBanned,
+          accountAccessDecision,
           isDefault: team.isDefault,
           role: "backoffice" as const,
           functions: [] as string[],
@@ -394,22 +411,18 @@ export async function GET(request: NextRequest) {
     const teams = [...activeTeamsMerged, ...pendingTeamRows];
 
     let activeTeamId = profile.activeTeamId;
-    const currentTeam = teams.find((team) => team.id === activeTeamId);
-    const currentIsAccessible =
-      currentTeam &&
-      !currentTeam.isPending &&
-      ("isAccessible" in currentTeam ? currentTeam.isAccessible : true);
+    const resolvedActiveTeamId = resolveActiveTeamId({
+      currentTeamId: activeTeamId,
+      teams,
+    });
 
-    if (!currentIsAccessible) {
-      const fallbackTeam = activeTeamsMerged.find((team) => team.isAccessible);
-      if (fallbackTeam) {
-        activeTeamId = fallbackTeam.id;
+    if (resolvedActiveTeamId !== activeTeamId) {
+      activeTeamId = resolvedActiveTeamId;
+      if (resolvedActiveTeamId) {
         await prisma.profile.update({
           where: { id: profile.id },
-          data: { activeTeamId: fallbackTeam.id },
+          data: { activeTeamId: resolvedActiveTeamId },
         });
-      } else {
-        activeTeamId = null;
       }
     }
 

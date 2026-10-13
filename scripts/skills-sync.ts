@@ -12,6 +12,8 @@
  * Canonical source:  .claude/skills/*.md
  * Cursor adapter:    .cursor/skills/<name>.mdc
  * Copilot adapter:   .github/prompts/<name>.prompt.md
+ * Codex adapter:     .agents/skills/<name>/SKILL.md (opt-in via targets)
+ * Manus adapter:     skills/<name>/SKILL.md (opt-in via targets)
  */
 
 import { promises as fs } from "node:fs";
@@ -21,7 +23,29 @@ const ROOT = process.cwd();
 const SKILLS_SOURCE_DIR = path.join(ROOT, ".claude", "skills");
 const CURSOR_SKILLS_DIR = path.join(ROOT, ".cursor", "skills");
 const COPILOT_PROMPTS_DIR = path.join(ROOT, ".github", "prompts");
+const CODEX_SKILLS_DIR = path.join(ROOT, ".agents", "skills");
+const MANUS_SKILLS_DIR = path.join(ROOT, "skills");
 const SKILLS_LOCK_FILE = path.join(ROOT, "skills-lock.json");
+
+export type SkillTarget =
+  | "claude"
+  | "cursor"
+  | "copilot"
+  | "codex"
+  | "manus";
+
+const VALID_SKILL_TARGETS = new Set<SkillTarget>([
+  "claude",
+  "cursor",
+  "copilot",
+  "codex",
+  "manus",
+]);
+const DEFAULT_SKILL_TARGETS = new Set<SkillTarget>([
+  "claude",
+  "cursor",
+  "copilot",
+]);
 
 // Package-managed skills (e.g. vendored from GitHub) are mirrored into
 // .claude/skills/<name>/ but are NOT project-authored rules, so they must not
@@ -54,9 +78,11 @@ interface SkillFrontmatter {
   // Opt-in: skills that must always be loaded by Cursor, not just considered
   // by relevance. Defaults to false (relevance-based) when omitted.
   alwaysApply?: string;
+  // Comma-separated adapters. Omitted preserves the legacy Claude/Cursor/Copilot flow.
+  targets?: string;
 }
 
-function parseFrontmatter(content: string): {
+export function parseFrontmatter(content: string): {
   frontmatter: SkillFrontmatter;
   body: string;
 } {
@@ -78,6 +104,23 @@ function parseFrontmatter(content: string): {
   }
 
   return { frontmatter, body };
+}
+
+export function resolveSkillTargets(rawTargets?: string): Set<SkillTarget> {
+  if (!rawTargets?.trim()) {
+    return new Set(DEFAULT_SKILL_TARGETS);
+  }
+
+  const targets = new Set<SkillTarget>();
+  for (const rawTarget of rawTargets.split(",")) {
+    const target = rawTarget.trim() as SkillTarget;
+    if (!VALID_SKILL_TARGETS.has(target)) {
+      throw new Error(`Unknown skill target: ${rawTarget.trim()}`);
+    }
+    targets.add(target);
+  }
+
+  return targets;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +177,24 @@ function renderCopilotAdapter(
   ].join("\n");
 }
 
+export function renderNativeSkillAdapter(
+  name: string,
+  description: string,
+  sourceName: string,
+  body: string,
+): string {
+  return [
+    "---",
+    `name: ${name}`,
+    `description: ${yamlDoubleQuote(description)}`,
+    "---",
+    "",
+    renderGeneratedHeader(sourceName),
+    body.trimEnd(),
+    "",
+  ].join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // File helpers
 // ---------------------------------------------------------------------------
@@ -142,11 +203,11 @@ async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
 }
 
-async function writeIfChanged(
+export async function writeIfChanged(
   targetPath: string,
   content: string,
   label: string,
-): Promise<void> {
+): Promise<boolean> {
   let existing: string | null = null;
   try {
     existing = await fs.readFile(targetPath, "utf8");
@@ -156,11 +217,29 @@ async function writeIfChanged(
 
   if (existing === content) {
     console.info("[skills:sync] Unchanged", label);
-    return;
+    return false;
   }
 
   await fs.writeFile(targetPath, content, "utf8");
   console.info("[skills:sync] Updated ", label);
+  return true;
+}
+
+export async function removeGeneratedAdapter(
+  targetPath: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    await fs.unlink(targetPath);
+    console.info("[skills:sync] Removed ", label);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -240,25 +319,61 @@ async function syncSkills(): Promise<void> {
 
     const description = frontmatter.description ?? baseName;
     const alwaysApply = frontmatter.alwaysApply === "true";
-
-    // Cursor adapter
+    const targets = resolveSkillTargets(frontmatter.targets);
     const cursorPath = path.join(CURSOR_SKILLS_DIR, `${baseName}.mdc`);
-    await writeIfChanged(
-      cursorPath,
-      renderCursorAdapter(description, sourceLabel, body, alwaysApply),
-      `.cursor/skills/${baseName}.mdc`,
-    );
-
-    // Copilot adapter
     const copilotPath = path.join(
       COPILOT_PROMPTS_DIR,
       `${baseName}.prompt.md`,
     );
-    await writeIfChanged(
-      copilotPath,
-      renderCopilotAdapter(description, sourceLabel, body),
-      `.github/prompts/${baseName}.prompt.md`,
-    );
+    const codexPath = path.join(CODEX_SKILLS_DIR, baseName, "SKILL.md");
+    const manusPath = path.join(MANUS_SKILLS_DIR, baseName, "SKILL.md");
+
+    if (targets.has("cursor")) {
+      await writeIfChanged(
+        cursorPath,
+        renderCursorAdapter(description, sourceLabel, body, alwaysApply),
+        `.cursor/skills/${baseName}.mdc`,
+      );
+    } else {
+      await removeGeneratedAdapter(cursorPath, `.cursor/skills/${baseName}.mdc`);
+    }
+
+    if (targets.has("copilot")) {
+      await writeIfChanged(
+        copilotPath,
+        renderCopilotAdapter(description, sourceLabel, body),
+        `.github/prompts/${baseName}.prompt.md`,
+      );
+    } else {
+      await removeGeneratedAdapter(
+        copilotPath,
+        `.github/prompts/${baseName}.prompt.md`,
+      );
+    }
+
+    if (targets.has("codex")) {
+      const codexDirectory = path.join(CODEX_SKILLS_DIR, baseName);
+      await ensureDir(codexDirectory);
+      await writeIfChanged(
+        codexPath,
+        renderNativeSkillAdapter(baseName, description, sourceLabel, body),
+        `.agents/skills/${baseName}/SKILL.md`,
+      );
+    } else {
+      await removeGeneratedAdapter(codexPath, `.agents/skills/${baseName}/SKILL.md`);
+    }
+
+    if (targets.has("manus")) {
+      const manusDirectory = path.join(MANUS_SKILLS_DIR, baseName);
+      await ensureDir(manusDirectory);
+      await writeIfChanged(
+        manusPath,
+        renderNativeSkillAdapter(baseName, description, sourceLabel, body),
+        `skills/${baseName}/SKILL.md`,
+      );
+    } else {
+      await removeGeneratedAdapter(manusPath, `skills/${baseName}/SKILL.md`);
+    }
   }
 
   console.info(
@@ -266,7 +381,9 @@ async function syncSkills(): Promise<void> {
   );
 }
 
-syncSkills().catch((err: unknown) => {
-  console.error("[skills:sync] Unexpected error:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  syncSkills().catch((err: unknown) => {
+    console.error("[skills:sync] Unexpected error:", err);
+    process.exit(1);
+  });
+}
