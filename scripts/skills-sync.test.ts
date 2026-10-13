@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   parseFrontmatter,
   renderNativeSkillAdapter,
+  removeGeneratedAdapter,
   resolveSkillTargets,
   writeIfChanged,
 } from "./skills-sync";
@@ -67,5 +68,17 @@ describe("skills sync", () => {
     expect(await writeIfChanged(target, "same\n", "fixture")).toBe(true);
     expect(await writeIfChanged(target, "same\n", "fixture")).toBe(false);
     expect(await readFile(target, "utf8")).toBe("same\n");
+  });
+
+  test("removes an adapter when its target is deselected", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "skills-sync-"));
+    temporaryDirectories.push(directory);
+    const target = path.join(directory, "SKILL.md");
+
+    await writeIfChanged(target, "generated\n", "fixture");
+
+    expect(await removeGeneratedAdapter(target, "fixture")).toBe(true);
+    await expect(readFile(target, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await removeGeneratedAdapter(target, "fixture")).toBe(false);
   });
 });

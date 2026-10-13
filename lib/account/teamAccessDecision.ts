@@ -11,12 +11,13 @@ export function resolveActiveTeamId(input: {
   teams: TeamAccessCandidate[]
 }): string | null {
   const currentTeam = input.teams.find((team) => team.id === input.currentTeamId)
-  if (currentTeam && !currentTeam.isPending) {
+  if (currentTeam && !currentTeam.isPending && currentTeam.isAccessible !== false) {
     return currentTeam.id
   }
 
   return (
     input.teams.find((team) => !team.isPending && team.isAccessible !== false)?.id ??
+    (currentTeam && !currentTeam.isPending ? currentTeam.id : null) ??
     input.teams.find((team) => !team.isPending)?.id ??
     null
   )
