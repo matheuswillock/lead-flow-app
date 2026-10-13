@@ -225,6 +225,23 @@ export async function writeIfChanged(
   return true;
 }
 
+export async function removeGeneratedAdapter(
+  targetPath: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    await fs.unlink(targetPath);
+    console.info("[skills:sync] Removed ", label);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main sync
 // ---------------------------------------------------------------------------
@@ -303,24 +320,33 @@ async function syncSkills(): Promise<void> {
     const description = frontmatter.description ?? baseName;
     const alwaysApply = frontmatter.alwaysApply === "true";
     const targets = resolveSkillTargets(frontmatter.targets);
+    const cursorPath = path.join(CURSOR_SKILLS_DIR, `${baseName}.mdc`);
+    const copilotPath = path.join(
+      COPILOT_PROMPTS_DIR,
+      `${baseName}.prompt.md`,
+    );
+    const codexPath = path.join(CODEX_SKILLS_DIR, baseName, "SKILL.md");
+    const manusPath = path.join(MANUS_SKILLS_DIR, baseName, "SKILL.md");
 
     if (targets.has("cursor")) {
-      const cursorPath = path.join(CURSOR_SKILLS_DIR, `${baseName}.mdc`);
       await writeIfChanged(
         cursorPath,
         renderCursorAdapter(description, sourceLabel, body, alwaysApply),
         `.cursor/skills/${baseName}.mdc`,
       );
+    } else {
+      await removeGeneratedAdapter(cursorPath, `.cursor/skills/${baseName}.mdc`);
     }
 
     if (targets.has("copilot")) {
-      const copilotPath = path.join(
-        COPILOT_PROMPTS_DIR,
-        `${baseName}.prompt.md`,
-      );
       await writeIfChanged(
         copilotPath,
         renderCopilotAdapter(description, sourceLabel, body),
+        `.github/prompts/${baseName}.prompt.md`,
+      );
+    } else {
+      await removeGeneratedAdapter(
+        copilotPath,
         `.github/prompts/${baseName}.prompt.md`,
       );
     }
@@ -329,20 +355,24 @@ async function syncSkills(): Promise<void> {
       const codexDirectory = path.join(CODEX_SKILLS_DIR, baseName);
       await ensureDir(codexDirectory);
       await writeIfChanged(
-        path.join(codexDirectory, "SKILL.md"),
+        codexPath,
         renderNativeSkillAdapter(baseName, description, sourceLabel, body),
         `.agents/skills/${baseName}/SKILL.md`,
       );
+    } else {
+      await removeGeneratedAdapter(codexPath, `.agents/skills/${baseName}/SKILL.md`);
     }
 
     if (targets.has("manus")) {
       const manusDirectory = path.join(MANUS_SKILLS_DIR, baseName);
       await ensureDir(manusDirectory);
       await writeIfChanged(
-        path.join(manusDirectory, "SKILL.md"),
+        manusPath,
         renderNativeSkillAdapter(baseName, description, sourceLabel, body),
         `skills/${baseName}/SKILL.md`,
       );
+    } else {
+      await removeGeneratedAdapter(manusPath, `skills/${baseName}/SKILL.md`);
     }
   }
 

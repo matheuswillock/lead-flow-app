@@ -12,13 +12,13 @@ const availableTeam = (id: string, isAccessible: boolean): TeamAccessCandidate =
 })
 
 describe("resolução do contexto de acesso do time", () => {
-  it("preserva o time ativo mesmo quando a assinatura está bloqueada", () => {
+  it("troca para um time acessível quando o time persistido está bloqueado", () => {
     expect(
       resolveActiveTeamId({
         currentTeamId: "blocked",
         teams: [availableTeam("blocked", false), availableTeam("active", true)],
       })
-    ).toBe("blocked")
+    ).toBe("active")
   })
 
   it("escolhe um time acessível quando não existe time ativo", () => {
