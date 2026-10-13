@@ -1,6 +1,9 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { IBackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
-import { resolveHasUnlimitedUsers } from "@/app/api/shared/billing/memberProBillingRules"
+import {
+  isActiveMemberProAssignment,
+  resolveHasUnlimitedUsers,
+} from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   BillingCycle,
   BillingQuoteCatalogItem,
@@ -131,6 +134,13 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
           id: true,
           hasPermanentSubscription: true,
           hasUnlimitedUsers: true,
+          userTypeAssignment: {
+            select: {
+              accessStartsAt: true,
+              accessExpiresAt: true,
+              userType: { select: { slug: true } },
+            },
+          },
           asaasSubscriptionId: true,
           asaasSubscriptionAccount: true,
           subscriptionCycle: true,
@@ -212,6 +222,14 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
         hasUnlimitedUsersFlag: profile.hasUnlimitedUsers,
         hasPermanentSubscription,
         billingCycle,
+        memberProSlug: profile.userTypeAssignment?.userType.slug,
+        memberProActive: isActiveMemberProAssignment(profile.userTypeAssignment
+          ? {
+              slug: profile.userTypeAssignment.userType.slug,
+              accessStartsAt: profile.userTypeAssignment.accessStartsAt,
+              accessExpiresAt: profile.userTypeAssignment.accessExpiresAt,
+            }
+          : null),
       }),
       asaasSubscriptionId: subscription
         ? subscription.asaasSubscriptionId

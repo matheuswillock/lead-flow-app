@@ -63,6 +63,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   ownerSubscriptionNextDueDate: Date | null = null
   ownerProfileNextDueDate: Date | null = null
   ownerHasPermanentSubscription = false
+  ownerUserTypeAssignment: { slug: string; accessStartsAt: string | null; accessExpiresAt: string | null } | null = null
 
   async listActiveFeatures() {
     return this.features
@@ -107,7 +108,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 
   async findUserTypeAssignment(): Promise<OwnerUserTypeAssignment | null> {
-    return null
+    return this.ownerUserTypeAssignment
   }
 }
 
@@ -188,6 +189,40 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
     expect(access.slugs).toContain("crm")
     expect(access.slugs).toContain("email")
     expect(access.slugs).toContain("whatsapp")
+  })
+
+  it("libera Member PRO vigente mesmo com assinatura suspensa", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: new Date(Date.now() - 1_000).toISOString(),
+      accessExpiresAt: new Date(Date.now() + 100 * 24 * 60 * 60 * 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "suspended"
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+  })
+
+  it("bloqueia Member PRO expirado", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: null,
+      accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "suspended"
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual([])
   })
 
 

@@ -48,11 +48,14 @@ export type AsaasMigrationCustomer = {
 export type AsaasLegacySubscription = {
   id: string
   status: string
+  customer?: string
+  externalReference?: string | null
 }
 
 export type AsaasLegacyPayment = {
   id: string
   status: string
+  customer?: string
   subscription?: string | null
   dueDate?: string | null
 }

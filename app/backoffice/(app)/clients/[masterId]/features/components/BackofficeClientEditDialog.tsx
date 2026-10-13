@@ -343,11 +343,11 @@ export function BackofficeClientEditDialog({
                       disabled={isSubmitting}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias. Member PRO ativa
+                      Member PRO é concedido por exatamente 100 dias e ativa
                       usuários ilimitados.
                     </p>
                     {form.memberProAccessDays.length > 0 && !memberProAccessDaysValid ? (
-                      <p className="text-xs text-destructive">Informe um número entre 1 e 365</p>
+                      <p className="text-xs text-destructive">O período Member PRO é fixo em 100 dias.</p>
                     ) : null}
                   </div>
                 ) : null}

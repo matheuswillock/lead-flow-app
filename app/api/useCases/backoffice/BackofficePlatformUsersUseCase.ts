@@ -702,6 +702,20 @@ export function getPlanInfo(
   }
 }
 
+export function resolveBackofficeHasAccess(input: {
+  hasPermanentSubscription: boolean
+  subscriptionId: string | null
+  subscriptionStatus: string | null
+  memberProActive: boolean
+  memberProBlocked?: boolean
+  isBanned: boolean
+}): boolean {
+  if (input.isBanned) return false
+  if (input.memberProBlocked) return false
+  return input.hasPermanentSubscription || input.memberProActive ||
+    (!!input.subscriptionId && input.subscriptionStatus === "active")
+}
+
 export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersUseCase {
   constructor(
     private readonly platformUsersRepository: IBackofficePlatformUsersRepository,
@@ -787,10 +801,6 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.planSubscription
       )
 
-      const hasAccess =
-        master.hasPermanentSubscription ||
-        (!!master.subscriptionId && master.subscriptionStatus === "active")
-
       const accessByProfileId = await resolveBackofficeMemberAccess([
         {
           profileId: master.id,
@@ -821,6 +831,14 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         }
 
       const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(masterProfileId)
+      const hasAccess = resolveBackofficeHasAccess({
+        hasPermanentSubscription: master.hasPermanentSubscription,
+        subscriptionId: master.subscriptionId,
+        subscriptionStatus: master.subscriptionStatus,
+        memberProActive: master.userType.isActive,
+        memberProBlocked: master.userType.slug === "member_pro" && !master.userType.isActive,
+        isBanned: Boolean(activeBan),
+      })
 
       return new Output(true, [], [], {
         id: master.id,

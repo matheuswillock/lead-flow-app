@@ -10,6 +10,10 @@ import type {
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import {
+  isActiveMemberProAssignment,
+  isBlockingMemberProAssignment,
+} from "@/app/api/shared/billing/memberProBillingRules"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 
@@ -143,9 +147,24 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     const userTypeSlug = ownerUserType?.slug ?? "common"
     const memberProExpiresAt = ownerUserType?.accessExpiresAt ?? null
-    const memberProActive =
-      userTypeSlug === "member_pro" &&
-      (memberProExpiresAt === null || new Date(memberProExpiresAt).getTime() > Date.now())
+    const memberProActive = isActiveMemberProAssignment(
+      ownerUserType
+        ? {
+            slug: ownerUserType.slug,
+            accessStartsAt: ownerUserType.accessStartsAt ? new Date(ownerUserType.accessStartsAt) : null,
+            accessExpiresAt: ownerUserType.accessExpiresAt ? new Date(ownerUserType.accessExpiresAt) : null,
+          }
+        : null
+    )
+    const memberProBlocked = isBlockingMemberProAssignment(
+      ownerUserType
+        ? {
+            slug: ownerUserType.slug,
+            accessStartsAt: ownerUserType.accessStartsAt ? new Date(ownerUserType.accessStartsAt) : null,
+            accessExpiresAt: ownerUserType.accessExpiresAt ? new Date(ownerUserType.accessExpiresAt) : null,
+          }
+        : null
+    )
 
     const safeUserRole: UserRoleInfo = {
       ...(currentUserRole ?? {
@@ -174,7 +193,8 @@ export class FeatureAccessService implements IFeatureAccessService {
 
     // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
     // ownerProfile + ownerProfileSubscription já foram buscados acima.
-    const accountSubscriptionActive = hasPermanentAccess || hasActiveMainSubscription
+    const accountSubscriptionActive =
+      hasPermanentAccess || (!memberProBlocked && (hasActiveMainSubscription || memberProActive))
     if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }

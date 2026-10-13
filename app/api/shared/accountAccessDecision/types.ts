@@ -18,6 +18,8 @@ export type AccountAccessRecord = {
   subscriptionStatus: string | null
   subscriptionNextDueDate?: Date | null
   hasPermanentSubscription: boolean
+  memberProActive?: boolean
+  memberProBlocked?: boolean
   isBanned: boolean
 }
 

@@ -63,6 +63,7 @@ export interface MasterPlatformUserRecord {
 
 export interface MasterPlatformUserTypeRecord {
   slug: "common" | "member_pro"
+  isActive: boolean
   isExpired: boolean
   accessExpiresAt: string | null
 }

@@ -127,7 +127,12 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
         `${client.endpoints.subscriptions}/${encodeURIComponent(subscriptionId)}`,
         { method: "GET", suppressLegacy404Alert: true },
       )
-      return { id: requireId(response?.id, "ID da assinatura legada"), status: String(response?.status) }
+      return {
+        id: requireId(response?.id, "ID da assinatura legada"),
+        status: String(response?.status),
+        customer: response?.customer ?? undefined,
+        externalReference: response?.externalReference ?? null,
+      }
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 404) return null
       throw error
@@ -144,6 +149,7 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
       ? response.data.map((payment: any) => ({
           id: requireId(payment?.id, "ID da cobrança legada"),
           status: String(payment?.status),
+          customer: payment?.customer ?? undefined,
           subscription: payment?.subscription ?? null,
           dueDate: payment?.dueDate ?? null,
         }))

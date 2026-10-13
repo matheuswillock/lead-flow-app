@@ -1,5 +1,9 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import {
+  isActiveMemberProAssignment,
+  isBlockingMemberProAssignment,
+} from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   AccountAccessRecord,
   IAccountAccessDecisionRepository,
@@ -51,6 +55,13 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
               subscriptionStatus: true,
             },
           },
+          userTypeAssignment: {
+            select: {
+              accessStartsAt: true,
+              accessExpiresAt: true,
+              userType: { select: { slug: true } },
+            },
+          },
         },
       }),
       isAccountMasterBanned(billingOwnerId),
@@ -61,6 +72,14 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     }
 
     const subscription = billingOwner.subscription
+    const memberProAssignment = billingOwner.userTypeAssignment?.userType
+      ? {
+          slug: billingOwner.userTypeAssignment.userType.slug,
+          accessStartsAt: billingOwner.userTypeAssignment.accessStartsAt,
+          accessExpiresAt: billingOwner.userTypeAssignment.accessExpiresAt,
+        }
+      : null
+
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
@@ -70,6 +89,8 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,
+      memberProActive: isActiveMemberProAssignment(memberProAssignment),
+      memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
       isBanned,
     }
   }

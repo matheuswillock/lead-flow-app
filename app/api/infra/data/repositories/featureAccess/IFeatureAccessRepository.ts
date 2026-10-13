@@ -29,6 +29,7 @@ export interface ActiveUserSubscriptionRecord {
 
 export interface OwnerUserTypeAssignment {
   slug: string
+  accessStartsAt: string | null
   accessExpiresAt: string | null
 }
 

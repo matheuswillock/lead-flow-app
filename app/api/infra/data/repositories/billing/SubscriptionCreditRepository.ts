@@ -3,7 +3,10 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import type { BillingSnapshot } from "@/app/api/infra/data/repositories/billing/IBillingRepository";
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary";
 import type { BillingSummary } from "@/app/api/shared/billing/billingConfig";
-import { resolveHasUnlimitedUsers } from "@/app/api/shared/billing/memberProBillingRules";
+import {
+  isActiveMemberProAssignment,
+  resolveHasUnlimitedUsers,
+} from "@/app/api/shared/billing/memberProBillingRules";
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -119,7 +122,17 @@ class PrismaSubscriptionCreditRepository {
   private async getSnapshotWithTx(tx: TransactionClient, masterId: string): Promise<BillingSnapshot | null> {
     const master = await tx.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true, hasUnlimitedUsers: true },
+      select: {
+        hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
+        userTypeAssignment: {
+          select: {
+            accessStartsAt: true,
+            accessExpiresAt: true,
+            userType: { select: { slug: true } },
+          },
+        },
+      },
     });
 
     if (!master) return null;
@@ -150,6 +163,14 @@ class PrismaSubscriptionCreditRepository {
     const hasUnlimitedUsers = resolveHasUnlimitedUsers({
       hasUnlimitedUsersFlag: master.hasUnlimitedUsers,
       hasPermanentSubscription: master.hasPermanentSubscription,
+      memberProSlug: master.userTypeAssignment?.userType.slug,
+      memberProActive: isActiveMemberProAssignment(master.userTypeAssignment
+        ? {
+            slug: master.userTypeAssignment.userType.slug,
+            accessStartsAt: master.userTypeAssignment.accessStartsAt,
+            accessExpiresAt: master.userTypeAssignment.accessExpiresAt,
+          }
+        : null),
     });
 
     return {
