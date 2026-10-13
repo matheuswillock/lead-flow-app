@@ -12,6 +12,8 @@ export type AsaasBatchMigrationPlanInput = {
 
 export type AsaasBatchMigrationPlanItem = {
   action: "migrate" | "already_migrated" | "block_access" | "blocked"
+  /** Só pode ser true após validar ledger, ponteiros locais e legacy inativo. */
+  migrationConfirmed?: boolean
   legacyCustomerId: string
   legacySubscriptionId: string
   profileId?: string
@@ -27,6 +29,7 @@ export type AsaasBatchMigrationPlanItem = {
     | "owner_not_reconciled"
     | "primary_customer_not_found"
     | "primary_customer_to_create"
+    | "primary_subscription_exists_resume"
     | "unsupported_billing_type"
 }
 
@@ -94,7 +97,13 @@ export function buildAsaasBatchMigrationPlan(input: AsaasBatchMigrationPlanInput
       externalReference,
     }
 
-    if (primarySubscription) return [{ ...base, action: "already_migrated" }]
+    // A existência da assinatura primary não prova que a execução anterior
+    // concluiu o ledger, os ponteiros locais e a desativação do legacy. O
+    // executor deve retomar a reconciliação e só chegar a `done` após validar
+    // todos esses efeitos.
+    if (primarySubscription) {
+      return [{ ...base, action: "migrate", reason: "primary_subscription_exists_resume" }]
+    }
     if (subscription.billingType === "CREDIT_CARD") return [{ ...base, action: "block_access", reason: "credit_card_requires_manual_block" }]
     if (!["PIX", "BOLETO"].includes(subscription.billingType)) return [{ ...base, action: "blocked", reason: "unsupported_billing_type" }]
     return [{ ...base, action: "migrate", ...(primaryCustomer ? {} : { reason: "primary_customer_to_create" as const }) }]

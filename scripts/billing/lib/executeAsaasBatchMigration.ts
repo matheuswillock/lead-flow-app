@@ -51,64 +51,68 @@ export async function executeAsaasBatchMigration(input: {
 }): Promise<BatchMigrationExecutionResult[]> {
   const results: BatchMigrationExecutionResult[] = []
   for (const plan of input.plans) {
-    if (plan.action === "already_migrated") {
+    const executionPlan = plan.action === "already_migrated" && !plan.migrationConfirmed
+      ? { ...plan, action: "migrate" as const }
+      : plan
+
+    if (executionPlan.action === "already_migrated") {
       results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "already_migrated", primaryCustomerId: plan.primaryCustomerId, primarySubscriptionId: plan.primarySubscriptionId, detail: "assinatura já reconciliada" })
       continue
     }
-    if (plan.action === "blocked") {
-      results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "blocked", detail: plan.reason ?? "plano bloqueado" })
+    if (executionPlan.action === "blocked") {
+      results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: "blocked", detail: executionPlan.reason ?? "plano bloqueado" })
       continue
     }
-    if (plan.action === "block_access") {
-      if (input.apply && plan.profileId) await input.persistence.blockAccess(plan.profileId, plan.reason ?? "inadimplência")
-      results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: input.apply ? "access_blocked" : "planned", detail: plan.reason ?? "acesso bloqueado" })
+    if (executionPlan.action === "block_access") {
+      if (input.apply && executionPlan.profileId) await input.persistence.blockAccess(executionPlan.profileId, executionPlan.reason ?? "inadimplência")
+      results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: input.apply ? "access_blocked" : "planned", detail: executionPlan.reason ?? "acesso bloqueado" })
       continue
     }
     if (!input.apply) {
-      results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "planned", detail: "assinatura primary será criada antes da inativação legacy" })
+      results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: "planned", detail: executionPlan.primarySubscriptionId ? "assinatura primary existente será reconciliada antes da inativação legacy" : "assinatura primary será criada antes da inativação legacy" })
       continue
     }
-    if (!plan.profileId || !plan.value || !plan.cycle || !plan.nextDueDate || !plan.externalReference || !plan.billingType) {
-      results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "blocked", detail: "plano sem dados suficientes para migração" })
+    if (!executionPlan.profileId || !executionPlan.value || !executionPlan.cycle || !executionPlan.nextDueDate || !executionPlan.externalReference || !executionPlan.billingType) {
+      results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: "blocked", detail: "plano sem dados suficientes para migração" })
       continue
     }
 
-    const customer = plan.primaryCustomerId
-      ? { id: plan.primaryCustomerId }
-      : await input.gateway.findCustomerByExternalReference?.(plan.profileId)
-        ?? await input.gateway.createCustomer(input.customerProfiles?.[plan.profileId] ?? {
-          name: plan.profileId,
-          email: `${plan.profileId}@invalid.local`,
-          externalReference: plan.profileId,
+    const customer = executionPlan.primaryCustomerId
+      ? { id: executionPlan.primaryCustomerId }
+      : await input.gateway.findCustomerByExternalReference?.(executionPlan.profileId)
+        ?? await input.gateway.createCustomer(input.customerProfiles?.[executionPlan.profileId] ?? {
+          name: executionPlan.profileId,
+          email: `${executionPlan.profileId}@invalid.local`,
+          externalReference: executionPlan.profileId,
           notificationDisabled: true,
         })
-    const existingSubscription = await input.gateway.findSubscriptionByExternalReference?.(plan.externalReference)
+    const existingSubscription = await input.gateway.findSubscriptionByExternalReference?.(executionPlan.externalReference)
     const subscription = existingSubscription ?? await input.gateway.createSubscription({
       account: "primary",
       customerId: customer.id,
-      value: plan.value,
-      cycle: plan.cycle,
-      nextDueDate: plan.nextDueDate,
-      externalReference: plan.externalReference,
-      billingType: plan.billingType,
+      value: executionPlan.value,
+      cycle: executionPlan.cycle,
+      nextDueDate: executionPlan.nextDueDate,
+      externalReference: executionPlan.externalReference,
+      billingType: executionPlan.billingType,
     })
-    if (subscription.customer !== customer.id || subscription.status !== "ACTIVE" || Math.abs(subscription.value - plan.value) >= 0.005 || subscription.cycle !== plan.cycle) {
-      results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "blocked", primaryCustomerId: customer.id, primarySubscriptionId: subscription.id, detail: "assinatura primary divergente" })
+    if (subscription.customer !== customer.id || subscription.status !== "ACTIVE" || Math.abs(subscription.value - executionPlan.value) >= 0.005 || subscription.cycle !== executionPlan.cycle) {
+      results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: "blocked", primaryCustomerId: customer.id, primarySubscriptionId: subscription.id, detail: "assinatura primary divergente" })
       continue
     }
 
-    const payments = await input.gateway.listLegacySubscriptionPayments(plan.legacySubscriptionId)
+    const payments = await input.gateway.listLegacySubscriptionPayments(executionPlan.legacySubscriptionId)
     for (const payment of payments.filter((item) => ["PENDING", "OVERDUE"].includes(item.status))) {
       if (!await input.gateway.cancelLegacyPayment(payment.id)) throw new Error(`Cancelamento não confirmado: ${payment.id}`)
     }
-    const remaining = await input.gateway.listLegacySubscriptionPayments(plan.legacySubscriptionId)
+    const remaining = await input.gateway.listLegacySubscriptionPayments(executionPlan.legacySubscriptionId)
     if (remaining.some((payment) => ["PENDING", "OVERDUE"].includes(payment.status))) throw new Error("Cobrança legacy ainda pagável")
-    const legacySubscription = await input.gateway.findLegacySubscription(plan.legacySubscriptionId)
-    if (legacySubscription && legacySubscription.status !== "INACTIVE") await input.gateway.inactivateLegacySubscription(plan.legacySubscriptionId)
-    const refreshed = await input.gateway.findLegacySubscription(plan.legacySubscriptionId)
+    const legacySubscription = await input.gateway.findLegacySubscription(executionPlan.legacySubscriptionId)
+    if (legacySubscription && legacySubscription.status !== "INACTIVE") await input.gateway.inactivateLegacySubscription(executionPlan.legacySubscriptionId)
+    const refreshed = await input.gateway.findLegacySubscription(executionPlan.legacySubscriptionId)
     if (refreshed && refreshed.status !== "INACTIVE") throw new Error("Inativação legacy não confirmada")
-    await input.persistence.persist(plan, customer.id, subscription.id)
-    results.push({ legacySubscriptionId: plan.legacySubscriptionId, outcome: "migrated", primaryCustomerId: customer.id, primarySubscriptionId: subscription.id, detail: "migração concluída" })
+    await input.persistence.persist(executionPlan, customer.id, subscription.id)
+    results.push({ legacySubscriptionId: executionPlan.legacySubscriptionId, outcome: "migrated", primaryCustomerId: customer.id, primarySubscriptionId: subscription.id, detail: "migração concluída" })
   }
   return results
 }

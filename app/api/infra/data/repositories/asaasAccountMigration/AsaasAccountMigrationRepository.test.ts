@@ -153,6 +153,36 @@ describe("AsaasAccountMigrationRepository", () => {
       )
     })
 
+    it("awaiting_due_date -> subscription_created é válido no cutover PIX do vencimento", async () => {
+      armTransition({
+        legacyCustomerId: "cus_due",
+        status: "awaiting_due_date",
+        attemptCount: 1,
+        primaryCustomerId: "cus_new_due",
+        primarySubscriptionId: null,
+        anomalyNotes: null,
+        migratedAt: null,
+      })
+
+      const repo = new AsaasAccountMigrationRepository()
+      await repo.transition({
+        legacyCustomerId: "cus_due",
+        toStatus: "subscription_created",
+        primaryCustomerId: "cus_new_due",
+        primarySubscriptionId: "sub_new_due",
+      })
+
+      expect(updateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { legacyCustomerId: "cus_due", status: "awaiting_due_date", attemptCount: 1 },
+          data: expect.objectContaining({
+            status: "subscription_created",
+            primarySubscriptionId: "sub_new_due",
+          }),
+        })
+      )
+    })
+
     it("achado P2 PRRT_...dNdV: o ciclo ABA (pending → failed → pending) não passa no CAS com attemptCount velho", async () => {
       // O worker leu a linha na 1ª visita a `pending` (attemptCount 0).
       // Enquanto dormia, houve `pending → failed → pending`, que deixou a

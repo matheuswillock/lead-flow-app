@@ -13,6 +13,7 @@ import { asaasMigrationGateway } from "@/app/api/infra/gateways/asaasMigration/A
 import { createAsaasClient } from "@/lib/asaas/asaas-client"
 import { resolvePrice, toBillingCycle } from "@/lib/billing/resolvePrice"
 import type { AsaasCustomer, AsaasPayment, AsaasSubscription } from "./lib/asaasInventoryTypes"
+import { isDueDateReachedInSaoPaulo } from "./lib/asaasMigrationCivilDate"
 
 type Inventory = {
   account: string
@@ -101,8 +102,7 @@ function normalize(value: string | null | undefined): string {
 }
 
 function isDueDateReached(date: string, now = new Date()): boolean {
-  const due = new Date(`${date}T00:00:00.000Z`)
-  return !Number.isNaN(due.getTime()) && due.getTime() <= now.getTime()
+  return isDueDateReachedInSaoPaulo(date, now)
 }
 
 function findPayment(inventory: Inventory, paymentId: string): AsaasPayment | null {
@@ -424,6 +424,14 @@ async function completeLedger(
       toStatus: primarySubscriptionId ? "subscription_created" : "awaiting_due_date",
       primaryCustomerId,
       ...(primarySubscriptionId ? { primarySubscriptionId } : {}),
+    })
+  }
+  if (migration.status === "awaiting_due_date" && primarySubscriptionId) {
+    migration = await asaasAccountMigrationRepository.transition({
+      legacyCustomerId: plan.legacyCustomerId,
+      toStatus: "subscription_created",
+      primaryCustomerId,
+      primarySubscriptionId,
     })
   }
   if (finish && migration.status === "subscription_created") {

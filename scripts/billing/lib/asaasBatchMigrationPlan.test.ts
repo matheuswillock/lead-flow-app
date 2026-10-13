@@ -97,4 +97,21 @@ describe("buildAsaasBatchMigrationPlan", () => {
 
     expect(plan).toEqual([])
   })
+
+  it("retoma quando a assinatura primary existe, sem declarar migração concluída", () => {
+    const plan = buildAsaasBatchMigrationPlan({
+      legacyCustomers: [legacyCustomer],
+      legacySubscriptions: [subscription()],
+      primaryCustomers: [{ ...legacyCustomer, id: "cus_primary", externalReference: "profile-1" }],
+      primarySubscriptions: [{ id: "sub_primary", customer: "cus_primary", externalReference: "asaas-migration:batch:sub_legacy" }],
+      profileByLegacyCustomerId: { cus_legacy: "profile-1" },
+    })
+
+    expect(plan[0]).toMatchObject({
+      action: "migrate",
+      reason: "primary_subscription_exists_resume",
+      primarySubscriptionId: "sub_primary",
+    })
+    expect(plan[0]?.migrationConfirmed).toBeUndefined()
+  })
 })

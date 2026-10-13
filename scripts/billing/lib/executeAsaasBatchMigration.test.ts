@@ -18,7 +18,7 @@ function migratePlan(overrides: Partial<AsaasBatchMigrationPlanItem> = {}): Asaa
   }
 }
 
-function gateway() {
+function gateway(existingPrimarySubscription = false) {
   const calls: string[] = []
   let paymentOpen = true
   let legacyActive = true
@@ -29,7 +29,9 @@ function gateway() {
       calls.push("create-customer")
       return { id: "cus_created" }
     },
-    findSubscriptionByExternalReference: async () => null,
+    findSubscriptionByExternalReference: async () => existingPrimarySubscription
+      ? { id: "sub_primary", customer: "cus_primary", value: 59.9, cycle: "MONTHLY", nextDueDate: "2026-11-30", status: "ACTIVE" }
+      : null,
     createSubscription: async (input: { customerId: string; value: number; cycle: string; nextDueDate: string; externalReference: string; billingType?: string }) => {
       calls.push("create-subscription")
       return { id: "sub_primary", customer: input.customerId, value: input.value, cycle: input.cycle, nextDueDate: input.nextDueDate, status: "ACTIVE" }
@@ -90,6 +92,34 @@ describe("executeAsaasBatchMigration", () => {
     })
 
     expect(result[0]?.outcome).toBe("planned")
+    expect(asaas.calls).toEqual([])
+  })
+
+  it("retoma uma assinatura marcada como já migrada quando não há confirmação do ledger", async () => {
+    const asaas = gateway(true)
+    const persisted: string[] = []
+    const result = await executeAsaasBatchMigration({
+      plans: [migratePlan({ action: "already_migrated", primarySubscriptionId: "sub_primary" })],
+      apply: true,
+      gateway: asaas,
+      persistence: { persist: async () => { persisted.push("persist") }, blockAccess: async () => {} },
+    })
+
+    expect(result[0]).toMatchObject({ outcome: "migrated", primarySubscriptionId: "sub_primary" })
+    expect(asaas.calls).toEqual(["cancel-payment", "inactivate-legacy"])
+    expect(persisted).toEqual(["persist"])
+  })
+
+  it("só ignora uma migração quando o plano traz confirmação explícita", async () => {
+    const asaas = gateway()
+    const result = await executeAsaasBatchMigration({
+      plans: [migratePlan({ action: "already_migrated", migrationConfirmed: true })],
+      apply: true,
+      gateway: asaas,
+      persistence: { persist: async () => { throw new Error("não deveria persistir") }, blockAccess: async () => {} },
+    })
+
+    expect(result[0]?.outcome).toBe("already_migrated")
     expect(asaas.calls).toEqual([])
   })
 })
