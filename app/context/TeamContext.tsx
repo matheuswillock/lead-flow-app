@@ -62,6 +62,7 @@ interface TeamContextState {
   isTeamSwitchPersisted: boolean;
   accountAccessDecision: AccountAccessDecision | null;
   refreshTeams: () => Promise<void>;
+  setProfileId: (profileId: string | null) => void;
   setActiveTeamId: (teamId: string) => Promise<void>;
   completeTeamSwitch: () => void;
 }
@@ -113,6 +114,7 @@ export const TeamProvider = ({
   const [switchingTeamName, setSwitchingTeamName] = useState<string | null>(null);
   const [isTeamSwitchPersisted, setIsTeamSwitchPersisted] = useState(false);
   const [accountAccessDecision, setAccountAccessDecision] = useState<AccountAccessDecision | null>(initialDecision);
+  const [resolvedProfileId, setResolvedProfileId] = useState<string | null>(profileId);
   const serverActiveTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const activeTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const pendingActiveTeamSwitchRef = useRef<string | null>(null);
@@ -122,6 +124,10 @@ export const TeamProvider = ({
   const serverTeamsReadyRef = useRef(hasInitialTeams);
   const bootstrapHydratedRef = useRef(hasInitialTeams);
   const initialFetchSkippedRef = useRef(false);
+
+  useEffect(() => {
+    setResolvedProfileId(profileId ?? null);
+  }, [profileId]);
 
   useEffect(() => {
     activeTeamIdRef.current = activeTeamId;
@@ -284,6 +290,10 @@ export const TeamProvider = ({
     setIsTeamSwitchPersisted(false);
   }, []);
 
+  const setProfileId = useCallback((nextProfileId: string | null) => {
+    setResolvedProfileId(nextProfileId);
+  }, []);
+
   const revertTeamSwitch = useCallback((previousTeamId: string | null) => {
     pendingActiveTeamSwitchRef.current = null;
     activeTeamIdRef.current = previousTeamId;
@@ -426,7 +436,11 @@ export const TeamProvider = ({
 
   const activeRole = activeTeam?.role ?? null;
   const activeFunctions = activeTeam?.functions ?? EMPTY_TEAM_FUNCTIONS;
-  const isTeamMaster = !!(profileId && activeTeam && activeTeam.masterId === profileId);
+  const isTeamMaster = !!(
+    resolvedProfileId &&
+    activeTeam &&
+    activeTeam.masterId === resolvedProfileId
+  );
 
   useEffect(() => {
     if (!activeTeamId || !activeTeam) return;
@@ -449,6 +463,7 @@ export const TeamProvider = ({
     isTeamSwitchPersisted,
     accountAccessDecision,
     refreshTeams,
+    setProfileId,
     setActiveTeamId,
     completeTeamSwitch,
   }), [
@@ -465,6 +480,7 @@ export const TeamProvider = ({
     isTeamSwitchPersisted,
     accountAccessDecision,
     refreshTeams,
+    setProfileId,
     setActiveTeamId,
     completeTeamSwitch,
   ]);

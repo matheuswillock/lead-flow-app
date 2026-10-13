@@ -226,6 +226,7 @@ export async function GET(request: NextRequest) {
 
     const sponsoredTeams = await prisma.team.findMany({
       where: {
+        deletedAt: null,
         master: {
           sponsorMasterId: profile.id,
         },

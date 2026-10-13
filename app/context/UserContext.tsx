@@ -104,7 +104,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   initialHasActiveSubscription = null,
   initialUserRole = null,
 }) => {
-  const { accountAccessDecision } = useTeamContext();
+  const { accountAccessDecision, setProfileId } = useTeamContext();
   const subscriptionKnown =
     initialHasActiveSubscription !== null && initialHasActiveSubscription !== undefined;
 
@@ -128,11 +128,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
     const cached = readUserBootstrapCache(supabaseId);
     if (!cached) return;
 
-    setUser(cached.user as UserData);
+    const cachedUser = cached.user as UserData;
+    setUser(cachedUser);
+    setProfileId(cachedUser.id);
     setHasActiveSubscription(cached.hasActiveSubscription);
     setUserRole(cached.userRole);
     setIsLoading(false);
-  }, [supabaseId]);
+  }, [setProfileId, supabaseId]);
 
   /**
    * Busca dados do usuário na API
@@ -243,6 +245,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       
       if (profileOutput.isValid && profileOutput.result) {
         setUser(profileOutput.result);
+        setProfileId(profileOutput.result.id);
         lastLoadedSupabaseIdRef.current = supabaseId;
         
         // Usar o SubscriptionCheckService para validar assinatura
@@ -269,6 +272,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         }
       } else {
         setUser(null);
+        setProfileId(null);
         setHasActiveSubscription(false);
         setUserRole(null);
         setError(profileOutput.errorMessages?.join(", ") || "Failed to fetch user data");
