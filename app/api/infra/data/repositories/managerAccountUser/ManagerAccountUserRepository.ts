@@ -142,6 +142,7 @@ export class ManagerAccountUserRepository implements IManagerAccountUserReposito
         canViewAllTeams: params.delegatedPermissions.canViewAllTeams,
       },
       select: {
+        id: true,
         role: true,
         functions: true,
         createdAt: true,

@@ -22,6 +22,8 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
+import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor";
 import type {
   AccountUserBillingCapacityPort,
   AccountUserNotificationPort,
@@ -96,6 +98,63 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
   private async getProfileLabel(profileId: string) {
     const profile = await this.repository.findProfileLabelById(profileId);
     return profile?.fullName || profile?.email || "Usuário";
+  }
+
+  private async recordAccountUserCreationAudit(args: {
+    actorProfileId: string;
+    managerId: string;
+    teamId: string;
+    role: UserRole;
+    profile: CreatedAccountUserRecords["profile"];
+    teamMemberRecord: CreatedAccountUserRecords["teamMemberRecord"];
+  }) {
+    const metadata = buildAuditActorMetadata(
+      { profileId: args.actorProfileId },
+      {
+        operation: "account_user_created",
+        managerId: args.managerId,
+        teamId: args.teamId,
+        role: args.role,
+      }
+    );
+
+    await auditLogWriter.logAudit({
+      entityType: "PROFILE",
+      entityId: args.profile.id,
+      action: "CREATE",
+      actorProfileId: args.actorProfileId,
+      before: null,
+      after: {
+        email: args.profile.email,
+        fullName: args.profile.fullName,
+        role: args.role,
+        isMaster: false,
+      },
+      metadata,
+    });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM_MEMBER",
+      entityId: args.teamMemberRecord.id,
+      action: "CREATE",
+      actorProfileId: args.actorProfileId,
+      before: null,
+      after: {
+        teamId: args.teamId,
+        profileId: args.profile.id,
+        role: args.teamMemberRecord.role,
+        functions: args.teamMemberRecord.functions,
+      },
+      metadata: buildAuditActorMetadata(
+        { profileId: args.actorProfileId },
+        {
+          operation: "team_member_added",
+          managerId: args.managerId,
+          teamId: args.teamId,
+          role: args.role,
+        }
+      ),
+    });
   }
 
   private async finalizeUserCreation(args: {
@@ -314,6 +373,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         profile,
         teamMemberRecord,
       });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
+        profile,
+        teamMemberRecord,
+      });
 
       return {
         output: new Output(true, ["Usuário criado com sucesso"], [], createdUser),
@@ -331,6 +398,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         teamName,
         userData: validatedData,
         delegatedPermissions,
+        profile,
+        teamMemberRecord,
+      });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
         profile,
         teamMemberRecord,
       });
@@ -363,6 +438,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         teamName,
         userData: validatedData,
         delegatedPermissions,
+        profile,
+        teamMemberRecord,
+      });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
         profile,
         teamMemberRecord,
       });
@@ -614,6 +697,24 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       profileId: validatedData.profileId,
       role: (validatedData.role ?? "operator") as UserRole,
       functions: validatedData.functions ?? [],
+    });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM_MEMBER",
+      entityId: newMember.id,
+      action: "CREATE",
+      actorProfileId: profileId,
+      before: null,
+      after: {
+        teamId,
+        profileId: validatedData.profileId,
+        role: newMember.role,
+        functions: newMember.functions,
+      },
+      metadata: buildAuditActorMetadata(
+        { profileId },
+        { operation: "team_member_associated", teamId, profileId: validatedData.profileId }
+      ),
     });
 
     try {
