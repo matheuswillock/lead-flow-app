@@ -15,6 +15,7 @@
 import type { IAsaasCustomerService, IAsaasSubscriptionService } from '@/app/api/services';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { auditLogService } from '@/app/api/services/audit/AuditLogService';
+import { resolvePrice } from '@/lib/billing/resolvePrice';
 
 export interface CreateManagerOnboardingInput {
   profileId: string;
@@ -63,6 +64,15 @@ export class CreateManagerOnboarding {
         throw new Error('Manager já possui assinatura ativa');
       }
 
+      const managerPrice = await resolvePrice({
+        featureSlug: 'crm',
+        cycle: 'MONTHLY',
+        method: billingType,
+      });
+      if (managerPrice == null) {
+        throw new Error('Preço mensal do CRM indisponível no catálogo');
+      }
+
       // 2. Criar cliente no Asaas
       // Nota: CPF/CNPJ deve ser fornecido manualmente ou adicionado ao Profile posteriormente
       console.info('📝 Criando cliente no Asaas...');
@@ -82,12 +92,12 @@ export class CreateManagerOnboarding {
         data: { asaasCustomerId: customer.customerId },
       });
 
-      // 4. Criar assinatura base (R$ 59,90/mês)
+      // 4. Criar assinatura base com o preço vigente no catálogo
       console.info('💰 Criando assinatura Manager...');
       const subscription = await this.subscriptionService.createManagerSubscription({
         customer: customer.customerId,
         billingType,
-        value: 59.90, // Valor fixo do plano Manager
+        value: managerPrice,
         cycle: 'MONTHLY',
         description: 'Assinatura Lead Flow - Plano Manager',
         externalReference: profileId,

@@ -17,8 +17,8 @@ export async function resolvePrice(input: ResolvePriceInput): Promise<number | n
   const paymentMethod = toPaymentMethod(input.method ?? "PIX");
   if (!billingCycle || !paymentMethod) return null;
 
-  const product = input.productId
-    ? await prisma.backofficeProduct.findFirst({
+  const products = input.productId
+    ? await prisma.backofficeProduct.findMany({
         where: { id: input.productId, isActive: true },
         select: {
           paymentRules: {
@@ -27,9 +27,10 @@ export async function resolvePrice(input: ResolvePriceInput): Promise<number | n
         },
       })
     : input.featureSlug
-      ? await prisma.backofficeProduct.findFirst({
+      ? await prisma.backofficeProduct.findMany({
           where: {
             isActive: true,
+            isDefault: true,
             featureSlugs: { has: input.featureSlug },
           },
           select: {
@@ -38,7 +39,9 @@ export async function resolvePrice(input: ResolvePriceInput): Promise<number | n
             },
           },
         })
-      : null;
+      : [];
+
+  const product = products.length === 1 ? products[0] : null;
 
   if (!product) return null;
 
@@ -46,10 +49,6 @@ export async function resolvePrice(input: ResolvePriceInput): Promise<number | n
     (r) => r.billingCycle === billingCycle && r.paymentMethod === paymentMethod
   );
   if (exact) return Number(exact.price);
-
-  const byCycle = product.paymentRules.find((r) => r.billingCycle === billingCycle);
-  if (byCycle) return Number(byCycle.price);
-
   return null;
 }
 

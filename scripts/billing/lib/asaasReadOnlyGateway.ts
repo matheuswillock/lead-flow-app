@@ -23,10 +23,12 @@ export type AsaasListResponse<T> = {
 export interface IAsaasReadOnlyGateway {
   readonly accountId: AsaasAccountId
   /**
-   * Único método da interface. Sempre GET, sempre paginado por
-   * offset/limit — nenhum outro verbo HTTP é alcançável por este gateway.
+   * Listagem paginada; o método opcional `fetchOne` também emite somente GET
+   * para confirmar um ponteiro conhecido.
    */
   fetchPage<T>(path: string, offset: number, limit?: number): Promise<AsaasListResponse<T>>
+  /** Busca uma entidade conhecida para confirmar ponteiros fora da listagem. */
+  fetchOne?<T>(path: string): Promise<T | null>
 }
 
 const DEFAULT_PAGE_LIMIT = 100
@@ -50,6 +52,23 @@ export class AsaasReadOnlyGateway implements IAsaasReadOnlyGateway {
     const separator = path.includes("?") ? "&" : "?"
     const url = `${this.baseUrl}/api/v3${path}${separator}limit=${limit}&offset=${offset}`
     return this.client.request(url, { method: "GET" }) as Promise<AsaasListResponse<T>>
+  }
+
+  async fetchOne<T>(path: string): Promise<T | null> {
+    const url = `${this.baseUrl}/api/v3${path}`
+    try {
+      return (await this.client.request(url, {
+        method: "GET",
+        suppressLegacy404Alert: true,
+      })) as T
+    } catch (error) {
+      const statusCode =
+        error && typeof error === "object" && "statusCode" in error
+          ? (error as { statusCode?: unknown }).statusCode
+          : undefined
+      if (statusCode === 404) return null
+      throw error
+    }
   }
 }
 

@@ -4,8 +4,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getFullUrl } from "@/lib/utils/app-url";
-
-const PLAN_PRICE = 59.9;
+import { resolvePrice } from "@/lib/billing/resolvePrice";
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,6 +38,15 @@ export async function POST(request: NextRequest) {
 
     if (!profile) {
       return NextResponse.json(new Output(false, [], ["Perfil nao encontrado"], null), { status: 404 });
+    }
+
+    const planPrice = await resolvePrice({
+      featureSlug: "crm",
+      cycle: "MONTHLY",
+      method: "CREDIT_CARD",
+    });
+    if (planPrice == null) {
+      return NextResponse.json(new Output(false, [], ["Preco do plano indisponivel no catalogo"], null), { status: 409 });
     }
 
     const sanitizedCpfCnpj = String(cpfCnpj).replace(/\D/g, "");
@@ -77,7 +85,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         customer: customerId,
         billingType: "CREDIT_CARD",
-        value: PLAN_PRICE,
+        value: planPrice,
         dueDate,
         description: "Lead Flow - Plano Manager",
         externalReference: profile.id,

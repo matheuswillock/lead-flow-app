@@ -13,6 +13,24 @@ const completeEvidence = {
 }
 
 describe("MigrationReadinessService", () => {
+  it("aceita dispensa de comunicação registrada pelo owner", async () => {
+    const now = new Date("2026-10-12T14:00:00.000Z")
+    const manifest = {
+      migrationId: "migration-waived",
+      approvedBy: "owner",
+      valueMode: "as-is" as const,
+      inventoryHash: "sha256",
+      gateRunAt: now,
+      validUntil: new Date("2026-10-13T00:00:00.000Z"),
+      gateEvidence: { ...completeEvidence, communicationApproved: false, communicationWaived: true },
+    }
+    const service = new MigrationReadinessService({
+      findValidManifest: async () => manifest,
+    })
+
+    await expect(service.assertReady({ id: manifest.migrationId } as any, now)).resolves.toBeDefined()
+  })
+
   it("bloqueia quando um gate obrigatório não foi aprovado", async () => {
     const now = new Date("2026-10-10T12:00:00.000Z")
     const service = new MigrationReadinessService({

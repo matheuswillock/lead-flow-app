@@ -30,6 +30,8 @@ export type ReconciliationCase = {
   detail: string
   asaasId?: string
   dbRefId?: string
+  /** Profile owner when the source row is ProfileSubscription. */
+  profileId?: string
   email?: string | null
 }
 
@@ -165,6 +167,7 @@ export function reconcileInventory(input: ReconcileInventoryInput): Reconciliati
         detail: `Subscription ${pointer.asaasSubscriptionId} (profile ${pointer.profileId}) está no banco mas não existe na conta Asaas — ponteiro órfão`,
         asaasId: pointer.asaasSubscriptionId,
         dbRefId: pointer.refId,
+        profileId: pointer.profileId,
       })
       continue
     }
@@ -182,6 +185,7 @@ export function reconcileInventory(input: ReconcileInventoryInput): Reconciliati
         detail: `Subscription ${pointer.asaasSubscriptionId}: consistência não verificável — ${missingSide} (banco=${pointer.subscriptionStatus ?? "null"}, Asaas=${asaasSub.status})`,
         asaasId: pointer.asaasSubscriptionId,
         dbRefId: pointer.refId,
+        profileId: pointer.profileId,
       })
     } else if (mappedLocalStatus !== pointer.subscriptionStatus) {
       cases.push({
@@ -189,6 +193,7 @@ export function reconcileInventory(input: ReconcileInventoryInput): Reconciliati
         detail: `Subscription ${pointer.asaasSubscriptionId}: banco=${pointer.subscriptionStatus}, Asaas=${asaasSub.status} (mapeado=${mappedLocalStatus})`,
         asaasId: pointer.asaasSubscriptionId,
         dbRefId: pointer.refId,
+        profileId: pointer.profileId,
       })
     } else {
       cases.push({

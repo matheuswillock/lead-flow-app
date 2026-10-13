@@ -7,6 +7,14 @@
 
 **Documentos relacionados:** `PRICING_MODEL.md` / `PRICING_TABLE.md`. SPEC canônica: `BILLING_SPEC.md` v2.0.
 
+**Atualização 2026-10-12:** os fluxos de criação de checkout e assinatura agora
+resolvem o preço pelo catálogo vigente e bloqueiam regra ausente; o literal
+R$ 59,90 não é mais usado para criar cobranças. O checkout detached cria a
+recorrência apenas após confirmação e com referência externa idempotente. A migração PIX ativa foi
+alterada para aguardar o vencimento e o checkout. Permanecem literais antigos
+somente em telas/resumos e módulos legados que ainda precisam ser migrados no
+cutover geral.
+
 ---
 
 ## Sumário executivo (status 2026-07-24)

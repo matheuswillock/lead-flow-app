@@ -26,6 +26,7 @@ export type AsaasMigrationSubscription = {
   cycle: string
   nextDueDate: string
   status: string
+  externalReference?: string | null
 }
 
 export type AsaasMigrationPayment = {
@@ -34,6 +35,9 @@ export type AsaasMigrationPayment = {
   value: number
   customer: string
   creditCardToken?: string
+  subscription?: string | null
+  dueDate?: string | null
+  externalReference?: string | null
 }
 
 export type AsaasMigrationCustomer = {
@@ -62,6 +66,10 @@ export interface IAsaasMigrationGateway {
   listLegacySubscriptionPayments?(subscriptionId: string): Promise<AsaasLegacyPayment[]>
   cancelLegacyPayment?(paymentId: string): Promise<boolean>
   inactivateLegacySubscription?(subscriptionId: string): Promise<AsaasLegacySubscription>
+  findPrimarySubscription?(subscriptionId: string): Promise<AsaasMigrationSubscription | null>
+  listPrimarySubscriptionPayments?(subscriptionId: string): Promise<AsaasMigrationPayment[]>
+  cancelPrimaryPayment?(paymentId: string): Promise<boolean>
+  inactivatePrimarySubscription?(subscriptionId: string): Promise<AsaasMigrationSubscription>
   tokenizeCard(input: {
     customerId: string
     card: AsaasMigrationCard
@@ -83,6 +91,7 @@ export interface IAsaasMigrationGateway {
     cycle: string
     nextDueDate: string
     externalReference: string
-    creditCardToken: string
+    billingType?: string
+    creditCardToken?: string
   }): Promise<AsaasMigrationSubscription>
 }

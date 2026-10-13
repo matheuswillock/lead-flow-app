@@ -290,8 +290,8 @@ export class MigrateAsaasAccountUseCase {
         }
       }
 
-      if (current.status === "requires_card_reauth" && !input.creditCardToken && !isDue(now, current.nextDueDate)) {
-        return new Output(true, ["Reautorização de cartão necessária"], [], this.result(current))
+      if (current.status === "requires_card_reauth" && !isDue(now, current.nextDueDate)) {
+        return new Output(true, ["Migração aguardando vencimento"], [], this.result(current))
       }
 
       if (
@@ -346,17 +346,10 @@ export class MigrateAsaasAccountUseCase {
         })
       }
 
-      const earlyReauthorization =
-        current.status === "requires_card_reauth" &&
-        Boolean(input.creditCardToken) &&
-        !isDue(now, current.nextDueDate)
-
-      if (current.status === "initial_payment_confirmed" || earlyReauthorization) {
+      if (current.status === "initial_payment_confirmed") {
         if (!current.primaryCustomerId || !input.creditCardToken) return this.fail(input, "Token do cartão indisponível para criar recorrência")
         const subscriptionReference = `asaas-migration:${current.id}:subscription`
-        const expectedNextDueDate = earlyReauthorization
-          ? persistedCivilDate(current.nextDueDate ?? now)
-          : nextDueDate(current.nextDueDate ?? now, input.quote.billingCycle)
+        const expectedNextDueDate = nextDueDate(current.nextDueDate ?? now, input.quote.billingCycle)
         await renewLease()
         const subscription = (await this.dependencies.migrationGateway.findSubscriptionByExternalReference?.(subscriptionReference)) ??
           await this.dependencies.migrationGateway.createSubscription({
@@ -411,9 +404,7 @@ export class MigrateAsaasAccountUseCase {
           newSubscriptionId: current.primarySubscriptionId,
           account: "primary",
           subscriptionNextDueDate: new Date(
-            `${earlyReauthorization
-              ? persistedCivilDate(current.nextDueDate ?? now)
-              : nextDueDate(current.nextDueDate ?? now, input.quote.billingCycle)}T12:00:00.000Z`,
+            `${nextDueDate(current.nextDueDate ?? now, input.quote.billingCycle)}T12:00:00.000Z`,
           ),
           subscriptionCycle: input.quote.billingCycle ?? undefined,
           operatorCount: input.quote.billableActiveMembers,
