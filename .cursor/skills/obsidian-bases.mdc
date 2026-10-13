@@ -3,7 +3,10 @@ description: "Create and edit Obsidian Bases (.base files) with views, filters, 
 alwaysApply: false
 ---
 
-<!-- SOURCE: obsidian@obsidian-skills plugin — obsidian/1.0.1/skills/obsidian-bases/SKILL.md -->
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/obsidian-bases/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 
 # Obsidian Bases Skill
 

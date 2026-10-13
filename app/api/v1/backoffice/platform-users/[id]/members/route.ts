@@ -87,6 +87,10 @@ export async function POST(
       canManageAccountTeams,
       canTransferAccountLeads,
       generateCharge,
+    }, {
+      profileId: access.access.profileId,
+      backofficeUserId: access.access.backofficeUserId,
+      backofficeEmail: access.access.backofficeEmail,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

@@ -12,8 +12,9 @@ test("usa o WhatsApp de assinaturas com a mensagem humanizada codificada", () =>
   expect(url.hostname).toBe("wa.me")
   expect(url.pathname).toBe("/5511939534668")
   expect(url.searchParams.get("text")).toBe(
-    "Olá, Bruno! Minha assinatura do Corretor Studio expirou e gostaria de renovar. Você pode me orientar sobre os próximos passos?"
+    "Olá! Minha conta do Corretor Studio está com o acesso pausado e preciso de orientação sobre os próximos passos."
   )
+  expect(url.searchParams.get("text")).not.toContain("Bruno")
 })
 
 test("não oferece checkout durante o bloqueio, inclusive ao master", () => {
@@ -34,4 +35,15 @@ test("não exibe checkout para master past_due sem migração elegível", () => 
 
   expect(markup).not.toContain("Regularizar assinatura")
   expect(markup).toContain("Falar com o time de assinaturas")
+})
+
+test("orienta o membro a avisar o administrador da conta", () => {
+  const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
+    isBillingOwner: false,
+    reason: "past_due",
+  }))
+
+  expect(markup).toContain(
+    "Avise o administrador desta conta para que ele entre em contato com o time de assinaturas."
+  )
 })

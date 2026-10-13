@@ -3,7 +3,10 @@ description: "Interact with Obsidian vaults using the Obsidian CLI to read, crea
 alwaysApply: false
 ---
 
-<!-- SOURCE: obsidian@obsidian-skills plugin — obsidian/1.0.1/skills/obsidian-cli/SKILL.md -->
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/obsidian-cli/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 
 # Obsidian CLI
 

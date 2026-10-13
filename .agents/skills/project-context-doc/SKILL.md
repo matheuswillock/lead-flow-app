@@ -30,7 +30,7 @@ Ler os arquivos abaixo nesta ordem de prioridade. Parar quando o contexto estive
 |---|---|---|
 | 1 | `README.md` | Stack, arquitetura, scripts |
 | 2 | `docs/AI_PROJECT_CONTEXT.md` | Visão de produto, ICP, modelo de negócio |
-| 3 | `.github/instructions/project-context.instructions.md` | Stack detalhada, schema, rotas, integrações |
+| 3 | `.github/instructions/project-context.instructions.md` | Índice de fontes canônicas e stack estável |
 | 4 | `app/[supabaseId]/docs/features/services/docsManualData.ts` | Funcionalidades em linguagem de produto |
 | 5 | `components/app-sidebar.tsx` | Módulos reais vs. "em breve", controle de acesso |
 | 6 | `app/page.tsx` | Posicionamento comercial e SEO |

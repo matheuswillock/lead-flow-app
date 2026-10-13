@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { isAccountSubscriptionActive } from "@/lib/subscription/isAccountSubscriptionActive";
-import {
-  ACCOUNT_MASTER_BANNED_MESSAGE,
-  isAccountMasterBanned,
-} from "@/lib/account/isAccountMasterBanned";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PUT(request: NextRequest) {
@@ -61,35 +57,26 @@ export async function PUT(request: NextRequest) {
       },
       select: {
         team: {
-          select: { masterId: true },
+          select: { masterId: true, deletedAt: true },
         },
       },
     });
 
-    if (!membership) {
+    if (!membership || membership.team.deletedAt) {
       return NextResponse.json(
         new Output(false, [], ["User is not a member of this team"], null),
         { status: 403 }
       );
     }
 
-    const accountSubscriptionActive = await isAccountSubscriptionActive(membership.team.masterId);
-    if (!accountSubscriptionActive) {
+    const accountAccessOutput = await accountAccessDecisionUseCase.execute({
+      profileId: profile.id,
+      teamId,
+    });
+    if (!accountAccessOutput.isValid || !accountAccessOutput.result) {
       return NextResponse.json(
-        new Output(
-          false,
-          [],
-          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
-          null
-        ),
-        { status: 403 }
-      );
-    }
-
-    if (await isAccountMasterBanned(membership.team.masterId)) {
-      return NextResponse.json(
-        new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
-        { status: 403 }
+        new Output(false, [], ["Não foi possível resolver o acesso desta conta"], null),
+        { status: 503 }
       );
     }
 
@@ -99,7 +86,10 @@ export async function PUT(request: NextRequest) {
     });
 
     return NextResponse.json(
-      new Output(true, ["Active team updated"], [], { activeTeamId: teamId }),
+      new Output(true, ["Active team updated"], [], {
+        activeTeamId: teamId,
+        accountAccessDecision: accountAccessOutput.result,
+      }),
       { status: 200 }
     );
   } catch (error) {

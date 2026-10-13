@@ -6,7 +6,12 @@ import { createEmailService } from "@/lib/services/EmailService"
 import { resolveBackofficeMemberAccess } from "@/lib/backoffice-member-access"
 import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
-import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
+import type {
+  BackofficeAuditActor,
+  IBackofficePlatformUsersUseCase,
+} from "./IBackofficePlatformUsersUseCase"
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter"
+import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor"
 import {
   startOfMonthInTz,
   addDaysInTz,
@@ -1992,7 +1997,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       canManageAccountTeams?: boolean
       canTransferAccountLeads?: boolean
       generateCharge?: boolean
-    }
+    },
+    actor?: BackofficeAuditActor
   ): Promise<Output> {
     try {
       const trimmedName = data.fullName.trim()
@@ -2106,13 +2112,33 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           }
         }
 
-        await this.platformUsersRepository.addExistingProfileToTeam(
+        const { teamMemberId } = await this.platformUsersRepository.addExistingProfileToTeam(
           existingProfile.id,
           data.teamId,
           data.role,
           data.functions,
           delegatedPermissions
         )
+
+        await auditLogWriter.logAudit({
+          entityType: "TEAM_MEMBER",
+          entityId: teamMemberId,
+          action: "CREATE",
+          actorProfileId: actor?.profileId ?? null,
+          before: null,
+          after: {
+            teamId: data.teamId,
+            profileId: existingProfile.id,
+            role: data.role,
+            functions: data.functions,
+          },
+          metadata: buildAuditActorMetadata(actor, {
+            operation: "backoffice_member_added",
+            masterProfileId,
+            teamId: data.teamId,
+            profileId: existingProfile.id,
+          }),
+        })
 
         await emailService.sendEmailUntracked({
           to: [email],
@@ -2182,11 +2208,50 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         await this.platformUsersRepository.assertUserSubscriptionCapacity(masterProfileId)
       }
 
-      const { profileId } = await this.platformUsersRepository.createMemberForMaster(
+      const { profileId, teamMemberId } = await this.platformUsersRepository.createMemberForMaster(
         masterProfileId,
         { ...data, fullName: trimmedName, email, phone: data.phone ?? null, ...delegatedPermissions },
         data.teamId
       )
+
+      await auditLogWriter.logAudit({
+        entityType: "PROFILE",
+        entityId: profileId,
+        action: "CREATE",
+        actorProfileId: actor?.profileId ?? null,
+        before: null,
+        after: {
+          email,
+          fullName: trimmedName,
+          role: data.role,
+          isMaster: false,
+        },
+        metadata: buildAuditActorMetadata(actor, {
+          operation: "backoffice_profile_created",
+          masterProfileId,
+          teamId: data.teamId,
+          profileId,
+        }),
+      })
+      await auditLogWriter.logAudit({
+        entityType: "TEAM_MEMBER",
+        entityId: teamMemberId,
+        action: "CREATE",
+        actorProfileId: actor?.profileId ?? null,
+        before: null,
+        after: {
+          teamId: data.teamId,
+          profileId,
+          role: data.role,
+          functions: data.functions,
+        },
+        metadata: buildAuditActorMetadata(actor, {
+          operation: "backoffice_member_added",
+          masterProfileId,
+          teamId: data.teamId,
+          profileId,
+        }),
+      })
 
       const supabaseAdmin = createSupabaseAdmin()
       const redirectTo = getFullUrl("/set-password")
@@ -2240,7 +2305,11 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     }
   }
 
-  async addMasterUserToTeam(masterProfileId: string, teamId: string): Promise<Output> {
+  async addMasterUserToTeam(
+    masterProfileId: string,
+    teamId: string,
+    actor?: BackofficeAuditActor
+  ): Promise<Output> {
     try {
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
@@ -2257,7 +2326,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Master já pertence a este time"], null)
       }
 
-      await this.platformUsersRepository.addExistingProfileToTeam(
+      const { teamMemberId } = await this.platformUsersRepository.addExistingProfileToTeam(
         masterProfileId,
         teamId,
         "manager",
@@ -2268,6 +2337,25 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           canTransferAccountLeads: false,
         }
       )
+
+      await auditLogWriter.logAudit({
+        entityType: "TEAM_MEMBER",
+        entityId: teamMemberId,
+        action: "CREATE",
+        actorProfileId: actor?.profileId ?? null,
+        before: null,
+        after: {
+          teamId,
+          profileId: masterProfileId,
+          role: "manager",
+          functions: [],
+        },
+        metadata: buildAuditActorMetadata(actor, {
+          operation: "backoffice_master_added_to_team",
+          masterProfileId,
+          teamId,
+        }),
+      })
 
       const emailService = createEmailService()
       const appUrl = getAppUrl({ removeTrailingSlash: true })
@@ -2291,7 +2379,8 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
   async addTeamToMasterUser(
     masterProfileId: string,
-    data: { name: string; generateCharge?: boolean }
+    data: { name: string; generateCharge?: boolean },
+    actor?: BackofficeAuditActor
   ): Promise<Output> {
     try {
       const name = data.name.trim()
@@ -2345,6 +2434,23 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
 
       const team = await this.platformUsersRepository.createTeamForMaster(masterProfileId, name)
+
+      await auditLogWriter.logAudit({
+        entityType: "TEAM",
+        entityId: team.id,
+        action: "CREATE",
+        actorProfileId: actor?.profileId ?? null,
+        before: null,
+        after: {
+          name: team.name,
+          masterProfileId,
+        },
+        metadata: buildAuditActorMetadata(actor, {
+          operation: "backoffice_team_created",
+          masterProfileId,
+          teamId: team.id,
+        }),
+      })
 
       console.info("[BackofficePlatformUsersUseCase][addTeamToMasterUser] Time criado:", team.id)
       await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_team")

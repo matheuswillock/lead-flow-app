@@ -101,7 +101,9 @@ async function resolveTeamAccountAccess(profileId: string, teamId: string): Prom
 
   const message = decision?.state === "restricted" && decision.reason === "banned"
     ? ACCOUNT_MASTER_BANNED_MESSAGE
-    : "O acesso desta conta está pausado. Entre em contato com o time de assinaturas.";
+    : decision?.state === "restricted" && decision.isBillingOwner
+      ? "O acesso desta conta está pausado. Entre em contato com o time de assinaturas."
+      : "O acesso desta conta está pausado. Avise o administrador desta conta para que ele entre em contato com o time de assinaturas.";
 
   return {
     error: new Output(false, [], [message], null),

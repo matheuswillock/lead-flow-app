@@ -6,7 +6,7 @@ import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal"
 import { runResponsiveChecks } from "../../support/responsive"
 
 const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
-  "https://wa.me/5511939534668?text=Ol%C3%A1%2C%20Bruno%21%20Minha%20assinatura%20do%20Corretor%20Studio%20expirou%20e%20gostaria%20de%20renovar.%20Voc%C3%AA%20pode%20me%20orientar%20sobre%20os%20pr%C3%B3ximos%20passos%3F"
+  "https://wa.me/5511939534668?text=Ol%C3%A1!%20Minha%20conta%20do%20Corretor%20Studio%20est%C3%A1%20com%20o%20acesso%20pausado%20e%20preciso%20de%20orienta%C3%A7%C3%A3o%20sobre%20os%20pr%C3%B3ximos%20passos."
 
 test.describe.serial("gate de acesso da conta", () => {
   const isolatedSupabaseId = randomUUID()
