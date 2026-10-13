@@ -29,7 +29,7 @@ Antes de qualquer implementação, ler:
 
 | Fonte | O que extrai |
 |---|---|
-| `.github/instructions/project-context.instructions.md` | Stack, schema, rotas existentes, hooks compartilhados |
+| `.github/instructions/project-context.instructions.md` | Índice de fontes canônicas e stack estável |
 | `app/[supabaseId]/dashboard/` | Referência de Context SOLID completo |
 | `app/[supabaseId]/board/` | Referência de Container patterns |
 | `app/[supabaseId]/manager-users/` | Referência de Service patterns |

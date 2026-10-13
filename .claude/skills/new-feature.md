@@ -7,7 +7,7 @@ Implemente uma nova feature no Lead Flow seguindo estritamente a arquitetura do 
 ## Passos obrigatórios
 
 1. **Leia o contexto do projeto** antes de qualquer coisa:
-   - `.github/instructions/project-context.instructions.md` — stack, schema, rotas existentes
+   - `.github/instructions/project-context.instructions.md` — índice das fontes canônicas e stack estável
    - Verifique se já existe UseCase/Service similar em `app/api/useCases/` e `app/api/services/`
 
 2. **Gere o scaffold** da feature (substitua `<nome>` pelo nome da feature em PascalCase):

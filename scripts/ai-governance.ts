@@ -11,6 +11,7 @@ type Command =
   | "check-api-masking"
   | "check-e2e-pages"
   | "check-responsive"
+  | "context-report"
   | "sync-adapters"
   | "warn-allowlist";
 
@@ -26,6 +27,19 @@ interface AdapterConfig {
 
 interface WarningsConfig {
   maxExamplesPerCategory?: number;
+}
+
+interface ContextBudgetProfile {
+  name: string;
+  maxWords: number;
+  paths: string[];
+}
+
+interface ContextBudgetsConfig {
+  canonicalMaxWords?: number;
+  alwaysOnInstructionsMaxWords?: number;
+  skillMaxWords?: Record<string, number>;
+  profiles?: ContextBudgetProfile[];
 }
 
 interface LegacyExceptionsConfig {
@@ -57,6 +71,7 @@ interface GovernanceConfig {
   canonical: CanonicalConfig;
   adapters: AdapterConfig[];
   warnings?: WarningsConfig;
+  contextBudgets?: ContextBudgetsConfig;
   legacyExceptions: LegacyExceptionsConfig;
   e2ePageCoverage?: E2ePageCoverageConfig;
 }
@@ -523,6 +538,26 @@ function renderAdapterContent(
   return [baseHeader, sourceContent.trimEnd(), ""].join("\n");
 }
 
+export async function writeGovernanceAdapterIfChanged(
+  targetPath: string,
+  content: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    const existing = await fs.readFile(targetPath, "utf8");
+    if (existing === content) {
+      console.info("[governance:sync] Unchanged", label);
+      return false;
+    }
+  } catch {
+    // Missing adapter is created below.
+  }
+
+  await fs.writeFile(targetPath, content, "utf8");
+  console.info("[governance:sync] Updated", label);
+  return true;
+}
+
 async function syncAdapters(
   config: GovernanceConfig,
   canonicalText: string,
@@ -539,12 +574,186 @@ async function syncAdapters(
       continue;
     }
     await fs.mkdir(path.dirname(targetAbsolutePath), { recursive: true });
-    await fs.writeFile(
+    await writeGovernanceAdapterIfChanged(
       targetAbsolutePath,
       renderAdapterContent(config, adapter, canonicalText),
-      "utf8",
+      adapter.path,
     );
-    console.info("[governance:sync] Updated", adapter.path);
+  }
+}
+
+interface ContextMeasurement {
+  label: string;
+  words: number;
+}
+
+export function countContextWords(content: string): number {
+  const normalized = content.trim();
+  return normalized.length === 0 ? 0 : normalized.split(/\s+/).length;
+}
+
+export function isAlwaysOnInstruction(content: string): boolean {
+  return /^applyTo:\s*['"]?\*\*['"]?\s*$/m.test(content);
+}
+
+export function validateContextWordBudget(
+  label: string,
+  content: string,
+  maxWords: number,
+  issues: string[],
+): number {
+  const words = countContextWords(content);
+  if (words > maxWords) {
+    issues.push(
+      `Context budget exceeded (${label}): ${words} words, maximum ${maxWords}.`,
+    );
+  }
+  return words;
+}
+
+async function readContextFile(
+  repoPath: string,
+  issues: string[],
+): Promise<string | null> {
+  try {
+    return await fs.readFile(toAbsolutePath(repoPath), "utf8");
+  } catch {
+    issues.push(`Context budget file does not exist: ${repoPath}`);
+    return null;
+  }
+}
+
+async function collectAlwaysOnInstructionMeasurements(
+  issues: string[],
+): Promise<ContextMeasurement[]> {
+  const instructionDirectory = path.join(ROOT, ".github", "instructions");
+  const files = await collectFilesRecursively(
+    instructionDirectory,
+    (filename) => filename.endsWith(".instructions.md"),
+  );
+  const measurements: ContextMeasurement[] = [];
+
+  for (const absolutePath of files) {
+    const content = await fs.readFile(absolutePath, "utf8");
+    if (!isAlwaysOnInstruction(content)) {
+      continue;
+    }
+    measurements.push({
+      label: normalizeRelativePath(absolutePath),
+      words: countContextWords(content),
+    });
+  }
+
+  if (measurements.length === 0) {
+    issues.push("No always-on .github instruction file was found.");
+  }
+
+  return measurements;
+}
+
+async function validateContextBudgets(
+  config: GovernanceConfig,
+  canonicalText: string,
+  issues: string[],
+): Promise<void> {
+  const budgets = config.contextBudgets;
+  if (!budgets) {
+    return;
+  }
+
+  if (budgets.canonicalMaxWords !== undefined) {
+    validateContextWordBudget(
+      config.canonical.path,
+      canonicalText,
+      budgets.canonicalMaxWords,
+      issues,
+    );
+  }
+
+  if (budgets.alwaysOnInstructionsMaxWords !== undefined) {
+    const measurements = await collectAlwaysOnInstructionMeasurements(issues);
+    const totalWords = measurements.reduce(
+      (total, measurement) => total + measurement.words,
+      0,
+    );
+    if (totalWords > budgets.alwaysOnInstructionsMaxWords) {
+      issues.push(
+        `Always-on instruction budget exceeded: ${totalWords} words, maximum ${budgets.alwaysOnInstructionsMaxWords}.`,
+      );
+    }
+  }
+
+  for (const [skillPath, maxWords] of Object.entries(
+    budgets.skillMaxWords ?? {},
+  )) {
+    const content = await readContextFile(skillPath, issues);
+    if (content !== null) {
+      validateContextWordBudget(skillPath, content, maxWords, issues);
+    }
+  }
+
+  for (const profile of budgets.profiles ?? []) {
+    let totalWords = 0;
+    for (const profilePath of profile.paths) {
+      const content = await readContextFile(profilePath, issues);
+      if (content !== null) {
+        totalWords += countContextWords(content);
+      }
+    }
+    if (totalWords > profile.maxWords) {
+      issues.push(
+        `Context profile exceeded (${profile.name}): ${totalWords} words, maximum ${profile.maxWords}.`,
+      );
+    }
+  }
+}
+
+async function printContextReport(config: GovernanceConfig): Promise<void> {
+  const issues: string[] = [];
+  const paths = new Set<string>([config.canonical.path]);
+  for (const skillPath of Object.keys(config.contextBudgets?.skillMaxWords ?? {})) {
+    paths.add(skillPath);
+  }
+  for (const profile of config.contextBudgets?.profiles ?? []) {
+    for (const profilePath of profile.paths) {
+      paths.add(profilePath);
+    }
+  }
+
+  console.info("[governance:context-report] FILES");
+  for (const repoPath of [...paths].sort()) {
+    const content = await readContextFile(repoPath, issues);
+    if (content !== null) {
+      console.info(`  ${countContextWords(content)}\t${repoPath}`);
+    }
+  }
+
+  const alwaysOn = await collectAlwaysOnInstructionMeasurements(issues);
+  const alwaysOnTotal = alwaysOn.reduce(
+    (total, measurement) => total + measurement.words,
+    0,
+  );
+  console.info(
+    `[governance:context-report] ALWAYS_ON_INSTRUCTIONS ${alwaysOnTotal}`,
+  );
+
+  console.info("[governance:context-report] PROFILES");
+  for (const profile of config.contextBudgets?.profiles ?? []) {
+    let totalWords = 0;
+    for (const profilePath of profile.paths) {
+      const content = await readContextFile(profilePath, issues);
+      if (content !== null) {
+        totalWords += countContextWords(content);
+      }
+    }
+    console.info(`  ${totalWords}/${profile.maxWords}\t${profile.name}`);
+  }
+
+  if (issues.length > 0) {
+    for (const issue of issues) {
+      console.error(`  - ${issue}`);
+    }
+    process.exitCode = 1;
   }
 }
 
@@ -1647,6 +1856,7 @@ async function checkGovernance(
   const frozenAllowlists = await loadFrozenAllowlistsConfig();
 
   validateCanonicalMetadata(config, canonicalText, issues);
+  await validateContextBudgets(config, canonicalText, issues);
   validateFrozenAllowlistsNoNewItems(config, frozenAllowlists, issues);
   await validateAdapters(config, canonicalText, canonicalAbsolutePath, issues);
   await validatePrismaInV1Routes(config, issues, warnings);
@@ -1764,6 +1974,7 @@ async function main(): Promise<void> {
     "check-api-masking",
     "check-e2e-pages",
     "check-responsive",
+    "context-report",
     "sync-adapters",
     "warn-allowlist",
   ]);
@@ -1772,7 +1983,7 @@ async function main(): Promise<void> {
   if (!validCommands.has(maybeCommand)) {
     console.error("Unknown command:", maybeCommand);
     console.error(
-      "Usage: bun scripts/ai-governance.ts [check|check-api-masking|check-e2e-pages|check-responsive|sync-adapters|warn-allowlist]",
+      "Usage: bun scripts/ai-governance.ts [check|check-api-masking|check-e2e-pages|check-responsive|context-report|sync-adapters|warn-allowlist]",
     );
     process.exit(1);
   }
@@ -1791,6 +2002,11 @@ async function main(): Promise<void> {
   if (maybeCommand === "warn-allowlist") {
     const monitoringConfig = await loadAllowlistMonitoringConfig();
     printAllowlistWarnings(config, monitoringConfig);
+    return;
+  }
+
+  if (maybeCommand === "context-report") {
+    await printContextReport(config);
     return;
   }
 
