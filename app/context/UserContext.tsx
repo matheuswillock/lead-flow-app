@@ -10,6 +10,7 @@ import {
   writeUserBootstrapCache,
 } from "@/lib/bootstrap/sessionBootstrapCache";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { useTeamContext } from "./TeamContext";
 
 type UserBootstrapResponse = {
   profileOutput: Output;
@@ -103,6 +104,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   initialHasActiveSubscription = null,
   initialUserRole = null,
 }) => {
+  const { accountAccessDecision } = useTeamContext();
   const subscriptionKnown =
     initialHasActiveSubscription !== null && initialHasActiveSubscription !== undefined;
 
@@ -448,6 +450,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   useEffect(() => {
     void fetchUser();
   }, [fetchUser]);
+
+  useEffect(() => {
+    setHasActiveSubscription(accountAccessDecision?.state === "allowed");
+  }, [accountAccessDecision]);
 
   const value: UserContextState = {
     user,

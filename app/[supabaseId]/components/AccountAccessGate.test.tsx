@@ -19,3 +19,14 @@ test("não renderiza sidebar, header ou conteúdo da plataforma para conta restr
   expect(markup).toContain("p-4")
   expect(markup).toContain("h-11 w-full")
 })
+
+test("falha fechado quando a decisão autenticada não foi resolvida", () => {
+  const markup = renderToStaticMarkup(
+    <AccountAccessGate decision={null} decisionResolved>
+      <section data-testid="platform-content">dados financeiros e CRM</section>
+    </AccountAccessGate>
+  )
+
+  expect(markup).toContain("Seu acesso está pausado")
+  expect(markup).not.toContain("dados financeiros e CRM")
+})

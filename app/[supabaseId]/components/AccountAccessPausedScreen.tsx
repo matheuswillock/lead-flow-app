@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card"
 
 export const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
-  "https://wa.me/5511939534668?text=Ol%C3%A1%2C%20Bruno%21%20Minha%20assinatura%20do%20Corretor%20Studio%20expirou%20e%20gostaria%20de%20renovar.%20Voc%C3%AA%20pode%20me%20orientar%20sobre%20os%20pr%C3%B3ximos%20passos%3F"
+  `https://wa.me/5511939534668?text=${encodeURIComponent("Olá! Minha conta do Corretor Studio está com o acesso pausado e preciso de orientação sobre os próximos passos.")}`
 
 type AccountAccessPausedScreenProps = {
   reason?: AccountAccessRestrictionReason
@@ -32,9 +32,11 @@ export function AccountAccessPausedScreen({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {reason === "banned" ? "Fale com o time de assinaturas para entender como seguir." : isBillingOwner && reason === "past_due"
-              ? "Regularize a assinatura para voltar a usar o Corretor Studio."
-              : "Peça ao responsável pela assinatura para regularizar o pagamento."}
+            {reason === "banned"
+              ? "Fale com o time de assinaturas para entender como seguir."
+              : isBillingOwner
+                ? "Fale com o time de assinaturas para regularizar o acesso desta conta."
+                : "Avise o administrador desta conta para que ele entre em contato com o time de assinaturas."}
           </p>
         </CardContent>
         <CardFooter className="flex-col gap-3">

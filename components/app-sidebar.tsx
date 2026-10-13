@@ -332,6 +332,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 isOwnAccount: team.isOwnAccount,
                 isAccessible: team.isAccessible,
                 isAssociateAccount: team.isAssociateAccount,
+                isPending: team.isPending,
               }))}
               activeTeamId={activeTeamId}
               onChange={setActiveTeamId}

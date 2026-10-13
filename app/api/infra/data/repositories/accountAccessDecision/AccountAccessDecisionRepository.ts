@@ -41,6 +41,9 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       profile,
       teamId: input.teamId,
     })
+    if (!billingOwnerId) {
+      return null
+    }
     const [billingOwner, isBanned] = await Promise.all([
       prisma.profile.findUnique({
         where: { id: billingOwnerId },
@@ -98,7 +101,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
   private async resolveBillingOwnerId(input: {
     profile: { id: string; managerId: string | null; activeTeamId: string | null }
     teamId?: string | null
-  }): Promise<string> {
+  }): Promise<string | null> {
     const teamId = input.teamId ?? input.profile.activeTeamId
     if (!teamId) {
       return input.profile.managerId ?? input.profile.id
@@ -112,17 +115,21 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       },
     })
     if (!team) {
-      return input.profile.managerId ?? input.profile.id
+      return input.teamId ? null : input.profile.managerId ?? input.profile.id
     }
 
     const membership = await prisma.teamMember.findFirst({
       where: { teamId, profileId: input.profile.id },
       select: { id: true },
     })
-    if (membership || team.master.sponsorMasterId === input.profile.id) {
+    if (
+      team.masterId === input.profile.id ||
+      membership ||
+      team.master.sponsorMasterId === input.profile.id
+    ) {
       return team.masterId
     }
 
-    return input.profile.managerId ?? input.profile.id
+    return input.teamId ? null : input.profile.managerId ?? input.profile.id
   }
 }

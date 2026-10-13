@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Output } from "@/lib/output";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
-import { useUser } from "@/app/context/UserContext";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
+import { resolveActiveTeamId } from "@/lib/account/teamAccessDecision";
 import {
   readTeamsBootstrapCache,
   writeTeamsBootstrapCache,
@@ -26,6 +27,7 @@ export interface TeamSummary {
   isAccessible?: boolean;
   accountSubscriptionActive?: boolean;
   accountMasterBanned?: boolean;
+  accountAccessDecision?: AccountAccessDecision;
   isDefault: boolean;
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
@@ -58,6 +60,7 @@ interface TeamContextState {
   isSwitchingTeam: boolean;
   switchingTeamName: string | null;
   isTeamSwitchPersisted: boolean;
+  accountAccessDecision: AccountAccessDecision | null;
   refreshTeams: () => Promise<void>;
   setActiveTeamId: (teamId: string) => Promise<void>;
   completeTeamSwitch: () => void;
@@ -73,34 +76,34 @@ function getStorageKey(supabaseId: string) {
   return `activeTeamId:${supabaseId}`;
 }
 
-function isTeamSelectable(team: TeamSummary) {
-  return !team.isPending && team.isAccessible !== false;
-}
-
-function getTeamBlockedMessage(team: TeamSummary) {
-  if (team.accountMasterBanned) {
-    return "O acesso a esta conta foi suspenso. Entre em contato com o administrador.";
-  }
-  return "A assinatura desta conta está inativa. Entre em contato com o administrador.";
+function isTeamAvailable(team: TeamSummary) {
+  return !team.isPending;
 }
 
 interface TeamProviderProps {
   children: React.ReactNode;
   supabaseId: string;
+  profileId?: string | null;
   /** Dados resolvidos no servidor (layout) — evita o fetch inicial no cliente. */
   initialTeams?: TeamSummary[] | null;
   initialActiveTeamId?: string | null;
+  initialAccountAccessDecision?: AccountAccessDecision | null;
 }
 
 export const TeamProvider = ({
   children,
   supabaseId,
+  profileId = null,
   initialTeams = null,
   initialActiveTeamId = null,
+  initialAccountAccessDecision = null,
 }: TeamProviderProps) => {
-  const { user } = useUser();
   const storageKey = getStorageKey(supabaseId);
   const hasInitialTeams = initialTeams !== null;
+  const initialDecision =
+    initialAccountAccessDecision ??
+    initialTeams?.find((team) => team.id === initialActiveTeamId)?.accountAccessDecision ??
+    null;
 
   const [teams, setTeams] = useState<TeamSummary[]>(initialTeams ?? []);
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(initialActiveTeamId);
@@ -109,6 +112,7 @@ export const TeamProvider = ({
   const [isSwitchingTeam, setIsSwitchingTeam] = useState(false);
   const [switchingTeamName, setSwitchingTeamName] = useState<string | null>(null);
   const [isTeamSwitchPersisted, setIsTeamSwitchPersisted] = useState(false);
+  const [accountAccessDecision, setAccountAccessDecision] = useState<AccountAccessDecision | null>(initialDecision);
   const serverActiveTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const activeTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const pendingActiveTeamSwitchRef = useRef<string | null>(null);
@@ -135,6 +139,9 @@ export const TeamProvider = ({
     if (cached) {
       setTeams(cached.teams as TeamSummary[]);
       serverActiveTeamIdRef.current = cached.activeTeamId ?? null;
+      setAccountAccessDecision(
+        (cached.teams as TeamSummary[]).find((team) => team.id === cached.activeTeamId)?.accountAccessDecision ?? null
+      );
       if (cached.activeTeamId) {
         setActiveTeamIdState(cached.activeTeamId);
       }
@@ -196,6 +203,11 @@ export const TeamProvider = ({
       serverTeamsReadyRef.current = true;
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
+      if (!pendingActiveTeamSwitchRef.current) {
+        setAccountAccessDecision(
+          payload.teams.find((team) => team.id === payload.activeTeamId)?.accountAccessDecision ?? null
+        );
+      }
 
       const resolvedActiveTeamId = payload.activeTeamId ?? activeTeamIdRef.current ?? null;
 
@@ -206,7 +218,7 @@ export const TeamProvider = ({
 
       if (payload.activeTeamId && !pendingActiveTeamSwitchRef.current) {
         const serverTeam = payload.teams.find((team) => team.id === payload.activeTeamId);
-        if (serverTeam && isTeamSelectable(serverTeam) && payload.activeTeamId !== activeTeamIdRef.current) {
+        if (serverTeam && isTeamAvailable(serverTeam) && payload.activeTeamId !== activeTeamIdRef.current) {
           activeTeamIdRef.current = payload.activeTeamId;
           setActiveTeamIdState(payload.activeTeamId);
           if (typeof window !== "undefined") {
@@ -222,13 +234,16 @@ export const TeamProvider = ({
     }
   }, [storageKey, supabaseId]);
 
-  const persistActiveTeam = useCallback(async (teamId: string) => {
+  const persistActiveTeam = useCallback(async (
+    teamId: string,
+    generation?: number,
+  ): Promise<AccountAccessDecision | null> => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(storageKey, teamId);
     }
 
     if (serverActiveTeamIdRef.current === teamId) {
-      return;
+      return teamsRef.current.find((team) => team.id === teamId)?.accountAccessDecision ?? null;
     }
 
     try {
@@ -244,12 +259,18 @@ export const TeamProvider = ({
       if (!response.ok || !output.isValid) {
         throw new Error(output.errorMessages?.join(", ") || "Não foi possível alterar o time ativo.");
       }
+      if (generation !== undefined && generation !== teamSwitchGenerationRef.current) {
+        return output.result?.accountAccessDecision ?? null;
+      }
+
       serverActiveTeamIdRef.current = teamId;
 
       writeTeamsBootstrapCache(supabaseId, {
         teams: teamsRef.current,
         activeTeamId: teamId,
       });
+
+      return output.result?.accountAccessDecision ?? null;
     } catch (err) {
       console.error("Error updating active team:", err);
       throw err;
@@ -270,6 +291,9 @@ export const TeamProvider = ({
     setIsSwitchingTeam(false);
     setSwitchingTeamName(null);
     setIsTeamSwitchPersisted(false);
+    setAccountAccessDecision(
+      teamsRef.current.find((team) => team.id === previousTeamId)?.accountAccessDecision ?? null
+    );
 
     if (typeof window === "undefined") {
       return;
@@ -289,8 +313,7 @@ export const TeamProvider = ({
       return;
     }
 
-    if (!isTeamSelectable(targetTeam)) {
-      toast.error(getTeamBlockedMessage(targetTeam));
+    if (!isTeamAvailable(targetTeam)) {
       return;
     }
 
@@ -301,13 +324,20 @@ export const TeamProvider = ({
     setIsTeamSwitchPersisted(false);
     setIsSwitchingTeam(true);
     setSwitchingTeamName(targetTeam.name);
+    setAccountAccessDecision(targetTeam.accountAccessDecision ?? {
+      state: "restricted",
+      reason: "subscription_unavailable",
+    });
     activeTeamIdRef.current = teamId;
     setActiveTeamIdState(teamId);
 
     try {
-      await persistActiveTeam(teamId);
+      const nextDecision = await persistActiveTeam(teamId, generation);
       if (generation !== teamSwitchGenerationRef.current) {
         return;
+      }
+      if (nextDecision) {
+        setAccountAccessDecision(nextDecision);
       }
       setIsTeamSwitchPersisted(true);
     } catch (error) {
@@ -338,7 +368,7 @@ export const TeamProvider = ({
 
     if (serverActiveTeamIdRef.current) {
       const serverTeam = teams.find((team) => team.id === serverActiveTeamIdRef.current);
-      if (serverTeam && isTeamSelectable(serverTeam)) {
+      if (serverTeam && isTeamAvailable(serverTeam)) {
         nextTeamId = serverActiveTeamIdRef.current;
       }
     }
@@ -346,13 +376,16 @@ export const TeamProvider = ({
     if (!nextTeamId && typeof window !== "undefined") {
       const stored = window.localStorage.getItem(storageKey);
       const storedTeam = stored ? teams.find((team) => team.id === stored) : null;
-      if (stored && storedTeam && isTeamSelectable(storedTeam)) {
+      if (stored && storedTeam && isTeamAvailable(storedTeam)) {
         nextTeamId = stored;
       }
     }
 
     if (!nextTeamId) {
-      nextTeamId = teams.find((team) => isTeamSelectable(team))?.id ?? null;
+      nextTeamId = resolveActiveTeamId({
+        currentTeamId: serverActiveTeamIdRef.current,
+        teams,
+      });
     }
 
     if (nextTeamId) {
@@ -373,38 +406,13 @@ export const TeamProvider = ({
 
   useEffect(() => {
     if (!activeTeamId) return;
-
-    const currentTeam = teams.find((team) => team.id === activeTeamId);
-    if (!currentTeam || isTeamSelectable(currentTeam)) {
-      return;
-    }
-
-    const fallback = teams.find((team) => isTeamSelectable(team))?.id ?? null;
-    if (fallback && fallback !== activeTeamId) {
-      const blockedTeam = teams.find((team) => team.id === activeTeamId);
-      toast.info(
-        blockedTeam
-          ? getTeamBlockedMessage(blockedTeam)
-          : "Esta conta não está acessível. Alternamos para outro time disponível."
-      );
-      setActiveTeamIdState(fallback);
-      persistActiveTeam(fallback).catch((err) => {
-        console.error("Error persisting fallback team:", err);
-      });
-      return;
-    }
-
-    if (!fallback) {
-      setActiveTeamIdState(null);
-    }
-  }, [activeTeamId, teams, persistActiveTeam]);
-
-  useEffect(() => {
-    if (!activeTeamId) return;
     if (!teams.some((team) => team.id === activeTeamId)) {
-      const fallback = teams.find((team) => isTeamSelectable(team))?.id ?? null;
+      const fallback = resolveActiveTeamId({ currentTeamId: null, teams });
       if (fallback) {
         setActiveTeamIdState(fallback);
+        setAccountAccessDecision(
+          teams.find((team) => team.id === fallback)?.accountAccessDecision ?? null
+        );
         persistActiveTeam(fallback).catch((err) => {
           console.error("Error persisting fallback team:", err);
         });
@@ -418,7 +426,7 @@ export const TeamProvider = ({
 
   const activeRole = activeTeam?.role ?? null;
   const activeFunctions = activeTeam?.functions ?? EMPTY_TEAM_FUNCTIONS;
-  const isTeamMaster = !!(user && activeTeam && activeTeam.masterId === user.id);
+  const isTeamMaster = !!(profileId && activeTeam && activeTeam.masterId === profileId);
 
   useEffect(() => {
     if (!activeTeamId || !activeTeam) return;
@@ -439,6 +447,7 @@ export const TeamProvider = ({
     isSwitchingTeam,
     switchingTeamName,
     isTeamSwitchPersisted,
+    accountAccessDecision,
     refreshTeams,
     setActiveTeamId,
     completeTeamSwitch,
@@ -454,6 +463,7 @@ export const TeamProvider = ({
     isSwitchingTeam,
     switchingTeamName,
     isTeamSwitchPersisted,
+    accountAccessDecision,
     refreshTeams,
     setActiveTeamId,
     completeTeamSwitch,
