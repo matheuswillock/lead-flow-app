@@ -1,5 +1,5 @@
-const MEMBER_PRO_MIN_DAYS = 1
-const MEMBER_PRO_MAX_DAYS = 365
+const MEMBER_PRO_MIN_DAYS = 100
+const MEMBER_PRO_MAX_DAYS = 100
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
 
 function remainingAccessDays(accessExpiresAt: string | null): number | null {

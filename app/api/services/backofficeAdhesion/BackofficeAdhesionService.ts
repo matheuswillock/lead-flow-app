@@ -27,6 +27,7 @@ import {
 import { resolveAdhesionInstallmentDueDate } from "@/lib/backoffice-adhesions/installment-due-date"
 import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange"
 import { validateAdhesionSubscriptionWrite } from "@/lib/billing/adhesion-guards"
+import { resolveMemberProAccessWindow } from "@/app/api/shared/billing/memberProBillingRules"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -1993,10 +1994,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         adhesion.createdByBackofficeUserId
       )
 
-      if (adhesion.requestedUserTypeSlug === "member_pro" && adhesion.requestedMemberProAccessExpiresAt) {
+      if (adhesion.requestedUserTypeSlug === "member_pro") {
+        const memberProWindow = resolveMemberProAccessWindow({ start: subscriptionStartDate })
         await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
           userType: "member_pro",
-          accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
+          accessStartsAt: memberProWindow.accessStartsAt,
+          accessExpiresAt: memberProWindow.accessExpiresAt,
           assignedByProfileId,
         })
         await this.allUsersRepo.setHasUnlimitedUsers(createdProfile.profileId, true)

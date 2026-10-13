@@ -1,6 +1,7 @@
 // app/api/services/AsaasOperatorService.ts
 import { AsaasSubscriptionService } from '../AsaasSubscription/AsaasSubscriptionService';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { resolvePrice } from '@/lib/billing/resolvePrice';
 
 export interface OperatorBilling {
   basePlan: number;
@@ -76,11 +77,20 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador já está vinculado a outro Manager');
       }
 
+      const operatorPrice = await resolvePrice({
+        featureSlug: 'extra-user',
+        cycle: 'MONTHLY',
+        method: 'CREDIT_CARD',
+      });
+      if (operatorPrice == null) {
+        throw new Error('Preço de usuário adicional indisponível no catálogo');
+      }
+
       // 3. Criar assinatura do operador no Asaas
       const subscription = await AsaasSubscriptionService.createOperatorSubscription({
         customer: manager.asaasCustomerId,
         billingType: 'CREDIT_CARD', // Herda do Manager ou define padrão
-        value: 19.90,
+        value: operatorPrice,
         cycle: 'MONTHLY',
         description: `Operador: ${operator.fullName || operator.email}`,
         externalReference: operatorId,
@@ -119,7 +129,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         subscriptionId: subscription.subscriptionId,
         operatorId,
         managerId,
-        value: 19.90,
+        value: operatorPrice,
         message: 'Operador adicionado com sucesso',
       };
 
@@ -230,8 +240,13 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Manager não encontrado');
       }
 
-      const basePlan = 59.90;
-      const operatorCost = 19.90;
+      const [basePlan, operatorCost] = await Promise.all([
+        resolvePrice({ featureSlug: 'crm', cycle: 'MONTHLY', method: 'CREDIT_CARD' }),
+        resolvePrice({ featureSlug: 'extra-user', cycle: 'MONTHLY', method: 'CREDIT_CARD' }),
+      ]);
+      if (basePlan == null || operatorCost == null) {
+        throw new Error('Preços de cobrança indisponíveis no catálogo');
+      }
       const activeOperators = manager.operators.length;
       const totalCost = basePlan + (activeOperators * operatorCost);
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from "bun:test"
 
-const requestMock = mock(async (): Promise<{ data: Array<Record<string, unknown>> }> => ({ data: [] }))
+const requestMock = mock(async (): Promise<{ data?: Array<Record<string, unknown>>; [key: string]: unknown }> => ({ data: [] }))
 
 mock.module("@/lib/asaas", () => ({
   createAsaasClient: mock(() => ({
@@ -30,5 +30,42 @@ describe("AsaasMigrationGateway reconciliação", () => {
     const gateway = new AsaasMigrationGateway()
 
     await expect(gateway.findSubscriptionByExternalReference("missing")).resolves.toBeNull()
+  })
+
+  it("cria assinatura PIX sem enviar token de cartão", async () => {
+    requestMock.mockResolvedValueOnce({
+      id: "sub_pix",
+      customer: "cus_primary",
+      value: 59.9,
+      cycle: "MONTHLY",
+      nextDueDate: "2026-10-31",
+      status: "ACTIVE",
+    })
+    const gateway = new AsaasMigrationGateway()
+
+    await gateway.createSubscription({
+      account: "primary",
+      customerId: "cus_primary",
+      value: 59.9,
+      cycle: "MONTHLY",
+      nextDueDate: "2026-10-31",
+      externalReference: "asaas-migration:pix:sub_legacy",
+      billingType: "PIX",
+    })
+
+    expect(requestMock).toHaveBeenCalledWith(
+      "https://api.example/v3/subscriptions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          customer: "cus_primary",
+          billingType: "PIX",
+          value: 59.9,
+          cycle: "MONTHLY",
+          nextDueDate: "2026-10-31",
+          externalReference: "asaas-migration:pix:sub_legacy",
+        }),
+      }),
+    )
   })
 })

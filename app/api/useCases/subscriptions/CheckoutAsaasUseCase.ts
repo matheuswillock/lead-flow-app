@@ -1,8 +1,10 @@
 import { Output } from "@/lib/output";
 import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { toBillingCycle } from "@/lib/billing/resolvePrice";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 import type { UserRole } from "@prisma/client";
@@ -23,6 +25,14 @@ import {
   asaasCustomerGateway as defaultAsaasCustomerGateway,
 } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
+import {
+  billingPriceResolver as defaultBillingPriceResolver,
+} from "@/app/api/services/billingPricing/BillingPriceResolver"
+import type {
+  BillingPriceCycle,
+  BillingPriceMethod,
+  IBillingPriceResolver,
+} from "@/app/api/shared/billing/billingPriceTypes"
 
 // Mesmo TTL de AddOnCheckoutUseCase.ts (T-40.x) — checkout hospedado do
 // Asaas expira depois disso.
@@ -55,6 +65,8 @@ export interface CreateCheckoutData {
   city?: string;
   state?: string;
   billingType?: 'CREDIT_CARD' | 'PIX' | 'BOLETO';
+  productId?: string;
+  billingCycle?: BillingPriceCycle;
 }
 
 export interface CreateOperatorCheckoutData {
@@ -94,7 +106,8 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
     private readonly teamRepository: ITeamRepository = defaultTeamRepository,
     private readonly teamMembersRepository: ITeamMembersRepository = defaultTeamMembersRepository,
     private readonly pendingOperatorRepository: IPendingOperatorRepository = defaultPendingOperatorRepository,
-    private readonly asaasCustomerGateway: IAsaasCustomerGateway = defaultAsaasCustomerGateway
+    private readonly asaasCustomerGateway: IAsaasCustomerGateway = defaultAsaasCustomerGateway,
+    private readonly billingPriceResolver: IBillingPriceResolver = defaultBillingPriceResolver,
   ) {}
 
   /**
@@ -194,6 +207,18 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
+      const billingType: BillingPriceMethod = data.billingType ?? "CREDIT_CARD"
+      const billingCycle = data.billingCycle ?? "monthly"
+      const checkoutValue = await this.billingPriceResolver.resolvePrice({
+        featureSlug: "crm",
+        productId: data.productId,
+        cycle: billingCycle,
+        method: billingType,
+      })
+      if (checkoutValue == null) {
+        return new Output(false, [], ["Preço do produto e ciclo não estão disponíveis no catálogo"], null)
+      }
+
       // 2. Criar Asaas Checkout com assinatura recorrente
       // nextDueDate = data da PRIMEIRA cobrança (hoje, para cobrar no ato)
       // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
@@ -215,7 +240,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // ⚠️ LIMITAÇÃO ASAAS: chargeTypes RECURRENT só funciona com CREDIT_CARD
       // Para PIX/Boleto com assinatura, usamos DETACHED e criamos
       // subscription via webhook após o primeiro pagamento.
-      const billingTypes = ['CREDIT_CARD'];
+      const billingTypes = [billingType];
       const chargeTypes = ['DETACHED'];
 
       console.info('💳 [createSubscriptionCheckout] Configuração:', {
@@ -232,7 +257,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           {
             name: 'Plano Professional',
             description: 'Sistema completo de gestão de leads com pipeline Kanban, analytics em tempo real e gestão de equipe.',
-            value: 59.90,
+            value: checkoutValue,
             quantity: 1,
           }
         ],
@@ -525,6 +550,15 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         endDate: endDateStr,
       });
 
+      const operatorPrice = await this.billingPriceResolver.resolvePrice({
+        featureSlug: "extra-user",
+        cycle: "monthly",
+        method: "CREDIT_CARD",
+      })
+      if (operatorPrice == null) {
+        return new Output(false, [], ["Preço de usuário adicional indisponível no catálogo"], null)
+      }
+
       const checkoutData: any = {
         customer: operatorCheckoutCustomerId,
         billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
@@ -539,7 +573,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           {
             name: 'Licença Operador',
             description: `Acesso completo à plataforma - ${data.operatorData.email}`,
-            value: 19.90,
+            value: operatorPrice,
             quantity: 1,
           }
         ],
@@ -711,11 +745,22 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           { method: 'GET' }
         );
 
-        const newValue = oldSubscription.value + 19.90;
+        const billingCycle = toBillingCycle(oldSubscription.cycle);
+        const operatorPrice = billingCycle
+          ? await this.billingPriceResolver.resolvePrice({
+              featureSlug: "extra-user",
+              cycle: billingCycle,
+              method: oldSubscription.billingType,
+            })
+          : null;
+        if (operatorPrice == null) {
+          throw new Error("Preço de usuário adicional indisponível no catálogo");
+        }
+        const newValue = oldSubscription.value + operatorPrice;
         console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
           oldValue: oldSubscription.value,
           newValue,
-          increment: 19.90
+          increment: operatorPrice
         });
 
         try {
@@ -999,21 +1044,13 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         `${asaasClient.endpoints.payments}/${checkoutId}`,
         { method: 'GET' }
       );
-
-      if (!payment.subscription) {
-        return new Output(
-          false,
-          [],
-          ['Cobrança não está vinculada a uma assinatura'],
-          null
-        );
+      if (payment.status && !['RECEIVED', 'CONFIRMED', 'PAID'].includes(payment.status)) {
+        return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
       }
 
-      // Buscar profile pela assinatura (C33: filtrado pela conta do evento)
-      const profile = await this.profileRepository.findByAsaasSubscriptionIdAndAccount(
-        payment.subscription,
-        account
-      );
+      const profile = payment.subscription
+        ? await this.profileRepository.findByAsaasSubscriptionIdAndAccount(payment.subscription, account)
+        : await this.profileRepository.findByAsaasCustomerIdAndAccount(payment.customer, account);
 
       if (!profile) {
         return new Output(
@@ -1022,6 +1059,19 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           ['Usuário não encontrado para esta assinatura'],
           null
         );
+      }
+
+      let subscriptionId = payment.subscription as string | undefined;
+      if (!subscriptionId) {
+        subscriptionId = await this.createSubscriptionAfterDetachedCheckout(payment, profile, account);
+        await this.profileRepository.updateSubscriptionAfterCheckout({
+          profileId: profile.id,
+          subscriptionId,
+          account,
+          cycle: "MONTHLY",
+          startDate: new Date(),
+          nextDueDate: addMonthsInTz(new Date(), 1, resolveTimezone(profile.timezone)),
+        });
       }
 
       // Atualizar status da assinatura para ativa
@@ -1065,6 +1115,64 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         null
       );
     }
+  }
+
+  private async createSubscriptionAfterDetachedCheckout(
+    payment: { id: string; customer: string; value?: number; billingType?: string },
+    profile: { id: string; timezone?: string | null },
+    account: AsaasAccountId,
+  ): Promise<string> {
+    const method: BillingPriceMethod = payment.billingType === "PIX" ? "PIX" : "CREDIT_CARD";
+    const expectedValue = await this.billingPriceResolver.resolvePrice({
+      featureSlug: "crm",
+      cycle: "monthly",
+      method,
+    });
+    if (expectedValue == null || payment.value == null || Math.abs(Number(payment.value) - expectedValue) > 0.005) {
+      throw new Error("Pagamento confirmado com preço divergente do catálogo");
+    }
+
+    const externalReference = `checkout:${payment.id}:crm-subscription`;
+    const client = createAsaasClient(account);
+    const existingResponse = await client.request(
+      `${client.endpoints.subscriptions}?externalReference=${encodeURIComponent(externalReference)}`,
+      { method: "GET" },
+    );
+    const existingSubscriptions = Array.isArray(existingResponse?.data) ? existingResponse.data : [];
+    if (existingSubscriptions.length > 1) {
+      throw new Error("Mais de uma assinatura foi encontrada para o checkout confirmado");
+    }
+    const existing = existingSubscriptions[0];
+    if (existing) {
+      if (
+        existing.customer !== payment.customer ||
+        existing.status !== "ACTIVE" ||
+        Math.abs(Number(existing.value) - expectedValue) > 0.005 ||
+        existing.cycle !== "MONTHLY"
+      ) {
+        throw new Error("Assinatura do checkout reconciliada com dados divergentes");
+      }
+      return existing.id;
+    }
+
+    const nextDueDate = addMonthsInTz(new Date(), 1, resolveTimezone(profile.timezone));
+    const created = await AsaasSubscriptionService.createSubscription({
+      customer: payment.customer,
+      billingType: method,
+      value: expectedValue,
+      cycle: "MONTHLY",
+      nextDueDate: formatIntimezone(nextDueDate, "yyyy-MM-dd", resolveTimezone(profile.timezone)),
+      externalReference,
+    }, account);
+    if (
+      created.data.customer !== payment.customer ||
+      created.data.status !== "ACTIVE" ||
+      Math.abs(Number(created.data.value) - expectedValue) > 0.005 ||
+      created.data.cycle !== "MONTHLY"
+    ) {
+      throw new Error("Assinatura criada para o checkout retornou dados divergentes");
+    }
+    return created.subscriptionId;
   }
 }
 

@@ -222,6 +222,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     const assignment = await prisma.profileUserTypeAssignment.findUnique({
       where: { profileId: ownerProfileId },
       select: {
+        accessStartsAt: true,
         accessExpiresAt: true,
         userType: { select: { slug: true } },
       },
@@ -230,6 +231,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
 
     return {
       slug: assignment.userType.slug,
+      accessStartsAt: assignment.accessStartsAt ? assignment.accessStartsAt.toISOString() : null,
       accessExpiresAt: assignment.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null,
     }
   }

@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { shortLinkService } from "@/app/api/services/shortLink/ShortLinkService";
 import { Output } from "@/lib/output";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 import {
   buildStudioWebhookTokenPreview,
   computeStudioWebhookTokenExpiry,
@@ -255,6 +257,12 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       const team = await this.service.getTeamWithMaster(input.teamId);
       if (!team) {
         return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+      }
+
+      const accountAccess = await accountAccessDecisionUseCase.execute({ profileId: team.master.id, teamId: input.teamId });
+      const decision = accountAccess.result as AccountAccessDecision | null;
+      if (!accountAccess.isValid || decision?.state !== "allowed") {
+        return new Output(false, [], [WEBHOOK_INACTIVE_ERROR], null);
       }
 
       const inboundCandidates = await teamWebhookRepository.listInboundByTeamId(input.teamId);

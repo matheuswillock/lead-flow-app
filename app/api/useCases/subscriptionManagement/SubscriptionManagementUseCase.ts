@@ -388,12 +388,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Calcular valor com base na nova regra (Times + usuários distinct) sempre que possível.
-      // Se não for possível (ex.: masterId ausente), fazemos fallback para regra antiga.
-      const basePrice = 59.9;
-      const extraTeamPrice = 29.9;
-      const extraUserPrice = 19.9;
-
       let billingSummary: any | null = null;
       try {
         billingSummary = await getBillingSummary(masterIdForBilling);
@@ -414,15 +408,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         },
       });
 
-      const legacyTeamCount = await prisma.team.count({
-        where: { masterId: legacyMasterId },
-      });
-
-      const legacyBillableTeams = Math.max(0, legacyTeamCount - 1);
-      const legacyTotal =
-        basePrice +
-        legacyBillableTeams * extraTeamPrice +
-        actualOperatorCount * extraUserPrice;
       const subscriptionPlan = profileSubscription?.subscriptionPlan ?? profile.subscriptionPlan;
       const subscriptionStatus = profileSubscription?.subscriptionStatus ?? profile.subscriptionStatus;
       const subscriptionCycle = profileSubscription?.subscriptionCycle ?? profile.subscriptionCycle ?? "MONTHLY";
@@ -439,7 +424,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           ? 0
           : subscriptionPlan === "free_trial"
             ? 0
-            : billingSummary?.totalPrice ?? Number(legacyTotal.toFixed(2));
+            : billingSummary?.totalPrice ?? null;
 
       if (!hasPermanentSubscription && shouldSync(lastSyncedAt)) {
         void asaasSubscriptionSyncService.syncFromAsaas(masterIdForBilling).catch((syncError) => {
@@ -473,10 +458,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         billingSummary: billingSummary
           ? {
               ...billingSummary,
-              // Garantir preços e arredondamento consistente no frontend
-              basePrice,
-              extraTeamsPrice: Number((billingSummary.billableTeams * extraTeamPrice).toFixed(2)),
-              extraUsersPrice: Number((billingSummary.billableUsers * extraUserPrice).toFixed(2)),
               totalPrice: Number(Number(billingSummary.totalPrice).toFixed(2)),
             }
           : null,

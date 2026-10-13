@@ -3,6 +3,7 @@ import { BILLING_PRICES } from "@/app/api/shared/billing/billingConfig";
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary";
 import {
   isActiveMemberProAssignment,
+  resolveMemberProAccessWindow,
   resolveHasUnlimitedUsers,
   resolveMemberProBypass,
 } from "@/app/api/shared/billing/memberProBillingRules";
@@ -67,7 +68,7 @@ describe("isActiveMemberProAssignment", () => {
     ).toBe(true);
   });
 
-  it("retorna true para Member PRO sem data de expiração", () => {
+  it("retorna false para Member PRO sem data de expiração", () => {
     expect(
       isActiveMemberProAssignment(
         {
@@ -76,7 +77,7 @@ describe("isActiveMemberProAssignment", () => {
         },
         now
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("retorna false para Member PRO expirado", () => {
@@ -85,6 +86,19 @@ describe("isActiveMemberProAssignment", () => {
         {
           slug: "member_pro",
           accessExpiresAt: new Date("2026-07-01T00:00:00.000Z"),
+        },
+        now
+      )
+    ).toBe(false);
+  });
+
+  it("retorna false para Member PRO que ainda não começou", () => {
+    expect(
+      isActiveMemberProAssignment(
+        {
+          slug: "member_pro",
+          accessStartsAt: new Date("2026-07-10T00:00:00.000Z"),
+          accessExpiresAt: new Date("2026-08-01T00:00:00.000Z"),
         },
         now
       )
@@ -104,6 +118,31 @@ describe("isActiveMemberProAssignment", () => {
   });
 });
 
+describe("resolveMemberProAccessWindow", () => {
+  const start = new Date("2026-08-01T12:00:00.000Z")
+
+  it("cria uma janela de exatamente 100 dias", () => {
+    const window = resolveMemberProAccessWindow({ start })
+
+    expect(window.accessStartsAt).toEqual(start)
+    expect(window.accessExpiresAt).toEqual(new Date("2026-11-09T12:00:00.000Z"))
+  })
+
+  it("estende uma janela de 90 dias sem reduzir uma janela maior", () => {
+    const extended = resolveMemberProAccessWindow({
+      start,
+      currentExpiresAt: new Date("2026-10-30T12:00:00.000Z"),
+    })
+    const preserved = resolveMemberProAccessWindow({
+      start,
+      currentExpiresAt: new Date("2027-02-01T12:00:00.000Z"),
+    })
+
+    expect(extended.accessExpiresAt).toEqual(new Date("2026-11-09T12:00:00.000Z"))
+    expect(preserved.accessExpiresAt).toEqual(new Date("2027-02-01T12:00:00.000Z"))
+  })
+})
+
 describe("resolveHasUnlimitedUsers", () => {
   it("retorna true quando a flag persistida está ativa", () => {
     expect(
@@ -114,13 +153,8 @@ describe("resolveHasUnlimitedUsers", () => {
     ).toBe(true);
   });
 
-  it("retorna true para assinatura vitalícia", () => {
-    expect(
-      resolveHasUnlimitedUsers({
-        hasUnlimitedUsersFlag: false,
-        hasPermanentSubscription: true,
-      })
-    ).toBe(true);
+  it("retorna true somente para o ciclo anual", () => {
+    expect(resolveHasUnlimitedUsers({ hasUnlimitedUsersFlag: false, billingCycle: "annual" })).toBe(true);
   });
 
   it("retorna false sem flag e sem vitalício", () => {
@@ -128,6 +162,16 @@ describe("resolveHasUnlimitedUsers", () => {
       resolveHasUnlimitedUsers({
         hasUnlimitedUsersFlag: false,
         hasPermanentSubscription: false,
+      })
+    ).toBe(false);
+  });
+
+  it("ignora flag stale de Member PRO expirado", () => {
+    expect(
+      resolveHasUnlimitedUsers({
+        hasUnlimitedUsersFlag: true,
+        memberProSlug: "member_pro",
+        memberProActive: false,
       })
     ).toBe(false);
   });
@@ -144,6 +188,17 @@ describe("resolveMemberProBypass com hasUnlimitedUsers", () => {
       })
     ).toBe(true);
   });
+
+  it("não mantém bypass de uma flag stale após expiração do Member PRO", () => {
+    expect(
+      resolveMemberProBypass({
+        slug: "member_pro",
+        isActive: false,
+        accessExpiresAt: new Date(Date.now() - 1_000),
+        hasUnlimitedUsers: true,
+      })
+    ).toBe(false)
+  })
 });
 
 describe("Member PRO billing totals", () => {

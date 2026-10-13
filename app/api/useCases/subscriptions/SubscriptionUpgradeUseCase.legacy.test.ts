@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // T-20.8 de [[20 — Assinaturas — Backend]] E3 (C15 🔴, C27, DA2).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
 const profileUpdateMock = mock(async (_args?: { data?: Record<string, unknown> }) => ({}))

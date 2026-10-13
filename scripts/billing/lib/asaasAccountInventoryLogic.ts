@@ -83,6 +83,15 @@ export function summarizeSubscriptions(subscriptions: AsaasSubscription[]): Subs
   }
 }
 
+/** Une listagens de assinaturas por id quando o endpoint é consultado por status. */
+export function dedupeSubscriptionsById(...lists: AsaasSubscription[][]): AsaasSubscription[] {
+  const byId = new Map<string, AsaasSubscription>()
+  for (const list of lists) {
+    for (const subscription of list) byId.set(subscription.id, subscription)
+  }
+  return [...byId.values()]
+}
+
 export type PaymentSummary = {
   total: number
   totalValue: number

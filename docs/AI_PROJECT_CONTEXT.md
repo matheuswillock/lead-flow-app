@@ -12,7 +12,7 @@ Objetivo: permitir respostas úteis, consistentes e seguras para produto, negóc
 - Managers de corretoras/equipes comerciais
 - Operadores SDR e CLOSER dentro do time do manager
 - Modelo de negócio atual:
-- Plano base do manager: R$ 59,90/mês
+- Preço do plano base: consultar `BackofficeProductPaymentRule`; não usar valores fixos no código
 - Custo adicional por operador: R$ 19,90/mês
 - Trial gratuito e cobrança via Asaas
 
@@ -146,4 +146,3 @@ Formato esperado de resposta:
 - Declarar suposições quando faltar contexto
 - Sugerir próximos passos claros
 - Em análises técnicas, explicitar riscos e critérios de validação
-

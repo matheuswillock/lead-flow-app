@@ -5,19 +5,22 @@ import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-ori
 import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 import { consumePublicFormRateLimit, publicFormRequestFingerprint } from "@/lib/public-forms/rate-limit"
 import { EMAIL_LOG_FORM_QUERY_PARAM } from "@/lib/email/append-email-log-to-form-urls"
+import { rejectRestrictedPublicForm } from "@/app/api/v1/public-forms/publicFormAccess"
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
-
   if (!isPublicFormRequestOriginAllowed(request)) {
     return NextResponse.json(new Output(false, [], ["Origem não autorizada"], null), { status: 400 })
   }
 
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+
+  const restricted = await rejectRestrictedPublicForm(publicId)
+  if (restricted) return restricted
 
   const rate = await consumePublicFormRateLimit(
     `prefill:${publicId}:${publicFormRequestFingerprint(request)}`,

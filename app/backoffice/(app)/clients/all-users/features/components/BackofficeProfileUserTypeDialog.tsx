@@ -34,8 +34,7 @@ import type {
   BackofficeSponsorMasterOption,
 } from "../context/BackofficeAllUsersTypes"
 
-const MIN_DAYS = 1
-const MAX_DAYS = 365
+const MEMBER_PRO_ACCESS_DAYS = 100
 const DAY_MS = 24 * 60 * 60 * 1000
 
 interface FormState {
@@ -47,7 +46,7 @@ interface FormState {
 function initForm(item: BackofficeAllUsersItem | null): FormState {
   return {
     userType: item?.userType.slug ?? "common",
-    accessDays: "",
+    accessDays: item?.userType.slug === "member_pro" ? String(MEMBER_PRO_ACCESS_DAYS) : "",
     sponsorMasterId: item?.userType.sponsorMasterId ?? "",
   }
 }
@@ -93,7 +92,7 @@ export function BackofficeProfileUserTypeDialog({
   const needsSponsor = isAssociate || isGuest
   const accessDaysValue = parsePositiveInt(form.accessDays)
   const accessDaysValid =
-    !isMemberPro || (accessDaysValue !== null && accessDaysValue >= MIN_DAYS && accessDaysValue <= MAX_DAYS)
+    !isMemberPro || accessDaysValue === MEMBER_PRO_ACCESS_DAYS
   const sponsorValid = !needsSponsor || form.sponsorMasterId.length > 0
   const isValid = accessDaysValid && sponsorValid
 
@@ -121,7 +120,7 @@ export function BackofficeProfileUserTypeDialog({
         })
         toast.success("Tipo de usuário atualizado para Convidado")
       } else {
-        const accessExpiresAt = new Date(Date.now() + (accessDaysValue as number) * DAY_MS).toISOString()
+        const accessExpiresAt = new Date(Date.now() + MEMBER_PRO_ACCESS_DAYS * DAY_MS).toISOString()
         await service.updateUserType(item.id, {
           userType: "member_pro",
           accessExpiresAt,
@@ -156,7 +155,11 @@ export function BackofficeProfileUserTypeDialog({
                 <Select
                   value={form.userType}
                   onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, userType: value as BackofficeAllUsersUserTypeFilter }))
+                        setForm((prev) => ({
+                          ...prev,
+                          userType: value as BackofficeAllUsersUserTypeFilter,
+                          accessDays: value === "member_pro" ? String(MEMBER_PRO_ACCESS_DAYS) : prev.accessDays,
+                        }))
                   }
                   disabled={isSubmitting}
                 >
@@ -192,16 +195,16 @@ export function BackofficeProfileUserTypeDialog({
                   <Input
                     id="user-type-days"
                     type="number"
-                    min={MIN_DAYS}
-                    max={MAX_DAYS}
-                    placeholder="Ex.: 30"
+                    min={MEMBER_PRO_ACCESS_DAYS}
+                    max={MEMBER_PRO_ACCESS_DAYS}
+                    placeholder={String(MEMBER_PRO_ACCESS_DAYS)}
                     value={form.accessDays}
                     onChange={(event) => setForm((prev) => ({ ...prev, accessDays: event.target.value }))}
                     disabled={isSubmitting}
                   />
-                  <FieldDescription>Entre 1 e 365 dias a partir de agora.</FieldDescription>
+                  <FieldDescription>Member PRO é concedido por exatamente 100 dias.</FieldDescription>
                   {form.accessDays.length > 0 && !accessDaysValid && (
-                    <FieldError>Informe um número entre 1 e 365</FieldError>
+                    <FieldError>O período Member PRO é fixo em 100 dias.</FieldError>
                   )}
                 </Field>
               )}

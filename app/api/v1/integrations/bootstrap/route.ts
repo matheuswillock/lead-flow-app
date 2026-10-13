@@ -5,6 +5,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
+import { rejectRestrictedPublicFormTeam } from "@/app/api/v1/public-forms/publicFormAccess"
 
 const routePrefix = "[IntegrationBootstrapRoute][GET]";
 
@@ -57,6 +58,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { teamId, supabaseId } = validation.data;
+    const restricted = await rejectRestrictedPublicFormTeam(teamId)
+    if (restricted) return restricted
+
     const cachedOutput = await getCachedPublicFormBootstrap(teamId, supabaseId ?? null);
     const output = new Output(
       cachedOutput.isValid,

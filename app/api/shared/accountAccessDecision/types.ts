@@ -7,12 +7,19 @@ export type AccountAccessRestrictionReason =
 
 export type AccountAccessDecision =
   | { state: "allowed" }
-  | { state: "restricted"; reason: AccountAccessRestrictionReason }
+  | {
+      state: "restricted"
+      reason: AccountAccessRestrictionReason
+      isBillingOwner?: boolean
+    }
 
 export type AccountAccessRecord = {
   billingOwnerId: string
   subscriptionStatus: string | null
+  subscriptionNextDueDate?: Date | null
   hasPermanentSubscription: boolean
+  memberProActive?: boolean
+  memberProBlocked?: boolean
   isBanned: boolean
 }
 
@@ -22,4 +29,5 @@ export interface IAccountAccessDecisionRepository {
     teamId?: string | null
   }): Promise<AccountAccessRecord | null>
   resolveProfileId(supabaseId: string): Promise<string | null>
+  resolveTeamMasterProfileId?(teamId: string): Promise<string | null>
 }

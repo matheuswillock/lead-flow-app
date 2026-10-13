@@ -15,7 +15,7 @@ import type {
  */
 export class BillingInventoryRepository implements IBillingInventoryRepository {
   async listCustomerPointers(account: AsaasAccountId): Promise<DbCustomerPointer[]> {
-    const [profiles, adhesions, backofficeClients] = await Promise.all([
+    const [profiles, adhesions, backofficeClients, migrationLedger] = await Promise.all([
       prisma.profile.findMany({
         where: { asaasCustomerId: { not: null }, asaasCustomerAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
@@ -35,6 +35,11 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
         where: { asaasCustomerId: { not: null }, asaasAccount: account },
         select: { id: true, email: true, asaasCustomerId: true },
       }),
+      account === "legacy"
+        ? prisma.asaasAccountMigration.findMany({
+            select: { id: true, clientEmail: true, legacyCustomerId: true },
+          })
+        : Promise.resolve([]),
     ])
 
     return [
@@ -55,6 +60,12 @@ export class BillingInventoryRepository implements IBillingInventoryRepository {
         source: "backofficeClient" as const,
         asaasCustomerId: c.asaasCustomerId as string,
         email: c.email,
+      })),
+      ...migrationLedger.map((migration) => ({
+        refId: migration.id,
+        source: "migrationLedger" as const,
+        asaasCustomerId: migration.legacyCustomerId,
+        email: migration.clientEmail,
       })),
     ]
   }

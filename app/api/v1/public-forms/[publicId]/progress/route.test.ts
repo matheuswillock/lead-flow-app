@@ -1,5 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test"
 import { NextResponse } from "next/server"
+import { Output } from "@/lib/output"
 
 mock.module("next/server", () => ({
   NextResponse,
@@ -24,6 +25,11 @@ mock.module("@/lib/public-forms/queue-progress-for-background-processing", () =>
 
 mock.module("@/lib/e2e/is-e2e-test-mode", () => ({
   isE2eTestMode: () => false,
+}))
+
+const publicFormAccountAccessMock = mock(async () => new Output(true, [], [], null))
+mock.module("@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase", () => ({
+  publicFormAccountAccessUseCase: { execute: publicFormAccountAccessMock },
 }))
 
 // Guarda de tenancy por hostname: aqui sempre libera (é `server-only` e
@@ -51,6 +57,23 @@ describe("POST /api/v1/public-forms/[publicId]/progress", () => {
   beforeEach(() => {
     queueProgressForBackgroundProcessing.mockReset()
     queueProgressForBackgroundProcessing.mockResolvedValue({ accepted: true })
+    publicFormAccountAccessMock.mockReset()
+    publicFormAccountAccessMock.mockResolvedValue(new Output(true, [], [], null))
+  })
+
+  it("conta bloqueada não publica progresso público", async () => {
+    publicFormAccountAccessMock.mockResolvedValueOnce(
+      new Output(false, [], ["O acesso desta conta está pausado"], null),
+    )
+
+    const response = await POST(makeRequest({
+      visitorSessionId: VALID_SESSION,
+      answers: [{ questionId: QUESTION_ID, value: "Ana" }],
+      origin: {},
+    }), { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) })
+
+    expect(response.status).toBe(403)
+    expect(queueProgressForBackgroundProcessing).not.toHaveBeenCalled()
   })
 
   it("queue-first: loga blur, publica e retorna 202 sem chamar execute", async () => {

@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { billingEngineRepository } from "@/app/api/infra/data/repositories/billing/BillingEngineRepository";
 import { logSubscriptionChange } from "@/lib/billing/logSubscriptionChange";
+import { resolveMemberProAccessWindow } from "@/app/api/shared/billing/memberProBillingRules";
 
 export type TransitionSubscriptionLevelInput = {
   profileId: string;
@@ -51,10 +52,26 @@ export class TransitionSubscriptionLevelUseCase {
         if (!userType) {
           return new Output(false, [], [`User type não encontrado: ${targetUserTypeSlug}`], null);
         }
+        const now = new Date();
+        const currentAssignment = profile.userTypeAssignment;
+        const currentWindowIsActive = Boolean(
+          currentAssignment?.accessStartsAt &&
+          currentAssignment.accessExpiresAt &&
+          currentAssignment.accessStartsAt.getTime() <= now.getTime() &&
+          currentAssignment.accessExpiresAt.getTime() > now.getTime()
+        );
+        const memberProWindow = targetUserTypeSlug === "member_pro"
+          ? resolveMemberProAccessWindow({
+              start: currentWindowIsActive ? currentAssignment!.accessStartsAt! : now,
+              currentExpiresAt: currentWindowIsActive ? currentAssignment!.accessExpiresAt : null,
+            })
+          : null;
         await billingEngineRepository.upsertUserTypeAssignment({
           profileId,
           userTypeId: userType.id,
           assignedByProfileId: actorProfileId,
+          accessStartsAt: memberProWindow?.accessStartsAt ?? null,
+          accessExpiresAt: memberProWindow?.accessExpiresAt ?? null,
         });
       }
 

@@ -1,5 +1,9 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import {
+  isActiveMemberProAssignment,
+  isBlockingMemberProAssignment,
+} from "@/app/api/shared/billing/memberProBillingRules"
 import type {
   AccountAccessRecord,
   IAccountAccessDecisionRepository,
@@ -13,6 +17,11 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     })
 
     return profile?.id ?? null
+  }
+
+  async resolveTeamMasterProfileId(teamId: string): Promise<string | null> {
+    const team = await prisma.team.findFirst({ where: { id: teamId, deletedAt: null }, select: { masterId: true } })
+    return team?.masterId ?? null
   }
 
   async resolveAccount(input: {
@@ -37,11 +46,20 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         where: { id: billingOwnerId },
         select: {
           hasPermanentSubscription: true,
+          subscriptionNextDueDate: true,
           subscriptionStatus: true,
           subscription: {
             select: {
               hasPermanentSubscription: true,
+              subscriptionNextDueDate: true,
               subscriptionStatus: true,
+            },
+          },
+          userTypeAssignment: {
+            select: {
+              accessStartsAt: true,
+              accessExpiresAt: true,
+              userType: { select: { slug: true } },
             },
           },
         },
@@ -54,12 +72,25 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     }
 
     const subscription = billingOwner.subscription
+    const memberProAssignment = billingOwner.userTypeAssignment?.userType
+      ? {
+          slug: billingOwner.userTypeAssignment.userType.slug,
+          accessStartsAt: billingOwner.userTypeAssignment.accessStartsAt,
+          accessExpiresAt: billingOwner.userTypeAssignment.accessExpiresAt,
+        }
+      : null
+
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
+      subscriptionNextDueDate: subscription
+        ? subscription.subscriptionNextDueDate
+        : billingOwner.subscriptionNextDueDate,
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,
+      memberProActive: isActiveMemberProAssignment(memberProAssignment),
+      memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
       isBanned,
     }
   }

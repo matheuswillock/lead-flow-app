@@ -52,4 +52,55 @@ describe("AccountAccessDecisionService", () => {
 
     expect(decision).toEqual({ state: "restricted", reason: "subscription_unavailable" })
   })
+  it("bloqueia uma assinatura ativa cuja data de vencimento já passou", () => {
+    const decision = new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "active",
+      subscriptionNextDueDate: new Date("2026-10-10T23:59:59.000Z"),
+      hasPermanentSubscription: false,
+      isBanned: false,
+    }, new Date("2026-10-11T04:00:00.000Z"))
+
+    expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+  })
+
+  it.each(["past_due", "suspended", "canceled"])(
+    "libera Member PRO vigente mesmo com status %s",
+    (subscriptionStatus) => {
+      const decision = new AccountAccessDecisionService().decide({
+        billingOwnerId: "owner-1",
+        subscriptionStatus,
+        hasPermanentSubscription: false,
+        memberProActive: true,
+        isBanned: false,
+      })
+
+      expect(decision).toEqual({ state: "allowed" })
+    }
+  )
+
+  it("mantém o banimento acima do Member PRO vigente", () => {
+    const decision = new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "suspended",
+      hasPermanentSubscription: false,
+      memberProActive: true,
+      isBanned: true,
+    })
+
+    expect(decision).toEqual({ state: "restricted", reason: "banned" })
+  })
+
+  it("bloqueia Member PRO expirado mesmo com assinatura local active", () => {
+    const decision = new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "active",
+      hasPermanentSubscription: false,
+      memberProActive: false,
+      memberProBlocked: true,
+      isBanned: false,
+    })
+
+    expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+  })
 })

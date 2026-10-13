@@ -39,6 +39,78 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
     return findByExternalReference<AsaasMigrationSubscription>(createAsaasClient("primary").endpoints.subscriptions, externalReference)
   }
 
+  async findPrimarySubscription(subscriptionId: string): Promise<AsaasMigrationSubscription | null> {
+    const client = createAsaasClient("primary")
+    try {
+      const response = await client.request(
+        `${client.endpoints.subscriptions}/${encodeURIComponent(subscriptionId)}`,
+        { method: "GET" },
+      )
+      return {
+        id: requireId(response?.id, "ID da assinatura primary"),
+        customer: requireId(response?.customer, "customer da assinatura primary"),
+        value: Number(response?.value),
+        cycle: String(response?.cycle),
+        nextDueDate: String(response?.nextDueDate),
+        status: String(response?.status),
+        externalReference: response?.externalReference ?? null,
+      }
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 404) return null
+      throw error
+    }
+  }
+
+  async listPrimarySubscriptionPayments(subscriptionId: string): Promise<AsaasMigrationPayment[]> {
+    const client = createAsaasClient("primary")
+    const response = await client.request(
+      `${client.endpoints.payments}?subscription=${encodeURIComponent(subscriptionId)}&limit=100`,
+      { method: "GET" },
+    )
+    return Array.isArray(response?.data)
+      ? response.data.map((payment: any) => ({
+          id: requireId(payment?.id, "ID da cobrança primary"),
+          status: String(payment?.status),
+          value: Number(payment?.value),
+          customer: requireId(payment?.customer, "customer da cobrança primary"),
+          subscription: payment?.subscription ?? null,
+          dueDate: payment?.dueDate ?? null,
+          externalReference: payment?.externalReference ?? null,
+        }))
+      : []
+  }
+
+  async cancelPrimaryPayment(paymentId: string): Promise<boolean> {
+    const client = createAsaasClient("primary")
+    try {
+      const response = await client.request(
+        `${client.endpoints.payments}/${encodeURIComponent(paymentId)}`,
+        { method: "DELETE", suppressLegacy404Alert: true },
+      )
+      return response?.deleted === true || response?.id === paymentId
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 404) return true
+      throw error
+    }
+  }
+
+  async inactivatePrimarySubscription(subscriptionId: string): Promise<AsaasMigrationSubscription> {
+    const client = createAsaasClient("primary")
+    const response = await client.request(
+      `${client.endpoints.subscriptions}/${encodeURIComponent(subscriptionId)}`,
+      { method: "PUT", body: JSON.stringify({ status: "INACTIVE" }) },
+    )
+    return {
+      id: requireId(response?.id, "ID da assinatura primary"),
+      customer: requireId(response?.customer, "customer da assinatura primary"),
+      value: Number(response?.value),
+      cycle: String(response?.cycle),
+      nextDueDate: String(response?.nextDueDate),
+      status: String(response?.status),
+      externalReference: response?.externalReference ?? null,
+    }
+  }
+
   async removeLegacySubscription(subscriptionId: string) {
     const client = createAsaasClient("legacy")
     const response = await client.request(
@@ -55,7 +127,12 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
         `${client.endpoints.subscriptions}/${encodeURIComponent(subscriptionId)}`,
         { method: "GET", suppressLegacy404Alert: true },
       )
-      return { id: requireId(response?.id, "ID da assinatura legada"), status: String(response?.status) }
+      return {
+        id: requireId(response?.id, "ID da assinatura legada"),
+        status: String(response?.status),
+        customer: response?.customer ?? undefined,
+        externalReference: response?.externalReference ?? null,
+      }
     } catch (error) {
       if ((error as { statusCode?: number }).statusCode === 404) return null
       throw error
@@ -72,6 +149,7 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
       ? response.data.map((payment: any) => ({
           id: requireId(payment?.id, "ID da cobrança legada"),
           status: String(payment?.status),
+          customer: payment?.customer ?? undefined,
           subscription: payment?.subscription ?? null,
           dueDate: payment?.dueDate ?? null,
         }))
@@ -157,19 +235,20 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
     cycle: string
     nextDueDate: string
     externalReference: string
-    creditCardToken: string
+    billingType?: string
+    creditCardToken?: string
   }) {
     const client = createAsaasClient(input.account)
     const response = await client.request(client.endpoints.subscriptions, {
       method: "POST",
       body: JSON.stringify({
         customer: input.customerId,
-        billingType: "CREDIT_CARD",
+        billingType: input.billingType ?? "CREDIT_CARD",
         value: input.value,
         cycle: input.cycle,
         nextDueDate: input.nextDueDate,
         externalReference: input.externalReference,
-        creditCardToken: input.creditCardToken,
+        ...(input.creditCardToken ? { creditCardToken: input.creditCardToken } : {}),
       }),
     })
     return {
@@ -179,6 +258,7 @@ export class AsaasMigrationGateway implements IAsaasMigrationGateway {
       cycle: String(response?.cycle),
       nextDueDate: String(response?.nextDueDate),
       status: String(response?.status),
+      externalReference: response?.externalReference ?? null,
     } satisfies AsaasMigrationSubscription
   }
 }

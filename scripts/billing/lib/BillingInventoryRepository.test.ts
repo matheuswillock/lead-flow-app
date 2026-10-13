@@ -52,6 +52,7 @@ let clientRows: ClientRow[] = []
 let customerProfileRows: CustomerProfileRow[] = []
 let subscriptionProfileRows: SubscriptionProfileRow[] = []
 let subscriptionRows: SubscriptionRow[] = []
+let migrationLedgerRows: Array<{ id: string; clientEmail: string; legacyCustomerId: string }> = []
 
 const backofficeClientFindMany = mock(async (args: { where: Record<string, unknown> }) => {
   const account = args.where.asaasAccount as AsaasAccountId | undefined
@@ -109,6 +110,8 @@ const profileSubscriptionFindMany = mock(async (args: { where: Record<string, un
   )
 })
 
+const migrationLedgerFindMany = mock(async () => migrationLedgerRows)
+
 // Fábrica compartilhada, nunca uma própria: `mock.module` é global do
 // processo e uma fábrica parcial congela o namespace incompleto, derrubando
 // o arquivo de teste VIZINHO (ver test/support/prisma-module-mock.ts).
@@ -118,6 +121,7 @@ Object.assign(prismaModuleMock, {
   backofficeAdhesion: { findMany: backofficeAdhesionFindMany },
   backofficeClient: { findMany: backofficeClientFindMany },
   profileSubscription: { findMany: profileSubscriptionFindMany },
+  asaasAccountMigration: { findMany: migrationLedgerFindMany },
 })
 
 const { BillingInventoryRepository } = await import("./BillingInventoryRepository")
@@ -146,6 +150,8 @@ describe("BillingInventoryRepository — escopo por conta", () => {
     customerProfileRows = []
     subscriptionProfileRows = []
     subscriptionRows = []
+    migrationLedgerRows = []
+    migrationLedgerFindMany.mockClear()
   })
 
   describe("listCustomerPointers", () => {
@@ -174,6 +180,24 @@ describe("BillingInventoryRepository — escopo por conta", () => {
         asaasCustomerId: "cus_legacy",
         email: "legacy@example.com",
       })
+    })
+
+    it("inclui o ledger reconciliado na conta legacy e nunca na primary", async () => {
+      migrationLedgerRows = [
+        { id: "migration-1", clientEmail: "history@example.com", legacyCustomerId: "cus_history" },
+      ]
+      const repo = new BillingInventoryRepository()
+
+      const legacyPointers = await repo.listCustomerPointers("legacy")
+      expect(legacyPointers).toContainEqual({
+        refId: "migration-1",
+        source: "migrationLedger",
+        asaasCustomerId: "cus_history",
+        email: "history@example.com",
+      })
+
+      const primaryPointers = await repo.listCustomerPointers("primary")
+      expect(primaryPointers).not.toContainEqual(expect.objectContaining({ asaasCustomerId: "cus_history" }))
     })
 
     it("as três origens de customer filtram pela mesma conta", async () => {

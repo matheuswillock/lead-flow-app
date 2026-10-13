@@ -4,6 +4,7 @@ import { cardReauthorizationUseCase } from "@/app/api/useCases/asaasAccountMigra
 import { Output } from "@/lib/output"
 import { getTrustedClientIp } from "@/lib/http/get-trusted-client-ip"
 
+import { getAuthenticatedSupabaseId } from "@/app/api/v1/utils/getAuthenticatedSupabaseId"
 const cardSchema = z.object({
   card: z.object({
     holderName: z.string().trim().min(2).max(120),
@@ -42,8 +43,11 @@ function errorStatus(reason: string | undefined): number {
 
 export async function GET(request: NextRequest, routeContext: { params: Promise<{ token: string }> }) {
   await connection()
-  const supabaseId = request.headers.get("x-supabase-user-id")
-  if (!supabaseId) return unauthorized()
+  const authentication = await getAuthenticatedSupabaseId(request)
+  if ("error" in authentication) {
+    return NextResponse.json(authentication.error, { status: authentication.status })
+  }
+  const { supabaseId } = authentication
   const { token } = await routeContext.params
   const access = await cardReauthorizationUseCase.getContext(token, supabaseId)
   const reason = (access.result as { reason?: string } | null)?.reason
@@ -62,8 +66,11 @@ export async function GET(request: NextRequest, routeContext: { params: Promise<
 
 export async function POST(request: NextRequest, routeContext: { params: Promise<{ token: string }> }) {
   await connection()
-  const supabaseId = request.headers.get("x-supabase-user-id")
-  if (!supabaseId) return unauthorized()
+  const authentication = await getAuthenticatedSupabaseId(request)
+  if ("error" in authentication) {
+    return NextResponse.json(authentication.error, { status: authentication.status })
+  }
+  const { supabaseId } = authentication
   const { token } = await routeContext.params
   const access = await cardReauthorizationUseCase.getContext(token, supabaseId)
   const accessReason = (access.result as { reason?: string } | null)?.reason

@@ -111,6 +111,27 @@ describe("createAsaasClient", () => {
     expect(caught?.statusCode).toBe(400)
   })
 
+  it("preserva o statusCode quando o Asaas responde erro sem corpo JSON", async () => {
+    process.env.ASAAS_ENV = "sandbox"
+    process.env.ASAAS_API_KEY = "aact_primary_key"
+
+    const fetchMock = mock(async () => new Response(null, { status: 404 }))
+    // @ts-expect-error override global fetch for the test
+    globalThis.fetch = fetchMock
+
+    const client = createAsaasClient("primary")
+
+    let caught: any
+    try {
+      await client.request(`${client.endpoints.customers}/cus_missing`)
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught?.message).toBe("Erro na API Asaas: 404")
+    expect(caught?.statusCode).toBe(404)
+  })
+
   it("primary sem ASAAS_API_KEY → lança 'ASAAS_API_KEY não configurada' (mensagem histórica)", async () => {
     process.env.ASAAS_ENV = "sandbox"
 

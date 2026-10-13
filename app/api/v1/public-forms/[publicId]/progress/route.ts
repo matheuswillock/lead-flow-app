@@ -10,6 +10,7 @@ import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { buildPublicFormProgressQueuePayload } from "@/lib/queues/public-form-progress-events"
 import { queueProgressForBackgroundProcessing } from "@/lib/public-forms/queue-progress-for-background-processing"
+import { rejectRestrictedPublicForm } from "@/app/api/v1/public-forms/publicFormAccess"
 
 export async function POST(
   request: Request,
@@ -21,6 +22,9 @@ export async function POST(
   }
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+
+  const restricted = await rejectRestrictedPublicForm(publicId)
+  if (restricted) return restricted
   const parsed = publicFormProgressSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Progresso inválido"], null), { status: 400 })

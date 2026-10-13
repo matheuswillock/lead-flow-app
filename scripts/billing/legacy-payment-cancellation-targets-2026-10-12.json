@@ -1,0 +1,20 @@
+[
+  {
+    "paymentId": "pay_08ni4hj69qsxtltv",
+    "customerId": "cus_000180957843",
+    "subscriptionId": "sub_1c3j0ootmufmf3t5",
+    "reason": "Cobrança legacy de assinatura já encerrada e pagamento não deve ser recebido na conta antiga"
+  },
+  {
+    "paymentId": "pay_0k3cf4hl3naxir2a",
+    "customerId": "cus_000180957843",
+    "subscriptionId": "sub_1c3j0ootmufmf3t5",
+    "reason": "Cobrança legacy vencida de assinatura já encerrada e pagamento não deve ser recebido na conta antiga"
+  },
+  {
+    "paymentId": "pay_pvz2ko7claubq8lg",
+    "customerId": "cus_000192954563",
+    "subscriptionId": null,
+    "reason": "Cobrança legacy avulsa sem assinatura para adesão paga externamente; não deve ser recebida na conta antiga"
+  }
+]

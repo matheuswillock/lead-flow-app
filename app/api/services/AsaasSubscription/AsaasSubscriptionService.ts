@@ -4,7 +4,7 @@ import { createAsaasClient, type AsaasAccountId } from '@/lib/asaas';
 export interface AsaasSubscription {
   customer: string;              // ID do cliente Asaas
   billingType: 'PIX' | 'CREDIT_CARD' | 'BOLETO' | 'UNDEFINED';
-  value: number;                 // Valor da assinatura (59.90 ou 19.90)
+  value: number;                 // Valor resolvido pelo catálogo vigente
   cycle: 'MONTHLY' | 'WEEKLY' | 'BIWEEKLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
   description?: string;          // Descrição da assinatura
   externalReference?: string;    // ID do Profile
@@ -55,6 +55,17 @@ export interface AsaasSubscriptionResponse {
 
 import type { IAsaasSubscriptionService } from './IAsaasSubscriptionService';
 
+function assertResolvedSubscription(data: AsaasSubscription): void {
+  if (!Number.isFinite(data.value) || data.value <= 0) {
+    throw new Error('Valor da assinatura deve ser positivo e resolvido pelo catálogo')
+  }
+  const validCycles = new Set(['MONTHLY', 'WEEKLY', 'BIWEEKLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'])
+  const validBillingTypes = new Set(['PIX', 'CREDIT_CARD', 'BOLETO', 'UNDEFINED'])
+  if (!validCycles.has(data.cycle) || !validBillingTypes.has(data.billingType)) {
+    throw new Error('Ciclo e forma de pagamento são obrigatórios')
+  }
+}
+
 /**
  * `accountId` (default `"primary"`, DA2 de [[20 — Assinaturas — Backend]]
  * E2): toda operação resolve o client Asaas pela conta explícita do
@@ -78,19 +89,13 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
   updateBillingType: IAsaasSubscriptionService['updateBillingType'] = AsaasSubscriptionService.updateBillingType;
   getPixQrCode: IAsaasSubscriptionService['getPixQrCode'] = AsaasSubscriptionService.getPixQrCode;
   getBoletoIdentificationField: IAsaasSubscriptionService['getBoletoIdentificationField'] = AsaasSubscriptionService.getBoletoIdentificationField;
-  /**
-   * Cria assinatura base do Manager (R$ 59,90/mês)
-   */
   static async createManagerSubscription(data: AsaasSubscription, accountId: AsaasAccountId = 'primary') {
     try {
+      assertResolvedSubscription(data)
       const client = createAsaasClient(accountId);
       const subscription = await client.request(client.endpoints.subscriptions, {
         method: 'POST',
-        body: JSON.stringify({
-          ...data,
-          value: 59.90, // Valor fixo da assinatura base
-          cycle: 'MONTHLY',
-        }),
+        body: JSON.stringify(data),
       });
 
       return {
@@ -104,19 +109,13 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
     }
   }
 
-  /**
-   * Cria assinatura de Operador (R$ 19,90/mês)
-   */
   static async createOperatorSubscription(data: AsaasSubscription, accountId: AsaasAccountId = 'primary') {
     try {
+      assertResolvedSubscription(data)
       const client = createAsaasClient(accountId);
       const subscription = await client.request(client.endpoints.subscriptions, {
         method: 'POST',
-        body: JSON.stringify({
-          ...data,
-          value: 19.90, // Valor fixo do operador
-          cycle: 'MONTHLY',
-        }),
+        body: JSON.stringify(data),
       });
 
       return {
@@ -135,6 +134,7 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
    */
   static async createSubscription(data: AsaasSubscription, accountId: AsaasAccountId = 'primary') {
     try {
+      assertResolvedSubscription(data)
       const client = createAsaasClient(accountId);
       const subscription = await client.request(client.endpoints.subscriptions, {
         method: 'POST',

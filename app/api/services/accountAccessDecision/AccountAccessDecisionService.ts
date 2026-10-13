@@ -7,13 +7,34 @@ import type { IAccountAccessDecisionService } from "./IAccountAccessDecisionServ
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 const RESTRICTED_SUBSCRIPTION_STATUSES = new Set(["past_due", "suspended", "canceled"])
 
+function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
+  const today = now.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
+  return dueDate.toISOString().slice(0, 10) < today
+}
+
 export class AccountAccessDecisionService implements IAccountAccessDecisionService {
-  decide(account: AccountAccessRecord): AccountAccessDecision {
+  decide(account: AccountAccessRecord, now = new Date()): AccountAccessDecision {
     if (account.isBanned) {
       return { state: "restricted", reason: "banned" }
     }
 
-    if (account.hasPermanentSubscription || ALLOWED_SUBSCRIPTION_STATUSES.has(account.subscriptionStatus ?? "")) {
+    if (account.hasPermanentSubscription) {
+      return { state: "allowed" }
+    }
+
+    if (account.memberProActive) {
+      return { state: "allowed" }
+    }
+
+    if (account.memberProBlocked) {
+      return { state: "restricted", reason: "past_due" }
+    }
+
+    if (account.subscriptionNextDueDate && isDueDateBeforeTodayInSaoPaulo(account.subscriptionNextDueDate, now)) {
+      return { state: "restricted", reason: "past_due" }
+    }
+
+    if (ALLOWED_SUBSCRIPTION_STATUSES.has(account.subscriptionStatus ?? "")) {
       return { state: "allowed" }
     }
 

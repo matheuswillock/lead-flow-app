@@ -40,6 +40,7 @@ export type AsaasMigrationExecutionClaim = {
 }
 
 export interface IAsaasAccountMigrationRepository {
+  findActiveMasterContact?(profileId: string): Promise<{ email: string; name: string } | null>
   /**
    * Idempotente por `legacyCustomerId` (`@unique` no schema, DA2/§9.3):
    * cria a linha na primeira chamada; chamadas seguintes com o mesmo
@@ -73,6 +74,18 @@ export interface IAsaasAccountMigrationRepository {
    * mapa — nunca escreve o estado inválido no banco.
    */
   transition(input: AsaasAccountMigrationTransitionInput): Promise<AsaasAccountMigration>
+
+  /**
+   * Reabre, de forma explícita e auditável, uma migração marcada como `done`
+   * quando uma assinatura primary foi criada antes do vencimento. Isso não é
+   * uma transição normal da máquina: é a compensação idempotente da
+   * reconciliação pré-vencimento.
+   */
+  reopenAfterPrematureReconciliation?(input: {
+    legacyCustomerId: string
+    primarySubscriptionId: string
+    anomalyNotes: string
+  }): Promise<AsaasAccountMigration>
 
   countAll(): Promise<number>
 

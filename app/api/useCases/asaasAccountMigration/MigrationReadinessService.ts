@@ -12,8 +12,7 @@ const REQUIRED_GATES: Array<keyof MigrationGateEvidence> = [
   "permanentAccountsExcluded",
   "observabilityActive",
   "lgpdApproved",
-  "communicationApproved",
-  "batchAuthorized",
+    "batchAuthorized",
 ]
 
 function saoPauloCivilDate(date: Date): string {
@@ -36,6 +35,12 @@ export class MigrationReadinessService {
     if (!manifest) throw new Error("Migração sem manifesto aprovado e válido")
     const missingGate = REQUIRED_GATES.find((gate) => manifest.gateEvidence[gate] !== true)
     if (missingGate) throw new Error(`Gate de migração pendente: ${missingGate}`)
+    const communicationDecision =
+      manifest.gateEvidence.communicationApproved === true ||
+      manifest.gateEvidence.communicationWaived === true
+    if (!communicationDecision) {
+      throw new Error("Gate de migração pendente: communicationApproved_or_communicationWaived")
+    }
     if (saoPauloCivilDate(manifest.gateRunAt) !== saoPauloCivilDate(now)) {
       throw new Error("Gate da migração não foi executado no mesmo dia")
     }

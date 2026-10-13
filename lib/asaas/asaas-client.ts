@@ -70,9 +70,16 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
           reportAsaasLegacy404({ entityIdPrefix, endpoint })
         }
 
-        const error = await response.json().catch(() => ({ errors: [] }))
-        const errorMessage =
-          error.errors?.[0]?.description || `Erro na API Asaas: ${response.status}`
+        const errorPayload = await response.json().catch(() => null)
+        const errorDescription =
+          errorPayload &&
+          typeof errorPayload === "object" &&
+          "errors" in errorPayload &&
+          Array.isArray(errorPayload.errors) &&
+          typeof errorPayload.errors[0]?.description === "string"
+            ? errorPayload.errors[0].description
+            : undefined
+        const errorMessage = errorDescription || `Erro na API Asaas: ${response.status}`
         const err = new Error(errorMessage)
         ;(err as any).statusCode = response.status
         throw err

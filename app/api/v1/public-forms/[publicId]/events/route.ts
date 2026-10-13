@@ -10,6 +10,7 @@ import { PUBLIC_FORM_METRIC_QUEUE_PUBLISH_FAILED_TAG } from "@/lib/queues/public
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { rejectRestrictedPublicForm } from "@/app/api/v1/public-forms/publicFormAccess"
 
 export async function POST(
   request: Request,
@@ -21,6 +22,9 @@ export async function POST(
   }
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+
+  const restricted = await rejectRestrictedPublicForm(publicId)
+  if (restricted) return restricted
   const parsed = publicFormMetricEventSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json(new Output(false, [], ["Evento inválido"], null), { status: 400 })

@@ -4,5 +4,5 @@ import type {
 } from "@/app/api/shared/accountAccessDecision/types"
 
 export interface IAccountAccessDecisionService {
-  decide(account: AccountAccessRecord): AccountAccessDecision
+  decide(account: AccountAccessRecord, now?: Date): AccountAccessDecision
 }

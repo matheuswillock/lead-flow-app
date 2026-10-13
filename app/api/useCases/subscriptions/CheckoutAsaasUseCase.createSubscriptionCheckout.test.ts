@@ -32,6 +32,10 @@ mock.module("@/lib/asaas", () => ({
   }),
 }))
 
+mock.module("@/app/api/services/billingPricing/BillingPriceResolver", () => ({
+  billingPriceResolver: { resolvePrice: mock(async () => 102.9) },
+}))
+
 const { CheckoutAsaasUseCase } = await import("./CheckoutAsaasUseCase")
 
 const baseProfile = {
@@ -58,6 +62,7 @@ describe("CheckoutAsaasUseCase.createSubscriptionCheckout — criação de custo
   let deleteProfileMock: ReturnType<typeof mock>
   let clearAsaasCustomerIdMock: ReturnType<typeof mock>
   let createCustomerMock: ReturnType<typeof mock>
+  let resolvePriceMock: ReturnType<typeof mock>
 
   beforeEach(() => {
     findBySupabaseIdMock = mock(async () => ({ ...baseProfile }))
@@ -71,6 +76,7 @@ describe("CheckoutAsaasUseCase.createSubscriptionCheckout — criação de custo
     deleteProfileMock = mock(async () => ({ ...baseProfile }))
     clearAsaasCustomerIdMock = mock(async () => {})
     createCustomerMock = mock(async () => ({ id: "cus_new_gateway" }))
+    resolvePriceMock = mock(async () => 102.9)
     asaasFetchMock.mockClear()
     asaasFetchMock.mockImplementation(async () => ({ id: "checkout_1" }))
   })
@@ -84,12 +90,14 @@ describe("CheckoutAsaasUseCase.createSubscriptionCheckout — criação de custo
       clearAsaasCustomerId: clearAsaasCustomerIdMock,
     } as any
     const gateway = { createCustomer: createCustomerMock } as any
+    const priceResolver = { resolvePrice: resolvePriceMock } as any
     return new CheckoutAsaasUseCase(
       profileRepository,
       {} as any,
       {} as any,
       {} as any,
-      gateway
+      gateway,
+      priceResolver,
     )
   }
 
@@ -115,6 +123,14 @@ describe("CheckoutAsaasUseCase.createSubscriptionCheckout — criação de custo
     // a criação de customer passou inteiramente pelo gateway injetado
     // (createCustomerMock, já asserido acima), nunca por asaasFetch aqui.
     expect(asaasFetchMock).toHaveBeenCalledTimes(1)
+    const checkoutPayload = JSON.parse(asaasFetchMock.mock.calls[0]?.[1]?.body as string)
+    expect(checkoutPayload.items[0].value).toBe(102.9)
+    expect(resolvePriceMock).toHaveBeenCalledWith({
+      featureSlug: "crm",
+      productId: undefined,
+      cycle: "monthly",
+      method: "CREDIT_CARD",
+    })
   })
 
   it("profile já tem asaasCustomerId → não chama o gateway de novo", async () => {

@@ -18,7 +18,10 @@ export const ASAAS_ACCOUNT_MIGRATION_TRANSITIONS: Record<
 > = {
   pending: ["customer_created", "failed"],
   customer_created: ["awaiting_due_date", "subscription_created", "requires_card_reauth", "failed"],
-  awaiting_due_date: ["requires_card_reauth", "paused_awaiting_card", "failed"],
+  // O fluxo PIX de cutover pode criar a assinatura no próprio vencimento,
+  // depois de confirmar customer e referência. O executor ainda precisa
+  // passar por `subscription_created` antes de remover o legacy.
+  awaiting_due_date: ["requires_card_reauth", "paused_awaiting_card", "subscription_created", "failed"],
   legacy_removed: ["requires_card_reauth", "paused_awaiting_card", "initial_payment_confirmed", "failed"],
   paused_awaiting_card: ["initial_payment_confirmed", "failed"],
   requires_card_reauth: ["subscription_created", "paused_awaiting_card", "initial_payment_confirmed", "failed"],

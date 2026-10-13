@@ -9,8 +9,8 @@ const notifier = {
     const result = await createEmailService().sendEmailUntracked({
       from: process.env.EMAIL_FROM ?? "Corretor Studio <contato@mail.corretorstudio.com>",
       to: [input.to],
-      subject: "Atualize seu cartão para continuar no Corretor Studio",
-      html: `<p>Olá, ${escapeHtml(input.name)}.</p><p>Para continuar usando o Corretor Studio, atualize o cartão da sua assinatura na conta nova.</p><p><a href="${escapeHtml(input.url)}">Atualizar cartão</a></p><p>Este link expira em ${escapeHtml(input.expiresAt.toLocaleDateString("pt-BR"))}.</p>`,
+      subject: "Seu acesso ao Corretor Studio está pausado",
+      html: `<p>Olá, ${escapeHtml(input.name)}.</p><p>Sua assinatura está com um pagamento pendente e o acesso ao Corretor Studio foi pausado.</p><p>Entre na sua conta para conferir a situação e regularizar o pagamento.</p><p><a href="${escapeHtml(input.url)}">Ver minha conta</a></p><p>Se precisar de ajuda, fale com o time de assinaturas pelo WhatsApp.</p><p>Equipe Corretor Studio</p>`,
     })
     if (!result.success) throw new Error(result.error ?? "Falha ao enviar e-mail de reautorização")
   },

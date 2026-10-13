@@ -19,6 +19,7 @@ describe("RequestCardReauthorizationUseCase", () => {
           reauthorizationRequestedAt: null,
         })),
         transition,
+        findActiveMasterContact: mock(async () => ({ email: "master@example.com", name: "Master Atual" })),
       } as any,
       tokenRepository: { createToken: mock(async () => "token") } as any,
       notifier: { send },
@@ -30,5 +31,11 @@ describe("RequestCardReauthorizationUseCase", () => {
     expect(result.isValid).toBe(true)
     expect(transition).not.toHaveBeenCalled()
     expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      to: "master@example.com",
+      name: "Master Atual",
+      url: "https://app.example.com/reautorizar-pagamento/token",
+    }))
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ to: "cliente@example.com" }))
   })
 })

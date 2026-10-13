@@ -1128,6 +1128,58 @@ class PrismaProfileRepository implements IProfileRepository {
     });
   }
 
+  async findByAsaasCustomerIdAndAccount(
+    customerId: string,
+    account: AsaasAccountId
+  ): Promise<Profile | null> {
+    return prisma.profile.findFirst({
+      where: { asaasCustomerId: customerId, asaasCustomerAccount: account },
+    });
+  }
+
+  async updateSubscriptionAfterCheckout(input: {
+    profileId: string;
+    subscriptionId: string;
+    account: AsaasAccountId;
+    cycle: string;
+    startDate: Date;
+    nextDueDate: Date;
+  }): Promise<void> {
+    await prisma.$transaction(async (transaction) => {
+      await transaction.profile.update({
+        where: { id: input.profileId },
+        data: {
+          asaasSubscriptionId: input.subscriptionId,
+          asaasSubscriptionAccount: input.account,
+          subscriptionStatus: "active",
+          subscriptionCycle: input.cycle,
+          subscriptionStartDate: input.startDate,
+          subscriptionNextDueDate: input.nextDueDate,
+        },
+      });
+      await transaction.profileSubscription.upsert({
+        where: { profileId: input.profileId },
+        create: {
+          profileId: input.profileId,
+          asaasSubscriptionId: input.subscriptionId,
+          asaasSubscriptionAccount: input.account,
+          subscriptionStatus: "active",
+          subscriptionCycle: input.cycle,
+          subscriptionStartDate: input.startDate,
+          subscriptionNextDueDate: input.nextDueDate,
+        },
+        update: {
+          asaasSubscriptionId: input.subscriptionId,
+          asaasSubscriptionAccount: input.account,
+          subscriptionStatus: "active",
+          subscriptionCycle: input.cycle,
+          subscriptionStartDate: input.startDate,
+          subscriptionNextDueDate: input.nextDueDate,
+        },
+      });
+    });
+  }
+
   async activateSubscription(profileId: string): Promise<void> {
     await prisma.profile.update({
       where: { id: profileId },

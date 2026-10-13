@@ -2,7 +2,40 @@ import { describe, expect, it, mock } from "bun:test"
 
 mock.module("server-only", () => ({}))
 
-const { getPlanInfo } = await import("./BackofficePlatformUsersUseCase")
+const { getPlanInfo, resolveBackofficeHasAccess } = await import("./BackofficePlatformUsersUseCase")
+
+describe("resolveBackofficeHasAccess", () => {
+  it("mantém acesso para Member PRO vigente mesmo com assinatura suspensa", () => {
+    expect(resolveBackofficeHasAccess({
+      hasPermanentSubscription: false,
+      subscriptionId: "subscription-1",
+      subscriptionStatus: "suspended",
+      memberProActive: true,
+      isBanned: false,
+    })).toBe(true)
+  })
+
+  it("banimento prevalece sobre Member PRO", () => {
+    expect(resolveBackofficeHasAccess({
+      hasPermanentSubscription: false,
+      subscriptionId: "subscription-1",
+      subscriptionStatus: "active",
+      memberProActive: true,
+      isBanned: true,
+    })).toBe(false)
+  })
+
+  it("bloqueia Member PRO expirado mesmo com assinatura local active", () => {
+    expect(resolveBackofficeHasAccess({
+      hasPermanentSubscription: false,
+      subscriptionId: "subscription-1",
+      subscriptionStatus: "active",
+      memberProActive: false,
+      memberProBlocked: true,
+      isBanned: false,
+    })).toBe(false)
+  })
+})
 
 describe("getPlanInfo — T-50.13 (§7.7: coluna Plano correta por construção)", () => {
   it("Member PRO trimestral com valor gravado 91,40 → rótulo real, cobrado 91,40, tabela 274,20 visível", () => {

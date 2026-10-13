@@ -176,6 +176,55 @@ describe("MigrateAsaasAccountUseCase", () => {
     expect(removeLegacySubscription).not.toHaveBeenCalled()
   })
 
+  it("não cria pagamento nem assinatura antes do vencimento mesmo com cartão informado", async () => {
+    let current = migration("requires_card_reauth")
+    const createImmediatePayment = mock(async () => ({
+      id: "pay_early",
+      status: "CONFIRMED",
+      value: quote.recurringAmount,
+      customer: "cus_primary",
+    }))
+    const createSubscription = mock(async () => ({
+      id: "sub_early",
+      customer: "cus_primary",
+      value: quote.recurringAmount,
+      cycle: "MONTHLY",
+      nextDueDate: "2026-10-10",
+      status: "ACTIVE",
+    }))
+    const useCase = new MigrateAsaasAccountUseCase({
+      ledgerRepository: {
+        findByLegacyCustomerId: mock(async () => current),
+        transition: mock(async (input: any) => {
+          current = { ...current, ...input, status: input.toStatus }
+          return current
+        }),
+      } as any,
+      customerGateway: {} as any,
+      migrationGateway: {
+        createImmediatePayment,
+        createSubscription,
+        findPaymentByExternalReference: mock(async () => null),
+        findSubscriptionByExternalReference: mock(async () => null),
+        removeLegacySubscription: mock(async () => ({ deleted: true })),
+      } as any,
+      pointerRepository: { migrateSubscriptionPointers: mock(async () => {}) } as any,
+    })
+
+    const result = await useCase.execute({
+      legacyCustomerId: "cus_legacy",
+      quote,
+      creditCardToken: "token-early",
+      remoteIp: "203.0.113.10",
+      now: new Date("2026-10-01T15:00:00.000Z"),
+    })
+
+    expect(result.isValid).toBe(true)
+    expect((result.result as any).status).toBe("requires_card_reauth")
+    expect(createImmediatePayment).not.toHaveBeenCalled()
+    expect(createSubscription).not.toHaveBeenCalled()
+  })
+
   it("em D0 sem cartão cancela cobranças pagáveis, inativa o legado e pausa", async () => {
     let current = migration("requires_card_reauth")
     const cancelLegacyPayment = mock(async () => true)
