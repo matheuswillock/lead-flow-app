@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // T-20.9 de [[20 — Assinaturas — Backend]] E3 (C15 🔴/DA5).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
 const prismaMock = {
