@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // Achado P1 do Cursor round 3 no PR #1138 (20 — Assinaturas — Backend E3,
 // DA2): reactivateSubscription cria a nova assinatura PIX na conta do
 // ponteiro (reactivateSubscriptionAccount), mas o bloco que busca o

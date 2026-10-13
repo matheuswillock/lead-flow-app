@@ -40,6 +40,33 @@ function createSponsorServiceMock(
 }
 
 describe("BackofficeProfileUserTypeUseCase.convert", () => {
+  it("ignora prazo enviado pelo cliente e grava Member PRO por 100 dias", async () => {
+    const assignment: { value: { accessStartsAt?: Date | null; accessExpiresAt: Date | null } | null } = { value: null }
+    const useCase = new BackofficeProfileUserTypeUseCase(
+      createRepositoryMock({
+        upsertUserTypeAssignment: async (_profileId, data) => {
+          assignment.value = data
+          return { slug: "member_pro", label: "Member PRO", accessExpiresAt: data.accessExpiresAt?.toISOString() ?? null, isExpired: false }
+        },
+        setHasUnlimitedUsers: async () => undefined,
+      }),
+      new ProfileAsaasCustomerSyncUseCase(),
+      createSponsorServiceMock()
+    )
+
+    const before = Date.now()
+    await useCase.convert("profile-1", "admin-1", {
+      userType: "member_pro",
+      accessExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    })
+
+    expect(assignment.value?.accessStartsAt).toBeInstanceOf(Date)
+    expect(assignment.value?.accessExpiresAt).toBeInstanceOf(Date)
+    const duration = assignment.value!.accessExpiresAt!.getTime() - assignment.value!.accessStartsAt!.getTime()
+    expect(duration).toBe(100 * 24 * 60 * 60 * 1000)
+    expect(assignment.value!.accessStartsAt!.getTime()).toBeGreaterThanOrEqual(before)
+  })
+
   it("rejeita guest com patrocinador não autorizado sem escrever", async () => {
     let wrote = false
     const useCase = new BackofficeProfileUserTypeUseCase(

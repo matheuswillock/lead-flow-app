@@ -91,18 +91,21 @@ export function mapPlanSubscription(
 }
 
 function mapMasterUserType(
-  assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null
+  assignment: { accessStartsAt: Date | null; accessExpiresAt: Date | null; userType: { slug: string } } | null
 ): MasterPlatformUserDetailsRecord["userType"] {
   const slug: "common" | "member_pro" =
     assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
   const accessExpiresAt = assignment?.accessExpiresAt ?? null
-  const isExpired =
-    slug === "member_pro" &&
-    accessExpiresAt !== null &&
-    new Date(accessExpiresAt).getTime() <= Date.now()
+  const isActive = slug === "member_pro" && isActiveMemberProAssignment(
+    assignment
+      ? { slug: assignment.userType.slug, accessStartsAt: assignment.accessStartsAt, accessExpiresAt }
+      : null
+  )
+  const isExpired = slug === "member_pro" && !isActive
 
   return {
     slug,
+    isActive,
     isExpired,
     accessExpiresAt: accessExpiresAt ? accessExpiresAt.toISOString() : null,
   }
@@ -381,6 +384,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         },
         userTypeAssignment: {
           select: {
+            accessStartsAt: true,
             accessExpiresAt: true,
             userType: { select: { slug: true } },
           },
@@ -720,6 +724,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       prisma.profileUserTypeAssignment.findUnique({
         where: { profileId: masterProfileId },
         select: {
+          accessStartsAt: true,
           accessExpiresAt: true,
           userType: { select: { slug: true } },
         },
@@ -741,7 +746,11 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     if (isActiveMemberProAssignment(
       userTypeAssignment
-        ? { slug: userTypeAssignment.userType.slug, accessExpiresAt: userTypeAssignment.accessExpiresAt }
+        ? {
+            slug: userTypeAssignment.userType.slug,
+            accessStartsAt: userTypeAssignment.accessStartsAt,
+            accessExpiresAt: userTypeAssignment.accessExpiresAt,
+          }
         : null
     )) {
       return true

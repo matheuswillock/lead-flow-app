@@ -269,7 +269,11 @@ class BillingEngineRepository {
         subscriptionId: true,
         subscription: { select: { id: true, asaasSubscriptionId: true, productId: true } },
         userTypeAssignment: {
-          select: { userType: { select: { slug: true } } },
+          select: {
+            accessStartsAt: true,
+            accessExpiresAt: true,
+            userType: { select: { slug: true } },
+          },
         },
       },
     });
@@ -286,16 +290,22 @@ class BillingEngineRepository {
     profileId: string;
     userTypeId: string;
     assignedByProfileId: string;
+    accessStartsAt?: Date | null;
+    accessExpiresAt?: Date | null;
   }) {
     return prisma.profileUserTypeAssignment.upsert({
       where: { profileId: params.profileId },
       create: {
         profileId: params.profileId,
         userTypeId: params.userTypeId,
+        accessStartsAt: params.accessStartsAt ?? null,
+        accessExpiresAt: params.accessExpiresAt ?? null,
         assignedByProfileId: params.assignedByProfileId,
       },
       update: {
         userTypeId: params.userTypeId,
+        accessStartsAt: params.accessStartsAt ?? null,
+        accessExpiresAt: params.accessExpiresAt ?? null,
         assignedByProfileId: params.assignedByProfileId,
       },
     });

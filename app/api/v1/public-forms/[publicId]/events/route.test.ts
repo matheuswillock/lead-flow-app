@@ -14,6 +14,12 @@ mock.module("@/lib/public-forms/rate-limit", () => ({
 
 const recordMetric = mock(async (_publicId: string, _input: unknown) => new Output(true, [], [], { accepted: true }))
 
+const publicFormAccountAccessMock = mock(async () => new Output(true, [], [], null))
+
+mock.module("@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase", () => ({
+  publicFormAccountAccessUseCase: { execute: publicFormAccountAccessMock },
+}))
+
 mock.module("@/app/api/useCases/publicForms/PublicFormsUseCase", () => ({
   publicFormsUseCase: { recordMetric },
 }))
@@ -43,6 +49,24 @@ describe("POST /api/v1/public-forms/[publicId]/events", () => {
   beforeEach(() => {
     recordMetric.mockReset()
     recordMetric.mockResolvedValue(new Output(true, [], [], { accepted: true }))
+    publicFormAccountAccessMock.mockReset()
+    publicFormAccountAccessMock.mockResolvedValue(new Output(true, [], [], null))
+  })
+
+  it("conta bloqueada não registra eventos públicos", async () => {
+    publicFormAccountAccessMock.mockResolvedValueOnce(
+      new Output(false, [], ["O acesso desta conta está pausado"], null),
+    )
+
+    const response = await POST(makeRequest({
+      visitorSessionId: VALID_SESSION,
+      eventType: "form_viewed",
+      eventKey: VALID_EVENT_KEY,
+      origin: {},
+    }), { params: Promise.resolve({ publicId: VALID_PUBLIC_ID }) })
+
+    expect(response.status).toBe(403)
+    expect(recordMetric).not.toHaveBeenCalled()
   })
 
   it("evento crítico: chama recordMetric (queue-first no UseCase) e retorna 202 queued", async () => {

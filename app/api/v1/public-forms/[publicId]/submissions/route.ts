@@ -18,8 +18,6 @@ export async function POST(
   { params }: { params: Promise<{ publicId: string }> },
 ) {
   const { publicId } = await params
-  const accountAccess = await publicFormAccountAccessUseCase.execute(publicId)
-  if (!accountAccess.isValid) return NextResponse.json(accountAccess, { status: 403 })
   // SPEC 40 E6/H18: mesmo guard de `/progress` e `/events`. Esta rota era a
   // única das três sem ele — e é a que cria lead. Vem antes do rate limit para
   // que POST forjado de terceiro nem consuma cota do visitante legítimo.
@@ -31,6 +29,9 @@ export async function POST(
   // acima e criaria lead do time B no domínio do time A.
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+  const accountAccess = await publicFormAccountAccessUseCase.execute(publicId)
+  if (!accountAccess.isValid) return NextResponse.json(accountAccess, { status: 403 })
+
   const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },

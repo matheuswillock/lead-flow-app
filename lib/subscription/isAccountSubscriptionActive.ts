@@ -3,10 +3,15 @@ import {
   ACTIVE_SUBSCRIPTION_STATUSES,
   isActiveSubscriptionStatus,
 } from "@/lib/billing/active-subscription-statuses";
+import {
+  isActiveMemberProAssignment,
+  isBlockingMemberProAssignment,
+} from "@/app/api/shared/billing/memberProBillingRules";
 
 export type AccountSubscriptionStatus = {
   isActive: boolean;
   hasPermanentSubscription: boolean;
+  memberProActive: boolean;
 };
 
 /**
@@ -15,7 +20,7 @@ export type AccountSubscriptionStatus = {
 export async function getAccountSubscriptionStatus(
   masterProfileId: string
 ): Promise<AccountSubscriptionStatus> {
-  const [profile, profileSubscription] = await Promise.all([
+  const [profile, profileSubscription, memberProAssignment] = await Promise.all([
     prisma.profile.findUnique({
       where: { id: masterProfileId },
       select: {
@@ -30,18 +35,50 @@ export async function getAccountSubscriptionStatus(
         hasPermanentSubscription: true,
       },
     }),
+    prisma.profileUserTypeAssignment.findUnique({
+      where: { profileId: masterProfileId },
+      select: {
+        accessStartsAt: true,
+        accessExpiresAt: true,
+        userType: { select: { slug: true } },
+      },
+    }),
   ]);
 
   if (!profile) {
-    return { isActive: false, hasPermanentSubscription: false };
+    return { isActive: false, hasPermanentSubscription: false, memberProActive: false };
   }
+
+  const memberProActive = isActiveMemberProAssignment(
+    memberProAssignment?.userType
+      ? {
+          slug: memberProAssignment.userType.slug,
+          accessStartsAt: memberProAssignment.accessStartsAt,
+          accessExpiresAt: memberProAssignment.accessExpiresAt,
+        }
+      : null
+  );
+
+  const memberProBlocked = isBlockingMemberProAssignment(
+    memberProAssignment?.userType
+      ? {
+          slug: memberProAssignment.userType.slug,
+          accessStartsAt: memberProAssignment.accessStartsAt,
+          accessExpiresAt: memberProAssignment.accessExpiresAt,
+        }
+      : null
+  );
 
   if (
     profileSubscription
       ? profileSubscription.hasPermanentSubscription
       : profile.hasPermanentSubscription
   ) {
-    return { isActive: true, hasPermanentSubscription: true };
+    return { isActive: true, hasPermanentSubscription: true, memberProActive };
+  }
+
+  if (memberProBlocked) {
+    return { isActive: false, hasPermanentSubscription: false, memberProActive };
   }
 
   // ProfileSubscription é canônica inclusive quando o status ainda não foi
@@ -49,9 +86,9 @@ export async function getAccountSubscriptionStatus(
   const status = profileSubscription
     ? profileSubscription.subscriptionStatus
     : profile.subscriptionStatus;
-  const isActive = isActiveSubscriptionStatus(status);
+  const isActive = memberProActive || isActiveSubscriptionStatus(status);
 
-  return { isActive, hasPermanentSubscription: false };
+  return { isActive, hasPermanentSubscription: false, memberProActive };
 }
 
 export async function isAccountSubscriptionActive(masterProfileId: string): Promise<boolean> {

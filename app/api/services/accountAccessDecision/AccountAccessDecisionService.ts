@@ -22,6 +22,14 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       return { state: "allowed" }
     }
 
+    if (account.memberProActive) {
+      return { state: "allowed" }
+    }
+
+    if (account.memberProBlocked) {
+      return { state: "restricted", reason: "past_due" }
+    }
+
     if (account.subscriptionNextDueDate && isDueDateBeforeTodayInSaoPaulo(account.subscriptionNextDueDate, now)) {
       return { state: "restricted", reason: "past_due" }
     }

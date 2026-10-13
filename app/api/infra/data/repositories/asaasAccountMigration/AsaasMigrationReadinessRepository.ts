@@ -8,6 +8,8 @@ export type MigrationGateEvidence = {
   observabilityActive: boolean
   lgpdApproved: boolean
   communicationApproved: boolean
+  /** Dispensa formal do owner quando a operação não enviará comunicação. */
+  communicationWaived?: boolean
   batchAuthorized: boolean
 }
 

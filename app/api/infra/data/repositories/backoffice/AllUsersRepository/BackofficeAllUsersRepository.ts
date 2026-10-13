@@ -1,6 +1,7 @@
 import type { LeadStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { hasAnnualOrActiveYearlyUnlimitedGrant } from "@/app/api/infra/data/repositories/billing/unlimitedUsersGrantQueries"
+import { isActiveMemberProAssignment } from "@/app/api/shared/billing/memberProBillingRules"
 import {
   getScheduleMeetingStatus,
   type ScheduleMeetingStatus,
@@ -192,7 +193,7 @@ function buildScheduleWhere(
 }
 
 function mapUserType(
-  assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null,
+  assignment: { accessStartsAt: Date | null; accessExpiresAt: Date | null; userType: { slug: string } } | null,
   sponsor?: { id: string; fullName: string | null } | null
 ): BackofficeAllUsersUserTypeRef {
   const rawSlug = assignment?.userType.slug
@@ -205,7 +206,11 @@ function mapUserType(
           ? "guest"
           : "common"
   const accessExpiresAt = assignment?.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null
-  const isExpired = slug === "member_pro" && accessExpiresAt !== null && new Date(accessExpiresAt).getTime() <= Date.now()
+  const isExpired = slug === "member_pro" && !isActiveMemberProAssignment(
+    assignment
+      ? { slug: assignment.userType.slug, accessStartsAt: assignment.accessStartsAt, accessExpiresAt: assignment.accessExpiresAt }
+      : null
+  )
 
   let label = "Comum"
   if (slug === "member_pro") {
@@ -248,6 +253,7 @@ const PROFILE_LIST_SELECT = {
       _count: { select: { operators: true } },
       userTypeAssignment: {
         select: {
+          accessStartsAt: true,
           accessExpiresAt: true,
           userType: { select: { slug: true } },
         },
@@ -259,6 +265,7 @@ const PROFILE_LIST_SELECT = {
   _count: { select: { operators: true } },
   userTypeAssignment: {
     select: {
+      accessStartsAt: true,
       accessExpiresAt: true,
       userType: { select: { slug: true } },
     },
@@ -705,6 +712,7 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
 
     const assignmentData = {
       userTypeId: userType.id,
+      accessStartsAt: data.accessStartsAt ?? null,
       accessExpiresAt: data.accessExpiresAt,
       assignedByProfileId: data.assignedByProfileId,
     }
@@ -714,6 +722,7 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
       update: assignmentData,
       create: { profileId, ...assignmentData },
       select: {
+        accessStartsAt: true,
         accessExpiresAt: true,
         userType: { select: { slug: true } },
       },

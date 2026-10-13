@@ -10,7 +10,6 @@ const REQUIRED_GATES: Array<keyof MigrationGateEvidence> = [
   "permanentAccountsExcluded",
   "observabilityActive",
   "lgpdApproved",
-  "communicationApproved",
   "batchAuthorized",
 ]
 
@@ -41,7 +40,10 @@ async function main() {
   const evidence = JSON.parse(
     await readFile(resolve(process.cwd(), evidencePath), "utf8"),
   ) as Partial<MigrationGateEvidence>
-  const missing = REQUIRED_GATES.filter((gate) => evidence[gate] !== true)
+  const missing: string[] = REQUIRED_GATES.filter((gate) => evidence[gate] !== true)
+  if (evidence.communicationApproved !== true && evidence.communicationWaived !== true) {
+    missing.push("communicationApproved_or_communicationWaived")
+  }
   if (missing.length > 0) throw new Error(`Gates pendentes: ${missing.join(", ")}`)
 
   const gateRunAt = new Date()

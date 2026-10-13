@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // Achado P1 do Codex/Cursor no PR #1138 (20 — Assinaturas — Backend E3,
 // DA2): createOperatorPayment validava/recriava o customer pela conta
 // resolvida do manager, mas createAsaasCheckoutLink criava o payment do

@@ -5,6 +5,7 @@ import { parseDateKeyAndTimeToUtc } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
 import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
+import { rejectRestrictedPublicForm } from "@/app/api/v1/public-forms/publicFormAccess"
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +16,9 @@ export async function GET(
   const { publicId } = await params
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+
+  const restricted = await rejectRestrictedPublicForm(publicId)
+  if (restricted) return restricted
 
   const date = request.nextUrl.searchParams.get("date")
   if (!date) {

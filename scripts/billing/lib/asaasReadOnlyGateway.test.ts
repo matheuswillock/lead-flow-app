@@ -132,17 +132,36 @@ describe("AsaasReadOnlyGateway", () => {
     )
   })
 
-  it("interface não expõe nenhum método além de fetchPage (TypeScript garante em tempo de compilação)", () => {
+  it("interface expõe somente as sondas read-only fetchPage/fetchOne", () => {
     // Este teste documenta a garantia estrutural: qualquer tentativa de
     // chamar gateway.post/put/delete/request(...) falha no typecheck porque
-    // IAsaasReadOnlyGateway só declara fetchPage. Não há verificação
-    // adicional em runtime a fazer aqui além de confirmar o shape.
+    // IAsaasReadOnlyGateway só declara sondas de leitura.
     process.env.ASAAS_ENV = "sandbox"
     const gateway = new AsaasReadOnlyGateway("primary")
     const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(gateway))
     expect(keys).toContain("fetchPage")
+    expect(keys).toContain("fetchOne")
     expect(keys).not.toContain("post")
     expect(keys).not.toContain("put")
     expect(keys).not.toContain("delete")
+  })
+
+  it("fetchOne confirma entidade conhecida e converte 404 em null", async () => {
+    process.env.ASAAS_ENV = "sandbox"
+    process.env.ASAAS_LEGACY_API_KEY = "aact_legacy_key"
+    const fetchMock = mock(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith("sub_missing")) return new Response(null, { status: 404 })
+      return new Response(JSON.stringify({ id: "sub_found", status: "INACTIVE" }), { status: 200 })
+    })
+    // @ts-expect-error override global fetch for the test
+    globalThis.fetch = fetchMock
+
+    const gateway = new AsaasReadOnlyGateway("legacy")
+    expect(await gateway.fetchOne<{ id: string; status: string }>("/subscriptions/sub_found")).toEqual({
+      id: "sub_found",
+      status: "INACTIVE",
+    })
+    expect(await gateway.fetchOne("/subscriptions/sub_missing")).toBeNull()
+    for (const call of fetchMock.mock.calls) expect(call[1]?.method).toBe("GET")
   })
 })

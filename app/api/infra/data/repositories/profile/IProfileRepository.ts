@@ -168,6 +168,18 @@ export interface IProfileRepository {
     subscriptionId: string,
     account: AsaasAccountId
   ): Promise<Profile | null>;
+  findByAsaasCustomerIdAndAccount(
+    customerId: string,
+    account: AsaasAccountId
+  ): Promise<Profile | null>;
+  updateSubscriptionAfterCheckout(input: {
+    profileId: string;
+    subscriptionId: string;
+    account: AsaasAccountId;
+    cycle: string;
+    startDate: Date;
+    nextDueDate: Date;
+  }): Promise<void>;
   activateSubscription(profileId: string): Promise<void>;
 }
 

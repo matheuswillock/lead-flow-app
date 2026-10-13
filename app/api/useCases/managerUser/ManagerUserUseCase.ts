@@ -1,4 +1,5 @@
 import { Output } from "@/lib/output";
+import { resolvePrice, toBillingCycle } from "@/lib/billing/resolvePrice";
 import { IManagerUserUseCase } from "./IManagerUserUseCase";
 import { IManagerUserRepository } from "../../infra/data/repositories/managerUser/IManagerUserRepository";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
@@ -525,6 +526,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             // afirma "assinatura atualizada" quando ela não foi.
             let subscriptionUpdateFailed = false;
             if (masterUser.asaasSubscriptionId) {
+                let expectedReduction: number | null = null;
                 try {
                     const { AsaasSubscriptionService } = await import('../../services/AsaasSubscription/AsaasSubscriptionService');
                     const subscriptionAccount = masterUser.asaasSubscriptionAccount ?? 'primary';
@@ -535,7 +537,18 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                         subscriptionAccount,
                     );
 
-                    const newValue = Math.max(59.90, currentSubscription.value - 19.90);
+                    const billingCycle = toBillingCycle(currentSubscription.cycle);
+                    const [basePrice, operatorPrice] = billingCycle
+                        ? await Promise.all([
+                            resolvePrice({ featureSlug: "crm", cycle: billingCycle, method: currentSubscription.billingType }),
+                            resolvePrice({ featureSlug: "extra-user", cycle: billingCycle, method: currentSubscription.billingType }),
+                        ])
+                        : [null, null];
+                    if (basePrice == null || operatorPrice == null) {
+                        throw new Error("Preços da assinatura indisponíveis no catálogo");
+                    }
+                    expectedReduction = operatorPrice;
+                    const newValue = Math.max(basePrice, currentSubscription.value - operatorPrice);
 
                     console.info(`💰 [deleteOperatorWithSubscriptionUpdate] Atualizando assinatura de R$ ${currentSubscription.value} para R$ ${newValue}`);
 
@@ -554,7 +567,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                             masterId: masterUser.id,
                             operatorId,
                             asaasSubscriptionId: masterUser.asaasSubscriptionId,
-                            expectedReduction: 19.90,
+                            expectedReduction,
                             error: subscriptionError,
                         },
                     );

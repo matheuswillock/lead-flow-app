@@ -5,6 +5,7 @@ import { publicFormSubmissionSchema } from "@/lib/public-forms/validation"
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 import { rejectLandingPageRequestOnForeignHost } from "@/lib/landing-pages/landing-page-host-tenancy"
 import { Output } from "@/lib/output"
+import { publicFormAccountAccessUseCase } from "@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase"
 
 export async function POST(request: Request, { params }: { params: Promise<{ landingPageId: string }> }) {
   const { landingPageId } = await params
@@ -15,6 +16,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ lan
   const landing = await landingPageUseCase.getPublic(landingPageId)
   if (!landing.isValid || !landing.result) return NextResponse.json(landing, { status: 404 })
   const snapshot = (landing.result as { snapshot: { form: { publicId: string }; formPublicationId?: string } }).snapshot
+  const accountAccess = await publicFormAccountAccessUseCase.execute(snapshot.form.publicId)
+  if (!accountAccess.isValid) return NextResponse.json(accountAccess, { status: 403 })
+
   const parsed = publicFormSubmissionSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json(new Output(false, [], parsed.error.issues.map((issue) => issue.message), null), { status: 400 })
 

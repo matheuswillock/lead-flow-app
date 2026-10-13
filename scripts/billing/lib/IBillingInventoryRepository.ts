@@ -38,7 +38,7 @@ import type { AsaasAccountId } from "@/lib/asaas/asaas-account"
 export type DbCustomerPointer = {
   /** id da linha de origem (profile.id, backofficeAdhesion.id ou backofficeClient.id) */
   refId: string
-  source: "profile" | "adhesion" | "backofficeClient"
+  source: "profile" | "adhesion" | "backofficeClient" | "migrationLedger"
   asaasCustomerId: string
   email: string | null
 }

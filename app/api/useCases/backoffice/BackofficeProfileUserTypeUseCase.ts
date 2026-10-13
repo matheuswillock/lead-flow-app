@@ -10,11 +10,10 @@ import {
   backofficeSponsorAuthorizationService,
 } from "@/app/api/services/backofficeSponsorAuthorization/BackofficeSponsorAuthorizationService"
 import type { IBackofficeSponsorAuthorizationService } from "@/app/api/services/backofficeSponsorAuthorization/IBackofficeSponsorAuthorizationService"
-
-const DAY_MS = 24 * 60 * 60 * 1000
-const MIN_ACCESS_DAYS = 1
-const MAX_ACCESS_DAYS = 365
-const MIN_ACCESS_TOLERANCE_MS = 60 * 1000
+import {
+  MEMBER_PRO_ACCESS_DAYS,
+  resolveMemberProAccessWindow,
+} from "@/app/api/shared/billing/memberProBillingRules"
 
 export interface BackofficeProfileUserTypeInput {
   userType: "common" | "member_pro" | "associate" | "guest"
@@ -156,25 +155,12 @@ export class BackofficeProfileUserTypeUseCase {
         return new Output(true, ["Tipo de usuário atualizado para Comum"], [], { userType })
       }
 
-      if (!input.accessExpiresAt) {
-        return new Output(false, [], ["Informe a data de expiração do acesso Member PRO"], null)
-      }
-
-      const accessExpiresAt = new Date(input.accessExpiresAt)
-      if (Number.isNaN(accessExpiresAt.getTime())) {
-        return new Output(false, [], ["Data de expiração do acesso Member PRO inválida"], null)
-      }
-
-      const now = Date.now()
-      if (accessExpiresAt.getTime() + MIN_ACCESS_TOLERANCE_MS < now + MIN_ACCESS_DAYS * DAY_MS) {
-        return new Output(false, [], ["O acesso Member PRO deve ter validade de no mínimo 1 dia"], null)
-      }
-      if (accessExpiresAt.getTime() > now + MAX_ACCESS_DAYS * DAY_MS) {
-        return new Output(false, [], ["O acesso Member PRO deve ter validade de no máximo 1 ano"], null)
-      }
+      const accessStartsAt = new Date()
+      const { accessExpiresAt } = resolveMemberProAccessWindow({ start: accessStartsAt })
 
       const userType = await this.repository.upsertUserTypeAssignment(profileId, {
         userType: "member_pro",
+        accessStartsAt,
         accessExpiresAt,
         assignedByProfileId,
       })
@@ -186,7 +172,7 @@ export class BackofficeProfileUserTypeUseCase {
         "common_to_member_pro"
       )
 
-      return new Output(true, ["Tipo de usuário atualizado para Member PRO"], [], { userType })
+      return new Output(true, [`Tipo de usuário atualizado para Member PRO por ${MEMBER_PRO_ACCESS_DAYS} dias`], [], { userType })
     } catch (error) {
       console.error("[BackofficeProfileUserTypeUseCase][convert]", error)
       const message = error instanceof Error ? error.message : "Erro ao atualizar tipo de usuário"

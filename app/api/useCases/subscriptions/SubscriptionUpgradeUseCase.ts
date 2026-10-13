@@ -19,6 +19,7 @@ import type {
 import type { ISubscriptionUpgradeRepository } from "@/app/api/infra/data/repositories/subscriptionUpgrade/ISubscriptionUpgradeRepository";
 import { subscriptionUpgradeRepository } from "@/app/api/infra/data/repositories/subscriptionUpgrade/SubscriptionUpgradeRepository";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
+import { resolvePrice, toBillingCycle } from "@/lib/billing/resolvePrice";
 
 interface SubscriptionUpgradeUseCaseDependencies {
   repository?: ISubscriptionUpgradeRepository;
@@ -194,10 +195,20 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Erro: Customer ID inválido'], null);
       }
 
+      const operatorPrice = await resolvePrice({
+        featureSlug: "extra-user",
+        cycle: "MONTHLY",
+        method: data.paymentMethod,
+      });
+      if (operatorPrice == null) {
+        await this.repository.deletePendingOperatorById(pendingOperator.id);
+        return new Output(false, [], ['Preço de usuário adicional indisponível no catálogo'], null);
+      }
+
       // 5. Gerar link de checkout hospedado do Asaas
       const checkoutLink = await this.createAsaasCheckoutLink({
         customer: asaasCustomerId,
-        value: 19.90,
+        value: operatorPrice,
         description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
         managerId: manager.supabaseId || manager.id,
@@ -493,8 +504,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           );
         }
 
-        // Calcular novo valor (atual + R$ 19,90 do novo operador)
-        const newValue = currentSubscription.value + 19.90;
+        const billingCycle = toBillingCycle(currentSubscription.cycle);
+        const operatorPrice = billingCycle
+          ? await resolvePrice({
+              featureSlug: "extra-user",
+              cycle: billingCycle,
+              method: currentSubscription.billingType,
+            })
+          : null;
+        if (operatorPrice == null) {
+          return new Output(false, [], ['Preço de usuário adicional indisponível no catálogo'], null);
+        }
+        const newValue = currentSubscription.value + operatorPrice;
 
         console.info('💵 [createOperatorFromPending] Detalhes da atualização:', {
           managerId: manager.id,
@@ -869,14 +890,26 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    * Calcula valor total da assinatura do manager
    * Fórmula: R$ 59,90 (base) + R$ 19,90 × número de operadores
    */
-  private calculateSubscriptionValue(operatorCount: number): {
+  private async calculateSubscriptionValue(
+    operatorCount: number,
+    billingType: "PIX" | "CREDIT_CARD" | "BOLETO",
+    cycle: string,
+  ): Promise<{
     value: number;
     description: string;
-  } {
-    const BASE_VALUE = 59.90;
-    const OPERATOR_VALUE = 19.90;
-    
-    const totalValue = BASE_VALUE + (OPERATOR_VALUE * operatorCount);
+  }> {
+    const billingCycle = toBillingCycle(cycle);
+    const [baseValue, operatorValue] = billingCycle
+      ? await Promise.all([
+          resolvePrice({ featureSlug: "crm", cycle: billingCycle, method: billingType }),
+          resolvePrice({ featureSlug: "extra-user", cycle: billingCycle, method: billingType }),
+        ])
+      : [null, null];
+    if (baseValue == null || operatorValue == null) {
+      throw new Error("Preços da assinatura indisponíveis no catálogo");
+    }
+
+    const totalValue = baseValue + operatorValue * operatorCount;
     
     const description = operatorCount === 0
       ? 'Plano Manager Base - sem operadores'
@@ -884,8 +917,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     
     console.info('💰 [calculateSubscriptionValue] Cálculo:', {
       operatorCount,
-      baseValue: BASE_VALUE,
-      operatorValue: OPERATOR_VALUE,
+      baseValue,
+      operatorValue,
       totalValue,
       description
     });
@@ -1135,7 +1168,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       // 3. Calcular novo valor
-      const { value, description } = this.calculateSubscriptionValue(manager.operatorCount);
+      const { value, description } = await this.calculateSubscriptionValue(
+        manager.operatorCount,
+        "CREDIT_CARD",
+        "MONTHLY",
+      );
 
       console.info('💰 [updateManagerSubscription] Novo valor calculado:', {
         operatorCount: manager.operatorCount,
@@ -1465,7 +1502,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       // 3. Calcular novo valor da assinatura
-      const { value, description } = this.calculateSubscriptionValue(data.operatorCount);
+      const { value, description } = await this.calculateSubscriptionValue(
+        data.operatorCount,
+        data.paymentMethod,
+        "MONTHLY",
+      );
       console.info('💰 [reactivateSubscription] Novo valor calculado:', { value, description, operatorCount: data.operatorCount });
 
       // 4. Preparar nextDueDate (manter data antiga ou usar nova)

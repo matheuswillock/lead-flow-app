@@ -72,10 +72,7 @@ const KNOWN_SAFE_ADHESION_ERROR_MESSAGES = new Set([
   "Já existe uma conta cadastrada com este e-mail",
   "E-mail é obrigatório para conta Convidado",
   // create — Member PRO
-  "Informe a data de expiração do acesso Member PRO",
   "Data de expiração do acesso Member PRO inválida",
-  "O acesso Member PRO deve ter validade de no mínimo 1 dia",
-  "O acesso Member PRO deve ter validade de no máximo 1 ano",
   // create — patrocinador
   "Patrocinador não autorizado",
   "Patrocinador inválido",
@@ -115,30 +112,10 @@ const KNOWN_SAFE_ADHESION_ERROR_PATTERNS: readonly RegExp[] = [
   /^Usuários adicionais não estão disponíveis para o ciclo .+$/,
 ]
 
-const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
-const MEMBER_PRO_MIN_ACCESS_DAYS = 1
-const MEMBER_PRO_MAX_ACCESS_DAYS = 365
-const MEMBER_PRO_MIN_ACCESS_TOLERANCE_MS = 60 * 1000
-
 function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undefined): void {
-  if (!accessExpiresAt) {
-    throw new Error("Informe a data de expiração do acesso Member PRO")
-  }
-
-  const expiresAt = new Date(accessExpiresAt)
-  if (Number.isNaN(expiresAt.getTime())) {
+  if (!accessExpiresAt) return
+  if (Number.isNaN(new Date(accessExpiresAt).getTime())) {
     throw new Error("Data de expiração do acesso Member PRO inválida")
-  }
-
-  const now = Date.now()
-  if (
-    expiresAt.getTime() + MEMBER_PRO_MIN_ACCESS_TOLERANCE_MS <
-    now + MEMBER_PRO_MIN_ACCESS_DAYS * MEMBER_PRO_DAY_MS
-  ) {
-    throw new Error("O acesso Member PRO deve ter validade de no mínimo 1 dia")
-  }
-  if (expiresAt.getTime() > now + MEMBER_PRO_MAX_ACCESS_DAYS * MEMBER_PRO_DAY_MS) {
-    throw new Error("O acesso Member PRO deve ter validade de no máximo 1 ano")
   }
 }
 

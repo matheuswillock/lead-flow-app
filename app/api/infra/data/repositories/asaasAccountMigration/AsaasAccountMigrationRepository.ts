@@ -299,6 +299,75 @@ export class AsaasAccountMigrationRepository implements IAsaasAccountMigrationRe
     return refreshed
   }
 
+  async reopenAfterPrematureReconciliation(input: {
+    legacyCustomerId: string
+    primarySubscriptionId: string
+    anomalyNotes: string
+  }) {
+    const current = await prisma.asaasAccountMigration.findUnique({
+      where: { legacyCustomerId: input.legacyCustomerId },
+    })
+
+    if (!current) {
+      throw new Error(
+        `AsaasAccountMigration não encontrado para legacyCustomerId=${input.legacyCustomerId}`,
+      )
+    }
+
+    if (current.status === "awaiting_due_date" || current.status === "requires_card_reauth") {
+      return current
+    }
+
+    if (current.status !== "done") {
+      throw new InvalidAsaasAccountMigrationTransitionError(
+        current.status,
+        "awaiting_due_date",
+        input.legacyCustomerId,
+      )
+    }
+
+    if (current.primarySubscriptionId !== input.primarySubscriptionId) {
+      throw new Error("Assinatura primary divergente; reabertura abortada")
+    }
+
+    const updated = await prisma.asaasAccountMigration.updateMany({
+      where: {
+        legacyCustomerId: input.legacyCustomerId,
+        status: "done",
+        attemptCount: current.attemptCount,
+        primarySubscriptionId: input.primarySubscriptionId,
+      },
+      data: {
+        status: "awaiting_due_date",
+        attemptCount: { increment: 1 },
+        migratedAt: null,
+        anomalyNotes: input.anomalyNotes,
+        lastError: null,
+        resumeStatus: null,
+        failureStep: null,
+        failureCode: null,
+      },
+    })
+
+    if (updated.count === 0) {
+      throw new ConcurrentAsaasAccountMigrationUpdateError(
+        input.legacyCustomerId,
+        current.status,
+        "awaiting_due_date",
+      )
+    }
+
+    const refreshed = await prisma.asaasAccountMigration.findUnique({
+      where: { legacyCustomerId: input.legacyCustomerId },
+    })
+    if (!refreshed) {
+      throw new Error(
+        `AsaasAccountMigration desapareceu após a reabertura (legacyCustomerId=${input.legacyCustomerId})`,
+      )
+    }
+    return refreshed
+  }
+
   async countAll() {
     return prisma.asaasAccountMigration.count()
   }
