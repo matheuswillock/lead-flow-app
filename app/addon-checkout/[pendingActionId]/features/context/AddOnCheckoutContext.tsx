@@ -22,6 +22,7 @@ import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 type Action =
   | { type: "SET_LOADING" }
   | { type: "SET_DATA"; payload: AddOnCheckoutData }
+  | { type: "SET_BILLING_TYPE"; payload: "PIX" | "CREDIT_CARD" }
   | { type: "SET_ERROR"; payload: string }
   | { type: "SET_PAYMENT_METHOD"; payload: "PIX" | "CREDIT_CARD" }
   | { type: "SET_PROCESSING"; payload: boolean }
@@ -40,6 +41,12 @@ function reducer(state: AddOnCheckoutState, action: Action): AddOnCheckoutState 
         data: action.payload,
         selectedPaymentMethod: action.payload.presetBillingType,
         step: action.payload.alreadyPaid ? "success" : "idle",
+      };
+    case "SET_BILLING_TYPE":
+      return {
+        ...state,
+        data: state.data ? { ...state.data, presetBillingType: action.payload } : state.data,
+        selectedPaymentMethod: action.payload,
       };
     case "SET_ERROR":
       return { ...state, step: "error", error: action.payload };
@@ -64,6 +71,7 @@ interface AddOnCheckoutContextType {
   state: AddOnCheckoutState;
   fetchCheckoutData: (pendingActionId: string) => Promise<void>;
   setSelectedPaymentMethod: (method: "PIX" | "CREDIT_CARD") => void;
+  updateBillingType: (method: "PIX" | "CREDIT_CARD") => Promise<void>;
   submitPayment: (input: AddOnCheckoutSubmitInput) => Promise<void>;
   refreshPaymentStatus: () => Promise<void>;
   clearPolling: () => void;
@@ -81,6 +89,12 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
   const setSelectedPaymentMethod = useCallback((method: "PIX" | "CREDIT_CARD") => {
     dispatch({ type: "SET_PAYMENT_METHOD", payload: method });
   }, []);
+
+  const updateBillingType = useCallback(async (method: "PIX" | "CREDIT_CARD") => {
+    if (!state.data?.pendingActionId || state.data.presetBillingType === method) return;
+    await addOnCheckoutService.updateBillingType(state.data.pendingActionId, method);
+    dispatch({ type: "SET_BILLING_TYPE", payload: method });
+  }, [state.data?.pendingActionId, state.data?.presetBillingType]);
 
   const clearPolling = useCallback(() => {
     if (pollingIntervalRef.current) {
@@ -143,6 +157,9 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
 
       dispatch({ type: "SET_PROCESSING", payload: true });
       try {
+        if (input.billingType !== state.data.presetBillingType) {
+          await updateBillingType(input.billingType);
+        }
         const paymentData = await addOnCheckoutService.createPayment(
           state.data.pendingActionId,
           input
@@ -157,7 +174,7 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_PROCESSING", payload: false });
       }
     },
-    [state.data?.pendingActionId, state.data?.checkoutSource, startPolling]
+    [state.data?.pendingActionId, state.data?.checkoutSource, state.data?.presetBillingType, startPolling, updateBillingType]
   );
 
   const refreshPaymentStatus = useCallback(async () => {
@@ -193,6 +210,7 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
         state,
         fetchCheckoutData,
         setSelectedPaymentMethod,
+        updateBillingType,
         submitPayment,
         refreshPaymentStatus,
         clearPolling,

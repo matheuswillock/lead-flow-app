@@ -28,6 +28,7 @@ export interface PublicCheckoutCompositionRow {
 
 export interface PublicCheckoutDetails {
   presetBillingType: PublicCheckoutBillingType
+  billingTypePrices: Record<PublicCheckoutBillingType, { monthly: number; total: number }>
   title: string
   subtitle: string
   includedTitle: string
@@ -68,6 +69,7 @@ export interface PublicCheckoutPayerPrefill {
 }
 
 export interface PublicCheckoutPaymentInput extends PublicCheckoutPayerPrefill {
+  billingType: PublicCheckoutBillingType
   installments: number
   creditCard: {
     holderName: string

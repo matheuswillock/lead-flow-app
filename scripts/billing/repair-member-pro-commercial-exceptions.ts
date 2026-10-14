@@ -100,7 +100,15 @@ function assertApprovedCensus(plan: readonly CommercialPlanItem[]): void {
     throw new Error("Dry-run não corresponde ao censo comercial aprovado")
   }
 
+  const approvedProfileIds = new Set(COMMERCIAL_MEMBER_PRO_TARGETS.map((target) => target.profileId))
+  const seenProfileIds = new Set<string>()
+
   for (const item of plan) {
+    if (seenProfileIds.has(item.target.profileId)) {
+      throw new Error(`Dry-run contém perfil duplicado: ${item.target.profileId}`)
+    }
+    seenProfileIds.add(item.target.profileId)
+
     const approved = COMMERCIAL_MEMBER_PRO_TARGETS.find(
       (target) => target.profileId === item.target.profileId,
     )
@@ -117,10 +125,15 @@ function assertApprovedCensus(plan: readonly CommercialPlanItem[]): void {
       item.after.userTypeSlug !== "member_pro" ||
       item.after.accessStartsAt !== approved.accessStartsAt ||
       item.after.accessExpiresAt !== approved.accessExpiresAt ||
+      item.after.hasUnlimitedUsers !== true ||
       item.asaasMutation !== false
     ) {
       throw new Error(`Dry-run contém efeito inválido para ${item.target.profileId}`)
     }
+  }
+
+  if (seenProfileIds.size !== approvedProfileIds.size || [...approvedProfileIds].some((id) => !seenProfileIds.has(id))) {
+    throw new Error("Dry-run não contém exatamente todos os perfis do censo comercial aprovado")
   }
 }
 
@@ -307,15 +320,15 @@ async function applyCommercialRepair(plan: readonly CommercialPlanItem[]): Promi
     const results: Array<{ profileId: string; action: Action }> = []
 
     for (const item of plan) {
-      if (item.action === "already-correct") {
-        results.push({ profileId: item.target.profileId, action: item.action })
-        continue
-      }
-
       const fresh = await loadTargetSnapshot(transaction, item.target)
       validateCommercialTargetSnapshot(item.target, fresh)
       if (!sameSnapshot(fresh, item.current)) {
         throw new Error(`Perfil ${item.target.profileId} mudou desde o dry-run; operação abortada`)
+      }
+
+      if (item.action === "already-correct") {
+        results.push({ profileId: item.target.profileId, action: item.action })
+        continue
       }
 
       const memberPro = await transaction.profileUserType.findUniqueOrThrow({

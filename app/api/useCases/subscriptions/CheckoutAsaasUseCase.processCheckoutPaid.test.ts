@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
 
 mock.module("server-only", () => ({}))
 
@@ -52,6 +53,11 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
   let findByAsaasCustomerIdAndAccountMock: ReturnType<typeof mock>
   let activateSubscriptionMock: ReturnType<typeof mock>
   let updateSubscriptionAfterCheckoutMock: ReturnType<typeof mock>
+  let findIntentMock: ReturnType<typeof mock>
+  let markIntentPaidMock: ReturnType<typeof mock>
+  let markIntentCreatedMock: ReturnType<typeof mock>
+  let claimIntentMock: ReturnType<typeof mock>
+  let releaseIntentMock: ReturnType<typeof mock>
 
   beforeEach(() => {
     requestMock.mockClear()
@@ -69,12 +75,18 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
     findByAsaasCustomerIdAndAccountMock = mock(async () => null)
     activateSubscriptionMock = mock(async () => {})
     updateSubscriptionAfterCheckoutMock = mock(async () => {})
+    findIntentMock = mock(async () => null)
+    markIntentPaidMock = mock(async () => ({}))
+    markIntentCreatedMock = mock(async () => ({}))
+    claimIntentMock = mock(async () => true)
+    releaseIntentMock = mock(async () => true)
   })
 
   function buildUseCase() {
     const profileRepository = {
       findByAsaasSubscriptionIdAndAccount: findByAsaasSubscriptionIdAndAccountMock,
       findByAsaasCustomerIdAndAccount: findByAsaasCustomerIdAndAccountMock,
+      findById: mock(async () => ({ id: "profile-1", supabaseId: "sb-1", email: "fulano@example.test", fullName: "Fulano de Tal", timezone: "America/Sao_Paulo" })),
       updateSubscriptionAfterCheckout: updateSubscriptionAfterCheckoutMock,
       activateSubscription: activateSubscriptionMock,
     } as any
@@ -85,6 +97,7 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
       {} as any,
       {} as any,
       { resolvePrice: mock(async () => 102.9) } as any,
+      { findByExternalReference: findIntentMock, markPaid: markIntentPaidMock, claimSubscriptionCreation: claimIntentMock, releaseSubscriptionCreation: releaseIntentMock, markSubscriptionCreated: markIntentCreatedMock, markManualReconciliation: mock(async () => ({})) } as any,
     )
   }
 
@@ -114,9 +127,9 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
     let detachedSubscriptionCreated = false
     requestMock.mockImplementation(async (endpoint: string, init?: RequestInit) => {
       if (endpoint.includes("/payments/")) {
-        return { id: "payment_1", customer: "cus_primary", value: 102.9, billingType: "CREDIT_CARD" }
+        return { id: "payment_1", customer: "cus_primary", value: 102.9, billingType: "CREDIT_CARD", externalReference: "billing-intent:profile-1" }
       }
-      if (endpoint.includes("externalReference=checkout%3Apayment_1")) {
+      if (endpoint.includes("externalReference=billing-intent%3Aprofile-1%3Asubscription")) {
         return detachedSubscriptionCreated
           ? { data: [{ id: "sub_primary", customer: "cus_primary", value: 102.9, cycle: "MONTHLY", status: "ACTIVE" }] }
           : { data: [] }
@@ -143,13 +156,38 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
       fullName: "Fulano de Tal",
       timezone: "America/Sao_Paulo",
     })
+    const quoteSnapshot = {
+      profileId: "profile-1",
+      customerId: "cus_primary",
+      account: "primary",
+      productSlug: "crm",
+      productId: null,
+      cycle: "monthly",
+      billingType: "CREDIT_CARD",
+      amount: 102.9,
+      createdAt: "2026-10-12T00:00:00.000Z",
+    }
+    findIntentMock.mockResolvedValue({
+      id: "intent-1",
+      profileId: "profile-1",
+      asaasCustomerId: "cus_primary",
+      asaasAccount: "primary",
+      amount: 102.9,
+      billingType: "CREDIT_CARD",
+      externalReference: "billing-intent:profile-1",
+      expiresAt: new Date(Date.now() + 60_000),
+      status: "checkout_created",
+      subscriptionId: null,
+      quoteSnapshot,
+      quoteHash: hashBillingQuote(quoteSnapshot),
+    })
 
     const result = await buildUseCase().processCheckoutPaid("payment_1", "primary")
     const secondResult = await buildUseCase().processCheckoutPaid("payment_1", "primary")
 
     expect(result.isValid).toBe(true)
     expect(secondResult.isValid).toBe(true)
-    expect(findByAsaasCustomerIdAndAccountMock).toHaveBeenCalledWith("cus_primary", "primary")
+    expect(findIntentMock).toHaveBeenCalledWith("billing-intent:profile-1", "primary")
     expect(updateSubscriptionAfterCheckoutMock).toHaveBeenCalledWith(expect.objectContaining({
       profileId: "profile-1",
       subscriptionId: "sub_primary",
@@ -180,5 +218,55 @@ describe("CheckoutAsaasUseCase.processCheckoutPaid — busca a cobrança na cont
     expect(result.isValid).toBe(false)
     expect(updateSubscriptionAfterCheckoutMock).not.toHaveBeenCalled()
     expect(activateSubscriptionMock).not.toHaveBeenCalled()
+  })
+
+  it("libera o claim quando a criação da assinatura falha", async () => {
+    requestMock.mockImplementation(async (endpoint: string, init?: RequestInit) => {
+      if (endpoint.includes("/payments/")) {
+        return { id: "payment_retry", customer: "cus_primary", value: 102.9, billingType: "CREDIT_CARD", externalReference: "billing-intent:profile-1" }
+      }
+      if (endpoint.includes("externalReference=billing-intent%3Aprofile-1%3Asubscription")) {
+        return { data: [] }
+      }
+      if (init?.method === "POST") throw new Error("Asaas indisponível")
+      return { data: [] }
+    })
+    findByAsaasCustomerIdAndAccountMock.mockResolvedValue({
+      id: "profile-1",
+      supabaseId: "sb-1",
+      email: "fulano@example.test",
+      fullName: "Fulano de Tal",
+      timezone: "America/Sao_Paulo",
+    })
+    const quoteSnapshot = {
+      profileId: "profile-1",
+      customerId: "cus_primary",
+      account: "primary",
+      productSlug: "crm",
+      productId: null,
+      cycle: "monthly",
+      billingType: "CREDIT_CARD",
+      amount: 102.9,
+      createdAt: "2026-10-12T00:00:00.000Z",
+    }
+    findIntentMock.mockResolvedValue({
+      id: "intent-retry",
+      profileId: "profile-1",
+      asaasCustomerId: "cus_primary",
+      asaasAccount: "primary",
+      amount: 102.9,
+      billingType: "CREDIT_CARD",
+      externalReference: "billing-intent:profile-1",
+      expiresAt: new Date(Date.now() + 60_000),
+      status: "checkout_created",
+      subscriptionId: null,
+      quoteSnapshot,
+      quoteHash: hashBillingQuote(quoteSnapshot),
+    })
+
+    const result = await buildUseCase().processCheckoutPaid("payment_retry", "primary")
+
+    expect(result.isValid).toBe(false)
+    expect(releaseIntentMock).toHaveBeenCalledWith("intent-retry")
   })
 })

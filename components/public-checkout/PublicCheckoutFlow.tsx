@@ -57,6 +57,7 @@ export function PublicCheckoutFlow({
   onRefreshStatus?: (options?: { sync?: boolean }) => Promise<void>
 }) {
   const [step, setStep] = useState<PublicCheckoutStep>("summary")
+  const [selectedBillingType, setSelectedBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX")
   const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null)
   const [now, setNow] = useState(Date.now())
   const previousErrorRef = useRef<string | null>(null)
@@ -68,6 +69,10 @@ export function PublicCheckoutFlow({
 
   const remainingMs = expiresAt ? expiresAt - now : null
   const isExpired = remainingMs != null && remainingMs <= 0
+
+  useEffect(() => {
+    if (details?.presetBillingType) setSelectedBillingType(details.presetBillingType)
+  }, [details?.presetBillingType])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -139,7 +144,7 @@ export function PublicCheckoutFlow({
           <span className="font-medium">{countdownLabel}</span>
         </Badge>
         {details ? (
-          <Badge variant="outline">{details.presetBillingType === "PIX" ? "PIX" : "Cartao"}</Badge>
+          <Badge variant="outline">{selectedBillingType === "PIX" ? "PIX" : "Cartao"}</Badge>
         ) : null}
       </div>
 
@@ -169,16 +174,37 @@ export function PublicCheckoutFlow({
       ) : null}
 
       {!isLoading && details && step === "payment" ? (
-        <PublicCheckoutPaymentStep
-          details={details}
-          billingType={details.presetBillingType}
-          prefill={prefill}
-          maxInstallments={maxInstallments}
-          isSubmitting={isSubmitting}
-          payment={payment}
-          onSubmit={onSubmit}
-          onRefreshStatus={onRefreshStatus}
-        />
+        <>
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            {(["PIX", "CREDIT_CARD"] as const).map((method) => {
+              const price = details.billingTypePrices[method]
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  disabled={Boolean(payment) || isSubmitting || price == null}
+                  onClick={() => setSelectedBillingType(method)}
+                  className={cn("rounded-lg border p-3 text-left", selectedBillingType === method && "border-primary ring-2 ring-primary/20")}
+                >
+                  <div className="text-sm font-medium">{method === "PIX" ? "PIX" : "Cartão de crédito"}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price.total)}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <PublicCheckoutPaymentStep
+            details={details}
+            billingType={selectedBillingType}
+            prefill={prefill}
+            maxInstallments={selectedBillingType === "PIX" ? 1 : maxInstallments}
+            isSubmitting={isSubmitting}
+            payment={payment}
+            onSubmit={onSubmit}
+            onRefreshStatus={onRefreshStatus}
+          />
+        </>
       ) : null}
 
       {!isLoading && step === "expired" ? (

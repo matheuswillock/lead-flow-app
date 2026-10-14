@@ -5,10 +5,60 @@ import { join } from "node:path"
 import {
   COMMERCIAL_MEMBER_PRO_TARGETS,
   calculateCommercialRepairChecksum,
+  type CommercialPlanItem,
+  type TargetSnapshot,
   readCommercialDryRunReport,
   resolveCommercialPlanAction,
   validateCommercialTargetSnapshot,
 } from "./repair-member-pro-commercial-exceptions"
+
+function snapshotFor(target: (typeof COMMERCIAL_MEMBER_PRO_TARGETS)[number]): TargetSnapshot {
+  const hasCorrectAssignment = target.profileId === COMMERCIAL_MEMBER_PRO_TARGETS[0].profileId
+  return {
+    profileId: target.profileId,
+    email: target.email,
+    isMaster: true,
+    deletedAt: null,
+    hasPermanentSubscription: false,
+    hasUnlimitedUsers: true,
+    subscriptionStartDate: target.accessStartsAt,
+    profileSubscriptionStartDate: target.accessStartsAt,
+    asaasCustomerId: "cus_test",
+    asaasCustomerAccount: "primary",
+    asaasSubscriptionId: hasCorrectAssignment ? "sub_test" : null,
+    asaasSubscriptionAccount: "primary",
+    assignment: hasCorrectAssignment
+      ? {
+          userTypeSlug: "member_pro",
+          accessStartsAt: target.accessStartsAt,
+          accessExpiresAt: target.accessExpiresAt,
+          assignedByProfileId: null,
+        }
+      : null,
+    team: { id: target.teamId, name: target.teamName, masterId: target.profileId, deletedAt: null },
+    activeBan: null,
+  }
+}
+
+function planItemFor(target: (typeof COMMERCIAL_MEMBER_PRO_TARGETS)[number]): CommercialPlanItem {
+  const current = snapshotFor(target)
+  return {
+    target,
+    action: resolveCommercialPlanAction({
+      ...current,
+      expectedAccessStartsAt: target.accessStartsAt,
+      expectedAccessExpiresAt: target.accessExpiresAt,
+    }),
+    current,
+    after: {
+      userTypeSlug: "member_pro",
+      accessStartsAt: target.accessStartsAt,
+      accessExpiresAt: target.accessExpiresAt,
+      hasUnlimitedUsers: true,
+    },
+    asaasMutation: false,
+  }
+}
 
 describe("repair-member-pro-commercial-exceptions", () => {
   it("mantém o censo com janelas exatas de 100 dias", () => {
@@ -121,6 +171,36 @@ describe("repair-member-pro-commercial-exceptions", () => {
       const checksum = calculateCommercialRepairChecksum([])
       writeFileSync(input, JSON.stringify({ apply: false, plan: [], checksum }), "utf-8")
       expect(() => readCommercialDryRunReport(input, checksum)).toThrow("censo comercial aprovado")
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("rejeita perfil duplicado mesmo com checksum recalculado", () => {
+    const duplicated = planItemFor(COMMERCIAL_MEMBER_PRO_TARGETS[0])
+    const plan = [duplicated, duplicated]
+    const directory = mkdtempSync(join(tmpdir(), "member-pro-commercial-duplicate-"))
+    const input = join(directory, "dry-run.json")
+    try {
+      const checksum = calculateCommercialRepairChecksum(plan)
+      writeFileSync(input, JSON.stringify({ apply: false, plan, checksum }), "utf-8")
+      expect(() => readCommercialDryRunReport(input, checksum)).toThrow("perfil duplicado")
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("rejeita pós-estado sem usuários ilimitados", () => {
+    const first = planItemFor(COMMERCIAL_MEMBER_PRO_TARGETS[0])
+    const tampered = structuredClone(first)
+    Object.assign(tampered.after, { hasUnlimitedUsers: false })
+    const plan = [tampered, planItemFor(COMMERCIAL_MEMBER_PRO_TARGETS[1])]
+    const directory = mkdtempSync(join(tmpdir(), "member-pro-commercial-postcondition-"))
+    const input = join(directory, "dry-run.json")
+    try {
+      const checksum = calculateCommercialRepairChecksum(plan)
+      writeFileSync(input, JSON.stringify({ apply: false, plan, checksum }), "utf-8")
+      expect(() => readCommercialDryRunReport(input, checksum)).toThrow("efeito inválido")
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
