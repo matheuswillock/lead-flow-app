@@ -36,7 +36,7 @@ CREATE POLICY billing_checkout_intents_service_role_only
   ON public.billing_checkout_intents
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
-ALTER TABLE public.backoffice_user_subscriptions
+ALTER TABLE public.backoffice_adhesions
   ADD COLUMN IF NOT EXISTS quote_snapshot jsonb,
   ADD COLUMN IF NOT EXISTS quote_hash text,
   ADD COLUMN IF NOT EXISTS quote_created_at timestamptz;

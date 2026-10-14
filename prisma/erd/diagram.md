@@ -3319,27 +3319,28 @@ completed completed
 
   "billing_checkout_intents" {
     String id "🗝️"
-    String asaasCustomerId
-    AsaasAccount asaasAccount
-    String productSlug
+    String asaasCustomerId 
+    AsaasAccount asaasAccount 
+    String productSlug 
     String productId "❓"
-    String cycle
+    String cycle 
     String billingType "❓"
     Decimal amount "❓"
     Json quoteSnapshot "❓"
     String quoteHash "❓"
-    String externalReference
-    String tokenHash
-    String tokenPreview
+    String externalReference 
+    String tokenHash 
+    String tokenPreview 
     String checkoutId "❓"
     String checkoutUrl "❓"
-    String status
-    DateTime expiresAt
+    String status 
+    DateTime expiresAt 
     DateTime paidAt "❓"
     String subscriptionId "❓"
-    DateTime createdAt
-    DateTime updatedAt
+    DateTime createdAt 
+    DateTime updatedAt 
     }
+  
 
   "corretor_studio_subscription_state_snapshots" {
     String id "🗝️"
