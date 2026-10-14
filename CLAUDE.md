@@ -3,7 +3,6 @@
 <!-- Regenerate with: bun run governance:sync -->
 
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
-
 # Lead Flow — AI Implementation Governance
 
 **Version:** 3.0.0
