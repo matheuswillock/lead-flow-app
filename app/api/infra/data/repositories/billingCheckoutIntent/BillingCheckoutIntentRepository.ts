@@ -84,6 +84,14 @@ export class BillingCheckoutIntentRepository implements IBillingCheckoutIntentRe
     return result.count === 1
   }
 
+  async releaseSubscriptionCreation(id: string): Promise<boolean> {
+    const result = await prisma.billingCheckoutIntent.updateMany({
+      where: { id, status: "subscription_creating" },
+      data: { status: "paid" },
+    })
+    return result.count === 1
+  }
+
   async markSubscriptionCreated(id: string, subscriptionId: string) {
     return prisma.billingCheckoutIntent.update({
       where: { id },

@@ -13,8 +13,20 @@ export function hashBillingCheckoutToken(token: string): string {
   return createHash("sha256").update(token).digest("hex")
 }
 
+function canonicalizeBillingQuote(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeBillingQuote)
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nestedValue]) => [key, canonicalizeBillingQuote(nestedValue)]),
+    )
+  }
+  return value
+}
+
 export function hashBillingQuote(snapshot: Record<string, unknown>): string {
-  return createHash("sha256").update(JSON.stringify(snapshot)).digest("hex")
+  return createHash("sha256").update(JSON.stringify(canonicalizeBillingQuote(snapshot))).digest("hex")
 }
 
 export function getHostedCheckoutUrl(checkoutId: string): string {

@@ -55,6 +55,7 @@ export interface IBillingCheckoutIntentRepository {
   markSuperseded(id: string): Promise<BillingCheckoutIntentRecord>
   markPaid(id: string, paidAt: Date): Promise<BillingCheckoutIntentRecord>
   claimSubscriptionCreation(id: string): Promise<boolean>
+  releaseSubscriptionCreation(id: string): Promise<boolean>
   markSubscriptionCreated(id: string, subscriptionId: string): Promise<BillingCheckoutIntentRecord>
   markManualReconciliation(id: string, reason: string): Promise<BillingCheckoutIntentRecord>
 }

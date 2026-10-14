@@ -1040,6 +1040,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
    * errado numa colisão de sub_ entre as duas contas.
    */
   async processCheckoutPaid(checkoutId: string, account: AsaasAccountId): Promise<Output> {
+    let claimedIntentId: string | null = null
     try {
       console.info('💰 [processCheckoutPaid] Processando pagamento de checkout:', { checkoutId, account });
 
@@ -1126,6 +1127,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           }
           return new Output(true, ["Pagamento já está em processamento"], [], null)
         }
+        claimedIntentId = intent.id
       }
 
       let subscriptionId = payment.subscription as string | undefined;
@@ -1187,6 +1189,14 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
     } catch (error: any) {
       console.error('❌ [processCheckoutPaid] Erro:', error);
+
+      if (claimedIntentId) {
+        try {
+          await this.billingCheckoutIntentRepository.releaseSubscriptionCreation(claimedIntentId)
+        } catch (releaseError) {
+          console.error('❌ [processCheckoutPaid] Falha ao liberar claim da assinatura:', releaseError)
+        }
+      }
 
       return new Output(
         false,

@@ -4,7 +4,10 @@ import { AuditAction, AuditEntityType } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { createAsaasClient } from "@/lib/asaas/asaas-client"
 import { getFullUrl } from "@/lib/utils/app-url"
-import { createBillingCheckoutToken } from "@/lib/billing/billingCheckoutIntent"
+import {
+  createBillingCheckoutToken,
+  hashBillingCheckoutToken,
+} from "@/lib/billing/billingCheckoutIntent"
 import { billingCheckoutIntentRepository } from "@/app/api/infra/data/repositories/billingCheckoutIntent/BillingCheckoutIntentRepository"
 import type { AsaasCustomer } from "./lib/asaasInventoryTypes"
 import {
@@ -116,6 +119,9 @@ function parseArguments(argv: string[]): Arguments {
 }
 
 function assertApplyAuthorization(args: Arguments): void {
+  if (!args.output) {
+    throw new Error("Recusado: --output=<relatorio.json> é obrigatório para preservar o token do checkout")
+  }
   if (!args.apply) return
   if (process.env.TEAM_OWNERSHIP_TRANSFER_APPLY !== "1") {
     throw new Error("Recusado: --apply exige TEAM_OWNERSHIP_TRANSFER_APPLY=1")
@@ -146,6 +152,10 @@ function stableJson(value: unknown): string {
 
 function checkoutExternalReference(profileId: string): string {
   return `billing-intent:${profileId}`
+}
+
+function createDryRunCheckoutToken(): string {
+  return createBillingCheckoutToken().token
 }
 
 function calculateChecksum(report: Omit<TransferReport, "checksum" | "generatedAt" | "apply">): string {
@@ -271,19 +281,24 @@ async function buildRemoteProvisioningPlan(before: TransferReport["before"]): Pr
   const result: RemoteProvisioningItem[] = []
   for (const profile of profiles) {
     const customer = await findRemoteCustomer(client, profile)
+    const externalReference = checkoutExternalReference(profile.id)
+    const existingIntent = await billingCheckoutIntentRepository.findByExternalReference(externalReference, "primary")
+    const checkoutToken = existingIntent ? null : createDryRunCheckoutToken()
     result.push({
       profileId: profile.id,
       email: profile.email,
-      externalReference: checkoutExternalReference(profile.id),
+      externalReference,
       customerAction: customer ? (profile.asaasCustomerId ? "reuse" : "link-existing") : "create",
       customerId: customer?.id ?? null,
-      checkoutAction: "awaiting-method",
-      checkoutId: null,
-      checkoutUrl: null,
-      checkoutToken: null,
-      billingType: null,
+      checkoutAction: existingIntent?.checkoutId ? "already-created" : "awaiting-method",
+      checkoutId: existingIntent?.checkoutId ?? null,
+      checkoutUrl: existingIntent?.checkoutUrl ?? (checkoutToken ? getFullUrl(`/checkout/${checkoutToken}`) : null),
+      checkoutToken,
+      billingType: existingIntent?.billingType === "PIX" || existingIntent?.billingType === "CREDIT_CARD"
+        ? existingIntent.billingType
+        : null,
       cycle: "monthly",
-      price: null,
+      price: existingIntent?.amount ? Number(existingIntent.amount.toString()) : null,
     })
   }
   return result
@@ -605,7 +620,14 @@ async function applyRemoteProvisioning(report: TransferReport): Promise<void> {
       continue
     }
 
-    const token = createBillingCheckoutToken()
+    if (!item.checkoutToken) {
+      throw new Error(`Token do checkout ausente no dry-run para ${profile.email}; gere um novo relatório`)
+    }
+    const token = {
+      token: item.checkoutToken,
+      tokenHash: hashBillingCheckoutToken(item.checkoutToken),
+      tokenPreview: `${item.checkoutToken.slice(0, 8)}…`,
+    }
     const intent = await billingCheckoutIntentRepository.create({
       profileId: profile.id,
       asaasCustomerId: customerId,
@@ -641,15 +663,18 @@ async function main(): Promise<void> {
   assertApplyAuthorization(args)
   const report = args.apply ? readDryRunReport(args.input!, args.checksum!) : await buildReport(args.actorProfileId)
   if (!args.apply) assertNoBlockedItems(report)
+  const writeReport = (outcome: string) => {
+    const output = { ...report, apply: args.apply, outcome }
+    writeFileSync(args.output!, JSON.stringify(output, null, 2), { encoding: "utf-8", mode: 0o600 })
+    chmodSync(args.output!, 0o600)
+  }
   if (args.apply) {
+    writeReport("applying")
     await applyTransfer(report)
     await applyRemoteProvisioning(report)
   }
   const output = { ...report, apply: args.apply, outcome: args.apply ? "applied" : "planned" }
-  if (args.output) {
-    writeFileSync(args.output, JSON.stringify(output, null, 2), { encoding: "utf-8", mode: 0o600 })
-    chmodSync(args.output, 0o600)
-  }
+  writeReport(output.outcome)
   process.stdout.write(`${JSON.stringify({
     migrationId: output.migrationId,
     outcome: output.outcome,
