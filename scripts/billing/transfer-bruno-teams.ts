@@ -19,6 +19,10 @@ import {
 
 const MIGRATION_ID = "bruno-team-ownership-transfer-2026-10-14"
 const DEFAULT_ACTOR_PROFILE_ID = "f88f2b3b-3f45-4170-83e1-4e7999d2c012"
+const TRANSFER_TRANSACTION_OPTIONS = {
+  maxWait: 15_000,
+  timeout: 120_000,
+} as const
 
 type Arguments = {
   apply: boolean
@@ -519,7 +523,7 @@ async function applyTransfer(report: TransferReport): Promise<void> {
         },
       })
     }
-  })
+  }, TRANSFER_TRANSACTION_OPTIONS)
 }
 
 async function loadBillingProfile(profileId: string): Promise<{
