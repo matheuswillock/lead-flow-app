@@ -50,7 +50,7 @@ permissions:
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
-  NODE_OPTIONS: --max-old-space-size=5120
+  NODE_OPTIONS: --max-old-space-size=8192
 
 jobs:
   validate-branch:
@@ -136,7 +136,7 @@ jobs:
         id: typecheck
         continue-on-error: true
         env:
-          NODE_OPTIONS: "--max-old-space-size=5120"
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run typecheck
 
       - name: Resolve Typecheck

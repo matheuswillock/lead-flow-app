@@ -30,6 +30,7 @@ import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter"
 import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor"
 import { validateAdhesionSubscriptionWrite } from "@/lib/billing/adhesion-guards"
 import { resolveMemberProAccessWindow } from "@/app/api/shared/billing/memberProBillingRules"
+import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -1234,6 +1235,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         billingType: normalized.billingType,
       })
 
+      const quoteSnapshot = {
+        adhesionId: adhesion.id,
+        productId: adhesion.productId,
+        cycle: adhesion.cycle,
+        billingType: normalized.billingType,
+        amount: firstPending.amount,
+        installmentIndex: firstPending.index,
+        createdAt: new Date().toISOString(),
+      }
       const updated = await this.repo.updateCheckoutData(adhesion.id, {
         fullName: normalized.fullName,
         phone: normalized.phone,
@@ -1256,6 +1266,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         bankSlipUrl: firstResult.bankSlipUrl,
         pixQrCode: firstResult.pix?.encodedImage ?? null,
         pixPayload: firstResult.pix?.payload ?? null,
+        quoteSnapshot,
+        quoteHash: hashBillingQuote(quoteSnapshot),
+        quoteCreatedAt: new Date(),
       })
 
       return {
@@ -1268,6 +1281,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const chargeAmount = resolveCheckoutChargeAmount(publicDetails, normalized.billingType)
 
     const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
+    const quoteSnapshot = {
+      adhesionId: adhesion.id,
+      productId: adhesion.productId,
+      cycle: adhesion.cycle,
+      billingType: normalized.billingType,
+      amount: chargeAmount,
+      createdAt: new Date().toISOString(),
+    }
     const updated = await this.repo.updateCheckoutData(adhesion.id, {
       fullName: normalized.fullName,
       phone: normalized.phone,
@@ -1290,6 +1311,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       bankSlipUrl: paymentResult.bankSlipUrl,
       pixQrCode: paymentResult.pix?.encodedImage ?? null,
       pixPayload: paymentResult.pix?.payload ?? null,
+      quoteSnapshot,
+      quoteHash: hashBillingQuote(quoteSnapshot),
+      quoteCreatedAt: new Date(),
     })
 
     return {
@@ -1402,6 +1426,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       event === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
 
     if (isPaid) {
+      const quote = adhesion.quoteSnapshot as { amount?: unknown; billingType?: unknown } | null
+      if (adhesion.quoteSnapshot && adhesion.quoteHash && hashBillingQuote(adhesion.quoteSnapshot as Record<string, unknown>) !== adhesion.quoteHash) {
+        throw new Error("Integridade do quote da adesão inválida")
+      }
+      if (quote && (
+        typeof quote.amount !== "number" ||
+        payment.value == null ||
+        Math.abs(payment.value - quote.amount) > 0.005 ||
+        (typeof quote.billingType === "string" && quote.billingType !== payment.billingType)
+      )) {
+        throw new Error("Pagamento divergente do quote da adesão")
+      }
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
       const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
       try {

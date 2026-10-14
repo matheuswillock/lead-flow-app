@@ -40,6 +40,18 @@ class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
     };
   }
 
+  async updateBillingType(pendingActionId: string, billingType: "PIX" | "CREDIT_CARD"): Promise<void> {
+    const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billingType }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.isValid) {
+      throw new Error(result.errorMessages?.[0] || "Erro ao atualizar forma de pagamento");
+    }
+  }
+
   async createPayment(pendingActionId: string, input: AddOnCheckoutSubmitInput): Promise<any> {
     const body: Record<string, unknown> = {
       billingType: input.billingType,
