@@ -94,6 +94,7 @@ type SourceDefaultRepair = {
 type TransferReport = {
   generatedAt: string
   apply: boolean
+  outcome?: "planned" | "applying" | "applied"
   migrationId: string
   actorProfileId: string
   source: { profileId: string; email: string }
@@ -158,7 +159,7 @@ function createDryRunCheckoutToken(): string {
   return createBillingCheckoutToken().token
 }
 
-function calculateChecksum(report: Omit<TransferReport, "checksum" | "generatedAt" | "apply">): string {
+export function calculateChecksum(report: Omit<TransferReport, "checksum" | "generatedAt" | "apply" | "outcome">): string {
   return createHash("sha256").update(stableJson(report)).digest("hex")
 }
 
@@ -362,9 +363,15 @@ async function buildReport(actorProfileId: string): Promise<TransferReport> {
   return { generatedAt: new Date().toISOString(), apply: false, ...reportWithoutChecksum, checksum: calculateChecksum(reportWithoutChecksum) }
 }
 
-function readDryRunReport(path: string, checksum: string): TransferReport {
+export function readDryRunReport(path: string, checksum: string): TransferReport {
   const report = JSON.parse(readFileSync(path, "utf-8")) as TransferReport
-  const { checksum: reportedChecksum, generatedAt: _generatedAt, apply: _apply, ...checksumPayload } = report
+  const {
+    checksum: reportedChecksum,
+    generatedAt: _generatedAt,
+    apply: _apply,
+    outcome: _outcome,
+    ...checksumPayload
+  } = report
   if (reportedChecksum !== checksum || calculateChecksum(checksumPayload) !== checksum) {
     throw new Error("Dry-run inválido ou checksum divergente; gere um novo relatório")
   }
@@ -684,7 +691,9 @@ async function main(): Promise<void> {
   })}\n`)
 }
 
-main().catch((error) => {
-  console.error("[transfer-bruno-teams] erro fatal:", error)
-  process.exitCode = 1
-}).finally(() => prisma.$disconnect())
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("[transfer-bruno-teams] erro fatal:", error)
+    process.exitCode = 1
+  }).finally(() => prisma.$disconnect())
+}
