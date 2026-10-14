@@ -621,25 +621,26 @@ async function applyRemoteProvisioning(report: TransferReport): Promise<void> {
       asaasSubscriptionId: null,
       subscription: null,
     })
-    const customerId = remoteCustomer?.id ?? (await client.request(client.endpoints.customers, {
-      method: "POST",
-      body: JSON.stringify({
-        name: profile.fullName || profile.email,
-        email: profile.email,
-        cpfCnpj: profile.cpfCnpj?.replace(/\D/g, "") || undefined,
-        phone: profile.phone?.replace(/\D/g, "") || undefined,
-        postalCode: profile.postalCode?.replace(/\D/g, "") || undefined,
-        address: profile.address || undefined,
-        addressNumber: profile.addressNumber || undefined,
-        complement: profile.complement || undefined,
-        province: profile.neighborhood || undefined,
-        externalReference: profile.id,
-        notificationDisabled: true,
-      }),
-    })).then((created: { id?: unknown }) => {
+    const customerId = remoteCustomer?.id ?? await (async () => {
+      const created = await client.request(client.endpoints.customers, {
+        method: "POST",
+        body: JSON.stringify({
+          name: profile.fullName || profile.email,
+          email: profile.email,
+          cpfCnpj: profile.cpfCnpj?.replace(/\D/g, "") || undefined,
+          phone: profile.phone?.replace(/\D/g, "") || undefined,
+          postalCode: profile.postalCode?.replace(/\D/g, "") || undefined,
+          address: profile.address || undefined,
+          addressNumber: profile.addressNumber || undefined,
+          complement: profile.complement || undefined,
+          province: profile.neighborhood || undefined,
+          externalReference: profile.id,
+          notificationDisabled: true,
+        }),
+      }) as { id?: unknown }
       if (typeof created?.id !== "string" || created.id.length === 0) throw new Error(`Asaas não retornou customer para ${profile.email}`)
       return created.id
-    })
+    })()
 
     if (profile.asaasCustomerId !== customerId) {
       await prisma.profile.update({ where: { id: profile.id }, data: { asaasCustomerId: customerId, asaasCustomerAccount: "primary" } })
