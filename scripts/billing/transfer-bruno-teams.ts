@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { chmodSync, readFileSync, writeFileSync } from "node:fs"
-import { AuditAction, AuditEntityType } from "@prisma/client"
+import { AuditAction, AuditEntityType, type Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { createAsaasClient } from "@/lib/asaas/asaas-client"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -21,7 +21,7 @@ const MIGRATION_ID = "bruno-team-ownership-transfer-2026-10-14"
 const DEFAULT_ACTOR_PROFILE_ID = "f88f2b3b-3f45-4170-83e1-4e7999d2c012"
 const TRANSFER_TRANSACTION_OPTIONS = {
   maxWait: 15_000,
-  timeout: 120_000,
+  timeout: 15_000,
 } as const
 
 type Arguments = {
@@ -388,48 +388,92 @@ function assertNoBlockedItems(report: TransferReport): void {
   }
 }
 
-function assertCurrentMatchesBeforeOrAfter(current: TransferReport["before"], report: TransferReport): void {
-  const expectedTeamStates = new Map(report.before.teams.map((team) => [team.id, team]))
-  const afterTeamStates = new Map(report.after.teams.map((team) => [team.id, team]))
-  for (const team of current.teams) {
-    const before = expectedTeamStates.get(team.id)
-    const after = afterTeamStates.get(team.id)
-    if (!before || !after || (stableJson(team) !== stableJson(before) && stableJson(team) !== stableJson(after))) {
-      throw new Error(`Time ${team.name} mudou desde o dry-run; operação abortada`)
-    }
-  }
-  const beforeProfiles = new Map(report.before.profiles.map((profile) => [profile.id, profile]))
-  const afterProfiles = new Map(report.after.profiles.map((profile) => [profile.id, profile]))
-  const normalizeProfileForOwnership = (profile: ProfileSnapshot): ProfileSnapshot => ({
-    ...profile,
-    // O onboarding remoto pode ter vinculado um customer depois do dry-run.
-    // Esse ponteiro é validado novamente por externalReference antes de cada POST.
-    asaasCustomerId: null,
-  })
-  for (const profile of current.profiles) {
-    const before = beforeProfiles.get(profile.id)
-    const after = afterProfiles.get(profile.id)
-    if (!before || !after || (stableJson(normalizeProfileForOwnership(profile)) !== stableJson(normalizeProfileForOwnership(before)) && stableJson(normalizeProfileForOwnership(profile)) !== stableJson(normalizeProfileForOwnership(after)))) {
-      throw new Error(`Perfil ${profile.email} mudou desde o dry-run; operação abortada`)
-    }
-  }
-  if (stableJson(current.memberships) !== stableJson(report.before.memberships)) {
-    throw new Error("Memberships mudaram desde o dry-run; operação abortada")
+type OwnershipProfileState = Pick<ProfileSnapshot, "id" | "email" | "deletedAt" | "isMaster" | "managerId" | "activeTeamId" | "hasPermanentSubscription" | "subscriptionStatus"> & {
+  subscription: Pick<NonNullable<ProfileSnapshot["subscription"]>, "id" | "hasPermanentSubscription" | "subscriptionStatus"> | null
+}
+
+function ownershipProfileState(profile: OwnershipProfileState | ProfileSnapshot): OwnershipProfileState {
+  return {
+    id: profile.id,
+    email: profile.email,
+    deletedAt: profile.deletedAt,
+    isMaster: profile.isMaster,
+    managerId: profile.managerId,
+    activeTeamId: profile.activeTeamId,
+    hasPermanentSubscription: profile.hasPermanentSubscription,
+    subscriptionStatus: profile.subscriptionStatus,
+    subscription: profile.subscription ? {
+      id: profile.subscription.id,
+      hasPermanentSubscription: profile.subscription.hasPermanentSubscription,
+      subscriptionStatus: profile.subscription.subscriptionStatus,
+    } : null,
   }
 }
 
-async function applyTransfer(report: TransferReport): Promise<void> {
-  assertNoBlockedItems(report)
+async function assertTeamMembershipsUnchanged(
+  transaction: Prisma.TransactionClient,
+  report: TransferReport,
+  teamId: string,
+): Promise<void> {
+  const current = await transaction.teamMember.findMany({
+    where: { teamId },
+    select: {
+      id: true,
+      teamId: true,
+      profileId: true,
+      role: true,
+      functions: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+      canTransferAccountLeads: true,
+      canViewAllTeams: true,
+    },
+    orderBy: { id: "asc" },
+  })
+  const expected = report.before.memberships.filter((membership) => membership.teamId === teamId)
+  if (stableJson(current) !== stableJson(expected)) {
+    throw new Error(`Memberships do time ${teamId} mudaram desde o dry-run; operação abortada`)
+  }
+}
+
+async function applySourceContext(report: TransferReport): Promise<void> {
+  if (!report.sourceDefaultRepair && report.sourceActiveTeamBefore === report.sourceActiveTeamAfter) return
+
   await prisma.$transaction(async (transaction) => {
     await assertActor(transaction as typeof prisma, report.actorProfileId)
-    const current = await loadCensus(transaction as typeof prisma)
-    assertCurrentMatchesBeforeOrAfter(current, report)
-
     const currentSource = await transaction.profile.findUnique({ where: { id: BRUNO_PROFILE_ID }, select: { id: true, email: true, activeTeamId: true } })
     if (!currentSource || currentSource.email !== report.source.email) throw new Error("Profile do Bruno mudou desde o dry-run")
     if (currentSource.activeTeamId !== report.sourceActiveTeamBefore && currentSource.activeTeamId !== report.sourceActiveTeamAfter) {
       throw new Error("activeTeamId do Bruno mudou desde o dry-run; operação abortada")
     }
+
+    if (report.sourceDefaultRepair) {
+      const currentSourceDefaults = await transaction.team.findMany({
+        where: { masterId: BRUNO_PROFILE_ID, deletedAt: null, isDefault: true },
+        select: { id: true },
+      })
+      const selectedTeamIds = new Set(uniqueTargetTeamIds())
+      if (currentSourceDefaults.some((team) => !selectedTeamIds.has(team.id) && team.id !== report.sourceDefaultRepair?.teamId)) {
+        throw new Error("Mais de um time padrão permaneceu na conta do Bruno; operação abortada")
+      }
+      const replacement = await transaction.team.findUnique({ where: { id: report.sourceDefaultRepair.teamId }, select: { masterId: true, isDefault: true } })
+      if (!replacement || replacement.masterId !== BRUNO_PROFILE_ID) throw new Error("Time padrão substituto do Bruno mudou; operação abortada")
+      if (!replacement.isDefault) {
+        await transaction.team.update({ where: { id: report.sourceDefaultRepair.teamId }, data: { isDefault: true } })
+        await transaction.auditLog.create({
+          data: {
+            entityType: AuditEntityType.TEAM,
+            entityId: report.sourceDefaultRepair.teamId,
+            action: AuditAction.UPDATE,
+            actorProfileId: report.actorProfileId,
+            before: { isDefault: false },
+            after: { isDefault: true },
+            metadata: { migrationId: report.migrationId, reason: report.sourceDefaultRepair.reason, asaasMutation: false },
+          },
+        })
+      }
+    }
+
     if (currentSource.activeTeamId !== report.sourceActiveTeamAfter && report.sourceActiveTeamAfter) {
       await transaction.profile.update({ where: { id: BRUNO_PROFILE_ID }, data: { activeTeamId: report.sourceActiveTeamAfter } })
       await transaction.auditLog.create({
@@ -444,86 +488,81 @@ async function applyTransfer(report: TransferReport): Promise<void> {
         },
       })
     }
+  }, TRANSFER_TRANSACTION_OPTIONS)
+}
 
-    for (const item of report.plan.transfers) {
-      const team = await transaction.team.findUnique({ where: { id: item.teamId }, select: { id: true, name: true, masterId: true, isDefault: true } })
-      if (!team) throw new Error(`Time ${item.teamName} desapareceu durante a aplicação`)
-      if (team.masterId !== BRUNO_PROFILE_ID && team.masterId !== item.targetMasterId) throw new Error(`Owner divergente no time ${item.teamName}`)
-      if (team.masterId !== item.targetMasterId || team.isDefault !== item.shouldBeDefault) {
-        await transaction.team.update({ where: { id: item.teamId }, data: { masterId: item.targetMasterId, isDefault: item.shouldBeDefault } })
-        await transaction.auditLog.create({
-          data: {
-            entityType: AuditEntityType.TEAM,
-            entityId: item.teamId,
-            action: AuditAction.UPDATE,
-            actorProfileId: report.actorProfileId,
-            before: { masterId: team.masterId, isDefault: team.isDefault },
-            after: { masterId: item.targetMasterId, isDefault: item.shouldBeDefault },
-            metadata: { migrationId: report.migrationId, sourceMasterId: BRUNO_PROFILE_ID, targetMasterId: item.targetMasterId, asaasMutation: false },
-          },
-        })
-      }
-    }
+async function applyTransferItem(report: TransferReport, item: TeamOwnershipTransferPlan["transfers"][number]): Promise<void> {
+  const profileUpdate = report.plan.profileUpdates.find((candidate) => candidate.profileId === item.targetMasterId)
+  await prisma.$transaction(async (transaction) => {
+    await assertActor(transaction as typeof prisma, report.actorProfileId)
+    const team = await transaction.team.findUnique({ where: { id: item.teamId }, select: { id: true, name: true, masterId: true, isDefault: true, deletedAt: true } })
+    const beforeTeam = report.before.teams.find((candidate) => candidate.id === item.teamId)
+    const afterTeam = report.after.teams.find((candidate) => candidate.id === item.teamId)
+    if (!team || !beforeTeam || !afterTeam || team.name !== item.teamName || team.deletedAt) throw new Error(`Time ${item.teamName} mudou ou desapareceu durante a aplicação`)
+    const currentTeamState = { id: team.id, name: team.name, masterId: team.masterId, isDefault: team.isDefault, deletedAt: null }
+    const expectedBefore = { id: beforeTeam.id, name: beforeTeam.name, masterId: beforeTeam.masterId, isDefault: beforeTeam.isDefault, deletedAt: beforeTeam.deletedAt }
+    const expectedAfter = { id: afterTeam.id, name: afterTeam.name, masterId: afterTeam.masterId, isDefault: afterTeam.isDefault, deletedAt: afterTeam.deletedAt }
+    const isBefore = stableJson(currentTeamState) === stableJson(expectedBefore)
+    const isAfter = stableJson(currentTeamState) === stableJson(expectedAfter)
+    if (!isBefore && !isAfter) throw new Error(`Owner ou estado divergente no time ${item.teamName}; operação abortada`)
+    await assertTeamMembershipsUnchanged(transaction, report, item.teamId)
 
-    if (report.sourceDefaultRepair) {
-      const currentSourceDefaults = await transaction.team.findMany({
-        where: { masterId: BRUNO_PROFILE_ID, deletedAt: null, isDefault: true },
-        select: { id: true },
-      })
-      const selectedTeamIds = new Set(uniqueTargetTeamIds())
-      if (currentSourceDefaults.some((team) => !selectedTeamIds.has(team.id) && team.id !== report.sourceDefaultRepair?.teamId)) {
-        throw new Error("Mais de um time padrão permaneceu na conta do Bruno; operação abortada")
-      }
-      const replacement = await transaction.team.findUnique({ where: { id: report.sourceDefaultRepair.teamId }, select: { masterId: true, isDefault: true } })
-      if (!replacement || replacement.masterId !== BRUNO_PROFILE_ID) throw new Error("Time padrão substituto do Bruno mudou; operação abortada")
-      if (!replacement.isDefault) await transaction.team.update({ where: { id: report.sourceDefaultRepair.teamId }, data: { isDefault: true } })
-    }
-
-    for (const profileUpdate of report.plan.profileUpdates) {
-      const currentProfile = await transaction.profile.findUnique({
-        where: { id: profileUpdate.profileId },
-        select: { id: true, email: true, deletedAt: true, isMaster: true, managerId: true, activeTeamId: true, hasPermanentSubscription: true, subscriptionStatus: true, subscription: { select: { id: true, hasPermanentSubscription: true, subscriptionStatus: true } } },
-      })
-      if (!currentProfile || currentProfile.email.trim().toLowerCase() !== profileUpdate.email.trim().toLowerCase()) throw new Error(`Perfil alvo divergente: ${profileUpdate.profileId}`)
-      if (currentProfile.deletedAt) throw new Error(`Perfil alvo excluído: ${profileUpdate.profileId}`)
-      if (
-        currentProfile.isMaster &&
-        currentProfile.managerId === null &&
-        currentProfile.activeTeamId === profileUpdate.defaultTeamId &&
-        !currentProfile.hasPermanentSubscription &&
-        currentProfile.subscriptionStatus === "past_due" &&
-        (!currentProfile.subscription || (!currentProfile.subscription.hasPermanentSubscription && currentProfile.subscription.subscriptionStatus === "past_due"))
-      ) continue
-      const before = { isMaster: currentProfile.isMaster, managerId: currentProfile.managerId, activeTeamId: currentProfile.activeTeamId, hasPermanentSubscription: currentProfile.hasPermanentSubscription, subscriptionStatus: currentProfile.subscriptionStatus }
-      await transaction.profile.update({ where: { id: profileUpdate.profileId }, data: { isMaster: true, managerId: null, activeTeamId: profileUpdate.defaultTeamId, hasPermanentSubscription: false, subscriptionStatus: "past_due" } })
-      if (currentProfile.subscription) {
-        await transaction.profileSubscription.update({ where: { profileId: profileUpdate.profileId }, data: { hasPermanentSubscription: false, subscriptionStatus: "past_due" } })
-      }
+    if (isBefore) {
+      await transaction.team.update({ where: { id: item.teamId }, data: { masterId: item.targetMasterId, isDefault: item.shouldBeDefault } })
       await transaction.auditLog.create({
         data: {
-          entityType: AuditEntityType.PROFILE,
-          entityId: profileUpdate.profileId,
+          entityType: AuditEntityType.TEAM,
+          entityId: item.teamId,
           action: AuditAction.UPDATE,
           actorProfileId: report.actorProfileId,
-          before,
-          after: { isMaster: true, managerId: null, activeTeamId: profileUpdate.defaultTeamId, hasPermanentSubscription: false, subscriptionStatus: "past_due" },
-          metadata: { migrationId: report.migrationId, reason: "transferred_account_requires_checkout", asaasMutation: false },
-        },
-      })
-      await transaction.subscriptionChangeLog.create({
-        data: {
-          profileId: profileUpdate.profileId,
-          source: "bruno_team_ownership_transfer",
-          actorProfileId: report.actorProfileId,
-          changeType: "development_access_revoked_pending_checkout",
-          eventType: "overdue",
-          before,
-          after: { isMaster: true, managerId: null, activeTeamId: profileUpdate.defaultTeamId, hasPermanentSubscription: false, subscriptionStatus: "past_due" },
-          metadata: { migrationId: report.migrationId, asaasMutation: false, checkoutRequired: true },
+          before: { masterId: team.masterId, isDefault: team.isDefault },
+          after: { masterId: item.targetMasterId, isDefault: item.shouldBeDefault },
+          metadata: { migrationId: report.migrationId, sourceMasterId: BRUNO_PROFILE_ID, targetMasterId: item.targetMasterId, asaasMutation: false },
         },
       })
     }
+
+    if (!profileUpdate) return
+    const currentProfile = await transaction.profile.findUnique({
+      where: { id: profileUpdate.profileId },
+      select: { id: true, email: true, deletedAt: true, isMaster: true, managerId: true, activeTeamId: true, hasPermanentSubscription: true, subscriptionStatus: true, subscription: { select: { id: true, hasPermanentSubscription: true, subscriptionStatus: true } } },
+    })
+    const beforeProfile = report.before.profiles.find((profile) => profile.id === profileUpdate.profileId)
+    const afterProfile = report.after.profiles.find((profile) => profile.id === profileUpdate.profileId)
+    if (!currentProfile || !beforeProfile || !afterProfile || currentProfile.email.trim().toLowerCase() !== profileUpdate.email.trim().toLowerCase() || currentProfile.deletedAt) throw new Error(`Perfil alvo divergente: ${profileUpdate.profileId}`)
+    const currentState: OwnershipProfileState = {
+      id: currentProfile.id,
+      email: currentProfile.email,
+      deletedAt: null,
+      isMaster: currentProfile.isMaster,
+      managerId: currentProfile.managerId,
+      activeTeamId: currentProfile.activeTeamId,
+      hasPermanentSubscription: currentProfile.hasPermanentSubscription,
+      subscriptionStatus: currentProfile.subscriptionStatus,
+      subscription: currentProfile.subscription,
+    }
+    const isProfileBefore = stableJson(currentState) === stableJson(ownershipProfileState(beforeProfile))
+    const isProfileAfter = stableJson(currentState) === stableJson(ownershipProfileState(afterProfile))
+    if (!isProfileBefore && !isProfileAfter) throw new Error(`Perfil ${profileUpdate.profileId} mudou desde o dry-run; operação abortada`)
+    if (!isProfileBefore) return
+
+    const before = { isMaster: currentProfile.isMaster, managerId: currentProfile.managerId, activeTeamId: currentProfile.activeTeamId, hasPermanentSubscription: currentProfile.hasPermanentSubscription, subscriptionStatus: currentProfile.subscriptionStatus }
+    const after = { isMaster: true, managerId: null, activeTeamId: profileUpdate.defaultTeamId, hasPermanentSubscription: false, subscriptionStatus: "past_due" as const }
+    await transaction.profile.update({ where: { id: profileUpdate.profileId }, data: after })
+    if (currentProfile.subscription) await transaction.profileSubscription.update({ where: { profileId: profileUpdate.profileId }, data: { hasPermanentSubscription: false, subscriptionStatus: "past_due" } })
+    await transaction.auditLog.create({
+      data: { entityType: AuditEntityType.PROFILE, entityId: profileUpdate.profileId, action: AuditAction.UPDATE, actorProfileId: report.actorProfileId, before, after, metadata: { migrationId: report.migrationId, reason: "transferred_account_requires_checkout", asaasMutation: false } },
+    })
+    await transaction.subscriptionChangeLog.create({
+      data: { profileId: profileUpdate.profileId, source: "bruno_team_ownership_transfer", actorProfileId: report.actorProfileId, changeType: "development_access_revoked_pending_checkout", eventType: "overdue", before, after, metadata: { migrationId: report.migrationId, asaasMutation: false, checkoutRequired: true } },
+    })
   }, TRANSFER_TRANSACTION_OPTIONS)
+}
+
+async function applyTransfer(report: TransferReport): Promise<void> {
+  assertNoBlockedItems(report)
+  await applySourceContext(report)
+  for (const item of report.plan.transfers) await applyTransferItem(report, item)
 }
 
 async function loadBillingProfile(profileId: string): Promise<{
