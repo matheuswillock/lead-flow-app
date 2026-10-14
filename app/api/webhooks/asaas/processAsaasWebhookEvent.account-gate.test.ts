@@ -48,10 +48,15 @@ const processOperatorCheckoutPaidMock = mock(async () => {
   const { Output } = await import("@/lib/output")
   return new Output(true, ["ok"], [], null)
 })
+const processCheckoutPaidMock = mock(async () => {
+  const { Output } = await import("@/lib/output")
+  return new Output(true, ["ok"], [], null)
+})
 
 mock.module("@/app/api/useCases/subscriptions/CheckoutAsaasUseCase", () => ({
   checkoutAsaasUseCase: {
     processOperatorCheckoutPaid: processOperatorCheckoutPaidMock,
+    processCheckoutPaid: processCheckoutPaidMock,
   },
 }))
 
@@ -112,6 +117,7 @@ describe("processAsaasWebhookEvent — gate de operador/pending action filtra po
     pendingOperatorFindFirstMock.mockClear()
     pendingActionFindFirstMock.mockClear()
     processOperatorCheckoutPaidMock.mockClear()
+    processCheckoutPaidMock.mockClear()
     confirmPaymentAndCreateOperatorMock.mockClear()
     applyPendingActionByCheckoutMock.mockClear()
     applyPendingActionByPaymentIdMock.mockClear()
@@ -158,5 +164,19 @@ describe("processAsaasWebhookEvent — gate de operador/pending action filtra po
     )
     expect(applyPendingActionByCheckoutMock).not.toHaveBeenCalled()
     expect(applyPendingActionByPaymentIdMock).toHaveBeenCalledWith("pay_2", "primary")
+  })
+
+  it("processa checkout detached por intenção mesmo sem payment.subscription", async () => {
+    await processAsaasWebhookEvent({
+      event: "PAYMENT_CONFIRMED",
+      payment: {
+        id: "pay_detached",
+        status: "CONFIRMED",
+        customer: "cus_primary",
+        externalReference: "billing-intent:profile-1",
+      } as any,
+    }, "primary")
+
+    expect(processCheckoutPaidMock).toHaveBeenCalledWith("pay_detached", "primary")
   })
 })

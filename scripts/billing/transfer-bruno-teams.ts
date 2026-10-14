@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto"
-import { readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, readFileSync, writeFileSync } from "node:fs"
 import { AuditAction, AuditEntityType } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { createAsaasClient } from "@/lib/asaas/asaas-client"
-import { billingPriceResolver } from "@/app/api/services/billingPricing/BillingPriceResolver"
+import { getFullUrl } from "@/lib/utils/app-url"
+import { createBillingCheckoutToken } from "@/lib/billing/billingCheckoutIntent"
+import { billingCheckoutIntentRepository } from "@/app/api/infra/data/repositories/billingCheckoutIntent/BillingCheckoutIntentRepository"
 import type { AsaasCustomer } from "./lib/asaasInventoryTypes"
 import {
   BRUNO_PROFILE_ID,
@@ -59,12 +61,13 @@ type RemoteProvisioningItem = {
   externalReference: string
   customerAction: "create" | "reuse" | "link-existing"
   customerId: string | null
-  checkoutAction: "create" | "already-created"
+  checkoutAction: "awaiting-method" | "already-created"
   checkoutId: string | null
   checkoutUrl: string | null
-  billingType: "CREDIT_CARD"
+  checkoutToken: string | null
+  billingType: "PIX" | "CREDIT_CARD" | null
   cycle: "monthly"
-  price: number
+  price: number | null
 }
 
 type MembershipSnapshot = {
@@ -142,18 +145,7 @@ function stableJson(value: unknown): string {
 }
 
 function checkoutExternalReference(profileId: string): string {
-  return `${MIGRATION_ID}:${profileId}`
-}
-
-function checkoutUrl(checkoutId: string): string {
-  const host = process.env.ASAAS_ENV === "production" ? "www" : "sandbox"
-  return `https://${host}.asaas.com/checkoutSession/show?id=${checkoutId}`
-}
-
-function metadataString(metadata: unknown, key: string): string | null {
-  if (!metadata || typeof metadata !== "object") return null
-  const value = (metadata as Record<string, unknown>)[key]
-  return typeof value === "string" && value.length > 0 ? value : null
+  return `billing-intent:${profileId}`
 }
 
 function calculateChecksum(report: Omit<TransferReport, "checksum" | "generatedAt" | "apply">): string {
@@ -261,53 +253,37 @@ async function findRemoteCustomer(client: ReturnType<typeof createAsaasClient>, 
   if (profile.asaasCustomerId && customer?.id !== profile.asaasCustomerId) {
     throw new Error(`Ponteiro Asaas divergente para ${profile.email}`)
   }
-  return customer
-}
-
-async function findExistingCheckout(profileId: string, client: ReturnType<typeof createAsaasClient>): Promise<{ id: string; url: string } | null> {
-  const localLog = await prisma.subscriptionChangeLog.findFirst({
-    where: { profileId, source: MIGRATION_ID, changeType: "checkout_created" },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
-  })
-  const localId = metadataString(localLog?.metadata, "checkoutId")
-  if (localId) return { id: localId, url: checkoutUrl(localId) }
-  const pendingIntent = await prisma.subscriptionChangeLog.findFirst({
-    where: { profileId, source: MIGRATION_ID, changeType: "checkout_creation_started" },
-    select: { id: true },
-  })
-  if (pendingIntent) {
-    throw new Error(`Checkout ${checkoutExternalReference(profileId)} possui criação iniciada sem confirmação local; reconciliação manual obrigatória`)
+  if (customer) {
+    if (customer.email.trim().toLowerCase() !== profile.email.trim().toLowerCase()) {
+      throw new Error(`E-mail do customer Asaas divergente para ${profile.email}`)
+    }
+    if (profile.fullName && customer.name.trim().toLowerCase() !== profile.fullName.trim().toLowerCase()) {
+      throw new Error(`Nome do customer Asaas divergente para ${profile.email}`)
+    }
   }
-  // A API Asaas não oferece uma consulta confiável de checkouts por
-  // externalReference. O intent local evita criar um segundo checkout se a
-  // primeira chamada tiver resultado remoto desconhecido.
-  void client
-  return null
+  return customer
 }
 
 async function buildRemoteProvisioningPlan(before: TransferReport["before"]): Promise<RemoteProvisioningItem[]> {
   const client = createAsaasClient("primary")
-  const price = await billingPriceResolver.resolvePrice({ featureSlug: "crm", cycle: "monthly", method: "CREDIT_CARD" })
-  if (price == null) throw new Error("Preço CRM padrão mensal para cartão não está disponível no catálogo")
 
   const profiles = [...new Map(before.profiles.map((profile) => [profile.id, profile])).values()]
   const result: RemoteProvisioningItem[] = []
   for (const profile of profiles) {
     const customer = await findRemoteCustomer(client, profile)
-    const existingCheckout = await findExistingCheckout(profile.id, client)
     result.push({
       profileId: profile.id,
       email: profile.email,
       externalReference: checkoutExternalReference(profile.id),
       customerAction: customer ? (profile.asaasCustomerId ? "reuse" : "link-existing") : "create",
       customerId: customer?.id ?? null,
-      checkoutAction: existingCheckout ? "already-created" : "create",
-      checkoutId: existingCheckout?.id ?? null,
-      checkoutUrl: existingCheckout?.url ?? null,
-      billingType: "CREDIT_CARD",
+      checkoutAction: "awaiting-method",
+      checkoutId: null,
+      checkoutUrl: null,
+      checkoutToken: null,
+      billingType: null,
       cycle: "monthly",
-      price,
+      price: null,
     })
   }
   return result
@@ -538,6 +514,8 @@ async function loadBillingProfile(profileId: string): Promise<{
   asaasCustomerId: string | null
   asaasCustomerAccount: string
   asaasSubscriptionId: string | null
+  isMaster: boolean
+  managerId: string | null
 }> {
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
@@ -545,7 +523,7 @@ async function loadBillingProfile(profileId: string): Promise<{
       id: true, email: true, fullName: true, phone: true, cpfCnpj: true,
       postalCode: true, address: true, addressNumber: true, neighborhood: true,
       complement: true, asaasCustomerId: true, asaasCustomerAccount: true,
-      asaasSubscriptionId: true,
+      asaasSubscriptionId: true, isMaster: true, managerId: true,
     },
   })
   if (!profile) throw new Error(`Perfil ${profileId} desapareceu antes do onboarding Asaas`)
@@ -557,6 +535,8 @@ async function applyRemoteProvisioning(report: TransferReport): Promise<void> {
   for (const item of report.remoteProvisioning) {
     const profile = await loadBillingProfile(item.profileId)
     if (profile.asaasSubscriptionId) throw new Error(`Perfil ${profile.email} já possui assinatura Asaas; operação abortada`)
+    if (!profile.isMaster || profile.managerId !== null) throw new Error(`Perfil ${profile.email} deixou de ser master; operação abortada`)
+    if (profile.email.trim().toLowerCase() !== item.email.trim().toLowerCase()) throw new Error(`E-mail do perfil ${item.profileId} mudou; operação abortada`)
     if (profile.asaasCustomerId && profile.asaasCustomerAccount !== "primary") {
       throw new Error(`Perfil ${profile.email} possui customer fora da conta primary; operação abortada`)
     }
@@ -611,47 +591,46 @@ async function applyRemoteProvisioning(report: TransferReport): Promise<void> {
       })
     }
 
-    const existingCheckout = await findExistingCheckout(profile.id, client)
-    if (existingCheckout) continue
+    const existingIntent = await billingCheckoutIntentRepository.findByExternalReference(item.externalReference, "primary")
+    if (existingIntent) {
+      item.customerId = customerId
+      item.checkoutAction = existingIntent.checkoutId ? "already-created" : "awaiting-method"
+      item.checkoutId = existingIntent.checkoutId
+      item.checkoutUrl = existingIntent.checkoutUrl
+      item.checkoutToken = null
+      item.billingType = existingIntent.billingType === "PIX" || existingIntent.billingType === "CREDIT_CARD"
+        ? existingIntent.billingType
+        : null
+      item.price = existingIntent.amount ? Number(existingIntent.amount.toString()) : null
+      continue
+    }
 
-    await prisma.subscriptionChangeLog.create({
-      data: {
-        profileId: profile.id,
-        source: report.migrationId,
-        actorProfileId: report.actorProfileId,
-        changeType: "checkout_creation_started",
-        before: { asaasCustomerId: profile.asaasCustomerId },
-        after: { customerId, externalReference: item.externalReference, price: item.price, billingType: item.billingType, cycle: item.cycle },
-        metadata: { migrationId: report.migrationId, externalReference: item.externalReference, asaasMutation: false, reconciliationRequiredOnUnknownResult: true },
-      },
+    const token = createBillingCheckoutToken()
+    const intent = await billingCheckoutIntentRepository.create({
+      profileId: profile.id,
+      asaasCustomerId: customerId,
+      asaasAccount: "primary",
+      productSlug: "crm",
+      productId: null,
+      cycle: item.cycle,
+      externalReference: item.externalReference,
+      tokenHash: token.tokenHash,
+      tokenPreview: token.tokenPreview,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     })
-
-    const checkout = await client.request(client.endpoints.checkouts, {
-      method: "POST",
-      body: JSON.stringify({
-        externalReference: item.externalReference,
-        customer: customerId,
-        billingTypes: [item.billingType],
-        chargeTypes: ["DETACHED"],
-        items: [{ name: "Plano CRM", description: "Acesso à plataforma Corretor Studio", value: item.price, quantity: 1 }],
-        callback: {
-          successUrl: process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/checkout-return` : undefined,
-          cancelUrl: process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/checkout-return` : undefined,
-          expiredUrl: process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/checkout-return` : undefined,
-          autoRedirect: true,
-        },
-      }),
-    })
-    if (typeof checkout?.id !== "string" || checkout.id.length === 0) throw new Error(`Asaas não retornou checkout para ${profile.email}`)
-    await prisma.subscriptionChangeLog.create({
+    item.customerId = customerId
+    item.checkoutToken = token.token
+    item.checkoutUrl = getFullUrl(`/checkout/${token.token}`)
+    item.checkoutAction = "awaiting-method"
+    await prisma.auditLog.create({
       data: {
-        profileId: profile.id,
-        source: report.migrationId,
+        entityType: AuditEntityType.PROFILE,
+        entityId: profile.id,
+        action: AuditAction.UPDATE,
         actorProfileId: report.actorProfileId,
-        changeType: "checkout_created",
-        before: { asaasCustomerId: profile.asaasCustomerId },
-        after: { checkoutId: checkout.id, customerId, price: item.price, billingType: item.billingType, cycle: item.cycle },
-        metadata: { migrationId: report.migrationId, checkoutId: checkout.id, checkoutUrl: checkoutUrl(checkout.id), asaasMutation: true, subscriptionDeferredUntilPayment: true },
+        before: { billingCheckoutIntent: null },
+        after: { billingCheckoutIntentId: intent.id, externalReference: item.externalReference, status: "awaiting_method" },
+        metadata: { migrationId: report.migrationId, asaasMutation: true, paymentDeferredUntilMethodSelection: true },
       },
     })
   }
@@ -667,8 +646,17 @@ async function main(): Promise<void> {
     await applyRemoteProvisioning(report)
   }
   const output = { ...report, apply: args.apply, outcome: args.apply ? "applied" : "planned" }
-  if (args.output) writeFileSync(args.output, JSON.stringify(output, null, 2), "utf-8")
-  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
+  if (args.output) {
+    writeFileSync(args.output, JSON.stringify(output, null, 2), { encoding: "utf-8", mode: 0o600 })
+    chmodSync(args.output, 0o600)
+  }
+  process.stdout.write(`${JSON.stringify({
+    migrationId: output.migrationId,
+    outcome: output.outcome,
+    checksum: output.checksum,
+    transferCount: output.plan.transfers.length,
+    remoteProvisioningCount: output.remoteProvisioning.length,
+  })}\n`)
 }
 
 main().catch((error) => {

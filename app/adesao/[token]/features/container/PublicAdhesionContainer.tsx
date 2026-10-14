@@ -116,6 +116,10 @@ export function PublicAdhesionContainer() {
 
     return {
       presetBillingType: preset,
+      billingTypePrices: {
+        PIX: { monthly: details.pixMonthlyTotalAmount ?? 0, total: details.pixTotalAmount ?? 0 },
+        CREDIT_CARD: { monthly: details.creditCardMonthlyTotalAmount ?? 0, total: details.creditCardTotalAmount ?? 0 },
+      },
       title: details.cycleLabel,
       subtitle: `Acesso completo a plataforma por ${cycleMonths} mes${cycleMonths === 1 ? "" : "es"}`,
       includedTitle: `${1 + details.extraUsers} usuários inclusos`,
@@ -168,7 +172,10 @@ export function PublicAdhesionContainer() {
 
     return {
       status: normalizedStatus,
-      billingType: mappedDetails.presetBillingType,
+      billingType:
+        payment.billingType === "PIX" || payment.billingType === "CREDIT_CARD"
+          ? payment.billingType
+          : mappedDetails.presetBillingType,
       amountLabel: "Valor",
       amountValue: formatCurrency(payment.amount ?? 0),
       invoiceUrl: payment.invoiceUrl ?? null,
@@ -223,15 +230,19 @@ export function PublicAdhesionContainer() {
           complement: input.complement ?? null,
           city: input.city.trim(),
           state: input.state.trim(),
-          billingType: mappedDetails.presetBillingType,
-          installments: mappedDetails.presetBillingType === "CREDIT_CARD" ? input.installments : 1,
-          creditCard: {
-            holderName: input.creditCard.holderName.trim(),
-            number: input.creditCard.number,
-            expiryMonth: input.creditCard.expiryMonth,
-            expiryYear: input.creditCard.expiryYear,
-            ccv: input.creditCard.ccv,
-          },
+          billingType: input.billingType,
+          installments: input.billingType === "CREDIT_CARD" ? input.installments : 1,
+          ...(input.billingType === "CREDIT_CARD"
+            ? {
+                creditCard: {
+                  holderName: input.creditCard.holderName.trim(),
+                  number: input.creditCard.number,
+                  expiryMonth: input.creditCard.expiryMonth,
+                  expiryYear: input.creditCard.expiryYear,
+                  ccv: input.creditCard.ccv,
+                },
+              }
+            : {}),
         }
         await submitCheckout(payload)
       }}

@@ -98,6 +98,10 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
 
     return {
       presetBillingType: preset,
+      billingTypePrices: {
+        PIX: { monthly: data.pricing.monthlyPrice ?? 0, total: totalCharge },
+        CREDIT_CARD: { monthly: data.pricing.monthlyPrice ?? 0, total: totalCharge },
+      },
       title,
       subtitle,
       includedTitle: data.addonLabel,
@@ -195,7 +199,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       onSubmit={async (input) => {
         if (!mappedDetails) return
         const payload: AddOnCheckoutSubmitInput = {
-          billingType: mappedDetails.presetBillingType,
+          billingType: input.billingType,
           fullName: input.fullName.trim(),
           email: input.email.trim(),
           phone: input.phone,
@@ -207,7 +211,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
           complement: input.complement ?? "",
           city: input.city.trim(),
           state: input.state.trim(),
-          installments: mappedDetails.presetBillingType === "CREDIT_CARD" ? input.installments : 1,
+          installments: input.billingType === "CREDIT_CARD" ? input.installments : 1,
           cardHolderName: input.creditCard.holderName.trim(),
           cardNumber: input.creditCard.number,
           cardExpiryMonth: input.creditCard.expiryMonth,

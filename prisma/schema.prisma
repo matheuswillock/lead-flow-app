@@ -1138,6 +1138,7 @@ model Profile {
   subscription                  ProfileSubscription?
   subscriptionChangeLogs        SubscriptionChangeLog[] @relation("SubscriptionChangeLogProfile")
   subscriptionChangeLogsAsActor SubscriptionChangeLog[] @relation("SubscriptionChangeLogActor")
+  billingCheckoutIntents        BillingCheckoutIntent[]
 
   // Backoffice: alteração de assinatura (E6/G1 de [[50 — Backoffice de Cobrança — Backend]])
   subscriptionChangeOrders                BackofficeSubscriptionChangeOrder[] @relation("BackofficeSubscriptionChangeOrderMaster")
@@ -1713,6 +1714,9 @@ model BackofficeAdhesion {
   pixQrCode                         String?                        @map("pixQrCode") @db.Text
   pixPayload                        String?                        @map("pixPayload") @db.Text
   paidAt                            DateTime?                      @map("paidAt") @db.Timestamptz(6)
+  quoteSnapshot                     Json?                          @map("quote_snapshot")
+  quoteHash                         String?                        @map("quote_hash") @db.Text
+  quoteCreatedAt                    DateTime?                      @map("quote_created_at") @db.Timestamptz(6)
   overdueAt                         DateTime?                      @map("overdueAt") @db.Timestamptz(6)
   canceledAt                        DateTime?                      @map("canceledAt") @db.Timestamptz(6)
   createdProfileId                  String?                        @map("createdProfileId") @db.Uuid
@@ -4275,6 +4279,37 @@ model SubscriptionChangeLog {
   @@index([createdAt], map: "subscription_change_logs_created_at_idx")
   @@index([eventType], map: "subscription_change_logs_event_type_idx")
   @@map("corretor_studio_subscription_change_logs")
+}
+
+model BillingCheckoutIntent {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId        String      @db.Uuid
+  asaasCustomerId  String      @db.Text
+  asaasAccount     AsaasAccount @default(primary)
+  productSlug      String      @db.Text
+  productId        String?     @db.Uuid
+  cycle            String      @db.Text
+  billingType      String?     @db.Text
+  amount           Decimal?    @db.Decimal(12, 2)
+  quoteSnapshot    Json?
+  quoteHash        String?     @db.Text
+  externalReference String     @unique @db.Text
+  tokenHash        String      @unique @db.Text
+  tokenPreview     String      @db.Text
+  checkoutId       String?     @db.Text
+  checkoutUrl      String?     @db.Text
+  status           String      @default("awaiting_method") @db.Text
+  expiresAt        DateTime    @db.Timestamptz(6)
+  paidAt           DateTime?   @db.Timestamptz(6)
+  subscriptionId   String?     @db.Text
+  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, status], map: "billing_checkout_intents_profile_status_idx")
+  @@index([checkoutId], map: "billing_checkout_intents_checkout_id_idx")
+  @@map("billing_checkout_intents")
 }
 
 // Snapshot append-only do estado de assinatura — 20 — Assinaturas — Backend

@@ -1957,6 +1957,9 @@ completed completed
     String pixQrCode "❓"
     String pixPayload "❓"
     DateTime paidAt "❓"
+    Json quote_snapshot "❓"
+    String quote_hash "❓"
+    DateTime quote_created_at "❓"
     DateTime overdueAt "❓"
     DateTime canceledAt "❓"
     String createdProfileId "❓"
@@ -3313,6 +3316,30 @@ completed completed
     DateTime createdAt 
     }
   
+
+  "billing_checkout_intents" {
+    String id "🗝️"
+    String asaasCustomerId
+    AsaasAccount asaasAccount
+    String productSlug
+    String productId "❓"
+    String cycle
+    String billingType "❓"
+    Decimal amount "❓"
+    Json quoteSnapshot "❓"
+    String quoteHash "❓"
+    String externalReference
+    String tokenHash
+    String tokenPreview
+    String checkoutId "❓"
+    String checkoutUrl "❓"
+    String status
+    DateTime expiresAt
+    DateTime paidAt "❓"
+    String subscriptionId "❓"
+    DateTime createdAt
+    DateTime updatedAt
+    }
 
   "corretor_studio_subscription_state_snapshots" {
     String id "🗝️"
@@ -4918,6 +4945,8 @@ completed completed
     "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
+    "billing_checkout_intents" |o--|| "AsaasAccount" : "enum:asaasAccount"
+    "billing_checkout_intents" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_asaas_account_migrations" |o--|| "AsaasAccountMigrationStatus" : "enum:status"
     "corretor_studio_asaas_account_migrations" |o--|o "AsaasAccountMigrationStatus" : "enum:resume_status"
     "corretor_studio_asaas_migration_execution_manifests" |o--|| corretor_studio_asaas_account_migrations : "migration"

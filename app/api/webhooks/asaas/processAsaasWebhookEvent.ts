@@ -418,22 +418,30 @@ export async function processAsaasWebhookEvent(
     }
   }
 
-  if (isPaid && body?.payment?.subscription) {
+  const checkoutIntentPayment =
+    typeof body?.payment?.externalReference === "string" &&
+    body.payment.externalReference.startsWith("billing-intent:");
+
+  const subscriptionPayment = body?.payment;
+  if (isPaid && subscriptionPayment && (subscriptionPayment.subscription || checkoutIntentPayment)) {
     try {
       const { checkoutAsaasUseCase } = await import(
         "@/app/api/useCases/subscriptions/CheckoutAsaasUseCase"
       );
-      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id!, account);
+      const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(subscriptionPayment.id!, account);
 
       if (!activationResult.isValid) {
         console.error("[AsaasWebhookRoute][process] subscription activation failed", {
           eventId,
-          subscriptionId: body.payment.subscription,
+          subscriptionId: subscriptionPayment.subscription ?? null,
+          externalReference: subscriptionPayment.externalReference ?? null,
         });
+        throw new Error(activationResult.errorMessages?.[0] ?? "Falha ao ativar assinatura do checkout")
       }
     } catch (error) {
       rethrowIfPrerenderInterrupted(error);
       console.error("[AsaasWebhookRoute][process] subscription activation error", { eventId, error });
+      throw error;
     }
   }
 

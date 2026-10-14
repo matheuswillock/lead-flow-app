@@ -21,6 +21,7 @@ function onlyDigits(value: string, maxLength: number): string {
 function initialPaymentInput(prefill: PublicCheckoutPayerPrefill): PublicCheckoutPaymentInput {
   return {
     ...prefill,
+    billingType: "PIX",
     installments: 1,
     creditCard: {
       holderName: "",
@@ -89,6 +90,7 @@ export function PublicCheckoutPaymentStep({
     try {
       await onSubmit({
         ...form,
+        billingType,
         phone: onlyDigits(form.phone, 11),
         cpfCnpj: onlyDigits(form.cpfCnpj, 14),
         postalCode: onlyDigits(form.postalCode, 8),
@@ -167,7 +169,7 @@ export function PublicCheckoutPaymentStep({
 
   const normalizedInvoiceItems = details.invoiceItems.map((item) => {
     const unit = formatCurrency(item.unitAmountMonthly)
-    const total = formatCurrency(item.totalAmountMonthly)
+      const total = formatCurrency(item.totalAmountMonthly)
     return {
       key: `${item.title}:${item.description}`,
       title: `${item.quantity}x ${item.title}`,
@@ -197,11 +199,11 @@ export function PublicCheckoutPaymentStep({
 
       <div className="flex items-center justify-between gap-3 text-sm">
         <div className="text-muted-foreground">Total mensal</div>
-        <div className="font-semibold text-foreground">{formatCurrency(details.invoiceSummary.monthlyTotal)}</div>
+        <div className="font-semibold text-foreground">{formatCurrency(details.billingTypePrices[billingType].monthly)}</div>
       </div>
       <div className="flex items-center justify-between gap-3 text-sm">
         <div className="text-muted-foreground">Total</div>
-        <div className="font-semibold text-foreground">{formatCurrency(details.invoiceSummary.totalDueNow)}</div>
+        <div className="font-semibold text-foreground">{formatCurrency(details.billingTypePrices[billingType].total)}</div>
       </div>
 
       {payment?.pix ? (

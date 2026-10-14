@@ -33,6 +33,12 @@ import type {
   BillingPriceMethod,
   IBillingPriceResolver,
 } from "@/app/api/shared/billing/billingPriceTypes"
+import {
+  billingCheckoutIntentRepository as defaultBillingCheckoutIntentRepository,
+} from "@/app/api/infra/data/repositories/billingCheckoutIntent/BillingCheckoutIntentRepository"
+import type { IBillingCheckoutIntentRepository } from "@/app/api/infra/data/repositories/billingCheckoutIntent/IBillingCheckoutIntentRepository"
+import { BillingCheckoutIntentService } from "@/app/api/services/billingCheckoutIntent/BillingCheckoutIntentService"
+import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
 
 // Mesmo TTL de AddOnCheckoutUseCase.ts (T-40.x) — checkout hospedado do
 // Asaas expira depois disso.
@@ -108,6 +114,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
     private readonly pendingOperatorRepository: IPendingOperatorRepository = defaultPendingOperatorRepository,
     private readonly asaasCustomerGateway: IAsaasCustomerGateway = defaultAsaasCustomerGateway,
     private readonly billingPriceResolver: IBillingPriceResolver = defaultBillingPriceResolver,
+    private readonly billingCheckoutIntentRepository: IBillingCheckoutIntentRepository = defaultBillingCheckoutIntentRepository,
   ) {}
 
   /**
@@ -1044,13 +1051,62 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         `${asaasClient.endpoints.payments}/${checkoutId}`,
         { method: 'GET' }
       );
-      if (payment.status && !['RECEIVED', 'CONFIRMED', 'PAID'].includes(payment.status)) {
+      if (payment.status && !['RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED', 'APPROVED', 'PAID'].includes(payment.status)) {
         return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
       }
 
-      const profile = payment.subscription
-        ? await this.profileRepository.findByAsaasSubscriptionIdAndAccount(payment.subscription, account)
-        : await this.profileRepository.findByAsaasCustomerIdAndAccount(payment.customer, account);
+      const externalReference = typeof payment.externalReference === "string" ? payment.externalReference : null
+      const isBillingIntentPayment = BillingCheckoutIntentService.isIntentExternalReference(externalReference)
+      const intent = isBillingIntentPayment && externalReference
+        ? await this.billingCheckoutIntentRepository.findByExternalReference(externalReference, account)
+        : null
+
+      if (isBillingIntentPayment && !intent) {
+        return new Output(false, [], ["Intenção de checkout não encontrada"], null)
+      }
+      if (!payment.subscription && !intent) {
+        return new Output(false, [], ["Pagamento detached sem intenção autorizada"], null)
+      }
+      if (intent && intent.status === "subscription_created" && intent.subscriptionId) {
+        return new Output(true, ["Pagamento já processado"], [], { subscriptionId: intent.subscriptionId })
+      }
+      if (intent && intent.status === "subscription_creating") {
+        return new Output(true, ["Pagamento já está em processamento"], [], null)
+      }
+      if (intent) {
+        const quoteSnapshot =
+          intent.quoteSnapshot && typeof intent.quoteSnapshot === "object" && !Array.isArray(intent.quoteSnapshot)
+            ? intent.quoteSnapshot as Record<string, unknown>
+            : null
+        if (!quoteSnapshot || !intent.quoteHash || hashBillingQuote(quoteSnapshot) !== intent.quoteHash) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "quote_integrity_invalid")
+          return new Output(false, [], ["Integridade do quote do checkout inválida"], null)
+        }
+        if (payment.customer !== intent.asaasCustomerId) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "customer_divergent")
+          return new Output(false, [], ["Pagamento não corresponde ao customer autorizado"], null)
+        }
+        if (intent.expiresAt.getTime() <= Date.now()) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "quote_expired")
+          return new Output(false, [], ["Quote do checkout expirado"], null)
+        }
+        const expectedAmount = intent.amount == null ? null : Number(intent.amount.toString())
+        const expectedBillingType = intent.billingType
+        if (
+          expectedAmount == null ||
+          Math.abs(Number(payment.value) - expectedAmount) > 0.005 ||
+          payment.billingType !== expectedBillingType
+        ) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "payment_quote_divergent")
+          return new Output(false, [], ["Pagamento divergente do quote autorizado"], null)
+        }
+      }
+
+      const profile = intent
+        ? await this.profileRepository.findById(intent.profileId)
+        : payment.subscription
+          ? await this.profileRepository.findByAsaasSubscriptionIdAndAccount(payment.subscription, account)
+          : await this.profileRepository.findByAsaasCustomerIdAndAccount(payment.customer, account);
 
       if (!profile) {
         return new Output(
@@ -1061,9 +1117,31 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         );
       }
 
+      if (intent) {
+        const claimed = await this.billingCheckoutIntentRepository.claimSubscriptionCreation(intent.id)
+        if (!claimed) {
+          const current = await this.billingCheckoutIntentRepository.findByExternalReference(intent.externalReference, account)
+          if (current?.status === "subscription_created" && current.subscriptionId) {
+            return new Output(true, ["Pagamento já processado"], [], { subscriptionId: current.subscriptionId })
+          }
+          return new Output(true, ["Pagamento já está em processamento"], [], null)
+        }
+      }
+
       let subscriptionId = payment.subscription as string | undefined;
       if (!subscriptionId) {
-        subscriptionId = await this.createSubscriptionAfterDetachedCheckout(payment, profile, account);
+        subscriptionId = await this.createSubscriptionAfterDetachedCheckout(
+          payment,
+          profile,
+          account,
+          intent
+            ? {
+                amount: Number(intent.amount),
+                billingType: intent.billingType ?? "",
+                externalReference: `${intent.externalReference}:subscription`,
+              }
+            : undefined,
+        );
         await this.profileRepository.updateSubscriptionAfterCheckout({
           profileId: profile.id,
           subscriptionId,
@@ -1076,6 +1154,8 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // Atualizar status da assinatura para ativa
       await this.profileRepository.activateSubscription(profile.id);
+
+      if (intent) await this.billingCheckoutIntentRepository.markSubscriptionCreated(intent.id, subscriptionId)
 
       invalidateAccountAccessStatusCache({ accountMasterId: profile.id });
 
@@ -1118,12 +1198,13 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
   }
 
   private async createSubscriptionAfterDetachedCheckout(
-    payment: { id: string; customer: string; value?: number; billingType?: string },
+    payment: { id: string; customer: string; value?: number; billingType?: string; externalReference?: string },
     profile: { id: string; timezone?: string | null },
     account: AsaasAccountId,
+    quote?: { amount: number; billingType: string; externalReference: string },
   ): Promise<string> {
     const method: BillingPriceMethod = payment.billingType === "PIX" ? "PIX" : "CREDIT_CARD";
-    const expectedValue = await this.billingPriceResolver.resolvePrice({
+    const expectedValue = quote?.amount ?? await this.billingPriceResolver.resolvePrice({
       featureSlug: "crm",
       cycle: "monthly",
       method,
@@ -1132,7 +1213,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       throw new Error("Pagamento confirmado com preço divergente do catálogo");
     }
 
-    const externalReference = `checkout:${payment.id}:crm-subscription`;
+    const externalReference = quote?.externalReference ?? `checkout:${payment.id}:crm-subscription`;
     const client = createAsaasClient(account);
     const existingResponse = await client.request(
       `${client.endpoints.subscriptions}?externalReference=${encodeURIComponent(externalReference)}`,
