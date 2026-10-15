@@ -13,7 +13,6 @@ import {
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
-import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 import { resolveTeamAccountAccessDecisions } from "./resolveTeamAccountAccessDecisions";
 import { resolveActiveTeamId } from "@/lib/account/teamAccessDecision";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
