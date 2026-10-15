@@ -55,7 +55,7 @@ env:
 jobs:
   validate-branch:
     name: Validate branch prefix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
