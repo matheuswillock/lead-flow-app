@@ -6,7 +6,7 @@ CREATE TABLE "google_connection_events" (
   "profileId" UUID, "supabaseUserId" UUID, "googleEmail" TEXT, "errorCode" TEXT, "errorCategory" TEXT,
   "requestId" TEXT, "dedupeKey" TEXT UNIQUE, "metadata" JSONB,
   CONSTRAINT "google_connection_events_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "google_connection_events_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "Profile"("id") ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT "google_connection_events_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "corretor_studio_profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 CREATE INDEX "google_connection_events_profileId_createdAt_idx" ON "google_connection_events" ("profileId", "createdAt" DESC);
 CREATE INDEX "google_connection_events_supabaseUserId_createdAt_idx" ON "google_connection_events" ("supabaseUserId", "createdAt" DESC);
