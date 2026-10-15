@@ -37,6 +37,11 @@ export function parseSupabaseMigrationList(input: string): MigrationListVerdict 
   let hasPending = false
 
   for (const line of input.split(/\r?\n/)) {
+    // The CLI reports non-SQL fixtures (for example `*.test.ts`) with a
+    // timestamp in a separate informational line. It is not a migration row
+    // and must not be classified as a local migration pending remotely.
+    if (/^\s*Skipping migration\s+/i.test(line)) continue
+
     // Só linhas de dado: o cabeçalho e o separador não têm timestamp.
     if (!/\d{14}/.test(line)) continue
 
