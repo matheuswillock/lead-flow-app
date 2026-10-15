@@ -66,7 +66,11 @@ jobs:
           BRANCH_PREFIXES: ${{ inputs.branch-prefixes }}
         run: |
           set -euo pipefail
-          ref="${GITHUB_REF#refs/heads/}"
+          ref="${GITHUB_REF_NAME:-${GITHUB_HEAD_REF:-}}"
+          if [[ -z "$ref" ]]; then
+            full_ref="${GITHUB_REF:-}"
+            ref="${full_ref#refs/heads/}"
+          fi
           IFS=',' read -ra prefixes <<< "$BRANCH_PREFIXES"
           for raw in "${prefixes[@]}"; do
             prefix="${raw// /}"
