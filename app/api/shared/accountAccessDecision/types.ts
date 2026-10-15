@@ -20,6 +20,7 @@ export type AccountAccessRecord = {
   hasPermanentSubscription: boolean
   memberProActive?: boolean
   memberProBlocked?: boolean
+  temporaryAccessUntil?: Date | null
   isBanned: boolean
 }
 

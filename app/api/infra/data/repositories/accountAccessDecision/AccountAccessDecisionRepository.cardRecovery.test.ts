@@ -22,12 +22,14 @@ const migrationFindFirst = mock(async (): Promise<{ quoteSnapshot: { recurringAm
 const accountMasterBanned = mock(async () => false)
 const teamFindFirst = mock(async (): Promise<any> => null)
 const teamMemberFindFirst = mock(async (): Promise<any> => null)
+const billingAccessGraceFindFirst = mock(async (): Promise<any> => null)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
     profile: { findUnique: profileFindUnique },
     team: { findFirst: teamFindFirst },
     teamMember: { findFirst: teamMemberFindFirst },
+    billingAccessGrace: { findFirst: billingAccessGraceFindFirst },
     asaasAccountMigration: { findFirst: migrationFindFirst },
   },
 }))
@@ -44,10 +46,12 @@ describe("AccountAccessDecisionRepository bloqueio sem recuperação por cartão
     accountMasterBanned.mockClear()
     teamFindFirst.mockReset()
     teamMemberFindFirst.mockReset()
+    billingAccessGraceFindFirst.mockReset()
     migrationFindFirst.mockResolvedValue({ quoteSnapshot: { recurringAmount: 59.9 } })
     accountMasterBanned.mockResolvedValue(false)
     teamFindFirst.mockResolvedValue(null)
     teamMemberFindFirst.mockResolvedValue(null)
+    billingAccessGraceFindFirst.mockResolvedValue(null)
   })
 
   it("não consulta migrações de cartão ao resolver uma conta inadimplente", async () => {
@@ -117,5 +121,37 @@ describe("AccountAccessDecisionRepository bloqueio sem recuperação por cartão
 
     expect(record).toBeNull()
     expect(accountMasterBanned).not.toHaveBeenCalled()
+  })
+
+  it("carrega a exceção temporária somente para o time resolvido", async () => {
+    profileFindUnique.mockResolvedValueOnce({
+      id: "owner-1",
+      managerId: null,
+      activeTeamId: "team-1",
+    })
+    profileFindUnique.mockResolvedValueOnce({
+      id: "owner-1",
+      hasPermanentSubscription: false,
+      subscriptionNextDueDate: null,
+      subscriptionStatus: "past_due",
+      subscription: {
+        hasPermanentSubscription: false,
+        subscriptionNextDueDate: null,
+        subscriptionStatus: "past_due",
+      },
+      userTypeAssignment: null,
+    })
+    teamFindFirst.mockResolvedValue({ masterId: "owner-1", master: { sponsorMasterId: null } })
+    teamMemberFindFirst.mockResolvedValue(null)
+    billingAccessGraceFindFirst.mockResolvedValue({ expiresAt: new Date("2026-10-17T02:59:59.999Z") })
+
+    const record = await new AccountAccessDecisionRepository().resolveAccount({ profileId: "owner-1", teamId: "team-1" })
+
+    expect(record?.temporaryAccessUntil).toEqual(new Date("2026-10-17T02:59:59.999Z"))
+    expect(billingAccessGraceFindFirst).toHaveBeenCalledWith({
+      where: { teamId: "team-1", isActive: true },
+      orderBy: { expiresAt: "desc" },
+      select: { expiresAt: true },
+    })
   })
 })

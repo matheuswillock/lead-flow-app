@@ -44,6 +44,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     if (!billingOwnerId) {
       return null
     }
+    const effectiveTeamId = input.teamId ?? profile.activeTeamId
     const [billingOwner, isBanned] = await Promise.all([
       prisma.profile.findUnique({
         where: { id: billingOwnerId },
@@ -83,6 +84,14 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         }
       : null
 
+    const temporaryAccessGrace = effectiveTeamId
+      ? await prisma.billingAccessGrace.findFirst({
+          where: { teamId: effectiveTeamId, isActive: true },
+          orderBy: { expiresAt: "desc" },
+          select: { expiresAt: true },
+        })
+      : null
+
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
@@ -94,6 +103,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         : billingOwner.hasPermanentSubscription,
       memberProActive: isActiveMemberProAssignment(memberProAssignment),
       memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
+      temporaryAccessUntil: temporaryAccessGrace?.expiresAt ?? null,
       isBanned,
     }
   }

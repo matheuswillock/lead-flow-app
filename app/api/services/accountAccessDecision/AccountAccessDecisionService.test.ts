@@ -103,4 +103,38 @@ describe("AccountAccessDecisionService", () => {
 
     expect(decision).toEqual({ state: "restricted", reason: "past_due" })
   })
+
+  it("libera uma exceção de cobrança válida somente até sua expiração", () => {
+    const service = new AccountAccessDecisionService()
+    const until = new Date("2026-10-17T02:59:59.999Z")
+
+    expect(service.decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      hasPermanentSubscription: false,
+      temporaryAccessUntil: until,
+      isBanned: false,
+    }, new Date("2026-10-16T12:00:00.000Z"))).toEqual({ state: "allowed" })
+
+    expect(service.decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      hasPermanentSubscription: false,
+      temporaryAccessUntil: until,
+      isBanned: false,
+    }, new Date("2026-10-17T03:00:00.000Z"))).toEqual({
+      state: "restricted",
+      reason: "past_due",
+    })
+  })
+
+  it("mantém banimento acima da exceção temporária", () => {
+    expect(new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      hasPermanentSubscription: false,
+      temporaryAccessUntil: new Date("2026-10-17T02:59:59.999Z"),
+      isBanned: true,
+    })).toEqual({ state: "restricted", reason: "banned" })
+  })
 })
