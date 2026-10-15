@@ -79,6 +79,18 @@ describe("parseSupabaseMigrationList", () => {
     expect(parseSupabaseMigrationList("")).toEqual({ ok: true, hasPending: false })
   })
 
+  it("ignora avisos do CLI sobre arquivos que não são migrations SQL", () => {
+    const cliOutput = [
+      "Skipping migration 20261015144450_billing-access-graces-rls.test.ts... (file name must match pattern \"<timestamp>_name.sql\")",
+      tabela(aplicada("20261015144450")),
+    ].join("\n")
+
+    expect(parseSupabaseMigrationList(cliOutput)).toEqual({
+      ok: true,
+      hasPending: false,
+    })
+  })
+
   it("aceita a variante com barra vertical unicode", () => {
     const verdict = parseSupabaseMigrationList(
       "   `20260824010431` │ ` `              │ `2026-08-24 01:04:31` ",

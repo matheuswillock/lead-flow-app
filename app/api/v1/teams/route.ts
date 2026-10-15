@@ -13,7 +13,7 @@ import {
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
-import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
+import { resolveTeamAccountAccessDecisions } from "./resolveTeamAccountAccessDecisions";
 import { resolveActiveTeamId } from "@/lib/account/teamAccessDecision";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
@@ -244,32 +244,27 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    const teamIdByMasterId = new Map<string, string>();
+    const teamIds = new Set<string>();
     for (const membership of memberships) {
-      teamIdByMasterId.set(membership.team.masterId, membership.team.id);
+      teamIds.add(membership.team.id);
     }
     for (const team of sponsoredTeams) {
-      teamIdByMasterId.set(team.masterId, team.id);
+      teamIds.add(team.id);
     }
 
-    const accountDecisionByMasterId = new Map<string, AccountAccessDecision>();
-    await Promise.all(
-      [...teamIdByMasterId.entries()].map(async ([masterId, teamId]) => {
-        const output = await accountAccessDecisionUseCase.execute({
-          profileId: profile.id,
-          teamId,
-        });
-        const rawDecision = output.result as AccountAccessDecision | null;
-        const decision = output.isValid && rawDecision?.state
-          ? rawDecision
-          : ({ state: "restricted", reason: "subscription_unavailable" } satisfies AccountAccessDecision);
-        accountDecisionByMasterId.set(masterId, decision);
-      })
-    );
+    const accountDecisionByTeamId = await resolveTeamAccountAccessDecisions({
+      profileId: profile.id,
+      teamIds,
+      resolveDecision: (input) => accountAccessDecisionUseCase.execute(input),
+    });
 
+    const accountMasterIds = new Set<string>([
+      ...memberships.map((membership) => membership.team.masterId),
+      ...sponsoredTeams.map((team) => team.masterId),
+    ]);
     const accountTeamsCountByMasterId = new Map<string, number>();
     await Promise.all(
-      [...teamIdByMasterId.keys()].map(async (masterId) => {
+      [...accountMasterIds].map(async (masterId) => {
         const count = await prisma.team.count({ where: { masterId } });
         accountTeamsCountByMasterId.set(masterId, count);
       })
@@ -277,7 +272,7 @@ export async function GET(request: NextRequest) {
 
     const activeTeams = memberships.map((membership) => {
       const accountMasterId = membership.team.masterId;
-      const accountAccessDecision = accountDecisionByMasterId.get(accountMasterId) ?? {
+      const accountAccessDecision = accountDecisionByTeamId.get(membership.team.id) ?? {
         state: "restricted" as const,
         reason: "subscription_unavailable" as const,
       };
@@ -322,7 +317,7 @@ export async function GET(request: NextRequest) {
       .filter((team) => !activeTeamIds.has(team.id))
       .map((team) => {
         const accountMasterId = team.masterId;
-        const accountAccessDecision = accountDecisionByMasterId.get(accountMasterId) ?? {
+        const accountAccessDecision = accountDecisionByTeamId.get(team.id) ?? {
           state: "restricted" as const,
           reason: "subscription_unavailable" as const,
         };

@@ -1403,6 +1403,27 @@ enum BackofficeOperationalCapability {
   MULTISKILL_TRANSFER_ORIGIN
 }
 
+/// Team-scoped access used for an explicitly approved billing exception. A null
+/// expiration is an intentional indefinite grant, revocable by an operator.
+model BillingAccessGrace {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  reason             String    @db.Text
+  expiresAt          DateTime? @db.Timestamptz(6)
+  isActive           Boolean   @default(true)
+  grantedByProfileId String?   @db.Uuid
+  grantedAt          DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt         DateTime? @db.Timestamptz(6)
+  resolvedReason     String?   @db.Text
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isActive, expiresAt], map: "billing_access_graces_team_active_expires_idx")
+  @@map("billing_access_graces")
+}
+
 model BackofficeOperationalAccessGrant {
   id                 String                          @id @default(uuid()) @db.Uuid
   capability         BackofficeOperationalCapability
@@ -2672,6 +2693,7 @@ model Team {
 
   backofficeFeatureGrantTeams BackofficeFeatureGrantTeam[]
   operationalAccessGrants     BackofficeOperationalAccessGrant[]
+  billingAccessGraces         BillingAccessGrace[]
   teamEmailLimitGrant         BackofficeTeamEmailLimitGrant?
   emailCampaignLimitGrant     TeamEmailCampaignLimitGrant?
   meetingFollowUpDigestLogs   MeetingFollowUpDigestLog[]

@@ -802,7 +802,7 @@ jobs:
           echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Migration check: ${{ needs['migration-check'].result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Pending migrations: ${{ needs['migration-check'].outputs.has_pending }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps['release-pr'].outputs['skip-reason'] }}" ]; then
-            echo "- Blocked: ${{ steps['release-pr'].outputs['skip-reason'] }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n '${{ steps['release-pr'].outputs['skip-reason'] }}' ]; then
+            echo '- Blocked: ${{ steps['release-pr'].outputs['skip-reason'] }}' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "- PR: ${{ steps['release-pr'].outputs['pr-url'] || 'not created' }}" >> $GITHUB_STEP_SUMMARY
