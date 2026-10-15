@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { isManagerLikeRole } from "@/lib/roles"
+import { useOptionalTeamContext } from "@/app/context/TeamContext"
 
 interface SubscriptionGuardProps {
   children: React.ReactNode
@@ -17,13 +18,16 @@ interface SubscriptionGuardProps {
 export function SubscriptionGuard({ children, hasActiveSubscription, isLoading, userRole }: SubscriptionGuardProps) {
   const params = useParams()
   const supabaseId = params.supabaseId as string
+  const teamContext = useOptionalTeamContext()
 
   // Enquanto carrega, não bloquear a UI para evitar falso negativo
   if (isLoading) {
     return <>{children}</>
   }
 
-  if (hasActiveSubscription) {
+  const hasTeamAccess = teamContext?.accountAccessDecision?.state === "allowed"
+
+  if (hasActiveSubscription || hasTeamAccess) {
     return <>{children}</>
   }
 
