@@ -8,8 +8,7 @@ import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/Goo
 import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
 import { shouldNotifyGoogleConnected as shouldNotifyGoogleConnectedDecision } from "@/lib/google/should-notify-google-connect";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-import { googleConnectionEventService } from "@/app/api/services/googleConnectionEvent/GoogleConnectionEventService";
-import { GoogleConnectionEventType, GoogleConnectionFlow } from "@prisma/client";
+import { googleConnectionEventService, GoogleConnectionEventType, GoogleConnectionFlow } from "@/app/api/useCases/googleConnectionEvent/GoogleConnectionEventUseCase";
 
 const LOG_PREFIX = "[GoogleConnect]";
 

@@ -7,8 +7,7 @@ import {
   backofficeAccountUseCase,
 } from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-import { googleConnectionEventService } from "@/app/api/services/googleConnectionEvent/GoogleConnectionEventService";
-import { GoogleConnectionEventType, GoogleConnectionFlow } from "@prisma/client";
+import { googleConnectionEventService, GoogleConnectionEventType, GoogleConnectionFlow } from "@/app/api/useCases/googleConnectionEvent/GoogleConnectionEventUseCase";
 
 const connectSchema = z.object({
   accessToken: z.string().min(1),
