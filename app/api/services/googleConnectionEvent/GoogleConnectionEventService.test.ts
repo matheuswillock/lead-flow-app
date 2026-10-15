@@ -6,7 +6,9 @@ describe("GoogleConnectionEventService", () => {
   test("persists a safe event and deduplicates by request and type", async () => {
     const entries: Array<Record<string, unknown>> = [];
     const service = new GoogleConnectionEventService({
-      create: async (input) => entries.push(input as unknown as Record<string, unknown>),
+      create: async (input) => {
+        entries.push(input as unknown as Record<string, unknown>);
+      },
     });
 
     await service.record({
