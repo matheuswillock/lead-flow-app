@@ -1,6 +1,6 @@
 import { GoogleConnectionEventType, GoogleConnectionFlow } from "@prisma/client";
-import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
-import { googleConnectionEventService } from "@/app/api/services/googleConnectionEvent/GoogleConnectionEventService";
+import { profileRepository as defaultProfileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleConnectionEventService as defaultGoogleConnectionEventService } from "@/app/api/services/googleConnectionEvent/GoogleConnectionEventService";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import type {
   GoogleConnectionEventRecordInput,
@@ -12,8 +12,8 @@ export { GoogleConnectionEventType, GoogleConnectionFlow };
 
 export class GoogleConnectionEventUseCase {
   constructor(
-    private readonly profileRepository: IProfileRepository = profileRepository,
-    private readonly eventService: IGoogleConnectionEventService = googleConnectionEventService,
+    private readonly profileRepository: IProfileRepository = defaultProfileRepository,
+    private readonly eventService: IGoogleConnectionEventService = defaultGoogleConnectionEventService,
   ) {}
 
   async record(input: GoogleConnectionEventRecordInput): Promise<Output> {
