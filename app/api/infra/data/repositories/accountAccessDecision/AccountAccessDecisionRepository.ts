@@ -4,6 +4,7 @@ import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
+import { isValidAnnualSubscription } from "@/app/api/shared/billing/annualSubscriptionRules"
 import type {
   AccountAccessRecord,
   IAccountAccessDecisionRepository,
@@ -44,6 +45,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     if (!billingOwnerId) {
       return null
     }
+    const effectiveTeamId = input.teamId ?? profile.activeTeamId
     const [billingOwner, isBanned] = await Promise.all([
       prisma.profile.findUnique({
         where: { id: billingOwnerId },
@@ -51,11 +53,17 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
           hasPermanentSubscription: true,
           subscriptionNextDueDate: true,
           subscriptionStatus: true,
+          subscriptionCycle: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
           subscription: {
             select: {
               hasPermanentSubscription: true,
               subscriptionNextDueDate: true,
               subscriptionStatus: true,
+              subscriptionCycle: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
             },
           },
           userTypeAssignment: {
@@ -75,12 +83,19 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     }
 
     const subscription = billingOwner.subscription
+    const annualSubscriptionActive = isValidAnnualSubscription(
+      subscription ?? billingOwner,
+    )
     const memberProAssignment = billingOwner.userTypeAssignment?.userType
       ? {
           slug: billingOwner.userTypeAssignment.userType.slug,
           accessStartsAt: billingOwner.userTypeAssignment.accessStartsAt,
           accessExpiresAt: billingOwner.userTypeAssignment.accessExpiresAt,
         }
+      : null
+
+    const temporaryAccessGrace = effectiveTeamId && !annualSubscriptionActive
+      ? await this.resolveActiveBillingGrace(effectiveTeamId)
       : null
 
     return {
@@ -92,10 +107,27 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,
+      annualSubscriptionActive,
       memberProActive: isActiveMemberProAssignment(memberProAssignment),
       memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
+      temporaryAccessGranted: Boolean(temporaryAccessGrace),
+      temporaryAccessUntil: temporaryAccessGrace?.expiresAt ?? null,
       isBanned,
     }
+  }
+
+  private async resolveActiveBillingGrace(teamId: string): Promise<{ expiresAt: Date | null } | null> {
+    const indefiniteGrace = await prisma.billingAccessGrace.findFirst({
+      where: { teamId, isActive: true, expiresAt: null },
+      select: { expiresAt: true },
+    })
+    if (indefiniteGrace) return indefiniteGrace
+
+    return prisma.billingAccessGrace.findFirst({
+      where: { teamId, isActive: true, expiresAt: { gt: new Date() } },
+      orderBy: { expiresAt: "desc" },
+      select: { expiresAt: true },
+    })
   }
 
   private async resolveBillingOwnerId(input: {

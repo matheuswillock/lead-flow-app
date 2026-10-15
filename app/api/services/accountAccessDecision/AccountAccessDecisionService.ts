@@ -22,7 +22,18 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       return { state: "allowed" }
     }
 
+    if (account.annualSubscriptionActive) {
+      return { state: "allowed" }
+    }
+
     if (account.memberProActive) {
+      return { state: "allowed" }
+    }
+
+    if (
+      account.temporaryAccessGranted &&
+      (!account.temporaryAccessUntil || account.temporaryAccessUntil.getTime() > now.getTime())
+    ) {
       return { state: "allowed" }
     }
 
