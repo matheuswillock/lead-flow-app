@@ -65,13 +65,17 @@ async function buildPlan(expiresAt: string): Promise<Plan> {
   if (!profile || profile.deletedAt || profile.id !== TARGET.profileId || profile.email !== TARGET.email || !profile.isMaster) throw new Error("Master da Pertto não corresponde ao censo aprovado")
   if (profile.subscriptionStatus !== "past_due") throw new Error("A exceção só pode ser aplicada enquanto o pagamento estiver past_due")
   if (await isAccountMasterBanned(TARGET.profileId)) throw new Error("Master da Pertto está banido; operação abortada")
-  if (activeGrace && activeGrace.expiresAt.toISOString() !== expiresAt) throw new Error("Já existe uma exceção ativa com prazo divergente")
+  if (activeGrace && (!activeGrace.expiresAt || activeGrace.expiresAt.toISOString() !== expiresAt)) {
+    throw new Error("Já existe uma exceção ativa com prazo divergente")
+  }
 
   const plan: Plan = {
     target: TARGET,
     expiresAt,
     action: activeGrace ? "already-granted" : "grant",
-    currentGrace: activeGrace ? { id: activeGrace.id, expiresAt: activeGrace.expiresAt.toISOString(), isActive: activeGrace.isActive } : null,
+    currentGrace: activeGrace
+      ? { id: activeGrace.id, expiresAt: activeGrace.expiresAt!.toISOString(), isActive: activeGrace.isActive }
+      : null,
     asaasMutation: false,
   }
   return plan
@@ -96,7 +100,9 @@ async function applyPlan(plan: Plan): Promise<void> {
     })
     if (activeBan) throw new Error("Master da Pertto foi banido durante a operação")
     if (activeGrace) {
-      if (activeGrace.expiresAt.toISOString() !== plan.expiresAt) throw new Error("Exceção existente diverge do dry-run")
+      if (!activeGrace.expiresAt || activeGrace.expiresAt.toISOString() !== plan.expiresAt) {
+        throw new Error("Exceção existente diverge do dry-run")
+      }
       return
     }
 

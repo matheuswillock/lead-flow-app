@@ -1403,13 +1403,13 @@ enum BackofficeOperationalCapability {
   MULTISKILL_TRANSFER_ORIGIN
 }
 
-/// Time-bounded, team-scoped access used for an explicitly approved billing
-/// grace period. It does not change subscription state or authorize another team.
+/// Team-scoped access used for an explicitly approved billing exception. A null
+/// expiration is an intentional indefinite grant, revocable by an operator.
 model BillingAccessGrace {
   id                 String    @id @default(uuid()) @db.Uuid
   teamId             String    @db.Uuid
   reason             String    @db.Text
-  expiresAt          DateTime  @db.Timestamptz(6)
+  expiresAt          DateTime? @db.Timestamptz(6)
   isActive           Boolean   @default(true)
   grantedByProfileId String?   @db.Uuid
   grantedAt          DateTime  @default(now()) @db.Timestamptz(6)

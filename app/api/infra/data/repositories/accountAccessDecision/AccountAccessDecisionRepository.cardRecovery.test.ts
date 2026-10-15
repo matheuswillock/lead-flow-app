@@ -22,7 +22,7 @@ const migrationFindFirst = mock(async (): Promise<{ quoteSnapshot: { recurringAm
 const accountMasterBanned = mock(async () => false)
 const teamFindFirst = mock(async (): Promise<any> => null)
 const teamMemberFindFirst = mock(async (): Promise<any> => null)
-const billingAccessGraceFindFirst = mock(async (): Promise<any> => null)
+const billingAccessGraceFindFirst = mock(async (_input?: any): Promise<any> => null)
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
@@ -143,13 +143,16 @@ describe("AccountAccessDecisionRepository bloqueio sem recuperação por cartão
     })
     teamFindFirst.mockResolvedValue({ masterId: "owner-1", master: { sponsorMasterId: null } })
     teamMemberFindFirst.mockResolvedValue(null)
-    billingAccessGraceFindFirst.mockResolvedValue({ expiresAt: new Date("2026-10-17T02:59:59.999Z") })
+    billingAccessGraceFindFirst.mockImplementation(async (input: any) =>
+      input?.where?.expiresAt === null ? null : { expiresAt: new Date("2026-10-17T02:59:59.999Z") },
+    )
 
     const record = await new AccountAccessDecisionRepository().resolveAccount({ profileId: "owner-1", teamId: "team-1" })
 
     expect(record?.temporaryAccessUntil).toEqual(new Date("2026-10-17T02:59:59.999Z"))
-    expect(billingAccessGraceFindFirst).toHaveBeenCalledWith({
-      where: { teamId: "team-1", isActive: true },
+    expect(record?.temporaryAccessGranted).toBe(true)
+    expect(billingAccessGraceFindFirst).toHaveBeenLastCalledWith({
+      where: { teamId: "team-1", isActive: true, expiresAt: { gt: expect.any(Date) } },
       orderBy: { expiresAt: "desc" },
       select: { expiresAt: true },
     })

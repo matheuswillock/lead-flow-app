@@ -85,11 +85,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       : null
 
     const temporaryAccessGrace = effectiveTeamId
-      ? await prisma.billingAccessGrace.findFirst({
-          where: { teamId: effectiveTeamId, isActive: true },
-          orderBy: { expiresAt: "desc" },
-          select: { expiresAt: true },
-        })
+      ? await this.resolveActiveBillingGrace(effectiveTeamId)
       : null
 
     return {
@@ -103,9 +99,24 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         : billingOwner.hasPermanentSubscription,
       memberProActive: isActiveMemberProAssignment(memberProAssignment),
       memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
+      temporaryAccessGranted: Boolean(temporaryAccessGrace),
       temporaryAccessUntil: temporaryAccessGrace?.expiresAt ?? null,
       isBanned,
     }
+  }
+
+  private async resolveActiveBillingGrace(teamId: string): Promise<{ expiresAt: Date | null } | null> {
+    const indefiniteGrace = await prisma.billingAccessGrace.findFirst({
+      where: { teamId, isActive: true, expiresAt: null },
+      select: { expiresAt: true },
+    })
+    if (indefiniteGrace) return indefiniteGrace
+
+    return prisma.billingAccessGrace.findFirst({
+      where: { teamId, isActive: true, expiresAt: { gt: new Date() } },
+      orderBy: { expiresAt: "desc" },
+      select: { expiresAt: true },
+    })
   }
 
   private async resolveBillingOwnerId(input: {

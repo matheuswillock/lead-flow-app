@@ -112,6 +112,7 @@ describe("AccountAccessDecisionService", () => {
       billingOwnerId: "owner-1",
       subscriptionStatus: "past_due",
       hasPermanentSubscription: false,
+      temporaryAccessGranted: true,
       temporaryAccessUntil: until,
       isBanned: false,
     }, new Date("2026-10-16T12:00:00.000Z"))).toEqual({ state: "allowed" })
@@ -120,6 +121,7 @@ describe("AccountAccessDecisionService", () => {
       billingOwnerId: "owner-1",
       subscriptionStatus: "past_due",
       hasPermanentSubscription: false,
+      temporaryAccessGranted: true,
       temporaryAccessUntil: until,
       isBanned: false,
     }, new Date("2026-10-17T03:00:00.000Z"))).toEqual({
@@ -133,8 +135,20 @@ describe("AccountAccessDecisionService", () => {
       billingOwnerId: "owner-1",
       subscriptionStatus: "past_due",
       hasPermanentSubscription: false,
+      temporaryAccessGranted: true,
       temporaryAccessUntil: new Date("2026-10-17T02:59:59.999Z"),
       isBanned: true,
     })).toEqual({ state: "restricted", reason: "banned" })
+  })
+
+  it("libera uma exceção operacional explicitamente indefinida", () => {
+    expect(new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      hasPermanentSubscription: false,
+      temporaryAccessGranted: true,
+      temporaryAccessUntil: null,
+      isBanned: false,
+    }, new Date("2099-12-31T23:59:59.000Z"))).toEqual({ state: "allowed" })
   })
 })

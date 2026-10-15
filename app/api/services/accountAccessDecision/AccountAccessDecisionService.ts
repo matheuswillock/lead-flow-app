@@ -26,7 +26,10 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       return { state: "allowed" }
     }
 
-    if (account.temporaryAccessUntil && account.temporaryAccessUntil.getTime() > now.getTime()) {
+    if (
+      account.temporaryAccessGranted &&
+      (!account.temporaryAccessUntil || account.temporaryAccessUntil.getTime() > now.getTime())
+    ) {
       return { state: "allowed" }
     }
 
