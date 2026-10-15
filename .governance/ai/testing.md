@@ -6,6 +6,7 @@ Leia este arquivo para criar testes, alterar UI ou preparar a validação final.
 
 - Testes críticos devem exercitar código real e provar que sabem falhar por controle negativo temporário.
 - Página, rota ou fluxo novo recebe spec antes da implementação; a spec começa vermelha, fica verde e então o código é refatorado.
+- Todo script criado para execução operacional deve ser testável: separe a entrada/CLI e os efeitos externos da lógica de negócio, injete dependências explícitas e cubra automaticamente os caminhos relevantes de sucesso e falha.
 - Specs de página ficam em `e2e/specs/<domínio>/<slug>.spec.ts` e chamam `runResponsiveChecks`; specs somente de API terminam em `-api.spec.ts`.
 - Não aumente allowlists. Ao corrigir uma exceção existente, remova sua entrada na mesma mudança.
 - Espere condições observáveis, nunca sleeps fixos.

@@ -2,7 +2,7 @@
 # Lead Flow — AI Implementation Governance
 
 **Version:** 3.0.0
-**Last Updated:** 2026-10-13
+**Last Updated:** 2026-10-15
 **Canonical Source:** `agents.md`
 **Adapters:** generated with `bun run governance:sync`
 
@@ -42,6 +42,7 @@ Detailed database and Git procedures are in `.governance/ai/database.md` and `.g
 - Frontend flow: `page -> context -> service` and `page -> container -> context`. Browser components do not call product APIs outside the feature service.
 - Prefer meaningful names, small single-purpose functions, lean interfaces and composition over growing conditionals.
 - Do not abstract a few similar lines; remove duplicated business knowledge, not every repeated token.
+- Every operational execution script MUST be testable: keep its business behavior in testable functions or modules, isolate the CLI/entrypoint and external side effects behind explicit dependencies, and add automated coverage for its relevant success and failure paths before considering it complete.
 - Before touching a file listed in a Clean Code/SOLID allowlist, include removal of that violation and allowlist entry in the same change. Raise a scope conflict before coding if that is impossible.
 
 ## Context routing

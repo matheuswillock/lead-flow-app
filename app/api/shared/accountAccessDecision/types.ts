@@ -6,7 +6,12 @@ export type AccountAccessRestrictionReason =
   | "subscription_unavailable"
 
 export type AccountAccessDecision =
-  | { state: "allowed" }
+  | {
+      state: "allowed"
+      /** Present only when access is granted by a temporary operational grace. */
+      temporaryAccessGranted?: true
+      temporaryAccessUntil?: string | null
+    }
   | {
       state: "restricted"
       reason: AccountAccessRestrictionReason

@@ -115,7 +115,11 @@ describe("AccountAccessDecisionService", () => {
       temporaryAccessGranted: true,
       temporaryAccessUntil: until,
       isBanned: false,
-    }, new Date("2026-10-16T12:00:00.000Z"))).toEqual({ state: "allowed" })
+    }, new Date("2026-10-16T12:00:00.000Z"))).toEqual({
+      state: "allowed",
+      temporaryAccessGranted: true,
+      temporaryAccessUntil: until.toISOString(),
+    })
 
     expect(service.decide({
       billingOwnerId: "owner-1",
@@ -173,6 +177,10 @@ describe("AccountAccessDecisionService", () => {
       temporaryAccessGranted: true,
       temporaryAccessUntil: null,
       isBanned: false,
-    }, new Date("2099-12-31T23:59:59.000Z"))).toEqual({ state: "allowed" })
+    }, new Date("2099-12-31T23:59:59.000Z"))).toEqual({
+      state: "allowed",
+      temporaryAccessGranted: true,
+      temporaryAccessUntil: null,
+    })
   })
 })
