@@ -8,6 +8,8 @@ import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/Goo
 import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
 import { shouldNotifyGoogleConnected as shouldNotifyGoogleConnectedDecision } from "@/lib/google/should-notify-google-connect";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { googleConnectionEventService } from "@/app/api/services/googleConnectionEvent/GoogleConnectionEventService";
+import { GoogleConnectionEventType, GoogleConnectionFlow } from "@prisma/client";
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -29,6 +31,7 @@ const logError = (message: string, context: Record<string, unknown>) => {
 
 export async function POST(request: NextRequest) {
   let supabaseId: string | null = null;
+  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
   let emailForLog: string | null = null;
   let tokenFlags = { hasAccessToken: false, hasRefreshToken: false };
 
@@ -75,6 +78,7 @@ export async function POST(request: NextRequest) {
     };
 
     if (!validation.success) {
+      await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.FAILED, flow: GoogleConnectionFlow.ACCOUNT, supabaseUserId: supabaseId, errorCategory: "validation", requestId });
       logError("Falha na validacao do payload.", {
         status: "error",
         step: "validation",
@@ -93,9 +97,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { accessToken, refreshToken, expiresAt, email, source = "login" } = validation.data;
+    await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.STARTED, flow: source === "account" ? GoogleConnectionFlow.ACCOUNT : GoogleConnectionFlow.LOGIN, supabaseUserId: supabaseId, requestId });
 
     const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
     if (!currentProfile) {
+      await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.FAILED, flow: source === "account" ? GoogleConnectionFlow.ACCOUNT : GoogleConnectionFlow.LOGIN, supabaseUserId: supabaseId, errorCategory: "profile_not_found", requestId });
       logError("Perfil nao encontrado para o usuario autenticado.", {
         status: "error",
         step: "profile_lookup",
@@ -123,6 +129,7 @@ export async function POST(request: NextRequest) {
         existingConnection?.ownerProfileId &&
         existingConnection.ownerProfileId !== currentProfile.id
       ) {
+        await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.FAILED, flow: source === "account" ? GoogleConnectionFlow.ACCOUNT : GoogleConnectionFlow.LOGIN, profileId: currentProfile.id, supabaseUserId: supabaseId, googleEmail: normalizedNextGoogleEmail, errorCategory: "email_conflict", requestId });
         logError("Tentativa de vincular Google email ja associado a outro perfil.", {
           status: "error",
           step: "google_email_conflict",
@@ -157,6 +164,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!profile) {
+      await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.FAILED, flow: source === "account" ? GoogleConnectionFlow.ACCOUNT : GoogleConnectionFlow.LOGIN, profileId: currentProfile.id, supabaseUserId: supabaseId, errorCategory: "persist", requestId });
       logError("Falha ao salvar credenciais do Google.", {
         status: "error",
         step: "persist",
@@ -218,6 +226,7 @@ export async function POST(request: NextRequest) {
         hasRefreshToken: Boolean(refreshToken),
       },
     });
+    await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.SUCCEEDED, flow: source === "account" ? GoogleConnectionFlow.ACCOUNT : GoogleConnectionFlow.LOGIN, profileId: currentProfile.id, supabaseUserId: supabaseId, googleEmail: normalizedNextGoogleEmail, requestId });
 
     return NextResponse.json(new Output(true, ["Google conectado"], [], null), { status: 200 });
   } catch (error) {
@@ -233,6 +242,7 @@ export async function POST(request: NextRequest) {
           ? { message: error.message, stack: error.stack }
           : { message: String(error) },
     });
+    await googleConnectionEventService.record({ eventType: GoogleConnectionEventType.FAILED, flow: GoogleConnectionFlow.ACCOUNT, supabaseUserId: supabaseId, googleEmail: emailForLog, errorCategory: "unexpected", requestId });
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }
