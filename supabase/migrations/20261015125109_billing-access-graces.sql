@@ -18,6 +18,17 @@ CREATE TABLE IF NOT EXISTS "public"."billing_access_graces" (
 CREATE INDEX IF NOT EXISTS "billing_access_graces_team_active_expires_idx"
     ON "public"."billing_access_graces" ("teamId", "isActive", "expiresAt");
 
+ALTER TABLE "public"."billing_access_graces" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "public"."billing_access_graces" FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE "public"."billing_access_graces" TO service_role;
+
+CREATE POLICY "billing_access_graces_service_role_only"
+  ON "public"."billing_access_graces"
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 DO $$
 BEGIN
   IF NOT EXISTS (

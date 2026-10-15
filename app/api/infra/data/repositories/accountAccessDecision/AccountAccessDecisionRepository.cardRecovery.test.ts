@@ -157,4 +157,38 @@ describe("AccountAccessDecisionRepository bloqueio sem recuperação por cartão
       select: { expiresAt: true },
     })
   })
+
+  it("não consulta grace quando a assinatura anual canônica ainda é válida", async () => {
+    profileFindUnique.mockResolvedValueOnce({
+      id: "owner-1",
+      managerId: null,
+      activeTeamId: "team-annual",
+    })
+    profileFindUnique.mockResolvedValueOnce({
+      id: "owner-1",
+      hasPermanentSubscription: false,
+      subscriptionNextDueDate: null,
+      subscriptionStatus: "past_due",
+      subscription: {
+        hasPermanentSubscription: false,
+        subscriptionNextDueDate: new Date("2027-10-15T00:00:00.000Z"),
+        subscriptionStatus: "active",
+        subscriptionCycle: "YEARLY",
+        subscriptionStartDate: new Date("2026-10-15T00:00:00.000Z"),
+        subscriptionEndDate: null,
+      },
+      userTypeAssignment: null,
+    })
+    teamFindFirst.mockResolvedValue({ masterId: "owner-1", master: { sponsorMasterId: null } })
+    teamMemberFindFirst.mockResolvedValue(null)
+
+    const record = await new AccountAccessDecisionRepository().resolveAccount({
+      profileId: "owner-1",
+      teamId: "team-annual",
+    })
+
+    expect(record?.annualSubscriptionActive).toBe(true)
+    expect(record?.temporaryAccessGranted).toBe(false)
+    expect(billingAccessGraceFindFirst).not.toHaveBeenCalled()
+  })
 })

@@ -4,6 +4,7 @@ import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
+import { isValidAnnualSubscription } from "@/app/api/shared/billing/annualSubscriptionRules"
 import type {
   AccountAccessRecord,
   IAccountAccessDecisionRepository,
@@ -52,11 +53,17 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
           hasPermanentSubscription: true,
           subscriptionNextDueDate: true,
           subscriptionStatus: true,
+          subscriptionCycle: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
           subscription: {
             select: {
               hasPermanentSubscription: true,
               subscriptionNextDueDate: true,
               subscriptionStatus: true,
+              subscriptionCycle: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
             },
           },
           userTypeAssignment: {
@@ -76,6 +83,9 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     }
 
     const subscription = billingOwner.subscription
+    const annualSubscriptionActive = isValidAnnualSubscription(
+      subscription ?? billingOwner,
+    )
     const memberProAssignment = billingOwner.userTypeAssignment?.userType
       ? {
           slug: billingOwner.userTypeAssignment.userType.slug,
@@ -84,7 +94,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
         }
       : null
 
-    const temporaryAccessGrace = effectiveTeamId
+    const temporaryAccessGrace = effectiveTeamId && !annualSubscriptionActive
       ? await this.resolveActiveBillingGrace(effectiveTeamId)
       : null
 
@@ -97,6 +107,7 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,
+      annualSubscriptionActive,
       memberProActive: isActiveMemberProAssignment(memberProAssignment),
       memberProBlocked: isBlockingMemberProAssignment(memberProAssignment),
       temporaryAccessGranted: Boolean(temporaryAccessGrace),

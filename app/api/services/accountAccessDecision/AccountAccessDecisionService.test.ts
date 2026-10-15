@@ -130,6 +130,30 @@ describe("AccountAccessDecisionService", () => {
     })
   })
 
+  it("libera assinatura anual válida sem grace", () => {
+    const decision = new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      subscriptionNextDueDate: new Date("2027-10-15T00:00:00.000Z"),
+      hasPermanentSubscription: false,
+      annualSubscriptionActive: true,
+      temporaryAccessGranted: false,
+      isBanned: false,
+    })
+
+    expect(decision).toEqual({ state: "allowed" })
+  })
+
+  it("mantém banimento acima da assinatura anual válida", () => {
+    expect(new AccountAccessDecisionService().decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "active",
+      hasPermanentSubscription: false,
+      annualSubscriptionActive: true,
+      isBanned: true,
+    })).toEqual({ state: "restricted", reason: "banned" })
+  })
+
   it("mantém banimento acima da exceção temporária", () => {
     expect(new AccountAccessDecisionService().decide({
       billingOwnerId: "owner-1",

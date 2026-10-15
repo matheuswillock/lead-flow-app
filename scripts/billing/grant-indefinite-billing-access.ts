@@ -2,6 +2,11 @@ import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { isValidAnnualSubscription } from "@/app/api/shared/billing/annualSubscriptionRules"
+import {
+  resolveIndefiniteBillingAccessAction,
+  type IndefiniteBillingAccessAction,
+} from "./indefiniteBillingAccessPlan"
 
 const APPLY_ENV = "INDEFINITE_BILLING_ACCESS_APPLY"
 const OPERATOR_ENV = "BILLING_GRACE_OPERATOR_PROFILE_ID"
@@ -21,8 +26,9 @@ const CENSUS = [
 type Args = { apply: boolean; input?: string; output?: string; checksum?: string }
 type PlanItem = {
   target: { teamId: string; teamName: string; profileId: string }
-  action: "grant-indefinite" | "already-indefinite"
-  currentGrace: { id: string; expiresAt: string | null; isActive: boolean } | null
+  action: IndefiniteBillingAccessAction
+  annualSubscriptionActive: boolean
+  currentGraces: Array<{ id: string; expiresAt: string | null; isActive: boolean }>
   asaasMutation: false
 }
 type Report = { generatedAt: string; apply: boolean; plan: PlanItem[]; checksum: string }
@@ -57,7 +63,9 @@ function readDryRunReport(path: string, expectedChecksum: string): Report {
       item.target.teamName !== expected.teamName ||
       item.target.profileId !== expected.profileId ||
       item.asaasMutation !== false ||
-      !["grant-indefinite", "already-indefinite"].includes(item.action)
+      typeof item.annualSubscriptionActive !== "boolean" ||
+      !Array.isArray(item.currentGraces) ||
+      !["grant-indefinite", "already-indefinite", "excluded-valid-annual", "revoke-annual-grace"].includes(item.action)
     ) {
       throw new Error("Dry-run não corresponde ao censo aprovado")
     }
@@ -65,26 +73,39 @@ function readDryRunReport(path: string, expectedChecksum: string): Report {
   return report
 }
 
-async function findCurrentGrace(teamId: string): Promise<{ id: string; expiresAt: Date | null; isActive: boolean } | null> {
-  const indefinite = await prisma.billingAccessGrace.findFirst({
-    where: { teamId, isActive: true, expiresAt: null },
-    select: { id: true, expiresAt: true, isActive: true },
-  })
-  if (indefinite) return indefinite
-
-  return prisma.billingAccessGrace.findFirst({
-    where: { teamId, isActive: true },
-    orderBy: { expiresAt: "desc" },
-    select: { id: true, expiresAt: true, isActive: true },
-  })
-}
-
 type DatabaseClient = Prisma.TransactionClient | typeof prisma
 
-async function assertTarget(target: (typeof CENSUS)[number], transaction: DatabaseClient = prisma): Promise<void> {
+type ValidatedTarget = {
+  annualSubscriptionActive: boolean
+  currentGraces: Array<{ id: string; expiresAt: Date | null; isActive: boolean }>
+}
+
+async function inspectTarget(target: (typeof CENSUS)[number], transaction: DatabaseClient = prisma): Promise<ValidatedTarget> {
   const [team, profile] = await Promise.all([
     transaction.team.findUnique({ where: { id: target.teamId }, select: { id: true, name: true, masterId: true, deletedAt: true } }),
-    transaction.profile.findUnique({ where: { id: target.profileId }, select: { id: true, email: true, isMaster: true, deletedAt: true } }),
+    transaction.profile.findUnique({
+      where: { id: target.profileId },
+      select: {
+        id: true,
+        email: true,
+        isMaster: true,
+        deletedAt: true,
+        subscriptionStatus: true,
+        subscriptionCycle: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
+        subscriptionNextDueDate: true,
+        subscription: {
+          select: {
+            subscriptionStatus: true,
+            subscriptionCycle: true,
+            subscriptionStartDate: true,
+            subscriptionEndDate: true,
+            subscriptionNextDueDate: true,
+          },
+        },
+      },
+    }),
   ])
   if (!team || team.deletedAt || team.name !== target.teamName || team.masterId !== target.profileId) throw new Error(`Censo divergente: ${target.teamName}`)
   if (!profile || profile.deletedAt || profile.email !== target.email || !profile.isMaster) throw new Error(`Master divergente: ${target.teamName}`)
@@ -93,17 +114,32 @@ async function assertTarget(target: (typeof CENSUS)[number], transaction: Databa
     select: { id: true },
   })
   if (activeBan) throw new Error(`Master banido: ${target.teamName}`)
+
+  const subscription = profile.subscription ?? profile
+  const currentGraces = await transaction.billingAccessGrace.findMany({
+    where: { teamId: target.teamId, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, expiresAt: true, isActive: true },
+  })
+
+  return {
+    annualSubscriptionActive: isValidAnnualSubscription(subscription),
+    currentGraces,
+  }
 }
 
 async function buildPlan(): Promise<PlanItem[]> {
   const plan: PlanItem[] = []
   for (const target of CENSUS) {
-    await assertTarget(target)
-    const currentGrace = await findCurrentGrace(target.teamId)
+    const state = await inspectTarget(target)
     plan.push({
       target: { teamId: target.teamId, teamName: target.teamName, profileId: target.profileId },
-      action: currentGrace?.expiresAt === null ? "already-indefinite" : "grant-indefinite",
-      currentGrace: currentGrace ? { ...currentGrace, expiresAt: currentGrace.expiresAt?.toISOString() ?? null } : null,
+      action: resolveIndefiniteBillingAccessAction(state),
+      annualSubscriptionActive: state.annualSubscriptionActive,
+      currentGraces: state.currentGraces.map((grace) => ({
+        ...grace,
+        expiresAt: grace.expiresAt?.toISOString() ?? null,
+      })),
       asaasMutation: false,
     })
   }
@@ -118,12 +154,41 @@ async function applyItem(item: PlanItem): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const operator = await tx.profile.findUnique({ where: { id: operatorProfileId }, select: { id: true } })
     if (!operator) throw new Error("Operador de auditoria não encontrado")
-    await assertTarget(target, tx)
-    const currentGrace = await tx.billingAccessGrace.findFirst({
-      where: { teamId: target.teamId, isActive: true, expiresAt: null },
-      select: { id: true },
-    })
-    if (currentGrace) return
+    const state = await inspectTarget(target, tx)
+    const currentAction = resolveIndefiniteBillingAccessAction(state)
+    const isIdempotentRetry =
+      (item.action === "grant-indefinite" && currentAction === "already-indefinite") ||
+      (item.action === "revoke-annual-grace" && currentAction === "excluded-valid-annual")
+    if (item.annualSubscriptionActive !== state.annualSubscriptionActive || (!isIdempotentRetry && item.action !== currentAction)) {
+      throw new Error(`Estado divergente para ${target.teamName}; gere um novo dry-run`)
+    }
+
+    if (isIdempotentRetry || item.action === "excluded-valid-annual" || item.action === "already-indefinite") return
+
+    if (item.action === "revoke-annual-grace") {
+      const resolvedAt = new Date()
+      const updated = await tx.billingAccessGrace.updateMany({
+        where: { teamId: target.teamId, isActive: true },
+        data: {
+          isActive: false,
+          resolvedAt,
+          resolvedReason: "assinatura anual canônica válida; grace operacional revogado",
+        },
+      })
+      if (updated.count === 0) return
+      await tx.subscriptionChangeLog.create({
+        data: {
+          profileId: target.profileId,
+          actorProfileId: operatorProfileId,
+          source: CHANGE_SOURCE,
+          changeType: "indefinite_billing_access_revoked_for_annual",
+          before: { teamId: target.teamId, activeGraceIds: state.currentGraces.map((grace) => grace.id) },
+          after: { teamId: target.teamId, temporaryAccessGranted: false },
+          metadata: { reason: "valid canonical annual subscription", asaasMutation: false, paymentStatusUnchanged: true },
+        },
+      })
+      return
+    }
 
     await tx.billingAccessGrace.create({
       data: {
