@@ -970,6 +970,22 @@ ROLE_CHANGE ROLE_CHANGE
     
 
 
+        GoogleConnectionEventType {
+            STARTED STARTED
+SUCCEEDED SUCCEEDED
+FAILED FAILED
+        }
+    
+
+
+        GoogleConnectionFlow {
+            LOGIN LOGIN
+ACCOUNT ACCOUNT
+BACKOFFICE BACKOFFICE
+        }
+    
+
+
         LeadCustomFieldType {
             text text
 number number
@@ -2299,6 +2315,21 @@ completed completed
     String emoji 
     String emojiUnified 
     DateTime createdAt 
+    }
+  
+
+  "google_connection_events" {
+    String id "🗝️"
+    DateTime createdAt 
+    GoogleConnectionEventType eventType 
+    GoogleConnectionFlow flow 
+    String supabaseUserId "❓"
+    String googleEmail "❓"
+    String errorCode "❓"
+    String errorCategory "❓"
+    String requestId "❓"
+    String dedupeKey "❓"
+    Json metadata "❓"
     }
   
 
@@ -4730,6 +4761,9 @@ completed completed
     "corretor_studio_lead_activities" }o--|o corretor_studio_profiles : "author"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_lead_activities : "activity"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_profiles : "profile"
+    "google_connection_events" |o--|| "GoogleConnectionEventType" : "enum:eventType"
+    "google_connection_events" |o--|| "GoogleConnectionFlow" : "enum:flow"
+    "google_connection_events" }o--|o corretor_studio_profiles : "profile"
     "corretor_studio_audit_logs" |o--|| "AuditEntityType" : "enum:entityType"
     "corretor_studio_audit_logs" |o--|| "AuditAction" : "enum:action"
     "corretor_studio_audit_logs" }o--|o corretor_studio_profiles : "actor"

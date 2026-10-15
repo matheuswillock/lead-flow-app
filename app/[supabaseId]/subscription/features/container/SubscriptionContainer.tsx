@@ -54,8 +54,18 @@ export function SubscriptionContainer() {
   } = useSubscriptionContext();
 
   const { hasAccess, isBeta, showsBetaLabel, userRole } = useFeatureAccess();
-  const { isTeamMaster, activeRole } = useTeamContext();
+  const { isTeamMaster, activeRole, accountAccessDecision } = useTeamContext();
   const isPermanentSubscription = subscription?.hasPermanentSubscription === true;
+  const hasTemporaryAccess =
+    accountAccessDecision?.state === 'allowed' &&
+    accountAccessDecision.temporaryAccessGranted === true;
+  const temporaryAccessUntil =
+    hasTemporaryAccess && accountAccessDecision.temporaryAccessUntil
+      ? new Date(accountAccessDecision.temporaryAccessUntil).toLocaleString('pt-BR', {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        })
+      : null;
 
   const showEmailCreditsTab = useMemo(() => {
     const isEmailFeatureBeta =
@@ -114,6 +124,30 @@ export function SubscriptionContainer() {
   }
 
   if (!subscription) {
+    if (hasTemporaryAccess) {
+      return (
+        <div className="flex flex-col gap-6">
+          <SubscriptionHeader />
+
+          <Card className="mx-auto max-w-2xl">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl">Acesso temporariamente liberado</CardTitle>
+              <CardDescription>
+                O acesso desta conta foi liberado enquanto o pagamento é regularizado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4">
+              <p className="text-center text-muted-foreground">
+                {temporaryAccessUntil
+                  ? `A liberação permanece válida até ${temporaryAccessUntil}.`
+                  : 'A liberação permanece válida até nova orientação.'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     // DA2: durante a janela dual-account, a assinatura antiga some antes da
     // nova ficar visível. Nesse intervalo, mostrar o CTA de "criar
     // assinatura" convida a uma segunda cobrança — a heurística de atividade

@@ -9,6 +9,7 @@ import { ConnectingDots } from "@/components/ui/connecting-dots";
 import { isBackofficeRole } from "@/lib/roles";
 import { isValidBackofficeEmail } from "@/lib/backoffice/email-domain";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { authCallbackGoogleConnectionService } from "@/app/auth/callback/features/services/AuthCallbackGoogleConnectionService";
 
 type Status = "connecting" | "error";
 
@@ -20,6 +21,7 @@ function getAuthCallbackLockKey(authCode: string | null) {
 
 function persistGoogleConnection(
   supabaseId: string,
+  requestId: string,
   payload: {
     accessToken: string;
     refreshToken?: string;
@@ -27,15 +29,16 @@ function persistGoogleConnection(
     email?: string;
     source: "login" | "account";
   }
-) {
-  void fetch(`${API_CLIENT_BASE}/google/connect`, {
+): Promise<Response> {
+  return fetch(`${API_CLIENT_BASE}/google/connect`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-supabase-user-id": supabaseId,
+      "x-request-id": requestId,
     },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+  });
 }
 
 function GoogleIcon() {
@@ -98,8 +101,19 @@ function AuthCallbackContent() {
     }
     finalizeStartedRef.current = true;
     sessionStorage.setItem(lockKey, "1");
+    const requestId = crypto.randomUUID();
 
     const finalize = async () => {
+      const initialContext = sessionStorage.getItem("googleConnectContext");
+      let initialFlow: "login" | "account" | "backoffice" = "login";
+      try {
+        const source = initialContext ? (JSON.parse(initialContext) as { source?: string }).source : undefined;
+        if (source === "account") initialFlow = "account";
+        if (source === "backoffice-account" || source === "backoffice-sign-in") initialFlow = "backoffice";
+      } catch {
+        // O contexto é apenas auxiliar; o fluxo segue com o padrão seguro de login.
+      }
+      await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "started", flow: initialFlow, requestId });
       const supabase = createSupabaseBrowser();
       if (!supabase) {
         setError("Supabase indisponível.");
@@ -111,6 +125,7 @@ function AuthCallbackContent() {
       const oauthErrorDescription = searchParams.get("error_description");
 
       if (oauthError) {
+        await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: initialFlow, requestId, errorCategory: oauthErrorCode || oauthError });
         const description = oauthErrorDescription || oauthError;
         if (
           oauthErrorCode === "identity_already_exists" ||
@@ -151,6 +166,7 @@ function AuthCallbackContent() {
       if ((sessionResponse.error || !sessionResponse.data.session?.user) && authCode) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
         if (exchangeError) {
+          await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: initialFlow, requestId, errorCategory: "code_exchange" });
           setError("Falha ao validar retorno do Google. Tente novamente.");
           return;
         }
@@ -159,6 +175,7 @@ function AuthCallbackContent() {
 
       const { data, error } = sessionResponse;
       if (error || !data.session?.user) {
+        await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: initialFlow, requestId, errorCategory: "invalid_session" });
         setError("Sessão inválida. Faça login novamente.");
         return;
       }
@@ -254,10 +271,13 @@ function AuthCallbackContent() {
 
       if (isLoginFlow) {
         if (providerToken) {
-          persistGoogleConnection(supabaseId, {
+          const persistResponse = await persistGoogleConnection(supabaseId, requestId, {
             ...connectPayload,
             source: "login",
           });
+          if (!persistResponse.ok) {
+            await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: "login", requestId, errorCategory: "persist" });
+          }
         }
 
         sessionStorage.removeItem("googleConnectContext");
@@ -266,6 +286,7 @@ function AuthCallbackContent() {
       }
 
       if (!providerToken) {
+        await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: isBackofficeAccountConnectFlow ? "backoffice" : "account", requestId, errorCategory: "missing_provider_token" });
         setError("Token do Google não encontrado. Tente novamente.");
         return;
       }
@@ -298,6 +319,7 @@ function AuthCallbackContent() {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
+            "x-request-id": requestId,
           },
           body: JSON.stringify({
             accessToken: providerToken,
@@ -308,6 +330,7 @@ function AuthCallbackContent() {
         });
 
         if (!response.ok) {
+          await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: "backoffice", requestId, errorCategory: "persist" });
           sessionStorage.removeItem("googleConnectContext");
           setError("Falha ao salvar integração Google do backoffice.");
           return;
@@ -323,6 +346,7 @@ function AuthCallbackContent() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-request-id": requestId,
         },
         body: JSON.stringify({
           ...connectPayload,
@@ -331,6 +355,7 @@ function AuthCallbackContent() {
       });
 
       if (!response.ok) {
+        await authCallbackGoogleConnectionService.recordConnectionEvent({ eventType: "failed", flow: "account", requestId, errorCategory: "persist" });
         sessionStorage.removeItem("googleConnectContext");
         setError("Falha ao salvar integração do Google.");
         return;
@@ -342,9 +367,15 @@ function AuthCallbackContent() {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
+            "x-request-id": requestId,
           },
           body: JSON.stringify(connectPayload),
-        }).catch(() => {});
+        }).catch((error) => {
+          console.error("[AuthCallback] Falha ao sincronizar conexão Google do backoffice", {
+            requestId,
+            error,
+          });
+        });
       }
 
       sessionStorage.removeItem("googleConnectContext");
