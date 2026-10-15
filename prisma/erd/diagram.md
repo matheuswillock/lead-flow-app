@@ -1775,6 +1775,20 @@ completed completed
     }
   
 
+  "billing_access_graces" {
+    String id "🗝️"
+    String reason 
+    DateTime expiresAt 
+    Boolean isActive 
+    String grantedByProfileId "❓"
+    DateTime grantedAt 
+    DateTime resolvedAt "❓"
+    String resolvedReason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
@@ -4622,6 +4636,7 @@ completed completed
     "backoffice_authorized_sponsors" |o--|| corretor_studio_profiles : "profile"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
+    "billing_access_graces" }o--|| corretor_studio_teams : "team"
     "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "profile"
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
