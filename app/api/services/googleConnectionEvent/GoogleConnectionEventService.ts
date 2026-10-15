@@ -2,23 +2,17 @@ import { GoogleConnectionEventType, GoogleConnectionFlow, Prisma } from "@prisma
 import { createLogger, sanitize } from "@/lib/observability/logger";
 import { googleConnectionEventRepository } from "@/app/api/infra/data/repositories/googleConnectionEvent/GoogleConnectionEventRepository";
 import type { IGoogleConnectionEventRepository } from "@/app/api/infra/data/repositories/googleConnectionEvent/IGoogleConnectionEventRepository";
+import type {
+  GoogleConnectionEventRecordInput,
+  IGoogleConnectionEventService,
+} from "./IGoogleConnectionEventService";
 
 const logger = createLogger("google-connection");
 
-export class GoogleConnectionEventService {
+export class GoogleConnectionEventService implements IGoogleConnectionEventService {
   constructor(private readonly repository: IGoogleConnectionEventRepository = googleConnectionEventRepository) {}
 
-  async record(input: {
-    eventType: GoogleConnectionEventType;
-    flow: GoogleConnectionFlow;
-    profileId?: string | null;
-    supabaseUserId?: string | null;
-    googleEmail?: string | null;
-    errorCode?: string | null;
-    errorCategory?: string | null;
-    requestId?: string | null;
-    metadata?: Record<string, unknown> | null;
-  }): Promise<void> {
+  async record(input: GoogleConnectionEventRecordInput): Promise<void> {
     try {
       const dedupeKey = input.requestId ? `${input.requestId}:${input.eventType}` : null;
       const metadata = input.metadata == null ? null : JSON.parse(JSON.stringify(sanitize(input.metadata))) as Prisma.InputJsonValue;
