@@ -23,6 +23,21 @@ no no
     
 
 
+        TeamMeetingSlotReservationSource {
+            internal internal
+public_form public_form
+        }
+    
+
+
+        TeamMeetingSlotReservationState {
+            reserved reserved
+consumed consumed
+released released
+        }
+    
+
+
         LeadStatus {
             new_opportunity new_opportunity
 scheduled scheduled
@@ -2268,6 +2283,7 @@ completed completed
     String referenceHospital "❓"
     String currentTreatment "❓"
     DateTime meetingDate "❓"
+    Int meeting_duration_minutes "❓"
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
@@ -2372,6 +2388,7 @@ completed completed
   "corretor_studio_leads_schedule" {
     String id "🗝️"
     DateTime date 
+    Int meeting_duration_minutes "❓"
     Int noShowCount 
     String meetingTitle "❓"
     String notes "❓"
@@ -2501,6 +2518,7 @@ completed completed
     String id "🗝️"
     String name 
     Boolean isDefault 
+    Int meeting_duration_minutes 
     DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -4483,6 +4501,28 @@ completed completed
     String lastDispatchError "❓"
     String thankYouPageId "❓"
     DateTime scheduledMeetingStartsAt "❓"
+    String meeting_slot_reservation_id "❓"
+    String scheduled_closer_id "❓"
+    Int scheduled_duration_minutes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_meeting_slot_reservations" {
+    String id "🗝️"
+    String closerId 
+    DateTime startsAt 
+    DateTime endsAt 
+    Int durationMinutes 
+    TeamMeetingSlotReservationSource source 
+    TeamMeetingSlotReservationState state 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    Int recovery_attempts 
+    String last_recovery_error "❓"
+    DateTime consumedAt "❓"
+    DateTime releasedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -5203,6 +5243,11 @@ completed completed
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_submissions" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_team_meeting_slot_reservations" |o--|| "TeamMeetingSlotReservationSource" : "enum:source"
+    "corretor_studio_team_meeting_slot_reservations" |o--|| "TeamMeetingSlotReservationState" : "enum:state"
+    "corretor_studio_team_meeting_slot_reservations" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_meeting_slot_reservations" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_team_meeting_slot_reservations" }o--|o corretor_studio_public_form_submissions : "publicFormSubmission"
     "corretor_studio_public_form_answers" }o--|| corretor_studio_public_form_submissions : "submission"
     "corretor_studio_public_form_answers" }o--|o corretor_studio_public_form_questions : "question"
     "corretor_studio_public_form_metric_events" |o--|| "PublicFormMetricType" : "enum:eventType"

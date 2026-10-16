@@ -1,4 +1,5 @@
 export type CalendarAvailabilityResult = {
+  durationMinutes: number;
   availableTimes: string[];
   source: "google" | "internal";
   perCloser: Record<string, string[]>;

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
-import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import {
+  SET_ACTIVE_TEAM_ERRORS,
+  setActiveTeamUseCase,
+} from "@/app/api/useCases/activeTeam/SetActiveTeamUseCase";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PUT(request: NextRequest) {
@@ -36,62 +38,34 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true }
-    });
+    const output = await setActiveTeamUseCase.execute({ supabaseId, teamId });
 
-    if (!profile) {
+    if (!output.isValid) {
+      if (output.errorMessages.includes(SET_ACTIVE_TEAM_ERRORS.PROFILE_NOT_FOUND)) {
+        return NextResponse.json(
+          new Output(false, [], ["Profile not found"], null),
+          { status: 404 }
+        );
+      }
+      if (output.errorMessages.includes(SET_ACTIVE_TEAM_ERRORS.NOT_TEAM_MEMBER)) {
+        return NextResponse.json(
+          new Output(false, [], ["User is not a member of this team"], null),
+          { status: 403 }
+        );
+      }
+      if (output.errorMessages.includes(SET_ACTIVE_TEAM_ERRORS.ACCESS_UNRESOLVABLE)) {
+        return NextResponse.json(
+          new Output(false, [], ["Não foi possível resolver o acesso desta conta"], null),
+          { status: 503 }
+        );
+      }
       return NextResponse.json(
-        new Output(false, [], ["Profile not found"], null),
-        { status: 404 }
+        new Output(false, [], ["Não foi possível atualizar o time ativo"], null),
+        { status: 500 }
       );
     }
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id
-        }
-      },
-      select: {
-        team: {
-          select: { masterId: true, deletedAt: true },
-        },
-      },
-    });
-
-    if (!membership || membership.team.deletedAt) {
-      return NextResponse.json(
-        new Output(false, [], ["User is not a member of this team"], null),
-        { status: 403 }
-      );
-    }
-
-    const accountAccessOutput = await accountAccessDecisionUseCase.execute({
-      profileId: profile.id,
-      teamId,
-    });
-    if (!accountAccessOutput.isValid || !accountAccessOutput.result) {
-      return NextResponse.json(
-        new Output(false, [], ["Não foi possível resolver o acesso desta conta"], null),
-        { status: 503 }
-      );
-    }
-
-    await prisma.profile.update({
-      where: { id: profile.id },
-      data: { activeTeamId: teamId }
-    });
-
-    return NextResponse.json(
-      new Output(true, ["Active team updated"], [], {
-        activeTeamId: teamId,
-        accountAccessDecision: accountAccessOutput.result,
-      }),
-      { status: 200 }
-    );
+    return NextResponse.json(output, { status: 200 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("Error in PUT /api/v1/teams/active:", error);

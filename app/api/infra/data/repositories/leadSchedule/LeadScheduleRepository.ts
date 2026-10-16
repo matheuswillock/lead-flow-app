@@ -4,7 +4,8 @@ import type {
   ILeadScheduleRepository,
   CreateLeadScheduleDTO,
   UpdateLeadScheduleDTO,
-  UpsertTransferPreScheduleDTO
+  UpsertTransferPreScheduleDTO,
+  SaveTransferPreScheduleDTO,
 } from "./ILeadScheduleRepository";
 import { LeadsSchedule, Prisma } from "@prisma/client";
 import {
@@ -29,6 +30,46 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       where: { leadId: data.leadId },
       create: { leadId: data.leadId, extraGuests: [], ...shared },
       update: shared,
+    });
+  }
+
+  async saveTransferPreSchedule(data: SaveTransferPreScheduleDTO): Promise<LeadsSchedule> {
+    return prisma.$transaction(async (tx) => {
+      const schedule = await tx.leadsSchedule.upsert({
+        where: { leadId: data.leadId },
+        create: {
+          leadId: data.leadId,
+          date: data.date,
+          meetingTitle: data.meetingTitle,
+          notes: data.notes,
+          meetingLink: null,
+          meetingType: data.meetingType,
+          extraGuests: [],
+          publicShareTokenHash: null,
+          publicShareExpiresAt: null,
+        },
+        update: {
+          date: data.date,
+          meetingTitle: data.meetingTitle,
+          notes: data.notes,
+          meetingLink: null,
+          meetingType: data.meetingType,
+          extraGuests: [],
+          publicShareTokenHash: null,
+          publicShareExpiresAt: null,
+        },
+      });
+      await tx.lead.update({
+        where: { id: data.leadId },
+        data: {
+          meetingDate: data.date,
+          meetingTitle: data.meetingTitle,
+          meetingNotes: data.notes,
+          meetingLink: null,
+          meetingType: data.meetingType,
+        },
+      });
+      return schedule;
     });
   }
 

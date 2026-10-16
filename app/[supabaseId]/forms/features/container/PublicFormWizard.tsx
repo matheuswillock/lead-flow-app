@@ -2678,13 +2678,11 @@ function ScheduleInline({
     <div className="flex flex-col gap-4 rounded-lg border border-dashed p-4">
       <p className="text-sm font-medium">Configuração do agendamento</p>
       <Field>
-        <FieldLabel>Duração em minutos</FieldLabel>
         <FieldContent>
-          <Input
-            type="number"
-            value={d.meetingDurationMinutes}
-            onChange={(e) => change({ meetingDurationMinutes: Number(e.target.value) })}
-          />
+          <FieldLabel>Duração da reunião</FieldLabel>
+          <p className="text-sm text-muted-foreground">
+            A duração é definida nas configurações de agendamento do time.
+          </p>
         </FieldContent>
       </Field>
       <Field>

@@ -1339,6 +1339,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    meetingSlotReservationId?: string | null
+    scheduledCloserId?: string | null
+    scheduledDurationMinutes?: number | null
     submitRequestedAt: Date
   }) {
     return prisma.publicFormSubmission.create({
@@ -1792,6 +1795,24 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
+    })
+  }
+
+  async attachMeetingSlotReservation(input: {
+    submissionId: string
+    reservationId: string
+    closerId: string
+    durationMinutes: number
+    startsAt: Date
+  }): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: input.submissionId },
+      data: {
+        meetingSlotReservationId: input.reservationId,
+        scheduledCloserId: input.closerId,
+        scheduledDurationMinutes: input.durationMinutes,
+        scheduledMeetingStartsAt: input.startsAt,
+      },
     })
   }
 

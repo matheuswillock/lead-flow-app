@@ -5,6 +5,7 @@ mock.module("server-only", () => ({}))
 mock.module("@/lib/env/server", () => ({}))
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {},
+  default: {},
   withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 

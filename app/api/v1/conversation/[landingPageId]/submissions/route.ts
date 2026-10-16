@@ -23,7 +23,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ lan
   if (!parsed.success) return NextResponse.json(new Output(false, [], parsed.error.issues.map((issue) => issue.message), null), { status: 400 })
 
   const output = await publicFormSubmissionUseCase.accept(snapshot.form.publicId, parsed.data, snapshot.formPublicationId)
-  if (!output.isValid) return NextResponse.json(output, { status: 422 })
+  if (!output.isValid) {
+    const isSlotConflict = Boolean((output.result as { conflict?: boolean } | null)?.conflict)
+    return NextResponse.json(output, { status: isSlotConflict ? 409 : 422 })
+  }
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)?.background
   if (background) after(() => publicFormSubmissionUseCase.queueForBackgroundProcessing(background))
   return NextResponse.json(new Output(true, ["Respostas recebidas"], [], { submissionId: (output.result as { submissionId?: string } | null)?.submissionId ?? null }), { status: 201 })

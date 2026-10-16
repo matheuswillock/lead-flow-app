@@ -20,6 +20,7 @@ export function DataTablePagination<TData>({ table, countText }: DataTablePagina
           size="sm"
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
+          className="max-lg:h-11!"
         >
           Anterior
         </Button>
@@ -28,6 +29,7 @@ export function DataTablePagination<TData>({ table, countText }: DataTablePagina
           size="sm"
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
+          className="max-lg:h-11!"
         >
           Próximo
         </Button>

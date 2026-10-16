@@ -163,12 +163,13 @@ describe("processPublicFormSubmissionEventMessage", () => {
 
   it("deliveryCount excedeu o limite: helper acka sem throw", async () => {
     const ackDeadLetter = mock(async () => true)
+    const releaseTerminalMeetingReservation = mock(async () => {})
     processInBackground.mockRejectedValueOnce(new Error("P2024"))
     await expect(
       processPublicFormSubmissionEventMessage(
         baseMessage(),
         { ...metadata, deliveryCount: 20 },
-        { processInBackground },
+        { processInBackground, releaseTerminalMeetingReservation },
         ackDeadLetter,
       ),
     ).resolves.toBeUndefined()
@@ -179,5 +180,6 @@ describe("processPublicFormSubmissionEventMessage", () => {
         deliveryCount: 20,
       }),
     )
+    expect(releaseTerminalMeetingReservation).toHaveBeenCalledWith(baseMessage())
   })
 })
