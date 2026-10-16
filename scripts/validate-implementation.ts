@@ -16,9 +16,11 @@
  */
 
 import { spawn } from "node:child_process";
-
-type Step = { name: string; cmd: string; args: string[] };
-type StepResult = { name: string; exitCode: number; durationMs: number; output: string };
+import {
+  validateImplementation,
+  type ValidateStep as Step,
+  type ValidateStepResult as StepResult,
+} from "./lib/validate-implementation-orchestrator";
 
 const FAST_STEPS: Step[] = [
   { name: "governance:sync", cmd: "bun", args: ["run", "governance:sync"] },
@@ -91,26 +93,26 @@ function report(results: StepResult[]): boolean {
   return ok;
 }
 
-const fastResults: StepResult[] = [];
-for (const step of FAST_STEPS) {
-  console.info(`\n▶ ${step.name} (fase rápida)`);
-  const result = await runStep(step);
-  fastResults.push(result);
-  if (result.exitCode !== 0) {
-    console.error(`\n❌ ${step.name} reprovou — abortando antes dos checks pesados.`);
-    report(fastResults);
-    process.exit(result.exitCode);
-  }
-}
+const parallelStepNames = new Set(PARALLEL_STEPS.map((step) => step.name));
 
-console.info("\n▶ Fase paralela: lint + typecheck + test");
-const parallelResults = await Promise.all(PARALLEL_STEPS.map(runStep));
+const outcome = await validateImplementation({
+  fastSteps: FAST_STEPS,
+  parallelSteps: PARALLEL_STEPS,
+  run: async (step) => {
+    const phase = parallelStepNames.has(step.name) ? "fase paralela" : "fase rápida";
+    console.info(`\n▶ ${step.name} (${phase})`);
+    return runStep(step);
+  },
+});
 
-const all = [...fastResults, ...parallelResults];
+const all = [...outcome.fastResults, ...outcome.parallelResults];
 if (!report(all)) {
-  const failed = parallelResults.filter((result) => result.exitCode !== 0).map((result) => result.name);
-  console.error(`\n❌ Validação reprovada em: ${failed.join(", ")}`);
-  process.exit(1);
+  if (outcome.failedPhase === "fast") {
+    console.error(`\n❌ ${outcome.failedStepNames[0]} reprovou — abortando antes dos checks pesados.`);
+  } else {
+    console.error(`\n❌ Validação reprovada em: ${outcome.failedStepNames.join(", ")}`);
+  }
+  process.exit(outcome.exitCode);
 }
 
 console.info("\n✅ Validação de implementação completa.");
