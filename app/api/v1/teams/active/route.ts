@@ -63,10 +63,20 @@ export async function PUT(request: NextRequest) {
     });
 
     if (!membership || membership.team.deletedAt) {
-      return NextResponse.json(
-        new Output(false, [], ["User is not a member of this team"], null),
-        { status: 403 }
-      );
+      const sponsoredTeam = await prisma.team.findFirst({
+        where: { id: teamId, deletedAt: null },
+        select: {
+          masterId: true,
+          master: { select: { sponsorMasterId: true } },
+        },
+      });
+
+      if (!sponsoredTeam || sponsoredTeam.master.sponsorMasterId !== profile.id) {
+        return NextResponse.json(
+          new Output(false, [], ["User is not a member of this team"], null),
+          { status: 403 }
+        );
+      }
     }
 
     const accountAccessOutput = await accountAccessDecisionUseCase.execute({
