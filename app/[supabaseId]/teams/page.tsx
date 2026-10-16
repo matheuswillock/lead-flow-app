@@ -1101,11 +1101,11 @@ export default function TeamsPage() {
               </div>
             ) : (
               <Tabs defaultValue="basic-info" className="w-full">
-                <TabsList className={cn("grid w-full", canManageScheduleSettings ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3")}>
-                  <TabsTrigger value="basic-info">Informações básicas</TabsTrigger>
-                  <TabsTrigger value="rules">Regras</TabsTrigger>
-                  <TabsTrigger value="custom-fields">Campos personalizados</TabsTrigger>
-                  {canManageScheduleSettings ? <TabsTrigger value="schedule-settings">Agendamento</TabsTrigger> : null}
+                <TabsList className={cn("grid w-full max-lg:h-auto", canManageScheduleSettings ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3")}>
+                  <TabsTrigger value="basic-info" className="max-lg:min-h-11">Informações básicas</TabsTrigger>
+                  <TabsTrigger value="rules" className="max-lg:min-h-11">Regras</TabsTrigger>
+                  <TabsTrigger value="custom-fields" className="max-lg:min-h-11">Campos personalizados</TabsTrigger>
+                  {canManageScheduleSettings ? <TabsTrigger value="schedule-settings" className="max-lg:min-h-11">Agendamento</TabsTrigger> : null}
                 </TabsList>
                 <TabsContent value="basic-info" className="mt-4">
                   <div className="space-y-6">
@@ -1122,6 +1122,7 @@ export default function TeamsPage() {
                     type="button"
                     onClick={handleRenameTeam}
                     disabled={!canManageTeams || isRenaming || !renameValue.trim()}
+                    className="max-lg:h-11!"
                   >
                     {isRenaming ? "Salvando..." : "Salvar"}
                   </Button>

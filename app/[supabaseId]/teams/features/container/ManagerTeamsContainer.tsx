@@ -113,13 +113,20 @@ export function ManagerTeamsContainer({
                 onClick={onRefreshTeams}
                 disabled={loading}
                 aria-label="Atualizar"
+                className="max-lg:size-11!"
               >
                 <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Atualizar</TooltipContent>
           </Tooltip>
-          <Button type="button" variant="outline" onClick={onOpenCreateTeam} disabled={!canManageTeams}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onOpenCreateTeam}
+            disabled={!canManageTeams}
+            className="max-lg:h-11!"
+          >
             Criar time
           </Button>
         </div>

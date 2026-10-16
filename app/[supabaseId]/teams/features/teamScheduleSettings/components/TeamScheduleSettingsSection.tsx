@@ -31,7 +31,7 @@ export function TeamScheduleSettingsSection() {
         <MeetingDurationSelect value={durationMinutes} disabled={isSaving} onValueChange={setDurationMinutes} />
       </Field>
       <div className="flex justify-end">
-        <Button type="button" onClick={() => void save(durationMinutes)} disabled={isSaving || durationMinutes === settings?.durationMinutes}>
+        <Button type="button" onClick={() => void save(durationMinutes)} disabled={isSaving || durationMinutes === settings?.durationMinutes} className="max-lg:h-11!">
           {isSaving ? "Salvando..." : "Salvar duração"}
         </Button>
       </div>
