@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
@@ -32,6 +33,14 @@ test.describe("configuração de duração de reuniões por time", () => {
   test.beforeEach(async ({ context }) => {
     await injectE2eAuthCookie(context);
     expect(await findE2eMasterProfile()).not.toBeNull();
+    // Suprime o modal "Novidades": ele aplica aria-hidden no fundo e esconde
+    // o heading da página (padrão das demais specs de produto).
+    await context.addInitScript(
+      ({ supabaseId, version }: { supabaseId: string; version: string }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true");
+      },
+      { supabaseId: E2E_MASTER_SUPABASE_ID, version: WHATS_NEW_VERSION },
+    );
   });
 
   test.afterAll(async () => {
