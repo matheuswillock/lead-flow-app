@@ -1,4 +1,4 @@
-import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
+import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile, Prisma } from "@prisma/client";
 import type { AsaasAccountId } from "@/lib/asaas";
 import { createClient } from "@supabase/supabase-js"
