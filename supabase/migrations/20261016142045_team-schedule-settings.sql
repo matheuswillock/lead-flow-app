@@ -110,7 +110,7 @@ END $$;
 
 DO $$ BEGIN
   ALTER TABLE "corretor_studio_public_form_submissions"
-    ADD CONSTRAINT "corretor_studio_public_form_submissions_sched_duration_check"
+    ADD CONSTRAINT "corretor_studio_public_form_submissions_scheduled_duration_check"
     CHECK ("scheduled_duration_minutes" IS NULL OR ("scheduled_duration_minutes" BETWEEN 5 AND 60 AND ("scheduled_duration_minutes" % 5) = 0));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -124,7 +124,7 @@ END $$;
 
 DO $$ BEGIN
   ALTER TABLE "corretor_studio_team_meeting_slot_reservations"
-    ADD CONSTRAINT "corretor_studio_team_meeting_slot_reservations_ends_after_start"
+    ADD CONSTRAINT "corretor_studio_team_meeting_slot_reservations_ends_after_starts_check"
     CHECK ("endsAt" > "startsAt");
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
