@@ -7286,6 +7286,34 @@
                   "response": []
                 },
                 {
+                  "name": "GET /api/v1/teams/cron/reconcile-meeting-slot-reservations",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/cron/reconcile-meeting-slot-reservations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "cron",
+                        "reconcile-meeting-slot-reservations"
+                      ]
+                    },
+                    "description": "Cron: reconcilia reservas de slots de reunião com o evento externo (consome a reserva quando a agenda local já referencia o evento)"
+                  },
+                  "response": []
+                },
+                {
                   "name": "GET /api/v1/teams/{{teamId}}/crm/filter-presets",
                   "request": {
                     "method": "GET",
