@@ -19,6 +19,7 @@ const tx = {
   whatsAppMessage: { updateMany: manyMock() },
   publicFormSubmission: { updateMany: manyMock() },
   leadDocumentRequest: { updateMany: manyMock() },
+  teamMeetingSlotReservation: { updateMany: manyMock() },
   leadTagAssignment: {
     findMany: mock(async () => [] as Array<{ tagId: string }>),
     updateMany: manyMock(),
@@ -107,6 +108,16 @@ describe("LeadRepository.mergeLeadsInTransaction", () => {
     await repo.mergeLeadsInTransaction(baseInput())
 
     expect(tx.publicFormSubmission.updateMany).toHaveBeenCalledWith({
+      where: { leadId: SOURCE_LEAD_ID },
+      data: { leadId: TARGET_LEAD_ID },
+    })
+  })
+
+  it("transfere a reserva de slot do lead de origem para o alvo (SetNull orfanava)", async () => {
+    const repo = new LeadRepository()
+    await repo.mergeLeadsInTransaction(baseInput())
+
+    expect(tx.teamMeetingSlotReservation.updateMany).toHaveBeenCalledWith({
       where: { leadId: SOURCE_LEAD_ID },
       data: { leadId: TARGET_LEAD_ID },
     })

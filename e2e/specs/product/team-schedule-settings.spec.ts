@@ -16,7 +16,7 @@ test.describe("configuração de duração de reuniões por time", () => {
 
   test("manager configura duração fixa e a interface permanece responsiva", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/teams`);
-    await expect(page.getByText("Gerenciar times").first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: "Gerenciar times" })).toBeVisible({ timeout: 60_000 });
 
     const team = await getPrisma().team.findFirst({
       where: { master: { supabaseId: E2E_MASTER_SUPABASE_ID }, deletedAt: null },

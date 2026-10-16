@@ -63,6 +63,7 @@ export const MERGE_TRANSFERRED_LEAD_RELATIONS = [
   "LeadCustomFieldValue",
   "LeadTagAssignment",
   "LeadDocumentRequest",
+  "TeamMeetingSlotReservation",
 ] as const;
 
 /**
@@ -1390,6 +1391,13 @@ export class LeadRepository implements ILeadRepository {
         data: { leadId: targetLead.id },
       });
       await tx.leadDocumentRequest.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      // SetNull na FK: sem este updateMany, o delete do lead de origem zera
+      // leadId e a reserva do slot bloqueado perde o vínculo com o lead
+      // sobrevivente (mesma classe do bug da submissão pública acima).
+      await tx.teamMeetingSlotReservation.updateMany({
         where: { leadId: sourceLead.id },
         data: { leadId: targetLead.id },
       });
