@@ -25,6 +25,7 @@ interface ManagerTeamsContainerProps {
   onRefreshTeams: () => void;
   onOpenCreateTeam: () => void;
   canManageTeams: boolean;
+  canManageScheduleSettings: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -44,6 +45,7 @@ export function ManagerTeamsContainer({
   onRefreshTeams,
   onOpenCreateTeam,
   canManageTeams,
+  canManageScheduleSettings,
   loading,
   error,
 }: ManagerTeamsContainerProps) {
@@ -84,6 +86,7 @@ export function ManagerTeamsContainer({
     onEditPendingPayment,
     onCancelPendingTeam,
     canManageTeams,
+    canManageScheduleSettings,
   });
 
   return (

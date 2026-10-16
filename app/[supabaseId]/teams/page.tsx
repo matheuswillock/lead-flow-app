@@ -30,6 +30,8 @@ import { ManagerTeamsContainer } from "./features/container/ManagerTeamsContaine
 import { TeamLeadCustomFieldsSection } from "./features/components/TeamLeadCustomFieldsSection";
 import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
 import { ExternalMemberInviteForm } from "./features/components/ExternalMemberInviteForm";
+import { TeamScheduleSettingsProvider } from "./features/teamScheduleSettings/context/TeamScheduleSettingsContext";
+import { TeamScheduleSettingsSection } from "./features/teamScheduleSettings/components/TeamScheduleSettingsSection";
 import type { ManagerTeamTableRow } from "./features/types";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
@@ -205,6 +207,7 @@ export default function TeamsPage() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && activeTeam?.canManageAccountTeams));
+  const canManageScheduleSettings = !!(user?.isMaster || activeRole === "manager");
   const managedTeam = React.useMemo(
     () => teams.find((team) => team.id === manageTeamId) ?? null,
     [teams, manageTeamId]
@@ -970,6 +973,7 @@ export default function TeamsPage() {
         onRefreshTeams={refreshTeams}
         onOpenCreateTeam={() => setIsCreateTeamOpen(true)}
         canManageTeams={canManageTeams}
+        canManageScheduleSettings={canManageScheduleSettings}
         loading={teamsLoading}
         error={teamsError}
       />
@@ -1097,10 +1101,11 @@ export default function TeamsPage() {
               </div>
             ) : (
               <Tabs defaultValue="basic-info" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className={cn("grid w-full", canManageScheduleSettings ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3")}>
                   <TabsTrigger value="basic-info">Informações básicas</TabsTrigger>
                   <TabsTrigger value="rules">Regras</TabsTrigger>
                   <TabsTrigger value="custom-fields">Campos personalizados</TabsTrigger>
+                  {canManageScheduleSettings ? <TabsTrigger value="schedule-settings">Agendamento</TabsTrigger> : null}
                 </TabsList>
                 <TabsContent value="basic-info" className="mt-4">
                   <div className="space-y-6">
@@ -1718,6 +1723,13 @@ export default function TeamsPage() {
                     />
                   ) : null}
                 </TabsContent>
+                {canManageScheduleSettings && manageTeamId ? (
+                  <TabsContent value="schedule-settings" className="mt-4">
+                    <TeamScheduleSettingsProvider supabaseId={supabaseId} teamId={manageTeamId}>
+                      <TeamScheduleSettingsSection />
+                    </TeamScheduleSettingsProvider>
+                  </TabsContent>
+                ) : null}
               </Tabs>
             )}
           </div>

@@ -221,4 +221,18 @@ describe("Public form submissions route (PR2.3)", () => {
     expect(response.status).toBe(400)
     expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
   })
+
+  it("slot ocupado → 409, sem enfileirar", async () => {
+    resetMocks()
+    acceptMock.mockResolvedValue(
+      new Output(false, [], ["O horário selecionado não está mais disponível"], { conflict: true }),
+    )
+
+    const response = await POST(makeRequest(VALID_BODY), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response.status).toBe(409)
+    expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
+  })
 })

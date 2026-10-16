@@ -2,7 +2,6 @@ import { LeadStatus, Prisma, type Lead } from "@prisma/client"
 import { publicFormsRepository } from "@/app/api/infra/data/repositories/publicForms/PublicFormsRepository"
 import { publicFormsService } from "@/app/api/services/PublicForms/PublicFormsService"
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService"
-import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase"
 import { formatLocalDateValue, formatLocalTimeValue, DEFAULT_TZ } from "@/lib/dates"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import { Output } from "@/lib/output"
@@ -52,6 +51,8 @@ import {
 } from "@/lib/queues/public-form-metric-events"
 import { queueSubmissionForBackgroundProcessing } from "@/lib/public-forms/queue-submission-for-background-processing"
 import { resolvePublicFormLeadGateMode } from "@/lib/public-forms/public-form-lead-gate-mode"
+import { calendarAvailabilityService } from "@/app/api/services/calendarAvailability/CalendarAvailabilityService"
+import { meetingSlotReservationService } from "@/app/api/services/meetingSlotReservation/MeetingSlotReservationService"
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -75,6 +76,12 @@ export type PublicFormSubmissionBackgroundJob = {
   visitorSessionId?: string | null
   thankYouPageId?: string | null
   scheduling?: PublicFormSubmissionInput["scheduling"]
+  meetingReservation?: {
+    reservationId: string
+    closerId: string
+    durationMinutes: number
+    startsAt: string
+  }
 }
 
 /** D19-B-bis: anexa score da submissão ao origin do evento form_completed (Radar metadata). */
@@ -231,6 +238,27 @@ export class PublicFormSubmissionUseCase {
 
     const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
 
+    const existingReservation = existing?.meetingSlotReservationId && existing.scheduledCloserId &&
+      existing.scheduledDurationMinutes && existing.scheduledMeetingStartsAt
+      ? {
+          reservationId: existing.meetingSlotReservationId,
+          closerId: existing.scheduledCloserId,
+          durationMinutes: existing.scheduledDurationMinutes,
+          startsAt: existing.scheduledMeetingStartsAt.toISOString(),
+        }
+      : null
+    const meetingReservation = input.scheduling && !existingReservation
+      ? await this.reservePublicMeeting(snapshot, input.scheduling)
+      : existingReservation
+    if (input.scheduling && !meetingReservation) {
+      return new Output(false, [], ["O horário selecionado não está mais disponível"], { conflict: true })
+    }
+    const releaseNewReservation = async () => {
+      if (meetingReservation && !existingReservation) {
+        await meetingSlotReservationService.release(meetingReservation.reservationId)
+      }
+    }
+
     // DA6: o aceite é gravado aqui, junto da própria escrita da submissão —
     // síncrono, antes de qualquer enfileiramento — e é o único fato que
     // autoriza o cron de re-despacho a tocar nesta linha. Reenvio do mesmo
@@ -248,13 +276,22 @@ export class PublicFormSubmissionUseCase {
         submitRequestedAt: existing.submitRequestedAt ?? submitRequestedAt,
       })
       if (!claimed) {
+        await releaseNewReservation()
         return new Output(true, ["Respostas já recebidas"], [], {
           submissionId: existing.id,
           alreadyProcessed: true,
         })
       }
 
-      await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
+      try {
+        await publicFormsRepository.persistSubmissionAnswers(existing.id, answers)
+        if (meetingReservation && !existingReservation) {
+          await this.attachPublicMeetingReservation(existing.id, meetingReservation)
+        }
+      } catch (error) {
+        await releaseNewReservation()
+        throw error
+      }
       const background: PublicFormSubmissionBackgroundJob = {
         submissionId: existing.id,
         publicationId,
@@ -270,6 +307,7 @@ export class PublicFormSubmissionUseCase {
         visitorSessionId: input.visitorSessionId ?? existing.visitorSessionId ?? null,
         thankYouPageId: input.thankYouPageId ?? null,
         scheduling: input.scheduling,
+        meetingReservation: meetingReservation ?? undefined,
       }
       return new Output(true, ["Respostas recebidas"], [], {
         submissionId: existing.id,
@@ -285,10 +323,12 @@ export class PublicFormSubmissionUseCase {
 
     const dispatchContext = {
       thankYouPageId: input.thankYouPageId ?? null,
-      scheduledMeetingStartsAt: input.scheduling ? new Date(input.scheduling.startsAt) : null,
+      scheduledMeetingStartsAt: meetingReservation ? new Date(meetingReservation.startsAt) : null,
     }
-    const submission = progressSubmission
-      ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
+    let submission: { id: string; eventId: string | null }
+    try {
+      submission = progressSubmission
+        ? await publicFormsRepository.finalizeProgressSubmission(progressSubmission.id, {
           requestKey: input.requestKey,
           eventId: input.eventId,
           score,
@@ -297,8 +337,8 @@ export class PublicFormSubmissionUseCase {
           visitorSessionId: input.visitorSessionId ?? null,
           submitRequestedAt: progressSubmission.submitRequestedAt ?? submitRequestedAt,
           ...dispatchContext,
-        })
-      : await publicFormsRepository.createSubmission({
+          })
+        : await publicFormsRepository.createSubmission({
           formId: snapshot.formId,
           publicationId,
           requestKey: input.requestKey,
@@ -310,9 +350,21 @@ export class PublicFormSubmissionUseCase {
           completionStatus: "partial",
           submitRequestedAt,
           ...dispatchContext,
-        })
+          })
+    } catch (error) {
+      await releaseNewReservation()
+      throw error
+    }
 
-    await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
+    try {
+      await publicFormsRepository.persistSubmissionAnswers(submission.id, answers)
+      if (meetingReservation) {
+        await this.attachPublicMeetingReservation(submission.id, meetingReservation)
+      }
+    } catch (error) {
+      await releaseNewReservation()
+      throw error
+    }
 
     const background: PublicFormSubmissionBackgroundJob = {
       submissionId: submission.id,
@@ -329,6 +381,7 @@ export class PublicFormSubmissionUseCase {
       visitorSessionId: input.visitorSessionId ?? null,
       thankYouPageId: input.thankYouPageId ?? null,
       scheduling: input.scheduling,
+      meetingReservation: meetingReservation ?? undefined,
     }
 
     return new Output(true, ["Respostas recebidas"], [], {
@@ -493,14 +546,15 @@ export class PublicFormSubmissionUseCase {
             snapshot: job.snapshot,
             lead,
             scheduling: job.scheduling,
+            meetingReservation: job.meetingReservation,
           })
         } catch (error) {
           const message = error instanceof Error ? error.message : "Falha ao agendar reunião"
           console.error("[PublicFormSubmissionUseCase][processInBackground] Agendamento", message)
-          alerts.push(message)
+          throw error
         }
       } else if (job.scheduling && !lead) {
-        alerts.push("Agendamento não realizado: lead não vinculado")
+        throw new Error("Agendamento não realizado: lead não vinculado")
       }
 
       const visitorSessionId = (job.visitorSessionId ?? job.requestKey).slice(0, 100)
@@ -705,39 +759,23 @@ export class PublicFormSubmissionUseCase {
     snapshot: PublicFormSnapshot
     lead: Lead
     scheduling: NonNullable<PublicFormSubmissionInput["scheduling"]>
+    meetingReservation?: PublicFormSubmissionBackgroundJob["meetingReservation"]
   }) {
-    const { form, snapshot, lead, scheduling } = input
-    if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) {
+    const { form, snapshot, lead, scheduling, meetingReservation } = input
+    if (!snapshot.schedulingEnabled || !meetingReservation) {
       throw new Error("Agendamento indisponível para este formulário")
     }
 
-    const timezone = form.team.master.timezone || DEFAULT_TZ
     const startsAt = new Date(scheduling.startsAt)
-    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() - 60_000) {
-      throw new Error("Horário de agendamento inválido ou já passou")
+    if (
+      Number.isNaN(startsAt.getTime()) ||
+      startsAt.toISOString() !== meetingReservation.startsAt ||
+      !snapshot.eligibleCloserIds.includes(meetingReservation.closerId)
+    ) {
+      throw new Error("Reserva de agendamento inválida")
     }
 
-    const dateKey = formatLocalDateValue(startsAt, timezone)
-    const timeKey = formatLocalTimeValue(startsAt, timezone)
-    const availableCloserIds: string[] = []
-    for (const closerId of snapshot.eligibleCloserIds) {
-      const availabilityOutput = await publicLeadFormUseCase.getCloserAvailability(
-        form.teamId,
-        closerId,
-        dateKey,
-        undefined,
-        snapshot.meetingDurationMinutes,
-      )
-      if (!availabilityOutput.isValid) continue
-      const availableTimes =
-        (availabilityOutput.result as { availableTimes?: string[] } | null)?.availableTimes ?? []
-      if (availableTimes.includes(timeKey)) availableCloserIds.push(closerId)
-    }
-    if (availableCloserIds.length === 0) {
-      throw new Error("O horário selecionado não está mais disponível")
-    }
-
-    const closerId = availableCloserIds[Math.floor(Math.random() * availableCloserIds.length)]!
+    const closerId = meetingReservation.closerId
     const closerProfile = await publicFormsRepository.findCloserGoogleConnection(closerId)
     const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection)
     const meetingType = canUseGoogleCalendar ? "online" : "call"
@@ -754,17 +792,73 @@ export class PublicFormSubmissionUseCase {
       leadCode: lead.leadCode,
       closerId,
       teamId: form.teamId,
+      reservationSource: "public_form",
+      reservationId: meetingReservation.reservationId,
       meetingDate: scheduling.startsAt,
       meetingTitle: `Reunião — ${lead.name}`,
       meetingNotes: snapshot.schedulingMessage ?? undefined,
       meetingType,
-      durationMinutes: snapshot.meetingDurationMinutes,
+      durationMinutes: meetingReservation.durationMinutes,
       createdByProfileId: form.team.master.id,
       transitionStatusToScheduled: true,
       authorAsStudio: true,
     })
     if (!scheduleOutput.isValid) throw new Error(scheduleOutput.errorMessages.join("; "))
     return true
+  }
+
+  private async reservePublicMeeting(
+    snapshot: PublicFormSnapshot,
+    scheduling: NonNullable<PublicFormSubmissionInput["scheduling"]>,
+  ): Promise<PublicFormSubmissionBackgroundJob["meetingReservation"] | null> {
+    if (!snapshot.schedulingEnabled || snapshot.eligibleCloserIds.length === 0) return null
+
+    const startsAt = new Date(scheduling.startsAt)
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() - 60_000) return null
+
+    const form = await publicFormsRepository.findFormSubmissionContext(snapshot.formId)
+    const timezone = form.team.master.timezone || DEFAULT_TZ
+    const availability = await calendarAvailabilityService.getAvailability({
+      teamId: form.teamId,
+      requestedCloserIds: snapshot.eligibleCloserIds,
+      date: formatLocalDateValue(startsAt, timezone),
+      userTimezone: timezone,
+    })
+    const timeKey = formatLocalTimeValue(startsAt, timezone)
+    const closerId = snapshot.eligibleCloserIds.find((id) => availability.perCloser[id]?.includes(timeKey))
+    if (!closerId) return null
+
+    const reservation = await meetingSlotReservationService.reserve({
+      teamId: form.teamId,
+      closerId,
+      startsAt,
+      source: "public_form",
+    })
+    return reservation.available
+      ? {
+          reservationId: reservation.reservationId,
+          closerId,
+          durationMinutes: reservation.durationMinutes,
+          startsAt: startsAt.toISOString(),
+        }
+      : null
+  }
+
+  private async attachPublicMeetingReservation(
+    submissionId: string,
+    reservation: NonNullable<PublicFormSubmissionBackgroundJob["meetingReservation"]>,
+  ): Promise<void> {
+    await meetingSlotReservationService.attachToPublicFormSubmission({
+      reservationId: reservation.reservationId,
+      publicFormSubmissionId: submissionId,
+    })
+    await publicFormsRepository.attachMeetingSlotReservation({
+      submissionId,
+      reservationId: reservation.reservationId,
+      closerId: reservation.closerId,
+      durationMinutes: reservation.durationMinutes,
+      startsAt: new Date(reservation.startsAt),
+    })
   }
 
   /**
@@ -777,6 +871,12 @@ export class PublicFormSubmissionUseCase {
    */
   async queueForBackgroundProcessing(job: PublicFormSubmissionBackgroundJob): Promise<void> {
     await queueSubmissionForBackgroundProcessing(job)
+  }
+
+  async releaseTerminalMeetingReservation(job: PublicFormSubmissionBackgroundJob): Promise<void> {
+    if (job.meetingReservation) {
+      await meetingSlotReservationService.release(job.meetingReservation.reservationId)
+    }
   }
 }
 

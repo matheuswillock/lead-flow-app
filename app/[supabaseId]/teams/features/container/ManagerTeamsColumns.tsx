@@ -29,6 +29,7 @@ interface CreateColumnsProps {
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
   onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   canManageTeams: boolean;
+  canManageScheduleSettings: boolean;
 }
 
 export function createColumns({
@@ -45,6 +46,7 @@ export function createColumns({
   onEditPendingPayment,
   onCancelPendingTeam,
   canManageTeams,
+  canManageScheduleSettings,
 }: CreateColumnsProps): ColumnDef<ManagerTeamTableRow>[] {
   const showDefaultTeamColumn = ownAccountTeamCount >= 2;
 
@@ -298,7 +300,7 @@ export function createColumns({
                 {!team.isPending && (
                   <DropdownMenuItem
                     onClick={() => onManageTeam(team.id, team.name)}
-                    disabled={!canManageTeams}
+                    disabled={!canManageTeams && !canManageScheduleSettings}
                     className="flex items-center gap-2"
                   >
                     <Settings className="h-4 w-4" />

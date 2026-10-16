@@ -7026,6 +7026,42 @@
                   "response": []
                 },
                 {
+                  "name": "GET /api/v1/teams/{{teamId}}/schedule-settings",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      { "key": "x-supabase-user-id", "value": "{{supabaseId}}", "type": "text" },
+                      { "key": "x-team-id", "value": "{{teamId}}", "type": "text" }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/schedule-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "schedule-settings"]
+                    },
+                    "description": "Master ou manager: consulta a duração fixa das reuniões do time."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PUT /api/v1/teams/{{teamId}}/schedule-settings",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      { "key": "Content-Type", "value": "application/json", "type": "text" },
+                      { "key": "x-supabase-user-id", "value": "{{supabaseId}}", "type": "text" },
+                      { "key": "x-team-id", "value": "{{teamId}}", "type": "text" }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/schedule-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "schedule-settings"]
+                    },
+                    "body": { "mode": "raw", "raw": "{\"durationMinutes\":45}" },
+                    "description": "Master ou manager: define duração entre 5 e 60 minutos, em intervalos de 5."
+                  },
+                  "response": []
+                },
+                {
                   "name": "GET /api/v1/teams/{{teamId}}/automations",
                   "request": {
                     "method": "GET",

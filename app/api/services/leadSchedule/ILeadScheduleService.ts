@@ -1,4 +1,5 @@
 import { Output } from "@/lib/output";
+import type { TeamMeetingSlotReservationSource } from "@prisma/client";
 
 export interface CreateScheduleParams {
   leadId: string;
@@ -20,6 +21,9 @@ export interface CreateScheduleParams {
   meetingLink?: string;
   meetingType?: "online" | "call" | "whatsapp" | null;
   durationMinutes?: number;
+  reservationSource?: TeamMeetingSlotReservationSource;
+  /** Reserva criada no aceite público; o worker nunca a recria. */
+  reservationId?: string;
   extraGuests?: string[];
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;

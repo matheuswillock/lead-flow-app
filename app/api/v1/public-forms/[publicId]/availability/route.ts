@@ -39,16 +39,17 @@ export async function GET(
   }
 
   const slotMap = new Map<string, { time: string; startsAt: string }>()
+  let durationMinutes: number | null = null
   for (const closerId of current.snapshot.eligibleCloserIds) {
     const output = await publicLeadFormUseCase.getCloserAvailability(
       current.teamId,
       closerId,
       date,
       undefined,
-      current.snapshot.meetingDurationMinutes,
     )
     if (!output.isValid) continue
-    const result = output.result as { availableTimes?: string[] }
+    const result = output.result as { availableTimes?: string[]; durationMinutes?: number }
+    durationMinutes = result.durationMinutes ?? durationMinutes
     for (const time of result.availableTimes ?? []) {
       if (slotMap.has(time)) continue
       slotMap.set(time, {
@@ -59,5 +60,5 @@ export async function GET(
   }
 
   const availableSlots = Array.from(slotMap.values()).sort((a, b) => a.time.localeCompare(b.time))
-  return NextResponse.json(new Output(true, [], [], { availableSlots }))
+  return NextResponse.json(new Output(true, [], [], { availableSlots, durationMinutes }))
 }

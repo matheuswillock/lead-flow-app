@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { ActivityType, InviteDispatchStatus, LeadStatus, Prisma } from "@prisma/client";
-import { prisma } from "@/app/api/infra/data/prisma";
+import type { CreateLeadActivityDTO } from "@/app/api/infra/data/repositories/leadActivity/ILeadActivityRepository";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { leadActivityRepository } from "@/app/api/infra/data/repositories/leadActivity/LeadActivityRepository";
+import { leadAttachmentRepository } from "@/app/api/infra/data/repositories/leadAttachment/LeadAttachmentRepository";
+import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import { leadSchedulePersistenceRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadSchedulePersistenceRepository";
 import {
   cancelCalendarEvent,
   upsertCalendarEvent,
@@ -23,6 +29,12 @@ import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import { meetingSlotReservationService } from "@/app/api/services/meetingSlotReservation/MeetingSlotReservationService";
+import { teamScheduleSettingsRepository } from "@/app/api/infra/data/repositories/teamScheduleSettings/TeamScheduleSettingsRepository";
+import {
+  DEFAULT_MEETING_DURATION_MINUTES,
+  isMeetingDurationMinutes,
+} from "@/app/api/domain/teamScheduleSettings/meetingDuration";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -39,23 +51,6 @@ type InviteDispatchPublicResult = {
   fallbackUsed: boolean;
   attemptedAt: string;
   error: string | null;
-};
-
-const STATUS_LABELS: Record<LeadStatus, string> = {
-  new_opportunity: "Nova oportunidade",
-  scheduled: "Agendado",
-  no_show: "No Show",
-  pricingRequest: "Cotação",
-  future_sale: "Venda Futura",
-  offerNegotiation: "Negociação",
-  pending_documents: "Documentos pendentes",
-  offerSubmission: "Proposta",
-  dps_agreement: "DPS | Contrato",
-  invoicePayment: "Boleto",
-  disqualified: "Desqualificado",
-  opportunityLost: "Perdido",
-  operator_denied: "Negado operadora",
-  contract_finalized: "Negócio fechado",
 };
 
 const LOG_PREFIX = "[LeadScheduleService]";
@@ -137,25 +132,23 @@ const registerInviteDispatchActivity = async ({
   metadata: Prisma.InputJsonValue | null;
 }) => {
   try {
-    await prisma.leadActivity.create({
-      data: {
-        leadId,
-        ...buildStudioActivityData({
-          type: ActivityType.note,
-          body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
-          payload: {
-            kind: "schedule",
-            action: "invite_dispatch",
-            provider,
-            status,
-            fallbackUsed,
-            attemptedAt: attemptedAt.toISOString(),
-            recipients,
-            error,
-            metadata,
-          },
-        }),
-      },
+    await leadActivityRepository.create({
+      leadId,
+      ...buildStudioActivityData({
+        type: ActivityType.note,
+        body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
+        payload: {
+          kind: "schedule",
+          action: "invite_dispatch",
+          provider,
+          status,
+          fallbackUsed,
+          attemptedAt: attemptedAt.toISOString(),
+          recipients,
+          error,
+          metadata,
+        },
+      }),
     });
   } catch (activityError) {
     console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de disparo de convite:`, activityError);
@@ -170,9 +163,14 @@ const buildAuthorActivityData = (
     body: string;
     payload?: Prisma.InputJsonValue | Record<string, unknown> | null;
   }
-): Prisma.LeadActivityUncheckedCreateWithoutLeadInput =>
+): Omit<CreateLeadActivityDTO, "leadId"> =>
   authorAsStudio
-    ? buildStudioActivityData(input)
+    ? {
+        ...buildStudioActivityData(input),
+        type: input.type,
+        body: input.body,
+        createdBy: null,
+      }
     : {
         type: input.type,
         body: input.body,
@@ -182,6 +180,62 @@ const buildAuthorActivityData = (
 
 export class LeadScheduleService implements ILeadScheduleService {
   async createSchedule(params: CreateScheduleParams): Promise<Output> {
+    if (!params.meetingDate) {
+      return new Output(false, [], ["Data da reunião é obrigatória."], null);
+    }
+
+    const meetingDate = new Date(params.meetingDate);
+    if (Number.isNaN(meetingDate.getTime())) {
+      return new Output(false, [], ["Data da reunião inválida."], null);
+    }
+
+    const configuredDuration = await teamScheduleSettingsRepository.findMeetingDuration(params.teamId);
+    const durationMinutes = isMeetingDurationMinutes(configuredDuration)
+      ? configuredDuration
+      : DEFAULT_MEETING_DURATION_MINUTES;
+    const reservation = params.reservationId
+      ? { available: true as const, reservationId: params.reservationId, durationMinutes }
+      : await meetingSlotReservationService.reserve({
+          teamId: params.teamId,
+          closerId: params.closerId,
+          leadId: params.leadId,
+          startsAt: meetingDate,
+          source: params.reservationSource ?? "internal",
+        });
+    if (!reservation.available) {
+      return new Output(false, [], ["Este horário não está mais disponível."], null);
+    }
+
+    try {
+      if (params.reservationId) {
+        await meetingSlotReservationService.attachToLead({
+          reservationId: params.reservationId,
+          leadId: params.leadId,
+        });
+      }
+      const output = await this.createScheduleWithoutReservation(params);
+      if (!output.isValid) {
+        await meetingSlotReservationService.release(reservation.reservationId);
+        return output;
+      }
+
+      const result = output.result as { googleEventId?: string | null; googleCalendarId?: string | null } | null;
+      await meetingSlotReservationService.consume({
+        reservationId: reservation.reservationId,
+        leadId: params.leadId,
+        googleEventId: result?.googleEventId ?? null,
+        googleCalendarId: result?.googleCalendarId ?? null,
+      });
+      return output;
+    } catch (error) {
+      // A implementação só libera reservas sem evento externo. Com evento
+      // Google registrado, a linha permanece recuperável para reconciliação.
+      await meetingSlotReservationService.release(reservation.reservationId);
+      throw error;
+    }
+  }
+
+  private async createScheduleWithoutReservation(params: CreateScheduleParams): Promise<Output> {
     const {
       leadId,
       leadName,
@@ -200,7 +254,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       meetingNotes,
       meetingLink,
       meetingType,
-      durationMinutes,
+      durationMinutes: requestedDurationMinutes,
       extraGuests,
       createdByProfileId,
       transitionStatusToScheduled,
@@ -214,6 +268,13 @@ export class LeadScheduleService implements ILeadScheduleService {
       return new Output(false, [], ["Data da reunião é obrigatória."], null);
     }
     const meetingDate = new Date(meetingDateISO);
+    const configuredDuration = await teamScheduleSettingsRepository.findMeetingDuration(teamId);
+    const durationMinutes = isMeetingDurationMinutes(configuredDuration)
+      ? configuredDuration
+      : DEFAULT_MEETING_DURATION_MINUTES;
+    if (requestedDurationMinutes && requestedDurationMinutes !== durationMinutes) {
+      console.info(`${LOG_PREFIX} Duração enviada pelo cliente foi ignorada em favor da configuração do time.`);
+    }
     const shouldLogCloserChange = closerId !== leadCurrentCloserId;
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
@@ -240,20 +301,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       );
     }
 
-    const closerProfile = await prisma.profile.findUnique({
-      where: { id: closerId },
-      include: {
-        googleConnection: {
-          select: {
-            accessToken: true,
-            refreshToken: true,
-            tokenExpiresAt: true,
-            revokedAt: true,
-            googleEmail: true,
-          },
-        },
-      },
-    });
+    const closerProfile = await profileRepository.findWithGoogleConnectionById(closerId);
 
     if (!closerProfile || !closerProfile.email) {
       return new Output(false, [], ["Closer não encontrado ou sem e-mail válido."], null);
@@ -331,10 +379,7 @@ export class LeadScheduleService implements ILeadScheduleService {
 
     let schedulerLabel = "Usuário";
     try {
-      const schedulerProfile = await prisma.profile.findUnique({
-        where: { id: createdByProfileId },
-        select: { fullName: true, email: true },
-      });
+      const schedulerProfile = await profileRepository.findById(createdByProfileId);
 
       schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
     } catch (schedulerError) {
@@ -383,20 +428,9 @@ export class LeadScheduleService implements ILeadScheduleService {
         calendarTransfer.previousEventId
       ) {
         try {
-          const previousCloserProfile = await prisma.profile.findUnique({
-            where: { id: calendarTransfer.previousCloserId },
-            include: {
-              googleConnection: {
-                select: {
-                  accessToken: true,
-                  refreshToken: true,
-                  tokenExpiresAt: true,
-                  revokedAt: true,
-                  googleEmail: true,
-                },
-              },
-            },
-          });
+          const previousCloserProfile = await profileRepository.findWithGoogleConnectionById(
+            calendarTransfer.previousCloserId,
+          );
 
           if (
             previousCloserProfile &&
@@ -457,6 +491,13 @@ export class LeadScheduleService implements ILeadScheduleService {
 
       try {
         calendarResult = await attemptCloserCalendarUpsert({ attendeeEmails: googleRecipients });
+        if (params.reservationId) {
+          await meetingSlotReservationService.markExternalEvent({
+            reservationId: params.reservationId,
+            googleEventId: calendarResult.eventId,
+            googleCalendarId: calendarResult.calendarId,
+          });
+        }
 
         inviteDispatchStatus = "sent_google";
         inviteDispatchProvider = "google";
@@ -653,6 +694,13 @@ export class LeadScheduleService implements ILeadScheduleService {
             attendeeEmails: [],
             meetingFormatLabel,
           });
+          if (params.reservationId) {
+            await meetingSlotReservationService.markExternalEvent({
+              reservationId: params.reservationId,
+              googleEventId: calendarResult.eventId,
+              googleCalendarId: calendarResult.calendarId,
+            });
+          }
         } catch (calendarError) {
           const calendarFailure = resolveBestEffortCalendarFailure({
             existingGoogleEventId: existingSchedule?.googleEventId,
@@ -785,93 +833,30 @@ export class LeadScheduleService implements ILeadScheduleService {
       ? getScheduleShareExpiry(meetingDate)
       : undefined;
 
-    const persisted = await prisma.$transaction(async (tx) => {
-      const inviteDispatchLastPayloadForDb =
-        inviteDispatchLastPayload === null ? Prisma.JsonNull : (inviteDispatchLastPayload ?? undefined);
-
-      const schedule = await tx.leadsSchedule.upsert({
-        where: { leadId },
-        create: {
-          id: scheduleId,
-          leadId,
-          date: meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          notes: meetingNotes,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          extraGuests: extraGuests ?? [],
-          googleEventId: calendarResult?.eventId ?? undefined,
-          googleCalendarId: calendarResult?.calendarId ?? undefined,
-          inviteDispatchStatus,
-          inviteDispatchFallbackUsed,
-          inviteDispatchLastAttemptAt,
-          inviteDispatchLastError,
-          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-          publicShareExpiresAt: refreshedPublicShareExpiresAt,
-        },
-        update: {
-          date: meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          notes: meetingNotes,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          extraGuests: extraGuests ?? existingSchedule?.extraGuests ?? [],
-          googleEventId: calendarResult?.eventId ?? existingSchedule?.googleEventId ?? undefined,
-          googleCalendarId: calendarResult?.calendarId ?? existingSchedule?.googleCalendarId ?? undefined,
-          inviteDispatchStatus,
-          inviteDispatchFallbackUsed,
-          inviteDispatchLastAttemptAt,
-          inviteDispatchLastError,
-          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-          publicShareExpiresAt: refreshedPublicShareExpiresAt,
-          reminder30MinSentAt:
-            existingSchedule?.date?.getTime() !== meetingDate.getTime() ? null : existingSchedule?.reminder30MinSentAt,
-        },
-      });
-
-      const updatedLead = await tx.lead.update({
-        where: { id: leadId },
-        data: {
-          meetingDate,
-          meetingTitle: resolvedMeetingTitle,
-          meetingNotes: meetingNotes || null,
-          meetingLink: resolvedMeetingLink,
-          meetingType: resolvedMeetingType,
-          closerId,
-          ...(existingSchedule?.date?.getTime() !== meetingDate.getTime()
-            ? { meetingPresenceConfirmed: false, meetingPresenceConfirmedAt: null }
-            : {}),
-          ...(transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
-        },
-      });
-
-      if (transitionStatusToScheduled === true && leadStatus !== LeadStatus.scheduled) {
-        const fromStatus = leadStatus as LeadStatus;
-        const fromLabel = STATUS_LABELS[fromStatus] ?? fromStatus;
-        const toLabel = STATUS_LABELS[LeadStatus.scheduled];
-
-        await tx.leadActivity.create({
-          data: {
-            leadId,
-            ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
-              type: ActivityType.status_change,
-              body: `Status alterado de ${fromLabel} para ${toLabel}`,
-              payload: {
-                from: fromStatus,
-                to: LeadStatus.scheduled,
-                fromLabel,
-                toLabel,
-              },
-            }),
-          },
-        });
-      }
-
-      return {
-        schedule,
-        lead: updatedLead,
-        message: isReschedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso",
-      };
+    const persisted = await leadSchedulePersistenceRepository.persist({
+      scheduleId,
+      leadId,
+      closerId,
+      meetingDate,
+      durationMinutes,
+      resolvedMeetingTitle,
+      meetingNotes,
+      resolvedMeetingLink,
+      resolvedMeetingType,
+      extraGuests,
+      calendarResult,
+      inviteDispatchStatus,
+      inviteDispatchFallbackUsed,
+      inviteDispatchLastAttemptAt,
+      inviteDispatchLastError,
+      inviteDispatchLastPayload,
+      publicShareExpiresAt: refreshedPublicShareExpiresAt,
+      existingSchedule,
+      isReschedule,
+      transitionStatusToScheduled,
+      leadStatus: leadStatus as LeadStatus,
+      authorAsStudio,
+      createdByProfileId,
     });
 
     const scheduleWarnings: string[] = [];
@@ -881,12 +866,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     if (inviteDispatchStatus !== "failed") {
       try {
         const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
-        const leadPhoneForNotify = (
-          await prisma.lead.findUnique({
-            where: { id: leadId },
-            select: { phone: true },
-          })
-        )?.phone;
+        const leadPhoneForNotify = (await leadRepository.findById(leadId))?.phone ?? null;
         await emailService.sendCloserScheduleNotificationEmail({
           to: closerEmail,
           teamId,
@@ -910,22 +890,20 @@ export class LeadScheduleService implements ILeadScheduleService {
         scheduleWarnings.push(closerNotificationMessage);
         console.warn(`${LOG_PREFIX} Falha ao enviar notificação ao closer:`, closerNotificationError);
         try {
-          await prisma.leadActivity.create({
-            data: {
-              leadId,
-              ...buildStudioActivityData({
-                type: ActivityType.note,
-                body: closerNotificationMessage,
-                payload: {
-                  kind: "schedule",
-                  action: "closer_notification_failed",
-                  error:
-                    closerNotificationError instanceof Error
-                      ? closerNotificationError.message
-                      : String(closerNotificationError),
-                },
-              }),
-            },
+          await leadActivityRepository.create({
+            leadId,
+            ...buildStudioActivityData({
+              type: ActivityType.note,
+              body: closerNotificationMessage,
+              payload: {
+                kind: "schedule",
+                action: "closer_notification_failed",
+                error:
+                  closerNotificationError instanceof Error
+                    ? closerNotificationError.message
+                    : String(closerNotificationError),
+              },
+            }),
           });
         } catch (activityError) {
           console.warn(`${LOG_PREFIX} Falha ao registrar atividade de erro do closer:`, activityError);
@@ -951,20 +929,18 @@ export class LeadScheduleService implements ILeadScheduleService {
         if (participantLines.length > 0) {
           bodyLines.push("Participantes:", ...participantLines);
         }
-        await prisma.leadActivity.create({
-          data: {
-            leadId,
-            ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
-              type: ActivityType.note,
-              body: bodyLines.join("\n"),
-              payload: {
-                kind: "schedule",
-                meetingDate: meetingDate.toISOString(),
-                meetingTitle: resolvedMeetingTitle,
-                participants,
-              },
-            }),
-          },
+        await leadActivityRepository.create({
+          leadId,
+          ...buildAuthorActivityData(authorAsStudio, createdByProfileId, {
+            type: ActivityType.note,
+            body: bodyLines.join("\n"),
+            payload: {
+              kind: "schedule",
+              meetingDate: meetingDate.toISOString(),
+              meetingTitle: resolvedMeetingTitle,
+              participants,
+            },
+          }),
         });
       } catch (activityError) {
         console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de agendamento:`, activityError);
@@ -974,17 +950,15 @@ export class LeadScheduleService implements ILeadScheduleService {
       if (shouldLogCloserChange) {
         try {
           const closerLabel = closerProfile.fullName || closerProfile.email || "Closer";
-          await prisma.leadActivity.create({
-            data: {
-              leadId,
-              type: "note",
-              body: `Closer alterado para ${closerLabel}`,
-              payload: {
-                previousCloserId: leadCurrentCloserId,
-                closerId,
-              },
-              createdBy: createdByProfileId,
+          await leadActivityRepository.create({
+            leadId,
+            type: ActivityType.note,
+            body: `Closer alterado para ${closerLabel}`,
+            payload: {
+              previousCloserId: leadCurrentCloserId,
+              closerId,
             },
+            createdBy: createdByProfileId,
           });
         } catch (activityError) {
           console.warn(`${LOG_PREFIX} Não foi possível registrar atividade de alteração de closer:`, activityError);
@@ -1000,12 +974,9 @@ export class LeadScheduleService implements ILeadScheduleService {
               .filter((profileId) => profileId !== createdByProfileId)
           )
         );
-        const teamRecipients = await prisma.teamMember.findMany({
-          where: {
-            teamId,
-            profileId: { in: candidateRecipientProfileIds },
-          },
-          select: { profileId: true },
+        const teamRecipients = await teamMembersRepository.findNotificationRecipientsByProfileIds({
+          teamId,
+          profileIds: candidateRecipientProfileIds,
         });
         const recipientProfileIds = teamRecipients.map((member) => member.profileId);
         if (recipientProfileIds.length > 0) {
@@ -1084,17 +1055,7 @@ export class LeadScheduleService implements ILeadScheduleService {
 
   private async buildLeadScheduleAttachments(leadId: string): Promise<Attachment[]> {
     try {
-      const leadAttachments = await prisma.leadAttachment.findMany({
-        where: { leadId },
-        select: {
-          id: true,
-          fileName: true,
-          fileType: true,
-          storagePath: true,
-          fileUrl: true,
-        },
-        orderBy: { uploadedAt: "asc" },
-      });
+      const leadAttachments = await leadAttachmentRepository.findDownloadRefsByLeadId(leadId);
 
       if (leadAttachments.length === 0) {
         return [];
