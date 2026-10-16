@@ -6,6 +6,8 @@ import type {
   TeamMeetingSlotReservationResult,
 } from "./ITeamMeetingSlotReservationRepository";
 
+export const MAX_RECOVERY_ATTEMPTS = 20;
+
 export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotReservationRepository {
   async reserve(input: CreateTeamMeetingSlotReservationInput): Promise<TeamMeetingSlotReservationResult> {
     return prisma.$transaction(async (transaction) => {
@@ -89,6 +91,7 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
         state: TeamMeetingSlotReservationState.reserved,
         googleEventId: { not: null },
         googleCalendarId: { not: null },
+        recoveryAttempts: { lt: MAX_RECOVERY_ATTEMPTS },
       },
       select: { id: true, leadId: true, googleEventId: true, googleCalendarId: true },
       take: limit,
