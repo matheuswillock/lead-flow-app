@@ -116,6 +116,17 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
       data: { state: TeamMeetingSlotReservationState.released, releasedAt: new Date() },
     });
   }
+
+  async releaseConsumedForLead(input: { leadId: string; exceptReservationId?: string }): Promise<void> {
+    await prisma.teamMeetingSlotReservation.updateMany({
+      where: {
+        leadId: input.leadId,
+        state: TeamMeetingSlotReservationState.consumed,
+        ...(input.exceptReservationId ? { id: { not: input.exceptReservationId } } : {}),
+      },
+      data: { state: TeamMeetingSlotReservationState.released, releasedAt: new Date() },
+    });
+  }
 }
 
 export const teamMeetingSlotReservationRepository = new TeamMeetingSlotReservationRepository();

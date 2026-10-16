@@ -20,4 +20,5 @@ export interface IMeetingSlotReservationService {
   attachToLead(input: { reservationId: string; leadId: string }): Promise<void>;
   markExternalEvent(input: { reservationId: string; googleEventId: string; googleCalendarId: string }): Promise<void>;
   release(reservationId: string): Promise<void>;
+  releaseConsumedForLead(input: { leadId: string; exceptReservationId?: string }): Promise<void>;
 }

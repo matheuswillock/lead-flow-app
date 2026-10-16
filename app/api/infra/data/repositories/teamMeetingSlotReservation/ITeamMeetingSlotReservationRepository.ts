@@ -29,4 +29,5 @@ export interface ITeamMeetingSlotReservationRepository {
   }>>;
   markRecoveryFailure(reservationId: string, error: string): Promise<void>;
   release(reservationId: string): Promise<void>;
+  releaseConsumedForLead(input: { leadId: string; exceptReservationId?: string }): Promise<void>;
 }

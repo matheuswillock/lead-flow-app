@@ -53,6 +53,10 @@ export class MeetingSlotReservationService implements IMeetingSlotReservationSer
   release(reservationId: string) {
     return this.reservations.release(reservationId);
   }
+
+  releaseConsumedForLead(input: { leadId: string; exceptReservationId?: string }) {
+    return this.reservations.releaseConsumedForLead(input);
+  }
 }
 
 export const meetingSlotReservationService: IMeetingSlotReservationService = new MeetingSlotReservationService();

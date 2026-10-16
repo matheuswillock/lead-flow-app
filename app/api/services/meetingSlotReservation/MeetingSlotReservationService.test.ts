@@ -17,6 +17,7 @@ describe("MeetingSlotReservationService", () => {
       markExternalEvent: async () => {},
       findRecoverable: async () => [],
       markRecoveryFailure: async () => {},
+      releaseConsumedForLead: async () => {},
     };
     const service = new MeetingSlotReservationService(reservations, {
       findMeetingDuration: async () => 45,

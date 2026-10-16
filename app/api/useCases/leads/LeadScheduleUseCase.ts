@@ -106,6 +106,7 @@ export class LeadScheduleUseCase {
       meetingTitle,
       notes: input.notes ?? null,
       meetingType,
+      extraGuests: input.extraGuests,
     });
     return new Output(true, ["Pré-agendamento salvo com sucesso"], [], {
       ...schedule,

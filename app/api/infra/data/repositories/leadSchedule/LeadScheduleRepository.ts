@@ -22,13 +22,14 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       notes: data.notes,
       meetingLink: null,
       meetingType: data.meetingType,
+      ...(data.extraGuests !== undefined ? { extraGuests: data.extraGuests } : {}),
       publicShareTokenHash: null,
       publicShareExpiresAt: null,
     };
 
     await prisma.leadsSchedule.upsert({
       where: { leadId: data.leadId },
-      create: { leadId: data.leadId, extraGuests: [], ...shared },
+      create: { leadId: data.leadId, extraGuests: data.extraGuests ?? [], ...shared },
       update: shared,
     });
   }
@@ -44,7 +45,7 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
           notes: data.notes,
           meetingLink: null,
           meetingType: data.meetingType,
-          extraGuests: [],
+          extraGuests: data.extraGuests ?? [],
           publicShareTokenHash: null,
           publicShareExpiresAt: null,
         },
@@ -54,7 +55,7 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
           notes: data.notes,
           meetingLink: null,
           meetingType: data.meetingType,
-          extraGuests: [],
+          ...(data.extraGuests !== undefined ? { extraGuests: data.extraGuests } : {}),
           publicShareTokenHash: null,
           publicShareExpiresAt: null,
         },

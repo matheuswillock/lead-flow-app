@@ -213,7 +213,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           leadId: params.leadId,
         });
       }
-      const output = await this.createScheduleWithoutReservation(params);
+      const output = await this.createScheduleWithoutReservation(params, reservation.reservationId);
       if (!output.isValid) {
         await meetingSlotReservationService.release(reservation.reservationId);
         return output;
@@ -226,6 +226,10 @@ export class LeadScheduleService implements ILeadScheduleService {
         googleEventId: result?.googleEventId ?? null,
         googleCalendarId: result?.googleCalendarId ?? null,
       });
+      await meetingSlotReservationService.releaseConsumedForLead({
+        leadId: params.leadId,
+        exceptReservationId: reservation.reservationId,
+      });
       return output;
     } catch (error) {
       // A implementação só libera reservas sem evento externo. Com evento
@@ -235,7 +239,10 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
   }
 
-  private async createScheduleWithoutReservation(params: CreateScheduleParams): Promise<Output> {
+  private async createScheduleWithoutReservation(
+    params: CreateScheduleParams,
+    reservationId: string,
+  ): Promise<Output> {
     const {
       leadId,
       leadName,
@@ -491,9 +498,9 @@ export class LeadScheduleService implements ILeadScheduleService {
 
       try {
         calendarResult = await attemptCloserCalendarUpsert({ attendeeEmails: googleRecipients });
-        if (params.reservationId) {
+        if (reservationId) {
           await meetingSlotReservationService.markExternalEvent({
-            reservationId: params.reservationId,
+            reservationId,
             googleEventId: calendarResult.eventId,
             googleCalendarId: calendarResult.calendarId,
           });
@@ -694,9 +701,9 @@ export class LeadScheduleService implements ILeadScheduleService {
             attendeeEmails: [],
             meetingFormatLabel,
           });
-          if (params.reservationId) {
+          if (reservationId) {
             await meetingSlotReservationService.markExternalEvent({
-              reservationId: params.reservationId,
+              reservationId,
               googleEventId: calendarResult.eventId,
               googleCalendarId: calendarResult.calendarId,
             });
