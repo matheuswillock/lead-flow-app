@@ -12,6 +12,8 @@ test.describe.serial("gate de acesso da conta", () => {
   const isolatedSupabaseId = randomUUID()
   const isolatedEmail = `e2e.account-access.${randomUUID()}@example.com`
   let isolatedProfileId: string
+  let allowedMasterProfileId: string
+  let allowedTeamName: string
 
   test.beforeAll(async () => {
     const prisma = getPrisma()
@@ -36,15 +38,33 @@ test.describe.serial("gate de acesso da conta", () => {
     await prisma.profileSubscription.create({
       data: { profileId: profile.id, subscriptionStatus: "past_due" },
     })
+
+    const allowedMaster = await prisma.profile.create({
+      data: {
+        email: `e2e.account-access.allowed.${randomUUID()}@example.com`,
+        fullName: "E2E Account Access Allowed",
+        isMaster: true,
+        hasPermanentSubscription: true,
+      },
+    })
+    allowedMasterProfileId = allowedMaster.id
+    allowedTeamName = `E2E Account Access Allowed ${isolatedSupabaseId.slice(0, 8)}`
+    const allowedTeam = await prisma.team.create({
+      data: { name: allowedTeamName, masterId: allowedMaster.id },
+    })
+    await prisma.teamMember.create({
+      data: { teamId: allowedTeam.id, profileId: profile.id, role: "manager" },
+    })
   })
 
   test.afterAll(async () => {
     const prisma = getPrisma()
     await prisma.profile.delete({ where: { id: isolatedProfileId } })
+    await prisma.profile.delete({ where: { id: allowedMasterProfileId } })
     await disconnectPrisma()
   })
 
-  test("em 360px mostra somente o contato de assinaturas sem overflow", async ({ context, page }) => {
+  test("em 360px mantém o menu restrito para trocar de time ou sair, sem expor conteúdo", async ({ context, page }) => {
     await injectE2eAuthCookie(context, { supabaseId: isolatedSupabaseId, email: isolatedEmail })
     await context.addInitScript(
       ({ supabaseId, version }: { supabaseId: string; version: string }) => {
@@ -64,8 +84,17 @@ test.describe.serial("gate de acesso da conta", () => {
     await expect(supportLink).toHaveAttribute("href", SUBSCRIPTION_SUPPORT_WHATSAPP_URL)
     await expect(page.getByRole("link")).toHaveCount(1)
 
-    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0)
-    await expect(page.locator("header")).toHaveCount(0)
+    await page.getByRole("button", { name: "Abrir menu de acesso" }).click()
+    const restrictedSidebar = page.getByTestId("restricted-access-sidebar")
+    await expect(restrictedSidebar).toBeVisible()
+    await expect(restrictedSidebar.getByText("Trocar de time")).toBeVisible()
+    await expect(restrictedSidebar.getByRole("button", { name: "Sair" })).toBeVisible()
+
+    await restrictedSidebar.getByRole("button", { name: /E2E Account Access/ }).click()
+    await page.getByRole("option", { name: new RegExp(allowedTeamName) }).click()
+
+    await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
+    await expect(page.locator("header")).toHaveCount(1)
     await expect(page.getByText("Próximas Reuniões")).toHaveCount(0)
     await expect(page.getByText("CRM", { exact: true })).toHaveCount(0)
 
