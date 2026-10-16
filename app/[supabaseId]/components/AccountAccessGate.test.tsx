@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { AccountAccessGate } from "./AccountAccessGate"
 
-test("não renderiza sidebar, header ou conteúdo da plataforma para conta restrita", () => {
+test("renderiza apenas a navegação restrita, sem conteúdo da plataforma, para conta restrita", () => {
   const markup = renderToStaticMarkup(
     <AccountAccessGate decision={{ state: "restricted", reason: "past_due" }}>
       <aside data-testid="sidebar">sidebar</aside>
@@ -12,6 +12,9 @@ test("não renderiza sidebar, header ou conteúdo da plataforma para conta restr
   )
 
   expect(markup).toContain("Seu acesso está pausado")
+  expect(markup).toContain('data-testid="restricted-access-sidebar"')
+  expect(markup).toContain("Trocar de time")
+  expect(markup).toContain("Sair")
   expect(markup).not.toContain("data-testid=\"sidebar\"")
   expect(markup).not.toContain("data-testid=\"header\"")
   expect(markup).not.toContain("dados financeiros e CRM")
