@@ -52,6 +52,13 @@ test.describe("configuração de duração de reuniões por time", () => {
     // o timeout padrão de 30s estoura sob carga (medido na pipeline).
     test.setTimeout(120_000);
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/teams`);
+    // Fecha o modal "Novidades" se ele abrir: ele aplica aria-hidden no fundo
+    // e esconde o heading da página (visto no report da pipeline).
+    const novidades = page.getByRole("dialog", { name: /Novidades no Corretor Studio/ });
+    if (await novidades.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await page.getByRole("button", { name: "Close" }).click();
+      await expect(novidades).toBeHidden({ timeout: 10_000 });
+    }
     await expect(page.getByRole("heading", { name: "Gerenciar times", exact: true })).toBeVisible({ timeout: 60_000 });
     // Aguarda o fim do loading da tabela antes de interagir: o refresh
     // periódico (times com pagamento pendente) remonta as linhas e derruba
