@@ -15,8 +15,15 @@ test.describe("configuração de duração de reuniões por time", () => {
   });
 
   test("manager configura duração fixa e a interface permanece responsiva", async ({ page }) => {
+    // Spec pesado (screenshots + responsive checks) na VPS self-hosted de 2 vCPU:
+    // o timeout padrão de 30s estoura sob carga (medido na pipeline).
+    test.setTimeout(180_000);
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/teams`);
     await expect(page.getByRole("heading", { name: "Gerenciar times", exact: true })).toBeVisible({ timeout: 60_000 });
+    // Aguarda o fim do loading da tabela antes de interagir: o refresh
+    // periódico (times com pagamento pendente) remonta as linhas e derruba
+    // cliques feitos durante a transição loading -> dados.
+    await expect(page.getByText(/time\(s\) encontrado/)).toBeVisible({ timeout: 30_000 });
 
     const team = await getPrisma().team.findFirst({
       where: { master: { supabaseId: E2E_MASTER_SUPABASE_ID }, deletedAt: null },
@@ -42,6 +49,7 @@ test.describe("configuração de duração de reuniões por time", () => {
     expect(update.ok()).toBe(true);
 
     await page.reload();
+    await expect(page.getByText(/time\(s\) encontrado/)).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Abrir menu" }).first().click();
     await page.getByRole("menuitem", { name: "Gerenciar" }).click();
     await page.getByRole("tab", { name: "Agendamento" }).click();
