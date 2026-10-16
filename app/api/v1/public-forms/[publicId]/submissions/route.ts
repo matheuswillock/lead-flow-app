@@ -65,7 +65,8 @@ export async function POST(
     const hasValidationIssues = Boolean(
       (output.result as { validation?: unknown[] } | null)?.validation?.length,
     )
-    return NextResponse.json(output, { status: hasValidationIssues ? 422 : 400 })
+    const isSlotConflict = Boolean((output.result as { conflict?: boolean } | null)?.conflict)
+    return NextResponse.json(output, { status: isSlotConflict ? 409 : hasValidationIssues ? 422 : 400 })
   }
 
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)

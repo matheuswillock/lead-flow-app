@@ -29,6 +29,7 @@ interface CreateColumnsProps {
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
   onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   canManageTeams: boolean;
+  canManageScheduleSettings: boolean;
 }
 
 export function createColumns({
@@ -45,6 +46,7 @@ export function createColumns({
   onEditPendingPayment,
   onCancelPendingTeam,
   canManageTeams,
+  canManageScheduleSettings,
 }: CreateColumnsProps): ColumnDef<ManagerTeamTableRow>[] {
   const showDefaultTeamColumn = ownAccountTeamCount >= 2;
 
@@ -56,7 +58,7 @@ export function createColumns({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-auto p-0 font-semibold"
+          className="h-auto p-0 font-semibold max-lg:min-h-11"
         >
           Nome
           <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -89,7 +91,7 @@ export function createColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
+            className="h-auto p-0 font-semibold max-lg:min-h-11"
           >
             Nível de acesso
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -116,7 +118,7 @@ export function createColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
+            className="h-auto p-0 font-semibold max-lg:min-h-11"
           >
             Funções
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -149,7 +151,7 @@ export function createColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
+            className="h-auto p-0 font-semibold max-lg:min-h-11"
           >
             Status
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -221,7 +223,7 @@ export function createColumns({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
+            className="h-auto p-0 font-semibold max-lg:min-h-11"
           >
             Criado em
             <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -261,7 +263,7 @@ export function createColumns({
           <div className="flex justify-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
+                <Button variant="ghost" className="h-8 w-8 cursor-pointer p-0 max-lg:size-11!">
                   <span className="sr-only">Abrir menu</span>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -298,7 +300,7 @@ export function createColumns({
                 {!team.isPending && (
                   <DropdownMenuItem
                     onClick={() => onManageTeam(team.id, team.name)}
-                    disabled={!canManageTeams}
+                    disabled={!canManageTeams && !canManageScheduleSettings}
                     className="flex items-center gap-2"
                   >
                     <Settings className="h-4 w-4" />

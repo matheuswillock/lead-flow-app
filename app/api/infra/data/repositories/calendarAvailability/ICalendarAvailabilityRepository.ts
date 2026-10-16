@@ -21,9 +21,17 @@ export type CalendarAvailabilityExcludedLead = {
 export type CalendarAvailabilityScheduledLead = {
   meetingDate: Date | null;
   closerId: string | null;
+  meetingDurationMinutes: number | null;
+};
+
+export type CalendarAvailabilityReservation = {
+  closerId: string;
+  startsAt: Date;
+  endsAt: Date;
 };
 
 export interface ICalendarAvailabilityRepository {
+  findMeetingDuration(teamId: string): Promise<number | null>;
   findTeamMemberProfileIds(teamId: string, requestedCloserIds: string[]): Promise<string[]>;
   findCloserProfiles(requestedCloserIds: string[]): Promise<CalendarAvailabilityCloserProfile[]>;
   findExcludedLead(excludeLeadId: string, teamId: string): Promise<CalendarAvailabilityExcludedLead | null>;
@@ -33,4 +41,11 @@ export interface ICalendarAvailabilityRepository {
     dayStart: Date;
     dayEnd: Date;
   }): Promise<CalendarAvailabilityScheduledLead[]>;
+  findActiveReservations(params: {
+    teamId: string;
+    requestedCloserIds: string[];
+    rangeStart: Date;
+    rangeEnd: Date;
+    excludeLeadId?: string;
+  }): Promise<CalendarAvailabilityReservation[]>;
 }

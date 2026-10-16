@@ -11,7 +11,11 @@ export function resolveActiveTeamId(input: {
   teams: TeamAccessCandidate[]
 }): string | null {
   const currentTeam = input.teams.find((team) => team.id === input.currentTeamId)
-  if (currentTeam && !currentTeam.isPending && currentTeam.isAccessible !== false) {
+  // Preserva a escolha explícita mesmo quando a assinatura daquele time está
+  // restrita. O gate mostra a navegação mínima para a pessoa escolher outro
+  // time; trocar silenciosamente esconderia o motivo do bloqueio e impediria
+  // essa recuperação consciente.
+  if (currentTeam && !currentTeam.isPending) {
     return currentTeam.id
   }
 

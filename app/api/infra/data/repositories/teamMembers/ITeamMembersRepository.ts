@@ -56,6 +56,16 @@ export interface TeamMembersMembershipAccess {
   canManageAccountTeams: boolean;
 }
 
+/** Estado do time vinculado a uma membership, para autorizar troca de time ativo. */
+export interface TeamMembersMembershipTeamState {
+  deletedAt: Date | null;
+}
+
+/** Time patrocinado visível ao sponsor, para autorizar troca de time ativo. */
+export interface TeamMembersSponsoredTeamAccess {
+  sponsorMasterId: string | null;
+}
+
 export interface TeamMembersSnapshot {
   id: string;
   teamId: string;
@@ -98,6 +108,13 @@ export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
   findMembership(teamId: string, profileId: string): Promise<TeamMembersMembershipAccess | null>;
+  /** Estado do time de uma membership (existência + soft-delete), para troca de time ativo. */
+  findMembershipTeamState(
+    teamId: string,
+    profileId: string
+  ): Promise<TeamMembersMembershipTeamState | null>;
+  /** Patrocínio do time (não deletado), para troca de time ativo por sponsor. */
+  findSponsoredTeamAccess(teamId: string): Promise<TeamMembersSponsoredTeamAccess | null>;
   /** Papel e funcoes do membro, para decisoes de permissao no dominio de leads. */
   findRoleAndFunctions(teamId: string, profileId: string): Promise<TeamMemberRoleAndFunctions | null>;
   /** Memberships ativas do perfil (todos os times, de qualquer master), para o escopo "member-all". */
@@ -106,6 +123,10 @@ export interface ITeamMembersRepository {
   findTransferAuthorization(teamId: string, profileId: string): Promise<TeamMemberTransferAuthorization | null>;
   /** Membros do time nos papeis informados, para destinatarios de notificacao. */
   findNotificationRecipients(input: { teamId: string; roles: UserRole[]; onlyTransferAuthorized?: boolean }): Promise<TeamMemberNotificationRecipient[]>;
+  findNotificationRecipientsByProfileIds(input: {
+    teamId: string;
+    profileIds: string[];
+  }): Promise<Array<{ profileId: string }>>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;

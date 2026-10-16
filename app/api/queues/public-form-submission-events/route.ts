@@ -34,7 +34,8 @@ type QueueMessageMetadata = {
 export async function processPublicFormSubmissionEventMessage(
   message: PublicFormSubmissionBackgroundJob,
   metadata: QueueMessageMetadata,
-  useCase: Pick<PublicFormSubmissionUseCase, "processInBackground"> = publicFormSubmissionUseCase,
+  useCase: Pick<PublicFormSubmissionUseCase, "processInBackground"> &
+    Partial<Pick<PublicFormSubmissionUseCase, "releaseTerminalMeetingReservation">> = publicFormSubmissionUseCase,
   ackDeadLetter: AckAfterMaxDeliveriesFn = ackAfterMaxDeliveries,
   deadLetter: DeadLetterInvalidPayloadFn = deadLetterInvalidPayload,
 ): Promise<void> {
@@ -92,7 +93,10 @@ export async function processPublicFormSubmissionEventMessage(
       payload: message,
       lastError: error,
     })
-    if (acked) return
+    if (acked) {
+      await useCase.releaseTerminalMeetingReservation?.(message)
+      return
+    }
     throw error
   }
 }

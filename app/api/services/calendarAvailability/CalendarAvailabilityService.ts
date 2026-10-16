@@ -18,9 +18,13 @@ import {
   getMinutesInTz,
   resolveTimezone,
 } from "@/lib/dates";
+import {
+  DEFAULT_MEETING_DURATION_MINUTES,
+  isMeetingDurationMinutes,
+} from "@/app/api/domain/teamScheduleSettings/meetingDuration";
 
-const SLOT_MINUTES = 30;
 const MAX_RANGE_DAYS = 60;
+const MAX_MEETING_DURATION_MINUTES = 60;
 
 const formatTimeSlot = (minutes: number) => {
   const hour = Math.floor(minutes / 60);
@@ -53,6 +57,10 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     const { teamId, requestedCloserIds, date, excludeLeadId, excludeLeadTeamId } = input;
     const timezone = resolveTimezone(input.userTimezone ?? DEFAULT_TZ);
     const rangeDays = Math.min(Math.max(input.days ?? 1, 1), MAX_RANGE_DAYS);
+    const storedDuration = await this.repository.findMeetingDuration(teamId);
+    const durationMinutes = isMeetingDurationMinutes(storedDuration)
+      ? storedDuration
+      : DEFAULT_MEETING_DURATION_MINUTES;
 
     const memberProfileIds = await this.repository.findTeamMemberProfileIds(teamId, requestedCloserIds);
     if (memberProfileIds.length !== requestedCloserIds.length) {
@@ -103,27 +111,47 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     const internalLeads = await this.repository.findScheduledLeadsForDay({
       teamId,
       requestedCloserIds,
-      dayStart: rangeStart,
+      dayStart: new Date(rangeStart.getTime() - MAX_MEETING_DURATION_MINUTES * 60 * 1000),
       dayEnd: rangeEnd,
+    });
+    const reservations = await this.repository.findActiveReservations({
+      teamId,
+      requestedCloserIds,
+      rangeStart,
+      rangeEnd,
+      excludeLeadId,
     });
 
     const internalBusyByCloser = internalLeads.reduce<Record<string, Array<{ start: string; end: string }>>>(
       (acc, lead) => {
         if (!lead.meetingDate || !lead.closerId) return acc;
         const start = lead.meetingDate as Date;
-        const end = new Date(start.getTime() + SLOT_MINUTES * 60 * 1000);
+        const persistedDuration = isMeetingDurationMinutes(lead.meetingDurationMinutes)
+          ? lead.meetingDurationMinutes
+          : DEFAULT_MEETING_DURATION_MINUTES;
+        const end = new Date(start.getTime() + persistedDuration * 60 * 1000);
         acc[lead.closerId] = acc[lead.closerId] || [];
         acc[lead.closerId].push({ start: start.toISOString(), end: end.toISOString() });
         return acc;
       },
       {}
     );
+    for (const reservation of reservations) {
+      internalBusyByCloser[reservation.closerId] = internalBusyByCloser[reservation.closerId] ?? [];
+      internalBusyByCloser[reservation.closerId].push({
+        start: reservation.startsAt.toISOString(),
+        end: reservation.endsAt.toISOString(),
+      });
+    }
 
     const now = new Date();
     const todayKey = formatLocalDateValue(now, timezone);
     const nowMinutes = getMinutesInTz(now, timezone);
 
-    const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
+    const slots = Array.from(
+      { length: Math.floor((24 * 60) / durationMinutes) },
+      (_, index) => index * durationMinutes
+    );
 
     const computeAvailability = (
       busyIntervals: Array<{ start: string; end: string }>,
@@ -137,7 +165,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
             return false;
           }
 
-          const slotEnd = slotStart + SLOT_MINUTES;
+          const slotEnd = slotStart + durationMinutes;
 
           return !busyIntervals.some((interval) => {
             const startDate = new Date(interval.start);
@@ -180,7 +208,11 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
               timeMin,
               timeMax,
             });
-            return { closerProfile, busyIntervals, usedGoogle: true };
+            return {
+              closerProfile,
+              busyIntervals: [...(internalBusyByCloser[closerProfile.id] ?? []), ...busyIntervals],
+              usedGoogle: true,
+            };
           } catch (error) {
             const reason = isExpectedGoogleFallbackError(error)
               ? "google_connection_unavailable"
@@ -236,6 +268,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     const availableTimes = Array.from(new Set(Object.values(perCloser).flat())).sort(sortTimeSlots);
 
     return {
+      durationMinutes,
       availableTimes,
       source,
       perCloser,

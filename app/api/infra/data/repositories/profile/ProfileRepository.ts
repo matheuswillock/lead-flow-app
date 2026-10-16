@@ -1,4 +1,4 @@
-import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
+import { prisma, withPrismaRetry } from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile, Prisma } from "@prisma/client";
 import type { AsaasAccountId } from "@/lib/asaas";
 import { createClient } from "@supabase/supabase-js"
@@ -1184,6 +1184,13 @@ class PrismaProfileRepository implements IProfileRepository {
     await prisma.profile.update({
       where: { id: profileId },
       data: { subscriptionStatus: "active", subscriptionStartDate: new Date() },
+    });
+  }
+
+  async updateActiveTeamId(profileId: string, teamId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { activeTeamId: teamId },
     });
   }
 }
