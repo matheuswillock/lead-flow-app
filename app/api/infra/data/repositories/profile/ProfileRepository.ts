@@ -1186,6 +1186,13 @@ class PrismaProfileRepository implements IProfileRepository {
       data: { subscriptionStatus: "active", subscriptionStartDate: new Date() },
     });
   }
+
+  async updateActiveTeamId(profileId: string, teamId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { activeTeamId: teamId },
+    });
+  }
 }
 
 export const profileRepository: IProfileRepository = new PrismaProfileRepository();

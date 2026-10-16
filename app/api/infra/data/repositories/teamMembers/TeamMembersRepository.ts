@@ -55,6 +55,24 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async findMembershipTeamState(teamId: string, profileId: string) {
+    const membership = await prisma.teamMember.findUnique({
+      where: { teamId_profileId: { teamId, profileId } },
+      select: { team: { select: { deletedAt: true } } },
+    });
+    if (!membership) return null;
+    return { deletedAt: membership.team.deletedAt };
+  }
+
+  async findSponsoredTeamAccess(teamId: string) {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { master: { select: { sponsorMasterId: true } } },
+    });
+    if (!team) return null;
+    return { sponsorMasterId: team.master.sponsorMasterId };
+  }
+
   async canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean> {
     if (requesterProfileId === teamMasterId) {
       return true;
@@ -337,6 +355,14 @@ export class TeamMembersRepository implements ITeamMembersRepository {
         profileId: true,
         profile: { select: { email: true, fullName: true } },
       },
+    });
+  }
+
+  async findNotificationRecipientsByProfileIds(input: { teamId: string; profileIds: string[] }) {
+    if (input.profileIds.length === 0) return [];
+    return await prisma.teamMember.findMany({
+      where: { teamId: input.teamId, profileId: { in: input.profileIds } },
+      select: { profileId: true },
     });
   }
 
