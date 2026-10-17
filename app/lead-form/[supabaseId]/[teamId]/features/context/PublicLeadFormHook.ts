@@ -30,6 +30,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [preScheduleOccupiedSlots, setPreScheduleOccupiedSlots] = useState<number[]>([]);
+  const [preScheduleSlotMinutes, setPreScheduleSlotMinutes] = useState(30);
   const [preScheduleSlotsLoading, setPreScheduleSlotsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -175,6 +176,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         preScheduleSlotsInFlightKeyRef.current = null;
         setPreScheduleSlotsLoading(false);
         setPreScheduleOccupiedSlots([]);
+        setPreScheduleSlotMinutes(30);
         lastPreScheduleSlotsSuccessKeyRef.current = null;
         return;
       }
@@ -196,6 +198,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
           return;
         }
         setPreScheduleOccupiedSlots(result.occupiedSlots);
+        setPreScheduleSlotMinutes(result.slotMinutes);
         lastPreScheduleSlotsSuccessKeyRef.current = requestKey;
       } catch (error) {
         if (preScheduleSlotsInFlightKeyRef.current !== requestKey) {
@@ -203,6 +206,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         }
         console.error("[usePublicLeadForm] Erro ao buscar slots de pré-agendamento:", error);
         setPreScheduleOccupiedSlots([]);
+        setPreScheduleSlotMinutes(30);
       } finally {
         if (preScheduleSlotsInFlightKeyRef.current === requestKey) {
           preScheduleSlotsInFlightKeyRef.current = null;
@@ -221,6 +225,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     setIsSubmitted(false);
     setAvailableTimes([]);
     setPreScheduleOccupiedSlots([]);
+    setPreScheduleSlotMinutes(30);
     lastPreScheduleSlotsSuccessKeyRef.current = null;
   }, []);
 
@@ -242,6 +247,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     availableTimes,
     availabilityLoading,
     preScheduleOccupiedSlots,
+    preScheduleSlotMinutes,
     preScheduleSlotsLoading,
     isSubmitting,
     isSubmitted,

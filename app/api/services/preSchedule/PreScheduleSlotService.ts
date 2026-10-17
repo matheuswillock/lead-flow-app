@@ -51,7 +51,7 @@ export async function getPreScheduleSlotUsage(
   dateParam: string,
   timezoneInput?: string,
   excludeLeadId?: string
-): Promise<{ usage: Map<number, number>; capacity: number; timezone: string }> {
+): Promise<{ usage: Map<number, number>; capacity: number; timezone: string; slotMinutes: number }> {
   const masterTimezone = await preScheduleSlotRepository.findTeamMasterTimezone(teamId)
   const timezone = resolveTimezone(timezoneInput ?? masterTimezone) || DEFAULT_TZ
   const [capacity, slotMinutes] = await Promise.all([
@@ -64,6 +64,7 @@ export async function getPreScheduleSlotUsage(
     usage: countSlotUsage(leads, timezone, slotMinutes),
     capacity,
     timezone,
+    slotMinutes,
   }
 }
 
@@ -84,13 +85,12 @@ export async function isPreScheduleSlotAvailable(
   excludeLeadId?: string
 ): Promise<{ available: boolean; capacity: number; usageAtSlot: number }> {
   const dateParam = meetingDate.toISOString().slice(0, 10)
-  const { usage, capacity, timezone } = await getPreScheduleSlotUsage(
+  const { usage, capacity, timezone, slotMinutes } = await getPreScheduleSlotUsage(
     teamId,
     dateParam,
     timezoneInput,
     excludeLeadId
   )
-  const slotMinutes = await getPreScheduleSlotMinutes(teamId)
   const minute = Math.floor(getMinutesInTz(meetingDate, timezone) / slotMinutes) * slotMinutes
   const usageAtSlot = usage.get(minute) ?? 0
 
@@ -107,7 +107,7 @@ export async function getPreScheduleSlotsPayload(
   timezoneInput?: string,
   excludeLeadId?: string
 ) {
-  const { usage, capacity, timezone } = await getPreScheduleSlotUsage(
+  const { usage, capacity, timezone, slotMinutes } = await getPreScheduleSlotUsage(
     teamId,
     dateParam,
     timezoneInput,
@@ -117,5 +117,5 @@ export async function getPreScheduleSlotsPayload(
   const occupiedSlots = getFullyOccupiedSlots(usage, capacity)
   const slotUsage = Object.fromEntries(usage.entries())
 
-  return { occupiedSlots, slotCapacity: capacity, slotUsage, timezone }
+  return { occupiedSlots, slotCapacity: capacity, slotUsage, timezone, slotMinutes }
 }
