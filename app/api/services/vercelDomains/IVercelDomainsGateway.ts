@@ -29,6 +29,11 @@ export type VercelDomainConfig = {
   /** `false` quando o DNS aponta corretamente para a Vercel. */
   misconfigured: boolean
   configuredBy?: string | null
+  /** Registros CNAME que a Vercel recomenda para este domínio. */
+  recommendedCNAME?: Array<{
+    rank: number
+    value: string
+  }>
 }
 
 export type VercelDomainsGatewayResult<T> =

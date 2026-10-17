@@ -7,6 +7,7 @@ import { studioHostnameFromEmailDomain } from "@/lib/public-studio/studio-domain
 import { hasLandingPageManagementAccess } from "@/app/api/useCases/landingPages/landingPageFeatureAccess"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
 import type { IVercelDomainsGateway } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
+import { resolveRecommendedVercelCname } from "@/app/api/services/vercelDomains/resolveRecommendedVercelCname"
 import {
   teamStudioDomainRepository,
 } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
@@ -140,11 +141,14 @@ export class TeamStudioDomainUseCase {
     }
     this.invalidateCache({ hostname })
 
+    const cnameTarget = await resolveRecommendedVercelCname(this.vercelGateway, hostname)
+
     return new Output(true, ["Subdomínio studio registrado. Crie o CNAME para ativá-lo."], [], {
       studioDomain: toDto(domain),
       records: buildFormDomainDnsRecords({
         hostname,
         apexName: projectDomain.apexName,
+        cnameTarget,
         verificationChallenges: projectDomain.verification,
         verified: false,
       }),
@@ -157,9 +161,12 @@ export class TeamStudioDomainUseCase {
     const hostname = domain?.hostname ?? studioHostnameFromEmailDomain(emailDomainName)
     if (!hostname) return this.get(access, emailDomainName)
 
-    const projectDomain = this.vercelGateway.isConfigured()
-      ? await this.vercelGateway.getProjectDomain(hostname)
-      : null
+    const [projectDomain, cnameTarget] = this.vercelGateway.isConfigured()
+      ? await Promise.all([
+          this.vercelGateway.getProjectDomain(hostname),
+          resolveRecommendedVercelCname(this.vercelGateway, hostname),
+        ])
+      : [null, null]
 
     return new Output(true, [], [], {
       studioDomain: domain ? toDto(domain) : null,
@@ -167,6 +174,7 @@ export class TeamStudioDomainUseCase {
       records: buildFormDomainDnsRecords({
         hostname,
         apexName: projectDomain?.ok ? projectDomain.data.apexName : null,
+        cnameTarget,
         verificationChallenges: projectDomain?.ok ? projectDomain.data.verification : null,
         verified: domain?.status === "verified",
       }),

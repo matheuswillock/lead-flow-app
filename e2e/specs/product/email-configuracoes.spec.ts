@@ -686,7 +686,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
                 {
                   record: "CNAME",
                   name: "studio",
-                  value: "cname.vercel-dns.com",
+                  value: "e7ec430d41e066d4.vercel-dns-017.com.",
                   status: "verified",
                 },
               ],
@@ -704,7 +704,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       await expect(page.getByText(`https://${STUDIO_DOMAIN_HOSTNAME}`)).toBeVisible()
       await expect(page.getByText("Analytics e tráfego")).toBeVisible()
-      await expect(page.getByText("cname.vercel-dns.com")).toBeVisible()
+      await expect(page.getByText("e7ec430d41e066d4.vercel-dns-017.com.")).toBeVisible()
       await expect(page.getByLabel("Subdomínio dos formulários")).toHaveCount(0)
     })
   })
