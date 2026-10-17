@@ -69,6 +69,13 @@ describe("Pertto billing-grace policy", () => {
       .toThrow("O prazo aprovado")
   })
 
+  it("recusa relatório cuja validade já expirou no momento da aplicação", () => {
+    expect(() => resolveApprovedPerttoExpiry(
+      "2026-10-28T03:00:00.000Z",
+      new Date("2026-10-28T03:00:00.001Z"),
+    )).toThrow("data futura válida")
+  })
+
   it("recusa concessões concorrentes ou estado que mudou após o dry-run", () => {
     expect(() => validatePerttoApplyState({
       profileStatus: "past_due",

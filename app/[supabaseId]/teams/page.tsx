@@ -211,11 +211,7 @@ export default function TeamsPage() {
     () => teams.find((team) => team.id === manageTeamId) ?? null,
     [teams, manageTeamId]
   );
-  const canManageScheduleSettings = !!(
-    user?.isMaster ||
-    managedTeam?.masterId === user?.id ||
-    managedTeam?.role === "manager"
-  );
+  const canManageScheduleSettings = !!(user?.isMaster || activeRole === "manager");
   const isManagedTeamDefault = managedTeam?.isDefault === true;
   const isSettingManagedTeamDefault = settingDefaultTeamId === manageTeamId;
   const defaultTeamToggleDisabled =

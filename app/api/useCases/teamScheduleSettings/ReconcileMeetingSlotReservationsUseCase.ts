@@ -94,7 +94,15 @@ export class ReconcileMeetingSlotReservationsUseCase {
       try {
         if (!reservation.leadId) {
           countPending();
-          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+          if (
+            (reservation.recoveryAttempts ?? 0) >= 19 &&
+            this.reservations.releaseAfterRecoveryTimeout
+          ) {
+            await this.externalEvents.cancel({
+              closerId: reservation.closerId,
+              googleEventId: reservation.googleEventId,
+              googleCalendarId: reservation.googleCalendarId,
+            });
             await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
             continue;
           }
@@ -111,7 +119,10 @@ export class ReconcileMeetingSlotReservationsUseCase {
           schedule.googleCalendarId === reservation.googleCalendarId;
         if (!matchesExternalEvent) {
           countPending();
-          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+          if (
+            (reservation.recoveryAttempts ?? 0) >= 19 &&
+            this.reservations.releaseAfterRecoveryTimeout
+          ) {
             await this.externalEvents.cancel({
               closerId: reservation.closerId,
               googleEventId: reservation.googleEventId,

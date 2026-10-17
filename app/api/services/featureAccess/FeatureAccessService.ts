@@ -204,6 +204,12 @@ export class FeatureAccessService implements IFeatureAccessService {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
 
+    const temporaryBillingGraceIsOnlyAccess =
+      hasTemporaryBillingGrace &&
+      !hasPermanentAccess &&
+      !hasActiveMainSubscription &&
+      !memberProActive
+
 
     const betaEligibleFeatureIds = await this.repository.resolveBetaEligibleFeatureIds({
       profileId: data.profileId,
@@ -360,7 +366,7 @@ export class FeatureAccessService implements IFeatureAccessService {
         : null
       if (
         hasAccess &&
-        (!hasTemporaryBillingGrace ||
+        (!temporaryBillingGraceIsOnlyAccess ||
           (temporaryGraceProductSlug !== null && paidProductSlugs.has(temporaryGraceProductSlug)))
       ) {
         allowedSlugs.add(feature.slug)

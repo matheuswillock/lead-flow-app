@@ -117,6 +117,7 @@ async function buildPlan(expiresAt: string): Promise<Plan> {
 
 async function applyPlan(plan: Plan): Promise<void> {
   const operatorProfileId = process.env.BILLING_GRACE_OPERATOR_PROFILE_ID!
+  resolveApprovedPerttoExpiry(plan.expiresAt)
   await prisma.$transaction(async (tx) => {
     const [team, profile, canonicalSubscription, overrideLog, operator, activeGraces] = await Promise.all([
       tx.team.findUnique({ where: { id: TARGET.teamId }, select: { id: true, name: true, masterId: true, deletedAt: true } }),

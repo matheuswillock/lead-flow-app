@@ -28,6 +28,47 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
     expect(failures).toEqual(["pending"]);
   });
 
+  it("cancela evento órfão usando o closer persistido antes de liberar a reserva", async () => {
+    const calls: string[] = [];
+    const useCase = new ReconcileMeetingSlotReservationsUseCase(
+      {
+        findRecoverable: async () => [
+          {
+            id: "orphan",
+            leadId: null,
+            closerId: "closer-orphan",
+            googleEventId: "event-orphan",
+            googleCalendarId: "calendar",
+            recoveryAttempts: 19,
+          },
+        ],
+        consume: async () => {},
+        markRecoveryFailure: async () => {},
+        releaseAfterRecoveryTimeout: async () => {
+          calls.push("release");
+        },
+      },
+      {
+        findUniqueByLeadId: async () => null,
+      },
+      100,
+      {
+        cancel: async (input) => {
+          expect(input).toEqual({
+            closerId: "closer-orphan",
+            googleEventId: "event-orphan",
+            googleCalendarId: "calendar",
+          });
+          calls.push("cancel");
+        },
+      },
+    );
+
+    await useCase.execute();
+
+    expect(calls).toEqual(["cancel", "release"]);
+  });
+
   it("cancela o evento com o closer da reserva antes de liberá-la", async () => {
     const calls: string[] = [];
     const useCase = new ReconcileMeetingSlotReservationsUseCase(

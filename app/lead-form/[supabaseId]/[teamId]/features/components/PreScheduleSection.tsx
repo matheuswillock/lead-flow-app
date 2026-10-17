@@ -23,7 +23,7 @@ const isValidDate = (value?: Date): value is Date =>
 
 const PRE_SCHEDULE_SLOT_START = 7 * 60;
 const PRE_SCHEDULE_SLOT_END = 20 * 60;
-const SLOT_STEP = 30;
+const DEFAULT_SLOT_STEP = 30;
 
 export function PreScheduleSection({
   meetingDate,
@@ -33,6 +33,7 @@ export function PreScheduleSection({
   const {
     timezone,
     preScheduleOccupiedSlots,
+    preScheduleSlotMinutes,
     preScheduleSlotsLoading,
     fetchPreScheduleSlots,
   } = usePublicLeadFormContext();
@@ -47,17 +48,20 @@ export function PreScheduleSection({
   const availableTimes = useMemo(() => {
     if (!isValidDate(meetingDate) || !meetingDateKey) return [];
     const slots: string[] = [];
-    for (let mins = PRE_SCHEDULE_SLOT_START; mins <= PRE_SCHEDULE_SLOT_END; mins += SLOT_STEP) {
+    const slotStep = Number.isInteger(preScheduleSlotMinutes) && preScheduleSlotMinutes > 0
+      ? preScheduleSlotMinutes
+      : DEFAULT_SLOT_STEP;
+    for (let mins = PRE_SCHEDULE_SLOT_START; mins <= PRE_SCHEDULE_SLOT_END; mins += slotStep) {
       const hh = String(Math.floor(mins / 60)).padStart(2, "0");
       const mm = String(mins % 60).padStart(2, "0");
       slots.push(`${hh}:${mm}`);
     }
     return slots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, timezone);
-      const localMins = Math.floor(getMinutesInTz(slotDate, timezone) / SLOT_STEP) * SLOT_STEP;
+      const localMins = Math.floor(getMinutesInTz(slotDate, timezone) / slotStep) * slotStep;
       return !preScheduleOccupiedSlots.includes(localMins);
     });
-  }, [meetingDate, meetingDateKey, preScheduleOccupiedSlots, timezone]);
+  }, [meetingDate, meetingDateKey, preScheduleOccupiedSlots, preScheduleSlotMinutes, timezone]);
 
   useEffect(() => {
     if (!isValidDate(meetingDate) || availableTimes.length === 0) return;

@@ -19,6 +19,10 @@ export type PaymentProviderDependencies = {
   readonly timeoutMs?: number
 }
 
+export type ProviderRequestOptions = {
+  readonly indeterminateOnSuccessParseError?: boolean
+}
+
 const defaultLogger: ProviderLogger = {
   info: () => undefined,
   error: () => undefined,
@@ -59,7 +63,11 @@ export abstract class PaymentProviderBase<
     this.timeoutMs = dependencies.timeoutMs ?? 30_000
   }
 
-  protected async requestJson<T>(path: string, init: RequestInit): Promise<T> {
+  protected async requestJson<T>(
+    path: string,
+    init: RequestInit,
+    options: ProviderRequestOptions = {},
+  ): Promise<T> {
     let response: Response
     const externalSignal = init.signal ?? undefined
     const timeoutSignal = AbortSignal.timeout(this.timeoutMs)
@@ -92,12 +100,12 @@ export abstract class PaymentProviderBase<
     } catch (error) {
       if (error instanceof PaymentProviderError) throw error
       if (response.ok) {
-        throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "Resposta inválida do provedor")
+        throw createSuccessfulResponseError(options)
       }
       body = null
     }
     if (response.ok && body === null) {
-      throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "Resposta vazia do provedor")
+      throw createSuccessfulResponseError(options)
     }
     if (!response.ok) {
       this.logger.error("Falha segura na API do provedor", {
@@ -121,6 +129,12 @@ export abstract class PaymentProviderBase<
   protected providerError(error: unknown): PaymentProviderError {
     return sanitizeProviderError(error)
   }
+}
+
+function createSuccessfulResponseError(options: ProviderRequestOptions): PaymentProviderError {
+  return options.indeterminateOnSuccessParseError
+    ? new PaymentProviderError("UNKNOWN_RESULT", "Resultado da criação indeterminado", true)
+    : new PaymentProviderError("REMOTE_REQUEST_FAILED", "Resposta inválida do provedor")
 }
 
 function isTimeoutError(error: unknown): boolean {

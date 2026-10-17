@@ -677,6 +677,25 @@ describe("AbacatePayProvider", () => {
     })
   })
 
+  it("classifica resposta 2xx malformada da criação como UNKNOWN", async () => {
+    const provider = new AbacatePayProvider(config, {
+      http: mock(async () => new Response("not-json", { status: 200 })),
+    })
+
+    await expect(
+      provider.createPixPayment({
+        amountInCents: 1250,
+        customer,
+        externalReference: "attempt_malformed",
+      }),
+    ).resolves.toMatchObject({
+      status: "UNKNOWN",
+      reason: "REMOTE_ERROR",
+      reconciliationReference: "attempt_malformed",
+      requiresReconciliation: true,
+    })
+  })
+
   it("rejeita success false também em consulta e reembolso", async () => {
     const statusProvider = new AbacatePayProvider(config, {
       http: mock(async () => response({ success: false, data: { id: "pay_1", status: "PAID" } })),

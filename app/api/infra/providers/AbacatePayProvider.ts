@@ -426,11 +426,15 @@ export class AbacatePayProvider
       ...(input.method === "CARD" ? { installmentCount: input.installments ?? 1 } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
     }
-    const response = await this.requestJson<AbacateCreateResponse>("/v2/transparents/create", {
-      method: "POST",
-      headers: { ...this.authHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({ method: input.method, data }),
-    })
+    const response = await this.requestJson<AbacateCreateResponse>(
+      "/v2/transparents/create",
+      {
+        method: "POST",
+        headers: { ...this.authHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ method: input.method, data }),
+      },
+      { indeterminateOnSuccessParseError: true },
+    )
     if (response.success === false) {
       throw new PaymentProviderError(
         "REMOTE_REQUEST_FAILED",

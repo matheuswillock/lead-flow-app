@@ -224,6 +224,21 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
     expect(access.slugs).toContain("whatsapp")
   })
 
+  it("não restringe acesso normal quando a concessão antiga ainda está marcada como ativa", async () => {
+    repository.ownerSubscriptionStatus = "active"
+    repository.temporaryBillingGrace = true
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).toContain("email")
+    expect(access.slugs).toContain("whatsapp")
+  })
+
   it("libera Member PRO vigente mesmo com assinatura suspensa", async () => {
     repository.ownerUserTypeAssignment = {
       slug: "member_pro",
