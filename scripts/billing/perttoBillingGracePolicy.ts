@@ -85,9 +85,10 @@ export function validatePerttoApplyState(input: {
     ? activeGrace?.id === input.plannedGrace.id && (activeGrace.expiresAt?.toISOString() ?? null) === input.plannedGrace.expiresAt
     : activeGrace === null
   const graceAlreadyApplied = activeGrace?.expiresAt?.toISOString() === input.expiry
+  const restoreStateMatchesDryRun = input.restorePastDue ? canRestorePastDue : alreadyPastDue
 
   if (!graceMatchesDryRun && !graceAlreadyApplied) throw new Error("A concessão mudou desde o dry-run")
-  if (input.restorePastDue !== canRestorePastDue && !(alreadyPastDue && graceAlreadyApplied)) {
+  if (!restoreStateMatchesDryRun) {
     throw new Error("O estado de cobrança mudou desde o dry-run")
   }
   return { activeGrace, alreadyPastDue, graceAlreadyApplied }
