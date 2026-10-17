@@ -32,7 +32,10 @@ export function HomeClientRuntime() {
   if (!showCookieConsent) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border border-border/20 p-4 shadow-2xl backdrop-blur-xl bg-background/80" data-nosnippet>
+    <div
+      className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border border-border/20 p-4 shadow-2xl backdrop-blur-xl bg-background/80"
+      data-nosnippet
+    >
       <p className="text-sm text-muted-foreground">
         Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.
       </p>
@@ -42,7 +45,7 @@ export function HomeClientRuntime() {
             localStorage.setItem("cookieConsent", "accepted")
             setShowCookieConsent(false)
           }}
-          className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold bg-primary text-primary-foreground"
+          className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold bg-primary text-[var(--btn-primary-foreground)]"
         >
           Aceitar
         </button>
