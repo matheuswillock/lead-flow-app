@@ -57,12 +57,14 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   features: ActiveFeatureRecord[] = []
   userSubscriptions: ActiveUserSubscriptionRecord[] = []
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
+  temporaryBillingGrace = false
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
   ownerSubscriptionStatus: SubscriptionStatus | null = "past_due"
   ownerSubscriptionNextDueDate: Date | null = null
   ownerProfileNextDueDate: Date | null = null
   ownerHasPermanentSubscription = false
+  ownerProductFeatureSlugs: string[] | null = null
   ownerUserTypeAssignment: { slug: string; accessStartsAt: string | null; accessExpiresAt: string | null } | null = null
 
   async listActiveFeatures() {
@@ -86,13 +88,17 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
       hasPermanentSubscription: this.ownerHasPermanentSubscription,
       subscriptionStatus: this.ownerSubscriptionStatus,
       subscriptionNextDueDate: this.ownerSubscriptionNextDueDate,
-      product: null,
+      product: this.ownerProductFeatureSlugs ? { featureSlugs: this.ownerProductFeatureSlugs } : null,
     }
   }
 
   async listActiveUserSubscriptions(profileId: string) {
     if (profileId === MANAGER_ID) return this.ownerSubscriptions
     return this.userSubscriptions
+  }
+
+  async hasActiveTemporaryBillingGrace() {
+    return this.temporaryBillingGrace
   }
 
   async listActiveBetaGrantsForProfile() {
@@ -128,6 +134,33 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
   })
 
   it("bloqueia past_due imediatamente, sem período de tolerância", async () => {
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual([])
+  })
+
+  it("libera somente funcionalidades do produto contratado durante a concessão temporária", async () => {
+    repository.temporaryBillingGrace = true
+    repository.ownerProductFeatureSlugs = ["crm"]
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).not.toContain("email")
+    expect(access.slugs).not.toContain("whatsapp")
+  })
+
+  it("bloqueia funcionalidades quando a concessão expirou", async () => {
+    repository.ownerSubscriptions = [{ product: { featureSlugs: ["crm"] } }]
 
     const access = await service.resolveAllowedSlugs({
       profileId: PROFILE_ID,
@@ -179,6 +212,21 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
   it("mantém active liberada mesmo com vencimento antigo", async () => {
     repository.ownerSubscriptionStatus = "active"
     repository.ownerSubscriptionNextDueDate = new Date("2020-01-01")
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).toContain("email")
+    expect(access.slugs).toContain("whatsapp")
+  })
+
+  it("não restringe acesso normal quando a concessão antiga ainda está marcada como ativa", async () => {
+    repository.ownerSubscriptionStatus = "active"
+    repository.temporaryBillingGrace = true
 
     const access = await service.resolveAllowedSlugs({
       profileId: PROFILE_ID,

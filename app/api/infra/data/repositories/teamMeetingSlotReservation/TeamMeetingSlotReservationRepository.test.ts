@@ -42,6 +42,7 @@ describe("TeamMeetingSlotReservationRepository.findRecoverable", () => {
 
     const args = findManyMock.mock.calls[0]?.[0] as FindManyArgs | undefined;
     expect(args?.where?.recoveryAttempts).toEqual({ lt: MAX_RECOVERY_ATTEMPTS });
+    expect(args?.select).toEqual(expect.objectContaining({ closerId: true }));
   });
 
   it("mantém o teto em 20 tentativas", async () => {

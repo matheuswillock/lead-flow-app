@@ -3,20 +3,20 @@ import {
   teamMeetingSlotReservationRepository,
 } from "@/app/api/infra/data/repositories/teamMeetingSlotReservation/TeamMeetingSlotReservationRepository";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
-import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 
 type RecoverableReservation = {
   id: string;
   leadId: string | null;
+  closerId: string;
   googleEventId: string;
   googleCalendarId: string;
   recoveryAttempts?: number;
 };
 
 export type MeetingSlotExternalEvent = {
-  leadId: string;
+  closerId: string;
   googleEventId: string;
   googleCalendarId: string;
 };
@@ -27,12 +27,7 @@ export interface IMeetingSlotExternalEventCancellation {
 
 const defaultExternalEventCancellation: IMeetingSlotExternalEventCancellation = {
   async cancel(input) {
-    const lead = await leadRepository.findById(input.leadId);
-    if (!lead?.closerId) {
-      throw new Error("Não foi possível identificar o closer do evento externo.");
-    }
-
-    const closer = await profileRepository.findById(lead.closerId);
+    const closer = await profileRepository.findById(input.closerId);
     if (!closer?.googleConnectionId) {
       throw new Error("O closer não possui uma conexão Google válida.");
     }
@@ -103,10 +98,12 @@ export class ReconcileMeetingSlotReservationsUseCase {
             (reservation.recoveryAttempts ?? 0) >= 19 &&
             this.reservations.releaseAfterRecoveryTimeout
           ) {
-            await this.reservations.markRecoveryFailure(
-              reservation.id,
-              "Reserva com evento externo sem lead não pode ser liberada com segurança.",
-            );
+            await this.externalEvents.cancel({
+              closerId: reservation.closerId,
+              googleEventId: reservation.googleEventId,
+              googleCalendarId: reservation.googleCalendarId,
+            });
+            await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
             continue;
           }
           await this.reservations.markRecoveryFailure(
@@ -127,7 +124,7 @@ export class ReconcileMeetingSlotReservationsUseCase {
             this.reservations.releaseAfterRecoveryTimeout
           ) {
             await this.externalEvents.cancel({
-              leadId: reservation.leadId,
+              closerId: reservation.closerId,
               googleEventId: reservation.googleEventId,
               googleCalendarId: reservation.googleCalendarId,
             });
