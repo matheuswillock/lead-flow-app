@@ -1,5 +1,6 @@
 export interface IPreScheduleSlotRepository {
   countTransferRoutesBySourceTeam(teamId: string): Promise<number>
+  findTeamMeetingDuration(teamId: string): Promise<number | null>
   findTeamMasterTimezone(teamId: string): Promise<string | null>
   findTransferLeadMeetingDatesInDay(
     teamId: string,

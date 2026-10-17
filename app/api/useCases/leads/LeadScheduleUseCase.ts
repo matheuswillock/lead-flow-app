@@ -6,6 +6,8 @@ import type { ILeadScheduleRepository } from "@/app/api/infra/data/repositories/
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService";
 import type { ILeadScheduleService } from "@/app/api/services/leadSchedule/ILeadScheduleService";
 import { isPreScheduleSlotAvailable } from "@/app/api/services/preSchedule/PreScheduleSlotService";
+import { normalizeExtraGuests } from "@/lib/scheduling/meetingInputValidation";
+import { PreScheduleSlotConflictError } from "@/app/api/domain/preSchedule/PreScheduleSlotConflictError";
 
 type ScheduleAccess = { teamId: string; profileId: string };
 
@@ -54,6 +56,8 @@ export class LeadScheduleUseCase {
     if (!lead.status) {
       return new Output(false, [], ["Finalize o lead antes de agendar uma reunião completa."], null);
     }
+    const normalizedGuests = normalizeExtraGuests(input.extraGuests);
+    if (!normalizedGuests.valid) return new Output(false, [], [normalizedGuests.error], null);
 
     const output = await this.scheduleService.createSchedule({
       leadId: lead.id,
@@ -73,7 +77,7 @@ export class LeadScheduleUseCase {
       meetingNotes: input.notes,
       meetingLink: input.meetingLink,
       meetingType: input.meetingType ?? this.resolveMeetingType(lead.meetingType),
-      extraGuests: input.extraGuests,
+      extraGuests: normalizedGuests.guests,
       createdByProfileId: input.access.profileId,
       transitionStatusToScheduled: input.transitionStatusToScheduled,
       confirmNoShowSchedule: input.confirmNoShowSchedule,
@@ -100,14 +104,24 @@ export class LeadScheduleUseCase {
     }
     const meetingTitle = input.meetingTitle?.trim() || `Estudo Plano de Saúde: ${lead.name}`;
     const meetingType = input.meetingType ?? this.resolveMeetingType(lead.meetingType) ?? "online";
-    const schedule = await this.schedules.saveTransferPreSchedule({
-      leadId: lead.id,
-      date: meetingDate,
-      meetingTitle,
-      notes: input.notes ?? null,
-      meetingType,
-      extraGuests: input.extraGuests,
-    });
+    const normalizedGuests = normalizeExtraGuests(input.extraGuests);
+    if (!normalizedGuests.valid) return new Output(false, [], [normalizedGuests.error], null);
+    let schedule: Awaited<ReturnType<ILeadScheduleRepository["saveTransferPreSchedule"]>>;
+    try {
+      schedule = await this.schedules.saveTransferPreSchedule({
+        leadId: lead.id,
+        date: meetingDate,
+        meetingTitle,
+        notes: input.notes ?? null,
+        meetingType,
+        extraGuests: normalizedGuests.guests,
+      });
+    } catch (error) {
+      if (error instanceof PreScheduleSlotConflictError) {
+        return new Output(false, [], [error.message], null);
+      }
+      throw error;
+    }
     return new Output(true, ["Pré-agendamento salvo com sucesso"], [], {
       ...schedule,
       status: lead.status,

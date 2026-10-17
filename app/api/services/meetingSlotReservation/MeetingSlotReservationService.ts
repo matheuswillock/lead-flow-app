@@ -11,6 +11,7 @@ import type {
   MeetingSlotReservationResult,
   ReserveMeetingSlotInput,
 } from "./IMeetingSlotReservationService";
+import { validateFutureMeetingDate } from "@/lib/scheduling/meetingInputValidation";
 
 export class MeetingSlotReservationService implements IMeetingSlotReservationService {
   constructor(
@@ -18,7 +19,14 @@ export class MeetingSlotReservationService implements IMeetingSlotReservationSer
     private readonly settings: ITeamScheduleSettingsRepository = teamScheduleSettingsRepository,
   ) {}
 
+  isCloserEligibleForTeam(teamId: string, closerId: string): Promise<boolean> {
+    return this.reservations.isCloserEligibleForTeam(teamId, closerId);
+  }
+
   async reserve(input: ReserveMeetingSlotInput): Promise<MeetingSlotReservationResult> {
+    if (validateFutureMeetingDate(input.startsAt) || !(await this.isCloserEligibleForTeam(input.teamId, input.closerId))) {
+      return { available: false };
+    }
     const configuredDuration = await this.settings.findMeetingDuration(input.teamId);
     const durationMinutes = isMeetingDurationMinutes(configuredDuration)
       ? configuredDuration
@@ -34,8 +42,16 @@ export class MeetingSlotReservationService implements IMeetingSlotReservationSer
       : { available: false };
   }
 
-  consume(input: { reservationId: string; leadId?: string | null; googleEventId?: string | null; googleCalendarId?: string | null }) {
+  consume(input: Parameters<ITeamMeetingSlotReservationRepository["consume"]>[0]) {
     return this.reservations.consume(input);
+  }
+
+  validate(input: Parameters<ITeamMeetingSlotReservationRepository["validate"]>[0]) {
+    return this.reservations.validate(input);
+  }
+
+  findValid(input: Parameters<ITeamMeetingSlotReservationRepository["findValid"]>[0]) {
+    return this.reservations.findValid(input);
   }
 
   attachToPublicFormSubmission(input: { reservationId: string; publicFormSubmissionId: string }) {

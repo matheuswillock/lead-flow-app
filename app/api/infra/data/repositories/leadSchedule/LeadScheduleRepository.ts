@@ -7,12 +7,62 @@ import type {
   UpsertTransferPreScheduleDTO,
   SaveTransferPreScheduleDTO,
 } from "./ILeadScheduleRepository";
-import { LeadsSchedule, Prisma } from "@prisma/client";
+import { LeadStatus, LeadsSchedule, Prisma } from "@prisma/client";
 import {
   isTeamScopeVisibilityEmpty,
   type TeamScopeVisibility,
 } from "@/lib/teams/teamScopeVisibility";
 import { buildLeadScheduleTeamScopeWhere } from "./leadScheduleTeamScopeWhere";
+import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+import { DEFAULT_MEETING_DURATION_MINUTES, isMeetingDurationMinutes } from "@/app/api/domain/teamScheduleSettings/meetingDuration";
+import { PreScheduleSlotConflictError } from "@/app/api/domain/preSchedule/PreScheduleSlotConflictError";
+
+const TRANSFER_PRE_SCHEDULE_TERMINAL_STATUSES: LeadStatus[] = [
+  LeadStatus.opportunityLost,
+  LeadStatus.disqualified,
+  LeadStatus.operator_denied,
+  LeadStatus.contract_finalized,
+];
+
+async function assertTransferPreScheduleSlotAvailable(
+  transaction: Prisma.TransactionClient,
+  teamId: string,
+  meetingDate: Date,
+  excludeLeadId: string,
+): Promise<void> {
+  const team = await transaction.team.findFirst({
+    where: { id: teamId, deletedAt: null },
+    select: { meetingDurationMinutes: true, master: { select: { timezone: true } } },
+  });
+  const timezone = resolveTimezone(team?.master?.timezone) || DEFAULT_TZ;
+  const slotMinutes = isMeetingDurationMinutes(team?.meetingDurationMinutes)
+    ? team.meetingDurationMinutes
+    : DEFAULT_MEETING_DURATION_MINUTES;
+  const dayKey = formatLocalDateValue(meetingDate, timezone);
+  const slotMinute = Math.floor(getMinutesInTz(meetingDate, timezone) / slotMinutes) * slotMinutes;
+  await transaction.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`pre-schedule:${teamId}:${dayKey}:${slotMinute}`}))`);
+  const range = getDayRangeInTz(dayKey, timezone);
+  const [capacity, leads] = await Promise.all([
+    transaction.teamTransferRoute.count({ where: { sourceTeamId: teamId } }),
+    transaction.lead.findMany({
+      where: {
+        teamId,
+        isTransfer: true,
+        status: { not: null, notIn: TRANSFER_PRE_SCHEDULE_TERMINAL_STATUSES },
+        id: { not: excludeLeadId },
+        closerId: null,
+        meetingDate: { gte: range.start, lt: range.end },
+      },
+      select: { meetingDate: true },
+    }),
+  ]);
+  const usageAtSlot = leads.filter((lead) => {
+    if (!lead.meetingDate) return false;
+    const minute = Math.floor(getMinutesInTz(lead.meetingDate, timezone) / slotMinutes) * slotMinutes;
+    return minute === slotMinute;
+  }).length;
+  if (capacity <= 0 || usageAtSlot >= capacity) throw new PreScheduleSlotConflictError();
+}
 
 export class LeadScheduleRepository implements ILeadScheduleRepository {
   async upsertTransferPreSchedule(data: UpsertTransferPreScheduleDTO): Promise<void> {
@@ -36,6 +86,9 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
 
   async saveTransferPreSchedule(data: SaveTransferPreScheduleDTO): Promise<LeadsSchedule> {
     return prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.findUnique({ where: { id: data.leadId }, select: { teamId: true } });
+      if (!lead?.teamId) throw new Error("Lead sem time para pré-agendamento.");
+      await assertTransferPreScheduleSlotAvailable(tx, lead.teamId, data.date, data.leadId);
       const schedule = await tx.leadsSchedule.upsert({
         where: { leadId: data.leadId },
         create: {

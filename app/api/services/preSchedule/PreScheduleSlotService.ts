@@ -1,7 +1,13 @@
 import { DEFAULT_TZ, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
 import { preScheduleSlotRepository } from "@/app/api/infra/data/repositories/preSchedule/PreScheduleSlotRepository"
+import { DEFAULT_MEETING_DURATION_MINUTES, isMeetingDurationMinutes } from "@/app/api/domain/teamScheduleSettings/meetingDuration"
 
 export const PRE_SCHEDULE_SLOT_MINUTES = 30
+
+async function getPreScheduleSlotMinutes(teamId: string): Promise<number> {
+  const configured = await preScheduleSlotRepository.findTeamMeetingDuration(teamId)
+  return isMeetingDurationMinutes(configured) ? configured : DEFAULT_MEETING_DURATION_MINUTES
+}
 
 export async function getPreScheduleSlotCapacity(teamId: string): Promise<number> {
   return preScheduleSlotRepository.countTransferRoutesBySourceTeam(teamId)
@@ -25,15 +31,15 @@ async function findTransferLeadsInDay(
 
 export function countSlotUsage(
   leads: Array<{ meetingDate: Date | null }>,
-  timezone: string
+  timezone: string,
+  slotMinutes = PRE_SCHEDULE_SLOT_MINUTES,
 ): Map<number, number> {
   const usage = new Map<number, number>()
 
   for (const lead of leads) {
     if (!lead.meetingDate) continue
     const minute =
-      Math.floor(getMinutesInTz(lead.meetingDate, timezone) / PRE_SCHEDULE_SLOT_MINUTES) *
-      PRE_SCHEDULE_SLOT_MINUTES
+      Math.floor(getMinutesInTz(lead.meetingDate, timezone) / slotMinutes) * slotMinutes
     usage.set(minute, (usage.get(minute) ?? 0) + 1)
   }
 
@@ -48,11 +54,14 @@ export async function getPreScheduleSlotUsage(
 ): Promise<{ usage: Map<number, number>; capacity: number; timezone: string }> {
   const masterTimezone = await preScheduleSlotRepository.findTeamMasterTimezone(teamId)
   const timezone = resolveTimezone(timezoneInput ?? masterTimezone) || DEFAULT_TZ
-  const capacity = await getPreScheduleSlotCapacity(teamId)
+  const [capacity, slotMinutes] = await Promise.all([
+    getPreScheduleSlotCapacity(teamId),
+    getPreScheduleSlotMinutes(teamId),
+  ])
   const leads = await findTransferLeadsInDay(teamId, dateParam, timezone, excludeLeadId)
 
   return {
-    usage: countSlotUsage(leads, timezone),
+    usage: countSlotUsage(leads, timezone, slotMinutes),
     capacity,
     timezone,
   }
@@ -81,9 +90,8 @@ export async function isPreScheduleSlotAvailable(
     timezoneInput,
     excludeLeadId
   )
-  const minute =
-    Math.floor(getMinutesInTz(meetingDate, timezone) / PRE_SCHEDULE_SLOT_MINUTES) *
-    PRE_SCHEDULE_SLOT_MINUTES
+  const slotMinutes = await getPreScheduleSlotMinutes(teamId)
+  const minute = Math.floor(getMinutesInTz(meetingDate, timezone) / slotMinutes) * slotMinutes
   const usageAtSlot = usage.get(minute) ?? 0
 
   return {

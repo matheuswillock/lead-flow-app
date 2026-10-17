@@ -22,6 +22,9 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
       where: {
         teamId,
         profileId: { in: requestedCloserIds },
+        functions: { has: "CLOSER" },
+        team: { deletedAt: null },
+        profile: { deletedAt: null },
       },
       select: { profileId: true },
     });
