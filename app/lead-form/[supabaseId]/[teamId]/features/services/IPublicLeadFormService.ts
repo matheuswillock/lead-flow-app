@@ -83,6 +83,7 @@ export interface PublicLeadFormBootstrapData {
 
 export interface PreScheduleSlotsResult {
   occupiedSlots: number[];
+  slotMinutes: number;
 }
 
 export interface IPublicLeadFormService {
