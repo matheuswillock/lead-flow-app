@@ -91,7 +91,7 @@ test.describe("configuração de duração de reuniões por time", () => {
     await expect(page.getByText(/time\(s\) encontrado/)).toBeVisible({ timeout: 30_000 });
     await openManageMenu(page);
     await page.getByRole("tab", { name: "Agendamento" }).click();
-    await expect(page.getByLabel("Duração da reunião")).toHaveText(/45 minutos/);
+    await expect(page.getByLabel("Duração dos slots de reunião")).toHaveText(/45 minutos/);
     await page.screenshot({
       path: "test-results/team-schedule-settings/after/manage-team-desktop.png",
       fullPage: true,

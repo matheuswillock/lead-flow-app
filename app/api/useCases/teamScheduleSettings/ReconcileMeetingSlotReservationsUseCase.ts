@@ -9,6 +9,7 @@ type RecoverableReservation = {
   leadId: string | null;
   googleEventId: string;
   googleCalendarId: string;
+  recoveryAttempts?: number;
 };
 
 export type IMeetingSlotRecoveryRepository = {
@@ -20,6 +21,7 @@ export type IMeetingSlotRecoveryRepository = {
     googleCalendarId?: string | null;
   }): Promise<void>;
   markRecoveryFailure(reservationId: string, error: string): Promise<void>;
+  releaseAfterRecoveryTimeout?(reservationId: string): Promise<void>;
 };
 
 export type IMeetingSlotRecoveryScheduleRepository = {
@@ -50,6 +52,10 @@ export class ReconcileMeetingSlotReservationsUseCase {
       try {
         if (!reservation.leadId) {
           pending += 1;
+          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+            await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
+            continue;
+          }
           await this.reservations.markRecoveryFailure(
             reservation.id,
             "Reserva com evento externo ainda não possui lead para reconciliação.",
@@ -63,6 +69,10 @@ export class ReconcileMeetingSlotReservationsUseCase {
           schedule.googleCalendarId === reservation.googleCalendarId;
         if (!matchesExternalEvent) {
           pending += 1;
+          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+            await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
+            continue;
+          }
           await this.reservations.markRecoveryFailure(
             reservation.id,
             "Agenda local ainda não referencia o evento externo reservado.",

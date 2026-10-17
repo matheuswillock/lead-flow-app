@@ -238,14 +238,23 @@ export class PublicFormSubmissionUseCase {
 
     const answers = mapAnswersForPersistence(snapshot, visibleAnswers)
 
-    const existingReservation = existing?.meetingSlotReservationId && existing.scheduledCloserId &&
-      existing.scheduledDurationMinutes && existing.scheduledMeetingStartsAt
+    const storedReservation = existing?.meetingSlotReservationId && existing.scheduledCloserId &&
+      existing.scheduledDurationMinutes != null && existing.scheduledMeetingStartsAt
       ? {
           reservationId: existing.meetingSlotReservationId,
           closerId: existing.scheduledCloserId,
           durationMinutes: existing.scheduledDurationMinutes,
           startsAt: existing.scheduledMeetingStartsAt.toISOString(),
         }
+      : null
+    const existingReservation = storedReservation && await meetingSlotReservationService.validate({
+      reservationId: storedReservation.reservationId,
+      closerId: storedReservation.closerId,
+      publicFormSubmissionId: existing?.id,
+      startsAt: new Date(storedReservation.startsAt),
+      durationMinutes: storedReservation.durationMinutes,
+    })
+      ? storedReservation
       : null
     const meetingReservation = input.scheduling && !existingReservation
       ? await this.reservePublicMeeting(snapshot, input.scheduling)

@@ -14,6 +14,14 @@ export class PreScheduleSlotRepository implements IPreScheduleSlotRepository {
     return prisma.teamTransferRoute.count({ where: { sourceTeamId: teamId } })
   }
 
+  async findTeamMeetingDuration(teamId: string): Promise<number | null> {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { meetingDurationMinutes: true },
+    })
+    return team?.meetingDurationMinutes ?? null
+  }
+
   async findTeamMasterTimezone(teamId: string): Promise<string | null> {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -44,6 +52,7 @@ export class PreScheduleSlotRepository implements IPreScheduleSlotRepository {
       select: { meetingDate: true },
     })
   }
+
 }
 
 export const preScheduleSlotRepository = new PreScheduleSlotRepository()

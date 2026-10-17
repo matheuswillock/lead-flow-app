@@ -11,6 +11,9 @@ type TeamScheduleSettingsContextValue = {
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
+  saveError: string | null;
+  saveFeedback: string | null;
+  retry: () => Promise<void>;
   save: (durationMinutes: TeamMeetingDurationMinutes) => Promise<void>;
 };
 
@@ -29,6 +32,8 @@ export function TeamScheduleSettingsProvider({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const requestKeyRef = useRef("");
 
   const load = useCallback(async () => {
@@ -39,9 +44,9 @@ export function TeamScheduleSettingsProvider({
     try {
       const result = await teamScheduleSettingsService.get({ supabaseId, teamId });
       if (requestKeyRef.current === requestKey) setSettings(result);
-    } catch (loadError) {
+    } catch {
       if (requestKeyRef.current === requestKey) {
-        setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar a configuração.");
+        setError("Não foi possível carregar a configuração de horários.");
       }
     } finally {
       if (requestKeyRef.current === requestKey) setIsLoading(false);
@@ -55,12 +60,18 @@ export function TeamScheduleSettingsProvider({
   const save = useCallback(
     async (durationMinutes: TeamMeetingDurationMinutes) => {
       setIsSaving(true);
+      setSaveError(null);
+      setSaveFeedback("Salvando a configuração de horários...");
       try {
         const result = await teamScheduleSettingsService.update({ supabaseId, teamId, durationMinutes });
         setSettings(result);
+        setSaveFeedback("Configuração de horários salva.");
         toast.success("Duração de reunião atualizada.");
-      } catch (saveError) {
-        toastUserError(saveError);
+      } catch {
+        const safeMessage = "Não foi possível salvar a configuração de horários.";
+        setSaveError(safeMessage);
+        setSaveFeedback("Não foi possível salvar a configuração de horários.");
+        toastUserError(new Error(safeMessage));
       } finally {
         setIsSaving(false);
       }
@@ -69,7 +80,9 @@ export function TeamScheduleSettingsProvider({
   );
 
   return (
-    <TeamScheduleSettingsContext.Provider value={{ settings, isLoading, isSaving, error, save }}>
+    <TeamScheduleSettingsContext.Provider
+      value={{ settings, isLoading, isSaving, error, saveError, saveFeedback, retry: load, save }}
+    >
       {children}
     </TeamScheduleSettingsContext.Provider>
   );
