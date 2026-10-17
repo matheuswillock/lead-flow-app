@@ -67,6 +67,24 @@ describe("TeamStudioDomainUseCase", () => {
     })
   })
 
+  it("exibe o CNAME específico recomendado pela Vercel nas instruções do Studio", async () => {
+    const repository = makeRepository(makeDomain("studio.mail.acme.com"))
+    const vercelGateway = makeVercelGateway()
+    vercelGateway.getDomainConfig = mock(async () => ({
+      ok: true as const,
+      data: {
+        misconfigured: true,
+        recommendedCNAME: [{ rank: 1, value: "e7ec430d41e066d4.vercel-dns-017.com." }],
+      },
+    }))
+    const useCase = new TeamStudioDomainUseCase({ repository, vercelGateway })
+
+    const result = await useCase.getRecords(teamAccess, "mail.acme.com")
+    const records = (result.result as { records: Array<{ value: string }> }).records
+
+    expect(records[0]?.value).toBe("e7ec430d41e066d4.vercel-dns-017.com.")
+  })
+
   it("reutiliza o domínio quando duas inicializações acontecem ao mesmo tempo", async () => {
     let storedDomain: TeamStudioDomainRecord | null = null
     let initialFinds = 0

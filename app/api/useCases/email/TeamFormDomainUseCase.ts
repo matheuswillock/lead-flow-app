@@ -7,6 +7,7 @@ import type {
 import { teamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/TeamFormDomainRepository"
 import type { IVercelDomainsGateway } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
+import { resolveRecommendedVercelCname } from "@/app/api/services/vercelDomains/resolveRecommendedVercelCname"
 import { validateFormDomainHostname } from "@/lib/public-forms/form-domain-hostname"
 import { checkFormDomainVerification } from "@/lib/public-forms/form-domain-verification"
 import { buildFormDomainDnsRecords } from "@/lib/public-forms/form-domain-dns-records"
@@ -127,9 +128,12 @@ export class TeamFormDomainUseCase {
 
       this.invalidateCache({ hostname })
 
+      const cnameTarget = await resolveRecommendedVercelCname(this.vercelGateway, hostname)
+
       const records = buildFormDomainDnsRecords({
         hostname,
         apexName: registration.data.apexName,
+        cnameTarget,
         verificationChallenges: registration.data.verification,
         verified: false,
       })
@@ -188,16 +192,21 @@ export class TeamFormDomainUseCase {
 
       let records: CustomDomainDnsRecord[]
       if (this.vercelGateway.isConfigured()) {
-        const projectDomain = await this.vercelGateway.getProjectDomain(domain.hostname)
+        const [projectDomain, cnameTarget] = await Promise.all([
+          this.vercelGateway.getProjectDomain(domain.hostname),
+          resolveRecommendedVercelCname(this.vercelGateway, domain.hostname),
+        ])
         records = buildFormDomainDnsRecords({
           hostname: domain.hostname,
           apexName: projectDomain.ok ? projectDomain.data.apexName : null,
+          cnameTarget,
           verificationChallenges: projectDomain.ok ? projectDomain.data.verification : null,
           verified: domain.status === "verified",
         })
       } else {
         records = buildFormDomainDnsRecords({
           hostname: domain.hostname,
+          cnameTarget: null,
           verified: domain.status === "verified",
         })
       }

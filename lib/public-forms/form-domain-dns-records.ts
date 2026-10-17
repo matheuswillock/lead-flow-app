@@ -1,13 +1,15 @@
 import type { VercelDomainVerificationChallenge } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
 import type { CustomDomainDnsRecord } from "@/lib/email/custom-domain-dns-instructions"
 
-/** Alvo padrão do CNAME de formulários na Vercel. */
+/** Fallback legado quando a API da Vercel não retorna uma recomendação. */
 export const FORM_DOMAIN_CNAME_TARGET = "cname.vercel-dns.com"
 
 export type BuildFormDomainDnsRecordsInput = {
   hostname: string
   /** Apex retornado pela infraestrutura (ex.: imobiliariax.com.br). */
   apexName?: string | null
+  /** CNAME recomendado pela Vercel para este domínio, quando disponível. */
+  cnameTarget?: string | null
   /** Desafios extras de verificação (ex.: TXT `_vercel`). */
   verificationChallenges?: VercelDomainVerificationChallenge[] | null
   verified?: boolean
@@ -40,7 +42,7 @@ export function buildFormDomainDnsRecords(
       record: "CNAME",
       type: "CNAME",
       name: resolveDnsRecordName(input.hostname, input.apexName),
-      value: FORM_DOMAIN_CNAME_TARGET,
+      value: input.cnameTarget?.trim() || FORM_DOMAIN_CNAME_TARGET,
       ttl: "Auto",
       status,
     },

@@ -5,6 +5,7 @@ import { validateFormDomainHostname } from "@/lib/public-forms/form-domain-hostn
 import { checkFormDomainVerification } from "@/lib/public-forms/form-domain-verification"
 import { buildFormDomainDnsRecords } from "@/lib/public-forms/form-domain-dns-records"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
+import { resolveRecommendedVercelCname } from "@/app/api/services/vercelDomains/resolveRecommendedVercelCname"
 import { teamLandingDomainRepository } from "@/app/api/infra/data/repositories/teamLandingDomain/TeamLandingDomainRepository"
 import { hasLandingPageManagementAccess } from "./landingPageFeatureAccess"
 
@@ -29,9 +30,11 @@ export class TeamLandingDomainUseCase {
     const registration = await vercelDomainsGateway.addProjectDomain(validation.hostname)
     if (!registration.ok) return new Output(false, [], ["Não foi possível registrar o subdomínio agora."], null)
     const domain = await teamLandingDomainRepository.create({ teamId: access.teamId, hostname: validation.hostname, vercelDomainId: registration.data.name ?? validation.hostname })
+    const cnameTarget = await resolveRecommendedVercelCname(vercelDomainsGateway, validation.hostname)
     const records = buildFormDomainDnsRecords({
       hostname: validation.hostname,
       apexName: registration.data.apexName,
+      cnameTarget,
       verificationChallenges: registration.data.verification,
     })
     return new Output(true, ["Domínio conectado. Crie o registro DNS para ativar."], [], { landingDomain: domain, records })
