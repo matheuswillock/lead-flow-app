@@ -207,11 +207,11 @@ export default function TeamsPage() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && activeTeam?.canManageAccountTeams));
-  const canManageScheduleSettings = !!(user?.isMaster || activeRole === "manager");
   const managedTeam = React.useMemo(
     () => teams.find((team) => team.id === manageTeamId) ?? null,
     [teams, manageTeamId]
   );
+  const canManageScheduleSettings = !!(user?.isMaster || activeRole === "manager");
   const isManagedTeamDefault = managedTeam?.isDefault === true;
   const isSettingManagedTeamDefault = settingDefaultTeamId === manageTeamId;
   const defaultTeamToggleDisabled =

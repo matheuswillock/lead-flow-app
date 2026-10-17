@@ -6,6 +6,7 @@ import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCal
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
+import { meetingSlotReservationService } from "@/app/api/services/meetingSlotReservation/MeetingSlotReservationService";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function POST(
@@ -73,6 +74,7 @@ export async function POST(
       }
     }
 
+    await meetingSlotReservationService.releaseConsumedForLead({ leadId });
     await leadScheduleRepository.delete(schedule.id);
 
     await prisma.lead.update({

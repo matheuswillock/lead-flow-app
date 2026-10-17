@@ -66,7 +66,8 @@ export const PublicLeadFormRequestSchema = z
     meetingTitle: z.string().nullish().transform((val) => val || undefined),
     meetingNotes: z.string().nullish().transform((val) => val || undefined),
     extraGuests: z
-      .array(z.string().email("Convidados extras devem conter emails válidos"))
+      .array(z.string().trim().email("Convidados extras devem conter emails válidos").max(254, "Convidado extra inválido"))
+      .max(10, "Informe no máximo 10 convidados extras.")
       .nullish()
       .transform((guests) => {
         if (!guests || guests.length === 0) return undefined;

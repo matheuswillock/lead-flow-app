@@ -14,7 +14,7 @@ const scheduleSchema = z.object({
   meetingLink: z.string().optional(),
   meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
-  extraGuests: z.array(z.string().email("Email inválido")).optional(),
+  extraGuests: z.array(z.string().trim().email("Email inválido").max(254, "Email inválido")).max(10, "Informe no máximo 10 convidados extras.").optional(),
   transitionStatusToScheduled: z.boolean().optional(),
   confirmNoShowSchedule: z.boolean().optional(),
 });

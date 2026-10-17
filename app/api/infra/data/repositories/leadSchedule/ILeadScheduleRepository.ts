@@ -43,6 +43,7 @@ export interface UpsertTransferPreScheduleDTO {
   meetingTitle: string;
   notes: string | null;
   meetingType: string;
+  extraGuests?: string[];
 }
 
 export interface SaveTransferPreScheduleDTO extends UpsertTransferPreScheduleDTO {

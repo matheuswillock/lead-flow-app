@@ -35,6 +35,7 @@ import {
   DEFAULT_MEETING_DURATION_MINUTES,
   isMeetingDurationMinutes,
 } from "@/app/api/domain/teamScheduleSettings/meetingDuration";
+import { normalizeExtraGuests, validateFutureMeetingDate } from "@/lib/scheduling/meetingInputValidation";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -188,13 +189,32 @@ export class LeadScheduleService implements ILeadScheduleService {
     if (Number.isNaN(meetingDate.getTime())) {
       return new Output(false, [], ["Data da reunião inválida."], null);
     }
+    const dateError = validateFutureMeetingDate(meetingDate);
+    if (dateError) return new Output(false, [], [dateError], null);
+    if (!(await meetingSlotReservationService.isCloserEligibleForTeam(params.teamId, params.closerId))) {
+      return new Output(false, [], ["Closer não pertence ao time ou não está elegível para agendamento."], null);
+    }
+    const normalizedGuests = normalizeExtraGuests(params.extraGuests);
+    if (!normalizedGuests.valid) return new Output(false, [], [normalizedGuests.error], null);
 
     const configuredDuration = await teamScheduleSettingsRepository.findMeetingDuration(params.teamId);
-    const durationMinutes = isMeetingDurationMinutes(configuredDuration)
+    const configuredDurationMinutes = isMeetingDurationMinutes(configuredDuration)
       ? configuredDuration
       : DEFAULT_MEETING_DURATION_MINUTES;
-    const reservation = params.reservationId
-      ? { available: true as const, reservationId: params.reservationId, durationMinutes }
+    const precreatedReservation = params.reservationId
+      ? await meetingSlotReservationService.findValid({
+          reservationId: params.reservationId,
+          teamId: params.teamId,
+          closerId: params.closerId,
+          leadId: params.leadId,
+          startsAt: meetingDate,
+        })
+      : null;
+    if (params.reservationId && !precreatedReservation) {
+      return new Output(false, [], ["A reserva de agendamento entrou em conflito."], null);
+    }
+    const reservation = precreatedReservation
+      ? { available: true as const, reservationId: precreatedReservation.id, durationMinutes: precreatedReservation.durationMinutes }
       : await meetingSlotReservationService.reserve({
           teamId: params.teamId,
           closerId: params.closerId,
@@ -206,6 +226,8 @@ export class LeadScheduleService implements ILeadScheduleService {
       return new Output(false, [], ["Este horário não está mais disponível."], null);
     }
 
+    const durationMinutes = reservation.durationMinutes ?? configuredDurationMinutes;
+
     try {
       if (params.reservationId) {
         await meetingSlotReservationService.attachToLead({
@@ -213,7 +235,11 @@ export class LeadScheduleService implements ILeadScheduleService {
           leadId: params.leadId,
         });
       }
-      const output = await this.createScheduleWithoutReservation(params);
+      const output = await this.createScheduleWithoutReservation(
+        { ...params, extraGuests: normalizedGuests.guests },
+        reservation.reservationId,
+        params.reservationId ? reservation.durationMinutes : undefined,
+      );
       if (!output.isValid) {
         await meetingSlotReservationService.release(reservation.reservationId);
         return output;
@@ -223,8 +249,16 @@ export class LeadScheduleService implements ILeadScheduleService {
       await meetingSlotReservationService.consume({
         reservationId: reservation.reservationId,
         leadId: params.leadId,
+        teamId: params.teamId,
+        closerId: params.closerId,
+        startsAt: meetingDate,
+        durationMinutes,
         googleEventId: result?.googleEventId ?? null,
         googleCalendarId: result?.googleCalendarId ?? null,
+      });
+      await meetingSlotReservationService.releaseConsumedForLead({
+        leadId: params.leadId,
+        exceptReservationId: reservation.reservationId,
       });
       return output;
     } catch (error) {
@@ -235,7 +269,11 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
   }
 
-  private async createScheduleWithoutReservation(params: CreateScheduleParams): Promise<Output> {
+  private async createScheduleWithoutReservation(
+    params: CreateScheduleParams,
+    reservationId: string,
+    reservationDurationMinutes?: number,
+  ): Promise<Output> {
     const {
       leadId,
       leadName,
@@ -268,11 +306,19 @@ export class LeadScheduleService implements ILeadScheduleService {
       return new Output(false, [], ["Data da reunião é obrigatória."], null);
     }
     const meetingDate = new Date(meetingDateISO);
+    if (Number.isNaN(meetingDate.getTime())) {
+      return new Output(false, [], ["Data da reunião inválida."], null);
+    }
+    const dateError = validateFutureMeetingDate(meetingDate);
+    if (dateError) return new Output(false, [], [dateError], null);
+    const normalizedGuests = normalizeExtraGuests(extraGuests);
+    if (!normalizedGuests.valid) return new Output(false, [], [normalizedGuests.error], null);
     const configuredDuration = await teamScheduleSettingsRepository.findMeetingDuration(teamId);
-    const durationMinutes = isMeetingDurationMinutes(configuredDuration)
+    const configuredDurationMinutes = isMeetingDurationMinutes(configuredDuration)
       ? configuredDuration
       : DEFAULT_MEETING_DURATION_MINUTES;
-    if (requestedDurationMinutes && requestedDurationMinutes !== durationMinutes) {
+    const durationMinutes = reservationDurationMinutes ?? configuredDurationMinutes;
+    if (!reservationDurationMinutes && requestedDurationMinutes && requestedDurationMinutes !== configuredDurationMinutes) {
       console.info(`${LOG_PREFIX} Duração enviada pelo cliente foi ignorada em favor da configuração do time.`);
     }
     const shouldLogCloserChange = closerId !== leadCurrentCloserId;
@@ -321,7 +367,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       leadEmail?.trim().toLowerCase(),
       closerEmail,
       leadAssigneeEmail?.trim().toLowerCase(),
-      ...(extraGuests ?? []),
+      ...normalizedGuests.guests,
     ].filter((email): email is string => Boolean(email));
     const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${leadName}`;
     const participantDispatch = await resolveParticipantDispatchGroups({
@@ -414,7 +460,7 @@ export class LeadScheduleService implements ILeadScheduleService {
         notes: meetingNotes,
         meetingLink: calendarTransfer.meetingLinkForUpsert,
         meetingFormatLabel: options.meetingFormatLabel ?? null,
-        extraGuests,
+        extraGuests: normalizedGuests.guests,
         attendeeEmails: options.attendeeEmails,
         existingEventId: calendarTransfer.existingEventIdForUpsert,
         durationMinutes,
@@ -491,9 +537,9 @@ export class LeadScheduleService implements ILeadScheduleService {
 
       try {
         calendarResult = await attemptCloserCalendarUpsert({ attendeeEmails: googleRecipients });
-        if (params.reservationId) {
+        if (reservationId) {
           await meetingSlotReservationService.markExternalEvent({
-            reservationId: params.reservationId,
+            reservationId,
             googleEventId: calendarResult.eventId,
             googleCalendarId: calendarResult.calendarId,
           });
@@ -694,9 +740,9 @@ export class LeadScheduleService implements ILeadScheduleService {
             attendeeEmails: [],
             meetingFormatLabel,
           });
-          if (params.reservationId) {
+          if (reservationId) {
             await meetingSlotReservationService.markExternalEvent({
-              reservationId: params.reservationId,
+              reservationId,
               googleEventId: calendarResult.eventId,
               googleCalendarId: calendarResult.calendarId,
             });

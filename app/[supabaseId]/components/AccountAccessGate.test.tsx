@@ -33,3 +33,29 @@ test("falha fechado quando a decisão autenticada não foi resolvida", () => {
   expect(markup).toContain("Seu acesso está pausado")
   expect(markup).not.toContain("dados financeiros e CRM")
 })
+
+test("libera o conteúdo para conta com acesso permitido", () => {
+  const markup = renderToStaticMarkup(
+    <AccountAccessGate decision={{ state: "allowed" }} decisionResolved>
+      <section data-testid="platform-content">dados financeiros e CRM</section>
+    </AccountAccessGate>
+  )
+
+  expect(markup).toContain("dados financeiros e CRM")
+  expect(markup).not.toContain("Seu acesso está pausado")
+})
+
+test("sessão na URL de outra conta sem decisão resolvida nunca exibe pausa alheia", () => {
+  // Cenário do incidente: sessão de A na URL de B. O bootstrap server-side
+  // recusa o mismatch (retorna null), então o gate recebe decision
+  // indefinida + não resolvida e deve renderizar o conteúdo — jamais a
+  // tela de pausa da conta da URL.
+  const markup = renderToStaticMarkup(
+    <AccountAccessGate decision={undefined} decisionResolved={false}>
+      <section data-testid="platform-content">dados financeiros e CRM</section>
+    </AccountAccessGate>
+  )
+
+  expect(markup).toContain("dados financeiros e CRM")
+  expect(markup).not.toContain("Seu acesso está pausado")
+})

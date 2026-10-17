@@ -2627,6 +2627,7 @@ export class LeadUseCase implements ILeadUseCase {
       meetingTitle: lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`,
       notes: lead.meetingNotes || lead.notes || null,
       meetingType: lead.meetingType || "online",
+      extraGuests: Array.isArray(lead.extraGuests) ? lead.extraGuests : undefined,
     });
   }
 
