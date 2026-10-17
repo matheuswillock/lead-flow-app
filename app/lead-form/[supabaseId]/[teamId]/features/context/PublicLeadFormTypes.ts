@@ -26,6 +26,7 @@ export interface PublicLeadFormState {
   availableTimes: string[];
   availabilityLoading: boolean;
   preScheduleOccupiedSlots: number[];
+  preScheduleSlotMinutes: number;
   preScheduleSlotsLoading: boolean;
   isSubmitting: boolean;
   isSubmitted: boolean;

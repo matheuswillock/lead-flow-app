@@ -3,6 +3,9 @@ import {
   teamMeetingSlotReservationRepository,
 } from "@/app/api/infra/data/repositories/teamMeetingSlotReservation/TeamMeetingSlotReservationRepository";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 
 type RecoverableReservation = {
   id: string;
@@ -10,6 +13,41 @@ type RecoverableReservation = {
   googleEventId: string;
   googleCalendarId: string;
   recoveryAttempts?: number;
+};
+
+export type MeetingSlotExternalEvent = {
+  leadId: string;
+  googleEventId: string;
+  googleCalendarId: string;
+};
+
+export interface IMeetingSlotExternalEventCancellation {
+  cancel(input: MeetingSlotExternalEvent): Promise<void>;
+}
+
+const defaultExternalEventCancellation: IMeetingSlotExternalEventCancellation = {
+  async cancel(input) {
+    const lead = await leadRepository.findById(input.leadId);
+    if (!lead?.closerId) {
+      throw new Error("Não foi possível identificar o closer do evento externo.");
+    }
+
+    const closer = await profileRepository.findById(lead.closerId);
+    if (!closer?.googleConnectionId) {
+      throw new Error("O closer não possui uma conexão Google válida.");
+    }
+
+    await cancelCalendarEvent({
+      organizer: {
+        id: closer.id,
+        supabaseId: closer.supabaseId,
+        timezone: closer.timezone,
+        googleConnectionId: closer.googleConnectionId,
+      },
+      eventId: input.googleEventId,
+      calendarId: input.googleCalendarId,
+    });
+  },
 };
 
 export type IMeetingSlotRecoveryRepository = {
@@ -41,6 +79,8 @@ export class ReconcileMeetingSlotReservationsUseCase {
     private readonly reservations: IMeetingSlotRecoveryRepository = teamMeetingSlotReservationRepository,
     private readonly schedules: IMeetingSlotRecoveryScheduleRepository = leadScheduleRepository,
     private readonly batchSize = 100,
+    private readonly externalEvents: IMeetingSlotExternalEventCancellation =
+      defaultExternalEventCancellation,
   ) {}
 
   async execute(): Promise<Output> {
@@ -49,11 +89,24 @@ export class ReconcileMeetingSlotReservationsUseCase {
     let pending = 0;
 
     for (const reservation of recoverable) {
+      let pendingCounted = false;
+      const countPending = () => {
+        if (pendingCounted) return;
+        pending += 1;
+        pendingCounted = true;
+      };
+
       try {
         if (!reservation.leadId) {
-          pending += 1;
-          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
-            await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
+          countPending();
+          if (
+            (reservation.recoveryAttempts ?? 0) >= 19 &&
+            this.reservations.releaseAfterRecoveryTimeout
+          ) {
+            await this.reservations.markRecoveryFailure(
+              reservation.id,
+              "Reserva com evento externo sem lead não pode ser liberada com segurança.",
+            );
             continue;
           }
           await this.reservations.markRecoveryFailure(
@@ -68,8 +121,16 @@ export class ReconcileMeetingSlotReservationsUseCase {
           schedule?.googleEventId === reservation.googleEventId &&
           schedule.googleCalendarId === reservation.googleCalendarId;
         if (!matchesExternalEvent) {
-          pending += 1;
-          if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+          countPending();
+          if (
+            (reservation.recoveryAttempts ?? 0) >= 19 &&
+            this.reservations.releaseAfterRecoveryTimeout
+          ) {
+            await this.externalEvents.cancel({
+              leadId: reservation.leadId,
+              googleEventId: reservation.googleEventId,
+              googleCalendarId: reservation.googleCalendarId,
+            });
             await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
             continue;
           }
@@ -88,7 +149,7 @@ export class ReconcileMeetingSlotReservationsUseCase {
         });
         recovered += 1;
       } catch (error) {
-        pending += 1;
+        countPending();
         await this.reservations.markRecoveryFailure(
           reservation.id,
           error instanceof Error ? error.message : "Erro desconhecido ao reconciliar reserva.",
