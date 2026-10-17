@@ -32,3 +32,10 @@ Leia este arquivo somente para páginas, componentes, formulários, estilos ou i
 - HTTP no navegador usa `API_CLIENT_BASE` de `@/lib/route-map`, nunca `/api/v1` hardcoded.
 - Toda página alterada precisa de spec E2E correspondente com `runResponsiveChecks`, salvo exceção legada já registrada.
 - Leia `.governance/ai/testing.md` antes de considerar uma mudança visual concluída.
+
+## Auditoria e validação visual obrigatórias
+
+- Para toda implementação ou alteração visual, execute a skill `impeccable` como auditoria de design; corrija os problemas relevantes e valide as melhorias sem contrariar `DESIGN.md`, `PRODUCT.md`, acessibilidade ou o roteamento de skills do projeto. A auditoria não autoriza substituir tokens, identidade ou decisões de composição do projeto por recomendações genéricas.
+- Valide também a interface renderizada com `browser-harness`: abra a página em navegador real, confira a composição e os estados/interações afetados, e inspecione os tamanhos de viewport relevantes (incluindo mobile a partir de 360px e desktop quando aplicável). Corrija regressões e repita a inspeção após as mudanças.
+- Combine a inspeção com `design:check` e a cobertura E2E/responsiva exigida. Essas verificações cobrem aspectos diferentes; nenhuma isoladamente comprova a qualidade visual.
+- Se `impeccable`, o navegador, o ambiente ou os dados necessários não estiverem disponíveis, registre explicitamente o que não foi verificado e não declare garantia ou validação visual completa.
