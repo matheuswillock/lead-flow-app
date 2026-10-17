@@ -4,11 +4,14 @@ import { MeetingSlotReservationService } from "./MeetingSlotReservationService";
 
 describe("MeetingSlotReservationService", () => {
   it("calcula a duração do time e não aceita duração vinda do chamador", async () => {
+    const startsAt = new Date(Date.now() + 60 * 60 * 1_000);
     const reservations: ITeamMeetingSlotReservationRepository = {
       isCloserEligibleForTeam: async () => true,
       reserve: async (input) => {
         expect(input.durationMinutes).toBe(45);
-        expect(input.endsAt.toISOString()).toBe("2026-10-20T12:45:00.000Z");
+        expect(input.endsAt.toISOString()).toBe(
+          new Date(startsAt.getTime() + 45 * 60 * 1_000).toISOString(),
+        );
         return { available: true, reservationId: "reservation" };
       },
       consume: async () => {},
@@ -30,7 +33,7 @@ describe("MeetingSlotReservationService", () => {
     const result = await service.reserve({
       teamId: "team",
       closerId: "closer",
-      startsAt: new Date("2026-10-20T12:00:00.000Z"),
+      startsAt,
       source: "internal",
     });
 
@@ -38,7 +41,7 @@ describe("MeetingSlotReservationService", () => {
       available: true,
       reservationId: "reservation",
       durationMinutes: 45,
-      endsAt: new Date("2026-10-20T12:45:00.000Z"),
+      endsAt: new Date(startsAt.getTime() + 45 * 60 * 1_000),
     });
   });
 
