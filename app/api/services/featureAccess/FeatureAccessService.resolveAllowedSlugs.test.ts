@@ -59,6 +59,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   features: ActiveFeatureRecord[] = []
   userSubscriptions: ActiveUserSubscriptionRecord[] = []
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
+  temporaryBillingGrace = false
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
   teamMasterId = PROFILE_ID
@@ -87,6 +88,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   async listActiveUserSubscriptions(profileId: string) {
     if (profileId === MANAGER_ID) return this.ownerSubscriptions
     return this.userSubscriptions
+  }
+
+  async hasActiveTemporaryBillingGrace() {
+    return this.temporaryBillingGrace
   }
 
   async listActiveBetaGrantsForProfile() {
