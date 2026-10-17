@@ -53,6 +53,7 @@ export interface ITeamMeetingSlotReservationRepository {
   findRecoverable(limit: number): Promise<Array<{
     id: string;
     leadId: string | null;
+    closerId: string;
     googleEventId: string;
     googleCalendarId: string;
     recoveryAttempts?: number;

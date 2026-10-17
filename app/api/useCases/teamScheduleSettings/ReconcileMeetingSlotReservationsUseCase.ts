@@ -3,13 +3,46 @@ import {
   teamMeetingSlotReservationRepository,
 } from "@/app/api/infra/data/repositories/teamMeetingSlotReservation/TeamMeetingSlotReservationRepository";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 
 type RecoverableReservation = {
   id: string;
   leadId: string | null;
+  closerId: string;
   googleEventId: string;
   googleCalendarId: string;
   recoveryAttempts?: number;
+};
+
+export type MeetingSlotExternalEvent = {
+  closerId: string;
+  googleEventId: string;
+  googleCalendarId: string;
+};
+
+export interface IMeetingSlotExternalEventCancellation {
+  cancel(input: MeetingSlotExternalEvent): Promise<void>;
+}
+
+const defaultExternalEventCancellation: IMeetingSlotExternalEventCancellation = {
+  async cancel(input) {
+    const closer = await profileRepository.findById(input.closerId);
+    if (!closer?.googleConnectionId) {
+      throw new Error("O closer não possui uma conexão Google válida.");
+    }
+
+    await cancelCalendarEvent({
+      organizer: {
+        id: closer.id,
+        supabaseId: closer.supabaseId,
+        timezone: closer.timezone,
+        googleConnectionId: closer.googleConnectionId,
+      },
+      eventId: input.googleEventId,
+      calendarId: input.googleCalendarId,
+    });
+  },
 };
 
 export type IMeetingSlotRecoveryRepository = {
@@ -41,6 +74,8 @@ export class ReconcileMeetingSlotReservationsUseCase {
     private readonly reservations: IMeetingSlotRecoveryRepository = teamMeetingSlotReservationRepository,
     private readonly schedules: IMeetingSlotRecoveryScheduleRepository = leadScheduleRepository,
     private readonly batchSize = 100,
+    private readonly externalEvents: IMeetingSlotExternalEventCancellation =
+      defaultExternalEventCancellation,
   ) {}
 
   async execute(): Promise<Output> {
@@ -49,9 +84,16 @@ export class ReconcileMeetingSlotReservationsUseCase {
     let pending = 0;
 
     for (const reservation of recoverable) {
+      let pendingCounted = false;
+      const countPending = () => {
+        if (pendingCounted) return;
+        pending += 1;
+        pendingCounted = true;
+      };
+
       try {
         if (!reservation.leadId) {
-          pending += 1;
+          countPending();
           if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
             await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
             continue;
@@ -68,8 +110,13 @@ export class ReconcileMeetingSlotReservationsUseCase {
           schedule?.googleEventId === reservation.googleEventId &&
           schedule.googleCalendarId === reservation.googleCalendarId;
         if (!matchesExternalEvent) {
-          pending += 1;
+          countPending();
           if ((reservation.recoveryAttempts ?? 0) >= 19 && this.reservations.releaseAfterRecoveryTimeout) {
+            await this.externalEvents.cancel({
+              closerId: reservation.closerId,
+              googleEventId: reservation.googleEventId,
+              googleCalendarId: reservation.googleCalendarId,
+            });
             await this.reservations.releaseAfterRecoveryTimeout(reservation.id);
             continue;
           }
@@ -88,7 +135,7 @@ export class ReconcileMeetingSlotReservationsUseCase {
         });
         recovered += 1;
       } catch (error) {
-        pending += 1;
+        countPending();
         await this.reservations.markRecoveryFailure(
           reservation.id,
           error instanceof Error ? error.message : "Erro desconhecido ao reconciliar reserva.",
