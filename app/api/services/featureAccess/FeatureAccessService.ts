@@ -132,6 +132,7 @@ export class FeatureAccessService implements IFeatureAccessService {
       currentUserRole,
       ownerUserType,
       ownerBanned,
+      hasTemporaryBillingGrace,
     ] = await Promise.all([
       this.repository.listActiveFeatures(),
       this.repository.findOwnerProfile(ownerProfileId),
@@ -143,6 +144,9 @@ export class FeatureAccessService implements IFeatureAccessService {
         : this.repository.findCurrentUserRoleInfo(data.profileId),
       this.repository.findUserTypeAssignment(ownerProfileId),
       isAccountMasterBanned(ownerProfileId),
+      data.activeTeamId
+        ? this.repository.hasActiveTemporaryBillingGrace(data.activeTeamId)
+        : Promise.resolve(false),
     ])
 
     const userTypeSlug = ownerUserType?.slug ?? "common"
@@ -194,7 +198,8 @@ export class FeatureAccessService implements IFeatureAccessService {
     // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
     // ownerProfile + ownerProfileSubscription já foram buscados acima.
     const accountSubscriptionActive =
-      hasPermanentAccess || (!memberProBlocked && (hasActiveMainSubscription || memberProActive))
+      hasPermanentAccess ||
+      (!memberProBlocked && (hasActiveMainSubscription || memberProActive || hasTemporaryBillingGrace))
     if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
@@ -215,7 +220,7 @@ export class FeatureAccessService implements IFeatureAccessService {
       addProductFeatureSlugsToSet(paidProductSlugs, item.product)
     }
 
-    if (hasActiveMainSubscription && ownerProfileSubscription?.product) {
+    if ((hasActiveMainSubscription || hasTemporaryBillingGrace) && ownerProfileSubscription?.product) {
       addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
     }
 
@@ -350,7 +355,14 @@ export class FeatureAccessService implements IFeatureAccessService {
         }
       }
 
-      if (hasAccess) {
+      const temporaryGraceProductSlug = hasTemporaryBillingGrace
+        ? resolveBillingProductSlug(feature, featureById)
+        : null
+      if (
+        hasAccess &&
+        (!hasTemporaryBillingGrace ||
+          (temporaryGraceProductSlug !== null && paidProductSlugs.has(temporaryGraceProductSlug)))
+      ) {
         allowedSlugs.add(feature.slug)
       }
     }

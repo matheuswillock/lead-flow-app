@@ -47,6 +47,7 @@ import {
   formatIntimezone,
   formatLocalDateValue,
   formatLocalTimeValue,
+  getMinutesInTz,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -147,6 +148,7 @@ export function ScheduleMeetingDialog({
   const [shareUrl, setShareUrl] = useState("");
   const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
   const [occupiedPreSlots, setOccupiedPreSlots] = useState<number[]>([]);
+  const [preScheduleSlotMinutes, setPreScheduleSlotMinutes] = useState(30);
   const [preSlotsLoading, setPreSlotsLoading] = useState(false);
   const fallbackMembers = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
   const members = teamMembersFromApi.length > 0 ? teamMembersFromApi : fallbackMembers;
@@ -197,8 +199,10 @@ export function ScheduleMeetingDialog({
     ? (() => {
         const slotTime = formatLocalTimeValue(meetingDate, SCHEDULE_TIMEZONE);
         const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-        const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-        return occupiedPreSlots.includes(utcMins);
+        const localMins =
+          Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+          preScheduleSlotMinutes;
+        return occupiedPreSlots.includes(localMins);
       })()
     : false;
   const canSubmit = isPreSchedule
@@ -380,6 +384,7 @@ export function ScheduleMeetingDialog({
   useEffect(() => {
     if (!isPreSchedule || !open || !activeTeamId || !supabaseId || !meetingDateKey) {
       setOccupiedPreSlots([]);
+      setPreScheduleSlotMinutes(30);
       return;
     }
     let isMounted = true;
@@ -396,10 +401,18 @@ export function ScheduleMeetingDialog({
         const slots: number[] = Array.isArray(result?.result?.occupiedSlots)
           ? result.result.occupiedSlots
           : [];
+        const slotMinutes =
+          Number.isInteger(result?.result?.slotMinutes) && result.result.slotMinutes > 0
+            ? result.result.slotMinutes
+            : 30;
         setOccupiedPreSlots(slots);
+        setPreScheduleSlotMinutes(slotMinutes);
       })
       .catch(() => {
-        if (isMounted) setOccupiedPreSlots([]);
+        if (isMounted) {
+          setOccupiedPreSlots([]);
+          setPreScheduleSlotMinutes(30);
+        }
       })
       .finally(() => {
         if (isMounted) setPreSlotsLoading(false);
@@ -410,17 +423,26 @@ export function ScheduleMeetingDialog({
   const preScheduleAvailableTimes = useMemo(() => {
     if (!isPreSchedule || !isValidDate(meetingDate) || !meetingDateKey) return undefined;
     const allSlots: string[] = [];
-    for (let mins = 7 * 60; mins <= 20 * 60; mins += 30) {
+    for (let mins = 7 * 60; mins <= 20 * 60; mins += preScheduleSlotMinutes) {
       const hh = String(Math.floor(mins / 60)).padStart(2, "0");
       const mm = String(mins % 60).padStart(2, "0");
       allSlots.push(`${hh}:${mm}`);
     }
     return allSlots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-      const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-      return !occupiedPreSlots.includes(utcMins);
+      const localMins =
+        Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+        preScheduleSlotMinutes;
+      return !occupiedPreSlots.includes(localMins);
     });
-  }, [isPreSchedule, meetingDate, meetingDateKey, occupiedPreSlots, SCHEDULE_TIMEZONE]);
+  }, [
+    isPreSchedule,
+    meetingDate,
+    meetingDateKey,
+    occupiedPreSlots,
+    preScheduleSlotMinutes,
+    SCHEDULE_TIMEZONE,
+  ]);
 
   const addExtraGuests = (values: string[]) => {
     const normalized = values

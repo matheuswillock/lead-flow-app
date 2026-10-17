@@ -25,6 +25,8 @@ export type ResolvedAsaasAccount = {
    */
   apiKey: string | undefined
   baseUrl: string
+  /** Dimensão única de ambiente (C30), a mesma que resolveu `baseUrl`. */
+  environment: "production" | "sandbox"
   walletId?: string
   webhookToken?: string
 }
@@ -50,19 +52,21 @@ function resolveAsaasBaseUrl(): string {
 
 export function resolveAsaasAccount(accountId: AsaasAccountId): ResolvedAsaasAccount {
   const baseUrl = resolveAsaasBaseUrl()
+  const environment = detectAsaasEnvironment()
 
   if (accountId === "legacy") {
     const apiKey = process.env.ASAAS_LEGACY_API_KEY
     if (!apiKey) {
       throw new Error(
         "Conta Asaas 'legacy' solicitada, mas ASAAS_LEGACY_API_KEY não está configurada " +
-          "(pré-cutover: a conta legacy ainda não existe — ver [[10 — Fundações Multi-conta — Backend]] E2)."
+          "(pré-cutover: a conta legacy ainda não existe — ver [[10 — Fundações Multi-conta — Backend]] E2).",
       )
     }
     return {
       accountId: "legacy",
       apiKey,
       baseUrl,
+      environment,
       webhookToken: process.env.ASAAS_LEGACY_WEBHOOK_TOKEN,
     }
   }
@@ -71,6 +75,7 @@ export function resolveAsaasAccount(accountId: AsaasAccountId): ResolvedAsaasAcc
     accountId: "primary",
     apiKey: process.env.ASAAS_API_KEY,
     baseUrl,
+    environment,
     walletId: process.env.ASAAS_WALLET_ID,
     webhookToken: process.env.ASAAS_WEBHOOK_TOKEN,
   }

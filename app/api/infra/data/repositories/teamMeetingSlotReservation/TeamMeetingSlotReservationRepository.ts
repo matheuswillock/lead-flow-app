@@ -201,10 +201,24 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
         googleCalendarId: { not: null },
         recoveryAttempts: { lt: MAX_RECOVERY_ATTEMPTS },
       },
-      select: { id: true, leadId: true, googleEventId: true, googleCalendarId: true, recoveryAttempts: true },
+      select: {
+        id: true,
+        leadId: true,
+        closerId: true,
+        googleEventId: true,
+        googleCalendarId: true,
+        recoveryAttempts: true,
+      },
       take: limit,
       orderBy: { updatedAt: "asc" },
-    }) as Promise<Array<{ id: string; leadId: string | null; googleEventId: string; googleCalendarId: string; recoveryAttempts: number }>>;
+    }) as Promise<Array<{
+      id: string;
+      leadId: string | null;
+      closerId: string;
+      googleEventId: string;
+      googleCalendarId: string;
+      recoveryAttempts: number;
+    }>>;
   }
 
   async markRecoveryFailure(reservationId: string, error: string): Promise<void> {
