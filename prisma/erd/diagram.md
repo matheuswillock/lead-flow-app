@@ -190,6 +190,87 @@ dead_letter dead_letter
     
 
 
+        payment_provider_key {
+            ASAAS ASAAS
+ABACATE_PAY ABACATE_PAY
+        }
+    
+
+
+        payment_provider_environment {
+            DEV DEV
+PRODUCTION PRODUCTION
+        }
+    
+
+
+        payment_provider_rollout_state {
+            DISABLED DISABLED
+SANDBOX_VALIDATED SANDBOX_VALIDATED
+APPROVED APPROVED
+ACTIVE ACTIVE
+        }
+    
+
+
+        payment_provider_health_status {
+            UNKNOWN UNKNOWN
+HEALTHY HEALTHY
+UNHEALTHY UNHEALTHY
+        }
+    
+
+
+        payment_provider_route {
+            NEW_ROUTER NEW_ROUTER
+LEGACY_ASAAS LEGACY_ASAAS
+        }
+    
+
+
+        payment_provider_identity_type {
+            CUSTOMER CUSTOMER
+PAYMENT PAYMENT
+SUBSCRIPTION SUBSCRIPTION
+CHECKOUT CHECKOUT
+SESSION SESSION
+        }
+    
+
+
+        payment_provider_migration_gate_status {
+            PENDING PENDING
+ACTIVE ACTIVE
+REVOKED REVOKED
+EXPIRED EXPIRED
+        }
+    
+
+
+        payment_provider_session_status {
+            OPEN OPEN
+COMPLETED COMPLETED
+FAILED FAILED
+EXPIRED EXPIRED
+CANCELED CANCELED
+        }
+    
+
+
+        payment_provider_attempt_status {
+            CREATED CREATED
+PENDING PENDING
+CONFIRMED CONFIRMED
+FAILED FAILED
+REFUNDED REFUNDED
+DISPUTED DISPUTED
+EXPIRED EXPIRED
+CANCELED CANCELED
+UNKNOWN UNKNOWN
+        }
+    
+
+
         asaas_account {
             primary primary
 legacy legacy
@@ -4352,6 +4433,104 @@ completed completed
     }
   
 
+  "payment_provider_configs" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    Boolean enabled 
+    Boolean is_default 
+    String external_account_context 
+    PaymentProviderRolloutState rollout_state 
+    Boolean kill_switch 
+    Int config_revision 
+    PaymentProviderHealthStatus health_status 
+    DateTime last_health_check_at "❓"
+    String last_error_code "❓"
+    String last_error_message "❓"
+    String public_key_fingerprint "❓"
+    String logo_url "❓"
+    String logo_alt_text "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_identities" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String external_id 
+    PaymentProviderIdentityType identity_type 
+    String owner_type 
+    String owner_id 
+    String tenant_id 
+    PaymentProviderRoute route 
+    String route_version 
+    Int binding_revision 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_migration_gates" {
+    String id "🗝️"
+    PaymentProviderRoute source_route 
+    PaymentProviderRoute target_route 
+    String version 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String authorized_by_profile_id 
+    PaymentProviderMigrationGateStatus status 
+    DateTime expires_at 
+    DateTime activated_at "❓"
+    DateTime revoked_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_sessions" {
+    String id "🗝️"
+    String tenant_id 
+    String owner_type 
+    String owner_id 
+    String idempotency_key 
+    PaymentProviderEnvironment environment 
+    PaymentProviderKey provider_key 
+    String external_account_context 
+    PaymentProviderRoute route 
+    String route_version 
+    PaymentProviderSessionStatus status 
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    DateTime expires_at 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_attempts" {
+    String id "🗝️"
+    String session_id 
+    Int attempt_number 
+    String idempotency_key 
+    String request_fingerprint 
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    PaymentProviderAttemptStatus status 
+    String external_id "❓"
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    String unknown_reason "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_bot_host_settings" {
     String id "🗝️"
     String agentBaseUrl "❓"
@@ -5276,6 +5455,27 @@ completed completed
     "payment_provider_event_inbox" |o--|| "PaymentProviderEventInboxStatus" : "enum:status"
     "payment_provider_event_outbox" |o--|| "PaymentProviderEventOutboxStatus" : "enum:status"
     "payment_provider_event_outbox" }o--|| payment_provider_event_inbox : "inbox"
+    "payment_provider_configs" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
+    "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"
+    "payment_provider_identities" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:source_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:target_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderMigrationGateStatus" : "enum:status"
+    "payment_provider_migration_gates" }o--|| corretor_studio_profiles : "authorizedBy"
+    "payment_provider_sessions" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_sessions" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_sessions" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_sessions" |o--|| "PaymentProviderSessionStatus" : "enum:status"
+    "payment_provider_attempts" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_attempts" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_attempts" |o--|| "PaymentProviderAttemptStatus" : "enum:status"
+    "payment_provider_attempts" }o--|| payment_provider_sessions : "session"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
