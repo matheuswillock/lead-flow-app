@@ -104,13 +104,14 @@ export class PaymentProviderEventProcessor {
                 : "UNKNOWN"
               : input.currentStatus ?? "UNKNOWN",
             event: input.event.event,
-          })
+      })
       if (transition.action === "apply") {
+        const leaseNow = this.options.now?.() ?? new Date()
         const claimIsActive = await this.repository.assertClaimActive({
           dedupeKey,
           claimToken,
-          now,
-          staleBefore: new Date(now.getTime() - (this.options.processingLeaseMs ?? 10 * 60 * 1000)),
+          now: leaseNow,
+          staleBefore: new Date(leaseNow.getTime() - (this.options.processingLeaseMs ?? 10 * 60 * 1000)),
         })
         if (!claimIsActive) return { action: "duplicate" }
         await input.apply({ event: input.event, nextStatus: transition.nextStatus, claimToken })

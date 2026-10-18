@@ -369,4 +369,32 @@ describe("PaymentProviderEventProcessor", () => {
     await expect(firstProcessor).resolves.toEqual({ action: "duplicate" })
     expect(applications).toBe(1)
   })
+
+  it("renews the lease using a fresh clock after status lookup", async () => {
+    const repository = new MemoryInboxRepository()
+    let currentTime = new Date("2026-10-20T12:00:00Z")
+    const processor = new PaymentProviderEventProcessor(repository, {
+      now: () => new Date(currentTime),
+      processingLeaseMs: 60_000,
+    })
+    let applications = 0
+
+    const input = {
+      provider: "ABACATE_PAY" as const,
+      environment: "DEV" as const,
+      externalAccountContext: "account_a",
+      rawBody: '{"id":"evt_clock_refresh"}',
+      event: { ...event, eventId: "evt_clock_refresh" },
+      getCurrentStatus: async () => {
+        currentTime = new Date("2026-10-20T12:02:00Z")
+        return "PENDING" as const
+      },
+      apply: async () => {
+        applications += 1
+      },
+    }
+
+    await expect(processor.process(input)).resolves.toEqual({ action: "duplicate" })
+    expect(applications).toBe(0)
+  })
 })
