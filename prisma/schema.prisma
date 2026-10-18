@@ -178,6 +178,26 @@ enum AsaasWebhookEventStatus {
   @@map("asaas_webhook_event_status")
 }
 
+enum PaymentProviderEventInboxStatus {
+  pending
+  processing
+  processed
+  failed
+  tombstoned
+
+  @@map("payment_provider_event_inbox_status")
+}
+
+enum PaymentProviderEventOutboxStatus {
+  pending
+  processing
+  delivered
+  failed
+  dead_letter
+
+  @@map("payment_provider_event_outbox_status")
+}
+
 /// Conta Asaas — E4 de [[10 — Fundações Multi-conta — Backend]] (DA4/DA5).
 /// `primary` = conta nova (CNPJ correto); `legacy` = conta antiga, somente
 /// leitura. Todo dado existente antes desta migration nasce `legacy` (era a
@@ -6215,6 +6235,74 @@ model AsaasWebhookEvent {
   @@index([status, receivedAt(sort: Desc)], map: "asaas_webhook_events_status_received_at_idx")
   @@index([status, nextAttemptAt], map: "asaas_webhook_events_status_next_attempt_at_idx")
   @@map("asaas_webhook_events")
+}
+
+/// Dedupe durável de eventos externos. A chave inclui ambiente e conta para
+/// impedir colisões entre sandbox/produção e entre contas do mesmo provider.
+model PaymentProviderEventDedupe {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupeKey                String   @unique @map("dedupe_key") @db.Text
+  providerKey              String   @map("provider_key") @db.Text
+  environment              String   @db.Text
+  externalAccountContext   String   @map("external_account_context") @db.Text
+  eventId                  String   @map("event_id") @db.Text
+  payloadHash              String   @map("payload_hash") @db.Text
+  tombstoneUntil           DateTime @map("tombstone_until") @db.Timestamptz(6)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([providerKey, environment, externalAccountContext, eventId], map: "payment_provider_event_dedupe_scope_event_key")
+  @@index([tombstoneUntil], map: "payment_provider_event_dedupe_tombstone_until_idx")
+  @@map("payment_provider_event_dedupe")
+}
+
+/// Inbox append-only de eventos recebidos. O payload permanece bruto para
+/// auditoria/replay, enquanto o hash detecta reentrega adulterada.
+model PaymentProviderEventInbox {
+  id                       String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupeKey                String                         @unique @map("dedupe_key") @db.Text
+  providerKey              String                         @map("provider_key") @db.Text
+  environment              String                         @db.Text
+  externalAccountContext   String                         @map("external_account_context") @db.Text
+  eventId                  String                         @map("event_id") @db.Text
+  payloadHash              String                         @map("payload_hash") @db.Text
+  payload                  Json
+  normalizedEvent          String?                        @map("normalized_event") @db.Text
+  status                   PaymentProviderEventInboxStatus @default(pending)
+  attemptCount             Int                            @default(0) @map("attempt_count")
+  errorMessage             String?                        @map("error_message") @db.Text
+  receivedAt               DateTime                       @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt              DateTime?                      @map("processed_at") @db.Timestamptz(6)
+  tombstoneUntil           DateTime?                      @map("tombstone_until") @db.Timestamptz(6)
+  updatedAt                DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  outboxEvents             PaymentProviderEventOutbox[]
+
+  @@unique([providerKey, environment, externalAccountContext, eventId], map: "payment_provider_event_inbox_scope_event_key")
+  @@index([status, receivedAt(sort: Desc)], map: "payment_provider_event_inbox_status_received_at_idx")
+  @@map("payment_provider_event_inbox")
+}
+
+/// Outbox para publicação/efeitos derivados do evento, sem retry cego do
+/// pagamento externo. Falhas ficam visíveis e podem entrar em dead-letter.
+model PaymentProviderEventOutbox {
+  id             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inboxId        String                           @map("inbox_id") @db.Uuid
+  eventType      String                           @map("event_type") @db.Text
+  payload        Json
+  status         PaymentProviderEventOutboxStatus @default(pending)
+  attemptCount   Int                              @default(0) @map("attempt_count")
+  nextAttemptAt  DateTime                         @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  leasedUntil    DateTime?                        @map("leased_until") @db.Timestamptz(6)
+  terminalAt     DateTime?                        @map("terminal_at") @db.Timestamptz(6)
+  errorMessage   String?                          @map("error_message") @db.Text
+  createdAt      DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  inbox          PaymentProviderEventInbox        @relation(fields: [inboxId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([inboxId, eventType], map: "payment_provider_event_outbox_inbox_event_key")
+  @@index([status, nextAttemptAt], map: "payment_provider_event_outbox_status_next_attempt_at_idx")
+  @@map("payment_provider_event_outbox")
 }
 
 enum BackofficeBotHostOpsJobType {
