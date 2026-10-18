@@ -99,6 +99,15 @@ class FakePlatformPurchaseRepository implements IPlatformPurchaseRepository {
     this.items.set(input.id, next)
     return next
   }
+
+  async markPaidOnceForProvider(input: { id: string; provider: string; externalId: string; paidAt?: Date }) {
+    const current = this.items.get(input.id)
+    if (!current || current.status === "paid") return null
+    const paidAt = input.paidAt ?? new Date()
+    const next = makePurchase({ ...current, status: "paid", paidAt, appliedAt: paidAt })
+    this.items.set(input.id, next)
+    return next
+  }
 }
 
 describe("PlatformCheckoutUseCase", () => {
