@@ -7,7 +7,7 @@
 **Data:** 2026-07-03
 **Método:** auditoria código-nível (audit factual + critique arquitetural), branch `develop`
 **Escopo:** inbox WhatsApp de leads por time (Evolution API), auto-respostas, RBAC de conversas, RLS/realtime, workflows N8N da Bethânia
-**Referências de contexto:** `agents.md`, `.github/instructions/project-context.instructions.md`, `DESIGN.md`, `specs/studio-bot-n8n.md`, `docs/obsidian/Bethânia.md`, `docs/WHATSAPP_CLOUD_API_IMPLEMENTATION.md`
+**Referências de contexto:** `agents.md`, `.github/instructions/project-context.instructions.md`, `DESIGN.md`, `specs/studio-bot-n8n.md`, nota no vault Obsidian `Corretor studio/Bethânia.md`, `docs/WHATSAPP_CLOUD_API_IMPLEMENTATION.md`
 
 ---
 

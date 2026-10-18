@@ -66,3 +66,6 @@ deploy/hostinger/host-pack/dist/
 playwright-report/
 test-results/
 .playwright-mcp/
+
+# Obsidian vault content lives outside the repository.
+/docs/obsidian/

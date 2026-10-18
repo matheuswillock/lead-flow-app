@@ -846,6 +846,17 @@ describe("AbacatePayProvider", () => {
     })
   })
 
+  it("classifica resposta 2xx malformada durante refund como UNKNOWN_RESULT", async () => {
+    const provider = new AbacatePayProvider(config, {
+      http: mock(async () => new Response("not-json", { status: 200 })),
+    })
+
+    await expect(provider.refundFull({ externalId: "pay_refund" })).rejects.toMatchObject({
+      code: "UNKNOWN_RESULT",
+      retryable: true,
+    })
+  })
+
   it("converte valor e customer malformados em erro de validação seguro", async () => {
     const provider = new AbacatePayProvider(config, {
       http: mock(async () => response({ data: {} })),

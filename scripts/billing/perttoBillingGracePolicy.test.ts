@@ -103,5 +103,19 @@ describe("Pertto billing-grace policy", () => {
       plannedGrace: null,
       activeGraces: [],
     })).toThrow("estado de cobrança mudou")
+
+    for (const status of ["active", "canceled"] as const) {
+      expect(() => validatePerttoApplyState({
+        profileStatus: status,
+        canonicalStatus: status,
+        profileAsaasSubscriptionId: null,
+        canonicalAsaasSubscriptionId: null,
+        overrideLog: null,
+        restorePastDue: false,
+        expiry: "2026-10-28T03:00:00.000Z",
+        plannedGrace: null,
+        activeGraces: [],
+      })).toThrow("estado de cobrança mudou")
+    }
   })
 })

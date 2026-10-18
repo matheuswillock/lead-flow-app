@@ -206,6 +206,7 @@ export class AbacatePayProvider
             ...(input.reason ? { reason: input.reason } : {}),
           }),
         },
+        { indeterminateOnSuccessParseError: true },
       )
       const refundExternalId = stringOrNull(response.data?.id)
       if (response.success === false) {
