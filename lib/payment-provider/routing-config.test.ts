@@ -81,6 +81,20 @@ describe("provider routing config", () => {
     ).toThrow("kill switch")
   })
 
+  it("permite acionar o kill switch de um provider ativo", () => {
+    const next = applyProviderRoutingConfigPatch(
+      { ...existing, enabled: true, rolloutState: "ACTIVE" },
+      { killSwitch: true, expectedRevision: 1 },
+    )
+
+    expect(next).toMatchObject({
+      enabled: true,
+      rolloutState: "ACTIVE",
+      killSwitch: true,
+      revision: 2,
+    })
+  })
+
   it("falha em revisão concorrente", () => {
     expect(() => applyProviderRoutingConfigPatch(existing, { expectedRevision: 2 })).toThrow(
       "revisão",

@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
-import { PaymentProviderSessionStatus as PrismaSessionStatus } from "@prisma/client"
+import {
+  PaymentProviderSessionStatus as PrismaSessionStatus,
+  Prisma,
+} from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   assertAttemptStatusTransition,
@@ -141,7 +144,7 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         },
         select: attemptSelect,
       })
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
     return toAttemptRecord(attempt)
   }
 
@@ -162,7 +165,9 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
           status:
             input.purpose === "RECONCILIATION"
               ? { in: ["UNKNOWN"] }
-              : { in: ["CREATED", "PENDING"] },
+              : input.purpose === "POST_PAYMENT"
+                ? { in: ["CONFIRMED", "DISPUTED"] }
+                : { in: ["CREATED", "PENDING"] },
           session: {
             is: {
               tenantId: input.tenantId,
@@ -199,16 +204,14 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
       throw new Error("Tentativa UNKNOWN exige operação explícita de reconciliação")
     }
     assertAttemptStatusTransition(input.expectedStatus, input.status)
-    if (["CONFIRMED", "REFUNDED", "DISPUTED"].includes(input.status) && !input.externalId?.trim()) {
+    const normalizedExternalId = normalizeExternalId(input.externalId)
+    if (["CONFIRMED", "REFUNDED", "DISPUTED"].includes(input.status) && !normalizedExternalId) {
       throw new Error("Estado de pagamento exige id externo")
     }
-    if (input.externalId === null) {
-      throw new Error("externalId não pode ser apagado de uma tentativa")
-    }
-    const externalIdScope = input.externalId
-      ? { OR: [{ externalId: null }, { externalId: input.externalId }] }
+    const externalIdScope = normalizedExternalId
+      ? { OR: [{ externalId: null }, { externalId: normalizedExternalId }] }
       : {}
-    const externalIdData = input.externalId === undefined ? {} : { externalId: input.externalId }
+    const externalIdData = normalizedExternalId === undefined ? {} : { externalId: normalizedExternalId }
     const result = await prisma.paymentProviderAttempt.updateMany({
       // Reconciliation may finish an UNKNOWN attempt after checkout expiry;
       // payment operations remain restricted to live sessions.
@@ -254,6 +257,14 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
 
 function validateLeaseTtl(ttlMs: number): void {
   if (!Number.isInteger(ttlMs) || ttlMs <= 0) throw new Error("TTL da lease inválido")
+}
+
+function normalizeExternalId(externalId: string | null | undefined): string | undefined {
+  if (externalId === null) throw new Error("externalId não pode ser apagado de uma tentativa")
+  if (externalId === undefined) return undefined
+  const normalized = externalId.trim()
+  if (!normalized) throw new Error("externalId não pode ser vazio")
+  return normalized
 }
 
 function assertSessionBindingMatches(

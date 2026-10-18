@@ -68,7 +68,11 @@ export function applyProviderRoutingConfigPatch(
       "Produção exige validação e aprovação antes de ACTIVE",
     )
   }
-  if (next.killSwitch && next.rolloutState === "ACTIVE") {
+  if (
+    next.killSwitch &&
+    next.rolloutState === "ACTIVE" &&
+    current.rolloutState !== "ACTIVE"
+  ) {
     throw new ProviderRoutingConfigError(
       "ROLLOUT_INVALID",
       "Não é possível ativar um provider com kill switch",

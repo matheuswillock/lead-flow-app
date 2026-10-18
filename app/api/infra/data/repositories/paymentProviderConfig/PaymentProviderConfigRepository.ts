@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PaymentProviderEnvironment as PrismaEnvironment,
   PaymentProviderKey as PrismaProvider,
 } from "@prisma/client"
@@ -57,7 +58,7 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
             isDefault: true,
             id: { not: current.id },
           },
-          data: { isDefault: false },
+          data: { isDefault: false, configRevision: { increment: 1 } },
         })
       }
 
@@ -78,7 +79,7 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
         where: { id: current.id },
         select: configSelect,
       })
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
     return toRoutingConfigRecord(updated)
   }
 }

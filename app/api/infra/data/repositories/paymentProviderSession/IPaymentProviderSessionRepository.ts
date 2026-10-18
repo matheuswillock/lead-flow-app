@@ -71,7 +71,7 @@ export type AcquirePaymentProviderAttemptLeaseInput = {
   readonly tenantId: string
   readonly ownerType: string
   readonly ownerId: string
-  readonly purpose: "PAYMENT" | "RECONCILIATION"
+  readonly purpose: "PAYMENT" | "POST_PAYMENT" | "RECONCILIATION"
   readonly now: Date
   readonly ttlMs: number
 }
@@ -85,7 +85,7 @@ export type UpdatePaymentProviderAttemptInput = {
   readonly now: Date
   readonly status: PaymentAttemptStatus
   readonly expectedStatus: PaymentAttemptStatus
-  readonly operation: "PAYMENT" | "RECONCILIATION"
+  readonly operation: "PAYMENT" | "POST_PAYMENT" | "RECONCILIATION"
   readonly externalId?: string | null
   readonly unknownReason?: string | null
 }

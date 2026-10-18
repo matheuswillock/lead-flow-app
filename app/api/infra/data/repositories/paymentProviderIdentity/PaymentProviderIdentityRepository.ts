@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   assertProviderIdentityBindingImmutable,
@@ -28,23 +29,39 @@ const identitySelect = {
 export class PaymentProviderIdentityRepository implements IPaymentProviderIdentityRepository {
   async bind(binding: ProviderIdentityBinding): Promise<ProviderIdentityRecord> {
     validateBinding(binding)
-    const existing = await prisma.paymentProviderIdentity.findFirst({
-      where: {
-        providerKey: binding.provider,
-        environment: binding.environment,
-        externalAccountContext: binding.externalAccountContext,
-        identityType: binding.identityType,
-        tenantId: binding.tenantId,
-        ownerType: binding.ownerType,
-        ownerId: binding.ownerId,
-      },
-      select: identitySelect,
-    })
-    if (existing) {
+    return prisma.$transaction(async (transaction) => {
+      const existing = await transaction.paymentProviderIdentity.upsert({
+        where: {
+          tenantId_providerKey_environment_externalAccountContext_ownerType_ownerId_identityType: {
+            tenantId: binding.tenantId,
+            providerKey: binding.provider,
+            environment: binding.environment,
+            externalAccountContext: binding.externalAccountContext,
+            ownerType: binding.ownerType,
+            ownerId: binding.ownerId,
+            identityType: binding.identityType,
+          },
+        },
+        create: {
+          providerKey: binding.provider,
+          environment: binding.environment,
+          externalAccountContext: binding.externalAccountContext,
+          externalId: binding.externalId,
+          identityType: binding.identityType,
+          ownerType: binding.ownerType,
+          ownerId: binding.ownerId,
+          tenantId: binding.tenantId,
+          route: binding.route,
+          routeVersion: binding.routeVersion,
+        },
+        update: {},
+        select: identitySelect,
+      })
       const current = toIdentityRecord(existing)
       assertProviderIdentityBindingImmutable(current, binding)
       if (current.routeVersion === binding.routeVersion) return current
-      const updated = await prisma.paymentProviderIdentity.updateMany({
+
+      const updated = await transaction.paymentProviderIdentity.updateMany({
         where: { id: current.id, bindingRevision: current.bindingRevision },
         data: {
           routeVersion: binding.routeVersion,
@@ -52,29 +69,12 @@ export class PaymentProviderIdentityRepository implements IPaymentProviderIdenti
         },
       })
       if (updated.count !== 1) throw new Error("Binding de identidade foi atualizado em paralelo")
-      const refreshed = await prisma.paymentProviderIdentity.findUniqueOrThrow({
+      const refreshed = await transaction.paymentProviderIdentity.findUniqueOrThrow({
         where: { id: current.id },
         select: identitySelect,
       })
       return toIdentityRecord(refreshed)
-    }
-
-    const created = await prisma.paymentProviderIdentity.create({
-      data: {
-        providerKey: binding.provider,
-        environment: binding.environment,
-        externalAccountContext: binding.externalAccountContext,
-        externalId: binding.externalId,
-        identityType: binding.identityType,
-        ownerType: binding.ownerType,
-        ownerId: binding.ownerId,
-        tenantId: binding.tenantId,
-        route: binding.route,
-        routeVersion: binding.routeVersion,
-      },
-      select: identitySelect,
-    })
-    return toIdentityRecord(created)
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   }
 
   async find(input: ProviderIdentityLookup): Promise<ProviderIdentityRecord | null> {
