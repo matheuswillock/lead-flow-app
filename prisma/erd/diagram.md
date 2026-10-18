@@ -6,28 +6,28 @@ erDiagram
 backoffice backoffice
 operator operator
         }
-    
+
 
 
         UserFunction {
             SDR SDR
 CLOSER CLOSER
         }
-    
+
 
 
         MeetingHeald {
             yes yes
 no no
         }
-    
+
 
 
         TeamMeetingSlotReservationSource {
             internal internal
 public_form public_form
         }
-    
+
 
 
         TeamMeetingSlotReservationState {
@@ -35,7 +35,7 @@ public_form public_form
 consumed consumed
 released released
         }
-    
+
 
 
         LeadStatus {
@@ -54,7 +54,7 @@ opportunityLost opportunityLost
 operator_denied operator_denied
 contract_finalized contract_finalized
         }
-    
+
 
 
         LeadProposalReviewStatus {
@@ -63,7 +63,7 @@ submitted submitted
 criticized criticized
 approved approved
         }
-    
+
 
 
         LeadRequiredDocumentType {
@@ -71,7 +71,7 @@ approved approved
 address_proof address_proof
 social_contract social_contract
         }
-    
+
 
 
         LeadRequiredDocumentStatus {
@@ -80,7 +80,7 @@ uploaded uploaded
 approved approved
 rejected rejected
         }
-    
+
 
 
         LeadOriginChannel {
@@ -93,7 +93,7 @@ meta_webhook meta_webhook
 whatsapp_manual whatsapp_manual
 email_campaign email_campaign
         }
-    
+
 
 
         backoffice_lead_status {
@@ -109,7 +109,7 @@ future_contact future_contact
 deal_closed deal_closed
 disqualified disqualified
         }
-    
+
 
 
         backoffice_adhesion_status {
@@ -119,13 +119,13 @@ overdue overdue
 expired expired
 canceled canceled
         }
-    
+
 
 
         backoffice_adhesion_plan {
             crm crm
         }
-    
+
 
 
         backoffice_adhesion_billing_cycle {
@@ -135,7 +135,7 @@ quadrimester quadrimester
 semiannual semiannual
 annual annual
         }
-    
+
 
 
         backoffice_lead_origin {
@@ -144,13 +144,13 @@ webhook_meta webhook_meta
 landing_page landing_page
 public_form public_form
         }
-    
+
 
 
         backoffice_webhook_source {
             meta meta
         }
-    
+
 
 
         backoffice_webhook_event_status {
@@ -158,7 +158,7 @@ public_form public_form
 processed processed
 failed failed
         }
-    
+
 
 
         asaas_webhook_event_status {
@@ -167,7 +167,7 @@ processing processing
 processed processed
 failed failed
         }
-    
+
 
 
         payment_provider_event_inbox_status {
@@ -177,7 +177,7 @@ processed processed
 failed failed
 tombstoned tombstoned
         }
-    
+
 
 
         payment_provider_event_outbox_status {
@@ -187,14 +187,95 @@ delivered delivered
 failed failed
 dead_letter dead_letter
         }
-    
+
+
+
+        payment_provider_key {
+            ASAAS ASAAS
+ABACATE_PAY ABACATE_PAY
+        }
+
+
+
+        payment_provider_environment {
+            DEV DEV
+PRODUCTION PRODUCTION
+        }
+
+
+
+        payment_provider_rollout_state {
+            DISABLED DISABLED
+SANDBOX_VALIDATED SANDBOX_VALIDATED
+APPROVED APPROVED
+ACTIVE ACTIVE
+        }
+
+
+
+        payment_provider_health_status {
+            UNKNOWN UNKNOWN
+HEALTHY HEALTHY
+UNHEALTHY UNHEALTHY
+        }
+
+
+
+        payment_provider_route {
+            NEW_ROUTER NEW_ROUTER
+LEGACY_ASAAS LEGACY_ASAAS
+        }
+
+
+
+        payment_provider_identity_type {
+            CUSTOMER CUSTOMER
+PAYMENT PAYMENT
+SUBSCRIPTION SUBSCRIPTION
+CHECKOUT CHECKOUT
+SESSION SESSION
+        }
+
+
+
+        payment_provider_migration_gate_status {
+            PENDING PENDING
+ACTIVE ACTIVE
+REVOKED REVOKED
+EXPIRED EXPIRED
+        }
+
+
+
+        payment_provider_session_status {
+            OPEN OPEN
+COMPLETED COMPLETED
+FAILED FAILED
+EXPIRED EXPIRED
+CANCELED CANCELED
+        }
+
+
+
+        payment_provider_attempt_status {
+            CREATED CREATED
+PENDING PENDING
+CONFIRMED CONFIRMED
+FAILED FAILED
+REFUNDED REFUNDED
+DISPUTED DISPUTED
+EXPIRED EXPIRED
+CANCELED CANCELED
+UNKNOWN UNKNOWN
+        }
+
 
 
         asaas_account {
             primary primary
 legacy legacy
         }
-    
+
 
 
         asaas_account_migration_status {
@@ -210,7 +291,7 @@ done done
 requires_card_reauth requires_card_reauth
 failed failed
         }
-    
+
 
 
         asaas_card_reauthorization_attempt_status {
@@ -219,7 +300,7 @@ confirmed confirmed
 declined declined
 unknown unknown
         }
-    
+
 
 
         backoffice_webhook_token_status {
@@ -227,7 +308,7 @@ unknown unknown
 replaced replaced
 expired expired
         }
-    
+
 
 
         backoffice_webhook_token_expiry_mode {
@@ -235,7 +316,7 @@ expired expired
 months_6 months_6
 indeterminate indeterminate
         }
-    
+
 
 
         backoffice_cron_status {
@@ -243,7 +324,7 @@ indeterminate indeterminate
 success success
 failed failed
         }
-    
+
 
 
         filter_preset_scope {
@@ -252,14 +333,14 @@ performance performance
 board board
 carteira carteira
         }
-    
+
 
 
         filter_preset_visibility {
             private private
 team team
         }
-    
+
 
 
         TeamStatusRuleType {
@@ -267,7 +348,7 @@ team team
 lead_time lead_time
 combined_transition combined_transition
         }
-    
+
 
 
         BackofficeLeadTransitionFieldKey {
@@ -279,7 +360,7 @@ email email
 phone phone
 cnpj cnpj
         }
-    
+
 
 
         BackofficeLeadTransitionGateType {
@@ -296,14 +377,14 @@ require_email_for_online_schedule require_email_for_online_schedule
 require_finalize_contract_flow require_finalize_contract_flow
 require_closer require_closer
         }
-    
+
 
 
         TeamLeadTimeUnit {
             hours hours
 days days
         }
-    
+
 
 
         ActivityType {
@@ -318,7 +399,7 @@ meeting meeting
 visit visit
 missed missed
         }
-    
+
 
 
         task_type {
@@ -330,7 +411,7 @@ whatsapp whatsapp
 meeting meeting
 other other
         }
-    
+
 
 
         task_assignee_status {
@@ -340,7 +421,7 @@ DONE DONE
 CANCELED CANCELED
 OVERDUE OVERDUE
         }
-    
+
 
 
         InviteDispatchStatus {
@@ -348,7 +429,7 @@ OVERDUE OVERDUE
 sent_resend sent_resend
 failed failed
         }
-    
+
 
 
         BackofficeInviteDispatchStatus {
@@ -356,14 +437,14 @@ failed failed
 sent_resend sent_resend
 failed failed
         }
-    
+
 
 
         backoffice_email_dispatch_provider {
             resend resend
 google_calendar google_calendar
         }
-    
+
 
 
         backoffice_email_recipient_kind {
@@ -371,7 +452,7 @@ google_calendar google_calendar
 google google
 external external
         }
-    
+
 
 
         backoffice_email_dispatch_category {
@@ -385,7 +466,7 @@ operator_invite operator_invite
 meeting_invite meeting_invite
 other other
         }
-    
+
 
 
         backoffice_email_dispatch_status {
@@ -400,7 +481,7 @@ failed failed
 delivery_delayed delivery_delayed
 suppressed suppressed
         }
-    
+
 
 
         backoffice_email_dispatch_event_type {
@@ -415,7 +496,7 @@ unsubscribed unsubscribed
 suppressed suppressed
 failed failed
         }
-    
+
 
 
         backoffice_email_campaign_status {
@@ -426,13 +507,13 @@ sent sent
 canceled canceled
 failed failed
         }
-    
+
 
 
         backoffice_email_campaign_type {
             live_weekly live_weekly
         }
-    
+
 
 
         backoffice_email_campaign_dispatch_status {
@@ -440,7 +521,7 @@ failed failed
 completed completed
 failed failed
         }
-    
+
 
 
         backoffice_email_log_status {
@@ -453,7 +534,7 @@ bounced bounced
 complained complained
 failed failed
         }
-    
+
 
 
         backoffice_email_event_type {
@@ -467,7 +548,7 @@ delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
         }
-    
+
 
 
         backoffice_email_orphan_event_status {
@@ -476,7 +557,7 @@ processed processed
 failed failed
 skipped skipped
         }
-    
+
 
 
         backoffice_email_import_job_status {
@@ -485,42 +566,42 @@ processing processing
 completed completed
 failed failed
         }
-    
+
 
 
         backoffice_email_import_source_format {
             csv csv
 json json
         }
-    
+
 
 
         backoffice_product_type {
             PLAN PLAN
 ADDON ADDON
         }
-    
+
 
 
         backoffice_product_billing_mode {
             RECURRING RECURRING
 LIFETIME LIFETIME
         }
-    
+
 
 
         installment_split_mode {
             EQUAL EQUAL
 CUSTOM CUSTOM
         }
-    
+
 
 
         backoffice_payment_method {
             PIX PIX
 CREDIT_CARD CREDIT_CARD
         }
-    
+
 
 
         backoffice_subscription_status {
@@ -529,7 +610,7 @@ suspended suspended
 canceled canceled
 expired expired
         }
-    
+
 
 
         backoffice_feature_access_mode {
@@ -537,7 +618,7 @@ expired expired
 PAID PAID
 ADDON ADDON
         }
-    
+
 
 
         backoffice_feature_access_level {
@@ -545,34 +626,34 @@ ADDON ADDON
 READ READ
 FULL FULL
         }
-    
+
 
 
         backoffice_feature_grant_type {
             BETA BETA
         }
-    
+
 
 
         backoffice_ban_status {
             ACTIVE ACTIVE
 LIFTED LIFTED
         }
-    
+
 
 
         backoffice_ban_scope {
             INDIVIDUAL INDIVIDUAL
 ACCOUNT ACCOUNT
         }
-    
+
 
 
         backoffice_beta_team_scope {
             ALL_TEAMS ALL_TEAMS
 SPECIFIC_TEAMS SPECIFIC_TEAMS
         }
-    
+
 
 
         backoffice_access_principal {
@@ -585,7 +666,7 @@ CLOSER CLOSER
 CAN_MANAGE_TEAMS CAN_MANAGE_TEAMS
 CAN_CREATE_USERS CAN_CREATE_USERS
         }
-    
+
 
 
         backoffice_deletion_entity_type {
@@ -594,14 +675,14 @@ TEAM TEAM
 PROFILE PROFILE
 TEAM_MEMBERSHIP TEAM_MEMBERSHIP
         }
-    
+
 
 
         backoffice_deletion_request_type {
             USER_DELETE USER_DELETE
 TEAM_DELETE TEAM_DELETE
         }
-    
+
 
 
         backoffice_deletion_request_status {
@@ -610,14 +691,14 @@ approved approved
 rejected rejected
 cancelled cancelled
         }
-    
+
 
 
         backoffice_deletion_approval_decision {
             approved approved
 rejected rejected
         }
-    
+
 
 
         backoffice_database_backup_status {
@@ -625,14 +706,14 @@ rejected rejected
 success success
 failed failed
         }
-    
+
 
 
         backoffice_database_backup_source {
             cron cron
 manual manual
         }
-    
+
 
 
         subscription_status {
@@ -642,7 +723,7 @@ past_due past_due
 suspended suspended
 canceled canceled
         }
-    
+
 
 
         subscription_plan {
@@ -650,7 +731,7 @@ canceled canceled
 manager_base manager_base
 with_operators with_operators
         }
-    
+
 
 
         subscription_lifecycle_event {
@@ -665,7 +746,7 @@ restored restored
 free_access_granted free_access_granted
 level_transition level_transition
         }
-    
+
 
 
         pending_action_type {
@@ -675,7 +756,7 @@ add_user add_user
 transfer_team transfer_team
 update_subscription_credits update_subscription_credits
         }
-    
+
 
 
         pending_action_status {
@@ -684,7 +765,7 @@ applied applied
 failed failed
 canceled canceled
         }
-    
+
 
 
         platform_purchase_type {
@@ -694,7 +775,7 @@ radar_self_service radar_self_service
 radar_managed radar_managed
 subscription_capacity subscription_capacity
         }
-    
+
 
 
         platform_purchase_status {
@@ -704,7 +785,7 @@ paid paid
 failed failed
 canceled canceled
         }
-    
+
 
 
         asaas_notification_backfill_status {
@@ -712,7 +793,7 @@ canceled canceled
 completed completed
 failed failed
         }
-    
+
 
 
         notification_type {
@@ -736,14 +817,14 @@ WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
 LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
 LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
         }
-    
+
 
 
         team_webhook_direction {
             inbound inbound
 outbound outbound
         }
-    
+
 
 
         team_webhook_status {
@@ -751,7 +832,7 @@ outbound outbound
 paused paused
 disabled disabled
         }
-    
+
 
 
         team_webhook_destination_preset {
@@ -760,7 +841,7 @@ slack slack
 teams teams
 zapier zapier
         }
-    
+
 
 
         team_webhook_event_key {
@@ -772,7 +853,7 @@ appointment_reminder appointment_reminder
 activity_created activity_created
 landing_analytics_event landing_analytics_event
         }
-    
+
 
 
         team_webhook_log_result {
@@ -780,7 +861,7 @@ landing_analytics_event landing_analytics_event
 failure failure
 rejected rejected
         }
-    
+
 
 
         team_webhook_outbox_status {
@@ -790,7 +871,7 @@ delivered delivered
 failed failed
 cancelled cancelled
         }
-    
+
 
 
         team_automation_trigger_type {
@@ -800,7 +881,7 @@ lead_idle_in_status lead_idle_in_status
 meeting_scheduled meeting_scheduled
 meeting_no_show meeting_no_show
         }
-    
+
 
 
         team_automation_action_type {
@@ -809,7 +890,7 @@ send_email send_email
 create_notification create_notification
 assign_operator assign_operator
         }
-    
+
 
 
         team_automation_run_status {
@@ -817,7 +898,7 @@ assign_operator assign_operator
 failed failed
 skipped skipped
         }
-    
+
 
 
         web_push_consent_status {
@@ -825,7 +906,7 @@ skipped skipped
 declined declined
 dismissed dismissed
         }
-    
+
 
 
         studio_webhook_token_expiry_mode {
@@ -833,7 +914,7 @@ dismissed dismissed
 months_6 months_6
 indeterminate indeterminate
         }
-    
+
 
 
         portfolio_status {
@@ -841,7 +922,7 @@ indeterminate indeterminate
 pending pending
 canceled canceled
         }
-    
+
 
 
         portfolio_source {
@@ -849,7 +930,7 @@ canceled canceled
 manual manual
 brokerage_transfer brokerage_transfer
         }
-    
+
 
 
         renewal_status {
@@ -859,7 +940,7 @@ proposal proposal
 renewed renewed
 lost lost
         }
-    
+
 
 
         subscription_cycle {
@@ -868,7 +949,7 @@ QUARTERLY QUARTERLY
 SEMIANNUALLY SEMIANNUALLY
 YEARLY YEARLY
         }
-    
+
 
 
         contract_type {
@@ -876,7 +957,7 @@ YEARLY YEARLY
 corporate corporate
 adhesion adhesion
         }
-    
+
 
 
         email_credit_plan {
@@ -886,7 +967,7 @@ pro pro
 upgrade upgrade
 business business
         }
-    
+
 
 
         email_credit_subscription_status {
@@ -894,7 +975,7 @@ business business
 suspended suspended
 canceled canceled
         }
-    
+
 
 
         email_campaign_status {
@@ -907,7 +988,7 @@ canceled canceled
 failed failed
 archived archived
         }
-    
+
 
 
         email_campaign_dispatch_status {
@@ -915,14 +996,14 @@ archived archived
 completed completed
 failed failed
         }
-    
+
 
 
         email_campaign_batch_idempotency_scheme {
             positional positional
 contentHash contentHash
         }
-    
+
 
 
         email_log_status {
@@ -936,7 +1017,7 @@ complained complained
 suppressed suppressed
 failed failed
         }
-    
+
 
 
         email_log_category {
@@ -946,7 +1027,7 @@ schedule_notification schedule_notification
 transactional transactional
 other other
         }
-    
+
 
 
         email_event_type {
@@ -961,7 +1042,7 @@ delivery_delayed delivery_delayed
 unsubscribed unsubscribed
 failed failed
         }
-    
+
 
 
         email_sending_health_status {
@@ -970,7 +1051,7 @@ warned warned
 paused paused
 suspended suspended
         }
-    
+
 
 
         email_import_risk_level {
@@ -978,14 +1059,14 @@ suspended suspended
 medium medium
 high high
         }
-    
+
 
 
         BackofficeOperationalCapability {
             ASSOCIADOS_QUEUE ASSOCIADOS_QUEUE
 MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
         }
-    
+
 
 
         AuditEntityType {
@@ -993,7 +1074,7 @@ MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
 TEAM TEAM
 TEAM_MEMBER TEAM_MEMBER
         }
-    
+
 
 
         AuditAction {
@@ -1002,7 +1083,7 @@ UPDATE UPDATE
 DELETE DELETE
 ROLE_CHANGE ROLE_CHANGE
         }
-    
+
 
 
         GoogleConnectionEventType {
@@ -1010,7 +1091,7 @@ ROLE_CHANGE ROLE_CHANGE
 SUCCEEDED SUCCEEDED
 FAILED FAILED
         }
-    
+
 
 
         GoogleConnectionFlow {
@@ -1018,7 +1099,7 @@ FAILED FAILED
 ACCOUNT ACCOUNT
 BACKOFFICE BACKOFFICE
         }
-    
+
 
 
         LeadCustomFieldType {
@@ -1029,7 +1110,7 @@ select select
 multi_select multi_select
 boolean boolean
         }
-    
+
 
 
         email_contact_radar_sync_outbox_status {
@@ -1038,7 +1119,7 @@ processing processing
 sent sent
 failed failed
         }
-    
+
 
 
         email_orphan_event_status {
@@ -1048,7 +1129,7 @@ processed processed
 failed failed
 skipped skipped
         }
-    
+
 
 
         public_form_queue_event_kind {
@@ -1056,7 +1137,7 @@ skipped skipped
 progress progress
 submission submission
         }
-    
+
 
 
         public_form_queue_event_failure_status {
@@ -1065,7 +1146,7 @@ processing processing
 resolved resolved
 failed failed
         }
-    
+
 
 
         queue_processing_failure_status {
@@ -1074,7 +1155,7 @@ processing processing
 resolved resolved
 failed failed
         }
-    
+
 
 
         resend_webhook_processing_failure_status {
@@ -1083,7 +1164,7 @@ processing processing
 resolved resolved
 failed failed
         }
-    
+
 
 
         backoffice_subscription_change_order_status {
@@ -1092,7 +1173,7 @@ awaiting_payment awaiting_payment
 applied applied
 canceled canceled
         }
-    
+
 
 
         backoffice_subscription_change_order_override_status {
@@ -1100,7 +1181,7 @@ canceled canceled
 pending pending
 approved approved
         }
-    
+
 
 
         team_form_domain_status {
@@ -1108,7 +1189,7 @@ approved approved
 verified verified
 failed failed
         }
-    
+
 
 
         team_landing_domain_status {
@@ -1116,7 +1197,7 @@ failed failed
 verified verified
 failed failed
         }
-    
+
 
 
         team_studio_domain_status {
@@ -1124,20 +1205,20 @@ failed failed
 verified verified
 failed failed
         }
-    
+
 
 
         WhatsAppProvider {
             EVOLUTION EVOLUTION
         }
-    
+
 
 
         WhatsAppEngine {
             OPENWA OPENWA
 META META
         }
-    
+
 
 
         WhatsAppConnectionStatus {
@@ -1149,14 +1230,14 @@ DISCONNECTED DISCONNECTED
 ERROR ERROR
 BANNED BANNED
         }
-    
+
 
 
         WhatsAppMessageDirection {
             INBOUND INBOUND
 OUTBOUND OUTBOUND
         }
-    
+
 
 
         WhatsAppMessageType {
@@ -1170,7 +1251,7 @@ LOCATION LOCATION
 CONTACT CONTACT
 UNKNOWN UNKNOWN
         }
-    
+
 
 
         WhatsAppMessageStatus {
@@ -1183,7 +1264,7 @@ UNKNOWN UNKNOWN
 FAILED FAILED
 RECEIVED RECEIVED
         }
-    
+
 
 
         WhatsAppMediaStatus {
@@ -1192,7 +1273,7 @@ AVAILABLE AVAILABLE
 EXPIRED EXPIRED
 FAILED FAILED
         }
-    
+
 
 
         WhatsAppMessageActionCommandKind {
@@ -1200,7 +1281,7 @@ FAILED FAILED
 UNREACT UNREACT
 DELETE_FOR_EVERYONE DELETE_FOR_EVERYONE
         }
-    
+
 
 
         WhatsAppMessageActionCommandStatus {
@@ -1209,7 +1290,7 @@ APPLIED APPLIED
 UNKNOWN UNKNOWN
 FAILED FAILED
         }
-    
+
 
 
         WhatsAppOutboundCommandStatus {
@@ -1218,7 +1299,7 @@ SENT SENT
 UNKNOWN UNKNOWN
 FAILED FAILED
         }
-    
+
 
 
         WhatsAppWebhookEventStatus {
@@ -1227,7 +1308,7 @@ PROCESSING PROCESSING
 PROCESSED PROCESSED
 DEAD_LETTER DEAD_LETTER
         }
-    
+
 
 
         WhatsAppUsageEventType {
@@ -1236,7 +1317,7 @@ INBOUND_MESSAGE INBOUND_MESSAGE
 CONNECTION_EVENT CONNECTION_EVENT
 RECONNECTION_EVENT RECONNECTION_EVENT
         }
-    
+
 
 
         WhatsAppHistorySyncStatus {
@@ -1245,14 +1326,14 @@ RUNNING RUNNING
 COMPLETED COMPLETED
 FAILED FAILED
         }
-    
+
 
 
         WhatsAppHandoffMode {
             BOT BOT
 HUMAN HUMAN
         }
-    
+
 
 
         WhatsAppContactNameSource {
@@ -1262,7 +1343,7 @@ PHONE_BOOK PHONE_BOOK
 PUSH_NAME PUSH_NAME
 PHONE_NUMBER PHONE_NUMBER
         }
-    
+
 
 
         WhatsAppAutoResponseRuleType {
@@ -1270,7 +1351,7 @@ PHONE_NUMBER PHONE_NUMBER
 OFF_HOURS OFF_HOURS
 KEYWORD KEYWORD
         }
-    
+
 
 
         WhatsAppAutoResponseMatchMode {
@@ -1278,14 +1359,14 @@ KEYWORD KEYWORD
 EXACT EXACT
 STARTS_WITH STARTS_WITH
         }
-    
+
 
 
         TeamWhatsAppContactSource {
             PHONE_CONTACTS PHONE_CONTACTS
 GROUP_PARTICIPANT GROUP_PARTICIPANT
         }
-    
+
 
 
         WhatsAppContactSyncState {
@@ -1294,7 +1375,7 @@ STALE STALE
 UNRESOLVED UNRESOLVED
 CONFLICT CONFLICT
         }
-    
+
 
 
         radar_identity_type {
@@ -1309,7 +1390,7 @@ visitor_session visitor_session
 contract_holder contract_holder
 contract_dependent contract_dependent
         }
-    
+
 
 
         radar_source_type {
@@ -1322,14 +1403,14 @@ base_import base_import
 pixel_hit pixel_hit
 lead_finalized lead_finalized
         }
-    
+
 
 
         radar_channel {
             email email
 whatsapp whatsapp
         }
-    
+
 
 
         radar_consent_status {
@@ -1337,7 +1418,7 @@ whatsapp whatsapp
 blocked blocked
 unknown unknown
         }
-    
+
 
 
         radar_consent_reason {
@@ -1349,14 +1430,14 @@ complaint complaint
 opt_out opt_out
 missing_identity missing_identity
         }
-    
+
 
 
         email_variable_value_source {
             STATIC STATIC
 RADAR RADAR
         }
-    
+
 
 
         segment_source_type {
@@ -1364,13 +1445,13 @@ RADAR RADAR
 campaign campaign
 child child
         }
-    
+
 
 
         backoffice_bot_channel_type {
             whatsapp whatsapp
         }
-    
+
 
 
         backoffice_bot_channel_status {
@@ -1379,14 +1460,14 @@ connected connected
 disconnected disconnected
 error error
         }
-    
+
 
 
         backoffice_bot_auth_challenge_source {
             channel_email channel_email
 web_otp web_otp
         }
-    
+
 
 
         backoffice_bot_auth_challenge_status {
@@ -1395,21 +1476,21 @@ verified verified
 expired expired
 failed failed
         }
-    
+
 
 
         backoffice_bot_user_link_source {
             channel_email channel_email
 web_otp web_otp
         }
-    
+
 
 
         backoffice_bot_message_direction {
             inbound inbound
 outbound outbound
         }
-    
+
 
 
         backoffice_bot_event_outbox_status {
@@ -1417,21 +1498,21 @@ outbound outbound
 sent sent
 failed failed
         }
-    
+
 
 
         backoffice_bot_outbound_delivery_status {
             processing processing
 completed completed
         }
-    
+
 
 
         backoffice_bot_ai_provider {
             groq groq
 ollama ollama
         }
-    
+
 
 
         backoffice_bot_ai_capability {
@@ -1445,7 +1526,7 @@ evaluation evaluation
 embedding embedding
 provider_test provider_test
         }
-    
+
 
 
         backoffice_bot_ai_interaction_status {
@@ -1460,7 +1541,7 @@ rejected rejected
 fallback fallback
 failed failed
         }
-    
+
 
 
         backoffice_bot_ai_attempt_status {
@@ -1472,7 +1553,7 @@ provider_error provider_error
 circuit_open circuit_open
 skipped skipped
         }
-    
+
 
 
         backoffice_bot_ai_action_proposal_status {
@@ -1484,7 +1565,7 @@ expired expired
 rejected rejected
 failed failed
         }
-    
+
 
 
         backoffice_bot_ai_feedback_type {
@@ -1494,7 +1575,7 @@ corrected corrected
 confirmed confirmed
 cancelled cancelled
         }
-    
+
 
 
         backoffice_bot_host_ops_job_type {
@@ -1504,7 +1585,7 @@ IMPORT_WORKFLOWS IMPORT_WORKFLOWS
 SYNC_HOST SYNC_HOST
 HEALTH HEALTH
         }
-    
+
 
 
         backoffice_bot_host_ops_job_status {
@@ -1513,7 +1594,7 @@ running running
 succeeded succeeded
 failed failed
         }
-    
+
 
 
         backoffice_bot_host_apply_status {
@@ -1521,7 +1602,7 @@ failed failed
 succeeded succeeded
 failed failed
         }
-    
+
 
 
         PublicFormStatus {
@@ -1529,7 +1610,7 @@ failed failed
 published published
 archived archived
         }
-    
+
 
 
         landing_page_status {
@@ -1537,7 +1618,7 @@ archived archived
 published published
 archived archived
         }
-    
+
 
 
         PublicFormApprovalStatus {
@@ -1546,7 +1627,7 @@ pending_approval pending_approval
 approved approved
 rejected rejected
         }
-    
+
 
 
         PublicFormQuestionType {
@@ -1568,7 +1649,7 @@ scheduling scheduling
 consent consent
 calculation calculation
         }
-    
+
 
 
         PublicFormMappingTarget {
@@ -1577,7 +1658,7 @@ custom_field custom_field
 notes notes
 history history
         }
-    
+
 
 
         PublicFormRuleOperator {
@@ -1587,7 +1668,7 @@ contains contains
 selected selected
 not_selected not_selected
         }
-    
+
 
 
         PublicFormRuleAction {
@@ -1595,7 +1676,7 @@ not_selected not_selected
 skip skip
 jump_to jump_to
         }
-    
+
 
 
         PublicFormSubmissionStatus {
@@ -1603,7 +1684,7 @@ jump_to jump_to
 completed completed
 failed failed
         }
-    
+
 
 
         PublicFormCompletionStatus {
@@ -1611,7 +1692,7 @@ failed failed
 partial partial
 complete complete
         }
-    
+
 
 
         PublicFormMetricType {
@@ -1636,7 +1717,7 @@ form_exit_intent form_exit_intent
 form_abandoned form_abandoned
 form_resumed form_resumed
         }
-    
+
 
 
         public_form_journey_state {
@@ -1644,7 +1725,7 @@ form_resumed form_resumed
 abandoned abandoned
 completed completed
         }
-    
+
 
 
         backoffice_lead_extraction_status {
@@ -1653,7 +1734,7 @@ RUNNING RUNNING
 DONE DONE
 ERROR ERROR
         }
-    
+
 
 
         backoffice_company_type {
@@ -1668,7 +1749,7 @@ SA SA
 SS SS
 OUTROS OUTROS
         }
-    
+
 
 
         lead_document_request_status {
@@ -1676,10 +1757,10 @@ OUTROS OUTROS
 partially_filled partially_filled
 completed completed
         }
-    
+
   "corretor_studio_profiles" {
     String id "🗝️"
-    String email 
+    String email
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
@@ -1693,99 +1774,99 @@ completed completed
     String state "❓"
     String profileIconId "❓"
     String profileIconUrl "❓"
-    UserRole role 
-    UserFunction functions 
-    Boolean isMaster 
-    Boolean hasPermanentSubscription 
-    Boolean hasUnlimitedUsers 
-    Boolean multiskillEnabled 
+    UserRole role
+    UserFunction functions
+    Boolean isMaster
+    Boolean hasPermanentSubscription
+    Boolean hasUnlimitedUsers
+    Boolean multiskillEnabled
     String asaasCustomerId "❓"
-    AsaasAccount asaasCustomerAccount 
+    AsaasAccount asaasCustomerAccount
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
-    Int operatorCount 
+    Int operatorCount
     DateTime subscriptionStartDate "❓"
     DateTime subscriptionEndDate "❓"
     DateTime trialEndDate "❓"
     String asaasSubscriptionId "❓"
-    AsaasAccount asaasSubscriptionAccount 
+    AsaasAccount asaasSubscriptionAccount
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
     String activeTeamId "❓"
-    String timezone 
+    String timezone
     DateTime deletedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_health_plan_options" {
     String id "🗝️"
-    String name 
-    String normalizedName 
-    Boolean isActive 
-    Boolean isDefault 
+    String name
+    String normalizedName
+    Boolean isActive
+    Boolean isDefault
     String iconUrl "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     DateTime activatedAt "❓"
     DateTime deactivatedAt "❓"
     }
-  
+
 
   "backoffice_users" {
     String id "🗝️"
-    String email 
-    Boolean fullAccess 
-    Boolean isActive 
-    Boolean isSdr 
-    Boolean isCloser 
-    String timezone 
-    String mailboxStatus 
+    String email
+    Boolean fullAccess
+    Boolean isActive
+    Boolean isSdr
+    Boolean isCloser
+    String timezone
+    String mailboxStatus
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_deletion_requests" {
     String id "🗝️"
-    BackofficeDeletionRequestType type 
-    String targetId 
-    BackofficeDeletionRequestStatus status 
+    BackofficeDeletionRequestType type
+    String targetId
+    BackofficeDeletionRequestStatus status
     String reason "❓"
     Json snapshot "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     DateTime executedAt "❓"
     }
-  
+
 
   "backoffice_deletion_approvals" {
     String id "🗝️"
-    BackofficeDeletionApprovalDecision decision 
-    DateTime createdAt 
+    BackofficeDeletionApprovalDecision decision
+    DateTime createdAt
     }
-  
+
 
   "backoffice_deletion_audit_logs" {
     String id "🗝️"
-    BackofficeDeletionEntityType entityType 
-    String entityId 
-    String action 
+    BackofficeDeletionEntityType entityType
+    String entityId
+    String action
     Json payload "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_database_backups" {
     String id "🗝️"
-    DateTime startedAt 
+    DateTime startedAt
     DateTime finishedAt "❓"
-    BackofficeDatabaseBackupStatus status 
-    BackofficeDatabaseBackupSource source 
+    BackofficeDatabaseBackupStatus status
+    BackofficeDatabaseBackupSource source
     String triggeredByProfileId "❓"
     String filePath "❓"
     String fileName "❓"
@@ -1795,193 +1876,193 @@ completed completed
     String errorMessage "❓"
     String googleDriveFileId "❓"
     String googleDriveDownloadUrl "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_banned_users" {
     String id "🗝️"
     String supabaseId "❓"
-    String email 
+    String email
     String fullName "❓"
     String reason "❓"
-    BackofficeBanStatus status 
-    BackofficeBanScope scope 
-    DateTime bannedAt 
+    BackofficeBanStatus status
+    BackofficeBanScope scope
+    DateTime bannedAt
     DateTime liftedAt "❓"
     String liftReason "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_authorized_sponsors" {
     String id "🗝️"
-    Boolean isActive 
-    DateTime grantedAt 
+    Boolean isActive
+    DateTime grantedAt
     DateTime revokedAt "❓"
     String notes "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "billing_access_graces" {
     String id "🗝️"
-    String reason 
+    String reason
     DateTime expiresAt "❓"
-    Boolean isActive 
+    Boolean isActive
     String grantedByProfileId "❓"
-    DateTime grantedAt 
+    DateTime grantedAt
     DateTime resolvedAt "❓"
     String resolvedReason "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_operational_access_grants" {
     String id "🗝️"
-    BackofficeOperationalCapability capability 
-    Boolean isActive 
+    BackofficeOperationalCapability capability
+    Boolean isActive
     String notes "❓"
-    DateTime grantedAt 
+    DateTime grantedAt
     DateTime revokedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_team_email_limit_grants" {
     String id "🗝️"
     Int maxEmailsPerDay "❓"
-    Boolean isActive 
+    Boolean isActive
     String notes "❓"
-    DateTime grantedAt 
+    DateTime grantedAt
     DateTime revokedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "google_oauth_connections" {
     String id "🗝️"
-    String googleEmail 
+    String googleEmail
     String accessToken "❓"
     String refreshToken "❓"
     DateTime tokenExpiresAt "❓"
-    String scopes 
+    String scopes
     DateTime lastRefreshedAt "❓"
     String lastRefreshError "❓"
     DateTime revokedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_clients" {
     String id "🗝️"
-    String fullName 
+    String fullName
     String email "❓"
     String phone "❓"
     String cpfCnpj "❓"
     String notes "❓"
     String asaasCustomerId "❓"
-    AsaasAccount asaasAccount 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    AsaasAccount asaasAccount
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_payments" {
     String id "🗝️"
     String asaasPaymentId "❓"
-    AsaasAccount asaasAccount 
-    String billingType 
-    String status 
-    Decimal amount 
+    AsaasAccount asaasAccount
+    String billingType
+    String status
+    Decimal amount
     DateTime dueDate "❓"
     String description "❓"
     String invoiceUrl "❓"
     String pixQrCode "❓"
     String pixPayload "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_contracts" {
     String id "🗝️"
-    String title 
+    String title
     String description "❓"
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_contract_versions" {
     String id "🗝️"
-    Int versionNumber 
-    String fileName 
-    String storagePath 
-    Int fileSize 
-    String fileType 
-    DateTime importedAt 
+    Int versionNumber
+    String fileName
+    String storagePath
+    Int fileSize
+    String fileType
+    DateTime importedAt
     String shareTokenHash "❓"
     DateTime shareExpiresAt "❓"
     DateTime shareGeneratedAt "❓"
     }
-  
+
 
   "backoffice_leads" {
     String id "🗝️"
-    String name 
+    String name
     String email "❓"
     String phone "❓"
     String cpfCnpj "❓"
     String notes "❓"
-    BackofficeLeadStatus status 
-    BackofficeLeadOrigin origin 
+    BackofficeLeadStatus status
+    BackofficeLeadOrigin origin
     String sourceExternalId "❓"
     DateTime meetingDate "❓"
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
     String meetingType "❓"
-    String meetingExtraGuests 
-    DateTime statusEnteredAt 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String meetingExtraGuests
+    DateTime statusEnteredAt
+    DateTime createdAt
+    DateTime updatedAt
     String qualification_lead_organization "❓"
     String qualification_avg_users "❓"
     String qualification_profile_fit "❓"
     }
-  
+
 
   "backoffice_lead_offers" {
     String id "🗝️"
-    String leadNameSnapshot 
-    String contactName 
-    String contactPhone 
-    Json itemsJson 
-    DateTime preContractExpiresAt 
+    String leadNameSnapshot
+    String contactName
+    String contactPhone
+    Json itemsJson
+    DateTime preContractExpiresAt
     Decimal insuranceAmount "❓"
-    String shareTokenHash 
+    String shareTokenHash
     String tokenPlain "❓"
-    DateTime shareExpiresAt 
-    DateTime shareGeneratedAt 
+    DateTime shareExpiresAt
+    DateTime shareGeneratedAt
     DateTime revokedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_adhesions" {
     String id "🗝️"
-    String fullName 
-    String phone 
+    String fullName
+    String phone
     String email "❓"
     String cpfCnpj "❓"
     String postalCode "❓"
@@ -1991,25 +2072,25 @@ completed completed
     String complement "❓"
     String city "❓"
     String state "❓"
-    BackofficeAdhesionPlan plan 
-    BackofficeAdhesionBillingCycle cycle 
-    String modules 
-    Int extraTeams 
-    Int extraUsers 
-    Decimal monthlyBaseAmount 
-    Decimal monthlyExtraTeamsAmount 
-    Decimal monthlyExtraUsersAmount 
-    Decimal monthlyTotalAmount 
-    Decimal totalAmount 
-    String tokenHash 
-    String tokenPreview 
-    DateTime expiresAt 
-    BackofficeAdhesionStatus status 
+    BackofficeAdhesionPlan plan
+    BackofficeAdhesionBillingCycle cycle
+    String modules
+    Int extraTeams
+    Int extraUsers
+    Decimal monthlyBaseAmount
+    Decimal monthlyExtraTeamsAmount
+    Decimal monthlyExtraUsersAmount
+    Decimal monthlyTotalAmount
+    Decimal totalAmount
+    String tokenHash
+    String tokenPreview
+    DateTime expiresAt
+    BackofficeAdhesionStatus status
     String tokenPlain "❓"
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"
-    AsaasAccount asaasAccount 
+    AsaasAccount asaasAccount
     Decimal discountPercent "❓"
     String discountStatus "❓"
     DateTime discountApprovedAt "❓"
@@ -2031,53 +2112,53 @@ completed completed
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
-    Boolean multiskillEnabled 
-    Boolean hasUnlimitedUsers 
-    Json additional_users_data 
-    Json additional_teams_data 
-    Json installmentSchedule 
-    Json installmentLedger 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean multiskillEnabled
+    Boolean hasUnlimitedUsers
+    Json additional_users_data
+    Json additional_teams_data
+    Json installmentSchedule
+    Json installmentLedger
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_leads_schedule" {
     String id "🗝️"
-    DateTime date 
+    DateTime date
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
     String meetingType "❓"
-    String extraGuests 
+    String extraGuests
     String googleEventId "❓"
     String googleCalendarId "❓"
     BackofficeInviteDispatchStatus inviteDispatchStatus "❓"
     String inviteDispatchProvider "❓"
-    Boolean inviteDispatchFallbackUsed 
+    Boolean inviteDispatchFallbackUsed
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
     String publicShareTokenHash "❓"
     DateTime publicShareExpiresAt "❓"
-    Boolean isCanceled 
+    Boolean isCanceled
     DateTime canceledAt "❓"
     String canceledByProfileId "❓"
     String cancelReason "❓"
     String createdByProfileId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_dispatches" {
     String id "🗝️"
-    String recipientEmail 
-    BackofficeEmailRecipientKind recipientKind 
-    BackofficeEmailDispatchProvider provider 
-    BackofficeEmailDispatchCategory category 
-    String subject 
-    BackofficeEmailDispatchStatus status 
+    String recipientEmail
+    BackofficeEmailRecipientKind recipientKind
+    BackofficeEmailDispatchProvider provider
+    BackofficeEmailDispatchCategory category
+    String subject
+    BackofficeEmailDispatchStatus status
     String resendEmailId "❓"
     String sourceType "❓"
     String sourceId "❓"
@@ -2088,171 +2169,171 @@ completed completed
     DateTime clickedAt "❓"
     DateTime bouncedAt "❓"
     DateTime complainedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_dispatch_events" {
     String id "🗝️"
-    BackofficeEmailDispatchEventType type 
-    DateTime occurredAt 
+    BackofficeEmailDispatchEventType type
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_webhook_events" {
     String id "🗝️"
-    BackofficeWebhookSource source 
+    BackofficeWebhookSource source
     String eventType "❓"
-    Json payload 
+    Json payload
     String signature "❓"
-    BackofficeWebhookEventStatus status 
+    BackofficeWebhookEventStatus status
     String errorMessage "❓"
-    DateTime receivedAt 
+    DateTime receivedAt
     DateTime processedAt "❓"
     }
-  
+
 
   "backoffice_webhook_tokens" {
     String id "🗝️"
-    BackofficeWebhookSource source 
-    String tokenHash 
-    String tokenCipher 
-    String tokenPreview 
-    BackofficeWebhookTokenStatus status 
-    BackofficeWebhookTokenExpiryMode expiryMode 
+    BackofficeWebhookSource source
+    String tokenHash
+    String tokenCipher
+    String tokenPreview
+    BackofficeWebhookTokenStatus status
+    BackofficeWebhookTokenExpiryMode expiryMode
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
-    String generatedByEmailSnapshot 
-    DateTime generatedAt 
-    DateTime updatedAt 
+    String generatedByEmailSnapshot
+    DateTime generatedAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_webhook_request_logs" {
     String id "🗝️"
-    BackofficeWebhookSource source 
-    String method 
-    String endpoint 
-    Int statusCode 
-    String resultType 
+    BackofficeWebhookSource source
+    String method
+    String endpoint
+    Int statusCode
+    String resultType
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_cron_executions" {
     String id "🗝️"
-    String cronKey 
-    String cronPath 
-    BackofficeCronStatus status 
-    DateTime startedAt 
+    String cronKey
+    String cronPath
+    BackofficeCronStatus status
+    DateTime startedAt
     DateTime finishedAt "❓"
     Int durationMs "❓"
     String errorSummary "❓"
     String errorDetail "❓"
     Json metadata "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_contact_lists" {
     String id "🗝️"
-    String name 
-    Boolean isSystemDefault 
-    Boolean isArchived 
-    Int totalContacts 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String name
+    Boolean isSystemDefault
+    Boolean isArchived
+    Int totalContacts
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_contacts" {
     String id "🗝️"
-    String email 
+    String email
     String name "❓"
     Json customFields "❓"
-    Boolean isUnsubscribed 
-    Boolean isBounced 
-    Boolean isComplained 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isUnsubscribed
+    Boolean isBounced
+    Boolean isComplained
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_import_jobs" {
     String id "🗝️"
-    BackofficeEmailImportSourceFormat sourceFormat 
-    String rawContent 
-    BackofficeEmailImportJobStatus status 
-    Int totalRows 
-    Int processedRows 
-    Int importedCount 
-    Int skippedCount 
-    Int errorCount 
+    BackofficeEmailImportSourceFormat sourceFormat
+    String rawContent
+    BackofficeEmailImportJobStatus status
+    Int totalRows
+    Int processedRows
+    Int importedCount
+    Int skippedCount
+    Int errorCount
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_campaigns" {
     String id "🗝️"
-    String name 
-    BackofficeEmailCampaignType type 
-    BackofficeEmailCampaignStatus status 
+    String name
+    BackofficeEmailCampaignType type
+    BackofficeEmailCampaignStatus status
     String resendTemplateId "❓"
     String resendTemplateName "❓"
     String fromName "❓"
     String fromEmail "❓"
     String replyTo "❓"
-    DateTime scheduledAt 
+    DateTime scheduledAt
     DateTime sentAt "❓"
-    Int totalRecipients 
-    Int totalSent 
-    Int totalDelivered 
-    Int totalOpened 
-    Int totalClicked 
-    Int totalBounced 
-    Int totalComplained 
-    Int dispatchCount 
+    Int totalRecipients
+    Int totalSent
+    Int totalDelivered
+    Int totalOpened
+    Int totalClicked
+    Int totalBounced
+    Int totalComplained
+    Int dispatchCount
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_campaign_dispatches" {
     String id "🗝️"
-    Int dispatchNumber 
-    String templateSubjectSnapshot 
-    String templateHtmlSnapshot 
+    Int dispatchNumber
+    String templateSubjectSnapshot
+    String templateHtmlSnapshot
     String resendTemplateIdSnapshot "❓"
-    BackofficeEmailCampaignDispatchStatus status 
-    Int totalRecipients 
-    Int totalSent 
-    Int totalDelivered 
-    Int totalOpened 
-    Int totalClicked 
-    Int totalBounced 
-    Int totalComplained 
+    BackofficeEmailCampaignDispatchStatus status
+    Int totalRecipients
+    Int totalSent
+    Int totalDelivered
+    Int totalOpened
+    Int totalClicked
+    Int totalBounced
+    Int totalComplained
     String triggeredByBackofficeUserId "❓"
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_logs" {
     String id "🗝️"
-    String recipientEmail 
+    String recipientEmail
     String resendEmailId "❓"
-    BackofficeEmailLogStatus status 
+    BackofficeEmailLogStatus status
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime openedAt "❓"
@@ -2260,39 +2341,39 @@ completed completed
     DateTime bouncedAt "❓"
     DateTime complainedAt "❓"
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_email_events" {
     String id "🗝️"
-    BackofficeEmailEventType type 
-    DateTime occurredAt 
+    BackofficeEmailEventType type
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_email_orphan_events" {
     String id "🗝️"
-    String resendEmailId 
-    String resendEventType 
-    DateTime occurredAt 
+    String resendEmailId
+    String resendEventType
+    DateTime occurredAt
     Json tagsHint "❓"
-    BackofficeEmailOrphanEventStatus status 
-    Int attempts 
+    BackofficeEmailOrphanEventStatus status
+    Int attempts
     String lastError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_leads" {
     String id "🗝️"
-    String leadCode 
+    String leadCode
     LeadStatus status "❓"
-    String name 
+    String name
     String email "❓"
     String phone "❓"
     String cnpj "❓"
@@ -2308,16 +2389,16 @@ completed completed
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
-    Boolean meetingPresenceConfirmed 
+    Boolean meetingPresenceConfirmed
     DateTime meetingPresenceConfirmedAt "❓"
     String meetingType "❓"
-    Boolean isTransfer 
+    Boolean isTransfer
     DateTime followUpAt "❓"
     String followUpNotes "❓"
     LeadStatus followUpSourceStatus "❓"
     String lossReason "❓"
     String lossReasonDetails "❓"
-    DateTime statusEnteredAt 
+    DateTime statusEnteredAt
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
@@ -2328,37 +2409,37 @@ completed completed
     LeadOriginChannel originChannel "❓"
     Json originMetadata "❓"
     DateTime deletedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_activities" {
     String id "🗝️"
-    ActivityType type 
+    ActivityType type
     String body "❓"
     Json payload "❓"
-    DateTime createdAt 
+    DateTime createdAt
     String outcome "❓"
     Int duration "❓"
     DateTime contactDate "❓"
     String contactTime "❓"
     }
-  
+
 
   "corretor_studio_lead_activity_reactions" {
     String id "🗝️"
-    String emoji 
-    String emojiUnified 
-    DateTime createdAt 
+    String emoji
+    String emojiUnified
+    DateTime createdAt
     }
-  
+
 
   "google_connection_events" {
     String id "🗝️"
-    DateTime createdAt 
-    GoogleConnectionEventType eventType 
-    GoogleConnectionFlow flow 
+    DateTime createdAt
+    GoogleConnectionEventType eventType
+    GoogleConnectionFlow flow
     String supabaseUserId "❓"
     String googleEmail "❓"
     String errorCode "❓"
@@ -2367,317 +2448,317 @@ completed completed
     String dedupeKey "❓"
     Json metadata "❓"
     }
-  
+
 
   "corretor_studio_audit_logs" {
     String id "🗝️"
-    AuditEntityType entityType 
-    String entityId 
-    AuditAction action 
+    AuditEntityType entityType
+    String entityId
+    AuditAction action
     Json before "❓"
     Json after "❓"
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_tasks" {
     String id "🗝️"
-    String title 
-    TaskType taskType 
-    String body 
-    Boolean isUrgent 
+    String title
+    TaskType taskType
+    String body
+    Boolean isUrgent
     DateTime startAt "❓"
     DateTime endAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_task_assignees" {
     String id "🗝️"
-    TaskAssigneeStatus status 
+    TaskAssigneeStatus status
     String googleEventId "❓"
     String googleCalendarId "❓"
-    Boolean googleSynced 
-    DateTime assignedAt 
-    DateTime updatedAt 
+    Boolean googleSynced
+    DateTime assignedAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_leads_schedule" {
     String id "🗝️"
-    DateTime date 
+    DateTime date
     Int meeting_duration_minutes "❓"
-    Int noShowCount 
+    Int noShowCount
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
     String meetingType "❓"
-    String extraGuests 
+    String extraGuests
     String googleEventId "❓"
     String googleCalendarId "❓"
     InviteDispatchStatus inviteDispatchStatus "❓"
-    Boolean inviteDispatchFallbackUsed 
+    Boolean inviteDispatchFallbackUsed
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
     String publicShareTokenHash "❓"
     DateTime publicShareExpiresAt "❓"
     DateTime reminder30MinSentAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_finalized" {
     String id "🗝️"
-    DateTime finalizedDateAt 
-    DateTime startDateAt 
-    Int duration 
-    Decimal amount 
-    ContractType contractType 
+    DateTime finalizedDateAt
+    DateTime startDateAt
+    Int duration
+    Decimal amount
+    ContractType contractType
     String notes "❓"
     String operadora "❓"
     String productName "❓"
     String contractFileUrl "❓"
     String contractStoragePath "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_finalized_holders" {
     String id "🗝️"
-    String name 
+    String name
     String razaoSocial "❓"
-    DateTime birthDate 
-    String document 
+    DateTime birthDate
+    String document
     String cnpj "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_finalized_dependents" {
     String id "🗝️"
-    String name 
-    DateTime birthDate 
-    String parentesco 
+    String name
+    DateTime birthDate
+    String parentesco
     String document "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_portfolio" {
     String id "🗝️"
-    PortfolioStatus portfolioStatus 
-    RenewalStatus renewalStatus 
+    PortfolioStatus portfolioStatus
+    RenewalStatus renewalStatus
     Decimal renewalAmount "❓"
-    PortfolioSource source 
+    PortfolioSource source
     String note "❓"
     DateTime lastContactAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_attachments" {
     String id "🗝️"
-    String fileName 
-    String fileUrl 
-    String storagePath 
-    String fileType 
-    Int fileSize 
-    DateTime uploadedAt 
+    String fileName
+    String fileUrl
+    String storagePath
+    String fileType
+    Int fileSize
+    DateTime uploadedAt
     }
-  
+
 
   "corretor_studio_lead_proposal_reviews" {
     String id "🗝️"
-    LeadProposalReviewStatus status 
+    LeadProposalReviewStatus status
     String criticizedTitle "❓"
     String criticizedMessage "❓"
     DateTime criticizedAt "❓"
     DateTime saleRegisteredAt "❓"
     Json salePayload "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_required_documents" {
     String id "🗝️"
-    LeadRequiredDocumentType documentType 
-    LeadRequiredDocumentStatus status 
-    DateTime createdAt 
-    DateTime updatedAt 
+    LeadRequiredDocumentType documentType
+    LeadRequiredDocumentStatus status
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_pending_operators" {
     String id "🗝️"
-    String name 
-    String email 
-    String role 
-    UserFunction functions 
+    String name
+    String email
+    String role
+    UserFunction functions
     String paymentId "❓"
-    AsaasAccount asaasAccount 
+    AsaasAccount asaasAccount
     String subscriptionId "❓"
-    String paymentStatus 
-    String paymentMethod 
-    Boolean operatorCreated 
+    String paymentStatus
+    String paymentMethod
+    Boolean operatorCreated
     String operatorId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_teams" {
     String id "🗝️"
-    String name 
-    Boolean isDefault 
-    Int meeting_duration_minutes 
+    String name
+    Boolean isDefault
+    Int meeting_duration_minutes
     DateTime deletedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_filter_presets" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    Json queryJson 
-    FilterPresetScope scope 
-    FilterPresetVisibility visibility 
+    Json queryJson
+    FilterPresetScope scope
+    FilterPresetVisibility visibility
     DateTime lastUsedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_status_rules" {
     String id "🗝️"
-    TeamStatusRuleType type 
-    LeadStatus targetStatus 
+    TeamStatusRuleType type
+    LeadStatus targetStatus
     LeadStatus requiredStatus "❓"
     Int leadTimeValue "❓"
     TeamLeadTimeUnit leadTimeUnit "❓"
-    Boolean requireConfirmation 
+    Boolean requireConfirmation
     String confirmationMessage "❓"
-    Boolean isEnabled 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isEnabled
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_custom_field_definitions" {
     String id "🗝️"
-    String key 
-    String label 
-    LeadCustomFieldType type 
+    String key
+    String label
+    LeadCustomFieldType type
     Json options "❓"
-    Boolean isRequired 
-    Int displayOrder 
-    Boolean isActive 
-    Boolean showOnPublicForm 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isRequired
+    Int displayOrder
+    Boolean isActive
+    Boolean showOnPublicForm
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_custom_field_values" {
     String id "🗝️"
-    Json value 
-    DateTime updatedAt 
-    DateTime createdAt 
+    Json value
+    DateTime updatedAt
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_team_automation_rules" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    TeamAutomationTriggerType triggerType 
-    Json triggerConfig 
-    TeamAutomationActionType actionType 
-    Json actionConfig 
-    Boolean isEnabled 
-    DateTime createdAt 
-    DateTime updatedAt 
+    TeamAutomationTriggerType triggerType
+    Json triggerConfig
+    TeamAutomationActionType actionType
+    Json actionConfig
+    Boolean isEnabled
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_automation_run_logs" {
     String id "🗝️"
     String leadId "❓"
-    String dedupeKey 
-    TeamAutomationRunStatus status 
+    String dedupeKey
+    TeamAutomationRunStatus status
     String errorMessage "❓"
     Json payload "❓"
-    DateTime executedAt 
+    DateTime executedAt
     }
-  
+
 
   "corretor_studio_team_studio_webhook_configs" {
     String id "🗝️"
-    String tokenHash 
+    String tokenHash
     String tokenCipher "❓"
-    String tokenPreview 
-    StudioWebhookTokenExpiryMode expiryMode 
+    String tokenPreview
+    StudioWebhookTokenExpiryMode expiryMode
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_studio_webhook_request_logs" {
     String id "🗝️"
-    String method 
-    String endpoint 
-    Int statusCode 
-    String resultType 
+    String method
+    String endpoint
+    Int statusCode
+    String resultType
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_team_radar_pixel_configs" {
     String id "🗝️"
-    String publicToken 
-    String allowedOrigins 
+    String publicToken
+    String allowedOrigins
     DateTime lastUsedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_radar_pixel_hit_logs" {
     String id "🗝️"
-    String eventType 
-    String visitorSession 
+    String eventType
+    String visitorSession
     String origin "❓"
     String userAgent "❓"
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_team_webhooks" {
     String id "🗝️"
-    TeamWebhookDirection direction 
-    TeamWebhookStatus status 
-    String name 
+    TeamWebhookDirection direction
+    TeamWebhookStatus status
+    String name
     String targetUrl "❓"
     TeamWebhookDestinationPreset destinationPreset "❓"
-    TeamWebhookEventKey selectedEvents 
-    Int failureStreak 
-    Int failureThreshold 
+    TeamWebhookEventKey selectedEvents
+    Int failureStreak
+    Int failureThreshold
     DateTime pausedAt "❓"
     String pauseReason "❓"
     String tokenHash "❓"
@@ -2688,15 +2769,15 @@ completed completed
     DateTime lastUsedAt "❓"
     DateTime lastSuccessAt "❓"
     DateTime lastFailureAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_webhook_event_logs" {
     String id "🗝️"
-    TeamWebhookDirection direction 
-    TeamWebhookLogResult result 
+    TeamWebhookDirection direction
+    TeamWebhookLogResult result
     TeamWebhookEventKey eventKey "❓"
     String method "❓"
     String endpoint "❓"
@@ -2704,359 +2785,359 @@ completed completed
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_team_webhook_outbox" {
     String id "🗝️"
-    TeamWebhookEventKey eventKey 
-    Json payload 
-    TeamWebhookOutboxStatus status 
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    TeamWebhookEventKey eventKey
+    Json payload
+    TeamWebhookOutboxStatus status
+    Int attemptCount
+    DateTime nextAttemptAt
     String lastError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_notifications" {
     String id "🗝️"
-    NotificationType type 
-    String message 
+    NotificationType type
+    String message
     Json metadata "❓"
-    Boolean isRead 
+    Boolean isRead
     DateTime readAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "meeting_follow_up_digest_logs" {
     String id "🗝️"
-    DateTime digestDate 
-    DateTime sentAt 
-    Int leadCount 
-    String channel 
-    DateTime createdAt 
+    DateTime digestDate
+    DateTime sentAt
+    Int leadCount
+    String channel
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_profile_web_push_subscriptions" {
     String id "🗝️"
-    String endpoint 
-    String p256dh 
-    String auth 
+    String endpoint
+    String p256dh
+    String auth
     String userAgent "❓"
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_profile_web_push_consents" {
     String id "🗝️"
-    WebPushConsentStatus status 
-    String consentVersion 
+    WebPushConsentStatus status
+    String consentVersion
     DateTime consentedAt "❓"
     DateTime declinedAt "❓"
     DateTime dismissedAt "❓"
     String source "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_platform_purchases" {
     String id "🗝️"
-    String profile_id 
+    String profile_id
     String team_id "❓"
-    String product_slug 
-    PlatformPurchaseType purchase_type 
-    PlatformPurchaseStatus status 
+    String product_slug
+    PlatformPurchaseType purchase_type
+    PlatformPurchaseStatus status
     String billing_type "❓"
-    Decimal amount 
+    Decimal amount
     Int quantity "❓"
     String description "❓"
     Json metadata "❓"
     String asaas_payment_id "❓"
-    AsaasAccount asaas_account 
+    AsaasAccount asaas_account
     String asaas_customer_id "❓"
-    String external_reference 
+    String external_reference
     DateTime paid_at "❓"
     DateTime applied_at "❓"
-    DateTime created_at 
-    DateTime updated_at 
+    DateTime created_at
+    DateTime updated_at
     }
-  
+
 
   "corretor_studio_asaas_notification_backfill" {
     String asaas_customer_id "🗝️"
-    AsaasNotificationBackfillStatus status 
+    AsaasNotificationBackfillStatus status
     String last_error "❓"
     DateTime completed_at "❓"
-    DateTime created_at 
-    DateTime updated_at 
+    DateTime created_at
+    DateTime updated_at
     }
-  
+
 
   "corretor_studio_pending_actions" {
     String id "🗝️"
-    PendingActionType actionType 
-    PendingActionStatus status 
-    Json payload 
+    PendingActionType actionType
+    PendingActionStatus status
+    Json payload
     String checkoutId "❓"
     String paymentId "❓"
-    AsaasAccount asaasAccount 
-    DateTime createdAt 
-    DateTime updatedAt 
+    AsaasAccount asaasAccount
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_members" {
     String id "🗝️"
-    UserRole role 
-    UserFunction functions 
-    Boolean canCreateAccountUsers 
-    Boolean canManageAccountTeams 
-    Boolean canTransferAccountLeads 
-    Boolean canViewAllTeams 
-    DateTime createdAt 
-    DateTime updatedAt 
+    UserRole role
+    UserFunction functions
+    Boolean canCreateAccountUsers
+    Boolean canManageAccountTeams
+    Boolean canTransferAccountLeads
+    Boolean canViewAllTeams
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_transfer_routes" {
     String id "🗝️"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_transfers" {
     String id "🗝️"
-    String fromManagerId 
-    String toManagerId 
-    Boolean transferTagUsed 
+    String fromManagerId
+    String toManagerId
+    Boolean transferTagUsed
     DateTime preScheduledAt "❓"
-    Boolean scheduledAtTransfer 
-    DateTime createdAt 
+    Boolean scheduledAtTransfer
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_email_credit_subscriptions" {
     String id "🗝️"
-    EmailCreditPlan plan 
-    Int monthlyCredits 
-    EmailCreditSubscriptionStatus status 
-    DateTime currentPeriodStart 
-    DateTime currentPeriodEnd 
+    EmailCreditPlan plan
+    Int monthlyCredits
+    EmailCreditSubscriptionStatus status
+    DateTime currentPeriodStart
+    DateTime currentPeriodEnd
     DateTime canceledAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_credit_payment_grants" {
     String id "🗝️"
-    String teamId 
-    EmailCreditPlan plan 
-    String paymentId 
-    AsaasAccount asaasAccount 
+    String teamId
+    EmailCreditPlan plan
+    String paymentId
+    AsaasAccount asaasAccount
     String checkoutId "❓"
-    Int monthlyCredits 
-    DateTime createdAt 
+    Int monthlyCredits
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_email_credit_usages" {
     String id "🗝️"
-    DateTime periodStart 
-    DateTime periodEnd 
-    Int creditsUsed 
-    Int overageCount 
-    Decimal overageCharged 
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime periodStart
+    DateTime periodEnd
+    Int creditsUsed
+    Int overageCount
+    Decimal overageCharged
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_email_campaign_limit_grants" {
     String id "🗝️"
     Int maxEmailsPerDay "❓"
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_templates" {
     String id "🗝️"
-    String name 
-    String subject 
+    String name
+    String subject
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
-    String editorMode 
+    String editorMode
     Json variables "❓"
-    Int versionNumber 
-    Boolean isCurrentPublished 
-    String status 
+    Int versionNumber
+    Boolean isCurrentPublished
+    String status
     DateTime publishedAt "❓"
-    Boolean isArchived 
-    String approvalStatus 
+    Boolean isArchived
+    String approvalStatus
     DateTime approvedAt "❓"
     DateTime rejectedAt "❓"
     String reviewNote "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_template_history" {
     String id "🗝️"
-    String eventType 
+    String eventType
     String description "❓"
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_email_contact_lists" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
     String csvStoragePath "❓"
-    Int totalContacts 
-    Boolean isSystemDefault 
-    Boolean isBlocklist 
-    Boolean isArchived 
-    Boolean isQuarantined 
+    Int totalContacts
+    Boolean isSystemDefault
+    Boolean isBlocklist
+    Boolean isArchived
+    Boolean isQuarantined
     DateTime quarantinedAt "❓"
     String quarantineReason "❓"
     DateTime quarantineReleasedAt "❓"
     String quarantineReleasedBy "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_import_jobs" {
     String id "🗝️"
-    String importId 
-    String sourceFormat 
-    String storagePath 
-    String status 
-    Int totalRows 
-    Int processedRows 
-    Int importedCount 
-    Int updatedCount 
-    Int skippedCount 
+    String importId
+    String sourceFormat
+    String storagePath
+    String status
+    Int totalRows
+    Int processedRows
+    Int importedCount
+    Int updatedCount
+    Int skippedCount
     Json skippedIssues "❓"
     Json failedBatches "❓"
-    Int batchSize 
+    Int batchSize
     Json attemptsByBatch "❓"
     Json validationCounts "❓"
     EmailImportRiskLevel riskLevel "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_contacts" {
     String id "🗝️"
-    String email 
+    String email
     String name "❓"
     Json customFields "❓"
-    Boolean isUnsubscribed 
-    Boolean isBounced 
-    Boolean isComplained 
+    Boolean isUnsubscribed
+    Boolean isBounced
+    Boolean isComplained
     String blockReason "❓"
     DateTime blockedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_contact_radar_sync_outbox" {
     String id "🗝️"
-    EmailContactRadarSyncOutboxStatus status 
-    Int generation 
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    EmailContactRadarSyncOutboxStatus status
+    Int generation
+    Int attemptCount
+    DateTime nextAttemptAt
     String lastError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_campaigns" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
     String radarSegmentSlug "❓"
     Int subCampaignIndex "❓"
-    String audienceContactIds 
-    String source_contact_list_ids 
-    EmailCampaignStatus status 
+    String audienceContactIds
+    String source_contact_list_ids
+    EmailCampaignStatus status
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
-    Int totalRecipients 
-    Int totalSent 
-    Int totalDelivered 
-    Int totalOpened 
-    Int totalOpenedHuman 
-    Int totalClicked 
-    Int totalBounced 
-    Int dispatchCount 
-    Int totalComplained 
+    Int totalRecipients
+    Int totalSent
+    Int totalDelivered
+    Int totalOpened
+    Int totalOpenedHuman
+    Int totalClicked
+    Int totalBounced
+    Int dispatchCount
+    Int totalComplained
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_campaign_dispatches" {
     String id "🗝️"
-    Int dispatchNumber 
-    Int templateVersionNumber 
-    String templateName 
-    String templateSubject 
-    String templateHtml 
+    Int dispatchNumber
+    Int templateVersionNumber
+    String templateName
+    String templateSubject
+    String templateHtml
     String contactListName "❓"
     String radarSegmentSlug "❓"
-    DateTime dispatchedAt 
-    Int totalRecipients 
-    Int totalSent 
-    Int totalDelivered 
-    Int totalOpened 
-    Int totalOpenedHuman 
-    Int totalClicked 
-    Int totalBounced 
-    Int totalComplained 
-    EmailCampaignDispatchStatus status 
-    EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme 
-    Boolean retryFailedOnly 
-    Int reservedCredits 
-    Boolean hasCampaignsBetaAccess 
-    Int materializeSourceOffset 
+    DateTime dispatchedAt
+    Int totalRecipients
+    Int totalSent
+    Int totalDelivered
+    Int totalOpened
+    Int totalOpenedHuman
+    Int totalClicked
+    Int totalBounced
+    Int totalComplained
+    EmailCampaignDispatchStatus status
+    EmailCampaignBatchIdempotencyScheme batchIdempotencyScheme
+    Boolean retryFailedOnly
+    Int reservedCredits
+    Boolean hasCampaignsBetaAccess
+    Int materializeSourceOffset
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_logs" {
     String id "🗝️"
     String resendEmailId "❓"
-    String recipientEmail 
+    String recipientEmail
     String recipientName "❓"
-    String subject 
-    EmailLogCategory category 
+    String subject
+    EmailLogCategory category
     String sourceType "❓"
     String sourceId "❓"
-    EmailLogStatus status 
+    EmailLogStatus status
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime openedAt "❓"
@@ -3064,59 +3145,59 @@ completed completed
     DateTime clickedAt "❓"
     DateTime bouncedAt "❓"
     DateTime complainedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_events" {
     String id "🗝️"
-    EmailEventType type 
-    DateTime occurredAt 
+    EmailEventType type
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "email_orphan_events" {
     String id "🗝️"
-    String resendEmailId 
-    String resendEventType 
-    DateTime occurredAt 
+    String resendEmailId
+    String resendEventType
+    DateTime occurredAt
     Json tagsHint "❓"
     Json originHint "❓"
-    EmailOrphanEventStatus status 
-    Int attempts 
+    EmailOrphanEventStatus status
+    Int attempts
     String lastError "❓"
     DateTime processedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_resend_webhook_processing_failures" {
     String id "🗝️"
-    String svixId 
-    String eventType 
-    Json payload 
-    ResendWebhookProcessingFailureStatus status 
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    String svixId
+    String eventType
+    Json payload
+    ResendWebhookProcessingFailureStatus status
+    Int attemptCount
+    DateTime nextAttemptAt
     String lastError "❓"
     String failureReason "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_queue_event_failures" {
     String id "🗝️"
-    PublicFormQueueEventKind kind 
-    String idempotencyKey 
-    Json payload 
-    PublicFormQueueEventFailureStatus status 
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    PublicFormQueueEventKind kind
+    String idempotencyKey
+    Json payload
+    PublicFormQueueEventFailureStatus status
+    Int attemptCount
+    DateTime nextAttemptAt
     String lastError "❓"
     String failureReason "❓"
     String eventId "❓"
@@ -3124,255 +3205,255 @@ completed completed
     String topic "❓"
     String failureStage "❓"
     String lastErrorCode "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_queue_processing_failures" {
     String id "🗝️"
-    String topic 
-    String idempotencyKey 
-    Json payload 
-    QueueProcessingFailureStatus status 
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    String topic
+    String idempotencyKey
+    Json payload
+    QueueProcessingFailureStatus status
+    Int attemptCount
+    DateTime nextAttemptAt
     String lastError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_products" {
     String id "🗝️"
-    String name 
-    String featureSlugs 
+    String name
+    String featureSlugs
     String description "❓"
-    BackofficeProductType type 
-    BackofficeProductBillingMode billingMode 
+    BackofficeProductType type
+    BackofficeProductBillingMode billingMode
     Decimal priceMonthly "❓"
     Decimal priceQuarterly "❓"
     Decimal priceQuadrimester "❓"
     Decimal priceSemiannual "❓"
     Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
-    Boolean isDefault 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isDefault
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_subscription_change_orders" {
     String id "🗝️"
-    BackofficeSubscriptionChangeOrderStatus status 
+    BackofficeSubscriptionChangeOrderStatus status
     BackofficeAdhesionBillingCycle currentCycle "❓"
     Decimal currentChargedAmount "❓"
     DateTime currentPeriodEnd "❓"
-    BackofficeAdhesionBillingCycle targetCycle 
-    Decimal listAmount 
-    Decimal proratedAmount 
+    BackofficeAdhesionBillingCycle targetCycle
+    Decimal listAmount
+    Decimal proratedAmount
     Decimal overrideAmount "❓"
-    BackofficeSubscriptionChangeOrderOverrideStatus overrideStatus 
+    BackofficeSubscriptionChangeOrderOverrideStatus overrideStatus
     DateTime overrideApprovedAt "❓"
-    Decimal chargeAmount 
+    Decimal chargeAmount
     String asaasPaymentId "❓"
-    AsaasAccount asaasAccount 
+    AsaasAccount asaasAccount
     String paymentInvoiceUrl "❓"
     DateTime canceledAt "❓"
     DateTime appliedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_subscription_change_order_events" {
     String id "🗝️"
-    String changeType 
+    String changeType
     SubscriptionLifecycleEvent eventType "❓"
     Json payload "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_features" {
     String id "🗝️"
-    String slug 
-    String name 
+    String slug
+    String name
     String description "❓"
     String productSlug "❓"
-    BackofficeFeatureAccessMode accessMode 
-    BackofficeFeatureAccessLevel defaultAccessLevel 
-    Boolean betaEnabled 
-    Boolean charge_during_beta 
-    Boolean inheritParentSettings 
-    Boolean billedSeparately 
-    Boolean isActive 
-    Int sortOrder 
-    DateTime createdAt 
-    DateTime updatedAt 
+    BackofficeFeatureAccessMode accessMode
+    BackofficeFeatureAccessLevel defaultAccessLevel
+    Boolean betaEnabled
+    Boolean charge_during_beta
+    Boolean inheritParentSettings
+    Boolean billedSeparately
+    Boolean isActive
+    Int sortOrder
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_feature_access_rules" {
     String id "🗝️"
-    BackofficeAccessPrincipal principal 
-    BackofficeFeatureAccessLevel accessLevel 
-    DateTime createdAt 
-    DateTime updatedAt 
+    BackofficeAccessPrincipal principal
+    BackofficeFeatureAccessLevel accessLevel
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_feature_grants" {
     String id "🗝️"
-    BackofficeFeatureGrantType grantType 
-    BackofficeFeatureAccessLevel accessLevel 
-    BackofficeBetaTeamScope betaTeamScope 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    BackofficeFeatureGrantType grantType
+    BackofficeFeatureAccessLevel accessLevel
+    BackofficeBetaTeamScope betaTeamScope
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_feature_grant_teams" {
     String id "🗝️"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_product_payment_rules" {
     String id "🗝️"
-    BackofficePaymentMethod paymentMethod 
-    BackofficeAdhesionBillingCycle billingCycle 
-    Decimal price 
-    Boolean canInstallment 
-    Int maxInstallments 
-    InstallmentSplitMode installmentSplitMode 
-    Json installmentSchedule 
-    DateTime createdAt 
-    DateTime updatedAt 
+    BackofficePaymentMethod paymentMethod
+    BackofficeAdhesionBillingCycle billingCycle
+    Decimal price
+    Boolean canInstallment
+    Int maxInstallments
+    InstallmentSplitMode installmentSplitMode
+    Json installmentSchedule
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_lead_status_transition_field_rules" {
     String id "🗝️"
-    LeadStatus targetStatus 
-    BackofficeLeadTransitionFieldKey fieldKey 
-    Boolean isEnabled 
-    DateTime createdAt 
-    DateTime updatedAt 
+    LeadStatus targetStatus
+    BackofficeLeadTransitionFieldKey fieldKey
+    Boolean isEnabled
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_lead_status_transition_gates" {
     String id "🗝️"
-    String slug 
-    String name 
-    BackofficeLeadTransitionGateType gateType 
+    String slug
+    String name
+    BackofficeLeadTransitionGateType gateType
     LeadStatus sourceStatus "❓"
     LeadStatus targetStatus "❓"
-    Json config 
-    String blockerType 
+    Json config
+    String blockerType
     String errorMessage "❓"
-    Boolean isEnabled 
-    Int sortOrder 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isEnabled
+    Int sortOrder
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_crm_lead_status_transition_gates" {
     String id "🗝️"
-    String slug 
-    String name 
-    BackofficeLeadTransitionGateType gateType 
+    String slug
+    String name
+    BackofficeLeadTransitionGateType gateType
     BackofficeLeadStatus sourceStatus "❓"
     BackofficeLeadStatus targetStatus "❓"
-    Json config 
-    String blockerType 
+    Json config
+    String blockerType
     String errorMessage "❓"
-    Boolean isEnabled 
-    Int sortOrder 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isEnabled
+    Int sortOrder
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_radar_engagement_weights" {
     String id "🗝️"
-    String eventType 
-    Int weight 
+    String eventType
+    Int weight
     String description "❓"
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_radar_engagement_configs" {
     String id "🗝️"
-    Int windowRecentDays 
-    Int windowMidDays 
-    Int windowOldDays 
-    Float recentMultiplier 
-    Float oldMultiplier 
-    Int hotThreshold 
-    Int warmThreshold 
-    Int lukewarmThreshold 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int windowRecentDays
+    Int windowMidDays
+    Int windowOldDays
+    Float recentMultiplier
+    Float oldMultiplier
+    Int hotThreshold
+    Int warmThreshold
+    Int lukewarmThreshold
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_radar_outbox_throughput_configs" {
     String id "🗝️"
-    Int batchSize 
-    Int concurrency 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int batchSize
+    Int concurrency
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_form_engagement_score_rules" {
     String id "🗝️"
-    Int minPercent 
-    Int maxPercent 
-    Float multiplier 
-    String label 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int minPercent
+    Int maxPercent
+    Float multiplier
+    String label
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_crm_lead_status_transition_field_rules" {
     String id "🗝️"
-    BackofficeLeadStatus targetStatus 
-    BackofficeLeadTransitionFieldKey fieldKey 
-    Boolean isEnabled 
-    DateTime createdAt 
-    DateTime updatedAt 
+    BackofficeLeadStatus targetStatus
+    BackofficeLeadTransitionFieldKey fieldKey
+    Boolean isEnabled
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_user_subscriptions" {
     String id "🗝️"
-    BackofficeSubscriptionStatus status 
+    BackofficeSubscriptionStatus status
     BackofficeAdhesionBillingCycle cycle "❓"
-    DateTime startDate 
+    DateTime startDate
     DateTime endDate "❓"
     String adhesionId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
     String asaasSubscriptionId "❓"
-    AsaasAccount asaasSubscriptionAccount 
+    AsaasAccount asaasSubscriptionAccount
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
@@ -3382,64 +3463,64 @@ completed completed
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
     DateTime subscriptionLastSyncedAt "❓"
-    Boolean hasPermanentSubscription 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean hasPermanentSubscription
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_subscription_change_logs" {
     String id "🗝️"
-    String source 
-    String changeType 
+    String source
+    String changeType
     SubscriptionLifecycleEvent eventType "❓"
     Json before "❓"
     Json after "❓"
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "billing_checkout_intents" {
     String id "🗝️"
-    String asaasCustomerId 
-    AsaasAccount asaasAccount 
-    String productSlug 
+    String asaasCustomerId
+    AsaasAccount asaasAccount
+    String productSlug
     String productId "❓"
-    String cycle 
+    String cycle
     String billingType "❓"
     Decimal amount "❓"
     Json quoteSnapshot "❓"
     String quoteHash "❓"
-    String externalReference 
-    String tokenHash 
-    String tokenPreview 
+    String externalReference
+    String tokenHash
+    String tokenPreview
     String checkoutId "❓"
     String checkoutUrl "❓"
-    String status 
-    DateTime expiresAt 
+    String status
+    DateTime expiresAt
     DateTime paidAt "❓"
     String subscriptionId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_subscription_state_snapshots" {
     String id "🗝️"
-    String profileId 
-    DateTime capturedAt 
-    String schemaVersion 
-    Json payload 
+    String profileId
+    DateTime capturedAt
+    String schemaVersion
+    Json payload
     }
-  
+
 
   "corretor_studio_asaas_account_migrations" {
     String id "🗝️"
-    String profile_id 
-    String client_name 
-    String client_email 
-    String legacy_customer_id 
+    String profile_id
+    String client_name
+    String client_email
+    String legacy_customer_id
     String legacy_subscription_id "❓"
     String primary_customer_id "❓"
     String primary_subscription_id "❓"
@@ -3448,14 +3529,14 @@ completed completed
     String cycle "❓"
     Decimal value "❓"
     DateTime next_due_date "❓"
-    Boolean notifications_disabled 
+    Boolean notifications_disabled
     String anomaly_notes "❓"
-    AsaasAccountMigrationStatus status 
-    Int attempt_count 
+    AsaasAccountMigrationStatus status
+    Int attempt_count
     String last_error "❓"
     DateTime migrated_at "❓"
-    DateTime created_at 
-    DateTime updated_at 
+    DateTime created_at
+    DateTime updated_at
     Json quote_snapshot "❓"
     String quote_hash "❓"
     DateTime legacy_removed_at "❓"
@@ -3467,278 +3548,278 @@ completed completed
     String lease_owner "❓"
     DateTime lease_expires_at "❓"
     }
-  
+
 
   "corretor_studio_asaas_migration_execution_manifests" {
     String id "🗝️"
-    String migration_id 
-    Boolean approved 
-    String approved_by 
-    String value_mode 
-    String inventory_hash 
-    DateTime gate_run_at 
-    DateTime valid_until 
-    Json gate_evidence 
-    DateTime created_at 
-    DateTime updated_at 
+    String migration_id
+    Boolean approved
+    String approved_by
+    String value_mode
+    String inventory_hash
+    DateTime gate_run_at
+    DateTime valid_until
+    Json gate_evidence
+    DateTime created_at
+    DateTime updated_at
     }
-  
+
 
   "corretor_studio_asaas_card_reauthorizations" {
     String id "🗝️"
-    String migration_id 
-    String token_hash 
-    DateTime expires_at 
+    String migration_id
+    String token_hash
+    DateTime expires_at
     DateTime used_at "❓"
-    Int attempt_count 
+    Int attempt_count
     String last_error "❓"
     String processing_owner "❓"
     DateTime processing_expires_at "❓"
     DateTime last_attempt_at "❓"
-    DateTime created_at 
-    DateTime updated_at 
+    DateTime created_at
+    DateTime updated_at
     }
-  
+
 
   "corretor_studio_asaas_card_reauthorization_attempts" {
     String id "🗝️"
-    String reauthorization_id 
-    String master_profile_id 
-    String attempt_reference 
-    AsaasCardReauthorizationAttemptStatus status 
+    String reauthorization_id
+    String master_profile_id
+    String attempt_reference
+    AsaasCardReauthorizationAttemptStatus status
     String failure_code "❓"
-    DateTime created_at 
+    DateTime created_at
     DateTime completed_at "❓"
     }
-  
+
 
   "corretor_studio_profile_subscription_capacities" {
     String id "🗝️"
-    Int includedExtraTeams 
-    Int includedExtraUsers 
-    Int manualAdjustmentExtraTeams 
-    Int manualAdjustmentExtraUsers 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int includedExtraTeams
+    Int includedExtraUsers
+    Int manualAdjustmentExtraTeams
+    Int manualAdjustmentExtraUsers
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_team_settings" {
     String id "🗝️"
-    String fromName 
-    String fromEmail 
+    String fromName
+    String fromEmail
     String replyTo "❓"
     Json dispatchBlockedDates "❓"
     String dispatchTimeFrom "❓"
     String dispatchTimeTo "❓"
-    String dispatchAllowedRoles 
-    String templateCreateRoles 
-    Boolean templateApprovalRequired 
-    String templateApprovalRoles 
-    Int blockedDispatchDays 
+    String dispatchAllowedRoles
+    String templateCreateRoles
+    Boolean templateApprovalRequired
+    String templateApprovalRoles
+    Int blockedDispatchDays
     String resendDomainId "❓"
     String resendDomainName "❓"
     String resendDomainStatus "❓"
     String resendDomainRegion "❓"
     DateTime resendDomainConnectedAt "❓"
-    Boolean resendOpenTracking 
-    Boolean resendClickTracking 
-    Boolean resendSendingDnsVerified 
-    EmailSendingHealthStatus sendingHealthStatus 
+    Boolean resendOpenTracking
+    Boolean resendClickTracking
+    Boolean resendSendingDnsVerified
+    EmailSendingHealthStatus sendingHealthStatus
     String sendingHealthReason "❓"
     DateTime sendingHealthChangedAt "❓"
     Json sendingHealthMetrics "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_email_team_domain_events" {
     String id "🗝️"
-    String type 
-    DateTime occurredAt 
+    String type
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_team_form_domains" {
     String id "🗝️"
-    String hostname 
-    TeamFormDomainStatus status 
+    String hostname
+    TeamFormDomainStatus status
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_studio_domains" {
     String id "🗝️"
-    String hostname 
-    TeamStudioDomainStatus status 
+    String hostname
+    TeamStudioDomainStatus status
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
     String headScripts "❓"
     String bodyStartScripts "❓"
     String bodyEndScripts "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_landing_domains" {
     String id "🗝️"
-    String hostname 
-    TeamLandingDomainStatus status 
+    String hostname
+    TeamLandingDomainStatus status
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_team_senders" {
     String id "🗝️"
-    String name 
-    String email 
+    String name
+    String email
     String replyTo "❓"
-    Boolean isDefault 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isDefault
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_team_variables" {
     String id "🗝️"
-    String key 
-    String type 
+    String key
+    String type
     String defaultValue "❓"
     String description "❓"
-    Boolean isActive 
-    EmailVariableValueSource valueSource 
+    Boolean isActive
+    EmailVariableValueSource valueSource
     String radarFieldKey "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "profile_user_types" {
     String id "🗝️"
-    String slug 
-    String name 
+    String slug
+    String name
     String description "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "profile_user_type_assignments" {
     String id "🗝️"
     DateTime accessStartsAt "❓"
     DateTime accessExpiresAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_whatsapp_contacts" {
     String id "🗝️"
-    String remoteJid 
-    String opaqueId 
+    String remoteJid
+    String opaqueId
     String phoneNumber "❓"
     String displayName "❓"
     String pushName "❓"
-    TeamWhatsAppContactSource source 
+    TeamWhatsAppContactSource source
     String phoneE164 "❓"
     String name "❓"
-    WhatsAppContactNameSource nameSource 
+    WhatsAppContactNameSource nameSource
     String searchText "❓"
-    WhatsAppContactSyncState syncState 
+    WhatsAppContactSyncState syncState
     DateTime lastSeenAt "❓"
-    DateTime lastSyncedAt 
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime lastSyncedAt
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_contact_identities" {
     String id "🗝️"
-    String remoteJid 
-    String identityType 
+    String remoteJid
+    String identityType
     String phoneE164 "❓"
-    String mappingSource 
+    String mappingSource
     DateTime verifiedAt "❓"
-    Boolean sendable 
-    DateTime firstSeenAt 
-    DateTime lastSeenAt 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean sendable
+    DateTime firstSeenAt
+    DateTime lastSeenAt
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_whatsapp_configs" {
     String id "🗝️"
-    WhatsAppProvider provider 
-    WhatsAppEngine engine 
-    String instanceName 
+    WhatsAppProvider provider
+    WhatsAppEngine engine
+    String instanceName
     String instanceId "❓"
     String phoneNumber "❓"
     String normalizedPhone "❓"
     String lastConnectedNormalizedPhone "❓"
     String displayName "❓"
-    WhatsAppConnectionStatus status 
+    WhatsAppConnectionStatus status
     String qrCodeText "❓"
     String qrCodeImageUrl "❓"
-    String webhookSecret 
+    String webhookSecret
     DateTime lastConnectedAt "❓"
     DateTime lastDisconnectedAt "❓"
     DateTime lastSyncAt "❓"
-    WhatsAppHistorySyncStatus historySyncStatus 
+    WhatsAppHistorySyncStatus historySyncStatus
     DateTime historySyncStartedAt "❓"
     DateTime historySyncCompletedAt "❓"
     String historySyncError "❓"
-    Int usageLimitMonthly 
-    Boolean billingEnabled 
-    Int webhookConsecutiveFailures 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int usageLimitMonthly
+    Boolean billingEnabled
+    Int webhookConsecutiveFailures
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_conversations" {
     String id "🗝️"
     String externalChatId "❓"
-    String contactPhone 
+    String contactPhone
     String contactName "❓"
-    WhatsAppContactNameSource contactNameSource 
+    WhatsAppContactNameSource contactNameSource
     String contactAvatarUrl "❓"
-    String normalizedPhone 
+    String normalizedPhone
     DateTime lastMessageAt "❓"
     DateTime lastInboundAt "❓"
     DateTime lastOutboundAt "❓"
     String lastMessagePreview "❓"
-    Int unreadCount 
-    Boolean isArchived 
-    WhatsAppHandoffMode handoffMode 
+    Int unreadCount
+    Boolean isArchived
+    WhatsAppHandoffMode handoffMode
     DateTime welcomeSentAt "❓"
     DateTime deletedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_messages" {
     String id "🗝️"
     String providerMessageId "❓"
     String providerEventId "❓"
     String clientMessageId "❓"
-    WhatsAppMessageDirection direction 
-    WhatsAppMessageType messageType 
-    WhatsAppMessageStatus status 
+    WhatsAppMessageDirection direction
+    WhatsAppMessageType messageType
+    WhatsAppMessageStatus status
     String contentText "❓"
     String mediaUrl "❓"
     String mediaMimeType "❓"
@@ -3753,207 +3834,207 @@ completed completed
     DateTime readAt "❓"
     DateTime playedAt "❓"
     DateTime failedAt "❓"
-    Boolean isAutoResponse 
+    Boolean isAutoResponse
     BigInt providerTimestamp "❓"
-    Json rawPayload 
+    Json rawPayload
     String storagePath "❓"
     String mediaSha256 "❓"
     Int mediaSizeBytes "❓"
     Int mediaDurationMs "❓"
     WhatsAppMediaStatus mediaStatus "❓"
-    Int mediaAttemptCount 
+    Int mediaAttemptCount
     String mediaLastErrorCode "❓"
     DateTime mediaRetrievedAt "❓"
     String quotedProviderMessageId "❓"
     DateTime deletedForEveryoneAt "❓"
     DateTime deletedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_message_reactions" {
     String id "🗝️"
     String actorPhone "❓"
-    String emoji 
+    String emoji
     String providerReactionId "❓"
     DateTime removedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_message_favorites" {
     String id "🗝️"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "whatsapp_message_pins" {
     String id "🗝️"
-    DateTime pinnedAt 
+    DateTime pinnedAt
     DateTime expiresAt "❓"
     DateTime removedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_message_visibility" {
     String id "🗝️"
-    DateTime hiddenAt 
+    DateTime hiddenAt
     }
-  
+
 
   "whatsapp_message_action_commands" {
     String id "🗝️"
-    String clientActionId 
-    WhatsAppMessageActionCommandKind kind 
-    WhatsAppMessageActionCommandStatus status 
+    String clientActionId
+    WhatsAppMessageActionCommandKind kind
+    WhatsAppMessageActionCommandStatus status
     String requestHash "❓"
     String emoji "❓"
-    Int attemptCount 
+    Int attemptCount
     DateTime claimedAt "❓"
     String lastError "❓"
     DateTime reconciledAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_outbound_commands" {
     String id "🗝️"
-    String clientMessageId 
+    String clientMessageId
     String messageId "❓"
-    WhatsAppOutboundCommandStatus status 
-    Int attemptCount 
+    WhatsAppOutboundCommandStatus status
+    Int attemptCount
     String requestHash "❓"
     DateTime claimedAt "❓"
     DateTime nextReconcileAt "❓"
     String lastError "❓"
     DateTime reconciledAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_sync_jobs" {
     String id "🗝️"
-    String status 
-    Json checkpoint 
+    String status
+    Json checkpoint
     String leaseOwner "❓"
     DateTime leaseExpiresAt "❓"
     DateTime startedAt "❓"
     DateTime completedAt "❓"
     String lastError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_webhook_events" {
     String id "🗝️"
     String providerEventId "❓"
-    String eventType 
-    Json payload 
-    WhatsAppWebhookEventStatus status 
-    Int attemptCount 
+    String eventType
+    Json payload
+    WhatsAppWebhookEventStatus status
+    Int attemptCount
     String lastError "❓"
     DateTime nextAttemptAt "❓"
     DateTime processingStartedAt "❓"
     DateTime processedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_audit_events" {
     String id "🗝️"
-    String action 
-    Json metadata 
-    DateTime createdAt 
+    String action
+    Json metadata
+    DateTime createdAt
     }
-  
+
 
   "whatsapp_usage_events" {
     String id "🗝️"
     String conversationId "❓"
     String messageId "❓"
     String providerMessageId "❓"
-    String periodKey 
-    WhatsAppProvider provider 
-    WhatsAppUsageEventType eventType 
+    String periodKey
+    WhatsAppProvider provider
+    WhatsAppUsageEventType eventType
     WhatsAppMessageDirection direction "❓"
-    Boolean billable 
-    Boolean countedTowardsQuota 
-    Int quantity 
+    Boolean billable
+    Boolean countedTowardsQuota
+    Int quantity
     Json rawPayload "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "whatsapp_send_rate_limit_windows" {
     DateTime windowStart "🗝️"
-    Int count 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int count
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "billing_rate_limit_windows" {
     String key "🗝️"
     DateTime windowStart "🗝️"
-    Int count 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int count
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_auto_response_rules" {
     String id "🗝️"
-    WhatsAppAutoResponseRuleType type 
-    String replyMessage 
-    String triggerKeywords 
-    WhatsAppAutoResponseMatchMode matchMode 
+    WhatsAppAutoResponseRuleType type
+    String replyMessage
+    String triggerKeywords
+    WhatsAppAutoResponseMatchMode matchMode
     Json offHoursSchedule "❓"
-    Boolean isActive 
-    Int priority 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    Int priority
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_auto_response_logs" {
     String id "🗝️"
-    WhatsAppAutoResponseRuleType ruleType 
+    WhatsAppAutoResponseRuleType ruleType
     String inboundMessageId "❓"
     String outboundMessageId "❓"
     String triggerText "❓"
-    String sentText 
-    DateTime createdAt 
+    String sentText
+    DateTime createdAt
     }
-  
+
 
   "whatsapp_conversation_tags" {
     String id "🗝️"
-    String name 
-    String color 
-    Int sortOrder 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String name
+    String color
+    Int sortOrder
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "whatsapp_conversation_tag_assignments" {
     String id "🗝️"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_radar_profiles" {
     String id "🗝️"
-    String normalizedName 
-    String displayName 
+    String normalizedName
+    String displayName
     String nameSource "❓"
     String normalizedPhone "❓"
     String displayPhone "❓"
@@ -3967,262 +4048,262 @@ completed completed
     String engagementBand "❓"
     String gender "❓"
     String genderSource "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_radar_identities" {
     String id "🗝️"
-    RadarIdentityType type 
+    RadarIdentityType type
     String value "❓"
-    String normalizedValue 
-    String source 
-    Boolean isPrimary 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String normalizedValue
+    String source
+    Boolean isPrimary
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_radar_source_links" {
     String id "🗝️"
-    RadarSourceType sourceType 
-    String sourceId 
+    RadarSourceType sourceType
+    String sourceId
     Json sourceMetadata "❓"
-    DateTime firstLinkedAt 
-    DateTime lastSyncedAt 
+    DateTime firstLinkedAt
+    DateTime lastSyncedAt
     }
-  
+
 
   "corretor_studio_radar_events" {
     String id "🗝️"
-    String eventType 
-    String sourceType 
+    String eventType
+    String sourceType
     String sourceId "❓"
-    DateTime occurredAt 
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_radar_channel_consents" {
     String id "🗝️"
-    RadarChannel channel 
-    RadarConsentStatus status 
+    RadarChannel channel
+    RadarConsentStatus status
     RadarConsentReason reason "❓"
     String sourceType "❓"
     String sourceId "❓"
-    DateTime updatedAt 
-    DateTime createdAt 
+    DateTime updatedAt
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_radar_pixel_rate_limits" {
     String key "🗝️"
-    Int count 
-    DateTime resetAt 
-    DateTime updatedAt 
+    Int count
+    DateTime resetAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_radar_segments" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    Json rulesJson 
-    Boolean isSystem 
-    Boolean isActive 
-    SegmentSourceType sourceType 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Json rulesJson
+    Boolean isSystem
+    Boolean isActive
+    SegmentSourceType sourceType
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_radar_field_definitions" {
     String id "🗝️"
-    String key 
-    String label 
-    String valueType 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String key
+    String label
+    String valueType
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_radar_import_jobs" {
     String id "🗝️"
-    String importId 
-    String baseName 
-    String sourceFormat 
-    String storagePath 
-    Json fieldMapping 
-    String status 
-    Int totalRows 
-    Int processedRows 
-    Int createdCount 
-    Int enrichedCount 
-    Int skippedCount 
-    Int deferredCount 
+    String importId
+    String baseName
+    String sourceFormat
+    String storagePath
+    Json fieldMapping
+    String status
+    Int totalRows
+    Int processedRows
+    Int createdCount
+    Int enrichedCount
+    Int skippedCount
+    Int deferredCount
     Json skippedIssues "❓"
     Json failedBatches "❓"
-    Int batchSize 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int batchSize
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_channels" {
     String id "🗝️"
-    String displayName 
+    String displayName
     String avatarUrl "❓"
     String avatarStoragePath "❓"
     String aboutText "❓"
     String phoneNumber "❓"
     DateTime lastProfileSyncAt "❓"
-    BackofficeBotChannelType channelType 
-    BackofficeBotChannelStatus status 
+    BackofficeBotChannelType channelType
+    BackofficeBotChannelStatus status
     Json providerConfig "❓"
-    String webhookSecret 
+    String webhookSecret
     String n8nInboundUrl "❓"
-    String n8nOutboundSecret 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String n8nOutboundSecret
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_auth_challenges" {
     String id "🗝️"
-    BackofficeBotAuthChallengeSource source 
+    BackofficeBotAuthChallengeSource source
     String normalizedPhone "❓"
     String emailRequested "❓"
-    String codeHash 
-    BackofficeBotAuthChallengeStatus status 
-    Int attemptCount 
-    DateTime expiresAt 
+    String codeHash
+    BackofficeBotAuthChallengeStatus status
+    Int attemptCount
+    DateTime expiresAt
     DateTime verifiedAt "❓"
     Json ipMetadata "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_user_links" {
     String id "🗝️"
-    String normalizedPhone 
-    DateTime linkedAt 
-    BackofficeBotUserLinkSource linkedBy 
-    Boolean isActive 
+    String normalizedPhone
+    DateTime linkedAt
+    BackofficeBotUserLinkSource linkedBy
+    Boolean isActive
     DateTime lastInteractionAt "❓"
     DateTime revokedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_sessions" {
     String id "🗝️"
     String currentLeadId "❓"
     String flowId "❓"
     String flowStep "❓"
-    Json flowStack 
-    DateTime expiresAt 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Json flowStack
+    DateTime expiresAt
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_messages" {
     String id "🗝️"
-    BackofficeBotMessageDirection direction 
+    BackofficeBotMessageDirection direction
     String channelMessageId "❓"
     String flowId "❓"
     String errorCode "❓"
-    Json payload 
-    DateTime createdAt 
+    Json payload
+    DateTime createdAt
     }
-  
+
 
   "backoffice_bot_notification_preferences" {
     String id "🗝️"
-    String type 
-    Boolean enabled 
+    String type
+    Boolean enabled
     Json quietHours "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_event_outbox" {
     String id "🗝️"
-    String eventType 
-    Json payload 
-    BackofficeBotEventOutboxStatus status 
-    String idempotencyKey 
-    Int attemptCount 
+    String eventType
+    Json payload
+    BackofficeBotEventOutboxStatus status
+    String idempotencyKey
+    Int attemptCount
     DateTime nextAttemptAt "❓"
     String lastError "❓"
-    DateTime createdAt 
+    DateTime createdAt
     DateTime sentAt "❓"
     }
-  
+
 
   "backoffice_bot_outbound_delivery" {
     String id "🗝️"
-    String idempotencyKey 
-    BackofficeBotOutboundDeliveryStatus status 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String idempotencyKey
+    BackofficeBotOutboundDeliveryStatus status
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_ai_configurations" {
     Boolean id "🗝️"
-    Boolean enabled 
-    Boolean shadowMode 
-    Int rolloutPercentage 
-    BackofficeBotAiProvider primaryProvider 
-    String primaryModel 
+    Boolean enabled
+    Boolean shadowMode
+    Int rolloutPercentage
+    BackofficeBotAiProvider primaryProvider
+    String primaryModel
     String fallbackModel "❓"
-    Float confidenceThreshold 
-    Int dailyUserLimit 
-    Int dailyGlobalLimit 
-    Int timeoutMs 
-    Int circuitBreakerFailureThreshold 
-    Int circuitBreakerResetSeconds 
-    Int retentionDays 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Float confidenceThreshold
+    Int dailyUserLimit
+    Int dailyGlobalLimit
+    Int timeoutMs
+    Int circuitBreakerFailureThreshold
+    Int circuitBreakerResetSeconds
+    Int retentionDays
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_ai_interactions" {
     String id "🗝️"
     String sessionId "❓"
     String teamIdSnapshot "❓"
-    BackofficeBotAiCapability capability 
-    BackofficeBotAiInteractionStatus status 
+    BackofficeBotAiCapability capability
+    BackofficeBotAiInteractionStatus status
     String intent "❓"
     Float confidence "❓"
     String promptKey "❓"
-    String promptVersion 
-    Boolean isShadow 
-    Boolean usedFallback 
+    String promptVersion
+    Boolean isShadow
+    Boolean usedFallback
     String inputHash "❓"
     String outputHash "❓"
     String errorCode "❓"
     Int latencyMs "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_bot_ai_attempts" {
     String id "🗝️"
-    Int sequence 
-    BackofficeBotAiProvider provider 
-    String model 
-    BackofficeBotAiCapability capability 
-    BackofficeBotAiAttemptStatus status 
+    Int sequence
+    BackofficeBotAiProvider provider
+    String model
+    BackofficeBotAiCapability capability
+    BackofficeBotAiAttemptStatus status
     Int inputTokens "❓"
     Int outputTokens "❓"
     Int totalTokens "❓"
@@ -4233,124 +4314,222 @@ completed completed
     String providerRequestId "❓"
     String requestSchemaVersion "❓"
     String responseSchemaVersion "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_bot_ai_proposals" {
     String id "🗝️"
     String teamIdSnapshot "❓"
-    String action 
-    String paramsSummary 
-    String paramsCiphertext 
-    String encryptionKeyVersion 
+    String action
+    String paramsSummary
+    String paramsCiphertext
+    String encryptionKeyVersion
     String confirmationMessage "❓"
-    BackofficeBotAiActionProposalStatus status 
-    String idempotencyKey 
-    DateTime expiresAt 
+    BackofficeBotAiActionProposalStatus status
+    String idempotencyKey
+    DateTime expiresAt
     DateTime confirmedAt "❓"
     DateTime executedAt "❓"
     String resultCode "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "backoffice_bot_ai_feedback" {
     String id "🗝️"
-    BackofficeBotAiFeedbackType type 
+    BackofficeBotAiFeedbackType type
     String correctedIntent "❓"
-    String origin 
-    DateTime createdAt 
+    String origin
+    DateTime createdAt
     }
-  
+
 
   "backoffice_bot_ai_daily_usage" {
     DateTime day "🗝️"
     BackofficeBotAiProvider provider "🗝️"
     String model "🗝️"
     BackofficeBotAiCapability capability "🗝️"
-    Int requests 
-    Int successes 
-    Int failures 
-    Int fallbacks 
-    BigInt inputTokens 
-    BigInt outputTokens 
-    Float estimatedCostUsd 
-    Int uniqueUsers 
+    Int requests
+    Int successes
+    Int failures
+    Int fallbacks
+    BigInt inputTokens
+    BigInt outputTokens
+    Float estimatedCostUsd
+    Int uniqueUsers
     Int latencyP50Ms "❓"
     Int latencyP95Ms "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "asaas_webhook_events" {
     String id "🗝️"
     String eventType "❓"
-    Json payload 
-    AsaasWebhookEventStatus status 
-    AsaasAccount account 
+    Json payload
+    AsaasWebhookEventStatus status
+    AsaasAccount account
     String errorMessage "❓"
-    Int attemptCount 
-    DateTime nextAttemptAt 
+    Int attemptCount
+    DateTime nextAttemptAt
     String failureReason "❓"
-    DateTime receivedAt 
+    DateTime receivedAt
     DateTime processedAt "❓"
-    DateTime updatedAt 
+    DateTime updatedAt
     }
-  
+
 
   "payment_provider_event_dedupe" {
     String id "🗝️"
-    String dedupe_key 
-    String provider_key 
-    String environment 
-    String external_account_context 
-    String event_id 
-    String payload_hash 
-    DateTime tombstone_until 
-    DateTime created_at 
+    String dedupe_key
+    String provider_key
+    String environment
+    String external_account_context
+    String event_id
+    String payload_hash
+    DateTime tombstone_until
+    DateTime created_at
     }
-  
+
 
   "payment_provider_event_inbox" {
     String id "🗝️"
-    String dedupe_key 
-    String provider_key 
-    String environment 
-    String external_account_context 
-    String event_id 
-    String payload_hash 
-    String raw_payload 
-    Json payload 
+    String dedupe_key
+    String provider_key
+    String environment
+    String external_account_context
+    String event_id
+    String payload_hash
+    String raw_payload
+    Json payload
     String normalized_event "❓"
-    String claim_token 
-    PaymentProviderEventInboxStatus status 
-    Int attempt_count 
+    String claim_token
+    PaymentProviderEventInboxStatus status
+    Int attempt_count
     String error_message "❓"
-    DateTime received_at 
+    DateTime received_at
     DateTime processed_at "❓"
     DateTime tombstone_until "❓"
-    DateTime updated_at 
+    DateTime updated_at
     }
-  
+
 
   "payment_provider_event_outbox" {
     String id "🗝️"
-    String inbox_id 
-    String event_type 
-    String raw_payload 
-    Json payload 
-    PaymentProviderEventOutboxStatus status 
-    Int attempt_count 
-    DateTime next_attempt_at 
+    String inbox_id
+    String event_type
+    String raw_payload
+    Json payload
+    PaymentProviderEventOutboxStatus status
+    Int attempt_count
+    DateTime next_attempt_at
     DateTime leased_until "❓"
     DateTime terminal_at "❓"
     String error_message "❓"
-    DateTime created_at 
-    DateTime updated_at 
+    DateTime created_at
+    DateTime updated_at
     }
-  
+
+
+  "payment_provider_configs" {
+    String id "🗝️"
+    PaymentProviderKey provider_key
+    PaymentProviderEnvironment environment
+    Boolean enabled
+    Boolean is_default
+    String external_account_context
+    PaymentProviderRolloutState rollout_state
+    Boolean kill_switch
+    Int config_revision
+    PaymentProviderHealthStatus health_status
+    DateTime last_health_check_at "❓"
+    String last_error_code "❓"
+    String last_error_message "❓"
+    String public_key_fingerprint "❓"
+    String logo_url "❓"
+    String logo_alt_text "❓"
+    DateTime created_at
+    DateTime updated_at
+    }
+
+
+  "payment_provider_identities" {
+    String id "🗝️"
+    PaymentProviderKey provider_key
+    PaymentProviderEnvironment environment
+    String external_account_context
+    String external_id
+    PaymentProviderIdentityType identity_type
+    String owner_type
+    String owner_id
+    String tenant_id
+    PaymentProviderRoute route
+    String route_version
+    Int binding_revision
+    DateTime created_at
+    DateTime updated_at
+    }
+
+
+  "payment_provider_migration_gates" {
+    String id "🗝️"
+    PaymentProviderRoute source_route
+    PaymentProviderRoute target_route
+    String version
+    PaymentProviderEnvironment environment
+    String external_account_context
+    String authorized_by_profile_id
+    PaymentProviderMigrationGateStatus status
+    DateTime expires_at
+    DateTime activated_at "❓"
+    DateTime revoked_at "❓"
+    DateTime created_at
+    DateTime updated_at
+    }
+
+
+  "payment_provider_sessions" {
+    String id "🗝️"
+    String tenant_id
+    String owner_type
+    String owner_id
+    String idempotency_key
+    PaymentProviderEnvironment environment
+    PaymentProviderKey provider_key
+    String external_account_context
+    PaymentProviderRoute route
+    String route_version
+    PaymentProviderSessionStatus status
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version
+    DateTime expires_at
+    DateTime created_at
+    DateTime updated_at
+    }
+
+
+  "payment_provider_attempts" {
+    String id "🗝️"
+    String session_id
+    Int attempt_number
+    String idempotency_key
+    String request_fingerprint
+    PaymentProviderKey provider_key
+    PaymentProviderEnvironment environment
+    String external_account_context
+    PaymentProviderAttemptStatus status
+    String external_id "❓"
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version
+    String unknown_reason "❓"
+    DateTime created_at
+    DateTime updated_at
+    }
+
 
   "backoffice_bot_host_settings" {
     String id "🗝️"
@@ -4361,206 +4540,206 @@ completed completed
     String desiredHostVersion "❓"
     String appliedHostVersion "❓"
     DateTime lastAppliedAt "❓"
-    BackofficeBotHostApplyStatus lastApplyStatus 
+    BackofficeBotHostApplyStatus lastApplyStatus
     String lastApplyError "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_bot_host_ops_jobs" {
     String id "🗝️"
-    BackofficeBotHostOpsJobType type 
-    BackofficeBotHostOpsJobStatus status 
+    BackofficeBotHostOpsJobType type
+    BackofficeBotHostOpsJobStatus status
     Json payload "❓"
     Json result "❓"
     String errorMessage "❓"
     DateTime startedAt "❓"
     DateTime finishedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_settings" {
     String id "🗝️"
-    Boolean approvalRequired 
-    UserRole approverRoles 
-    String defaultBackgroundColor 
-    String defaultTextColor 
-    String defaultLineColor 
-    String defaultAccentColor 
-    String defaultButtonTextColor 
-    String defaultInputBackgroundColor 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean approvalRequired
+    UserRole approverRoles
+    String defaultBackgroundColor
+    String defaultTextColor
+    String defaultLineColor
+    String defaultAccentColor
+    String defaultButtonTextColor
+    String defaultInputBackgroundColor
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_rate_limits" {
     String key "🗝️"
-    Int count 
-    DateTime resetAt 
-    DateTime updatedAt 
+    Int count
+    DateTime resetAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_forms" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    String publicId 
-    PublicFormStatus status 
-    PublicFormApprovalStatus approvalStatus 
+    String publicId
+    PublicFormStatus status
+    PublicFormApprovalStatus approvalStatus
     String coverTitle "❓"
     String coverDescription "❓"
     String coverBadge "❓"
     Json coverHighlights "❓"
-    String ctaLabel 
-    String successTitle 
+    String ctaLabel
+    String successTitle
     String successDescription "❓"
     Json successActions "❓"
     Json thankYouPages "❓"
     String defaultThankYouPageId "❓"
-    Boolean useDefaultTheme 
+    Boolean useDefaultTheme
     String backgroundColor "❓"
     String textColor "❓"
     String lineColor "❓"
     String accentColor "❓"
     String buttonTextColor "❓"
     String inputBackgroundColor "❓"
-    Boolean schedulingEnabled 
-    Int meetingDurationMinutes 
+    Boolean schedulingEnabled
+    Int meetingDurationMinutes
     String schedulingMessage "❓"
-    String formKind 
-    Boolean emailCampaignTrackingEnabled 
-    Boolean leadCaptureDisabled 
+    String formKind
+    Boolean emailCampaignTrackingEnabled
+    Boolean leadCaptureDisabled
     String reviewComment "❓"
     DateTime reviewedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_landing_pages" {
     String id "🗝️"
-    String publicId 
-    String name 
-    LandingPageStatus status 
-    String templateSlug 
-    Json content 
-    Json offer 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String publicId
+    String name
+    LandingPageStatus status
+    String templateSlug
+    Json content
+    Json offer
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_landing_page_publications" {
     String id "🗝️"
-    Int version 
-    Json snapshot 
-    DateTime publishedAt 
+    Int version
+    Json snapshot
+    DateTime publishedAt
     DateTime endedAt "❓"
     }
-  
+
 
   "corretor_studio_landing_analytics_events" {
     String id "🗝️"
     String formId "❓"
-    String eventId 
-    String eventType 
-    Int schemaVersion 
-    String templateSlug 
-    String visitorSessionId 
+    String eventId
+    String eventType
+    Int schemaVersion
+    String templateSlug
+    String visitorSessionId
     String campaignId "❓"
     String emailLogId "❓"
-    Json attribution 
-    Json metadata 
+    Json attribution
+    Json metadata
     String ipHash "❓"
     String userAgent "❓"
     String referrer "❓"
-    DateTime occurredAt 
-    DateTime createdAt 
+    DateTime occurredAt
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_public_form_eligible_closers" {
     String id "🗝️"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_public_form_questions" {
     String id "🗝️"
-    PublicFormQuestionType type 
-    String title 
+    PublicFormQuestionType type
+    String title
     String description "❓"
     String placeholder "❓"
-    Boolean required 
-    Int scoreWeight 
-    Int position 
-    Json config 
+    Boolean required
+    Int scoreWeight
+    Int position
+    Json config
     PublicFormMappingTarget mappingTarget "❓"
     String mappingKey "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     DateTime deletedAt "❓"
     }
-  
+
 
   "corretor_studio_public_form_options" {
     String id "🗝️"
-    String label 
-    String value 
-    Int position 
-    Int score 
-    String scorePolarity 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String label
+    String value
+    Int position
+    Int score
+    String scorePolarity
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_rules" {
     String id "🗝️"
     String targetThankYouPageId "❓"
-    PublicFormRuleOperator operator 
+    PublicFormRuleOperator operator
     Json comparisonValue "❓"
-    PublicFormRuleAction action 
-    PublicFormRuleAction elseAction 
-    DateTime createdAt 
-    DateTime updatedAt 
+    PublicFormRuleAction action
+    PublicFormRuleAction elseAction
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_score_bands" {
     String id "🗝️"
-    String label 
+    String label
     String summary "❓"
-    Int minScore 
-    Int maxScore 
-    Int position 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int minScore
+    Int maxScore
+    Int position
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_publications" {
     String id "🗝️"
-    Int version 
-    Json snapshot 
-    DateTime publishedAt 
+    Int version
+    Json snapshot
+    DateTime publishedAt
     DateTime endedAt "❓"
     }
-  
+
 
   "corretor_studio_public_form_submissions" {
     String id "🗝️"
-    String requestKey 
+    String requestKey
     String eventId "❓"
     String visitorSessionId "❓"
-    PublicFormCompletionStatus completionStatus 
-    PublicFormSubmissionStatus status 
-    Int score 
+    PublicFormCompletionStatus completionStatus
+    PublicFormSubmissionStatus status
+    Int score
     String scoreBandLabel "❓"
     Json origin "❓"
     String errorMessage "❓"
@@ -4568,7 +4747,7 @@ completed completed
     DateTime submitRequestedAt "❓"
     DateTime leadSyncClaimedAt "❓"
     DateTime dispatchAcceptedAt "❓"
-    Int dispatchAttemptCount 
+    Int dispatchAttemptCount
     DateTime nextDispatchAt "❓"
     String lastDispatchError "❓"
     String thankYouPageId "❓"
@@ -4576,88 +4755,88 @@ completed completed
     String meeting_slot_reservation_id "❓"
     String scheduled_closer_id "❓"
     Int scheduled_duration_minutes "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_team_meeting_slot_reservations" {
     String id "🗝️"
-    String closerId 
-    DateTime startsAt 
-    DateTime endsAt 
-    Int durationMinutes 
-    TeamMeetingSlotReservationSource source 
-    TeamMeetingSlotReservationState state 
+    String closerId
+    DateTime startsAt
+    DateTime endsAt
+    Int durationMinutes
+    TeamMeetingSlotReservationSource source
+    TeamMeetingSlotReservationState state
     String googleEventId "❓"
     String googleCalendarId "❓"
-    Int recovery_attempts 
+    Int recovery_attempts
     String last_recovery_error "❓"
     DateTime consumedAt "❓"
     DateTime releasedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_answers" {
     String id "🗝️"
-    Json value 
-    Json questionSnapshot 
+    Json value
+    Json questionSnapshot
     String sourceEventId "❓"
     DateTime answeredAt "❓"
     String mappingKey "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_public_form_metric_events" {
     String id "🗝️"
     Json questionSnapshot "❓"
-    String visitorSessionId 
-    PublicFormMetricType eventType 
-    String eventKey 
+    String visitorSessionId
+    PublicFormMetricType eventType
+    String eventKey
     String eventId "❓"
     Int schemaVersion "❓"
     DateTime occurredAt "❓"
     Json origin "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_public_form_journey_sessions" {
     String id "🗝️"
-    String visitorSessionId 
-    PublicFormJourneyState state 
-    DateTime startedAt 
-    DateTime lastActivityAt 
+    String visitorSessionId
+    PublicFormJourneyState state
+    DateTime startedAt
+    DateTime lastActivityAt
     String currentPageId "❓"
     Int currentPageIndex "❓"
     DateTime lastExitIntentAt "❓"
     DateTime lastAbandonedAt "❓"
     DateTime lastResumedAt "❓"
-    Int abandonmentCount 
+    Int abandonmentCount
     DateTime submittedAt "❓"
     DateTime completedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_lead_extractions" {
     String id "🗝️"
-    Json filters 
-    Int totalCount 
-    BackofficeLeadExtractionStatus status 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Json filters
+    Int totalCount
+    BackofficeLeadExtractionStatus status
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_lead_extraction_results" {
     String id "🗝️"
-    String taxId 
-    String name 
+    String taxId
+    String name
     String tradeName "❓"
     String email "❓"
     String phone "❓"
@@ -4667,84 +4846,84 @@ completed completed
     String cnaeName "❓"
     BackofficeCompanyType type "❓"
     Json raw "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "short_links" {
     String id "🗝️"
-    String code 
-    String targetUrl 
+    String code
+    String targetUrl
     DateTime expiresAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_cnaes" {
     Int id "🗝️"
-    String code 
-    String name 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String code
+    String name
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_public_form_templates" {
     String id "🗝️"
-    String slug 
-    String name 
+    String slug
+    String name
     String description "❓"
-    String formKind 
-    Json draft 
-    Int sortOrder 
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String formKind
+    Json draft
+    Int sortOrder
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_tags" {
     String id "🗝️"
-    String name 
-    String color 
-    Int sortOrder 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String name
+    String color
+    Int sortOrder
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_tag_assignments" {
     String id "🗝️"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "corretor_studio_lead_document_requests" {
     String id "🗝️"
-    String teamId 
-    String publicToken 
+    String teamId
+    String publicToken
     String message "❓"
-    LeadDocumentRequestStatus status 
+    LeadDocumentRequestStatus status
     DateTime lastEmailSentAt "❓"
-    DateTime expiresAt 
+    DateTime expiresAt
     DateTime completedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "corretor_studio_lead_document_request_items" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    Boolean isRequired 
+    Boolean isRequired
     DateTime uploadedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|| "AsaasAccount" : "enum:asaasCustomerAccount"
@@ -5276,6 +5455,27 @@ completed completed
     "payment_provider_event_inbox" |o--|| "PaymentProviderEventInboxStatus" : "enum:status"
     "payment_provider_event_outbox" |o--|| "PaymentProviderEventOutboxStatus" : "enum:status"
     "payment_provider_event_outbox" }o--|| payment_provider_event_inbox : "inbox"
+    "payment_provider_configs" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
+    "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"
+    "payment_provider_identities" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:source_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:target_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderMigrationGateStatus" : "enum:status"
+    "payment_provider_migration_gates" }o--|| corretor_studio_profiles : "authorizedBy"
+    "payment_provider_sessions" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_sessions" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_sessions" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_sessions" |o--|| "PaymentProviderSessionStatus" : "enum:status"
+    "payment_provider_attempts" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_attempts" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_attempts" |o--|| "PaymentProviderAttemptStatus" : "enum:status"
+    "payment_provider_attempts" }o--|| payment_provider_sessions : "session"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
