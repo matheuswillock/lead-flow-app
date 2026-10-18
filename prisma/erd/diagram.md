@@ -170,6 +170,26 @@ failed failed
     
 
 
+        payment_provider_event_inbox_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+tombstoned tombstoned
+        }
+    
+
+
+        payment_provider_event_outbox_status {
+            pending pending
+processing processing
+delivered delivered
+failed failed
+dead_letter dead_letter
+        }
+    
+
+
         asaas_account {
             primary primary
 legacy legacy
@@ -4280,6 +4300,58 @@ completed completed
     }
   
 
+  "payment_provider_event_dedupe" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    DateTime tombstone_until 
+    DateTime created_at 
+    }
+  
+
+  "payment_provider_event_inbox" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    String raw_payload 
+    Json payload 
+    String normalized_event "❓"
+    String claim_token 
+    PaymentProviderEventInboxStatus status 
+    Int attempt_count 
+    String error_message "❓"
+    DateTime received_at 
+    DateTime processed_at "❓"
+    DateTime tombstone_until "❓"
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_event_outbox" {
+    String id "🗝️"
+    String inbox_id 
+    String event_type 
+    String raw_payload 
+    Json payload 
+    PaymentProviderEventOutboxStatus status 
+    Int attempt_count 
+    DateTime next_attempt_at 
+    DateTime leased_until "❓"
+    DateTime terminal_at "❓"
+    String error_message "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_bot_host_settings" {
     String id "🗝️"
     String agentBaseUrl "❓"
@@ -5201,6 +5273,9 @@ completed completed
     "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiCapability" : "enum:capability"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
     "asaas_webhook_events" |o--|| "AsaasAccount" : "enum:account"
+    "payment_provider_event_inbox" |o--|| "PaymentProviderEventInboxStatus" : "enum:status"
+    "payment_provider_event_outbox" |o--|| "PaymentProviderEventOutboxStatus" : "enum:status"
+    "payment_provider_event_outbox" }o--|| payment_provider_event_inbox : "inbox"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
