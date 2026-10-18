@@ -65,6 +65,19 @@ class MemoryInboxRepository implements PaymentProviderEventInboxRepository {
     if (row?.claimToken === input.claimToken) row.status = "failed"
   }
 
+  async assertClaimActive(input: {
+    dedupeKey: string
+    claimToken: string
+    now: Date
+    staleBefore: Date
+  }): Promise<boolean> {
+    const row = this.rows.get(input.dedupeKey)
+    if (!row || row.claimToken !== input.claimToken || row.status !== "processing") return false
+    if (row.updatedAt < input.staleBefore) return false
+    row.updatedAt = input.now
+    return true
+  }
+
   private createClaimToken(): string {
     const claimToken = `claim_${this.nextClaimToken}`
     this.nextClaimToken += 1
@@ -313,5 +326,47 @@ describe("PaymentProviderEventProcessor", () => {
     rejectFirstLookup?.(new Error("original lookup failed"))
     await expect(firstProcessor).rejects.toThrow("original lookup failed")
     expect(row.status).toBe("processed")
+  })
+
+  it("does not apply after its claim expires during a slow status lookup", async () => {
+    const repository = new MemoryInboxRepository()
+    const now = new Date("2026-10-20T12:00:00Z")
+    const processor = new PaymentProviderEventProcessor(repository, {
+      now: () => now,
+      processingLeaseMs: 60_000,
+    })
+    let resolveFirstLookup: ((status: "PENDING") => void) | undefined
+    let lookupCount = 0
+    let applications = 0
+    const input = {
+      provider: "ABACATE_PAY" as const,
+      environment: "DEV" as const,
+      externalAccountContext: "account_a",
+      rawBody: '{"id":"evt_slow_lookup"}',
+      event: { ...event, eventId: "evt_slow_lookup" },
+      getCurrentStatus: async () => {
+        lookupCount += 1
+        if (lookupCount === 1) {
+          return new Promise<"PENDING">((resolve) => {
+            resolveFirstLookup = resolve
+          })
+        }
+        return "PENDING" as const
+      },
+      apply: async () => {
+        applications += 1
+      },
+    }
+
+    const firstProcessor = processor.process(input)
+    await Promise.resolve()
+    const row = [...repository.rows.values()][0]
+    if (!row) throw new Error("claim row missing")
+    row.updatedAt = new Date("2026-10-20T11:00:00Z")
+
+    await expect(processor.process(input)).resolves.toEqual({ action: "apply", nextStatus: "CONFIRMED" })
+    resolveFirstLookup?.("PENDING")
+    await expect(firstProcessor).resolves.toEqual({ action: "duplicate" })
+    expect(applications).toBe(1)
   })
 })

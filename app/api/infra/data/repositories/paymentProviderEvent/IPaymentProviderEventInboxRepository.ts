@@ -17,6 +17,12 @@ export type PaymentProviderEventClaimInput = {
 
 export interface IPaymentProviderEventInboxRepository {
   claim(input: PaymentProviderEventClaimInput): Promise<PaymentProviderEventInboxClaim>
+  assertClaimActive(input: {
+    readonly dedupeKey: string
+    readonly claimToken: string
+    readonly now: Date
+    readonly staleBefore: Date
+  }): Promise<boolean>
   markProcessed(input: { readonly dedupeKey: string; readonly claimToken: string }): Promise<void>
   markFailed(input: { readonly dedupeKey: string; readonly claimToken: string; readonly message: string }): Promise<void>
 }

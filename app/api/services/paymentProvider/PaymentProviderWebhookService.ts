@@ -11,6 +11,8 @@ export type PaymentProviderWebhookServiceDependencies = {
   readonly applyEvent: (input: {
     readonly event: ProviderWebhookEvent
     readonly nextStatus: PaymentAttemptStatus
+    /** The domain mutation must fence its transaction with this claim token. */
+    readonly claimToken: string
   }) => Promise<void>
 }
 

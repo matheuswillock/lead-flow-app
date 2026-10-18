@@ -80,6 +80,24 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
     }
   }
 
+  async assertClaimActive(input: {
+    dedupeKey: string
+    claimToken: string
+    now: Date
+    staleBefore: Date
+  }): Promise<boolean> {
+    const result = await prisma.paymentProviderEventInbox.updateMany({
+      where: {
+        dedupeKey: input.dedupeKey,
+        claimToken: input.claimToken,
+        status: "processing",
+        updatedAt: { gte: input.staleBefore },
+      },
+      data: { updatedAt: input.now },
+    })
+    return result.count === 1
+  }
+
   async markProcessed(input: { dedupeKey: string; claimToken: string }): Promise<void> {
     await prisma.paymentProviderEventInbox.updateMany({
       where: { dedupeKey: input.dedupeKey, claimToken: input.claimToken, status: "processing" },

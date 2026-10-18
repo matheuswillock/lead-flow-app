@@ -20,6 +20,11 @@ class MemoryRepository implements PaymentProviderEventInboxRepository {
     return current === input.payloadHash ? { kind: "duplicate" as const } : { kind: "conflict" as const }
   }
 
+  async assertClaimActive(): Promise<boolean> {
+    this.sequence.push("assert")
+    return true
+  }
+
   async markProcessed(): Promise<void> {}
   async markFailed(): Promise<void> {}
 }
@@ -52,7 +57,8 @@ describe("PaymentProviderWebhookService", () => {
         repository.sequence.push("status")
         return "PENDING"
       },
-      applyEvent: async () => {
+      applyEvent: async ({ claimToken }) => {
+        expect(claimToken).toBe("test-claim-token")
         repository.sequence.push("apply")
       },
     })
@@ -64,6 +70,6 @@ describe("PaymentProviderWebhookService", () => {
         request: { rawBody, signature, query: { webhookSecret: "webhook-secret" } },
       }),
     ).resolves.toMatchObject({ action: "apply", nextStatus: "CONFIRMED" })
-    expect(repository.sequence).toEqual(["claim", "status", "apply"])
+    expect(repository.sequence).toEqual(["claim", "status", "assert", "apply"])
   })
 })

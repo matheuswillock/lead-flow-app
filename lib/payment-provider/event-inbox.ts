@@ -26,6 +26,12 @@ export interface PaymentProviderEventInboxRepository {
     readonly now: Date
     readonly staleBefore: Date
   }): Promise<PaymentProviderEventInboxClaim>
+  assertClaimActive(input: {
+    readonly dedupeKey: string
+    readonly claimToken: string
+    readonly now: Date
+    readonly staleBefore: Date
+  }): Promise<boolean>
   markProcessed(input: { readonly dedupeKey: string; readonly claimToken: string }): Promise<void>
   markFailed(input: { readonly dedupeKey: string; readonly claimToken: string; readonly message: string }): Promise<void>
 }
@@ -53,9 +59,11 @@ export class PaymentProviderEventProcessor {
     readonly event: ProviderWebhookEvent
     readonly currentStatus?: PaymentAttemptStatus
     readonly getCurrentStatus?: (externalPaymentId: string) => Promise<PaymentAttemptStatus>
+    /** The domain mutation must use claimToken in its own conditional transaction. */
     readonly apply: (transition: {
       readonly event: ProviderWebhookEvent
       readonly nextStatus: PaymentAttemptStatus
+      readonly claimToken: string
     }) => Promise<void>
   }): Promise<PaymentProviderEventProcessResult> {
     const now = this.options.now?.() ?? new Date()
@@ -98,7 +106,14 @@ export class PaymentProviderEventProcessor {
             event: input.event.event,
           })
       if (transition.action === "apply") {
-        await input.apply({ event: input.event, nextStatus: transition.nextStatus })
+        const claimIsActive = await this.repository.assertClaimActive({
+          dedupeKey,
+          claimToken,
+          now,
+          staleBefore: new Date(now.getTime() - (this.options.processingLeaseMs ?? 10 * 60 * 1000)),
+        })
+        if (!claimIsActive) return { action: "duplicate" }
+        await input.apply({ event: input.event, nextStatus: transition.nextStatus, claimToken })
         applied = true
       }
       await this.repository.markProcessed({ dedupeKey, claimToken })
