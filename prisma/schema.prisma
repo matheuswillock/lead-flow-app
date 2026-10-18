@@ -6265,6 +6265,7 @@ model PaymentProviderEventInbox {
   externalAccountContext   String                         @map("external_account_context") @db.Text
   eventId                  String                         @map("event_id") @db.Text
   payloadHash              String                         @map("payload_hash") @db.Text
+  rawPayload               String                         @map("raw_payload") @db.Text
   payload                  Json
   normalizedEvent          String?                        @map("normalized_event") @db.Text
   claimToken               String                         @default(dbgenerated("gen_random_uuid()")) @map("claim_token") @db.Uuid
@@ -6289,6 +6290,7 @@ model PaymentProviderEventOutbox {
   id             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   inboxId        String                           @map("inbox_id") @db.Uuid
   eventType      String                           @map("event_type") @db.Text
+  rawPayload     String                           @map("raw_payload") @db.Text
   payload        Json
   status         PaymentProviderEventOutboxStatus @default(pending)
   attemptCount   Int                              @default(0) @map("attempt_count")

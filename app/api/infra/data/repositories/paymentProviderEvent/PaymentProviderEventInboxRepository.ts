@@ -43,6 +43,7 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
             externalAccountContext: input.externalAccountContext,
             eventId: input.eventId,
             payloadHash: input.payloadHash,
+            rawPayload: input.payload,
             payload: toJsonValue(input.payload),
             normalizedEvent: input.normalizedEvent,
             claimToken,
@@ -55,6 +56,7 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
           data: {
             inboxId: inbox.id,
             eventType: input.normalizedEvent ?? "PROVIDER_EVENT_RECEIVED",
+            rawPayload: input.payload,
             payload: toJsonValue(input.payload),
             status: "pending",
           },

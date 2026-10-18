@@ -4321,6 +4321,7 @@ completed completed
     String external_account_context 
     String event_id 
     String payload_hash 
+    String raw_payload 
     Json payload 
     String normalized_event "❓"
     String claim_token 
@@ -4338,6 +4339,7 @@ completed completed
     String id "🗝️"
     String inbox_id 
     String event_type 
+    String raw_payload 
     Json payload 
     PaymentProviderEventOutboxStatus status 
     Int attempt_count 
