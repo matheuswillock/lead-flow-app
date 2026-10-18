@@ -8,8 +8,10 @@ import { PaymentProviderWebhookService } from "./PaymentProviderWebhookService"
 
 class MemoryRepository implements PaymentProviderEventInboxRepository {
   private readonly hashes = new Map<string, string>()
+  readonly sequence: string[] = []
 
   async claim(input: Parameters<PaymentProviderEventInboxRepository["claim"]>[0]) {
+    this.sequence.push("claim")
     const current = this.hashes.get(input.dedupeKey)
     if (!current) {
       this.hashes.set(input.dedupeKey, input.payloadHash)
@@ -40,15 +42,18 @@ describe("PaymentProviderWebhookService", () => {
         devMode: true,
       }),
     )
-    let applied = 0
+    const repository = new MemoryRepository()
     const service = new PaymentProviderWebhookService({
       provider,
       providerKey: "ABACATE_PAY",
       environment: "DEV",
-      eventProcessor: new PaymentProviderEventProcessor(new MemoryRepository()),
-      getCurrentStatus: async () => "PENDING",
+      eventProcessor: new PaymentProviderEventProcessor(repository),
+      getCurrentStatus: async () => {
+        repository.sequence.push("status")
+        return "PENDING"
+      },
       applyEvent: async () => {
-        applied += 1
+        repository.sequence.push("apply")
       },
     })
     const signature = createHmac("sha256", "hmac-secret").update(rawBody).digest("base64")
@@ -59,6 +64,6 @@ describe("PaymentProviderWebhookService", () => {
         request: { rawBody, signature, query: { webhookSecret: "webhook-secret" } },
       }),
     ).resolves.toMatchObject({ action: "apply", nextStatus: "CONFIRMED" })
-    expect(applied).toBe(1)
+    expect(repository.sequence).toEqual(["claim", "status", "apply"])
   })
 })

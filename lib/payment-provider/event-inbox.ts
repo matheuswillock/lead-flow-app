@@ -23,6 +23,8 @@ export interface PaymentProviderEventInboxRepository {
     readonly payload: string
     readonly normalizedEvent: string
     readonly tombstoneUntil: Date
+    readonly now: Date
+    readonly staleBefore: Date
   }): Promise<PaymentProviderEventInboxClaim>
   markProcessed(dedupeKey: string): Promise<void>
   markFailed(dedupeKey: string, message: string): Promise<void>
@@ -35,7 +37,13 @@ export type PaymentProviderEventProcessResult =
   | { readonly action: "duplicate" }
 
 export class PaymentProviderEventProcessor {
-  constructor(private readonly repository: PaymentProviderEventInboxRepository) {}
+  constructor(
+    private readonly repository: PaymentProviderEventInboxRepository,
+    private readonly options: {
+      readonly now?: () => Date
+      readonly processingLeaseMs?: number
+    } = {},
+  ) {}
 
   async process(input: {
     readonly provider: ProviderEventDedupeInput["provider"]
@@ -43,12 +51,14 @@ export class PaymentProviderEventProcessor {
     readonly externalAccountContext: string
     readonly rawBody: string
     readonly event: ProviderWebhookEvent
-    readonly currentStatus: PaymentAttemptStatus
+    readonly currentStatus?: PaymentAttemptStatus
+    readonly getCurrentStatus?: (externalPaymentId: string) => Promise<PaymentAttemptStatus>
     readonly apply: (transition: {
       readonly event: ProviderWebhookEvent
       readonly nextStatus: PaymentAttemptStatus
     }) => Promise<void>
   }): Promise<PaymentProviderEventProcessResult> {
+    const now = this.options.now?.() ?? new Date()
     const dedupeKey = createProviderEventDedupeKey({
       provider: input.provider,
       environment: input.environment,
@@ -64,7 +74,9 @@ export class PaymentProviderEventProcessor {
       payloadHash: hashProviderEventPayload(input.rawBody),
       payload: input.rawBody,
       normalizedEvent: input.event.event,
-      tombstoneUntil: fiveYearsFromNow(),
+      tombstoneUntil: fiveYearsFromNow(now),
+      now,
+      staleBefore: new Date(now.getTime() - (this.options.processingLeaseMs ?? 10 * 60 * 1000)),
     })
 
     if (claim.kind === "duplicate") return { action: "duplicate" }
@@ -72,26 +84,35 @@ export class PaymentProviderEventProcessor {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Conflito de payload para o mesmo evento")
     }
 
+    const currentStatus = input.getCurrentStatus
+      ? input.event.externalPaymentId
+        ? await input.getCurrentStatus(input.event.externalPaymentId)
+        : "UNKNOWN"
+      : input.currentStatus ?? "UNKNOWN"
     const transition = applyProviderEventTransition({
-      currentStatus: input.currentStatus,
+      currentStatus,
       event: input.event.event,
     })
+    let applied = false
     try {
       if (transition.action === "apply") {
         await input.apply({ event: input.event, nextStatus: transition.nextStatus })
+        applied = true
       }
       await this.repository.markProcessed(dedupeKey)
       return transition
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao processar evento"
-      await this.repository.markFailed(dedupeKey, message)
+      if (!applied) {
+        const message = error instanceof Error ? error.message : "Falha ao processar evento"
+        await this.repository.markFailed(dedupeKey, message)
+      }
       throw error
     }
   }
 }
 
-function fiveYearsFromNow(): Date {
-  const date = new Date()
+function fiveYearsFromNow(now: Date): Date {
+  const date = new Date(now)
   date.setUTCFullYear(date.getUTCFullYear() + 5)
   return date
 }

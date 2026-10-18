@@ -91,7 +91,7 @@ export function createAbacatePayDevModeFixture(): {
     expire: (externalId) => updateStatus(payments, externalId, "EXPIRED"),
     webhook: (payment, event) => {
       const rawBody = JSON.stringify({
-        id: `dev_evt_${payment.id}`,
+        id: `dev_evt_${payment.id}_${event}`,
         event,
         devMode: true,
         data: { id: payment.id, status: statusForProvider(payment.status), method: payment.method, amount: payment.amountInCents },

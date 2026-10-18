@@ -26,17 +26,13 @@ export class PaymentProviderWebhookService {
     const event = this.dependencies.provider.normalizeEvent(verified)
     if (!event) return { action: "ignored" }
 
-    const currentStatus = event.externalPaymentId
-      ? await this.dependencies.getCurrentStatus(event.externalPaymentId)
-      : "UNKNOWN"
-
     return this.dependencies.eventProcessor.process({
       provider: this.dependencies.providerKey,
       environment: this.dependencies.environment,
       externalAccountContext: input.externalAccountContext,
       rawBody: input.request.rawBody,
       event,
-      currentStatus,
+      getCurrentStatus: async (externalPaymentId) => this.dependencies.getCurrentStatus(externalPaymentId),
       apply: this.dependencies.applyEvent,
     })
   }

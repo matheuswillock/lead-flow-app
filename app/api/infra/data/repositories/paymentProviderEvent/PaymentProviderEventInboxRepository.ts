@@ -16,17 +16,8 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
 
         if (existing) {
           if (existing.payloadHash !== input.payloadHash) return { kind: "conflict" as const }
-          const inbox = await transaction.paymentProviderEventInbox.findUnique({
-            where: { dedupeKey: input.dedupeKey },
-            select: { status: true },
-          })
-          if (inbox?.status === "failed") {
-            await transaction.paymentProviderEventInbox.update({
-              where: { dedupeKey: input.dedupeKey },
-              data: { status: "processing", errorMessage: null, attemptCount: { increment: 1 } },
-            })
-            return { kind: "claimed" as const }
-          }
+          const reclaimed = await reclaimExisting(transaction, input)
+          if (reclaimed) return { kind: "claimed" as const }
           return { kind: "duplicate" as const }
         }
 
@@ -76,9 +67,11 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
         select: { payloadHash: true },
       })
       if (!existing) throw error
-      return existing.payloadHash === input.payloadHash
-        ? { kind: "duplicate" }
-        : { kind: "conflict" }
+      if (existing.payloadHash !== input.payloadHash) return { kind: "conflict" }
+      return prisma.$transaction(async (transaction) => {
+        const reclaimed = await reclaimExisting(transaction, input)
+        return reclaimed ? { kind: "claimed" as const } : { kind: "duplicate" as const }
+      })
     }
   }
 
@@ -103,6 +96,28 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+}
+
+async function reclaimExisting(
+  transaction: Prisma.TransactionClient,
+  input: PaymentProviderEventClaimInput,
+): Promise<boolean> {
+  const result = await transaction.paymentProviderEventInbox.updateMany({
+    where: {
+      dedupeKey: input.dedupeKey,
+      payloadHash: input.payloadHash,
+      OR: [
+        { status: "failed" },
+        { status: "processing", updatedAt: { lt: input.staleBefore } },
+      ],
+    },
+    data: {
+      status: "processing",
+      errorMessage: null,
+      updatedAt: input.now,
+    },
+  })
+  return result.count === 1
 }
 
 function toJsonValue(payload: string): Prisma.InputJsonValue {

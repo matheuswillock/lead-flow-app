@@ -11,6 +11,8 @@ export type PaymentProviderEventClaimInput = {
   readonly payload: string
   readonly normalizedEvent?: string
   readonly tombstoneUntil: Date
+  readonly now: Date
+  readonly staleBefore: Date
 }
 
 export interface IPaymentProviderEventInboxRepository {

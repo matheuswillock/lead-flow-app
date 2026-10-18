@@ -49,6 +49,9 @@ export function assertPaymentCanBeChargedAgain(reconciliation: PaymentReconcilia
   if (reconciliation.status === "PENDING") {
     throw new Error("Cobrança bloqueada até a reconciliação auditada")
   }
+  if (reconciliation.resolution !== "CONFIRMED_ABSENT") {
+    throw new Error("Cobrança bloqueada: a reconciliação confirmou uma cobrança remota")
+  }
 }
 
 type ResolvedReconciliationInput = {
