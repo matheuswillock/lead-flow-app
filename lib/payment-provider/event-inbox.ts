@@ -8,7 +8,7 @@ import {
 import type { PaymentAttemptStatus, ProviderWebhookEvent } from "./types"
 
 export type PaymentProviderEventInboxClaim =
-  | { readonly kind: "claimed" }
+  | { readonly kind: "claimed"; readonly claimToken: string }
   | { readonly kind: "duplicate" }
   | { readonly kind: "conflict" }
 
@@ -26,8 +26,8 @@ export interface PaymentProviderEventInboxRepository {
     readonly now: Date
     readonly staleBefore: Date
   }): Promise<PaymentProviderEventInboxClaim>
-  markProcessed(dedupeKey: string): Promise<void>
-  markFailed(dedupeKey: string, message: string): Promise<void>
+  markProcessed(input: { readonly dedupeKey: string; readonly claimToken: string }): Promise<void>
+  markFailed(input: { readonly dedupeKey: string; readonly claimToken: string; readonly message: string }): Promise<void>
 }
 
 export type PaymentProviderEventProcessResult =
@@ -83,6 +83,7 @@ export class PaymentProviderEventProcessor {
     if (claim.kind === "conflict") {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Conflito de payload para o mesmo evento")
     }
+    const claimToken = claim.claimToken
 
     let applied = false
     try {
@@ -100,12 +101,12 @@ export class PaymentProviderEventProcessor {
         await input.apply({ event: input.event, nextStatus: transition.nextStatus })
         applied = true
       }
-      await this.repository.markProcessed(dedupeKey)
+      await this.repository.markProcessed({ dedupeKey, claimToken })
       return transition
     } catch (error) {
       if (!applied) {
         const message = error instanceof Error ? error.message : "Falha ao processar evento"
-        await this.repository.markFailed(dedupeKey, message)
+        await this.repository.markFailed({ dedupeKey, claimToken, message })
       }
       throw error
     }

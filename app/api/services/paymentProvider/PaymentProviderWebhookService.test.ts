@@ -15,7 +15,7 @@ class MemoryRepository implements PaymentProviderEventInboxRepository {
     const current = this.hashes.get(input.dedupeKey)
     if (!current) {
       this.hashes.set(input.dedupeKey, input.payloadHash)
-      return { kind: "claimed" as const }
+      return { kind: "claimed" as const, claimToken: "test-claim-token" }
     }
     return current === input.payloadHash ? { kind: "duplicate" as const } : { kind: "conflict" as const }
   }

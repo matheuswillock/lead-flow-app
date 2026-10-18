@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PaymentProviderEventInboxClaim } from "@/lib/payment-provider/event-inbox"
@@ -16,8 +17,8 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
 
         if (existing) {
           if (existing.payloadHash !== input.payloadHash) return { kind: "conflict" as const }
-          const reclaimed = await reclaimExisting(transaction, input)
-          if (reclaimed) return { kind: "claimed" as const }
+          const claimToken = await reclaimExisting(transaction, input)
+          if (claimToken) return { kind: "claimed" as const, claimToken }
           return { kind: "duplicate" as const }
         }
 
@@ -33,6 +34,7 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
           },
         })
 
+        const claimToken = randomUUID()
         const inbox = await transaction.paymentProviderEventInbox.create({
           data: {
             dedupeKey: input.dedupeKey,
@@ -43,6 +45,7 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
             payloadHash: input.payloadHash,
             payload: toJsonValue(input.payload),
             normalizedEvent: input.normalizedEvent,
+            claimToken,
             tombstoneUntil: input.tombstoneUntil,
             status: "processing",
           },
@@ -57,7 +60,7 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
           },
         })
 
-        return { kind: "claimed" as const }
+        return { kind: "claimed" as const, claimToken }
       })
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
@@ -69,26 +72,28 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
       if (!existing) throw error
       if (existing.payloadHash !== input.payloadHash) return { kind: "conflict" }
       return prisma.$transaction(async (transaction) => {
-        const reclaimed = await reclaimExisting(transaction, input)
-        return reclaimed ? { kind: "claimed" as const } : { kind: "duplicate" as const }
+        const claimToken = await reclaimExisting(transaction, input)
+        return claimToken
+          ? { kind: "claimed" as const, claimToken }
+          : { kind: "duplicate" as const }
       })
     }
   }
 
-  async markProcessed(dedupeKey: string): Promise<void> {
+  async markProcessed(input: { dedupeKey: string; claimToken: string }): Promise<void> {
     await prisma.paymentProviderEventInbox.updateMany({
-      where: { dedupeKey, status: "processing" },
+      where: { dedupeKey: input.dedupeKey, claimToken: input.claimToken, status: "processing" },
       data: { status: "processed", processedAt: new Date(), errorMessage: null },
     })
   }
 
-  async markFailed(dedupeKey: string, message: string): Promise<void> {
+  async markFailed(input: { dedupeKey: string; claimToken: string; message: string }): Promise<void> {
     await prisma.paymentProviderEventInbox.updateMany({
-      where: { dedupeKey, status: "processing" },
+      where: { dedupeKey: input.dedupeKey, claimToken: input.claimToken, status: "processing" },
       data: {
         status: "failed",
         attemptCount: { increment: 1 },
-        errorMessage: message.slice(0, MAX_ERROR_LENGTH),
+        errorMessage: input.message.slice(0, MAX_ERROR_LENGTH),
       },
     })
   }
@@ -101,7 +106,8 @@ function isUniqueViolation(error: unknown): boolean {
 async function reclaimExisting(
   transaction: Prisma.TransactionClient,
   input: PaymentProviderEventClaimInput,
-): Promise<boolean> {
+): Promise<string | null> {
+  const claimToken = randomUUID()
   const result = await transaction.paymentProviderEventInbox.updateMany({
     where: {
       dedupeKey: input.dedupeKey,
@@ -114,10 +120,11 @@ async function reclaimExisting(
     data: {
       status: "processing",
       errorMessage: null,
+      claimToken,
       updatedAt: input.now,
     },
   })
-  return result.count === 1
+  return result.count === 1 ? claimToken : null
 }
 
 function toJsonValue(payload: string): Prisma.InputJsonValue {

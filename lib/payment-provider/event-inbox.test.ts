@@ -18,9 +18,15 @@ const event: ProviderWebhookEvent = {
 }
 
 class MemoryInboxRepository implements PaymentProviderEventInboxRepository {
+  private nextClaimToken = 1
   readonly rows = new Map<
     string,
-    { payloadHash: string; status: "processing" | "failed" | "processed"; updatedAt: Date }
+    {
+      payloadHash: string
+      status: "processing" | "failed" | "processed"
+      updatedAt: Date
+      claimToken: string
+    }
   >()
 
   async claim(input: Parameters<PaymentProviderEventInboxRepository["claim"]>[0]) {
@@ -30,30 +36,39 @@ class MemoryInboxRepository implements PaymentProviderEventInboxRepository {
         payloadHash: input.payloadHash,
         status: "processing",
         updatedAt: input.now,
+        claimToken: this.createClaimToken(),
       })
-      return { kind: "claimed" as const }
+      return { kind: "claimed" as const, claimToken: this.rows.get(input.dedupeKey)!.claimToken }
     }
     if (existing.payloadHash !== input.payloadHash) return { kind: "conflict" as const }
     if (existing.status === "failed") {
       existing.status = "processing"
       existing.updatedAt = input.now
-      return { kind: "claimed" as const }
+      existing.claimToken = this.createClaimToken()
+      return { kind: "claimed" as const, claimToken: existing.claimToken }
     }
     if (existing.status === "processing" && existing.updatedAt < input.staleBefore) {
       existing.updatedAt = input.now
-      return { kind: "claimed" as const }
+      existing.claimToken = this.createClaimToken()
+      return { kind: "claimed" as const, claimToken: existing.claimToken }
     }
     return { kind: "duplicate" as const }
   }
 
-  async markProcessed(dedupeKey: string): Promise<void> {
-    const row = this.rows.get(dedupeKey)
-    if (row) row.status = "processed"
+  async markProcessed(input: { dedupeKey: string; claimToken: string }): Promise<void> {
+    const row = this.rows.get(input.dedupeKey)
+    if (row?.claimToken === input.claimToken) row.status = "processed"
   }
 
-  async markFailed(dedupeKey: string): Promise<void> {
-    const row = this.rows.get(dedupeKey)
-    if (row) row.status = "failed"
+  async markFailed(input: { dedupeKey: string; claimToken: string }): Promise<void> {
+    const row = this.rows.get(input.dedupeKey)
+    if (row?.claimToken === input.claimToken) row.status = "failed"
+  }
+
+  private createClaimToken(): string {
+    const claimToken = `claim_${this.nextClaimToken}`
+    this.nextClaimToken += 1
+    return claimToken
   }
 }
 
@@ -259,5 +274,44 @@ describe("PaymentProviderEventProcessor", () => {
 
     const row = [...repository.rows.values()][0]
     expect(row?.status).toBe("failed")
+  })
+
+  it("does not let an expired claim owner fail its replacement claim", async () => {
+    const repository = new MemoryInboxRepository()
+    const now = new Date("2026-10-20T12:00:00Z")
+    const processor = new PaymentProviderEventProcessor(repository, {
+      now: () => now,
+      processingLeaseMs: 60_000,
+    })
+    let rejectFirstLookup: ((error: Error) => void) | undefined
+    let lookupCount = 0
+    const input = {
+      provider: "ABACATE_PAY" as const,
+      environment: "DEV" as const,
+      externalAccountContext: "account_a",
+      rawBody: '{"id":"evt_fenced"}',
+      event: { ...event, eventId: "evt_fenced" },
+      getCurrentStatus: async () => {
+        lookupCount += 1
+        if (lookupCount === 1) {
+          return new Promise<"PENDING">((_, reject) => {
+            rejectFirstLookup = reject
+          })
+        }
+        return "PENDING" as const
+      },
+      apply: async () => undefined,
+    }
+
+    const firstProcessor = processor.process(input)
+    await Promise.resolve()
+    const row = [...repository.rows.values()][0]
+    if (!row) throw new Error("claim row missing")
+    row.updatedAt = new Date("2026-10-20T11:00:00Z")
+
+    await expect(processor.process(input)).resolves.toEqual({ action: "apply", nextStatus: "CONFIRMED" })
+    rejectFirstLookup?.(new Error("original lookup failed"))
+    await expect(firstProcessor).rejects.toThrow("original lookup failed")
+    expect(row.status).toBe("processed")
   })
 })

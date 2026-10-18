@@ -6267,6 +6267,7 @@ model PaymentProviderEventInbox {
   payloadHash              String                         @map("payload_hash") @db.Text
   payload                  Json
   normalizedEvent          String?                        @map("normalized_event") @db.Text
+  claimToken               String                         @default(dbgenerated("gen_random_uuid()")) @map("claim_token") @db.Uuid
   status                   PaymentProviderEventInboxStatus @default(pending)
   attemptCount             Int                            @default(0) @map("attempt_count")
   errorMessage             String?                        @map("error_message") @db.Text

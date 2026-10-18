@@ -4323,6 +4323,7 @@ completed completed
     String payload_hash 
     Json payload 
     String normalized_event "❓"
+    String claim_token 
     PaymentProviderEventInboxStatus status 
     Int attempt_count 
     String error_message "❓"
