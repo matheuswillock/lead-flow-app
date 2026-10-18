@@ -209,4 +209,55 @@ describe("PaymentProviderEventProcessor", () => {
     await expect(processor.process(input)).resolves.toMatchObject({ action: "apply" })
     expect(applications).toBe(2)
   })
+
+  it("does not confirm an event that requires reconciliation", async () => {
+    const repository = new MemoryInboxRepository()
+    const processor = new PaymentProviderEventProcessor(repository)
+    let applications = 0
+
+    await expect(
+      processor.process({
+        provider: "ABACATE_PAY",
+        environment: "DEV",
+        externalAccountContext: "account_a",
+        rawBody: '{"id":"evt_unknown"}',
+        event: {
+          ...event,
+          eventId: "evt_unknown",
+          externalPaymentId: "pay_unknown",
+          status: "UNKNOWN",
+          reason: "REMOTE_ERROR",
+          requiresReconciliation: true,
+        },
+        currentStatus: "PENDING",
+        apply: async () => {
+          applications += 1
+        },
+      }),
+    ).resolves.toEqual({ action: "reconcile", nextStatus: "UNKNOWN" })
+
+    expect(applications).toBe(0)
+  })
+
+  it("marks the event failed when reading the current status fails", async () => {
+    const repository = new MemoryInboxRepository()
+    const processor = new PaymentProviderEventProcessor(repository)
+
+    await expect(
+      processor.process({
+        provider: "ABACATE_PAY",
+        environment: "DEV",
+        externalAccountContext: "account_a",
+        rawBody: '{"id":"evt_status_failure"}',
+        event: { ...event, eventId: "evt_status_failure" },
+        getCurrentStatus: async () => {
+          throw new Error("payment status unavailable")
+        },
+        apply: async () => undefined,
+      }),
+    ).rejects.toThrow("payment status unavailable")
+
+    const row = [...repository.rows.values()][0]
+    expect(row?.status).toBe("failed")
+  })
 })

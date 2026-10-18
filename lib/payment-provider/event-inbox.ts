@@ -84,17 +84,18 @@ export class PaymentProviderEventProcessor {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Conflito de payload para o mesmo evento")
     }
 
-    const currentStatus = input.getCurrentStatus
-      ? input.event.externalPaymentId
-        ? await input.getCurrentStatus(input.event.externalPaymentId)
-        : "UNKNOWN"
-      : input.currentStatus ?? "UNKNOWN"
-    const transition = applyProviderEventTransition({
-      currentStatus,
-      event: input.event.event,
-    })
     let applied = false
     try {
+      const transition = "requiresReconciliation" in input.event && input.event.requiresReconciliation
+        ? { action: "reconcile" as const, nextStatus: "UNKNOWN" as const }
+        : applyProviderEventTransition({
+            currentStatus: input.getCurrentStatus
+              ? input.event.externalPaymentId
+                ? await input.getCurrentStatus(input.event.externalPaymentId)
+                : "UNKNOWN"
+              : input.currentStatus ?? "UNKNOWN",
+            event: input.event.event,
+          })
       if (transition.action === "apply") {
         await input.apply({ event: input.event, nextStatus: transition.nextStatus })
         applied = true
