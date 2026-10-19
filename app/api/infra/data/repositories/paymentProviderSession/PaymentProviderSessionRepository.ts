@@ -1,8 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import {
-  PaymentProviderSessionStatus as PrismaSessionStatus,
-  Prisma,
-} from "@prisma/client"
+import { PaymentProviderSessionStatus as PrismaSessionStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
   assertAttemptStatusTransition,
@@ -14,6 +11,7 @@ import type {
   AcquirePaymentProviderAttemptLeaseInput,
   CreatePaymentProviderAttemptInput,
   CreatePaymentProviderSessionInput,
+  ApplyPaymentProviderEventInput,
   IPaymentProviderSessionRepository,
   PaymentProviderAttemptRecord,
   PaymentProviderSessionRecord,
@@ -54,6 +52,7 @@ const attemptSelect = {
   leaseUntil: true,
   fenceVersion: true,
   unknownReason: true,
+  lastEventClaimToken: true,
   session: {
     select: {
       tenantId: true,
@@ -98,53 +97,76 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
   async createAttempt(
     input: CreatePaymentProviderAttemptInput,
   ): Promise<StoredPaymentProviderAttemptRecord> {
-    const attempt = await prisma.$transaction(async (transaction) => {
-      const session = await transaction.paymentProviderSession.findUnique({
-        where: { id: input.sessionId },
-        select: {
-          providerKey: true,
-          environment: true,
-          externalAccountContext: true,
-          status: true,
-          expiresAt: true,
-          tenantId: true,
-          ownerType: true,
-          ownerId: true,
-        },
-      })
-      if (
-        !session ||
-        session.tenantId !== input.tenantId ||
-        session.ownerType !== input.ownerType ||
-        session.ownerId !== input.ownerId ||
-        session.status !== "OPEN" ||
-        session.expiresAt.getTime() <= input.now.getTime() ||
-        session.providerKey !== input.provider ||
-        session.environment !== input.environment ||
-        session.externalAccountContext !== input.externalAccountContext
-      ) {
-        throw new Error("A tentativa não corresponde ao binding da sessão")
-      }
-      const unresolvedAttempt = await transaction.paymentProviderAttempt.findFirst({
-        where: { sessionId: input.sessionId, status: "UNKNOWN" },
-        select: { id: true },
-      })
-      if (unresolvedAttempt) {
-        throw new Error("A sessão possui tentativa UNKNOWN pendente de reconciliação")
-      }
-      return transaction.paymentProviderAttempt.create({
-        data: {
-          sessionId: input.sessionId,
-          attemptNumber: input.attemptNumber,
-          idempotencyKey: input.idempotencyKey,
-          requestFingerprint: hashRequestFingerprint(input.requestFingerprint),
-          providerKey: input.provider,
-          environment: input.environment,
-          externalAccountContext: input.externalAccountContext,
-        },
-        select: attemptSelect,
-      })
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    const attempt = await prisma.$transaction(
+      async (transaction) => {
+        const session = await transaction.paymentProviderSession.findUnique({
+          where: { id: input.sessionId },
+          select: {
+            providerKey: true,
+            environment: true,
+            externalAccountContext: true,
+            status: true,
+            expiresAt: true,
+            tenantId: true,
+            ownerType: true,
+            ownerId: true,
+          },
+        })
+        if (
+          !session ||
+          session.tenantId !== input.tenantId ||
+          session.ownerType !== input.ownerType ||
+          session.ownerId !== input.ownerId ||
+          session.status !== "OPEN" ||
+          session.expiresAt.getTime() <= input.now.getTime() ||
+          session.providerKey !== input.provider ||
+          session.environment !== input.environment ||
+          session.externalAccountContext !== input.externalAccountContext
+        ) {
+          throw new Error("A tentativa não corresponde ao binding da sessão")
+        }
+        const requestFingerprint = hashRequestFingerprint(input.requestFingerprint)
+        const latestAttempt = await transaction.paymentProviderAttempt.findFirst({
+          where: { sessionId: input.sessionId },
+          orderBy: { attemptNumber: "desc" },
+          select: { attemptNumber: true },
+        })
+        const nextAttemptNumber = latestAttempt
+          ? latestAttempt.attemptNumber + 1
+          : input.attemptNumber
+        const attempt = await transaction.paymentProviderAttempt.upsert({
+          where: {
+            providerKey_environment_externalAccountContext_idempotencyKey: {
+              providerKey: input.provider,
+              environment: input.environment,
+              externalAccountContext: input.externalAccountContext,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
+          create: {
+            sessionId: input.sessionId,
+            attemptNumber: nextAttemptNumber,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint,
+            providerKey: input.provider,
+            environment: input.environment,
+            externalAccountContext: input.externalAccountContext,
+          },
+          update: {},
+          select: attemptSelect,
+        })
+        assertAttemptBindingMatches(attempt, input, requestFingerprint)
+        const unresolvedAttempt = await transaction.paymentProviderAttempt.findFirst({
+          where: { sessionId: input.sessionId, status: "UNKNOWN" },
+          select: { id: true },
+        })
+        if (unresolvedAttempt && unresolvedAttempt.id !== attempt.id) {
+          throw new Error("A sessão possui tentativa UNKNOWN pendente de reconciliação")
+        }
+        return attempt
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    )
     return toAttemptRecord(attempt)
   }
 
@@ -211,7 +233,8 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     const externalIdScope = normalizedExternalId
       ? { OR: [{ externalId: null }, { externalId: normalizedExternalId }] }
       : {}
-    const externalIdData = normalizedExternalId === undefined ? {} : { externalId: normalizedExternalId }
+    const externalIdData =
+      normalizedExternalId === undefined ? {} : { externalId: normalizedExternalId }
     const result = await prisma.paymentProviderAttempt.updateMany({
       // Reconciliation may finish an UNKNOWN attempt after checkout expiry;
       // payment operations remain restricted to live sessions.
@@ -252,6 +275,112 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
       select: attemptSelect,
     })
     return toAttemptRecord(attempt)
+  }
+
+  async findAttemptByExternalId(input: {
+    readonly externalId: string
+    readonly provider: PaymentProviderAttemptRecord["provider"]
+    readonly environment: PaymentProviderAttemptRecord["environment"]
+    readonly externalAccountContext: string
+  }): Promise<StoredPaymentProviderAttemptRecord | null> {
+    const externalId = input.externalId.trim()
+    if (!externalId) throw new Error("externalId é obrigatório")
+    const attempt = await prisma.paymentProviderAttempt.findFirst({
+      where: {
+        externalId,
+        providerKey: input.provider,
+        environment: input.environment,
+        externalAccountContext: input.externalAccountContext,
+      },
+      select: attemptSelect,
+    })
+    return attempt ? toAttemptRecord(attempt) : null
+  }
+
+  async applyEventWithClaim(
+    input: ApplyPaymentProviderEventInput,
+  ): Promise<StoredPaymentProviderAttemptRecord> {
+    if (!input.claimToken.trim()) throw new Error("Claim token é obrigatório")
+    if (!input.externalId.trim()) throw new Error("externalId é obrigatório")
+    assertAttemptStatusTransition(input.expectedStatus, input.nextStatus)
+    const result = await prisma.paymentProviderAttempt.updateMany({
+      where: {
+        externalId: input.externalId,
+        providerKey: input.provider,
+        environment: input.environment,
+        externalAccountContext: input.externalAccountContext,
+        status: input.expectedStatus,
+        NOT: { lastEventClaimToken: input.claimToken },
+      },
+      data: {
+        status: input.nextStatus,
+        lastEventClaimToken: input.claimToken,
+        leaseToken: null,
+        leaseUntil: null,
+      },
+    })
+    if (result.count !== 1) {
+      throw new PaymentProviderLeaseError(
+        "STALE_FENCE",
+        "O claim do evento não corresponde ao estado atual da tentativa",
+      )
+    }
+    const attempt = await prisma.paymentProviderAttempt.findFirstOrThrow({
+      where: {
+        externalId: input.externalId,
+        providerKey: input.provider,
+        environment: input.environment,
+        externalAccountContext: input.externalAccountContext,
+      },
+      select: attemptSelect,
+    })
+    return toAttemptRecord(attempt)
+  }
+
+  async findAttemptById(attemptId: string): Promise<StoredPaymentProviderAttemptRecord | null> {
+    const attempt = await prisma.paymentProviderAttempt.findUnique({
+      where: { id: attemptId },
+      select: attemptSelect,
+    })
+    return attempt ? toAttemptRecord(attempt) : null
+  }
+
+  async listAttempts(input: {
+    readonly status: PaymentAttemptStatus
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
+      throw new Error("Limite de tentativas inválido")
+    }
+    const attempts = await prisma.paymentProviderAttempt.findMany({
+      where: { status: input.status },
+      orderBy: { updatedAt: "asc" },
+      take: input.limit,
+      select: attemptSelect,
+    })
+    return attempts.map(toAttemptRecord)
+  }
+
+  async releaseAttemptLease(input: {
+    readonly attemptId: string
+    readonly lease: ProviderLeaseState
+    readonly now: Date
+  }): Promise<void> {
+    const result = await prisma.paymentProviderAttempt.updateMany({
+      where: {
+        id: input.attemptId,
+        leaseToken: input.lease.leaseToken,
+        fenceVersion: input.lease.fenceVersion,
+        leaseUntil: { gt: input.now },
+      },
+      data: { leaseToken: null, leaseUntil: null },
+    })
+    if (result.count !== 1) {
+      throw new PaymentProviderLeaseError(
+        "STALE_FENCE",
+        "A lease da tentativa não pode ser liberada com segurança",
+      )
+    }
   }
 }
 
@@ -364,6 +493,29 @@ function hashRequestFingerprint(value: string): string {
   const normalized = value.trim()
   if (!normalized) throw new Error("Fingerprint da requisição é obrigatório")
   return createHash("sha256").update(normalized, "utf8").digest("hex")
+}
+
+function assertAttemptBindingMatches(
+  attempt: {
+    sessionId: string
+    attemptNumber: number
+    idempotencyKey: string
+    requestFingerprint: string
+    providerKey: string
+    environment: string
+    externalAccountContext: string
+  },
+  input: CreatePaymentProviderAttemptInput,
+  requestFingerprint: string,
+): void {
+  const matches =
+    attempt.sessionId === input.sessionId &&
+    attempt.idempotencyKey === input.idempotencyKey &&
+    attempt.requestFingerprint === requestFingerprint &&
+    attempt.providerKey === input.provider &&
+    attempt.environment === input.environment &&
+    attempt.externalAccountContext === input.externalAccountContext
+  if (!matches) throw new Error("A idempotência da tentativa diverge da requisição")
 }
 
 function toLease(record: {

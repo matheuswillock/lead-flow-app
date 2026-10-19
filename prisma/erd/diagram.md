@@ -4526,6 +4526,7 @@ completed completed
     DateTime lease_until "❓"
     Int fence_version 
     String unknown_reason "❓"
+    String last_event_claim_token "❓"
     DateTime created_at 
     DateTime updated_at 
     }
