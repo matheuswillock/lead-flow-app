@@ -95,10 +95,25 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       externalAccountContext: selected.externalAccountContext,
     })
 
+    // Idempotent replay: if a prior call already advanced the attempt past
+    // CREATED, return its persisted state instead of re-querying the provider.
     if (attempt.status !== "CREATED") {
-      // Idempotent replay: return the instructions persisted on the first call
-      // instead of re-querying the provider.
-      return toStartedPayment(attempt, method, amountInCents, purchase.status, {
+      // Idempotent replay: if a prior call already advanced the attempt past
+      // CREATED, return its persisted state instead of re-querying the provider.
+      // Self-heal: a prior successful call may have won the attempt transition
+      // but crashed before activating the purchase. Attempt status CONFIRMED
+      // with a pending purchase indicates that window — activate now.
+      let purchaseStatus: PlatformPurchaseStatus = purchase.status
+      if (attempt.status === "CONFIRMED" && (purchaseStatus as string) !== "paid") {
+        const activated = await this.dependencies.purchases.markPaidOnceForProvider({
+          id: purchase.id,
+          provider: selected.provider,
+          externalId: attempt.externalId!,
+          paidAt: this.now(),
+        })
+        if (activated) purchaseStatus = "paid"
+      }
+      return toStartedPayment(attempt, method, amountInCents, purchaseStatus, {
         ...(attempt.paymentInstructions ? { pix: attempt.paymentInstructions } : {}),
       })
     }
@@ -114,7 +129,7 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
     })
     let outcome: Awaited<ReturnType<typeof createProviderPayment>>
     try {
-      outcome = await createProviderPayment(provider, method, input, purchase, amountInCents)
+      outcome = await createProviderPayment(provider, method, input, purchase, amountInCents, attempt)
     } catch (error) {
       // Provider initiation failed definitively (e.g. rejected card token): the
       // attempt stays CREATED, so the lease must be released now — otherwise
@@ -140,6 +155,9 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
         expectedStatus: "CREATED",
         operation: "PAYMENT",
         ...(outcome.externalId ? { externalId: outcome.externalId } : {}),
+        ...(outcome.reconciliationReference
+          ? { reconciliationReference: outcome.reconciliationReference }
+          : {}),
         unknownReason: outcome.reason,
       })
       return {
@@ -164,17 +182,10 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       })
     }
 
-    let purchaseStatus: PlatformPurchaseStatus = purchase.status
-    if (outcome.status === "CONFIRMED" && outcome.externalId) {
-      await this.dependencies.purchases.markPaidOnceForProvider({
-        id: purchase.id,
-        provider: selected.provider,
-        externalId: outcome.externalId,
-        paidAt: this.now(),
-      })
-      purchaseStatus = "paid"
-    }
-
+    // The fenced attempt transition (CREATED → CONFIRMED/FAILED/DISPUTED) is the
+    // authority for whether the purchase activates. Do it first so a concurrent
+    // refund webhook cannot mark the purchase paid while the attempt becomes
+    // REFUNDED.
     const updated = await this.dependencies.sessions.updateAttemptWithLease({
       attemptId: leasedAttempt.id,
       tenantId,
@@ -188,6 +199,18 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       ...(outcome.externalId ? { externalId: outcome.externalId } : {}),
       ...(outcome.pix ? { paymentInstructions: outcome.pix } : {}),
     })
+
+    let purchaseStatus: PlatformPurchaseStatus = purchase.status
+    if (outcome.status === "CONFIRMED" && outcome.externalId) {
+      await this.dependencies.purchases.markPaidOnceForProvider({
+        id: purchase.id,
+        provider: selected.provider,
+        externalId: outcome.externalId,
+        paidAt: this.now(),
+      })
+      purchaseStatus = "paid"
+    }
+
     return toStartedPayment(updated, method, amountInCents, purchaseStatus, outcome)
   }
 }
@@ -239,14 +262,24 @@ async function createProviderPayment(
   provider: OneTimePaymentCapability,
   method: PaymentMethod,
   input: StartPaymentInput,
-  purchase: { externalReference: string; productSlug: string },
+  purchase: { externalReference: string; productSlug: string; id: string },
   amountInCents: number,
+  attempt: { id: string },
 ) {
+  // Attempt-unique reference so an indeterminate initiation can be
+  // correlated with the provider charge via metadata (webhooks) and the
+  // provider query API (reconciliation). Format keeps the purchase prefix
+  // for operational visibility while being globally unique.
+  const attemptExternalReference = `${purchase.externalReference}:${attempt.id}`
   const common = {
     amountInCents,
     customer: input.customer,
-    externalReference: purchase.externalReference,
-    metadata: { purchaseId: input.purchaseId, productSlug: purchase.productSlug },
+    externalReference: attemptExternalReference,
+    metadata: {
+      purchaseId: input.purchaseId,
+      productSlug: purchase.productSlug,
+      attemptId: attempt.id,
+    },
   }
   if (method === "PIX") return provider.createPixPayment(common)
   return provider.createCardPayment({

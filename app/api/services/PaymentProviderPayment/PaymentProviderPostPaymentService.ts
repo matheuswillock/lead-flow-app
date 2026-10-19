@@ -64,7 +64,10 @@ export class PaymentProviderPostPaymentService {
         lease: leased.lease,
         now: this.now(),
         status: "REFUNDED",
-        expectedStatus: input.attempt.status,
+        // The lease read the current row after the caller supplied `input.attempt`,
+        // so a concurrent dispute/refund transition may have advanced the status in
+        // between. Fence on the leased status the refund decision was made against.
+        expectedStatus: leased.status,
         operation: "POST_PAYMENT",
         externalId: refunded.externalId,
       })

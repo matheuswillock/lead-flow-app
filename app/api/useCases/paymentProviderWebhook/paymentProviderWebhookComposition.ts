@@ -36,20 +36,54 @@ export async function createPaymentProviderWebhookService() {
       return attempt?.status ?? "UNKNOWN"
     },
     applyEvent: async ({ event, nextStatus, claimToken }) => {
-      if (!event.externalPaymentId) throw new Error("Evento sem ID externo não é aplicável")
-      const attempt = await paymentProviderSessionRepository.findAttemptByExternalId({
-        externalId: event.externalPaymentId,
+      // Resolve the attempt by provider charge id, or fall back to the
+      // attempt-unique correlation from the webhook metadata (indeterminate
+      // initiations that never received the charge id).
+      const attemptById = event.externalPaymentId
+        ? await paymentProviderSessionRepository.findAttemptByExternalId({
+            externalId: event.externalPaymentId,
+            provider: "ABACATE_PAY",
+            environment,
+            externalAccountContext: configuration.externalAccountContext,
+          })
+        : null
+      const attemptByCorrelation = !attemptById && event.attemptId
+        ? await paymentProviderSessionRepository.findAttemptById(event.attemptId)
+        : null
+      const attempt = attemptById ?? attemptByCorrelation
+      if (!attempt) throw new Error("Tentativa não encontrada para o evento")
+      // Validate the correlated attempt belongs to this provider/env/account
+      if (attemptByCorrelation) {
+        if (
+          attempt.provider !== "ABACATE_PAY" ||
+          attempt.environment !== environment ||
+          attempt.externalAccountContext !== configuration.externalAccountContext
+        ) {
+          throw new Error("Tentativa correlacionada não pertence a este provider")
+        }
+      }
+
+      // The fenced attempt transition (via claimToken) is the authority.
+      // Only after winning the transition do we bind the identity and
+      // activate the purchase — so a concurrent refund cannot win the CAS
+      // and leave the purchase paid while the attempt becomes REFUNDED.
+      await paymentProviderSessionRepository.applyEventWithClaim({
+        externalId: event.externalPaymentId!,
+        attemptId: attemptByCorrelation ? attempt.id : undefined,
         provider: "ABACATE_PAY",
         environment,
         externalAccountContext: configuration.externalAccountContext,
+        expectedStatus: attempt.status,
+        nextStatus,
+        claimToken,
+        now: new Date(),
       })
-      if (!attempt) throw new Error("Tentativa não encontrada para o evento")
 
       await paymentProviderIdentityRepository.bind({
         provider: "ABACATE_PAY",
         environment,
         externalAccountContext: configuration.externalAccountContext,
-        externalId: event.externalPaymentId,
+        externalId: event.externalPaymentId!,
         identityType: "PAYMENT",
         ownerType: attempt.ownerType,
         ownerId: attempt.ownerId,
@@ -62,22 +96,9 @@ export async function createPaymentProviderWebhookService() {
         await platformPurchaseRepository.markPaidOnceForProvider({
           id: attempt.ownerId,
           provider: "ABACATE_PAY",
-          externalId: event.externalPaymentId,
+          externalId: event.externalPaymentId!,
         })
       }
-
-      // Keep this conditional update last: if a downstream idempotent mutation
-      // fails, the attempt remains in its prior state and the inbox can retry.
-      await paymentProviderSessionRepository.applyEventWithClaim({
-        externalId: event.externalPaymentId,
-        provider: "ABACATE_PAY",
-        environment,
-        externalAccountContext: configuration.externalAccountContext,
-        expectedStatus: attempt.status,
-        nextStatus,
-        claimToken,
-        now: new Date(),
-      })
     },
   })
   return { service, externalAccountContext: configuration.externalAccountContext }

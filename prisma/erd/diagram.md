@@ -4522,6 +4522,7 @@ completed completed
     String external_account_context 
     PaymentProviderAttemptStatus status 
     String external_id "❓"
+    String reconciliation_reference "❓"
     String lease_token "❓"
     DateTime lease_until "❓"
     Int fence_version 

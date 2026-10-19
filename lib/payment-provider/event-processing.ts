@@ -29,14 +29,29 @@ export function hashProviderEventPayload(rawBody: string): string {
 export function applyProviderEventTransition(input: {
   readonly currentStatus: PaymentAttemptStatus
   readonly event: ProviderWebhookEvent["event"]
+  /**
+   * When true, the event was correlated to a specific attempt through an
+   * attempt-unique reference (e.g. metadata.attemptId in a signed webhook).
+   * This relaxes the UNKNOWN gate so a verified indeterminate payment can
+   * transition to its final status instead of stalling at reconcile.
+   */
+  readonly correlated?: boolean
 }): ProviderEventTransition {
-  if (input.currentStatus === "UNKNOWN") {
+  // A verified correlation means we know exactly which attempt this event
+  // belongs to, even if that attempt never learned its provider charge id.
+  // Treat UNKNOWN as CREATED (no provider state yet) so the transition
+  // proceeds normally via canAdvance.
+  const baseStatus = input.correlated && input.currentStatus === "UNKNOWN"
+    ? "CREATED"
+    : input.currentStatus
+
+  if (baseStatus === "UNKNOWN") {
     return { action: "reconcile", nextStatus: "UNKNOWN" }
   }
 
   const nextStatus = eventStatus(input.event)
-  if (input.currentStatus === nextStatus || !canAdvance(input.currentStatus, nextStatus)) {
-    return { action: "ignore", nextStatus: input.currentStatus }
+  if (baseStatus === nextStatus || !canAdvance(baseStatus, nextStatus)) {
+    return { action: "ignore", nextStatus: baseStatus }
   }
 
   return { action: "apply", nextStatus }

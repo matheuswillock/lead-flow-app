@@ -163,6 +163,13 @@ type ProviderWebhookEventBase = {
   readonly amountInCents: number | null
   readonly occurredAt: string | null
   readonly disputeEpoch: number | null
+  /**
+   * The attempt id extracted from the provider webhook payload (e.g.
+   * AbacatePay's metadata.attemptId). When present it provides an
+   * attempt-unique correlation for events whose attempt never received
+   * the provider charge id (indeterminate initiations).
+   */
+  readonly attemptId?: string
 }
 
 export type ProviderWebhookEvent =

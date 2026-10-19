@@ -114,7 +114,10 @@ export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenan
   })
   const maintenance = new PaymentProviderMaintenanceService({
     sessions: paymentProviderSessionRepository,
-    purchases: platformPurchaseRepository,
+    purchases: {
+      findById: platformPurchaseRepository.findById.bind(platformPurchaseRepository),
+      markPaidOnceForProvider: platformPurchaseRepository.markPaidOnceForProvider.bind(platformPurchaseRepository),
+    },
     reconciliation,
     resolveQueryProvider: ({ provider, environment: providerEnvironment }) => {
       if (provider !== "ABACATE_PAY" || providerEnvironment !== environment) {
@@ -128,6 +131,7 @@ export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenan
         checkoutId,
         productSlug,
       }),
+    now: () => new Date(),
   })
   return new PaymentProviderMaintenanceUseCase(maintenance)
 }

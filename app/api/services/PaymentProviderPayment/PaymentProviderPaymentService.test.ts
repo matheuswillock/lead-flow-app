@@ -8,6 +8,7 @@ type AttemptOverrides = Partial<{
   sessionId: string
   status: PaymentAttemptStatus
   externalId: string | null
+  reconciliationReference: string | null
   paymentInstructions: ProviderPixInstructions | null
 }>
 
@@ -26,6 +27,7 @@ function makeAttempt(overrides: AttemptOverrides = {}) {
     ownerId: "purchase-1",
     status: "CREATED" as PaymentAttemptStatus,
     externalId: null,
+    reconciliationReference: null,
     unknownReason: null,
     paymentInstructions: null,
     lease: { leaseToken: null, leaseUntil: null, fenceVersion: 0 },
@@ -105,6 +107,7 @@ function makeDependencies(
       listAttempts: mock(async () => []),
       listAttemptsPendingReconciliation: mock(async () => []),
       listAttemptsPendingEmailCreditEntitlements: mock(async () => []),
+      listAttemptsPendingPurchaseActivation: mock(async () => []),
       releaseAttemptLease: mock(async () => undefined),
     },
     identities: {

@@ -54,6 +54,16 @@ export interface PaymentQueryCapability {
     readonly externalId: string
     readonly method: PaymentMethod
   }): Promise<ProviderStatusResult>
+  /**
+   * Resolve the provider's charge id from an attempt-unique reference that was
+   * sent at creation time (PIX: externalId; CARD: not supported by provider).
+   * Returns null when the reference does not map to a charge (e.g. the
+   * indeterminate call never created a charge on the provider side).
+   */
+  findPaymentIdByReference?(input: {
+    readonly reference: string
+    readonly method: PaymentMethod
+  }): Promise<string | null>
 }
 
 export interface FullRefundCapability {

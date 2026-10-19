@@ -20,10 +20,11 @@ export type PaymentProviderMaintenanceDependencies = {
     IPaymentProviderSessionRepository,
     | "listAttemptsPendingReconciliation"
     | "listAttemptsPendingEmailCreditEntitlements"
+    | "listAttemptsPendingPurchaseActivation"
     | "acquireAttemptLease"
     | "releaseAttemptLease"
   >
-  readonly purchases: Pick<IPlatformPurchaseRepository, "findById">
+  readonly purchases: Pick<IPlatformPurchaseRepository, "findById" | "markPaidOnceForProvider">
   readonly reconciliation: Pick<PaymentProviderReconciliationService, "reconcile">
   readonly resolveQueryProvider: QueryProviderResolver
   readonly applyEmailCredits: (input: {
@@ -31,6 +32,7 @@ export type PaymentProviderMaintenanceDependencies = {
     readonly checkoutId: string
     readonly productSlug: string
   }) => Promise<ApplyEmailCreditsPaidPurchaseResult>
+  readonly now: () => Date
 }
 
 export type PaymentProviderMaintenanceResult = {
@@ -40,10 +42,16 @@ export type PaymentProviderMaintenanceResult = {
   readonly entitlementsApplied: number
   readonly entitlementsAlreadyApplied: number
   readonly entitlementFailures: number
+  readonly purchasesActivated: number
+  readonly purchaseActivationFailures: number
 }
 
 export class PaymentProviderMaintenanceService {
-  constructor(private readonly dependencies: PaymentProviderMaintenanceDependencies) {}
+  private readonly now: () => Date
+
+  constructor(private readonly dependencies: PaymentProviderMaintenanceDependencies) {
+    this.now = dependencies.now ?? (() => new Date())
+  }
 
   async run(input: { limit?: number } = {}): Promise<PaymentProviderMaintenanceResult> {
     const limit = input.limit ?? DEFAULT_BATCH_SIZE
@@ -143,6 +151,37 @@ export class PaymentProviderMaintenanceService {
       }
     }
 
+    // Repair pass: purchases whose attempt is CONFIRMED but whose purchase
+    // projection has not yet been updated (e.g. crash between the fenced
+    // attempt transition and the purchase activation). Only purchases still
+    // accepting payment enter the batch.
+    let purchasesActivated = 0
+    let purchaseActivationFailures = 0
+    const confirmedAttemptsForActivation =
+      await this.dependencies.sessions.listAttemptsPendingPurchaseActivation({
+        limit,
+      })
+    for (const attempt of confirmedAttemptsForActivation) {
+      if (!attempt.externalId) continue
+      const purchase = await this.dependencies.purchases.findById(attempt.ownerId)
+      if (!purchase) continue
+      try {
+        const activated = await this.dependencies.purchases.markPaidOnceForProvider({
+          id: purchase.id,
+          provider: attempt.provider,
+          externalId: attempt.externalId,
+          paidAt: this.now(),
+        })
+        if (activated) purchasesActivated += 1
+      } catch (error) {
+        purchaseActivationFailures += 1
+        console.error("[PaymentProviderMaintenanceService][activation] Error", {
+          attemptId: attempt.id,
+          message: error instanceof Error ? error.message : "unknown",
+        })
+      }
+    }
+
     return {
       reconciled,
       stillUnknown,
@@ -150,6 +189,8 @@ export class PaymentProviderMaintenanceService {
       entitlementsApplied,
       entitlementsAlreadyApplied,
       entitlementFailures,
+      purchasesActivated,
+      purchaseActivationFailures,
     }
   }
 }

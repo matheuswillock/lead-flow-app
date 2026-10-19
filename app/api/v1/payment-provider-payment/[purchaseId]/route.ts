@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getPaymentProviderPaymentUseCase } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import { getAuthenticatedSupabaseId } from "@/app/api/v1/utils/getAuthenticatedSupabaseId"
 
 type PaymentRequestBody = {
   method?: "PIX" | "CARD"
@@ -16,13 +18,14 @@ type PaymentRequestBody = {
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ purchaseId: string }> },
 ) {
-  const supabaseId = request.headers.get("x-supabase-user-id")
-  if (!supabaseId) {
-    return NextResponse.json(new Output(false, [], ["Não autenticado"], null), { status: 401 })
+  const auth = await getAuthenticatedSupabaseId(request)
+  if (auth.error) {
+    return NextResponse.json(auth.error, { status: auth.status })
   }
+  const supabaseId = auth.supabaseId
 
   try {
     const { purchaseId } = await params

@@ -104,6 +104,7 @@ export class PaymentProviderEventProcessor {
                 : "UNKNOWN"
               : input.currentStatus ?? "UNKNOWN",
             event: input.event.event,
+            correlated: Boolean(input.event.attemptId),
       })
       if (transition.action === "apply") {
         const leaseNow = this.options.now?.() ?? new Date()
