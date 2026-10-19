@@ -383,14 +383,17 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
     assertAttemptListLimit(input.limit)
     // Permanently ineligible attempts (non-purchase owners, purchases without a
-    // mappable billing type) are excluded before the LIMIT so they cannot
-    // occupy the maintenance batch forever.
+    // mappable billing type, attempts without a provider identifier) are
+    // excluded before the LIMIT so they cannot occupy the maintenance batch
+    // forever. Attempts without an external id can never be reconciled by the
+    // provider query, so the webhook remains their only resolution path.
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT a."id"
       FROM "payment_provider_attempts" a
       INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
       INNER JOIN "corretor_studio_platform_purchases" p ON p."id"::text = s."owner_id"
       WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
+        AND a."external_id" IS NOT NULL
         AND s."owner_type" = 'PLATFORM_PURCHASE'
         AND p."billing_type" IN ('PIX', 'CREDIT_CARD')
       ORDER BY a."updated_at" ASC
@@ -404,7 +407,11 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
     assertAttemptListLimit(input.limit)
     // Same reasoning as listAttemptsPendingReconciliation: only attempts whose
-    // purchase actually needs email credits enter the batch.
+    // purchase actually needs email credits enter the batch, and attempts that
+    // already granted credits are excluded before the LIMIT. The NOT EXISTS
+    // mirrors the apply path's idempotency key — (paymentId, account) with the
+    // maintenance loop always applying under the default "primary" account — so
+    // granted attempts cannot starve pending ones.
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT a."id"
       FROM "payment_provider_attempts" a
@@ -414,6 +421,12 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         AND a."external_id" IS NOT NULL
         AND s."owner_type" = 'PLATFORM_PURCHASE'
         AND p."purchase_type" = 'email_credits'::"platform_purchase_type"
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "corretor_studio_email_credit_payment_grants" g
+          WHERE g."paymentId" = a."external_id"
+            AND g."asaasAccount" = 'primary'
+        )
       ORDER BY a."updated_at" ASC
       LIMIT ${input.limit}
     `

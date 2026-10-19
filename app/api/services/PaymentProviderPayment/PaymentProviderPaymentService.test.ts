@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test"
+import { describe, expect, it, mock, spyOn } from "bun:test"
 import type { PaymentProviderPaymentServiceDependencies } from "./PaymentProviderPaymentService"
 import { PaymentProviderPaymentService } from "./PaymentProviderPaymentService"
 import type { PaymentAttemptStatus, ProviderPixInstructions } from "@/lib/payment-provider/types"
@@ -33,7 +33,11 @@ function makeAttempt(overrides: AttemptOverrides = {}) {
   }
 }
 
-function makeDependencies(outcome: unknown, attemptOverrides: AttemptOverrides = {}) {
+function makeDependencies(
+  outcome: unknown,
+  attemptOverrides: AttemptOverrides = {},
+  providerInitError?: Error,
+) {
   const attempt = makeAttempt(attemptOverrides)
   const updatedAttempt = makeAttempt({ status: "PENDING", externalId: "pay_1" })
   const dependencies: PaymentProviderPaymentServiceDependencies = {
@@ -110,8 +114,14 @@ function makeDependencies(outcome: unknown, attemptOverrides: AttemptOverrides =
     resolveProvider: mock(
       () =>
         ({
-          createPixPayment: mock(async () => outcome),
-          createCardPayment: mock(async () => outcome),
+          createPixPayment: mock(async () => {
+            if (providerInitError) throw providerInitError
+            return outcome
+          }),
+          createCardPayment: mock(async () => {
+            if (providerInitError) throw providerInitError
+            return outcome
+          }),
         }) as never,
     ),
     environment: "DEV",
@@ -221,5 +231,65 @@ describe("PaymentProviderPaymentService", () => {
       pix: persistedPix,
     })
     expect(dependencies.sessions.acquireAttemptLease).not.toHaveBeenCalled()
+  })
+
+  it("libera a lease quando a criação no provider falha definitivamente", async () => {
+    const dependencies = makeDependencies(
+      { status: "PENDING", externalId: "pay_1" },
+      {},
+      new Error("Token do cartão expirado"),
+    )
+    const service = new PaymentProviderPaymentService(dependencies)
+
+    await expect(
+      service.startPayment({
+        purchaseId: "purchase-1",
+        supabaseId: "supabase-1",
+        idempotencyKey: "idem-1",
+        method: "PIX",
+        customer: { name: "Cliente", email: "cliente@example.com", taxId: "123", cellphone: "999" },
+      }),
+    ).rejects.toThrow("Token do cartão expirado")
+
+    expect(dependencies.sessions.releaseAttemptLease).toHaveBeenCalledTimes(1)
+    expect(dependencies.sessions.releaseAttemptLease).toHaveBeenCalledWith({
+      attemptId: "attempt-1",
+      lease: {
+        leaseToken: "lease-1",
+        leaseUntil: new Date("2026-10-18T12:01:00.000Z"),
+        fenceVersion: 1,
+      },
+      now: expect.any(Date),
+    })
+    expect(dependencies.sessions.updateAttemptWithLease).not.toHaveBeenCalled()
+  })
+
+  it("não mascara o erro do provider quando a liberação da lease também falha", async () => {
+    const dependencies = makeDependencies(
+      { status: "PENDING", externalId: "pay_1" },
+      {},
+      new Error("Token do cartão expirado"),
+    )
+    dependencies.sessions.releaseAttemptLease = mock(async () => {
+      throw new Error("banco indisponível")
+    })
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {})
+    const service = new PaymentProviderPaymentService(dependencies)
+
+    try {
+      await expect(
+        service.startPayment({
+          purchaseId: "purchase-1",
+          supabaseId: "supabase-1",
+          idempotencyKey: "idem-1",
+          method: "PIX",
+          customer: { name: "Cliente", email: "cliente@example.com", taxId: "123", cellphone: "999" },
+        }),
+      ).rejects.toThrow("Token do cartão expirado")
+
+      expect(errorSpy).toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

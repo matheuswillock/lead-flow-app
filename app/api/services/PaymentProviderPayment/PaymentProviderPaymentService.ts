@@ -1,7 +1,10 @@
 import type { IPlatformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/IPlatformPurchaseRepository"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import type { IPaymentProviderIdentityRepository } from "@/app/api/infra/data/repositories/paymentProviderIdentity/IPaymentProviderIdentityRepository"
-import type { IPaymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
+import type {
+  IPaymentProviderSessionRepository,
+  StoredPaymentProviderAttemptRecord,
+} from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
 import type { PaymentProviderRouter } from "@/lib/payment-provider/router"
 import type { OneTimePaymentCapability } from "@/lib/payment-provider/contracts"
 import type {
@@ -109,7 +112,21 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       now,
       ttlMs: PAYMENT_LEASE_TTL_MS,
     })
-    const outcome = await createProviderPayment(provider, method, input, purchase, amountInCents)
+    let outcome: Awaited<ReturnType<typeof createProviderPayment>>
+    try {
+      outcome = await createProviderPayment(provider, method, input, purchase, amountInCents)
+    } catch (error) {
+      // Provider initiation failed definitively (e.g. rejected card token): the
+      // attempt stays CREATED, so the lease must be released now — otherwise
+      // every retry within the TTL would fail with LEASE_HELD.
+      await releaseLeaseBestEffort(
+        this.dependencies.sessions,
+        leasedAttempt.id,
+        leasedAttempt.lease,
+        this.now(),
+      )
+      throw error
+    }
 
     if (outcome.status === "UNKNOWN") {
       const updated = await this.dependencies.sessions.updateAttemptWithLease({
@@ -238,6 +255,22 @@ async function createProviderPayment(
     tokenIssuedAt: new Date(input.tokenIssuedAt!),
     installments: input.installments,
   })
+}
+
+async function releaseLeaseBestEffort(
+  sessions: Pick<IPaymentProviderSessionRepository, "releaseAttemptLease">,
+  attemptId: string,
+  lease: StoredPaymentProviderAttemptRecord["lease"],
+  now: Date,
+): Promise<void> {
+  try {
+    await sessions.releaseAttemptLease({ attemptId, lease, now })
+  } catch (error) {
+    console.error("[PaymentProviderPaymentService][release] Error", {
+      attemptId,
+      message: error instanceof Error ? error.message : "unknown",
+    })
+  }
 }
 
 function toStartedPayment(
