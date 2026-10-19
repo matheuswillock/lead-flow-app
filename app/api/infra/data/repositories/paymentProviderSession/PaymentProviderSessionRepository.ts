@@ -6,7 +6,7 @@ import {
   PaymentProviderLeaseError,
   type ProviderLeaseState,
 } from "@/lib/payment-provider/session"
-import type { PaymentAttemptStatus } from "@/lib/payment-provider/types"
+import type { PaymentAttemptStatus, ProviderPixInstructions } from "@/lib/payment-provider/types"
 import type {
   AcquirePaymentProviderAttemptLeaseInput,
   CreatePaymentProviderAttemptInput,
@@ -53,6 +53,7 @@ const attemptSelect = {
   fenceVersion: true,
   unknownReason: true,
   lastEventClaimToken: true,
+  paymentInstructions: true,
   session: {
     select: {
       tenantId: true,
@@ -157,11 +158,20 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         })
         assertAttemptBindingMatches(attempt, input, requestFingerprint)
         const unresolvedAttempt = await transaction.paymentProviderAttempt.findFirst({
-          where: { sessionId: input.sessionId, status: "UNKNOWN" },
+          where: {
+            status: "UNKNOWN",
+            session: {
+              is: {
+                tenantId: input.tenantId,
+                ownerType: input.ownerType,
+                ownerId: input.ownerId,
+              },
+            },
+          },
           select: { id: true },
         })
         if (unresolvedAttempt && unresolvedAttempt.id !== attempt.id) {
-          throw new Error("A sessão possui tentativa UNKNOWN pendente de reconciliação")
+          throw new Error("O checkout possui tentativa UNKNOWN pendente de reconciliação")
         }
         return attempt
       },
@@ -177,10 +187,13 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     const leaseToken = randomUUID()
     const leaseUntil = new Date(input.now.getTime() + input.ttlMs)
     return prisma.$transaction(async (transaction) => {
+      // Only payment initiation requires a live checkout session; reconciliation
+      // and post-payment flows (refunds, entitlement grants) may run after the
+      // session expiry.
       const sessionLifecycle =
-        input.purpose === "RECONCILIATION"
-          ? { status: { in: [PrismaSessionStatus.OPEN, PrismaSessionStatus.EXPIRED] } }
-          : { status: PrismaSessionStatus.OPEN, expiresAt: { gt: input.now } }
+        input.purpose === "PAYMENT"
+          ? { status: PrismaSessionStatus.OPEN, expiresAt: { gt: input.now } }
+          : { status: { in: [PrismaSessionStatus.OPEN, PrismaSessionStatus.EXPIRED] } }
       const result = await transaction.paymentProviderAttempt.updateMany({
         where: {
           id: input.attemptId,
@@ -236,8 +249,8 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     const externalIdData =
       normalizedExternalId === undefined ? {} : { externalId: normalizedExternalId }
     const result = await prisma.paymentProviderAttempt.updateMany({
-      // Reconciliation may finish an UNKNOWN attempt after checkout expiry;
-      // payment operations remain restricted to live sessions.
+      // Only payment initiation requires a live checkout session; reconciliation
+      // and post-payment operations may finish after the checkout expiry.
       where: {
         id: input.attemptId,
         status: input.expectedStatus,
@@ -249,9 +262,9 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
             tenantId: input.tenantId,
             ownerType: input.ownerType,
             ownerId: input.ownerId,
-            ...(input.operation === "RECONCILIATION"
-              ? { status: { in: [PrismaSessionStatus.OPEN, PrismaSessionStatus.EXPIRED] } }
-              : { status: PrismaSessionStatus.OPEN, expiresAt: { gt: input.now } }),
+            ...(input.operation === "PAYMENT"
+              ? { status: PrismaSessionStatus.OPEN, expiresAt: { gt: input.now } }
+              : { status: { in: [PrismaSessionStatus.OPEN, PrismaSessionStatus.EXPIRED] } }),
           },
         },
         ...externalIdScope,
@@ -260,6 +273,9 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         status: input.status,
         ...externalIdData,
         unknownReason: input.unknownReason,
+        ...(input.paymentInstructions
+          ? { paymentInstructions: input.paymentInstructions }
+          : {}),
         leaseUntil: null,
         leaseToken: null,
       },
@@ -310,7 +326,10 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         environment: input.environment,
         externalAccountContext: input.externalAccountContext,
         status: input.expectedStatus,
-        NOT: { lastEventClaimToken: input.claimToken },
+        OR: [
+          { lastEventClaimToken: null },
+          { NOT: { lastEventClaimToken: input.claimToken } },
+        ],
       },
       data: {
         status: input.nextStatus,
@@ -349,9 +368,7 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     readonly status: PaymentAttemptStatus
     readonly limit: number
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
-    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 500) {
-      throw new Error("Limite de tentativas inválido")
-    }
+    assertAttemptListLimit(input.limit)
     const attempts = await prisma.paymentProviderAttempt.findMany({
       where: { status: input.status },
       orderBy: { updatedAt: "asc" },
@@ -359,6 +376,48 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
       select: attemptSelect,
     })
     return attempts.map(toAttemptRecord)
+  }
+
+  async listAttemptsPendingReconciliation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    assertAttemptListLimit(input.limit)
+    // Permanently ineligible attempts (non-purchase owners, purchases without a
+    // mappable billing type) are excluded before the LIMIT so they cannot
+    // occupy the maintenance batch forever.
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT a."id"
+      FROM "payment_provider_attempts" a
+      INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+      INNER JOIN "corretor_studio_platform_purchases" p ON p."id"::text = s."owner_id"
+      WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
+        AND s."owner_type" = 'PLATFORM_PURCHASE'
+        AND p."billing_type" IN ('PIX', 'CREDIT_CARD')
+      ORDER BY a."updated_at" ASC
+      LIMIT ${input.limit}
+    `
+    return fetchAttemptsByIdsInOrder(rows)
+  }
+
+  async listAttemptsPendingEmailCreditEntitlements(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    assertAttemptListLimit(input.limit)
+    // Same reasoning as listAttemptsPendingReconciliation: only attempts whose
+    // purchase actually needs email credits enter the batch.
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT a."id"
+      FROM "payment_provider_attempts" a
+      INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+      INNER JOIN "corretor_studio_platform_purchases" p ON p."id"::text = s."owner_id"
+      WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
+        AND a."external_id" IS NOT NULL
+        AND s."owner_type" = 'PLATFORM_PURCHASE'
+        AND p."purchase_type" = 'email_credits'::"platform_purchase_type"
+      ORDER BY a."updated_at" ASC
+      LIMIT ${input.limit}
+    `
+    return fetchAttemptsByIdsInOrder(rows)
   }
 
   async releaseAttemptLease(input: {
@@ -464,6 +523,7 @@ function toAttemptRecord(record: {
   leaseUntil: Date | null
   fenceVersion: number
   unknownReason: string | null
+  paymentInstructions: Prisma.JsonValue
   session: {
     tenantId: string
     ownerType: string
@@ -485,8 +545,47 @@ function toAttemptRecord(record: {
     status: record.status as PaymentAttemptStatus,
     externalId: record.externalId,
     unknownReason: record.unknownReason,
+    paymentInstructions: toProviderPixInstructions(record.paymentInstructions),
     lease: toLease(record),
   }
+}
+
+function toProviderPixInstructions(value: Prisma.JsonValue): ProviderPixInstructions | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const candidate = value as Record<string, unknown>
+  if (
+    typeof candidate.brCode !== "string" ||
+    typeof candidate.brCodeBase64 !== "string" ||
+    typeof candidate.expiresAt !== "string"
+  ) {
+    return null
+  }
+  return {
+    brCode: candidate.brCode,
+    brCodeBase64: candidate.brCodeBase64,
+    expiresAt: candidate.expiresAt,
+  }
+}
+
+function assertAttemptListLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("Limite de tentativas inválido")
+  }
+}
+
+async function fetchAttemptsByIdsInOrder(
+  rows: readonly { id: string }[],
+): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+  if (rows.length === 0) return []
+  const attempts = await prisma.paymentProviderAttempt.findMany({
+    where: { id: { in: rows.map((row) => row.id) } },
+    select: attemptSelect,
+  })
+  const attemptsById = new Map(attempts.map((attempt) => [attempt.id, attempt]))
+  return rows
+    .map((row) => attemptsById.get(row.id))
+    .filter((attempt): attempt is (typeof attempts)[number] => attempt !== undefined)
+    .map(toAttemptRecord)
 }
 
 function hashRequestFingerprint(value: string): string {

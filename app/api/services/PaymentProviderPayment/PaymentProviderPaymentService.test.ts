@@ -1,16 +1,17 @@
 import { describe, expect, it, mock } from "bun:test"
 import type { PaymentProviderPaymentServiceDependencies } from "./PaymentProviderPaymentService"
 import { PaymentProviderPaymentService } from "./PaymentProviderPaymentService"
-import type { PaymentAttemptStatus } from "@/lib/payment-provider/types"
+import type { PaymentAttemptStatus, ProviderPixInstructions } from "@/lib/payment-provider/types"
 
-function makeAttempt(
-  overrides: Partial<{
-    id: string
-    sessionId: string
-    status: PaymentAttemptStatus
-    externalId: string | null
-  }> = {},
-) {
+type AttemptOverrides = Partial<{
+  id: string
+  sessionId: string
+  status: PaymentAttemptStatus
+  externalId: string | null
+  paymentInstructions: ProviderPixInstructions | null
+}>
+
+function makeAttempt(overrides: AttemptOverrides = {}) {
   return {
     id: "attempt-1",
     sessionId: "session-1",
@@ -26,13 +27,14 @@ function makeAttempt(
     status: "CREATED" as PaymentAttemptStatus,
     externalId: null,
     unknownReason: null,
+    paymentInstructions: null,
     lease: { leaseToken: null, leaseUntil: null, fenceVersion: 0 },
     ...overrides,
   }
 }
 
-function makeDependencies(outcome: unknown) {
-  const attempt = makeAttempt()
+function makeDependencies(outcome: unknown, attemptOverrides: AttemptOverrides = {}) {
+  const attempt = makeAttempt(attemptOverrides)
   const updatedAttempt = makeAttempt({ status: "PENDING", externalId: "pay_1" })
   const dependencies: PaymentProviderPaymentServiceDependencies = {
     purchases: {
@@ -97,6 +99,8 @@ function makeDependencies(outcome: unknown) {
       applyEventWithClaim: mock(async () => updatedAttempt),
       findAttemptById: mock(async () => null),
       listAttempts: mock(async () => []),
+      listAttemptsPendingReconciliation: mock(async () => []),
+      listAttemptsPendingEmailCreditEntitlements: mock(async () => []),
       releaseAttemptLease: mock(async () => undefined),
     },
     identities: {
@@ -151,6 +155,15 @@ describe("PaymentProviderPaymentService", () => {
       pix: { brCode: "000201" },
     })
     expect(dependencies.sessions.acquireAttemptLease).toHaveBeenCalledTimes(1)
+    expect(dependencies.sessions.updateAttemptWithLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentInstructions: {
+          brCode: "000201",
+          brCodeBase64: "base64",
+          expiresAt: "2026-10-18T13:00:00.000Z",
+        },
+      }),
+    )
     expect(dependencies.identities.bind).toHaveBeenCalledWith(
       expect.objectContaining({ externalId: "pay_1", identityType: "PAYMENT" }),
     )
@@ -180,5 +193,33 @@ describe("PaymentProviderPaymentService", () => {
     })
     expect(dependencies.identities.bind).not.toHaveBeenCalled()
     expect(JSON.stringify(result)).not.toContain("token")
+  })
+
+  it("devolve as instruções PIX persistidas em replay idempotente", async () => {
+    const persistedPix = {
+      brCode: "000201",
+      brCodeBase64: "base64",
+      expiresAt: "2026-10-18T13:00:00.000Z",
+    }
+    const dependencies = makeDependencies(
+      { status: "UNKNOWN", externalId: null, reason: "REMOTE_ERROR" },
+      { status: "PENDING", externalId: "pay_1", paymentInstructions: persistedPix },
+    )
+    const service = new PaymentProviderPaymentService(dependencies)
+
+    const result = await service.startPayment({
+      purchaseId: "purchase-1",
+      supabaseId: "supabase-1",
+      idempotencyKey: "idem-1",
+      method: "PIX",
+      customer: { name: "Cliente", email: "cliente@example.com", taxId: "123", cellphone: "999" },
+    })
+
+    expect(result).toMatchObject({
+      status: "PENDING",
+      externalId: "pay_1",
+      pix: persistedPix,
+    })
+    expect(dependencies.sessions.acquireAttemptLease).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,9 @@
 import type { PaymentCustomer } from "@/lib/payment-provider/contracts"
-import type { PaymentAttemptStatus, PaymentMethod } from "@/lib/payment-provider/types"
+import type {
+  PaymentAttemptStatus,
+  PaymentMethod,
+  ProviderPixInstructions,
+} from "@/lib/payment-provider/types"
 import type { PlatformPurchaseStatus } from "@prisma/client"
 
 export type StartPaymentInput = {
@@ -26,11 +30,7 @@ export type StartedPayment = {
   readonly requiresReconciliation?: true
   readonly reason?: "REMOTE_TIMEOUT" | "REMOTE_ERROR" | "MISSING_EXTERNAL_ID"
   readonly purchaseStatus: PlatformPurchaseStatus
-  readonly pix?: {
-    readonly brCode: string
-    readonly brCodeBase64: string
-    readonly expiresAt: string
-  }
+  readonly pix?: ProviderPixInstructions
 }
 
 export interface IPaymentProviderPaymentService {
