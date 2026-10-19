@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
+import { SubscriptionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 
@@ -73,6 +74,14 @@ export function buildStatusChange(plan: AccessPlan, mode: Mode) {
     : plan.before
 }
 
+function toSubscriptionStatus(value: string | null): SubscriptionStatus | null {
+  if (value === null) return null
+  if (!Object.values(SubscriptionStatus).includes(value as SubscriptionStatus)) {
+    throw new Error(`Status de assinatura inesperado: ${value}`)
+  }
+  return value as SubscriptionStatus
+}
+
 async function buildPlan(): Promise<AccessPlan> {
   const [team, profile, subscription, grace, crmEntitlement] = await Promise.all([
     prisma.team.findUnique({
@@ -138,7 +147,11 @@ async function buildPlan(): Promise<AccessPlan> {
 
 async function applyPlan(plan: AccessPlan, mode: Mode): Promise<void> {
   const operatorProfileId = process.env.BILLING_GRACE_OPERATOR_PROFILE_ID!
-  const statuses = buildStatusChange(plan, mode)
+  const rawStatuses = buildStatusChange(plan, mode)
+  const statuses = {
+    profileStatus: toSubscriptionStatus(rawStatuses.profileStatus),
+    profileSubscriptionStatus: toSubscriptionStatus(rawStatuses.profileSubscriptionStatus),
+  }
 
   await prisma.$transaction(async (tx) => {
     const [profile, subscription, grace, operator] = await Promise.all([
