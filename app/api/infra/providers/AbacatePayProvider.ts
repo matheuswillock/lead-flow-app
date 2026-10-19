@@ -188,6 +188,49 @@ export class AbacatePayProvider
     )
   }
 
+  async findPaymentIdByReference(input: {
+    readonly reference: string
+    readonly method: PaymentMethod
+  }): Promise<string | null> {
+    if (!isCanonicalIdentifier(input.reference)) {
+      throw new PaymentProviderError("VALIDATION_FAILED", "Referência inválida")
+    }
+    if (input.method !== "PIX" && input.method !== "CARD") {
+      throw new PaymentProviderError("VALIDATION_FAILED", "método de pagamento inválido")
+    }
+    const params = new URLSearchParams({
+      externalId: input.reference,
+      method: input.method,
+      limit: "1",
+    })
+    try {
+      const response = await this.requestJson<{
+        success?: unknown
+        data?: ReadonlyArray<{ id?: unknown }>
+      }>(`/v2/transparents/list?${params}`, {
+        method: "GET",
+        headers: this.authHeaders(),
+      })
+      if (response.success === false) {
+        throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "O provedor recusou a consulta")
+      }
+      const items = response.data ?? []
+      if (items.length === 0) return null
+      const chargeId = stringOrNull(items[0].id)
+      if (chargeId === null) return null
+      return chargeId
+    } catch (error) {
+      const providerError = this.providerError(error)
+      if (providerError.retryable || providerError.code === "REMOTE_TIMEOUT") {
+        throw providerError
+      }
+      throw new PaymentProviderError(
+        "REMOTE_REQUEST_FAILED",
+        "Falha ao consultar cobrança por referência",
+      )
+    }
+  }
+
   async refundFull(input: {
     readonly externalId: string
     readonly reason?: string
@@ -302,6 +345,13 @@ export class AbacatePayProvider
           ? "PAYMENT_REFUNDED"
           : "PAYMENT_DISPUTED"
     const externalPaymentId = stringOrNull(transparent.id ?? transparent.paymentId)
+    // Extract attemptId from metadata if present (signed by the provider, so
+    // trustworthy for correlating an indeterminate initiation).
+    const metadata = asRecord(transparent.metadata)
+    const attemptId = typeof metadata?.attemptId === "string" &&
+      isCanonicalIdentifier(metadata.attemptId)
+      ? metadata.attemptId
+      : undefined
     const result = {
       eventId: envelope.id,
       event: normalizedEvent,
@@ -311,6 +361,7 @@ export class AbacatePayProvider
       amountInCents: parseOptionalRemoteAmount(transparent.amount, "valor do webhook"),
       occurredAt: parseWebhookDate(transparent.updatedAt ?? transparent.createdAt),
       disputeEpoch: numberOrNull(transparent.disputeEpoch),
+      attemptId,
     }
     if (externalPaymentId === null) {
       return freezePaymentValue({

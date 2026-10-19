@@ -17,6 +17,7 @@ const attempt: StoredPaymentProviderAttemptRecord = {
   ownerId: "purchase-1",
   status: "CONFIRMED",
   externalId: "abacate-payment-1",
+  reconciliationReference: null,
   unknownReason: null,
   paymentInstructions: null,
   lease: { leaseToken: null, leaseUntil: null, fenceVersion: 0 },

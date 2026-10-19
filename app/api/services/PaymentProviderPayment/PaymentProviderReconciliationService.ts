@@ -55,7 +55,22 @@ export class PaymentProviderReconciliationService {
     })
     let transitioned = false
     try {
-      if (!input.attempt.externalId) {
+      let externalIdToQuery = input.attempt.externalId
+      // An attempt may carry the provider's charge id (externalId) from the
+      // initial response, or it may only have the attempt-unique reference
+      // returned by an indeterminate initiation. If we have the reference but
+      // not the charge id, resolve it via the provider's list endpoint.
+      if (!externalIdToQuery && input.attempt.reconciliationReference) {
+        const resolved = input.provider.findPaymentIdByReference
+          ? await input.provider.findPaymentIdByReference({
+              reference: input.attempt.reconciliationReference,
+              method: input.method,
+            })
+          : null
+        if (resolved) externalIdToQuery = resolved
+      }
+
+      if (!externalIdToQuery) {
         return {
           attemptId: input.attempt.id,
           status: "UNKNOWN",
@@ -66,7 +81,7 @@ export class PaymentProviderReconciliationService {
       }
 
       const result = await input.provider.getStatus({
-        externalId: input.attempt.externalId,
+        externalId: externalIdToQuery,
         method: input.method,
       })
       if (result.status === "UNKNOWN") {
@@ -114,6 +129,7 @@ export class PaymentProviderReconciliationService {
         expectedStatus: "UNKNOWN",
         operation: "RECONCILIATION",
         externalId: result.externalId,
+        reconciliationReference: undefined,
       })
       transitioned = true
       return {

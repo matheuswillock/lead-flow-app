@@ -26,6 +26,7 @@ function makeAttempt(
     ownerId: "purchase-1",
     status: "UNKNOWN",
     externalId: "abacate-payment-1",
+    reconciliationReference: null,
     unknownReason: "REMOTE_TIMEOUT",
     paymentInstructions: null,
     lease,
@@ -68,6 +69,7 @@ describe("PaymentProviderMaintenanceService", () => {
     })
     const listAttemptsPendingReconciliation = mock(async () => [unknownAttempt])
     const listAttemptsPendingEmailCreditEntitlements = mock(async () => [confirmedAttempt])
+    const listAttemptsPendingPurchaseActivation = mock(async () => [])
     const acquireAttemptLease = mock(async ({ attemptId }: { attemptId: string }) =>
       makeAttempt({ id: attemptId, status: "CONFIRMED" }),
     )
@@ -89,10 +91,14 @@ describe("PaymentProviderMaintenanceService", () => {
       sessions: {
         listAttemptsPendingReconciliation,
         listAttemptsPendingEmailCreditEntitlements,
+        listAttemptsPendingPurchaseActivation,
         acquireAttemptLease,
         releaseAttemptLease,
       },
-      purchases: { findById: async () => makePurchase() },
+      purchases: {
+        findById: async () => makePurchase(),
+        markPaidOnceForProvider: mock(async () => null),
+      },
       reconciliation: { reconcile },
       resolveQueryProvider: () => ({
         getStatus: mock(async () => {
@@ -100,6 +106,7 @@ describe("PaymentProviderMaintenanceService", () => {
         }),
       }),
       applyEmailCredits,
+      now: () => new Date("2026-10-18T12:00:00.000Z"),
     })
 
     const result = await service.run({ limit: 10 })
@@ -111,6 +118,8 @@ describe("PaymentProviderMaintenanceService", () => {
       entitlementsApplied: 1,
       entitlementsAlreadyApplied: 0,
       entitlementFailures: 0,
+      purchasesActivated: 0,
+      purchaseActivationFailures: 0,
     })
     expect(listAttemptsPendingReconciliation).toHaveBeenCalledWith({ limit: 10 })
     expect(listAttemptsPendingEmailCreditEntitlements).toHaveBeenCalledWith({ limit: 10 })
@@ -134,6 +143,7 @@ describe("PaymentProviderMaintenanceService", () => {
       sessions: {
         listAttemptsPendingReconciliation: async () => [],
         listAttemptsPendingEmailCreditEntitlements: async () => [confirmedAttempt],
+        listAttemptsPendingPurchaseActivation: async () => [],
         acquireAttemptLease: async () => {
           throw new Error("não deveria adquirir lease")
         },
@@ -141,6 +151,7 @@ describe("PaymentProviderMaintenanceService", () => {
       },
       purchases: {
         findById: async () => makePurchase({ purchaseType: "feature_addon" }),
+        markPaidOnceForProvider: mock(async () => null),
       },
       reconciliation: {
         reconcile: async () => {
@@ -153,11 +164,13 @@ describe("PaymentProviderMaintenanceService", () => {
         },
       }),
       applyEmailCredits,
+      now: () => new Date("2026-10-18T12:00:00.000Z"),
     })
 
     const result = await service.run()
 
     expect(result.entitlementsApplied).toBe(0)
+    expect(result.purchasesActivated).toBe(0)
     expect(applyEmailCredits).not.toHaveBeenCalled()
   })
 
@@ -176,12 +189,16 @@ describe("PaymentProviderMaintenanceService", () => {
       sessions: {
         listAttemptsPendingReconciliation: async () => [],
         listAttemptsPendingEmailCreditEntitlements: async () => [confirmedAttempt],
+        listAttemptsPendingPurchaseActivation: async () => [],
         acquireAttemptLease: async () => {
           throw new Error("lease indisponível")
         },
         releaseAttemptLease: async () => undefined,
       },
-      purchases: { findById: async () => makePurchase() },
+      purchases: {
+        findById: async () => makePurchase(),
+        markPaidOnceForProvider: mock(async () => null),
+      },
       reconciliation: {
         reconcile: async () => {
           throw new Error("não deveria reconciliar")
@@ -193,12 +210,14 @@ describe("PaymentProviderMaintenanceService", () => {
         },
       }),
       applyEmailCredits,
+      now: () => new Date("2026-10-18T12:00:00.000Z"),
     })
 
     const result = await service.run()
 
     expect(result.entitlementsApplied).toBe(0)
     expect(result.entitlementFailures).toBe(1)
+    expect(result.purchasesActivated).toBe(0)
     expect(applyEmailCredits).not.toHaveBeenCalled()
   })
 })

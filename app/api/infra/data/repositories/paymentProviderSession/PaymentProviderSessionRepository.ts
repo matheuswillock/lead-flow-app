@@ -48,6 +48,7 @@ const attemptSelect = {
   externalAccountContext: true,
   status: true,
   externalId: true,
+  reconciliationReference: true,
   leaseToken: true,
   leaseUntil: true,
   fenceVersion: true,
@@ -272,6 +273,9 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
       data: {
         status: input.status,
         ...externalIdData,
+        ...(input.reconciliationReference === undefined
+          ? {}
+          : { reconciliationReference: normalizeReconciliationReference(input.reconciliationReference) }),
         unknownReason: input.unknownReason,
         ...(input.paymentInstructions
           ? { paymentInstructions: input.paymentInstructions }
@@ -318,10 +322,11 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
   ): Promise<StoredPaymentProviderAttemptRecord> {
     if (!input.claimToken.trim()) throw new Error("Claim token é obrigatório")
     if (!input.externalId.trim()) throw new Error("externalId é obrigatório")
+    const attemptId = input.attemptId?.trim()
     assertAttemptStatusTransition(input.expectedStatus, input.nextStatus)
     const result = await prisma.paymentProviderAttempt.updateMany({
       where: {
-        externalId: input.externalId,
+        ...(attemptId ? { id: attemptId } : { externalId: input.externalId }),
         providerKey: input.provider,
         environment: input.environment,
         externalAccountContext: input.externalAccountContext,
@@ -330,9 +335,15 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
           { lastEventClaimToken: null },
           { NOT: { lastEventClaimToken: input.claimToken } },
         ],
+        ...(attemptId
+          ? { AND: [{ OR: [{ externalId: null }, { externalId: input.externalId }] }] }
+          : {}),
       },
       data: {
         status: input.nextStatus,
+        // A correlated event resolves an attempt that never learned its provider
+        // id (indeterminate initiation); the verified webhook carries it.
+        ...(attemptId ? { externalId: input.externalId } : {}),
         lastEventClaimToken: input.claimToken,
         leaseToken: null,
         leaseUntil: null,
@@ -346,7 +357,7 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     }
     const attempt = await prisma.paymentProviderAttempt.findFirstOrThrow({
       where: {
-        externalId: input.externalId,
+        ...(attemptId ? { id: attemptId } : { externalId: input.externalId }),
         providerKey: input.provider,
         environment: input.environment,
         externalAccountContext: input.externalAccountContext,
@@ -383,19 +394,49 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
     assertAttemptListLimit(input.limit)
     // Permanently ineligible attempts (non-purchase owners, purchases without a
-    // mappable billing type, attempts without a provider identifier) are
-    // excluded before the LIMIT so they cannot occupy the maintenance batch
-    // forever. Attempts without an external id can never be reconciled by the
-    // provider query, so the webhook remains their only resolution path.
+    // mappable billing type) are excluded before the LIMIT so they cannot occupy
+    // the maintenance batch forever. Attempts without a provider identifier are
+    // still eligible while they carry the attempt-unique reference returned by
+    // an indeterminate initiation: the reconciliation worker resolves the charge
+    // by that reference. The bounded age window keeps lookups that can never
+    // match (the provider never created a charge) from running forever.
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT a."id"
       FROM "payment_provider_attempts" a
       INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
       INNER JOIN "corretor_studio_platform_purchases" p ON p."id"::text = s."owner_id"
       WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
-        AND a."external_id" IS NOT NULL
         AND s."owner_type" = 'PLATFORM_PURCHASE'
         AND p."billing_type" IN ('PIX', 'CREDIT_CARD')
+        AND (
+          a."external_id" IS NOT NULL
+          OR (
+            a."reconciliation_reference" IS NOT NULL
+            AND a."updated_at" >= now() - interval '7 days'
+          )
+        )
+      ORDER BY a."updated_at" ASC
+      LIMIT ${input.limit}
+    `
+    return fetchAttemptsByIdsInOrder(rows)
+  }
+
+  async listAttemptsPendingPurchaseActivation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    assertAttemptListLimit(input.limit)
+    // Repair path for the window between the fenced attempt transition and the
+    // purchase activation projection. Only purchases that still accept payment
+    // enter the batch, so terminal or already-paid purchases are never touched.
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT a."id"
+      FROM "payment_provider_attempts" a
+      INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+      INNER JOIN "corretor_studio_platform_purchases" p ON p."id"::text = s."owner_id"
+      WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
+        AND a."external_id" IS NOT NULL
+        AND s."owner_type" = 'PLATFORM_PURCHASE'
+        AND p."status" IN ('pending', 'awaiting_payment')
       ORDER BY a."updated_at" ASC
       LIMIT ${input.limit}
     `
@@ -468,6 +509,16 @@ function normalizeExternalId(externalId: string | null | undefined): string | un
   return normalized
 }
 
+function normalizeReconciliationReference(
+  reference: string | null | undefined,
+): string | null | undefined {
+  if (reference === undefined) return undefined
+  if (reference === null) return null
+  const normalized = reference.trim()
+  if (!normalized) return null
+  return normalized
+}
+
 function assertSessionBindingMatches(
   session: {
     providerKey: string
@@ -532,6 +583,7 @@ function toAttemptRecord(record: {
   externalAccountContext: string
   status: string
   externalId: string | null
+  reconciliationReference: string | null
   leaseToken: string | null
   leaseUntil: Date | null
   fenceVersion: number
@@ -557,6 +609,7 @@ function toAttemptRecord(record: {
     ownerId: record.session.ownerId,
     status: record.status as PaymentAttemptStatus,
     externalId: record.externalId,
+    reconciliationReference: record.reconciliationReference,
     unknownReason: record.unknownReason,
     paymentInstructions: toProviderPixInstructions(record.paymentInstructions),
     lease: toLease(record),

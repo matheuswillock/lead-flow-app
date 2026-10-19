@@ -63,6 +63,7 @@ export type StoredPaymentProviderAttemptRecord = {
   readonly ownerId: string
   readonly status: PaymentAttemptStatus
   readonly externalId: string | null
+  readonly reconciliationReference: string | null
   readonly unknownReason: string | null
   readonly paymentInstructions: ProviderPixInstructions | null
   readonly lease: ProviderLeaseState
@@ -89,12 +90,19 @@ export type UpdatePaymentProviderAttemptInput = {
   readonly expectedStatus: PaymentAttemptStatus
   readonly operation: "PAYMENT" | "POST_PAYMENT" | "RECONCILIATION"
   readonly externalId?: string | null
+  readonly reconciliationReference?: string | null
   readonly unknownReason?: string | null
   readonly paymentInstructions?: ProviderPixInstructions
 }
 
 export type ApplyPaymentProviderEventInput = {
   readonly externalId: string
+  /**
+   * Fences the claim by attempt id instead of the external id. Used when a
+   * verified webhook resolves an indeterminate attempt through its
+   * attempt-unique correlation: the event then adopts `externalId` on the row.
+   */
+  readonly attemptId?: string
   readonly provider: PaymentProviderKey
   readonly environment: PaymentProviderEnvironment
   readonly externalAccountContext: string
@@ -139,6 +147,9 @@ export interface IPaymentProviderSessionRepository {
     readonly limit: number
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
   listAttemptsPendingEmailCreditEntitlements(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  listAttemptsPendingPurchaseActivation(input: {
     readonly limit: number
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
   releaseAttemptLease(input: ReleasePaymentProviderAttemptLeaseInput): Promise<void>

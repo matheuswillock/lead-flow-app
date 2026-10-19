@@ -6510,6 +6510,7 @@ model PaymentProviderAttempt {
   externalAccountContext String                       @map("external_account_context") @db.Text
   status                 PaymentProviderAttemptStatus @default(CREATED)
   externalId             String?                      @map("external_id") @db.Text
+  reconciliationReference String?                     @map("reconciliation_reference") @db.Text
   leaseToken             String?                      @map("lease_token") @db.Uuid
   leaseUntil             DateTime?                    @map("lease_until") @db.Timestamptz(6)
   fenceVersion           Int                          @default(0) @map("fence_version")
