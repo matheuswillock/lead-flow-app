@@ -95,13 +95,15 @@ type ProviderPaymentResultBase = {
   readonly currency: "BRL"
 }
 
+export type ProviderPixInstructions = {
+  readonly brCode: string
+  readonly brCodeBase64: string
+  readonly expiresAt: string
+}
+
 export type ProviderPixPaymentResult = ProviderPaymentResultBase & {
   readonly method: "PIX"
-  readonly pix: {
-    readonly brCode: string
-    readonly brCodeBase64: string
-    readonly expiresAt: string
-  }
+  readonly pix: ProviderPixInstructions
 }
 
 export type ProviderCardPaymentResult = ProviderPaymentResultBase & {

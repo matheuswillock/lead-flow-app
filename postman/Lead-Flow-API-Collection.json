@@ -10228,6 +10228,87 @@
           ]
         },
         {
+          "name": "Payment Provider (Phase 3)",
+          "item": [
+            {
+              "name": "POST Refund Payment Attempt (Manager)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Solicitação aprovada pelo financeiro\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/payment-provider/attempts/:attemptId/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "payment-provider",
+                    "attempts",
+                    ":attemptId",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "attemptId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Solicita refund integral de uma tentativa ABACATE_PAY. Requer acesso de manager no backoffice; operação idempotente para tentativa já reembolsada."
+              },
+              "response": []
+            },
+            {
+              "name": "GET Payment Provider Maintenance (DEV Cron)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{cronSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payment-provider/cron/maintenance?limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payment-provider",
+                    "cron",
+                    "maintenance"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    }
+                  ]
+                },
+                "description": "Worker manual/autorizado para reconciliar tentativas UNKNOWN e aplicar créditos de e-mail confirmados. A Fase 3 rejeita ambiente PRODUCTION; não está agendado no vercel.json."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Backoffice Platform Users",
           "item": [
             {
@@ -17789,6 +17870,50 @@
               ]
             },
             "description": "Reabre checkout genérico sem duplicar cobrança."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Payment Provider (PIX/Card)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "phase3-{{$timestamp}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"PIX\",\n  \"customer\": {\n    \"name\": \"Joao Silva\",\n    \"email\": \"joao@example.com\",\n    \"taxId\": \"12345678901\",\n    \"cellphone\": \"11999999999\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payment-provider-payment/:purchaseId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payment-provider-payment",
+                ":purchaseId"
+              ],
+              "variable": [
+                {
+                  "key": "purchaseId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Inicia cobrança Phase 3 no provider roteado. Em DEV, aceita PIX ou cartão tokenizado; nunca enviar PAN/CVV. Exige Idempotency-Key e x-supabase-user-id."
           },
           "response": []
         },

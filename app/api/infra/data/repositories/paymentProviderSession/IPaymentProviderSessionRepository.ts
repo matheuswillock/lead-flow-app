@@ -4,6 +4,7 @@ import type {
   PaymentAttemptStatus,
   PaymentProviderEnvironment,
   PaymentProviderKey,
+  ProviderPixInstructions,
 } from "@/lib/payment-provider/types"
 
 export type CreatePaymentProviderSessionInput = {
@@ -63,6 +64,7 @@ export type StoredPaymentProviderAttemptRecord = {
   readonly status: PaymentAttemptStatus
   readonly externalId: string | null
   readonly unknownReason: string | null
+  readonly paymentInstructions: ProviderPixInstructions | null
   readonly lease: ProviderLeaseState
 }
 
@@ -88,6 +90,24 @@ export type UpdatePaymentProviderAttemptInput = {
   readonly operation: "PAYMENT" | "POST_PAYMENT" | "RECONCILIATION"
   readonly externalId?: string | null
   readonly unknownReason?: string | null
+  readonly paymentInstructions?: ProviderPixInstructions
+}
+
+export type ApplyPaymentProviderEventInput = {
+  readonly externalId: string
+  readonly provider: PaymentProviderKey
+  readonly environment: PaymentProviderEnvironment
+  readonly externalAccountContext: string
+  readonly expectedStatus: PaymentAttemptStatus
+  readonly nextStatus: PaymentAttemptStatus
+  readonly claimToken: string
+  readonly now: Date
+}
+
+export type ReleasePaymentProviderAttemptLeaseInput = {
+  readonly attemptId: string
+  readonly lease: ProviderLeaseState
+  readonly now: Date
 }
 
 export interface IPaymentProviderSessionRepository {
@@ -101,4 +121,25 @@ export interface IPaymentProviderSessionRepository {
   updateAttemptWithLease(
     input: UpdatePaymentProviderAttemptInput,
   ): Promise<StoredPaymentProviderAttemptRecord>
+  findAttemptByExternalId(input: {
+    readonly externalId: string
+    readonly provider: PaymentProviderKey
+    readonly environment: PaymentProviderEnvironment
+    readonly externalAccountContext: string
+  }): Promise<StoredPaymentProviderAttemptRecord | null>
+  applyEventWithClaim(
+    input: ApplyPaymentProviderEventInput,
+  ): Promise<StoredPaymentProviderAttemptRecord>
+  findAttemptById(attemptId: string): Promise<StoredPaymentProviderAttemptRecord | null>
+  listAttempts(input: {
+    readonly status: PaymentAttemptStatus
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  listAttemptsPendingReconciliation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  listAttemptsPendingEmailCreditEntitlements(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  releaseAttemptLease(input: ReleasePaymentProviderAttemptLeaseInput): Promise<void>
 }
