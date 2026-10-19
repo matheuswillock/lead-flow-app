@@ -113,7 +113,11 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
 
   async hasActiveTemporaryBillingGrace(teamId: string): Promise<boolean> {
     const grace = await prisma.billingAccessGrace.findFirst({
-      where: { teamId, isActive: true, expiresAt: { gt: new Date() } },
+      where: {
+        teamId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
       select: { id: true },
     })
     return Boolean(grace)

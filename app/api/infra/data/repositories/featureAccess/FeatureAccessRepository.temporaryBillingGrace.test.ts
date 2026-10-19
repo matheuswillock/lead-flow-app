@@ -21,7 +21,22 @@ describe("FeatureAccessRepository.hasActiveTemporaryBillingGrace", () => {
     expect(query?.where).toMatchObject({
       teamId: "team-pertto",
       isActive: true,
-      expiresAt: { gt: expect.any(Date) },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+    })
+  })
+
+  it("considera concessão operacional sem expiração", async () => {
+    billingAccessGraceFindFirst.mockResolvedValueOnce({ id: "grace-indefinite" })
+
+    const hasGrace = await new FeatureAccessRepository().hasActiveTemporaryBillingGrace("team-rcacc")
+
+    expect(hasGrace).toBe(true)
+    expect(billingAccessGraceFindFirst.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        teamId: "team-rcacc",
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: expect.any(Date) } }],
+      },
     })
   })
 
