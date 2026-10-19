@@ -178,6 +178,107 @@ enum AsaasWebhookEventStatus {
   @@map("asaas_webhook_event_status")
 }
 
+enum PaymentProviderEventInboxStatus {
+  pending
+  processing
+  processed
+  failed
+  tombstoned
+
+  @@map("payment_provider_event_inbox_status")
+}
+
+enum PaymentProviderEventOutboxStatus {
+  pending
+  processing
+  delivered
+  failed
+  dead_letter
+
+  @@map("payment_provider_event_outbox_status")
+}
+
+enum PaymentProviderKey {
+  ASAAS
+  ABACATE_PAY
+
+  @@map("payment_provider_key")
+}
+
+enum PaymentProviderEnvironment {
+  DEV
+  PRODUCTION
+
+  @@map("payment_provider_environment")
+}
+
+enum PaymentProviderRolloutState {
+  DISABLED
+  SANDBOX_VALIDATED
+  APPROVED
+  ACTIVE
+
+  @@map("payment_provider_rollout_state")
+}
+
+enum PaymentProviderHealthStatus {
+  UNKNOWN
+  HEALTHY
+  UNHEALTHY
+
+  @@map("payment_provider_health_status")
+}
+
+enum PaymentProviderRoute {
+  NEW_ROUTER
+  LEGACY_ASAAS
+
+  @@map("payment_provider_route")
+}
+
+enum PaymentProviderIdentityType {
+  CUSTOMER
+  PAYMENT
+  SUBSCRIPTION
+  CHECKOUT
+  SESSION
+
+  @@map("payment_provider_identity_type")
+}
+
+enum PaymentProviderMigrationGateStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  EXPIRED
+
+  @@map("payment_provider_migration_gate_status")
+}
+
+enum PaymentProviderSessionStatus {
+  OPEN
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELED
+
+  @@map("payment_provider_session_status")
+}
+
+enum PaymentProviderAttemptStatus {
+  CREATED
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+  DISPUTED
+  EXPIRED
+  CANCELED
+  UNKNOWN
+
+  @@map("payment_provider_attempt_status")
+}
+
 /// Conta Asaas — E4 de [[10 — Fundações Multi-conta — Backend]] (DA4/DA5).
 /// `primary` = conta nova (CNPJ correto); `legacy` = conta antiga, somente
 /// leitura. Todo dado existente antes desta migration nasce `legacy` (era a
@@ -1177,6 +1278,7 @@ model Profile {
   proposalReviewsReviewed     LeadProposalReview[]   @relation("LeadProposalReviewReviewer")
   requiredDocumentsReviewed   LeadRequiredDocument[] @relation("LeadRequiredDocumentReviewer")
   leadDocumentRequestsCreated LeadDocumentRequest[]  @relation("LeadDocumentRequestCreator")
+  paymentProviderMigrationGatesAuthorized PaymentProviderMigrationGate[] @relation("PaymentProviderMigrationGateAuthorizer")
 
   authorizedSponsorRecord        BackofficeAuthorizedSponsor?       @relation("AuthorizedSponsorProfile")
   authorizedSponsorsGranted      BackofficeAuthorizedSponsor[]      @relation("AuthorizedSponsorGrantedBy")
@@ -6215,6 +6317,214 @@ model AsaasWebhookEvent {
   @@index([status, receivedAt(sort: Desc)], map: "asaas_webhook_events_status_received_at_idx")
   @@index([status, nextAttemptAt], map: "asaas_webhook_events_status_next_attempt_at_idx")
   @@map("asaas_webhook_events")
+}
+
+/// Dedupe durável de eventos externos. A chave inclui ambiente e conta para
+/// impedir colisões entre sandbox/produção e entre contas do mesmo provider.
+model PaymentProviderEventDedupe {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupeKey                String   @unique @map("dedupe_key") @db.Text
+  providerKey              String   @map("provider_key") @db.Text
+  environment              String   @db.Text
+  externalAccountContext   String   @map("external_account_context") @db.Text
+  eventId                  String   @map("event_id") @db.Text
+  payloadHash              String   @map("payload_hash") @db.Text
+  tombstoneUntil           DateTime @map("tombstone_until") @db.Timestamptz(6)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([providerKey, environment, externalAccountContext, eventId], map: "payment_provider_event_dedupe_scope_event_key")
+  @@index([tombstoneUntil], map: "payment_provider_event_dedupe_tombstone_until_idx")
+  @@map("payment_provider_event_dedupe")
+}
+
+/// Inbox append-only de eventos recebidos. O payload permanece bruto para
+/// auditoria/replay, enquanto o hash detecta reentrega adulterada.
+model PaymentProviderEventInbox {
+  id                       String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupeKey                String                         @unique @map("dedupe_key") @db.Text
+  providerKey              String                         @map("provider_key") @db.Text
+  environment              String                         @db.Text
+  externalAccountContext   String                         @map("external_account_context") @db.Text
+  eventId                  String                         @map("event_id") @db.Text
+  payloadHash              String                         @map("payload_hash") @db.Text
+  rawPayload               String                         @map("raw_payload") @db.Text
+  payload                  Json
+  normalizedEvent          String?                        @map("normalized_event") @db.Text
+  claimToken               String                         @default(dbgenerated("gen_random_uuid()")) @map("claim_token") @db.Uuid
+  status                   PaymentProviderEventInboxStatus @default(pending)
+  attemptCount             Int                            @default(0) @map("attempt_count")
+  errorMessage             String?                        @map("error_message") @db.Text
+  receivedAt               DateTime                       @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt              DateTime?                      @map("processed_at") @db.Timestamptz(6)
+  tombstoneUntil           DateTime?                      @map("tombstone_until") @db.Timestamptz(6)
+  updatedAt                DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  outboxEvents             PaymentProviderEventOutbox[]
+
+  @@unique([providerKey, environment, externalAccountContext, eventId], map: "payment_provider_event_inbox_scope_event_key")
+  @@index([status, receivedAt(sort: Desc)], map: "payment_provider_event_inbox_status_received_at_idx")
+  @@map("payment_provider_event_inbox")
+}
+
+/// Outbox para publicação/efeitos derivados do evento, sem retry cego do
+/// pagamento externo. Falhas ficam visíveis e podem entrar em dead-letter.
+model PaymentProviderEventOutbox {
+  id             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inboxId        String                           @map("inbox_id") @db.Uuid
+  eventType      String                           @map("event_type") @db.Text
+  rawPayload     String                           @map("raw_payload") @db.Text
+  payload        Json
+  status         PaymentProviderEventOutboxStatus @default(pending)
+  attemptCount   Int                              @default(0) @map("attempt_count")
+  nextAttemptAt  DateTime                         @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  leasedUntil    DateTime?                        @map("leased_until") @db.Timestamptz(6)
+  terminalAt     DateTime?                        @map("terminal_at") @db.Timestamptz(6)
+  errorMessage   String?                          @map("error_message") @db.Text
+  createdAt      DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  inbox          PaymentProviderEventInbox        @relation(fields: [inboxId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([inboxId, eventType], map: "payment_provider_event_outbox_inbox_event_key")
+  @@index([status, nextAttemptAt], map: "payment_provider_event_outbox_status_next_attempt_at_idx")
+  @@map("payment_provider_event_outbox")
+}
+
+/// Configuração global server-owned. Segredos permanecem fora deste registro;
+/// o runtime resolve-os do mecanismo seguro de configuração do provider.
+model PaymentProviderConfig {
+  id                     String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerKey            PaymentProviderKey        @map("provider_key")
+  environment            PaymentProviderEnvironment
+  enabled                Boolean                   @default(false)
+  isDefault              Boolean                   @default(false) @map("is_default")
+  externalAccountContext String                    @map("external_account_context") @db.Text
+  rolloutState            PaymentProviderRolloutState @default(DISABLED) @map("rollout_state")
+  killSwitch              Boolean                   @default(false) @map("kill_switch")
+  configRevision          Int                       @default(1) @map("config_revision")
+  healthStatus             PaymentProviderHealthStatus @default(UNKNOWN) @map("health_status")
+  lastHealthCheckAt        DateTime?                 @map("last_health_check_at") @db.Timestamptz(6)
+  lastErrorCode            String?                   @map("last_error_code") @db.Text
+  lastErrorMessage         String?                   @map("last_error_message") @db.Text
+  publicKeyFingerprint     String?                   @map("public_key_fingerprint") @db.Text
+  logoUrl                  String?                   @map("logo_url") @db.Text
+  logoAltText              String?                   @map("logo_alt_text") @db.Text
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([providerKey, environment], map: "payment_provider_configs_provider_environment_key")
+  @@index([environment, enabled, rolloutState], map: "payment_provider_configs_routing_idx")
+  @@index([environment, isDefault], map: "payment_provider_configs_default_idx")
+  @@map("payment_provider_configs")
+}
+
+/// Identidade externa imutável por provider, ambiente, conta e tipo.
+/// ownerId/tenantId são textos porque o router atende entidades de domínios
+/// diferentes; a autoridade e o vínculo são sempre resolvidos server-side.
+model PaymentProviderIdentity {
+  id                     String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerKey            PaymentProviderKey         @map("provider_key")
+  environment            PaymentProviderEnvironment
+  externalAccountContext String                      @map("external_account_context") @db.Text
+  externalId             String                      @map("external_id") @db.Text
+  identityType           PaymentProviderIdentityType @map("identity_type")
+  ownerType              String                      @map("owner_type") @db.Text
+  ownerId                String                      @map("owner_id") @db.Text
+  tenantId               String                      @map("tenant_id") @db.Text
+  route                  PaymentProviderRoute
+  routeVersion           String                      @map("route_version") @db.Text
+  bindingRevision        Int                         @default(1) @map("binding_revision")
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([providerKey, environment, externalAccountContext, externalId, identityType], map: "payment_provider_identities_external_scope_key")
+  @@unique([tenantId, providerKey, environment, externalAccountContext, ownerType, ownerId, identityType], map: "payment_provider_identities_owner_scope_key")
+  @@index([tenantId, ownerType, ownerId], map: "payment_provider_identities_owner_idx")
+  @@index([route, routeVersion], map: "payment_provider_identities_route_idx")
+  @@map("payment_provider_identities")
+}
+
+/// Gate server-owned para qualquer ponte entre rotas de pagamento.
+model PaymentProviderMigrationGate {
+  id                     String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceRoute            PaymentProviderRoute              @map("source_route")
+  targetRoute            PaymentProviderRoute              @map("target_route")
+  version                String                            @db.Text
+  environment            PaymentProviderEnvironment
+  externalAccountContext String                            @map("external_account_context") @db.Text
+  authorizedByProfileId  String                            @map("authorized_by_profile_id") @db.Uuid
+  status                 PaymentProviderMigrationGateStatus @default(PENDING)
+  expiresAt              DateTime                          @map("expires_at") @db.Timestamptz(6)
+  activatedAt            DateTime?                         @map("activated_at") @db.Timestamptz(6)
+  revokedAt              DateTime?                         @map("revoked_at") @db.Timestamptz(6)
+  createdAt              DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  authorizedBy Profile @relation("PaymentProviderMigrationGateAuthorizer", fields: [authorizedByProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceRoute, targetRoute, version, environment, externalAccountContext], map: "payment_provider_migration_gates_binding_key")
+  @@index([status, expiresAt], map: "payment_provider_migration_gates_status_expiry_idx")
+  @@index([authorizedByProfileId], map: "payment_provider_migration_gates_authorized_by_idx")
+  @@map("payment_provider_migration_gates")
+}
+
+/// Sessão durável de checkout/tentativa. Nenhum segredo ou dado de cartão é
+/// persistido; o fingerprint é um hash server-side da requisição normalizada.
+model PaymentProviderSession {
+  id                     String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String                       @map("tenant_id") @db.Text
+  ownerType              String                       @map("owner_type") @db.Text
+  ownerId                String                       @map("owner_id") @db.Text
+  idempotencyKey         String                       @map("idempotency_key") @db.Text
+  environment            PaymentProviderEnvironment
+  providerKey            PaymentProviderKey           @map("provider_key")
+  externalAccountContext String                       @map("external_account_context") @db.Text
+  route                  PaymentProviderRoute
+  routeVersion           String                       @map("route_version") @db.Text
+  status                 PaymentProviderSessionStatus @default(OPEN)
+  leaseToken             String?                      @map("lease_token") @db.Uuid
+  leaseUntil             DateTime?                    @map("lease_until") @db.Timestamptz(6)
+  fenceVersion           Int                          @default(0) @map("fence_version")
+  expiresAt              DateTime                     @map("expires_at") @db.Timestamptz(6)
+  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  attempts PaymentProviderAttempt[]
+
+  @@unique([tenantId, ownerType, ownerId, idempotencyKey], map: "payment_provider_sessions_owner_idempotency_key")
+  @@index([status, expiresAt], map: "payment_provider_sessions_status_expiry_idx")
+  @@index([leaseUntil], map: "payment_provider_sessions_lease_idx")
+  @@map("payment_provider_sessions")
+}
+
+/// Tentativa durável com fencing monotônico. A criação/retry só pode ser
+/// aplicada enquanto o token e a versão de fence permanecem atuais.
+model PaymentProviderAttempt {
+  id                     String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId              String                       @map("session_id") @db.Uuid
+  attemptNumber          Int                          @map("attempt_number")
+  idempotencyKey         String                       @map("idempotency_key") @db.Text
+  requestFingerprint     String                       @map("request_fingerprint") @db.Text
+  providerKey            PaymentProviderKey           @map("provider_key")
+  environment            PaymentProviderEnvironment
+  externalAccountContext String                       @map("external_account_context") @db.Text
+  status                 PaymentProviderAttemptStatus @default(CREATED)
+  externalId             String?                      @map("external_id") @db.Text
+  leaseToken             String?                      @map("lease_token") @db.Uuid
+  leaseUntil             DateTime?                    @map("lease_until") @db.Timestamptz(6)
+  fenceVersion           Int                          @default(0) @map("fence_version")
+  unknownReason          String?                      @map("unknown_reason") @db.Text
+  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  session PaymentProviderSession @relation(fields: [sessionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([sessionId, attemptNumber], map: "payment_provider_attempts_session_number_key")
+  @@unique([providerKey, environment, externalAccountContext, idempotencyKey], map: "payment_provider_attempts_provider_idempotency_key")
+  @@unique([providerKey, environment, externalAccountContext, externalId], map: "payment_provider_attempts_provider_external_id_key")
+  @@index([sessionId, status], map: "payment_provider_attempts_session_status_idx")
+  @@index([leaseUntil], map: "payment_provider_attempts_lease_idx")
+  @@map("payment_provider_attempts")
 }
 
 enum BackofficeBotHostOpsJobType {
