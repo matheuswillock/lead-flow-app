@@ -4,6 +4,7 @@ import type {
   PaymentAttemptStatus,
   PaymentProviderEnvironment,
   PaymentProviderKey,
+  ProviderPixInstructions,
 } from "@/lib/payment-provider/types"
 
 export type CreatePaymentProviderSessionInput = {
@@ -63,6 +64,7 @@ export type StoredPaymentProviderAttemptRecord = {
   readonly status: PaymentAttemptStatus
   readonly externalId: string | null
   readonly unknownReason: string | null
+  readonly paymentInstructions: ProviderPixInstructions | null
   readonly lease: ProviderLeaseState
 }
 
@@ -88,6 +90,7 @@ export type UpdatePaymentProviderAttemptInput = {
   readonly operation: "PAYMENT" | "POST_PAYMENT" | "RECONCILIATION"
   readonly externalId?: string | null
   readonly unknownReason?: string | null
+  readonly paymentInstructions?: ProviderPixInstructions
 }
 
 export type ApplyPaymentProviderEventInput = {
@@ -130,6 +133,12 @@ export interface IPaymentProviderSessionRepository {
   findAttemptById(attemptId: string): Promise<StoredPaymentProviderAttemptRecord | null>
   listAttempts(input: {
     readonly status: PaymentAttemptStatus
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  listAttemptsPendingReconciliation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  listAttemptsPendingEmailCreditEntitlements(input: {
     readonly limit: number
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
   releaseAttemptLease(input: ReleasePaymentProviderAttemptLeaseInput): Promise<void>

@@ -6515,6 +6515,7 @@ model PaymentProviderAttempt {
   fenceVersion           Int                          @default(0) @map("fence_version")
   unknownReason          String?                      @map("unknown_reason") @db.Text
   lastEventClaimToken    String?                      @map("last_event_claim_token") @db.Uuid
+  paymentInstructions    Json?                        @map("payment_instructions")
   createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -18,7 +18,10 @@ type QueryProviderResolver = (input: {
 export type PaymentProviderMaintenanceDependencies = {
   readonly sessions: Pick<
     IPaymentProviderSessionRepository,
-    "listAttempts" | "acquireAttemptLease" | "releaseAttemptLease"
+    | "listAttemptsPendingReconciliation"
+    | "listAttemptsPendingEmailCreditEntitlements"
+    | "acquireAttemptLease"
+    | "releaseAttemptLease"
   >
   readonly purchases: Pick<IPlatformPurchaseRepository, "findById">
   readonly reconciliation: Pick<PaymentProviderReconciliationService, "reconcile">
@@ -44,8 +47,9 @@ export class PaymentProviderMaintenanceService {
 
   async run(input: { limit?: number } = {}): Promise<PaymentProviderMaintenanceResult> {
     const limit = input.limit ?? DEFAULT_BATCH_SIZE
-    const unknownAttempts = await this.dependencies.sessions.listAttempts({
-      status: "UNKNOWN",
+    // Only attempts whose purchase can actually be reconciled enter the batch,
+    // so permanently ineligible rows never occupy the limit window.
+    const unknownAttempts = await this.dependencies.sessions.listAttemptsPendingReconciliation({
       limit,
     })
     let reconciled = 0
@@ -54,7 +58,7 @@ export class PaymentProviderMaintenanceService {
 
     for (const attempt of unknownAttempts) {
       const purchase = await this.dependencies.purchases.findById(attempt.ownerId)
-      if (attempt.ownerType !== "PLATFORM_PURCHASE" || !purchase) {
+      if (!purchase) {
         skipped += 1
         continue
       }
@@ -83,15 +87,17 @@ export class PaymentProviderMaintenanceService {
       }
     }
 
-    const confirmedAttempts = await this.dependencies.sessions.listAttempts({
-      status: "CONFIRMED",
-      limit,
-    })
+    // Same eligibility filter for the email-credit entitlement batch: only
+    // CONFIRMED attempts bound to an email_credits purchase are selected.
+    const confirmedAttempts =
+      await this.dependencies.sessions.listAttemptsPendingEmailCreditEntitlements({
+        limit,
+      })
     let entitlementsApplied = 0
     let entitlementsAlreadyApplied = 0
     let entitlementFailures = 0
     for (const attempt of confirmedAttempts) {
-      if (attempt.ownerType !== "PLATFORM_PURCHASE" || !attempt.externalId) continue
+      if (!attempt.externalId) continue
       const purchase = await this.dependencies.purchases.findById(attempt.ownerId)
       if (!purchase || purchase.purchaseType !== "email_credits") continue
       let lease: StoredPaymentProviderAttemptRecord | null = null

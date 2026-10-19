@@ -27,6 +27,7 @@ function makeAttempt(
     status: "UNKNOWN",
     externalId: "abacate-payment-1",
     unknownReason: "REMOTE_TIMEOUT",
+    paymentInstructions: null,
     lease,
     ...overrides,
   }
@@ -65,9 +66,8 @@ describe("PaymentProviderMaintenanceService", () => {
       status: "CONFIRMED",
       externalId: "abacate-payment-2",
     })
-    const listAttempts = mock(async ({ status }: { status: string }) =>
-      status === "UNKNOWN" ? [unknownAttempt] : [confirmedAttempt],
-    )
+    const listAttemptsPendingReconciliation = mock(async () => [unknownAttempt])
+    const listAttemptsPendingEmailCreditEntitlements = mock(async () => [confirmedAttempt])
     const acquireAttemptLease = mock(async ({ attemptId }: { attemptId: string }) =>
       makeAttempt({ id: attemptId, status: "CONFIRMED" }),
     )
@@ -86,7 +86,12 @@ describe("PaymentProviderMaintenanceService", () => {
     }))
 
     const service = new PaymentProviderMaintenanceService({
-      sessions: { listAttempts, acquireAttemptLease, releaseAttemptLease },
+      sessions: {
+        listAttemptsPendingReconciliation,
+        listAttemptsPendingEmailCreditEntitlements,
+        acquireAttemptLease,
+        releaseAttemptLease,
+      },
       purchases: { findById: async () => makePurchase() },
       reconciliation: { reconcile },
       resolveQueryProvider: () => ({
@@ -107,6 +112,8 @@ describe("PaymentProviderMaintenanceService", () => {
       entitlementsAlreadyApplied: 0,
       entitlementFailures: 0,
     })
+    expect(listAttemptsPendingReconciliation).toHaveBeenCalledWith({ limit: 10 })
+    expect(listAttemptsPendingEmailCreditEntitlements).toHaveBeenCalledWith({ limit: 10 })
     expect(reconcile).toHaveBeenCalledTimes(1)
     expect(applyEmailCredits).toHaveBeenCalledWith({
       paymentId: "abacate-payment-2",
@@ -125,7 +132,8 @@ describe("PaymentProviderMaintenanceService", () => {
     }))
     const service = new PaymentProviderMaintenanceService({
       sessions: {
-        listAttempts: async ({ status }) => (status === "CONFIRMED" ? [confirmedAttempt] : []),
+        listAttemptsPendingReconciliation: async () => [],
+        listAttemptsPendingEmailCreditEntitlements: async () => [confirmedAttempt],
         acquireAttemptLease: async () => {
           throw new Error("não deveria adquirir lease")
         },
@@ -150,6 +158,47 @@ describe("PaymentProviderMaintenanceService", () => {
     const result = await service.run()
 
     expect(result.entitlementsApplied).toBe(0)
+    expect(applyEmailCredits).not.toHaveBeenCalled()
+  })
+
+  it("não aplica entitlement quando a lease não é adquirida", async () => {
+    const confirmedAttempt = makeAttempt({
+      id: "attempt-3",
+      status: "CONFIRMED",
+      externalId: "abacate-payment-3",
+    })
+    const applyEmailCredits = mock(async () => ({
+      handled: true,
+      applied: true,
+      alreadyApplied: false,
+    }))
+    const service = new PaymentProviderMaintenanceService({
+      sessions: {
+        listAttemptsPendingReconciliation: async () => [],
+        listAttemptsPendingEmailCreditEntitlements: async () => [confirmedAttempt],
+        acquireAttemptLease: async () => {
+          throw new Error("lease indisponível")
+        },
+        releaseAttemptLease: async () => undefined,
+      },
+      purchases: { findById: async () => makePurchase() },
+      reconciliation: {
+        reconcile: async () => {
+          throw new Error("não deveria reconciliar")
+        },
+      },
+      resolveQueryProvider: () => ({
+        getStatus: async () => {
+          throw new Error("não deveria consultar")
+        },
+      }),
+      applyEmailCredits,
+    })
+
+    const result = await service.run()
+
+    expect(result.entitlementsApplied).toBe(0)
+    expect(result.entitlementFailures).toBe(1)
     expect(applyEmailCredits).not.toHaveBeenCalled()
   })
 })

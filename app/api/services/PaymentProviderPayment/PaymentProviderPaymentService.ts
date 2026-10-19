@@ -93,7 +93,11 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
     })
 
     if (attempt.status !== "CREATED") {
-      return toStartedPayment(attempt, method, amountInCents, purchase.status)
+      // Idempotent replay: return the instructions persisted on the first call
+      // instead of re-querying the provider.
+      return toStartedPayment(attempt, method, amountInCents, purchase.status, {
+        ...(attempt.paymentInstructions ? { pix: attempt.paymentInstructions } : {}),
+      })
     }
 
     const leasedAttempt = await this.dependencies.sessions.acquireAttemptLease({
@@ -165,6 +169,7 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       expectedStatus: "CREATED",
       operation: "PAYMENT",
       ...(outcome.externalId ? { externalId: outcome.externalId } : {}),
+      ...(outcome.pix ? { paymentInstructions: outcome.pix } : {}),
     })
     return toStartedPayment(updated, method, amountInCents, purchaseStatus, outcome)
   }

@@ -113,7 +113,10 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
     const updated = await prisma.platformPurchase.updateMany({
       where: {
         id: input.id,
-        status: { not: "paid" },
+        // Apenas compras aguardando pagamento são confirmadas: estados
+        // terminais (paid, failed, canceled) não são sobrescritos por eventos
+        // tardios do provider.
+        status: { in: ["pending", "awaiting_payment"] },
       },
       data: {
         status: "paid",

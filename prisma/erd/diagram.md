@@ -4527,6 +4527,7 @@ completed completed
     Int fence_version 
     String unknown_reason "❓"
     String last_event_claim_token "❓"
+    Json payment_instructions "❓"
     DateTime created_at 
     DateTime updated_at 
     }

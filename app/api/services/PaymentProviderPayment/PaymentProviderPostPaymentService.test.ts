@@ -18,6 +18,7 @@ const attempt: StoredPaymentProviderAttemptRecord = {
   status: "CONFIRMED",
   externalId: "abacate-payment-1",
   unknownReason: null,
+  paymentInstructions: null,
   lease: { leaseToken: null, leaseUntil: null, fenceVersion: 0 },
 }
 
