@@ -40,7 +40,7 @@ export function PublicCheckoutShell({
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-primary-foreground hover:bg-primary-foreground/10"
+                className="text-primary-foreground hover:bg-primary-foreground/10 max-lg:size-11"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 aria-label="Alternar tema"
               >

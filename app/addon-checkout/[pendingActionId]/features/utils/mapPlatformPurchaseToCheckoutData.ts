@@ -82,6 +82,7 @@ export function mapPlatformPurchaseToCheckoutData(
     checkoutSource: "platform_purchase",
     purchaseType: purchase.purchaseType,
     productSlug: purchase.productSlug,
-    activationHint: "A ativação acontece após confirmação do pagamento.",
+    activationHint:
+      "Após a confirmação do pagamento, os créditos são aplicados automaticamente em até 5 minutos.",
   }
 }

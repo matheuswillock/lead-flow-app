@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, QrCode } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useEffect, useMemo, useState } from "react"
 
@@ -12,6 +12,7 @@ import { CepService } from "@/lib/services/CepService"
 import { maskCEP, maskCardNumber, maskPhone, formatDocumentInput, unmask } from "@/lib/masks"
 import { cn } from "@/lib/utils"
 import { Field, FieldGroup } from "./PublicCheckoutField"
+import { PixPaymentBlock } from "./PixPaymentBlock"
 import type { PublicCheckoutBillingType, PublicCheckoutDetails, PublicCheckoutPaymentInput, PublicCheckoutPaymentView, PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
 
 function onlyDigits(value: string, maxLength: number): string {
@@ -45,7 +46,9 @@ export function PublicCheckoutPaymentStep({
   payment,
   onSubmit,
   onRefreshStatus,
+  pixOnly = false,
 }: {
+  pixOnly?: boolean
   details: PublicCheckoutDetails
   billingType: PublicCheckoutBillingType
   prefill: PublicCheckoutPayerPrefill
@@ -209,34 +212,20 @@ export function PublicCheckoutPaymentStep({
       {payment?.pix ? (
         <>
           <Separator />
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <QrCode aria-hidden="true" /> PIX
-          </div>
-          <div className="flex justify-center rounded-lg bg-white p-3 dark:bg-white">
-            <img
-              alt="QR Code PIX"
-              className="size-44"
-              src={`data:image/png;base64,${payment.pix.encodedImage}`}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="rounded-lg bg-muted px-3 py-2 font-mono text-xs text-foreground">
-              {payment.pix.payload}
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                await navigator.clipboard.writeText(payment.pix!.payload)
-                toast.success("Copiado.")
-              }}
-            >
-              Copiar código PIX
-            </Button>
-          </div>
+          <PixPaymentBlock
+            payload={payment.pix.payload}
+            encodedImage={payment.pix.encodedImage}
+            expirationDate={payment.pix.expirationDate}
+          />
 
           {onRefreshStatus ? (
-            <Button type="button" variant="secondary" onClick={validatePayment} disabled={isValidatingPayment}>
+            <Button
+              type="button"
+              variant="outline"
+              className="max-lg:min-h-11"
+              onClick={validatePayment}
+              disabled={isValidatingPayment}
+            >
               {isValidatingPayment ? "Validando..." : "Validar pagamento"}
             </Button>
           ) : null}
@@ -260,7 +249,8 @@ export function PublicCheckoutPaymentStep({
       form.city.trim().length > 1 &&
       form.state.trim().length === 2
 
-    if (!fullName || !email || !phone || !cpfCnpj || !postalCode || !addressOk) return false
+    if (!fullName || !email || !phone || !cpfCnpj) return false
+    if (!pixOnly && (!postalCode || !addressOk)) return false
 
     if (billingType === "CREDIT_CARD") {
       const cc = form.creditCard
@@ -273,7 +263,7 @@ export function PublicCheckoutPaymentStep({
     }
 
     return true
-  }, [billingType, cepResolved, form])
+  }, [billingType, cepResolved, form, pixOnly])
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
@@ -325,6 +315,8 @@ export function PublicCheckoutPaymentStep({
           />
         </Field>
 
+      {pixOnly ? null : (
+      <>
       <Separator />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -397,6 +389,8 @@ export function PublicCheckoutPaymentStep({
           />
         </Field>
       </div>
+      </>
+      )}
       </FieldGroup>
 
       {billingType === "CREDIT_CARD" ? (
@@ -496,6 +490,7 @@ export function PublicCheckoutPaymentStep({
         <Button
           type="button"
           size="lg"
+          className="max-lg:min-h-11"
           onClick={submit}
           disabled={isLocked || isResolvingCep || !isFormValid || isSubmitting}
         >

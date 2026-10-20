@@ -149,14 +149,18 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
     async (input: AddOnCheckoutSubmitInput) => {
       if (!state.data?.pendingActionId) return;
 
-      if (state.data.checkoutSource === "platform_purchase") {
-        throw new Error(
-          "A geração de pagamento para compras genéricas ainda não está disponível. A ativação acontece após confirmação do pagamento."
-        );
-      }
-
       dispatch({ type: "SET_PROCESSING", payload: true });
       try {
+        if (state.data.checkoutSource === "platform_purchase") {
+          // Compra genérica: só PIX; o status vem de refreshPaymentStatus (sem polling legado).
+          const pixPayment = await addOnCheckoutService.createPlatformPixPayment(
+            state.data.pendingActionId,
+            input
+          );
+          dispatch({ type: "SET_PAYMENT_DATA", payload: pixPayment });
+          dispatch({ type: "SET_STEP", payload: "payment" });
+          return;
+        }
         if (input.billingType !== state.data.presetBillingType) {
           await updateBillingType(input.billingType);
         }

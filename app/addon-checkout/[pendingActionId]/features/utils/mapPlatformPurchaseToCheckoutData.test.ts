@@ -23,7 +23,7 @@ describe("mapPlatformPurchaseToCheckoutData", () => {
     expect(data.addonDetail).toContain("Comercial")
     expect(data.pricing.totalCharge).toBe(100)
     expect(data.activationHint).toBe(
-      "A ativação acontece após confirmação do pagamento."
+      "Após a confirmação do pagamento, os créditos são aplicados automaticamente em até 5 minutos."
     )
     expect(data.alreadyPaid).toBe(false)
   })

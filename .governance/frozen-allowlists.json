@@ -90,7 +90,6 @@
     "app/[supabaseId]/whatsapp/auto-respostas/page.tsx",
     "app/[supabaseId]/whatsapp/configuracoes/page.tsx",
     "app/[supabaseId]/whatsapp/page.tsx",
-    "app/addon-checkout/[pendingActionId]/page.tsx",
     "app/adesao/[token]/page.tsx",
     "app/adesao/expirado/page.tsx",
     "app/agendamento/[token]/page.tsx",

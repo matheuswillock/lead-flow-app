@@ -43,7 +43,11 @@ export function PublicCheckoutFlow({
   prefill,
   onSubmit,
   onRefreshStatus,
+  pixOnly = false,
+  successDescription = "Verifique seu e-mail para os proximos passos.",
 }: {
+  pixOnly?: boolean
+  successDescription?: string
   attemptStorageKey: string
   attemptDurationMs?: number
   details: PublicCheckoutDetails | null
@@ -71,8 +75,12 @@ export function PublicCheckoutFlow({
   const isExpired = remainingMs != null && remainingMs <= 0
 
   useEffect(() => {
+    if (pixOnly) {
+      setSelectedBillingType("PIX")
+      return
+    }
     if (details?.presetBillingType) setSelectedBillingType(details.presetBillingType)
-  }, [details?.presetBillingType])
+  }, [details?.presetBillingType, pixOnly])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -175,6 +183,7 @@ export function PublicCheckoutFlow({
 
       {!isLoading && details && step === "payment" ? (
         <>
+          {pixOnly ? null : (
           <div className="mb-4 grid grid-cols-2 gap-3">
             {(["PIX", "CREDIT_CARD"] as const).map((method) => {
               const price = details.billingTypePrices[method]
@@ -194,7 +203,9 @@ export function PublicCheckoutFlow({
               )
             })}
           </div>
+          )}
           <PublicCheckoutPaymentStep
+            pixOnly={pixOnly}
             details={details}
             billingType={selectedBillingType}
             prefill={prefill}
@@ -223,7 +234,7 @@ export function PublicCheckoutFlow({
             <CheckCircle2 aria-hidden="true" />
           </div>
           <div className="text-lg font-semibold text-foreground">Pagamento confirmado</div>
-          <div className="text-sm text-muted-foreground">Verifique seu e-mail para os proximos passos.</div>
+          <div className="text-sm text-muted-foreground">{successDescription}</div>
         </div>
       ) : null}
     </PublicCheckoutShell>

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useBillingGracePaymentContext } from "../context/BillingGracePaymentContext";
 import { Button } from "@/components/ui/button"
+import { PixPaymentBlock } from "@/components/public-checkout/PixPaymentBlock"
 
 export function BillingGracePaymentContainer() {
   const { isLoading, error, quote, payment, load, createPayment } = useBillingGracePaymentContext();
@@ -25,7 +26,11 @@ export function BillingGracePaymentContainer() {
         <h1 className="text-2xl font-semibold">Pagamento PIX</h1>
         <p className="text-muted-foreground">Status: {payment.status}</p>
         {payment.paymentInstructions?.brCode && (
-          <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">{payment.paymentInstructions.brCode}</pre>
+          <PixPaymentBlock
+            payload={payment.paymentInstructions.brCode}
+            encodedImage={payment.paymentInstructions.brCodeBase64}
+            expirationDate={payment.paymentInstructions.expiresAt}
+          />
         )}
         {payment.status === "completed" && <p className="text-semantic-success">Pagamento confirmado. O acesso será atualizado.</p>}
       </main>
