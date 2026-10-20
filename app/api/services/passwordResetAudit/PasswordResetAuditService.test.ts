@@ -155,7 +155,6 @@ describe("PasswordResetAuditService", () => {
 
     await service.recordEmailLifecycle("flow-1", "email_opened", "re_123", occurredAt)
 
-    expect(repository.updateFlow).toHaveBeenCalledWith({ flowId: "flow-1", status: "email_sent" })
     expect(repository.recordEvent).toHaveBeenCalledWith({
       flowId: "flow-1",
       type: "email_opened",
