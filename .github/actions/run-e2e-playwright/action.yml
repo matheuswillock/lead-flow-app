@@ -60,17 +60,39 @@ runs:
           docker rm -f "$c" >/dev/null 2>&1 || true
         done
 
-        docker run -d --name "${E2E_PG_CONTAINER}" \
-          -e POSTGRES_PASSWORD=postgres \
-          -e POSTGRES_DB=postgres \
-          -p 55322:5432 \
-          -v "$PWD/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro" \
-          -v "$PWD/docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro" \
-          ghcr.io/supabase/postgres:17.6.1.149 \
-          postgres \
-          -c listen_addresses=* \
-          -c wal_level=logical \
-          -c max_connections=50
+        # 55322 está na faixa de portas efêmeras do Linux (32768-60999): uma conexão de
+        # saída de apt/npm/docker pull pode ocupá-la como porta de origem e o bind do
+        # `docker run` falha com "address already in use" numa VM limpa. Reserva a porta
+        # para novas conexões e repete o start se ela ainda assim estiver ocupada.
+        sudo sysctl -w net.ipv4.ip_local_reserved_ports=55322 >/dev/null 2>&1 || true
+
+        start_postgres() {
+          docker run -d --name "${E2E_PG_CONTAINER}" \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 55322:5432 \
+            -v "$PWD/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro" \
+            -v "$PWD/docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro" \
+            ghcr.io/supabase/postgres:17.6.1.149 \
+            postgres \
+            -c listen_addresses=* \
+            -c wal_level=logical \
+            -c max_connections=50
+        }
+
+        for attempt in 1 2 3; do
+          if start_postgres; then
+            break
+          fi
+          if [ "${attempt}" = "3" ]; then
+            echo "::error::Não foi possível subir o Postgres E2E na porta 55322 após 3 tentativas."
+            ss -ltnp 2>/dev/null | grep ':55322' || true
+            exit 1
+          fi
+          echo "Start do Postgres E2E falhou (tentativa ${attempt}/3); removendo o container e repetindo."
+          docker rm -f "${E2E_PG_CONTAINER}" >/dev/null 2>&1 || true
+          sleep 5
+        done
         for i in $(seq 1 60); do
           if pg_isready -h 127.0.0.1 -p 55322 -U postgres >/dev/null 2>&1; then
             echo "Postgres E2E pronto."
