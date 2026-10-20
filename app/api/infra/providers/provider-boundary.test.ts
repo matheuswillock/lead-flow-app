@@ -212,6 +212,7 @@ describe("payment provider boundary", () => {
 
     expect(provider.metadata.capabilities).toEqual([
       "PIX",
+      "HOSTED_CHECKOUT",
       "CARD",
       "STATUS_QUERY",
       "FULL_REFUND",
