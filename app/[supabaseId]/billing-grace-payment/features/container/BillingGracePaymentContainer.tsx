@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { isPixExpired } from "@/components/public-checkout/pixExpiry"
 import { useBillingGracePaymentContext } from "../context/BillingGracePaymentContext";
 import { Button } from "@/components/ui/button"
 import { PixPaymentBlock } from "@/components/public-checkout/PixPaymentBlock"
@@ -8,9 +9,19 @@ import { PixPaymentBlock } from "@/components/public-checkout/PixPaymentBlock"
 export function BillingGracePaymentContainer() {
   const { isLoading, error, quote, payment, load, createPayment } = useBillingGracePaymentContext();
 
+  const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const isPixExpiredNow =
+    payment?.status !== "completed" && isPixExpired(payment?.paymentInstructions?.expiresAt, now);
 
   if (isLoading) {
     return <div>Loading...</div>;
@@ -31,6 +42,16 @@ export function BillingGracePaymentContainer() {
             encodedImage={payment.paymentInstructions.brCodeBase64}
             expirationDate={payment.paymentInstructions.expiresAt}
           />
+        )}
+        {isPixExpiredNow && (
+          <div className="flex flex-col gap-3">
+            <p role="status" className="text-sm text-muted-foreground">
+              Este PIX expirou. Gere um novo PIX para regularizar o pagamento.
+            </p>
+            <Button type="button" className="w-fit max-lg:min-h-11" onClick={() => void createPayment()} disabled={isLoading}>
+              Gerar novo PIX
+            </Button>
+          </div>
         )}
         {payment.status === "completed" && <p className="text-semantic-success">Pagamento confirmado. O acesso será atualizado.</p>}
       </main>

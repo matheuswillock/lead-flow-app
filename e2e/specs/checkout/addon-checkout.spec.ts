@@ -34,7 +34,9 @@ function purchasePayload(status: PurchaseStatus) {
   }
 }
 
-async function mockPlatformCheckout(page: Page) {
+const PAST = "2000-01-01T12:00:00.000Z"
+
+async function mockPlatformCheckout(page: Page, pixExpirations: string[] = [FAR_FUTURE]) {
   const state = {
     status: "pending" as PurchaseStatus,
     paymentRequests: [] as { idempotencyKey: string | undefined; body: unknown }[],
@@ -50,12 +52,13 @@ async function mockPlatformCheckout(page: Page) {
       idempotencyKey: request.headers()["idempotency-key"],
       body: request.postDataJSON(),
     })
+    const expiresAt = pixExpirations[Math.min(state.paymentRequests.length - 1, pixExpirations.length - 1)]
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: envelope({
         amountInCents: 10000,
-        pix: { brCode: PIX_CODE, brCodeBase64: "iVBORw0KGgo=", expiresAt: FAR_FUTURE },
+        pix: { brCode: PIX_CODE, brCodeBase64: "iVBORw0KGgo=", expiresAt },
       }),
     })
   })
@@ -92,6 +95,11 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     await expect(page.getByText(PIX_CODE)).toBeVisible()
     await expect(page.getByAltText("QR Code PIX")).toBeVisible()
     await expect(page.getByRole("button", { name: "Copiar código PIX" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Gerar novo PIX" })).toHaveCount(0)
+
+    // Rodapé identifica o Abacate e não usa a marca do Asaas.
+    await expect(page.getByText("Pagamento processado pela AbacatePay")).toBeVisible()
+    await expect(page.getByAltText("Asaas Pagamentos")).toHaveCount(0)
 
     expect(mock.paymentRequests).toHaveLength(1)
     expect(mock.paymentRequests[0].idempotencyKey).toContain(`platform-pix:${PURCHASE_ID}:`)
@@ -111,6 +119,35 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     await expect(page.getByText("Pagamento confirmado")).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText("Os créditos são aplicados automaticamente em até 5 minutos.")).toBeVisible()
     await expect(page.getByText(/imediatamente|instantane/i)).toHaveCount(0)
+
+    await runResponsiveChecks(page)
+  })
+
+  test("não mostra valor vazio no resumo quando a compra não tem time", async ({ page }) => {
+    await mockPlatformCheckout(page)
+
+    await page.goto(`/addon-checkout/${PURCHASE_ID}`)
+
+    await expect(page.getByText("5.000 créditos/mês").first()).toBeVisible()
+    await expect(page.getByText("—", { exact: true })).toHaveCount(0)
+    await expect(page.getByText("5.000 créditos/mês ·")).toHaveCount(0)
+  })
+
+  test("oferece gerar novo PIX quando o PIX expira e usa uma chave de idempotência nova", async ({ page }) => {
+    const mock = await mockPlatformCheckout(page, [PAST, FAR_FUTURE])
+
+    await page.goto(`/addon-checkout/${PURCHASE_ID}`)
+    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+    await fillPayer(page)
+    await page.getByRole("button", { name: "Gerar QR Code Pix" }).click()
+
+    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toBeVisible()
+    await page.getByRole("button", { name: "Gerar novo PIX" }).click()
+
+    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toHaveCount(0)
+    expect(mock.paymentRequests).toHaveLength(2)
+    expect(mock.paymentRequests[1].idempotencyKey).not.toBe(mock.paymentRequests[0].idempotencyKey)
+    expect(mock.paymentRequests[1].body).toEqual(mock.paymentRequests[0].body)
 
     await runResponsiveChecks(page)
   })

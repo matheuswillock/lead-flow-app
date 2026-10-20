@@ -47,7 +47,13 @@ export function PublicCheckoutPaymentStep({
   onSubmit,
   onRefreshStatus,
   pixOnly = false,
+  isPixExpired = false,
+  isRegeneratingPix = false,
+  onRegeneratePix,
 }: {
+  isPixExpired?: boolean
+  isRegeneratingPix?: boolean
+  onRegeneratePix?: () => Promise<void>
   pixOnly?: boolean
   details: PublicCheckoutDetails
   billingType: PublicCheckoutBillingType
@@ -218,7 +224,21 @@ export function PublicCheckoutPaymentStep({
             expirationDate={payment.pix.expirationDate}
           />
 
-          {onRefreshStatus ? (
+          {isPixExpired && onRegeneratePix ? (
+            <>
+              <p role="status" className="text-sm text-muted-foreground">
+                Este PIX expirou. Gere um novo PIX para pagar.
+              </p>
+              <Button
+                type="button"
+                className="max-lg:min-h-11"
+                onClick={onRegeneratePix}
+                disabled={isRegeneratingPix}
+              >
+                {isRegeneratingPix ? "Gerando..." : "Gerar novo PIX"}
+              </Button>
+            </>
+          ) : onRefreshStatus ? (
             <Button
               type="button"
               variant="outline"

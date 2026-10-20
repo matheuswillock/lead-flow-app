@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react"
 
 import { PublicCheckoutFlow } from "@/components/public-checkout/PublicCheckoutFlow"
+import type { CheckoutPaymentProvider } from "@/components/public-checkout/providerBranding"
 import type {
   PublicCheckoutDetails,
   PublicCheckoutPaymentView,
@@ -63,7 +64,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const subtitle = isPlatformPurchase
       ? data.purchaseType === "email_credits"
         ? `Créditos de e-mail — ${data.addonLabel}`
-        : data.addonDetail
+        : data.addonDetail || data.addonLabel
       : data.pricing.remainingMonths > 1
         ? `Cobrança proporcional por ${data.pricing.remainingMonths} meses`
         : "Cobrança proporcional"
@@ -82,7 +83,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const compositionRows = isPlatformPurchase
       ? [
           { label: "Produto", value: data.addonLabel },
-          { label: "Créditos", value: data.addonDetail },
+          ...(data.addonDetail ? [{ label: "Créditos", value: data.addonDetail }] : []),
           { label: "Ciclo", value: "Mensal" },
           { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
         ]
@@ -192,9 +193,17 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
   const isPlatformPurchase = state.data?.checkoutSource === "platform_purchase"
   const isLoading = state.step === "loading"
   const isSubmitting = state.isProcessing
+  // platform_purchase paga PIX no Abacate; fluxos legados seguem no Asaas. Sem dados, sem marca.
+  const provider: CheckoutPaymentProvider | null = state.data
+    ? isPlatformPurchase
+      ? "ABACATE_PAY"
+      : "ASAAS"
+    : null
 
   return (
     <PublicCheckoutFlow
+      provider={provider}
+      canRegeneratePix={isPlatformPurchase}
       attemptStorageKey={getAttemptStorageKey(pendingActionId)}
       details={mappedDetails}
       payment={mappedPayment}

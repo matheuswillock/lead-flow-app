@@ -27,4 +27,26 @@ describe("mapPlatformPurchaseToCheckoutData", () => {
     )
     expect(data.alreadyPaid).toBe(false)
   })
+
+  it("não exibe valor vazio quando a compra não tem time", () => {
+    const base = {
+      checkoutId: "p2",
+      purchaseId: "p2",
+      productSlug: "email-credits-plus",
+      purchaseType: "email_credits",
+      status: "pending",
+      billingType: "PIX",
+      amount: 100,
+      description: null,
+      teamId: null,
+      metadata: {},
+    }
+
+    const withCredits = mapPlatformPurchaseToCheckoutData({ ...base, quantity: 5000 })
+    expect(withCredits.addonDetail).toBe("5.000 créditos/mês")
+
+    const withoutAnything = mapPlatformPurchaseToCheckoutData({ ...base, quantity: null })
+    expect(withoutAnything.addonDetail).toBe("")
+    expect(withoutAnything.addonDetail).not.toContain("—")
+  })
 })

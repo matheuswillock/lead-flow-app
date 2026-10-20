@@ -57,7 +57,7 @@ export function mapPlatformPurchaseToCheckoutData(
       ? metadata.teamName.trim()
       : purchase.teamId
         ? "Time selecionado"
-        : "—"
+        : null
 
   return {
     pendingActionId: purchase.purchaseId || purchase.checkoutId,
@@ -65,10 +65,12 @@ export function mapPlatformPurchaseToCheckoutData(
     presetBillingType: billingType,
     addonType: "user",
     addonLabel: planLabel,
-    addonDetail:
-      credits > 0
-        ? `${credits.toLocaleString("pt-BR")} créditos/mês · ${teamLabel}`
-        : teamLabel,
+    addonDetail: [
+      credits > 0 ? `${credits.toLocaleString("pt-BR")} créditos/mês` : null,
+      teamLabel,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     pricing: {
       monthlyPrice: purchase.amount,
       remainingMonths: 1,
