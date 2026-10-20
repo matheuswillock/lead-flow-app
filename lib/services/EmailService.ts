@@ -1745,7 +1745,12 @@ export class EmailService {
     userEmail: string,
     userName: string,
     resetUrl: string,
-    options?: { profileId?: string; sourceType?: string; sourceId?: string }
+    options?: {
+      profileId?: string
+      sourceType?: string
+      sourceId?: string
+      recipientEmail?: string
+    }
   ) {
     const html = `
       <!DOCTYPE html>
@@ -1838,8 +1843,9 @@ export class EmailService {
         category: "access_reset",
         subject: "Redefinição de Senha - Corretor Studio",
         html,
-        sourceType: options.sourceType ?? "member_access",
-        sourceId: options.sourceId,
+         sourceType: options.sourceType ?? "member_access",
+         sourceId: options.sourceId,
+         recipientEmail: options.recipientEmail ?? userEmail,
         // Mesmo raciocínio de sendOperatorInviteEmail: chave por conteúdo do
         // link de reset, não por pessoa — reenvio legítimo gera resetUrl novo.
         idempotencyKey: options.sourceId

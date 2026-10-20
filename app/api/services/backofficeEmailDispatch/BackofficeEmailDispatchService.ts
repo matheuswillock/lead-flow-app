@@ -56,7 +56,10 @@ const STATUS_PRIORITY: BackofficeEmailDispatchStatus[] = [
 ]
 
 const TIMESTAMP_FIELD: Partial<
-  Record<BackofficeEmailDispatchEventType, "sentAt" | "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt">
+  Record<
+    BackofficeEmailDispatchEventType,
+    "sentAt" | "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt"
+  >
 > = {
   sent: "sentAt",
   delivered: "deliveredAt",
@@ -80,7 +83,9 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
   }
 
   async resolveProfilesByRecipientEmails(emails: string[]): Promise<ProfileEmailMatch[]> {
-    const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    const normalized = [
+      ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ]
     if (normalized.length === 0) return []
 
     const profiles = await this.repository.findProfilesByRecipientEmails(normalized)
@@ -183,5 +188,5 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
 }
 
 export const backofficeEmailDispatchService = new BackofficeEmailDispatchService(
-  backofficeEmailDispatchRepository
+  backofficeEmailDispatchRepository,
 )
