@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   await connection();
 
   try {
-    const teamAccess = await getTeamAccess(request);
+    const teamAccess = await getTeamAccess(request, { allowReadOnlyWrites: true });
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const teamAccess = await getTeamAccess(request);
+    const teamAccess = await getTeamAccess(request, { allowReadOnlyWrites: true });
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
