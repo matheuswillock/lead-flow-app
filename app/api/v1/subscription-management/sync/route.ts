@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionManagementUseCase } from "@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase";
 import { Output } from "@/lib/output";
-import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function POST(request: NextRequest) {
   const supabaseId = request.headers.get("x-supabase-user-id");
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(output, { status: 401 });
   }
 
-  const accessDeniedResponse = await requireActiveAccountAccess(supabaseId);
+  const accessDeniedResponse = await requireWritableAccountAccess(supabaseId);
   if (accessDeniedResponse) {
     return accessDeniedResponse;
   }

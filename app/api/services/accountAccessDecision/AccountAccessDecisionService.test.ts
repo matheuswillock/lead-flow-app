@@ -128,8 +128,8 @@ describe("AccountAccessDecisionService", () => {
       temporaryAccessGranted: true,
       temporaryAccessUntil: until,
       isBanned: false,
-    }, new Date("2026-10-17T03:00:00.000Z"))).toEqual({
-      state: "restricted",
+    }, new Date("2026-10-17T03:00:00.000Z"))).toMatchObject({
+      state: "read_only",
       reason: "past_due",
     })
   })
@@ -182,5 +182,35 @@ describe("AccountAccessDecisionService", () => {
       temporaryAccessGranted: true,
       temporaryAccessUntil: null,
     })
+  })
+
+  it("mantém acesso normal durante os cinco dias após o vencimento", () => {
+    const decision = new AccountAccessDecisionService().decide(
+      {
+        billingOwnerId: "owner-1",
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: new Date("2026-10-10T00:00:00.000Z"),
+        hasPermanentSubscription: false,
+        isBanned: false,
+      },
+      new Date("2026-10-12T00:00:00.000Z"),
+    )
+
+    expect(decision).toMatchObject({ state: "allowed", temporaryAccessGranted: true })
+  })
+
+  it("muda para somente leitura após o fim dos cinco dias", () => {
+    const decision = new AccountAccessDecisionService().decide(
+      {
+        billingOwnerId: "owner-1",
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: new Date("2026-10-10T00:00:00.000Z"),
+        hasPermanentSubscription: false,
+        isBanned: false,
+      },
+      new Date("2026-10-16T00:00:00.000Z"),
+    )
+
+    expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
   })
 })

@@ -22,6 +22,8 @@ export type TeamAccess = {
   canTransferAccountLeads: boolean;
   canViewAllTeams: boolean;
   userTimezone: string;
+  accountAccessDecision?: AccountAccessDecision;
+  accountAccessMode?: "full" | "read_only";
   teamMember: {
     role: UserRole;
     functions: UserFunction[];
@@ -92,11 +94,14 @@ const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
   });
 });
 
-async function resolveTeamAccountAccess(profileId: string, teamId: string): Promise<TeamAccessResult | null> {
+async function resolveTeamAccountAccess(profileId: string, teamId: string): Promise<{
+  decision: AccountAccessDecision | null;
+  denied: TeamAccessResult | null;
+}> {
   const output = await accountAccessDecisionUseCase.execute({ profileId, teamId });
   const decision = output.result as AccountAccessDecision | null;
-  if (output.isValid && decision?.state === "allowed") {
-    return null;
+  if (output.isValid && decision && decision.state !== "restricted") {
+    return { decision, denied: null };
   }
 
   const message = decision?.state === "restricted" && decision.reason === "banned"
@@ -106,8 +111,11 @@ async function resolveTeamAccountAccess(profileId: string, teamId: string): Prom
       : "O acesso desta conta está pausado. Avise o administrador desta conta para que ele entre em contato com o time de assinaturas.";
 
   return {
-    error: new Output(false, [], [message], null),
-    status: 403,
+    decision,
+    denied: {
+      error: new Output(false, [], [message], null),
+      status: 403,
+    },
   };
 }
 
@@ -170,9 +178,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     }
 
     const accountMasterId = teamForSponsor.masterId;
-    const accessDenied = await resolveTeamAccountAccess(profile.id, teamId);
-    if (accessDenied) {
-      return accessDenied;
+    const accountAccess = await resolveTeamAccountAccess(profile.id, teamId);
+    if (accountAccess.denied) {
+      return accountAccess.denied;
     }
 
     return {
@@ -189,6 +197,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         canTransferAccountLeads: false,
         canViewAllTeams: false,
         userTimezone: resolveTimezone(profile.timezone),
+        accountAccessDecision: accountAccess.decision ?? undefined,
+        accountAccessMode: accountAccess.decision?.state === "read_only" ? "read_only" : "full",
         teamMember: {
           role: "backoffice" as UserRole,
           functions: [] as UserFunction[],
@@ -198,9 +208,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   }
 
   const accountMasterId = teamMember.team.masterId;
-  const accessDenied = await resolveTeamAccountAccess(profile.id, teamId);
-  if (accessDenied) {
-    return accessDenied;
+  const accountAccess = await resolveTeamAccountAccess(profile.id, teamId);
+  if (accountAccess.denied) {
+    return accountAccess.denied;
   }
 
   const resolvedCanViewAllTeams =
@@ -225,6 +235,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         teamMember.canTransferAccountLeads === true,
       canViewAllTeams: resolvedCanViewAllTeams,
       userTimezone: resolveTimezone(profile.timezone),
+      accountAccessDecision: accountAccess.decision ?? undefined,
+      accountAccessMode: accountAccess.decision?.state === "read_only" ? "read_only" : "full",
       teamMember,
     },
   };
@@ -260,4 +272,14 @@ export function hasDelegatedTeamManagementAccess(access: TeamAccess) {
 
 export function hasDelegatedLeadTransferAccess(access: TeamAccess) {
   return access.isMaster || access.canTransferAccountLeads;
+}
+
+export function isTeamWriteBlockedByBilling(access: TeamAccess): boolean {
+  return access.accountAccessMode === "read_only";
+}
+
+export function getBillingWriteBlockMessage(access: TeamAccess): string | null {
+  return isTeamWriteBlockedByBilling(access)
+    ? "A conta está em modo somente leitura até a regularização do pagamento."
+    : null;
 }

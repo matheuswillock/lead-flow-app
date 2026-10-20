@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import {
+  requireActiveAccountAccess,
+  requireWritableAccountAccess,
+} from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function GET(request: NextRequest) {
   await connection();
@@ -81,7 +84,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(unauthorizedResult, { status: 401 });
     }
 
-    const accessDeniedResponse = await requireActiveAccountAccess(authenticatedSupabaseId);
+    const accessDeniedResponse = await requireWritableAccountAccess(authenticatedSupabaseId);
     if (accessDeniedResponse) {
       return accessDeniedResponse;
     }

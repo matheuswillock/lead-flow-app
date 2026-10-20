@@ -12,7 +12,13 @@ mock.module("@/app/api/useCases/subscriptionManagement/SubscriptionManagementUse
 const requireActiveAccountAccess = mock<
   (authenticatedSupabaseId: string) => Promise<NextResponse | null>
 >(async () => null)
-mock.module("@/app/api/v1/utils/requireActiveAccountAccess", () => ({ requireActiveAccountAccess }))
+const requireWritableAccountAccess = mock<
+  (authenticatedSupabaseId: string) => Promise<NextResponse | null>
+>(async () => null)
+mock.module("@/app/api/v1/utils/requireActiveAccountAccess", () => ({
+  requireActiveAccountAccess,
+  requireWritableAccountAccess,
+}))
 
 const { GET } = await import("./route")
 
