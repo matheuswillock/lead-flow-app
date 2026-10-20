@@ -162,7 +162,6 @@ export class PasswordResetAuditService {
     occurredAt: Date,
   ): Promise<void> {
     try {
-      await this.repository.updateFlow({ flowId, status: "email_sent" })
       await this.repository.recordEvent({
         flowId,
         type: event,
