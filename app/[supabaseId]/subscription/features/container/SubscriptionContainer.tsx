@@ -55,6 +55,7 @@ export function SubscriptionContainer() {
 
   const { hasAccess, isBeta, showsBetaLabel, userRole } = useFeatureAccess();
   const { isTeamMaster, activeRole, accountAccessDecision } = useTeamContext();
+  const isReadOnly = accountAccessDecision?.state === 'read_only';
   const isPermanentSubscription = subscription?.hasPermanentSubscription === true;
   const hasTemporaryAccess =
     accountAccessDecision?.state === 'allowed' &&
@@ -120,6 +121,27 @@ export function SubscriptionContainer() {
           fetchInvoices();
         }} 
       />
+    );
+  }
+
+  if (isReadOnly) {
+    return (
+      <div className="flex flex-col gap-6">
+        <SubscriptionHeader />
+        <Card className="mx-auto max-w-2xl">
+          <CardHeader>
+            <CardTitle>Regularize o pagamento</CardTitle>
+            <CardDescription>
+              Sua conta está em modo somente leitura. Regularize o pagamento para recuperar o acesso completo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button size="lg" className="max-lg:h-11" onClick={() => router.push(`/${supabaseId}/billing-grace-payment`)}>
+              Regularizar pagamento
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

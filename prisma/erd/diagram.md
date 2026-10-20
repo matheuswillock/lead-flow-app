@@ -1921,6 +1921,31 @@ completed completed
     }
   
 
+  "billing_grace_payments" {
+    String id "🗝️"
+    String account_id 
+    String team_id "❓"
+    String subscription_id "❓"
+    String cycle 
+    Int amount_cents 
+    Int effective_price_cents 
+    String status 
+    String provider 
+    String provider_environment 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    String idempotency_key 
+    Json payment_instructions "❓"
+    DateTime quote_expires_at "❓"
+    DateTime confirmed_at "❓"
+    DateTime completed_at "❓"
+    String failure_reason "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
