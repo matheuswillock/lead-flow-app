@@ -1540,6 +1540,37 @@ model BillingAccessGrace {
   @@map("billing_access_graces")
 }
 
+/// Ledger próprio para regularização de uma assinatura em atraso.
+/// Não reutiliza PlatformPurchase, feature_addon ou email_credits.
+model BillingGracePayment {
+  id                    String    @id @default(uuid()) @db.Uuid
+  accountId             String    @map("account_id") @db.Uuid
+  teamId                String?   @map("team_id") @db.Uuid
+  subscriptionId        String?   @map("subscription_id") @db.Uuid
+  cycle                 String    @db.Text
+  amountCents           Int       @map("amount_cents")
+  effectivePriceCents   Int       @map("effective_price_cents")
+  status                String    @db.Text
+  provider              String    @db.Text
+  providerEnvironment   String    @map("provider_environment") @db.Text
+  providerSessionId     String?   @map("provider_session_id") @db.Uuid
+  providerAttemptId     String?   @map("provider_attempt_id") @db.Uuid
+  providerExternalId    String?   @map("provider_external_id") @db.Text
+  idempotencyKey        String    @unique @map("idempotency_key") @db.Text
+  paymentInstructions   Json?     @map("payment_instructions")
+  quoteExpiresAt        DateTime? @map("quote_expires_at") @db.Timestamptz(6)
+  confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
+  failureReason         String?   @map("failure_reason") @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([accountId, status], map: "billing_grace_payments_account_status_idx")
+  @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
+  @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")
+  @@map("billing_grace_payments")
+}
+
 model BackofficeOperationalAccessGrant {
   id                 String                          @id @default(uuid()) @db.Uuid
   capability         BackofficeOperationalCapability

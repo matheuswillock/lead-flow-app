@@ -3,6 +3,7 @@ import { paymentProviderEventInboxRepository } from "@/app/api/infra/data/reposi
 import { paymentProviderIdentityRepository } from "@/app/api/infra/data/repositories/paymentProviderIdentity/PaymentProviderIdentityRepository"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
+import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import {
@@ -98,6 +99,15 @@ export async function createPaymentProviderWebhookService() {
           provider: "ABACATE_PAY",
           externalId: event.externalPaymentId!,
         })
+      }
+      if (nextStatus === "CONFIRMED" && attempt.ownerType === "BILLING_GRACE_PAYMENT") {
+        const payment = await billingGracePaymentRepository.markConfirmed({
+          id: attempt.ownerId,
+          providerExternalId: event.externalPaymentId!,
+          confirmedAt: new Date(),
+        })
+        if (!payment) throw new Error("Regularização não encontrada ou já processada")
+        await billingGracePaymentRepository.completeAndRestoreAccess(payment.id)
       }
     },
   })
