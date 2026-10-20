@@ -344,16 +344,21 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     teamId: string;
     roles: UserRole[];
     onlyTransferAuthorized?: boolean;
+    onlyActive?: boolean;
   }) {
     return await prisma.teamMember.findMany({
       where: {
         teamId: input.teamId,
         role: input.roles.length === 1 ? input.roles[0] : { in: input.roles },
         ...(input.onlyTransferAuthorized && { canTransferAccountLeads: true }),
+        ...(input.onlyActive && {
+          team: { deletedAt: null },
+          profile: { deletedAt: null },
+        }),
       },
       select: {
         profileId: true,
-        profile: { select: { email: true, fullName: true } },
+        profile: { select: { email: true, fullName: true, supabaseId: true } },
       },
     });
   }

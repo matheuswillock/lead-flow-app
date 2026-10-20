@@ -336,8 +336,13 @@
       "schedule": "*/15 * * * *"
     },
     {
+<<<<<<< HEAD
       "path": "/api/v1/payment-provider/cron/maintenance",
       "schedule": "*/5 * * * *"
+=======
+      "path": "/api/v1/studio/cron/reconcile-dns",
+      "schedule": "0 11,23 * * *"
+>>>>>>> cb8425663 (feat: implementar auditoria DNS Studio/Vercel completa per SPEC)
     }
   ]
 }

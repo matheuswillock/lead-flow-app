@@ -10,6 +10,7 @@ import {
   buildNotificationPath,
   getMeetingLink,
   hasLeadNotificationLink,
+  hasStudioDomainDnsLink,
 } from "@/lib/notifications/build-notification-url";
 import type { NotificationItem } from "../types/notification.types";
 
@@ -29,6 +30,7 @@ export function InAppNotificationBubble({ notification, onDismiss }: InAppNotifi
   });
   const meetingLink = getMeetingLink(metadata);
   const showLeadLink = hasLeadNotificationLink(notification.type, metadata) && !leadHref.startsWith("http");
+  const showDnsLink = hasStudioDomainDnsLink(notification.type, metadata);
   const isExternalLeadHref = leadHref.startsWith("http");
   const sdrName =
     metadata && typeof metadata === "object" && typeof metadata.sdrName === "string" && metadata.sdrName.trim()
@@ -64,6 +66,12 @@ export function InAppNotificationBubble({ notification, onDismiss }: InAppNotifi
             {showLeadLink ? (
               <Link href={leadHref} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                 Abrir lead
+                <ExternalLink data-icon="inline-end" />
+              </Link>
+            ) : null}
+            {showDnsLink ? (
+              <Link href={leadHref} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                Corrigir DNS
                 <ExternalLink data-icon="inline-end" />
               </Link>
             ) : null}
