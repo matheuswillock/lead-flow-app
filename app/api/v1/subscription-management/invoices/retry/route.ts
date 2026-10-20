@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionManagementUseCase } from "@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
-import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 /**
  * POST /api/v1/subscription-management/invoices/retry
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accessDeniedResponse = await requireActiveAccountAccess(authenticatedSupabaseId);
+  const accessDeniedResponse = await requireWritableAccountAccess(authenticatedSupabaseId);
     if (accessDeniedResponse) {
       return accessDeniedResponse;
     }

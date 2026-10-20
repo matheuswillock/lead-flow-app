@@ -23,6 +23,11 @@ export function AccountAccessGate({ decision, decisionResolved = false, children
     )
   }
 
+  // read_only: allow children to render; writes are blocked at the route layer
+  if (effectiveDecision?.state === "read_only") {
+    return children
+  }
+
   if (effectiveDecision?.state === "restricted" && !teamContext?.isSwitchingTeam) {
     return (
       <AccountAccessPausedScreen
