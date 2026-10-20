@@ -30,7 +30,6 @@ const getSessionMock = mock(
     error: null,
   }),
 )
-
 const updateUserMock = mock(async () => ({ error: null as { message: string } | null }))
 const getUserMock = mock(async () => ({ data: { user: { id: "user-123" } } }))
 const originalFetch = globalThis.fetch
@@ -41,7 +40,6 @@ const fetchMock = mock(async (input: RequestInfo | URL) => ({
       ? { isValid: true, result: { role: "user" } }
       : { accepted: true },
 }))
-
 const pushMock = mock((_path: string) => {})
 const routerMock = { push: pushMock }
 
@@ -125,6 +123,32 @@ describe("/set-password — gate do token de e-mail", () => {
     await waitFor(() =>
       expect(telemetryEvents()).toEqual(["page_opened", "verification_started", "token_verified"]),
     )
+    expect(window.location.search).toBe("")
+    expect(window.location.hash).toBe("")
+  })
+
+  it("cliques concorrentes não reutilizam o token enquanto a validação está pendente", async () => {
+    searchParamsValue = new URLSearchParams("token_hash=tok-once&type=recovery")
+    let resolveVerification: ((result: AuthSessionResult) => void) | undefined
+    verifyOtpMock.mockImplementationOnce(
+      () =>
+        new Promise<AuthSessionResult>((resolve) => {
+          resolveVerification = resolve
+        }),
+    )
+
+    render(<SetPasswordContent />)
+
+    const button = await screen.findByRole("button", { name: "Continuar" })
+    fireEvent.click(button)
+    fireEvent.click(button)
+
+    expect(verifyOtpMock).toHaveBeenCalledTimes(1)
+    resolveVerification?.({
+      data: { session: { user: { email: "cliente@example.com" } } },
+      error: null,
+    })
+    await screen.findByText("Defina sua Senha")
   })
 
   it("token já consumido mostra erro de link usado ou expirado", async () => {
@@ -139,6 +163,25 @@ describe("/set-password — gate do token de e-mail", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Continuar" }))
 
     await screen.findByText("Link Inválido ou Expirado")
+    expect(
+      screen.getByText("Este link já foi usado ou expirou. Solicite um novo link de acesso."),
+    ).toBeDefined()
+  })
+
+  it("falha explícita com otp_expired não tenta validar novamente", async () => {
+    searchParamsValue = new URLSearchParams("token_hash=tok-expired&type=recovery")
+    verifyOtpMock.mockImplementationOnce(async () => ({
+      data: { session: null },
+      error: { message: "otp_expired" },
+    }))
+
+    render(<SetPasswordContent />)
+
+    const button = await screen.findByRole("button", { name: "Continuar" })
+    fireEvent.click(button)
+    await screen.findByText("Link Inválido ou Expirado")
+
+    expect(verifyOtpMock).toHaveBeenCalledTimes(1)
     expect(
       screen.getByText("Este link já foi usado ou expirou. Solicite um novo link de acesso."),
     ).toBeDefined()
