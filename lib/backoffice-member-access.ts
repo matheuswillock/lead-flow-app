@@ -1,4 +1,5 @@
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 import { createEmailService } from "@/lib/services/EmailService"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
@@ -207,6 +208,22 @@ function buildE2eInviteActionLink(profileId: string): string {
   return inviteUrl.toString()
 }
 
+function getResendEmailId(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null
+  const data = (result as { data?: unknown }).data
+  if (!data || typeof data !== "object") return null
+  const resendData = (data as { data?: unknown }).data
+  if (!resendData || typeof resendData !== "object") return null
+  const id = (resendData as { id?: unknown }).id
+  return typeof id === "string" ? id : null
+}
+
+function getDispatchId(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null
+  const dispatchIds = (result as { dispatchIds?: unknown }).dispatchIds
+  return Array.isArray(dispatchIds) && typeof dispatchIds[0] === "string" ? dispatchIds[0] : null
+}
+
 export async function sendBackofficeMemberAccessEmail(input: {
   profile: BackofficeMemberAccessIdentity
   mode: BackofficeMemberAccessMode
@@ -251,26 +268,62 @@ export async function sendBackofficeMemberAccessEmail(input: {
     throw new Error("Reset de senha disponível apenas para usuários que já acessaram a plataforma.")
   }
 
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: "recovery",
-    email: input.profile.email,
-    options: { redirectTo },
+  const auditFlow = await passwordResetAuditService.createFlow({
+    profileId: input.profile.profileId,
+    recipientEmail: input.profile.email,
+    userAgent: "backoffice",
+    originScreen: "backoffice_member_access",
   })
 
+  let data: Awaited<ReturnType<SupabaseAdminHandle["auth"]["admin"]["generateLink"]>>["data"]
+  let error: Awaited<ReturnType<SupabaseAdminHandle["auth"]["admin"]["generateLink"]>>["error"]
+  try {
+    const generated = await supabaseAdmin.auth.admin.generateLink({
+      type: "recovery",
+      email: input.profile.email,
+      options: { redirectTo },
+    })
+    data = generated.data
+    error = generated.error
+  } catch (generationError) {
+    if (auditFlow) {
+      await passwordResetAuditService.recordFailure(auditFlow.id, "link_generation_failed")
+    }
+    throw generationError
+  }
+
   if (error || !data?.properties?.action_link) {
+    if (auditFlow) {
+      await passwordResetAuditService.recordFailure(auditFlow.id, "link_generation_failed")
+    }
     throw new Error(error?.message || "Erro ao gerar link de reset de senha")
+  }
+
+  if (auditFlow) {
+    await passwordResetAuditService.recordLinkGenerated(auditFlow.id)
   }
 
   const sendResult = await emailService.sendPasswordResetEmail(
     input.profile.email,
     displayName,
-    buildSetPasswordEmailAuthLink(data, "recovery"),
+    buildSetPasswordEmailAuthLink(data, "recovery", auditFlow?.id),
     {
       profileId: input.profile.profileId,
-      sourceType: "member_access",
-      sourceId: input.profile.profileId,
+      sourceType: "password_reset",
+      sourceId: auditFlow?.id,
+      recipientEmail: input.profile.email,
     }
   )
+  if (auditFlow) {
+    if (sendResult.success) {
+      await passwordResetAuditService.recordEmailSent(auditFlow.id, {
+        dispatchId: getDispatchId(sendResult),
+        resendEmailId: getResendEmailId(sendResult),
+      })
+    } else {
+      await passwordResetAuditService.recordEmailFailed(auditFlow.id, getDispatchId(sendResult))
+    }
+  }
   assertEmailSendSucceeded(sendResult)
 
   return { email: input.profile.email, access }

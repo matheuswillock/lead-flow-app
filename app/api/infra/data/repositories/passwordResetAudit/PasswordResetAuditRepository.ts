@@ -1,0 +1,70 @@
+import { randomUUID } from "node:crypto"
+import { prisma } from "@/app/api/infra/data/prisma"
+import type {
+  CreatePasswordResetFlowInput,
+  IPasswordResetAuditRepository,
+  RecordPasswordResetEventInput,
+  UpdatePasswordResetFlowInput,
+} from "./IPasswordResetAuditRepository"
+
+export class PasswordResetAuditRepository implements IPasswordResetAuditRepository {
+  async createFlow(input: CreatePasswordResetFlowInput): Promise<{ id: string }> {
+    const flowId = randomUUID()
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.passwordResetFlow.create({
+        data: {
+          id: flowId,
+          profileId: input.profileId,
+          recipientEmail: input.recipientEmail.trim().toLowerCase(),
+          status: input.status,
+          ipHash: input.ipHash,
+          userAgent: input.userAgent,
+          originScreen: input.originScreen,
+        },
+      })
+
+      await transaction.passwordResetEvent.create({
+        data: {
+          id: randomUUID(),
+          flowId,
+          type: input.event.type,
+          requestId: input.event.requestId ?? null,
+          failureCode: input.event.failureCode ?? null,
+          ipHash: input.event.ipHash ?? null,
+          userAgent: input.event.userAgent ?? null,
+        },
+      })
+    })
+
+    return { id: flowId }
+  }
+
+  async recordEvent(input: RecordPasswordResetEventInput): Promise<void> {
+    await prisma.passwordResetEvent.create({
+      data: {
+        id: randomUUID(),
+        flowId: input.flowId,
+        type: input.type,
+        requestId: input.requestId ?? null,
+        failureCode: input.failureCode ?? null,
+        ipHash: input.ipHash ?? null,
+        userAgent: input.userAgent ?? null,
+      },
+    })
+  }
+
+  async updateFlow(input: UpdatePasswordResetFlowInput): Promise<void> {
+    const { flowId, ...data } = input
+    await prisma.passwordResetFlow.update({ where: { id: flowId }, data })
+  }
+
+  async findFlowForSupabaseUser(flowId: string, supabaseId: string) {
+    return prisma.passwordResetFlow.findFirst({
+      where: { id: flowId, profile: { supabaseId } },
+      select: { id: true, status: true },
+    })
+  }
+}
+
+export const passwordResetAuditRepository = new PasswordResetAuditRepository()
