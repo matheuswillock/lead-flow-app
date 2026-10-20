@@ -37,6 +37,8 @@ create table "public"."password_reset_flows" (
   "id" uuid not null,
   "profileId" uuid,
   "recipientEmail" text not null,
+  "dispatchId" uuid,
+  "resendEmailId" text,
   "status" "public"."password_reset_flow_status" not null default 'requested',
   "ipHash" text,
   "userAgent" text,
@@ -72,6 +74,10 @@ create index "password_reset_flows_profile_requested_idx"
   on "public"."password_reset_flows" ("profileId", "requestedAt" desc);
 create index "password_reset_flows_recipient_requested_idx"
   on "public"."password_reset_flows" ("recipientEmail", "requestedAt" desc);
+create index "password_reset_flows_dispatch_idx"
+  on "public"."password_reset_flows" ("dispatchId");
+create index "password_reset_flows_resend_email_idx"
+  on "public"."password_reset_flows" ("resendEmailId");
 create index "password_reset_flows_status_requested_idx"
   on "public"."password_reset_flows" ("status", "requestedAt" desc);
 create index "password_reset_flows_status_expires_idx"

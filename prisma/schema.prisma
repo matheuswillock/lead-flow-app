@@ -1365,6 +1365,8 @@ model PasswordResetFlow {
   id                String                 @id @default(uuid()) @db.Uuid
   profileId         String?                @map("profileId") @db.Uuid
   recipientEmail    String                 @map("recipientEmail") @db.Text
+  dispatchId        String?                @map("dispatchId") @db.Uuid
+  resendEmailId     String?                @map("resendEmailId") @db.Text
   status            PasswordResetFlowStatus @default(requested)
   ipHash            String?                @map("ipHash") @db.Text
   userAgent         String?                @map("userAgent") @db.Text
@@ -1384,6 +1386,8 @@ model PasswordResetFlow {
 
   @@index([profileId, requestedAt(sort: Desc)], map: "password_reset_flows_profile_requested_idx")
   @@index([recipientEmail, requestedAt(sort: Desc)], map: "password_reset_flows_recipient_requested_idx")
+  @@index([dispatchId], map: "password_reset_flows_dispatch_idx")
+  @@index([resendEmailId], map: "password_reset_flows_resend_email_idx")
   @@index([status, requestedAt(sort: Desc)], map: "password_reset_flows_status_requested_idx")
   @@index([status, expiresAt], map: "password_reset_flows_status_expires_idx")
   @@map("password_reset_flows")
