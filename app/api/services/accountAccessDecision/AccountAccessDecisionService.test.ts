@@ -213,4 +213,63 @@ describe("AccountAccessDecisionService", () => {
 
     expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
   })
+
+  describe("endurecimento da concessão temporária", () => {
+    const base = {
+      billingOwnerId: "owner-1",
+      subscriptionNextDueDate: null,
+      hasPermanentSubscription: false,
+      isBanned: false,
+    }
+    const now = new Date("2026-10-20T12:00:00.000Z")
+    const future = new Date("2026-11-19T03:00:00.000Z")
+    const past = new Date("2026-10-01T03:00:00.000Z")
+
+    it("ignora uma data residual quando a concessão não está marcada como ativa", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        { ...base, subscriptionStatus: "suspended", temporaryAccessGranted: false, temporaryAccessUntil: future },
+        now,
+      )
+
+      expect(decision).toEqual({ state: "restricted", reason: "suspended" })
+    })
+
+    it("ignora a data residual quando temporaryAccessGranted nem foi informado", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        { ...base, subscriptionStatus: "canceled", temporaryAccessUntil: future },
+        now,
+      )
+
+      expect(decision).toEqual({ state: "restricted", reason: "canceled" })
+    })
+
+    it("mantém a concessão ativa do Backoffice liberando contas suspended", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        { ...base, subscriptionStatus: "suspended", temporaryAccessGranted: true, temporaryAccessUntil: future },
+        now,
+      )
+
+      expect(decision).toMatchObject({ state: "allowed", temporaryAccessGranted: true })
+    })
+
+    it("não degrada suspended/canceled para somente leitura quando a concessão expira", () => {
+      for (const status of ["suspended", "canceled"] as const) {
+        const decision = new AccountAccessDecisionService().decide(
+          { ...base, subscriptionStatus: status, temporaryAccessGranted: true, temporaryAccessUntil: past },
+          now,
+        )
+
+        expect(decision).toEqual({ state: "restricted", reason: status })
+      }
+    })
+
+    it("mantém somente leitura para past_due com a concessão expirada", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        { ...base, subscriptionStatus: "past_due", temporaryAccessGranted: true, temporaryAccessUntil: past },
+        now,
+      )
+
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
+    })
+  })
 })

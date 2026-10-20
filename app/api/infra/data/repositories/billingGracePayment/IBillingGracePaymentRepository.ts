@@ -31,7 +31,8 @@ export interface IBillingGracePaymentRepository {
   create(input: CreateBillingGracePaymentInput): Promise<BillingGracePayment>
   findByIdForAccount(id: string, accountId: string): Promise<BillingGracePayment | null>
   findById(id: string): Promise<BillingGracePayment | null>
-  findByIdempotencyKey(idempotencyKey: string): Promise<BillingGracePayment | null>
+  /** A chave de idempotência é do cliente: só vale dentro da conta que a enviou. */
+  findByIdempotencyKey(input: { accountId: string; idempotencyKey: string }): Promise<BillingGracePayment | null>
   attachProviderAttempt(input: {
     id: string
     providerSessionId: string

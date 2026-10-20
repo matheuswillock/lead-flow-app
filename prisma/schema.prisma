@@ -1556,7 +1556,7 @@ model BillingGracePayment {
   providerSessionId     String?   @map("provider_session_id") @db.Uuid
   providerAttemptId     String?   @map("provider_attempt_id") @db.Uuid
   providerExternalId    String?   @map("provider_external_id") @db.Text
-  idempotencyKey        String    @unique @map("idempotency_key") @db.Text
+  idempotencyKey        String    @map("idempotency_key") @db.Text
   paymentInstructions   Json?     @map("payment_instructions")
   quoteExpiresAt        DateTime? @map("quote_expires_at") @db.Timestamptz(6)
   confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
@@ -1565,6 +1565,7 @@ model BillingGracePayment {
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@unique([accountId, idempotencyKey], map: "billing_grace_payments_account_idempotency_key")
   @@index([accountId, status], map: "billing_grace_payments_account_status_idx")
   @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
   @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")

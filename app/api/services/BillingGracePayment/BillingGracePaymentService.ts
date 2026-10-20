@@ -47,11 +47,16 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
   }
 
   async createPixPayment(input: { supabaseId: string; idempotencyKey: string }) {
-    const existing = await billingGracePaymentRepository.findByIdempotencyKey(input.idempotencyKey)
-    if (existing) return existing
-
+    // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
+    // nem devolver o pagamento (e o PIX) de outra conta.
     const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
     if (!account) throw new Error("Somente o master pode regularizar esta conta")
+
+    const existing = await billingGracePaymentRepository.findByIdempotencyKey({
+      accountId: account.accountId,
+      idempotencyKey: input.idempotencyKey,
+    })
+    if (existing) return existing
 
     const summary = buildAccountSummary(account)
     const amountCents = Math.round(summary.totalPrice * 100)
@@ -74,11 +79,14 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
     })
     const provider = createAbacatePayProvider(environment)
+    // A unicidade das tentativas do provider é global: derivar a chave do pagamento
+    // (único) evita colisão entre contas que enviem a mesma chave de cliente.
+    const providerIdempotencyKey = `billing-grace-payment:${payment.id}`
     const session = await paymentProviderSessionRepository.createSession({
       tenantId: account.teamId ?? account.accountId,
       ownerType: "BILLING_GRACE_PAYMENT",
       ownerId: payment.id,
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: providerIdempotencyKey,
       provider: selected.provider,
       environment: selected.environment,
       externalAccountContext: selected.externalAccountContext,
@@ -93,7 +101,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       ownerId: payment.id,
       now: new Date(),
       attemptNumber: 1,
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: providerIdempotencyKey,
       requestFingerprint: JSON.stringify({ amountCents, method: "PIX", accountId: account.accountId }),
       provider: selected.provider,
       environment: selected.environment,
