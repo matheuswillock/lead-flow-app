@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { consumePublicFormRateLimit } from "@/lib/public-forms/rate-limit"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { getTrustedClientIp } from "@/lib/http/get-trusted-client-ip"
 import type { PasswordResetTelemetryEvent } from "@/lib/auth/password-reset-audit"
 import { passwordResetTelemetryUseCase } from "@/app/api/useCases/passwordResetAudit/PasswordResetTelemetryUseCase"
 
@@ -22,13 +23,21 @@ function isUuid(value: unknown): value is string {
   )
 }
 
-function getRateLimitKey(request: NextRequest, flowId: string): string {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip")
+const TELEMETRY_RATE_LIMIT = { limit: 20, windowMs: 60_000 }
+// Teto compartilhado quando não há IP confiável: impede que UUIDs aleatórios criem um
+// balde por flowId e transformem a rota em consultas ilimitadas ao banco.
+const UNATTRIBUTED_RATE_LIMIT = { limit: 300, windowMs: 60_000 }
+
+async function consumeTelemetryRateLimit(flowId: string, clientIp: string | null) {
   const secret = process.env.PASSWORD_RESET_AUDIT_IP_HASH_SECRET?.trim()
-  const ipKey = ip && secret ? createHmac("sha256", secret).update(ip).digest("hex") : null
-  return `password-reset-telemetry:${ipKey ?? flowId}`
+  if (clientIp && secret) {
+    const ipKey = createHmac("sha256", secret).update(clientIp).digest("hex")
+    return consumePublicFormRateLimit(`password-reset-telemetry:ip:${ipKey}`, TELEMETRY_RATE_LIMIT)
+  }
+
+  const perFlow = await consumePublicFormRateLimit(`password-reset-telemetry:flow:${flowId}`, TELEMETRY_RATE_LIMIT)
+  if (!perFlow.allowed) return perFlow
+  return consumePublicFormRateLimit("password-reset-telemetry:unattributed", UNATTRIBUTED_RATE_LIMIT)
 }
 
 function getBearerToken(request: NextRequest): string | null {
@@ -55,10 +64,10 @@ export async function POST(request: NextRequest) {
     }
 
     const telemetry = body as { flowId: string; eventType: PasswordResetTelemetryEvent }
-    const rateLimit = await consumePublicFormRateLimit(getRateLimitKey(request, telemetry.flowId), {
-      limit: 20,
-      windowMs: 60_000,
-    })
+    // Só IP vindo de cabeçalho confiável (x-vercel-forwarded-for na Vercel): o
+    // x-forwarded-for do cliente é forjável e burlaria o limite e a auditoria.
+    const clientIp = getTrustedClientIp(request.headers)
+    const rateLimit = await consumeTelemetryRateLimit(telemetry.flowId, clientIp)
     if (!rateLimit.allowed) {
       return NextResponse.json(new Output(false, [], ["Limite de telemetria excedido"], null), {
         status: 429,
@@ -70,7 +79,7 @@ export async function POST(request: NextRequest) {
       flowId: telemetry.flowId,
       eventType: telemetry.eventType,
       accessToken: getBearerToken(request),
-      ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
+      ip: clientIp,
       userAgent: request.headers.get("user-agent"),
     })
     const forbidden = (output.result as { outcome?: string } | null)?.outcome === "forbidden"
