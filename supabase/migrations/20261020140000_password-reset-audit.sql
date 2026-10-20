@@ -96,3 +96,19 @@ alter table "public"."password_reset_events"
   references "public"."password_reset_flows"("id")
   on update cascade
   on delete cascade;
+
+alter table "public"."password_reset_flows" enable row level security;
+alter table "public"."password_reset_events" enable row level security;
+
+revoke all on table "public"."password_reset_flows" from public, anon, authenticated;
+revoke all on table "public"."password_reset_events" from public, anon, authenticated;
+grant all on table "public"."password_reset_flows" to service_role;
+grant all on table "public"."password_reset_events" to service_role;
+
+create policy "password_reset_flows_service_role_all"
+  on "public"."password_reset_flows"
+  for all to service_role using (true) with check (true);
+
+create policy "password_reset_events_service_role_all"
+  on "public"."password_reset_events"
+  for all to service_role using (true) with check (true);
