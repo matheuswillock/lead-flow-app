@@ -748,7 +748,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
         }),
       )
       await page.route("**/email/settings/studio-domain", (route) => {
-        verifyRequests += 1
+        if (route.request().method() === "PATCH") verifyRequests += 1
         return new Promise((resolve) =>
           setTimeout(
             () =>
