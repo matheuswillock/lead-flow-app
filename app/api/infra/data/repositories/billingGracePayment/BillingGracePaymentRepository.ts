@@ -53,8 +53,10 @@ export class BillingGracePaymentRepository implements IBillingGracePaymentReposi
     return prisma.billingGracePayment.findUnique({ where: { id } })
   }
 
-  findByIdempotencyKey(idempotencyKey: string): Promise<BillingGracePayment | null> {
-    return prisma.billingGracePayment.findUnique({ where: { idempotencyKey } })
+  findByIdempotencyKey(input: { accountId: string; idempotencyKey: string }): Promise<BillingGracePayment | null> {
+    return prisma.billingGracePayment.findUnique({
+      where: { accountId_idempotencyKey: { accountId: input.accountId, idempotencyKey: input.idempotencyKey } },
+    })
   }
 
   attachProviderAttempt(input: {
