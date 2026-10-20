@@ -19,6 +19,7 @@ import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/A
 
 const ABACATE_CAPABILITIES = [
   "ONE_TIME_PAYMENT",
+  "HOSTED_CHECKOUT",
   "PIX",
   "CARD",
   "STATUS_QUERY",

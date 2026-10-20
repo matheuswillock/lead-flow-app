@@ -18,6 +18,7 @@ describe("payment provider domain vocabulary", () => {
       CUSTOMER: "CUSTOMER",
       CATALOG: "CATALOG",
       ONE_TIME_PAYMENT: "ONE_TIME_PAYMENT",
+      HOSTED_CHECKOUT: "HOSTED_CHECKOUT",
       PIX: "PIX",
       CARD: "CARD",
       STATUS_QUERY: "STATUS_QUERY",

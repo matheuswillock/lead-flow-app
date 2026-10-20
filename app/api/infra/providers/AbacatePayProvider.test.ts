@@ -92,7 +92,65 @@ describe("AbacatePayProvider", () => {
     expect(provider.metadata).toEqual({
       key: "ABACATE_PAY",
       environment: "DEV",
-      capabilities: ["PIX", "CARD", "STATUS_QUERY", "FULL_REFUND", "WEBHOOK"],
+      capabilities: ["PIX", "HOSTED_CHECKOUT", "CARD", "STATUS_QUERY", "FULL_REFUND", "WEBHOOK"],
+    })
+  })
+
+  it("cria checkout hospedado usando produto avulso com o valor congelado", async () => {
+    const http = mock(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/products/list")) {
+        return response({ data: [{ id: "prod_grace", externalId: "billing-grace-dev-1250", price: 1250, status: "ACTIVE" }] })
+      }
+      return response({ data: { id: "bill_grace", url: "https://app.abacatepay.com/pay/bill_grace", amount: 1250 } })
+    })
+    const provider = new AbacatePayProvider(config, { http })
+
+    const result = await provider.createHostedCheckout({
+      amountInCents: 1250,
+      externalReference: "payment-attempt",
+      metadata: { attemptId: "attempt-1" },
+      returnUrl: "https://app.example.com/return",
+      completionUrl: "https://app.example.com/complete",
+    })
+
+    expect(result).toEqual({
+      externalId: "bill_grace",
+      url: "https://app.abacatepay.com/pay/bill_grace",
+      amountInCents: 1250,
+      status: "PENDING",
+    })
+    expect(http).toHaveBeenCalledWith(
+      "https://api.abacatepay.com/v2/checkouts/create",
+      expect.objectContaining({ body: expect.stringContaining('"methods":["PIX"]') }),
+    )
+  })
+
+  it("normaliza checkout.completed como pagamento confirmado", () => {
+    const provider = new AbacatePayProvider(config)
+    const rawBody = JSON.stringify({
+      id: "evt_checkout",
+      event: "checkout.completed",
+      devMode: true,
+      data: {
+        checkout: {
+          id: "bill_grace",
+          status: "PAID",
+          amount: 1250,
+          metadata: { attemptId: "11111111-1111-4111-8111-111111111111" },
+          updatedAt: "2026-10-20T12:00:00.000Z",
+        },
+      },
+    })
+
+    const result = provider.normalizeEvent(verifiedWebhook(provider, rawBody))
+
+    expect(result).toMatchObject({
+      event: "PAYMENT_CONFIRMED",
+      externalPaymentId: "bill_grace",
+      status: "CONFIRMED",
+      method: "PIX",
+      attemptId: "11111111-1111-4111-8111-111111111111",
     })
   })
 
