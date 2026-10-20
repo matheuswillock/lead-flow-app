@@ -295,16 +295,22 @@ export class AbacatePayProvider
     const secretMatches =
       configuredSecret.length > 0 &&
       constantTimeEqual(input.query.webhookSecret ?? "", configuredSecret)
-    if (typeof signature !== "string" || !secretMatches) {
+    if (!secretMatches) {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
     }
-    const expected = createHmac("sha256", this.config.webhookSigningKey)
-      .update(input.rawBody)
-      .digest("base64")
-    const actual = Buffer.from(signature)
-    const expectedBuffer = Buffer.from(expected)
-    if (actual.length !== expectedBuffer.length || !timingSafeEqual(actual, expectedBuffer)) {
-      throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+    // Sem chave pública (loja sem cartão liberado) o HMAC não é verificável; a origem
+    // continua autenticada pelo secret da URL. Com a chave configurada o HMAC é obrigatório.
+    const signingKey = this.config.webhookSigningKey
+    if (signingKey !== null) {
+      if (typeof signature !== "string") {
+        throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+      }
+      const expected = createHmac("sha256", signingKey).update(input.rawBody).digest("base64")
+      const actual = Buffer.from(signature)
+      const expectedBuffer = Buffer.from(expected)
+      if (actual.length !== expectedBuffer.length || !timingSafeEqual(actual, expectedBuffer)) {
+        throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+      }
     }
     const verified = {
       rawBody: input.rawBody,

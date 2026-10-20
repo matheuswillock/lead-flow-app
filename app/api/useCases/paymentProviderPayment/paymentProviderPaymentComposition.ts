@@ -44,10 +44,23 @@ function readProviderSecret(environment: PaymentProviderEnvironment, suffix: str
   return value
 }
 
+// Em PRODUCTION a chave pública só existe depois que a loja tem "Checkout próprio" (cartão)
+// liberado. Em DEV ela é sempre obrigatória.
+function readProviderPublicKey(environment: PaymentProviderEnvironment): string | null {
+  if (environment !== "PRODUCTION") return readProviderSecret(environment, "PUBLIC_KEY")
+  const value = process.env[`ABACATE_PAY_${environment}_PUBLIC_KEY`] ?? process.env.ABACATE_PAY_PUBLIC_KEY
+  return value?.trim() ? value : null
+}
+
+function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
+  const hasPublicKey = readProviderPublicKey(environment) !== null
+  return ABACATE_CAPABILITIES.filter((capability) => capability !== "CARD" || hasPublicKey)
+}
+
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
 ): AbacatePayProvider {
-  const publicKey = readProviderSecret(environment, "PUBLIC_KEY")
+  const publicKey = readProviderPublicKey(environment)
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
       apiKey: readProviderSecret(environment, "API_KEY"),
@@ -69,7 +82,7 @@ function createUseCase() {
       metadata: {
         key: "ABACATE_PAY",
         environment,
-        capabilities: ABACATE_CAPABILITIES,
+        capabilities: resolveAbacateCapabilities(environment),
       },
     },
   ])
