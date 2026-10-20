@@ -2,10 +2,17 @@ import { expect, test } from "@playwright/test"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
 import { runResponsiveChecks } from "../../support/responsive"
+import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal"
 
 test.describe("regularização da assinatura", () => {
   test("exibe quote PIX e inicia o pagamento sem checkout externo", async ({ context, page }) => {
     await injectE2eAuthCookie(context)
+    await context.addInitScript(
+      ({ supabaseId, version }: { supabaseId: string; version: string }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true")
+      },
+      { supabaseId: E2E_MASTER_SUPABASE_ID, version: WHATS_NEW_VERSION },
+    )
     let paymentCreated = false
 
     await page.route("**/api/**/billing-grace-payment**", async (route) => {
