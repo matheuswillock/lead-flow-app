@@ -51,10 +51,15 @@ export class StudioDomainDnsNotificationService implements IStudioDomainDnsNotif
       ),
     )
 
-    // E-mail para master + owner quando DNS falhar ou precisa de ação
-    // Status "pending" e "failed" disparam e-mail; "verified" e "inconclusive" não
-    if (input.result.status === "pending" || input.result.status === "failed") {
-      await this.sendDnsFailureEmail(input.teamId, input.result, recipients)
+    // E-mail para master + owner quando DNS falhar ou precisa de ação.
+    // Status "pending" e "failed" disparam e-mail; "verified" e "inconclusive" não.
+    // Sem RESEND_API_KEY a notificação in-app continua sendo criada — o e-mail é secundário.
+    if ((input.result.status === "pending" || input.result.status === "failed") && resend) {
+      try {
+        await this.sendDnsFailureEmail(input.teamId, input.result, recipients)
+      } catch (error) {
+        console.error("[StudioDomainDnsNotificationService] Falha ao enviar e-mail de alerta DNS", error)
+      }
     }
   }
 

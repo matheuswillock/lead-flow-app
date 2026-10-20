@@ -4,6 +4,15 @@ import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/t
 import type { StudioDomainDnsAuditResult } from "./StudioDomainDnsAuditTypes"
 import { StudioDomainDnsNotificationService } from "./StudioDomainDnsNotificationService"
 
+// Testes nunca devem chamar a API do Resend: sem chave, o serviço mantém a
+// notificação in-app e apenas ignora o e-mail.
+mock.module("@/lib/email", () => ({
+  resend: null,
+  assertResend: () => {
+    throw new Error("Missing RESEND_API_KEY env var")
+  },
+}))
+
 const checkedAt = new Date("2026-10-19T12:00:00.000Z")
 
 function result(status: StudioDomainDnsAuditResult["status"]): StudioDomainDnsAuditResult {
