@@ -20,7 +20,7 @@ const paymentProviderRouter = new PaymentProviderRouter(
       metadata: {
         key: "ABACATE_PAY",
         environment: "DEV",
-        capabilities: ["ONE_TIME_PAYMENT", "PIX", "STATUS_QUERY", "WEBHOOK"],
+        capabilities: ["ONE_TIME_PAYMENT", "HOSTED_CHECKOUT", "PIX", "STATUS_QUERY", "WEBHOOK"],
       },
     },
   ]),
@@ -108,16 +108,12 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       now: new Date(),
       ttlMs: 60_000,
     })
-    const outcome = await provider.createPixPayment({
+    const outcome = await provider.createHostedCheckout({
       amountInCents: amountCents,
-      customer: {
-        name: account.name,
-        email: account.email,
-        taxId: account.taxId,
-        cellphone: account.cellphone,
-      },
       externalReference: `${payment.id}:${attempt.id}`,
       metadata: { paymentId: payment.id, attemptId: attempt.id },
+      returnUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.corretorstudio.com"}/${account.accountId}/billing-grace-payment`,
+      completionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.corretorstudio.com"}/${account.accountId}/billing-grace-payment?payment=completed`,
     })
     const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
       attemptId: leased.id,
@@ -130,18 +126,13 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       expectedStatus: "CREATED",
       operation: "PAYMENT",
       externalId: "externalId" in outcome ? outcome.externalId : null,
-      ...(outcome.status === "PENDING" && "pix" in outcome
-        ? { paymentInstructions: outcome.pix }
-        : {}),
     })
     return billingGracePaymentRepository.attachProviderAttempt({
       id: payment.id,
       providerSessionId: session.id,
       providerAttemptId: updated.id,
       providerExternalId: updated.externalId,
-      ...(updated.paymentInstructions
-        ? { paymentInstructions: updated.paymentInstructions as Prisma.InputJsonValue }
-        : {}),
+      paymentInstructions: { checkoutUrl: outcome.url } as Prisma.InputJsonValue,
     })
   }
 

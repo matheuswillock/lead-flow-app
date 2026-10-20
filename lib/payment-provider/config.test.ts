@@ -30,10 +30,10 @@ describe("PaymentProviderConfig", () => {
     ).toThrow("ambiente")
   })
 
-  it("rejects a browser public key as webhook signing key", () => {
+  it("accepts the Abacate public key as webhook signing key", () => {
     expect(() =>
-      PaymentProviderConfig.create({ ...validConfig, webhookSigningKey: "pk_wrong" }),
-    ).toThrow("assinatura")
+      PaymentProviderConfig.create({ ...validConfig, webhookSigningKey: "pk_test_provider" }),
+    ).not.toThrow()
   })
 
   it("freezes validated configuration at runtime", () => {

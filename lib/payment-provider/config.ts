@@ -54,12 +54,6 @@ export class PaymentProviderConfig {
         "DEV Mode é obrigatório no ambiente DEV",
       )
     }
-    if (input.webhookSigningKey.startsWith("pk_")) {
-      throw new PaymentProviderError(
-        "CONFIGURATION_INVALID",
-        "A chave de assinatura do webhook é inválida",
-      )
-    }
     const baseUrl = input.baseUrl ?? "https://api.abacatepay.com"
     let parsedBaseUrl: URL
     try {

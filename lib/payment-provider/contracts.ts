@@ -49,6 +49,23 @@ export interface OneTimePaymentCapability {
   createCardPayment(input: CreateCardPaymentInput): Promise<ProviderCardPaymentOutcome>
 }
 
+export type HostedCheckoutOutcome = {
+  readonly externalId: string
+  readonly url: string
+  readonly amountInCents: number
+  readonly status: "PENDING"
+}
+
+export interface HostedCheckoutCapability {
+  createHostedCheckout(input: {
+    readonly amountInCents: number
+    readonly externalReference: string
+    readonly metadata?: Readonly<Record<string, string>>
+    readonly returnUrl: string
+    readonly completionUrl: string
+  }): Promise<HostedCheckoutOutcome>
+}
+
 export interface PaymentQueryCapability {
   getStatus(input: {
     readonly externalId: string
