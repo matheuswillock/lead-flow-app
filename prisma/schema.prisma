@@ -40,6 +40,38 @@ enum UserFunction {
   CLOSER
 }
 
+/// Estados resumidos do ciclo de vida de uma solicitação de redefinição.
+/// Segredos de autenticação, senhas e URLs de ação não pertencem a este
+/// contrato; os fatos detalhados ficam em `PasswordResetEvent`.
+enum PasswordResetFlowStatus {
+  requested
+  link_generated
+  email_sent
+  token_verified
+  completed
+  expired
+  invalidated
+  failed
+
+  @@map("password_reset_flow_status")
+}
+
+/// Fatos de auditoria do fluxo de redefinição de senha.
+enum PasswordResetEventType {
+  requested
+  link_generated
+  email_sent
+  email_failed
+  token_verified
+  token_rejected
+  password_updated
+  expired
+  invalidated
+  failed
+
+  @@map("password_reset_event_type")
+}
+
 enum MeetingHeald {
   yes
   no
@@ -1295,6 +1327,7 @@ model Profile {
 
   auditLogsAsActor       AuditLog[]              @relation("AuditLogActor")
   googleConnectionEvents GoogleConnectionEvent[]
+  passwordResetFlows     PasswordResetFlow[]
 
   deletedByProfile                    Profile?                     @relation("ProfileDeletedBy", fields: [deletedByProfileId], references: [id], onDelete: SetNull)
   profilesDeleted                     Profile[]                    @relation("ProfileDeletedBy")
@@ -1314,6 +1347,63 @@ model Profile {
   @@index([asaasCustomerId, asaasCustomerAccount], map: "corretor_studio_profiles_asaas_customer_account_idx")
   @@index([asaasSubscriptionId, asaasSubscriptionAccount], map: "corretor_studio_profiles_asaas_subscription_account_idx")
   @@map("corretor_studio_profiles")
+}
+
+/// Resumo auditável de uma solicitação de redefinição de senha.
+///
+/// A tabela não persiste token, hash de token, senha, URL de ação ou payload
+/// bruto do provedor. `recipientEmail` é o único identificador de contato
+/// necessário para auditoria de uma solicitação que não encontrou um Profile.
+model PasswordResetFlow {
+  id                String                 @id @default(uuid()) @db.Uuid
+  profileId         String?                @map("profileId") @db.Uuid
+  recipientEmail    String                 @map("recipientEmail") @db.Text
+  status            PasswordResetFlowStatus @default(requested)
+  requestIp         String?                @map("requestIp") @db.Text
+  userAgent         String?                @map("userAgent") @db.Text
+  originScreen      String?                @map("originScreen") @db.Text
+  requestedAt       DateTime               @default(now()) @map("requestedAt") @db.Timestamptz(6)
+  linkGeneratedAt   DateTime?              @map("linkGeneratedAt") @db.Timestamptz(6)
+  emailSentAt       DateTime?              @map("emailSentAt") @db.Timestamptz(6)
+  tokenVerifiedAt   DateTime?              @map("tokenVerifiedAt") @db.Timestamptz(6)
+  completedAt       DateTime?              @map("completedAt") @db.Timestamptz(6)
+  expiresAt         DateTime?              @map("expiresAt") @db.Timestamptz(6)
+  failureCode       String?                @map("failureCode") @db.Text
+  createdAt         DateTime               @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt         DateTime               @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  profile Profile?            @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  events  PasswordResetEvent[]
+
+  @@index([profileId, requestedAt(sort: Desc)], map: "password_reset_flows_profile_requested_idx")
+  @@index([recipientEmail, requestedAt(sort: Desc)], map: "password_reset_flows_recipient_requested_idx")
+  @@index([status, requestedAt(sort: Desc)], map: "password_reset_flows_status_requested_idx")
+  @@index([status, expiresAt], map: "password_reset_flows_status_expires_idx")
+  @@map("password_reset_flows")
+}
+
+/// Evento append-only do fluxo de redefinição.
+///
+/// Os campos de contexto são deliberadamente limitados a identificadores de
+/// correlação e diagnóstico. Não adicionar token, senha, URL ou metadata JSON
+/// bruto aqui: eventos são material de auditoria de longa duração.
+model PasswordResetEvent {
+  id           String                @id @default(uuid()) @db.Uuid
+  flowId       String                @map("flowId") @db.Uuid
+  type         PasswordResetEventType
+  occurredAt   DateTime              @default(now()) @map("occurredAt") @db.Timestamptz(6)
+  requestId    String?               @map("requestId") @db.Text
+  failureCode  String?               @map("failureCode") @db.Text
+  requestIp    String?               @map("requestIp") @db.Text
+  userAgent    String?               @map("userAgent") @db.Text
+  createdAt    DateTime              @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  flow PasswordResetFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@index([flowId, occurredAt(sort: Desc)], map: "password_reset_events_flow_occurred_idx")
+  @@index([type, occurredAt(sort: Desc)], map: "password_reset_events_type_occurred_idx")
+  @@index([requestId], map: "password_reset_events_request_id_idx")
+  @@map("password_reset_events")
 }
 
 model HealthPlanOption {

@@ -1,0 +1,91 @@
+-- Password reset audit contract.
+-- Deliberately stores no token, password, token hash, raw action URL, or
+-- provider payload.
+
+create type "public"."password_reset_flow_status" as enum (
+  'requested',
+  'link_generated',
+  'email_sent',
+  'token_verified',
+  'completed',
+  'expired',
+  'invalidated',
+  'failed'
+);
+
+create type "public"."password_reset_event_type" as enum (
+  'requested',
+  'link_generated',
+  'email_sent',
+  'email_failed',
+  'token_verified',
+  'token_rejected',
+  'password_updated',
+  'expired',
+  'invalidated',
+  'failed'
+);
+
+create table "public"."password_reset_flows" (
+  "id" uuid not null,
+  "profileId" uuid,
+  "recipientEmail" text not null,
+  "status" "public"."password_reset_flow_status" not null default 'requested',
+  "requestIp" text,
+  "userAgent" text,
+  "originScreen" text,
+  "requestedAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
+  "linkGeneratedAt" timestamptz(6),
+  "emailSentAt" timestamptz(6),
+  "tokenVerifiedAt" timestamptz(6),
+  "completedAt" timestamptz(6),
+  "expiresAt" timestamptz(6),
+  "failureCode" text,
+  "createdAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
+  "updatedAt" timestamptz(6) not null,
+
+  constraint "password_reset_flows_pkey" primary key ("id")
+);
+
+create table "public"."password_reset_events" (
+  "id" uuid not null,
+  "flowId" uuid not null,
+  "type" "public"."password_reset_event_type" not null,
+  "occurredAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
+  "requestId" text,
+  "failureCode" text,
+  "requestIp" text,
+  "userAgent" text,
+  "createdAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
+
+  constraint "password_reset_events_pkey" primary key ("id")
+);
+
+create index "password_reset_flows_profile_requested_idx"
+  on "public"."password_reset_flows" ("profileId", "requestedAt" desc);
+create index "password_reset_flows_recipient_requested_idx"
+  on "public"."password_reset_flows" ("recipientEmail", "requestedAt" desc);
+create index "password_reset_flows_status_requested_idx"
+  on "public"."password_reset_flows" ("status", "requestedAt" desc);
+create index "password_reset_flows_status_expires_idx"
+  on "public"."password_reset_flows" ("status", "expiresAt");
+create index "password_reset_events_flow_occurred_idx"
+  on "public"."password_reset_events" ("flowId", "occurredAt" desc);
+create index "password_reset_events_type_occurred_idx"
+  on "public"."password_reset_events" ("type", "occurredAt" desc);
+create index "password_reset_events_request_id_idx"
+  on "public"."password_reset_events" ("requestId");
+
+alter table "public"."password_reset_flows"
+  add constraint "password_reset_flows_profileId_fkey"
+  foreign key ("profileId")
+  references "public"."corretor_studio_profiles"("id")
+  on update cascade
+  on delete set null;
+
+alter table "public"."password_reset_events"
+  add constraint "password_reset_events_flowId_fkey"
+  foreign key ("flowId")
+  references "public"."password_reset_flows"("id")
+  on update cascade
+  on delete cascade;

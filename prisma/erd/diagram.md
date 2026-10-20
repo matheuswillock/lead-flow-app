@@ -16,6 +16,34 @@ CLOSER CLOSER
     
 
 
+        password_reset_flow_status {
+            requested requested
+link_generated link_generated
+email_sent email_sent
+token_verified token_verified
+completed completed
+expired expired
+invalidated invalidated
+failed failed
+        }
+    
+
+
+        password_reset_event_type {
+            requested requested
+link_generated link_generated
+email_sent email_sent
+email_failed email_failed
+token_verified token_verified
+token_rejected token_rejected
+password_updated password_updated
+expired expired
+invalidated invalidated
+failed failed
+        }
+    
+
+
         MeetingHeald {
             yes yes
 no no
@@ -1809,6 +1837,37 @@ completed completed
     DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "password_reset_flows" {
+    String id "🗝️"
+    String recipientEmail 
+    PasswordResetFlowStatus status 
+    String requestIp "❓"
+    String userAgent "❓"
+    String originScreen "❓"
+    DateTime requestedAt 
+    DateTime linkGeneratedAt "❓"
+    DateTime emailSentAt "❓"
+    DateTime tokenVerifiedAt "❓"
+    DateTime completedAt "❓"
+    DateTime expiresAt "❓"
+    String failureCode "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "password_reset_events" {
+    String id "🗝️"
+    PasswordResetEventType type 
+    DateTime occurredAt 
+    String requestId "❓"
+    String failureCode "❓"
+    String requestIp "❓"
+    String userAgent "❓"
+    DateTime createdAt 
     }
   
 
@@ -4982,6 +5041,10 @@ completed completed
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "sponsorMaster"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "deletedByProfile"
+    "password_reset_flows" |o--|| "PasswordResetFlowStatus" : "enum:status"
+    "password_reset_flows" }o--|o corretor_studio_profiles : "profile"
+    "password_reset_events" |o--|| "PasswordResetEventType" : "enum:type"
+    "password_reset_events" }o--|| password_reset_flows : "flow"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
