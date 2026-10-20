@@ -1,4 +1,5 @@
 import { profileRepository } from '@/app/api/infra/data/repositories/profile/ProfileRepository';
+import { passwordResetAuditService } from '@/app/api/services/passwordResetAudit/PasswordResetAuditService';
 import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
 import { buildSetPasswordEmailAuthLink } from '@/lib/supabase/email-auth-link';
@@ -64,7 +65,6 @@ export class ForgotPasswordUseCase implements IForgotPasswordUseCase {
     const rateLimitResult = checkAndRegisterRateLimit(input.ip);
     if (!rateLimitResult.allowed) {
       console.info(`${routeTag} Rate limit atingido`, {
-        ip: input.ip,
         originScreen: input.originScreen,
       });
 
@@ -73,7 +73,6 @@ export class ForgotPasswordUseCase implements IForgotPasswordUseCase {
 
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       console.info(`${routeTag} Email ausente ou inválido`, {
-        ip: input.ip,
         originScreen: input.originScreen,
       });
       return new Output(true, [SUCCESS_MESSAGE], [], null);
@@ -85,7 +84,6 @@ export class ForgotPasswordUseCase implements IForgotPasswordUseCase {
       if (!user || !user.supabaseId) {
         console.info(`${routeTag} Conta não elegível para reset`, {
           email: getMaskedEmail(normalizedEmail),
-          ip: input.ip,
           originScreen: input.originScreen,
         });
         return new Output(true, [SUCCESS_MESSAGE], [], null);
@@ -95,58 +93,106 @@ export class ForgotPasswordUseCase implements IForgotPasswordUseCase {
       if (!supabase) {
         console.error(`${routeTag} Supabase admin indisponível`, {
           email: getMaskedEmail(normalizedEmail),
-          ip: input.ip,
         });
         return new Output(true, [SUCCESS_MESSAGE], [], null);
       }
 
-      const redirectTo = getFullUrl('/set-password');
-      const { data, error } = await supabase.auth.admin.generateLink({
-        type: 'recovery',
-        email: user.email,
-        options: {
-          redirectTo,
-        },
+      const auditFlow = await passwordResetAuditService.createFlow({
+        profileId: user.id,
+        recipientEmail: user.email,
+        ip: input.ip,
+        userAgent: input.userAgent,
+        originScreen: input.originScreen,
       });
+
+      const redirectTo = getFullUrl('/set-password');
+      let data: Awaited<ReturnType<typeof supabase.auth.admin.generateLink>>['data'];
+      let error: Awaited<ReturnType<typeof supabase.auth.admin.generateLink>>['error'];
+      try {
+        const generated = await supabase.auth.admin.generateLink({
+          type: 'recovery',
+          email: user.email,
+          options: {
+            redirectTo,
+          },
+        });
+        data = generated.data;
+        error = generated.error;
+      } catch (generationError) {
+        if (auditFlow) {
+          await passwordResetAuditService.recordFailure(auditFlow.id, 'link_generation_failed');
+        }
+        throw generationError;
+      }
 
       if (error || !data?.properties?.action_link) {
         console.error(`${routeTag} Falha ao gerar link`, {
           email: getMaskedEmail(normalizedEmail),
-          ip: input.ip,
           error: error?.message,
         });
+        if (auditFlow) {
+          await passwordResetAuditService.recordFailure(auditFlow.id, 'link_generation_failed');
+        }
         return new Output(true, [SUCCESS_MESSAGE], [], null);
+      }
+
+      if (auditFlow) {
+        await passwordResetAuditService.recordLinkGenerated(auditFlow.id);
       }
 
       const emailService = getEmailService();
       const emailResult = await emailService.sendPasswordResetEmail(
         user.email,
         user.fullName || user.email,
-        buildSetPasswordEmailAuthLink(data, 'recovery'),
+         buildSetPasswordEmailAuthLink(data, 'recovery', auditFlow?.id),
+        {
+          profileId: user.id,
+          sourceType: 'password_reset',
+          sourceId: auditFlow?.id,
+          recipientEmail: user.email,
+        },
       );
 
       if (!emailResult.success) {
         console.error(`${routeTag} Falha no envio de email`, {
           email: getMaskedEmail(normalizedEmail),
-          ip: input.ip,
           error: emailResult.error,
         });
+        if (auditFlow) {
+          const dispatchIds = 'dispatchIds' in emailResult ? emailResult.dispatchIds : undefined;
+          await passwordResetAuditService.recordEmailFailed(auditFlow.id, dispatchIds?.[0] ?? null);
+        }
         return new Output(true, [SUCCESS_MESSAGE], [], null);
+      }
+
+      if (auditFlow) {
+        const dispatchIds = 'dispatchIds' in emailResult ? emailResult.dispatchIds : undefined;
+        const emailId =
+          typeof emailResult.data === 'object' &&
+          emailResult.data !== null &&
+          'data' in emailResult.data &&
+          typeof emailResult.data.data === 'object' &&
+          emailResult.data.data !== null &&
+          'id' in emailResult.data.data &&
+          typeof emailResult.data.data.id === 'string'
+            ? emailResult.data.data.id
+            : null;
+        await passwordResetAuditService.recordEmailSent(auditFlow.id, {
+          dispatchId: dispatchIds?.[0] ?? null,
+          resendEmailId: emailId,
+        });
       }
 
       console.info(`${routeTag} Solicitação processada com sucesso`, {
         email: getMaskedEmail(normalizedEmail),
-        ip: input.ip,
         userAgent: input.userAgent,
         originScreen: input.originScreen,
-        emailId: emailResult.data,
       });
 
       return new Output(true, [SUCCESS_MESSAGE], [], null);
     } catch (error) {
       console.error(`${routeTag} Erro inesperado`, {
         email: getMaskedEmail(normalizedEmail),
-        ip: input.ip,
         error,
       });
 

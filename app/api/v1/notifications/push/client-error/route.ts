@@ -7,7 +7,7 @@ import type { WebPushClientErrorPayload } from "@/lib/web-push/client-error-repo
 
 export async function POST(request: NextRequest) {
   try {
-    const teamAccess = await getTeamAccess(request);
+    const teamAccess = await getTeamAccess(request, { allowReadOnlyWrites: true });
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }

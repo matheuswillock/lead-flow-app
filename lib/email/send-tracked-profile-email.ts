@@ -7,6 +7,7 @@ type SendTrackedProfileEmailInput = Omit<EmailOptions, "to"> & {
   category: BackofficeEmailDispatchCategory
   sourceType?: string
   sourceId?: string
+  recipientEmail?: string
 }
 
 export async function sendTrackedEmailToProfileRecipients(input: SendTrackedProfileEmailInput) {
@@ -20,7 +21,7 @@ export async function sendTrackedEmailToProfileRecipients(input: SendTrackedProf
 
   return emailService.sendEmail({
     ...input,
-    to: recipients.map((recipient) => recipient.email),
+    to: input.recipientEmail ? [input.recipientEmail] : recipients.map((recipient) => recipient.email),
     dispatch: {
       profileId: input.profileId,
       category: input.category,

@@ -17,7 +17,7 @@ type SubscribeBody = {
 
 export async function POST(request: NextRequest) {
   try {
-    const teamAccess = await getTeamAccess(request);
+    const teamAccess = await getTeamAccess(request, { allowReadOnlyWrites: true });
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const teamAccess = await getTeamAccess(request);
+    const teamAccess = await getTeamAccess(request, { allowReadOnlyWrites: true });
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
