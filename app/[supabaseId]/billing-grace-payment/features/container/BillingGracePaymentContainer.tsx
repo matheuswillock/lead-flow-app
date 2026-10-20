@@ -24,13 +24,6 @@ export function BillingGracePaymentContainer() {
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
         <h1 className="text-2xl font-semibold">Pagamento PIX</h1>
         <p className="text-muted-foreground">Status: {payment.status}</p>
-        {payment.paymentInstructions?.checkoutUrl && (
-          <Button asChild>
-            <a href={payment.paymentInstructions.checkoutUrl} target="_blank" rel="noreferrer">
-              Abrir checkout Abacate Pay
-            </a>
-          </Button>
-        )}
         {payment.paymentInstructions?.brCode && (
           <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">{payment.paymentInstructions.brCode}</pre>
         )}
