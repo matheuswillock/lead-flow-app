@@ -118,14 +118,11 @@ export class PasswordResetAuditService {
 
   async recordTelemetry(input: {
     flowId: string
-    supabaseId?: string | null
     event: PasswordResetTelemetryEvent
     userAgent?: string | null
   }): Promise<boolean> {
     try {
-      const flow = input.supabaseId
-        ? await this.repository.findFlowForSupabaseUser(input.flowId, input.supabaseId)
-        : await this.repository.findFlowById(input.flowId)
+      const flow = await this.repository.findFlowById(input.flowId)
       if (!flow) return false
 
       const update = {

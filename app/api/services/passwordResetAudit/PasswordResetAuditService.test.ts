@@ -16,7 +16,6 @@ function makeRepository() {
     createFlow: mock(async (_input: CreatePasswordResetFlowInput) => ({ id: "flow-1" })),
     recordEvent: mock(async (_input: RecordPasswordResetEventInput) => undefined),
     updateFlow: mock(async (_input: UpdatePasswordResetFlowInput) => undefined),
-    findFlowForSupabaseUser: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
     findFlowById: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
   }
 
@@ -128,13 +127,12 @@ describe("PasswordResetAuditService", () => {
 
     const recorded = await service.recordTelemetry({
       flowId: "flow-1",
-      supabaseId: "supabase-1",
       event: "password_updated",
       userAgent: "browser",
     })
 
     expect(recorded).toBe(true)
-    expect(repository.findFlowForSupabaseUser).toHaveBeenCalledWith("flow-1", "supabase-1")
+    expect(repository.findFlowById).toHaveBeenCalledWith("flow-1")
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
       status: "completed",

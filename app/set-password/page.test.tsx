@@ -169,7 +169,7 @@ describe("/set-password — gate do token de e-mail", () => {
   })
 
   it("falha explícita com otp_expired não tenta validar novamente", async () => {
-    searchParamsValue = new URLSearchParams("token_hash=tok-expired&type=recovery")
+    searchParamsValue = new URLSearchParams("flowId=flow-123&token_hash=tok-expired&type=recovery")
     verifyOtpMock.mockImplementationOnce(async () => ({
       data: { session: null },
       error: { message: "otp_expired" },

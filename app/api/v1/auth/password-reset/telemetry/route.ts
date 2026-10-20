@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
-import { createSupabaseServer } from "@/lib/supabase/server"
 import { consumePublicFormRateLimit } from "@/lib/public-forms/rate-limit"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
@@ -64,11 +63,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const supabase = await createSupabaseServer()
-    const user = supabase ? (await supabase.auth.getUser()).data.user : null
     const recorded = await passwordResetAuditService.recordTelemetry({
       flowId: telemetry.flowId,
-      supabaseId: user?.id ?? null,
       event: telemetry.eventType,
       userAgent: request.headers.get("user-agent"),
     })

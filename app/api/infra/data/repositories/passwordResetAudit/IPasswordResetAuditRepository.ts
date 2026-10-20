@@ -71,9 +71,5 @@ export interface IPasswordResetAuditRepository {
   createFlow(input: CreatePasswordResetFlowInput): Promise<{ id: string }>
   recordEvent(input: RecordPasswordResetEventInput): Promise<void>
   updateFlow(input: UpdatePasswordResetFlowInput): Promise<void>
-  findFlowForSupabaseUser(
-    flowId: string,
-    supabaseId: string,
-  ): Promise<PasswordResetFlowOwnership | null>
   findFlowById(flowId: string): Promise<PasswordResetFlowOwnership | null>
 }
