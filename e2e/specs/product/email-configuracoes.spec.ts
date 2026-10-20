@@ -777,7 +777,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       await expect(page.getByText("Ação necessária", { exact: true })).toBeVisible()
       await expect(
-        page.getByText("O CNAME ainda não foi encontrado.", { exact: true }),
+        page.getByRole("alert").getByText("O CNAME ainda não foi encontrado.", { exact: true }),
       ).toBeVisible()
       await expect(page.getByText("Última auditoria", { exact: true })).toBeVisible()
       await expect(
@@ -836,12 +836,17 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await page.goto(`/${E2E_MASTER_SUPABASE_ID}/landing-pages`, { waitUntil: "domcontentloaded" })
       await page.getByRole("button", { name: "Configurar domínio de cotação" }).click()
 
-      await expect(page.getByText("Verificado", { exact: true })).toBeVisible()
+      await expect(
+        page
+          .getByText(`https://${STUDIO_DOMAIN_HOSTNAME}`)
+          .locator("..")
+          .getByText("Verificado", { exact: true }),
+      ).toBeVisible()
       await expect(
         page.getByText("Consulta temporariamente indisponível", { exact: true }),
       ).toBeVisible()
       await expect(
-        page.getByText("Não foi possível consultar o provedor DNS temporariamente.", {
+        page.getByRole("alert").getByText("Não foi possível consultar o provedor DNS temporariamente.", {
           exact: true,
         }),
       ).toBeVisible()
