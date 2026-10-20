@@ -47,6 +47,7 @@ enum PasswordResetFlowStatus {
   requested
   link_generated
   email_sent
+  verification_pending
   token_verified
   completed
   expired
@@ -62,9 +63,15 @@ enum PasswordResetEventType {
   link_generated
   email_sent
   email_failed
+  email_delivered
+  email_opened
+  email_clicked
+  page_opened
+  verification_started
   token_verified
   token_rejected
   password_updated
+  password_update_failed
   expired
   invalidated
   failed
