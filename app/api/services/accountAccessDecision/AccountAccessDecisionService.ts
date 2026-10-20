@@ -40,6 +40,10 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       return { state: "allowed" }
     }
 
+    if (account.temporaryAccessGranted && account.temporaryAccessUntil === null) {
+      return { state: "allowed", temporaryAccessGranted: true, temporaryAccessUntil: null }
+    }
+
     const billingGraceUntil = resolveBillingGraceUntil(account)
     if (billingGraceUntil) {
       const temporaryAccessUntil = billingGraceUntil.toISOString()

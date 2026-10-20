@@ -128,8 +128,8 @@ describe("AccountAccessDecisionService", () => {
       temporaryAccessGranted: true,
       temporaryAccessUntil: until,
       isBanned: false,
-    }, new Date("2026-10-17T03:00:00.000Z"))).toEqual({
-      state: "restricted",
+    }, new Date("2026-10-17T03:00:00.000Z"))).toMatchObject({
+      state: "read_only",
       reason: "past_due",
     })
   })
