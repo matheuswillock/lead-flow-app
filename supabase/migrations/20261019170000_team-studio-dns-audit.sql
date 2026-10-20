@@ -1,6 +1,9 @@
 -- Persist the latest Studio DNS audit without changing the authoritative
 -- TeamStudioDomain verification state on inconclusive checks.
 
+-- Avoid waiting indefinitely for an ACCESS EXCLUSIVE lock during deployment.
+set local lock_timeout = '5s';
+
 do $$
 begin
   if not exists (

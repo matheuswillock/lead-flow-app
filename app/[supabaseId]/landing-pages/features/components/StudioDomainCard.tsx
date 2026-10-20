@@ -155,6 +155,18 @@ function AuditDetails({ domain }: { domain: StudioDomain }) {
 
 function AuditNotice({ domain }: { domain: StudioDomain }) {
   const auditStatus = domain.dnsAuditStatus
+  if (auditStatus === "inconclusive") {
+    return (
+      <Alert className="border-semantic-info-border bg-semantic-info-surface text-foreground">
+        <Info className="text-semantic-info" />
+        <AlertTitle>Consulta temporariamente indisponível</AlertTitle>
+        <AlertDescription>
+          {domain.dnsReason ?? "A auditoria DNS não pôde ser concluída agora."}
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
   const needsAction =
     domain.status === "pending" ||
     domain.status === "failed" ||
@@ -171,18 +183,6 @@ function AuditNotice({ domain }: { domain: StudioDomain }) {
         <AlertDescription>
           {domain.dnsReason ??
             "Revise o CNAME no provedor DNS e verifique novamente para publicar o domínio."}
-        </AlertDescription>
-      </Alert>
-    )
-  }
-
-  if (auditStatus === "inconclusive") {
-    return (
-      <Alert className="border-semantic-info-border bg-semantic-info-surface text-foreground">
-        <Info className="text-semantic-info" />
-        <AlertTitle>Consulta temporariamente indisponível</AlertTitle>
-        <AlertDescription>
-          {domain.dnsReason ?? "A auditoria DNS não pôde ser concluída agora."}
         </AlertDescription>
       </Alert>
     )
