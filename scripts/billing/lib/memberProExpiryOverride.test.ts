@@ -2,7 +2,9 @@ import { describe, expect, it, mock } from "bun:test"
 import {
   MEMBER_PRO_EXPIRY_APPLY_ENV,
   MEMBER_PRO_EXPIRY_OPERATOR_ENV,
+  applyExpiredExtensionPlan,
   applyMemberProExpiryPlan,
+  buildExpiredExtensionPlan,
   assertExpiryApplyAuthorization,
   buildMemberProExpiryPlan,
   checksumOf,
@@ -12,6 +14,7 @@ import {
 } from "./memberProExpiryOverride"
 
 const NOW = new Date("2026-10-20T16:30:00.000Z")
+const START = "2026-07-20T12:15:57.067Z"
 const OPERATOR = "f88f2b3b-3f45-4170-83e1-4e7999d2c012"
 const request: MemberProExpiryRequest = {
   profileId: "f94a3014-2ada-4aea-958e-49294fe7dc16",
@@ -63,6 +66,11 @@ describe("member PRO expiry plan", () => {
     }
   })
 
+  it("accepts legacy windows without a start date", () => {
+    const plan = buildMemberProExpiryPlan(snapshot({ assignment: { slug: "member_pro", accessStartsAt: null, accessExpiresAt: "2026-09-17T12:00:00.000Z" } }), request, NOW)
+    expect(plan).toMatchObject({ action: "set_member_pro_expiry", from: "2026-09-17T12:00:00.000Z" })
+  })
+
   it("rejects an expiry before the window start", () => {
     expect(() =>
       buildMemberProExpiryPlan(snapshot({ assignment: { slug: "member_pro", accessStartsAt: "2027-01-01T00:00:00.000Z", accessExpiresAt: "2027-02-01T00:00:00.000Z" } }), request, NOW),
@@ -75,6 +83,7 @@ describe("member PRO expiry plan", () => {
     expect(() => buildMemberProExpiryPlan(snapshot({ hasActiveAccountBan: true }), request, NOW)).toThrow("ban")
     expect(() => buildMemberProExpiryPlan(snapshot({ assignment: null }), request, NOW)).toThrow("Member PRO")
     expect(() => buildMemberProExpiryPlan(snapshot({ assignment: { slug: "associate", accessStartsAt: "2026-07-20T00:00:00.000Z", accessExpiresAt: "2026-12-01T00:00:00.000Z" } }), request, NOW)).toThrow("Member PRO")
+    expect(() => buildMemberProExpiryPlan(snapshot({ assignment: { slug: "member_pro", accessStartsAt: START, accessExpiresAt: null } }), request, NOW)).toThrow("Member PRO")
   })
 })
 
@@ -123,5 +132,48 @@ describe("applyMemberProExpiryPlan", () => {
 
   it("produces a stable checksum", () => {
     expect(checksumOf(buildMemberProExpiryPlan(snapshot(), request, NOW))).toBe(checksumOf(buildMemberProExpiryPlan(snapshot(), request, NOW)))
+  })
+})
+
+describe("expired Member PRO batch extension", () => {
+  const expired = (profileId: string, email: string, overrides: Partial<MemberProExpirySnapshot> = {}): MemberProExpirySnapshot =>
+    snapshot({
+      profileId,
+      email,
+      assignment: { slug: "member_pro", accessStartsAt: null, accessExpiresAt: "2026-09-17T12:00:00.000Z" },
+      ...overrides,
+    })
+  const input = { expiresAt: "2026-11-28T02:59:59.000Z", reason: "extensão em lote" }
+
+  it("extends only expired, non-banned, non-deleted profiles in a stable order", () => {
+    const plan = buildExpiredExtensionPlan(
+      [
+        expired("p-3", "z@example.com"),
+        expired("p-2", "m@example.com", { hasActiveAccountBan: true }),
+        expired("p-4", "n@example.com", { deletedAt: NOW.toISOString() }),
+        expired("p-5", "o@example.com", { assignment: { slug: "member_pro", accessStartsAt: START, accessExpiresAt: "2026-12-31T00:00:00.000Z" } }),
+        expired("p-1", "a@example.com"),
+      ],
+      input,
+      NOW,
+    )
+
+    expect(plan.extend.map((item) => item.email)).toEqual(["a@example.com", "z@example.com"])
+    expect(plan.skipped.map((item) => [item.email, item.reason])).toEqual([
+      ["m@example.com", "ban ativo"],
+      ["n@example.com", "perfil removido"],
+      ["o@example.com", "Member PRO não está vencido"],
+    ])
+  })
+
+  it("applies every extension and aborts the batch if one row changed", async () => {
+    const plan = buildExpiredExtensionPlan([expired("p-1", "a@example.com"), expired("p-2", "b@example.com")], input, NOW)
+
+    const ok = fakeTransaction()
+    expect(await applyExpiredExtensionPlan(ok.port, plan, OPERATOR)).toBe(2)
+    expect(ok.tx.writeChangeLog).toHaveBeenCalledTimes(2)
+
+    const stale = fakeTransaction(0)
+    await expect(applyExpiredExtensionPlan(stale.port, plan, OPERATOR)).rejects.toThrow("mudou desde o dry-run")
   })
 })

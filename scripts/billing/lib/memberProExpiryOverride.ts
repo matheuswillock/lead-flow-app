@@ -42,11 +42,12 @@ export function buildMemberProExpiryPlan(
   }
   if (snapshot.hasActiveAccountBan) throw new Error("Perfil possui ban ativo; operação abortada")
   const { assignment } = snapshot
-  if (!assignment || assignment.slug !== "member_pro" || !assignment.accessStartsAt || !assignment.accessExpiresAt) {
-    throw new Error("Member PRO ausente ou sem janela completa; resolução manual necessária")
+  if (!assignment || assignment.slug !== "member_pro" || !assignment.accessExpiresAt) {
+    throw new Error("Member PRO ausente ou sem expiração; resolução manual necessária")
   }
   const to = parseRequestedExpiry(request.expiresAt, now)
-  if (new Date(to).getTime() <= new Date(assignment.accessStartsAt).getTime()) {
+  // Janelas legadas podem não ter início; nesse caso só a data futura é exigida.
+  if (assignment.accessStartsAt && new Date(to).getTime() <= new Date(assignment.accessStartsAt).getTime()) {
     throw new Error("A nova expiração precisa ser posterior ao início da janela")
   }
   const from = new Date(assignment.accessExpiresAt).toISOString()
@@ -107,4 +108,45 @@ export async function applyMemberProExpiryPlan(
     metadata: { reason: plan.reason, asaasMutation: false },
   })
   return true
+}
+
+export type ExpiredMemberProCandidate = MemberProExpirySnapshot
+
+export type ExpiredExtensionPlan = {
+  expiresAt: string
+  reason: string
+  extend: MemberProExpiryPlan[]
+  skipped: Array<{ profileId: string; email: string; reason: string }>
+}
+
+export function buildExpiredExtensionPlan(
+  candidates: readonly ExpiredMemberProCandidate[],
+  input: { expiresAt: string; reason: string },
+  now: Date,
+): ExpiredExtensionPlan {
+  const extend: MemberProExpiryPlan[] = []
+  const skipped: ExpiredExtensionPlan["skipped"] = []
+  for (const candidate of [...candidates].sort((left, right) => left.email.localeCompare(right.email))) {
+    const skip = (reason: string) => skipped.push({ profileId: candidate.profileId, email: candidate.email, reason })
+    const expiredAt = candidate.assignment?.accessExpiresAt
+    if (candidate.deletedAt) skip("perfil removido")
+    else if (candidate.hasActiveAccountBan) skip("ban ativo")
+    else if (!expiredAt || new Date(expiredAt).getTime() > now.getTime()) skip("Member PRO não está vencido")
+    else {
+      extend.push(buildMemberProExpiryPlan(candidate, { profileId: candidate.profileId, email: candidate.email, ...input }, now))
+    }
+  }
+  return { expiresAt: new Date(input.expiresAt).toISOString(), reason: input.reason, extend, skipped }
+}
+
+export async function applyExpiredExtensionPlan(
+  tx: MemberProExpiryTransaction,
+  plan: ExpiredExtensionPlan,
+  operatorProfileId: string,
+): Promise<number> {
+  let changed = 0
+  for (const item of plan.extend) {
+    if (await applyMemberProExpiryPlan(tx, item, operatorProfileId)) changed += 1
+  }
+  return changed
 }
