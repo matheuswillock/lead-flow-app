@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { AlertCircle, CheckCircle2, Clock, Copy, Globe2, Info, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -220,6 +220,7 @@ export function StudioDomainCard() {
   const [records, setRecords] = useState<DnsRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [verifying, setVerifying] = useState(false)
+  const verifyingRef = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   async function load() {
@@ -246,7 +247,8 @@ export function StudioDomainCard() {
   }, [])
 
   async function verify() {
-    if (verifying) return
+    if (verifyingRef.current) return
+    verifyingRef.current = true
     setVerifying(true)
     try {
       await readJson(`${API_CLIENT_BASE}/email/settings/studio-domain`, { method: "PATCH" })
@@ -255,6 +257,7 @@ export function StudioDomainCard() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível verificar o domínio")
     } finally {
+      verifyingRef.current = false
       setVerifying(false)
     }
   }
