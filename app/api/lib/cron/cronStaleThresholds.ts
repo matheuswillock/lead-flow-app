@@ -46,6 +46,7 @@ export const UNKNOWN_CRON_MAX_DURATION_SECONDS = 900
  */
 export const MANUALLY_TRIGGERED_CRON_KEYS: ReadonlySet<string> = new Set([
   "database-backup",
+  "payment-provider-maintenance",
 ])
 
 /**
@@ -88,6 +89,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "meeting-reminders": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "member-pro-expiration": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "overdue-reminder": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  "payment-provider-maintenance": 60,
   "provision-live-campaign": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "public-forms-mark-abandoned-sessions": 60,
   "public-forms-queue-event-failures-retry": 60,
@@ -98,6 +100,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "reset-credits": 60,
   "studio-bot-ai-rollup": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "studio-bot-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  "studio-domain-dns-reconcile": 300,
   "sync-contacts": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "task-overdue": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "webhook-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
@@ -106,8 +109,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
 
 /** Teto, em milissegundos, além do qual uma execução `running` é considerada órfã. */
 export function resolveStaleThresholdMs(cronKey: string): number {
-  const maxDurationSeconds =
-    CRON_MAX_DURATION_SECONDS[cronKey] ?? UNKNOWN_CRON_MAX_DURATION_SECONDS
+  const maxDurationSeconds = CRON_MAX_DURATION_SECONDS[cronKey] ?? UNKNOWN_CRON_MAX_DURATION_SECONDS
   return maxDurationSeconds * STALE_THRESHOLD_MULTIPLIER * 1000
 }
 

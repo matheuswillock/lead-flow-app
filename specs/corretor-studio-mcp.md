@@ -404,7 +404,7 @@ Requisitos (`.claude/skills/build-mcp-app/references/directory-checklist.md`):
 ### Documentação (esta fase)
 
 - [x] `specs/corretor-studio-mcp.md` com todas as seções create-spec.
-- [x] Notas Obsidian espelhadas em `docs/obsidian/specs/`.
+- [x] Notas Obsidian sincronizadas no vault pessoal em `specs/corretor-studio-mcp/`.
 - [x] Diagramas mermaid e catálogo de tools completo.
 
 ### Implementação (fase futura)
@@ -422,7 +422,7 @@ Requisitos (`.claude/skills/build-mcp-app/references/directory-checklist.md`):
 
 - [x] `specs/corretor-studio-mcp.md`
 - [x] Diagramas mermaid
-- [x] Cópia Obsidian em `docs/obsidian/specs/`
+- [x] Cópia no vault Obsidian em `specs/corretor-studio-mcp/`
 - [x] Notas satélite Obsidian (oauth, tools, security, implementation-phases)
 
 ### Fase 1 — Schema + OAuth
@@ -467,7 +467,7 @@ Requisitos (`.claude/skills/build-mcp-app/references/directory-checklist.md`):
 - [ ] Refresh token rotation obrigatória?
 - [ ] Múltiplos grants do mesmo usuário para o mesmo time + clientes diferentes — permitido?
 - [ ] Sponsor master (`backoffice` role sintético) pode autorizar MCP?
-- [ ] Caminho do vault Obsidian pessoal além de `docs/obsidian/` no repo
+- [x] Vault Obsidian pessoal definido fora do repositório
 
 ## Decisions Log
 

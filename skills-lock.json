@@ -85,6 +85,12 @@
       "skillPath": "skills/corretor-studio-frontend/SKILL.md",
       "computedHash": "75f33348a9ad6ed22bbe9cfa13ef6f123c154a10fc4af36a3a26189a9826ea58"
     },
+    "dark-mode-design": {
+      "source": "owl-listener/designer-skills",
+      "sourceType": "github",
+      "skillPath": "ui-design/skills/dark-mode-design/SKILL.md",
+      "computedHash": "1389e4e63cfd7ffcc7bd363d9ab3556935c76107f9cf595451a4730438e701cf"
+    },
     "email-best-practices": {
       "source": "resend/resend-skills",
       "sourceType": "github",
@@ -180,6 +186,12 @@
       "sourceType": "github",
       "skillPath": "skills/systematic-debugging/SKILL.md",
       "computedHash": "276fb0aadb002ab930cc2a56de89e16995a2e3e70b33587652bf0a5fb123148d"
+    },
+    "tailwindcss-responsive-darkmode": {
+      "source": "josiahsiegel/claude-plugin-marketplace",
+      "sourceType": "github",
+      "skillPath": "plugins/tailwindcss-master/skills/tailwindcss-responsive-darkmode/SKILL.md",
+      "computedHash": "f1314c098117940943199b4346181f26b18a6ffb101f087c455d4e3a01b77c9e"
     },
     "tdd": {
       "source": "mattpocock/skills",

@@ -40,12 +40,21 @@ export interface IPlatformPurchaseRepository {
   // account: E4 (C33 "5º ponto") — o mesmo asaasPaymentId pode existir nas
   // duas contas Asaas; o lookup MUST filtrar por conta para não aplicar a
   // compra errada numa colisão.
-  findByAsaasPaymentId(asaasPaymentId: string, account: AsaasAccountId): Promise<PlatformPurchase | null>
+  findByAsaasPaymentId(
+    asaasPaymentId: string,
+    account: AsaasAccountId,
+  ): Promise<PlatformPurchase | null>
   update(id: string, data: UpdatePlatformPurchaseInput): Promise<PlatformPurchase>
   markPaidOnce(input: {
     id: string
     asaasPaymentId: string
     account: AsaasAccountId
+    paidAt?: Date
+  }): Promise<PlatformPurchase | null>
+  markPaidOnceForProvider(input: {
+    id: string
+    provider: string
+    externalId: string
     paidAt?: Date
   }): Promise<PlatformPurchase | null>
 }

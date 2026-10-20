@@ -334,6 +334,14 @@
     {
       "path": "/api/v1/queues/cron/mark-stale-cron-executions",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/payment-provider/cron/maintenance",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/studio/cron/reconcile-dns",
+      "schedule": "0 11,23 * * *"
     }
   ]
 }

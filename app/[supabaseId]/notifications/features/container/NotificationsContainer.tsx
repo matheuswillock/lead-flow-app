@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   buildNotificationPath,
   getMeetingLink,
+  hasStudioDomainDnsLink,
   hasLeadNotificationLink,
 } from "@/lib/notifications/build-notification-url";
 import type { NotificationItem } from "../types/notification.types";
@@ -197,6 +198,7 @@ export function NotificationsContainer() {
             metadata: notification.metadata,
           });
           const canOpenLead = hasLeadLink(notification) && !!leadCode && !leadHref.startsWith("http");
+          const canFixDns = hasStudioDomainDnsLink(notification.type, notification.metadata);
           const isProposalPending = isProposalPendingNotification(notification);
           const isTransferActivated = isTransferActivatedNotification(notification);
           const sdrName = getSdrName(notification);
@@ -237,7 +239,12 @@ export function NotificationsContainer() {
                     {actorName} • {formatCreatedAt(notification.createdAt, tz)}
                   </p>
                 </div>
-                {canOpenLead ? (
+                {canFixDns ? (
+                  <Link href={leadHref} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    Corrigir DNS
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                ) : canOpenLead ? (
                   <div className="flex flex-col items-end gap-2">
                     <Link
                       href={leadHref}

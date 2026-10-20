@@ -8,8 +8,8 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
     const useCase = new ReconcileMeetingSlotReservationsUseCase(
       {
         findRecoverable: async () => [
-          { id: "ok", leadId: "lead-ok", googleEventId: "event", googleCalendarId: "calendar" },
-          { id: "pending", leadId: "lead-pending", googleEventId: "event-2", googleCalendarId: "calendar" },
+          { id: "ok", leadId: "lead-ok", closerId: "closer-ok", googleEventId: "event", googleCalendarId: "calendar" },
+          { id: "pending", leadId: "lead-pending", closerId: "closer-pending", googleEventId: "event-2", googleCalendarId: "calendar" },
         ],
         consume: async ({ reservationId }) => { consumed.push(reservationId); },
         markRecoveryFailure: async (reservationId) => { failures.push(reservationId); },
@@ -28,7 +28,48 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
     expect(failures).toEqual(["pending"]);
   });
 
-  it("cancela o evento externo antes de liberar uma reserva esgotada", async () => {
+  it("cancela evento órfão usando o closer persistido antes de liberar a reserva", async () => {
+    const calls: string[] = [];
+    const useCase = new ReconcileMeetingSlotReservationsUseCase(
+      {
+        findRecoverable: async () => [
+          {
+            id: "orphan",
+            leadId: null,
+            closerId: "closer-orphan",
+            googleEventId: "event-orphan",
+            googleCalendarId: "calendar",
+            recoveryAttempts: 19,
+          },
+        ],
+        consume: async () => {},
+        markRecoveryFailure: async () => {},
+        releaseAfterRecoveryTimeout: async () => {
+          calls.push("release");
+        },
+      },
+      {
+        findUniqueByLeadId: async () => null,
+      },
+      100,
+      {
+        cancel: async (input) => {
+          expect(input).toEqual({
+            closerId: "closer-orphan",
+            googleEventId: "event-orphan",
+            googleCalendarId: "calendar",
+          });
+          calls.push("cancel");
+        },
+      },
+    );
+
+    await useCase.execute();
+
+    expect(calls).toEqual(["cancel", "release"]);
+  });
+
+  it("cancela o evento com o closer da reserva antes de liberá-la", async () => {
     const calls: string[] = [];
     const useCase = new ReconcileMeetingSlotReservationsUseCase(
       {
@@ -36,6 +77,7 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
           {
             id: "stale",
             leadId: "lead-stale",
+            closerId: "requested-closer",
             googleEventId: "event-stale",
             googleCalendarId: "calendar",
             recoveryAttempts: 19,
@@ -48,16 +90,13 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
         },
       },
       {
-        findUniqueByLeadId: async () => ({
-          googleEventId: "other-event",
-          googleCalendarId: "calendar",
-        }),
+        findUniqueByLeadId: async () => ({ googleEventId: "other-event", googleCalendarId: "calendar" }),
       },
       100,
       {
         cancel: async (input) => {
           expect(input).toEqual({
-            leadId: "lead-stale",
+            closerId: "requested-closer",
             googleEventId: "event-stale",
             googleCalendarId: "calendar",
           });
@@ -73,9 +112,6 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
 
   it("não libera a reserva quando o cancelamento externo falha", async () => {
     let releaseCalled = false;
-    const release = async () => {
-      releaseCalled = true;
-    };
     const failures: string[] = [];
     const useCase = new ReconcileMeetingSlotReservationsUseCase(
       {
@@ -83,6 +119,7 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
           {
             id: "stale",
             leadId: "lead-stale",
+            closerId: "requested-closer",
             googleEventId: "event-stale",
             googleCalendarId: "calendar",
             recoveryAttempts: 19,
@@ -92,13 +129,12 @@ describe("ReconcileMeetingSlotReservationsUseCase", () => {
         markRecoveryFailure: async (reservationId) => {
           failures.push(reservationId);
         },
-        releaseAfterRecoveryTimeout: release,
+        releaseAfterRecoveryTimeout: async () => {
+          releaseCalled = true;
+        },
       },
       {
-        findUniqueByLeadId: async () => ({
-          googleEventId: "other-event",
-          googleCalendarId: "calendar",
-        }),
+        findUniqueByLeadId: async () => ({ googleEventId: "other-event", googleCalendarId: "calendar" }),
       },
       100,
       { cancel: async () => { throw new Error("Google indisponível"); } },

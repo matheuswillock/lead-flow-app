@@ -47,6 +47,7 @@ import {
   formatIntimezone,
   formatLocalDateValue,
   formatLocalTimeValue,
+  getMinutesInTz,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -198,10 +199,10 @@ export function ScheduleMeetingDialog({
     ? (() => {
         const slotTime = formatLocalTimeValue(meetingDate, SCHEDULE_TIMEZONE);
         const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-        const utcMins =
-          slotDate.getUTCHours() * 60 +
-          Math.floor(slotDate.getUTCMinutes() / preScheduleSlotMinutes) * preScheduleSlotMinutes;
-        return occupiedPreSlots.includes(utcMins);
+        const localMins =
+          Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+          preScheduleSlotMinutes;
+        return occupiedPreSlots.includes(localMins);
       })()
     : false;
   const canSubmit = isPreSchedule
@@ -429,12 +430,19 @@ export function ScheduleMeetingDialog({
     }
     return allSlots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-      const utcMins =
-        slotDate.getUTCHours() * 60 +
-        Math.floor(slotDate.getUTCMinutes() / preScheduleSlotMinutes) * preScheduleSlotMinutes;
-      return !occupiedPreSlots.includes(utcMins);
+      const localMins =
+        Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+        preScheduleSlotMinutes;
+      return !occupiedPreSlots.includes(localMins);
     });
-  }, [isPreSchedule, meetingDate, meetingDateKey, occupiedPreSlots, preScheduleSlotMinutes, SCHEDULE_TIMEZONE]);
+  }, [
+    isPreSchedule,
+    meetingDate,
+    meetingDateKey,
+    occupiedPreSlots,
+    preScheduleSlotMinutes,
+    SCHEDULE_TIMEZONE,
+  ]);
 
   const addExtraGuests = (values: string[]) => {
     const normalized = values

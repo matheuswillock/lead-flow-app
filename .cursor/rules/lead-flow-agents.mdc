@@ -10,8 +10,8 @@ alwaysApply: true
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow — AI Implementation Governance
 
-**Version:** 3.0.0
-**Last Updated:** 2026-10-15
+**Version:** 3.1.0
+**Last Updated:** 2026-10-16
 **Canonical Source:** `agents.md`
 **Adapters:** generated with `bun run governance:sync`
 
@@ -89,7 +89,7 @@ bun run lint:pt-br:strict
 
 - Do not report completion while a required command fails.
 - Fix violations; do not grow an allowlist without explicit owner instruction.
-- UI changes also require `design:check`, relevant E2E/build coverage and measured visual verification.
+- UI changes also require `design:check`, relevant E2E/build coverage and measured visual verification. For every visual implementation or visual change, agents MUST run an `impeccable` design audit and verify the rendered result with `browser-harness` before delivery; apply relevant improvements while preserving `DESIGN.md`, product intent, accessibility and responsive behavior. `impeccable` is an audit/improvement tool, not authority to override project design tokens or visual governance. If either validation cannot run, report the limitation and do not claim full visual verification.
 - Database changes require the local checks in `.governance/ai/database.md`; remote application still requires authorization.
 - AI-governance changes require `governance:sync`; shared skill changes require `skills:sync`. Run each sync twice and ensure the second run is idempotent.
 - Critical tests require a temporary negative control that is restored exactly before completion.

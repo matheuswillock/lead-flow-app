@@ -13,6 +13,12 @@ export type AccountAccessDecision =
       temporaryAccessUntil?: string | null
     }
   | {
+      state: "read_only"
+      reason: AccountAccessRestrictionReason
+      temporaryAccessUntil?: string | null
+      isBillingOwner?: boolean
+    }
+  | {
       state: "restricted"
       reason: AccountAccessRestrictionReason
       isBillingOwner?: boolean
@@ -28,6 +34,7 @@ export type AccountAccessRecord = {
   annualSubscriptionActive?: boolean
   temporaryAccessGranted?: boolean
   temporaryAccessUntil?: Date | null
+  temporaryAccessReason?: string | null
   isBanned: boolean
 }
 

@@ -12,11 +12,20 @@ function makeStudioDomainUseCase() {
 
 async function getContext(request: NextRequest) {
   const teamAccess = await getTeamAccess(request)
-  if (teamAccess.error) return { error: teamAccess.error, access: null, emailDomainName: null, emailDomainStatus: null }
+  if (teamAccess.error) {
+    return {
+      error: teamAccess.error,
+      status: teamAccess.status,
+      access: null,
+      emailDomainName: null,
+      emailDomainStatus: null,
+    }
+  }
   const emailOutput = await new EmailTeamSettingsUseCase().get(teamAccess.access)
   const emailResult = emailOutput.result as { resendDomainName?: string | null; resendDomainStatus?: string | null } | null
   return {
     error: null,
+    status: null,
     access: teamAccess.access,
     emailDomainName: emailResult?.resendDomainName ?? null,
     emailDomainStatus: emailResult?.resendDomainStatus ?? null,
@@ -26,7 +35,7 @@ async function getContext(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const context = await getContext(request)
-    if (context.error) return NextResponse.json(context.error, { status: 401 })
+    if (context.error) return NextResponse.json(context.error, { status: context.status ?? 403 })
     const output = await makeStudioDomainUseCase().getForEmailDomain(
       context.access!,
       {
@@ -44,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const context = await getContext(request)
-    if (context.error) return NextResponse.json(context.error, { status: 401 })
+    if (context.error) return NextResponse.json(context.error, { status: context.status ?? 403 })
     const body = await request.json().catch(() => null) as { headScripts?: unknown; bodyStartScripts?: unknown; bodyEndScripts?: unknown } | null
     const output = body && ("headScripts" in body || "bodyStartScripts" in body || "bodyEndScripts" in body)
       ? await makeStudioDomainUseCase().updateTracking(context.access!, body)

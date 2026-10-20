@@ -170,6 +170,107 @@ failed failed
     
 
 
+        payment_provider_event_inbox_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+tombstoned tombstoned
+        }
+    
+
+
+        payment_provider_event_outbox_status {
+            pending pending
+processing processing
+delivered delivered
+failed failed
+dead_letter dead_letter
+        }
+    
+
+
+        payment_provider_key {
+            ASAAS ASAAS
+ABACATE_PAY ABACATE_PAY
+        }
+    
+
+
+        payment_provider_environment {
+            DEV DEV
+PRODUCTION PRODUCTION
+        }
+    
+
+
+        payment_provider_rollout_state {
+            DISABLED DISABLED
+SANDBOX_VALIDATED SANDBOX_VALIDATED
+APPROVED APPROVED
+ACTIVE ACTIVE
+        }
+    
+
+
+        payment_provider_health_status {
+            UNKNOWN UNKNOWN
+HEALTHY HEALTHY
+UNHEALTHY UNHEALTHY
+        }
+    
+
+
+        payment_provider_route {
+            NEW_ROUTER NEW_ROUTER
+LEGACY_ASAAS LEGACY_ASAAS
+        }
+    
+
+
+        payment_provider_identity_type {
+            CUSTOMER CUSTOMER
+PAYMENT PAYMENT
+SUBSCRIPTION SUBSCRIPTION
+CHECKOUT CHECKOUT
+SESSION SESSION
+        }
+    
+
+
+        payment_provider_migration_gate_status {
+            PENDING PENDING
+ACTIVE ACTIVE
+REVOKED REVOKED
+EXPIRED EXPIRED
+        }
+    
+
+
+        payment_provider_session_status {
+            OPEN OPEN
+COMPLETED COMPLETED
+FAILED FAILED
+EXPIRED EXPIRED
+CANCELED CANCELED
+        }
+    
+
+
+        payment_provider_attempt_status {
+            CREATED CREATED
+PENDING PENDING
+CONFIRMED CONFIRMED
+FAILED FAILED
+REFUNDED REFUNDED
+DISPUTED DISPUTED
+EXPIRED EXPIRED
+CANCELED CANCELED
+UNKNOWN UNKNOWN
+        }
+    
+
+
         asaas_account {
             primary primary
 legacy legacy
@@ -715,6 +816,8 @@ AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
 LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
 LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
+STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
+STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
         }
     
 
@@ -1103,6 +1206,15 @@ failed failed
             pending pending
 verified verified
 failed failed
+        }
+    
+
+
+        team_studio_dns_audit_status {
+            verified verified
+pending pending
+failed failed
+inconclusive inconclusive
         }
     
 
@@ -3561,6 +3673,15 @@ completed completed
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
+    TeamStudioDnsAuditStatus dnsAuditStatus "❓"
+    Boolean dnsMisconfigured "❓"
+    String dnsReasonCode "❓"
+    String dnsReason "❓"
+    String recommendedCNAME "❓"
+    DateTime lastDnsAuditAt "❓"
+    DateTime lastDnsAttemptAt "❓"
+    String lastDnsFingerprint "❓"
+    String lastDnsNotifiedFingerprint "❓"
     String headScripts "❓"
     String bodyStartScripts "❓"
     String bodyEndScripts "❓"
@@ -4277,6 +4398,159 @@ completed completed
     DateTime receivedAt 
     DateTime processedAt "❓"
     DateTime updatedAt 
+    }
+  
+
+  "payment_provider_event_dedupe" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    DateTime tombstone_until 
+    DateTime created_at 
+    }
+  
+
+  "payment_provider_event_inbox" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    String raw_payload 
+    Json payload 
+    String normalized_event "❓"
+    String claim_token 
+    PaymentProviderEventInboxStatus status 
+    Int attempt_count 
+    String error_message "❓"
+    DateTime received_at 
+    DateTime processed_at "❓"
+    DateTime tombstone_until "❓"
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_event_outbox" {
+    String id "🗝️"
+    String inbox_id 
+    String event_type 
+    String raw_payload 
+    Json payload 
+    PaymentProviderEventOutboxStatus status 
+    Int attempt_count 
+    DateTime next_attempt_at 
+    DateTime leased_until "❓"
+    DateTime terminal_at "❓"
+    String error_message "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_configs" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    Boolean enabled 
+    Boolean is_default 
+    String external_account_context 
+    PaymentProviderRolloutState rollout_state 
+    Boolean kill_switch 
+    Int config_revision 
+    PaymentProviderHealthStatus health_status 
+    DateTime last_health_check_at "❓"
+    String last_error_code "❓"
+    String last_error_message "❓"
+    String public_key_fingerprint "❓"
+    String logo_url "❓"
+    String logo_alt_text "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_identities" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String external_id 
+    PaymentProviderIdentityType identity_type 
+    String owner_type 
+    String owner_id 
+    String tenant_id 
+    PaymentProviderRoute route 
+    String route_version 
+    Int binding_revision 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_migration_gates" {
+    String id "🗝️"
+    PaymentProviderRoute source_route 
+    PaymentProviderRoute target_route 
+    String version 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String authorized_by_profile_id 
+    PaymentProviderMigrationGateStatus status 
+    DateTime expires_at 
+    DateTime activated_at "❓"
+    DateTime revoked_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_sessions" {
+    String id "🗝️"
+    String tenant_id 
+    String owner_type 
+    String owner_id 
+    String idempotency_key 
+    PaymentProviderEnvironment environment 
+    PaymentProviderKey provider_key 
+    String external_account_context 
+    PaymentProviderRoute route 
+    String route_version 
+    PaymentProviderSessionStatus status 
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    DateTime expires_at 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_attempts" {
+    String id "🗝️"
+    String session_id 
+    Int attempt_number 
+    String idempotency_key 
+    String request_fingerprint 
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    PaymentProviderAttemptStatus status 
+    String external_id "❓"
+    String reconciliation_reference "❓"
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    String unknown_reason "❓"
+    String last_event_claim_token "❓"
+    Json payment_instructions "❓"
+    DateTime created_at 
+    DateTime updated_at 
     }
   
 
@@ -5050,6 +5324,7 @@ completed completed
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_domains" |o--|| "TeamStudioDomainStatus" : "enum:status"
+    "corretor_studio_team_studio_domains" |o--|o "TeamStudioDnsAuditStatus" : "enum:dnsAuditStatus"
     "corretor_studio_team_studio_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
     "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
@@ -5201,6 +5476,30 @@ completed completed
     "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiCapability" : "enum:capability"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
     "asaas_webhook_events" |o--|| "AsaasAccount" : "enum:account"
+    "payment_provider_event_inbox" |o--|| "PaymentProviderEventInboxStatus" : "enum:status"
+    "payment_provider_event_outbox" |o--|| "PaymentProviderEventOutboxStatus" : "enum:status"
+    "payment_provider_event_outbox" }o--|| payment_provider_event_inbox : "inbox"
+    "payment_provider_configs" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
+    "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"
+    "payment_provider_identities" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:source_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:target_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderMigrationGateStatus" : "enum:status"
+    "payment_provider_migration_gates" }o--|| corretor_studio_profiles : "authorizedBy"
+    "payment_provider_sessions" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_sessions" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_sessions" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_sessions" |o--|| "PaymentProviderSessionStatus" : "enum:status"
+    "payment_provider_attempts" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_attempts" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_attempts" |o--|| "PaymentProviderAttemptStatus" : "enum:status"
+    "payment_provider_attempts" }o--|| payment_provider_sessions : "session"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"

@@ -39,7 +39,7 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
 
   async findByAsaasPaymentId(
     asaasPaymentId: string,
-    account: AsaasAccountId
+    account: AsaasAccountId,
   ): Promise<PlatformPurchase | null> {
     return prisma.platformPurchase.findFirst({ where: { asaasPaymentId, asaasAccount: account } })
   }
@@ -96,6 +96,36 @@ export class PlatformPurchaseRepository implements IPlatformPurchaseRepository {
       return null
     }
 
+    return this.findById(input.id)
+  }
+
+  async markPaidOnceForProvider(input: {
+    id: string
+    provider: string
+    externalId: string
+    paidAt?: Date
+  }): Promise<PlatformPurchase | null> {
+    if (!input.provider.trim() || !input.externalId.trim()) {
+      throw new Error("Provider e externalId são obrigatórios")
+    }
+
+    const paidAt = input.paidAt ?? new Date()
+    const updated = await prisma.platformPurchase.updateMany({
+      where: {
+        id: input.id,
+        // Apenas compras aguardando pagamento são confirmadas: estados
+        // terminais (paid, failed, canceled) não são sobrescritos por eventos
+        // tardios do provider.
+        status: { in: ["pending", "awaiting_payment"] },
+      },
+      data: {
+        status: "paid",
+        paidAt,
+        appliedAt: paidAt,
+      },
+    })
+
+    if (updated.count === 0) return null
     return this.findById(input.id)
   }
 }
