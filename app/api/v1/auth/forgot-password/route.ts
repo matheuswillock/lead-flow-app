@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
 
     console.info(`${routeName} Completed`, {
       isValid: output.isValid,
-      ip,
       originScreen,
     });
 
