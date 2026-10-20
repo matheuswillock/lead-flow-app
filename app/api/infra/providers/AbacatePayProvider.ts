@@ -4,6 +4,8 @@ import type {
   CreateCardPaymentInput,
   CreatePixPaymentInput,
   FullRefundCapability,
+  HostedCheckoutCapability,
+  HostedCheckoutOutcome,
   OneTimePaymentCapability,
   PaymentCustomer,
   PaymentProviderMetadata,
@@ -47,6 +49,21 @@ type AbacateStatusResponse = {
   data?: { id?: unknown; status?: unknown; amount?: unknown; method?: unknown }
 }
 
+type AbacateProductResponse = {
+  success?: unknown
+  data?: { id?: unknown }
+}
+
+type AbacateProductListResponse = {
+  success?: unknown
+  data?: ReadonlyArray<{ id?: unknown; externalId?: unknown; price?: unknown; status?: unknown }>
+}
+
+type AbacateCheckoutResponse = {
+  success?: unknown
+  data?: { id?: unknown; url?: unknown; amount?: unknown }
+}
+
 type AbacateProviderDependencies = PaymentProviderDependencies
 
 type AbacateTransparentRequest = {
@@ -63,6 +80,7 @@ export class AbacatePayProvider
   extends PaymentProviderBase<PaymentProviderConfig>
   implements
     OneTimePaymentCapability,
+    HostedCheckoutCapability,
     PaymentQueryCapability,
     FullRefundCapability,
     WebhookCapability
@@ -78,6 +96,7 @@ export class AbacatePayProvider
       environment: config.environment,
       capabilities: Object.freeze([
         PAYMENT_CAPABILITIES.PIX,
+        PAYMENT_CAPABILITIES.HOSTED_CHECKOUT,
         PAYMENT_CAPABILITIES.CARD,
         PAYMENT_CAPABILITIES.STATUS_QUERY,
         PAYMENT_CAPABILITIES.FULL_REFUND,
@@ -94,6 +113,67 @@ export class AbacatePayProvider
     } catch (error) {
       return this.toIndeterminateOrThrow(error, input.externalReference)
     }
+  }
+
+  async createHostedCheckout(input: {
+    readonly amountInCents: number
+    readonly externalReference: string
+    readonly metadata?: Readonly<Record<string, string>>
+    readonly returnUrl: string
+    readonly completionUrl: string
+  }): Promise<HostedCheckoutOutcome> {
+    assertPositiveCents(input.amountInCents)
+    const productId = await this.ensureHostedCheckoutProduct(input.amountInCents)
+    const response = await this.requestJson<AbacateCheckoutResponse>("/v2/checkouts/create", {
+      method: "POST",
+      headers: { ...this.authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        items: [{ id: productId, quantity: 1 }],
+        methods: ["PIX"],
+        externalId: input.externalReference,
+        returnUrl: input.returnUrl,
+        completionUrl: input.completionUrl,
+        metadata: input.metadata,
+      }),
+    })
+    if (response.success === false) {
+      throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "O checkout foi recusado")
+    }
+    const data = response.data ?? {}
+    const externalId = stringOrNull(data.id)
+    const url = stringOrNull(data.url)
+    if (!externalId || !url) {
+      throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "Checkout sem identificador ou URL")
+    }
+    const amountInCents = requireMatchingRemoteAmount(data.amount, input.amountInCents)
+    return Object.freeze({ externalId, url, amountInCents, status: "PENDING" })
+  }
+
+  private async ensureHostedCheckoutProduct(amountInCents: number): Promise<string> {
+    const externalId = `billing-grace-${this.environment.toLowerCase()}-${amountInCents}`
+    const listed = await this.requestJson<AbacateProductListResponse>(
+      "/v2/products/list?limit=100",
+      { method: "GET", headers: this.authHeaders() },
+    )
+    const existing = (listed.data ?? []).find(
+      (product) => product.externalId === externalId && product.price === amountInCents && product.status === "ACTIVE",
+    )
+    if (typeof existing?.id === "string") return existing.id
+
+    const created = await this.requestJson<AbacateProductResponse>("/v2/products/create", {
+      method: "POST",
+      headers: { ...this.authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        externalId,
+        name: "Regularização de assinatura",
+        description: "Regularização única de assinatura em atraso",
+        price: amountInCents,
+        currency: "BRL",
+      }),
+    })
+    const productId = stringOrNull(created.data?.id)
+    if (!productId) throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "Produto sem identificador")
+    return productId
   }
 
   async createCardPayment(input: CreateCardPaymentInput): Promise<ProviderCardPaymentOutcome> {
@@ -130,7 +210,12 @@ export class AbacatePayProvider
     if (!isCanonicalIdentifier(input.externalId)) {
       throw new PaymentProviderError("VALIDATION_FAILED", "ID externo inválido")
     }
-    const path = input.method === "PIX" ? "/v2/transparents/check" : "/v2/transparents/get"
+    const isHostedCheckout = input.externalId.startsWith("bill_")
+    const path = isHostedCheckout
+      ? "/v2/checkouts/get"
+      : input.method === "PIX"
+        ? "/v2/transparents/check"
+        : "/v2/transparents/get"
     let response: AbacateStatusResponse
     try {
       response = await this.requestJson<AbacateStatusResponse>(
@@ -326,6 +411,9 @@ export class AbacatePayProvider
       throw new PaymentProviderError("WEBHOOK_INVALID", "Ambiente do webhook incompatível")
     }
     const event = envelope.event
+    if (event.startsWith("checkout.")) {
+      return this.normalizeCheckoutEvent(envelope)
+    }
     if (!event.startsWith("transparent.")) return null
     if (
       !(
@@ -377,6 +465,44 @@ export class AbacatePayProvider
         ? { ...bindableResult, status, reason: "REMOTE_ERROR", requiresReconciliation: true }
         : { ...bindableResult, status },
     )
+  }
+
+  private normalizeCheckoutEvent(envelope: ReturnType<typeof parseEnvelope>): ProviderWebhookEvent | null {
+    if (!["checkout.completed", "checkout.refunded", "checkout.disputed"].includes(envelope.event)) {
+      return null
+    }
+    const data = asRecord(envelope.data)
+    const checkout = asRecord(data.checkout ?? data)
+    const status = mapProviderStatus(checkout.status)
+    assertCompatibleCheckoutStatus(envelope.event, status)
+    const externalPaymentId = stringOrNull(checkout.id)
+    const metadata = asRecord(checkout.metadata)
+    const attemptId = typeof metadata.attemptId === "string" && isCanonicalIdentifier(metadata.attemptId)
+      ? metadata.attemptId
+      : undefined
+    const event: ProviderWebhookEvent["event"] = envelope.event === "checkout.completed"
+      ? "PAYMENT_CONFIRMED"
+      : envelope.event === "checkout.refunded"
+        ? "PAYMENT_REFUNDED"
+        : "PAYMENT_DISPUTED"
+    const result = {
+      eventId: envelope.id,
+      event,
+      environment: this.environment,
+      externalPaymentId,
+      method: "PIX" as const,
+      amountInCents: parseOptionalRemoteAmount(checkout.amount, "valor do checkout"),
+      occurredAt: parseWebhookDate(checkout.updatedAt ?? checkout.createdAt),
+      disputeEpoch: numberOrNull(checkout.disputeEpoch),
+      attemptId,
+    }
+    if (!externalPaymentId) {
+      return freezePaymentValue({ ...result, status: "UNKNOWN", reason: "MISSING_EXTERNAL_ID", requiresReconciliation: true })
+    }
+    const bindableResult = { ...result, externalPaymentId }
+    return freezePaymentValue(status === "UNKNOWN"
+      ? { ...bindableResult, status, reason: "REMOTE_ERROR", requiresReconciliation: true }
+      : { ...bindableResult, status })
   }
 
   private async createPix(input: CreatePixPaymentInput): Promise<ProviderPixPaymentOutcome> {
@@ -582,6 +708,20 @@ function assertCompatibleWebhookStatus(
       (status === "DISPUTED" || status === "CONFIRMED" || status === "REFUNDED"))
   if (!compatible) {
     throw new PaymentProviderError("WEBHOOK_INVALID", "evento e status do webhook incompatível")
+  }
+}
+
+function assertCompatibleCheckoutStatus(
+  event: string,
+  status: ReturnType<typeof mapProviderStatus>,
+): void {
+  if (status === "UNKNOWN") return
+  const compatible =
+    (event === "checkout.completed" && status === "CONFIRMED") ||
+    (event === "checkout.refunded" && status === "REFUNDED") ||
+    (event === "checkout.disputed" && (status === "DISPUTED" || status === "CONFIRMED" || status === "REFUNDED"))
+  if (!compatible) {
+    throw new PaymentProviderError("WEBHOOK_INVALID", "evento e status do checkout incompatível")
   }
 }
 
