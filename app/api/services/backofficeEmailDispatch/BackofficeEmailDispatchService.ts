@@ -6,7 +6,6 @@ import type {
 } from "@prisma/client"
 import { resolveProfileRecipientEmails } from "@/lib/email/resolve-profile-recipient-emails"
 import { backofficeEmailDispatchRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeEmailDispatch/BackofficeEmailDispatchRepository"
-import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 import type { IBackofficeEmailDispatchRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeEmailDispatch/IBackofficeEmailDispatchRepository"
 import type {
   ApplyResendWebhookEventInput,
@@ -68,14 +67,6 @@ const TIMESTAMP_FIELD: Partial<
   clicked: "clickedAt",
   bounced: "bouncedAt",
   complained: "complainedAt",
-}
-
-const PASSWORD_RESET_EVENT_MAP: Partial<
-  Record<BackofficeEmailDispatchEventType, "email_delivered" | "email_opened" | "email_clicked">
-> = {
-  delivered: "email_delivered",
-  opened: "email_opened",
-  clicked: "email_clicked",
 }
 
 export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchService {
@@ -191,16 +182,6 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
       status: shouldUpdateStatus && mappedStatus ? mappedStatus : undefined,
       timestampUpdate,
     })
-
-    const passwordResetEvent = PASSWORD_RESET_EVENT_MAP[eventType]
-    if (passwordResetEvent && dispatch.sourceType === "password_reset" && dispatch.sourceId) {
-      await passwordResetAuditService.recordEmailLifecycle(
-        dispatch.sourceId,
-        passwordResetEvent,
-        input.resendEmailId,
-        input.occurredAt,
-      )
-    }
 
     return true
   }

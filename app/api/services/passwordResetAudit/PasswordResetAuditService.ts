@@ -4,6 +4,7 @@ import type {
   IPasswordResetAuditRepository,
 } from "../../infra/data/repositories/passwordResetAudit/IPasswordResetAuditRepository"
 import { passwordResetAuditRepository } from "../../infra/data/repositories/passwordResetAudit/PasswordResetAuditRepository"
+import type { PasswordResetTelemetryEvent } from "@/lib/auth/password-reset-audit"
 
 export interface CreatePasswordResetAuditFlowInput {
   profileId?: string | null
@@ -17,15 +18,6 @@ export interface PasswordResetEmailCorrelation {
   dispatchId?: string | null
   resendEmailId?: string | null
 }
-
-export type PasswordResetTelemetryEvent =
-  | "page_opened"
-  | "verification_started"
-  | "token_verified"
-  | "token_rejected"
-  | "password_updated"
-  | "password_update_failed"
-  | "expired"
 
 function getIpHash(ip: string | null | undefined): string | null {
   const secret = process.env.PASSWORD_RESET_AUDIT_IP_HASH_SECRET?.trim()
@@ -119,6 +111,7 @@ export class PasswordResetAuditService {
   async recordTelemetry(input: {
     flowId: string
     event: PasswordResetTelemetryEvent
+    ip?: string | null
     userAgent?: string | null
   }): Promise<boolean> {
     try {
@@ -152,7 +145,7 @@ export class PasswordResetAuditService {
               ? "password_update_failed"
               : null,
         requestId: null,
-        ipHash: null,
+        ipHash: getIpHash(input.ip),
         userAgent: optionalContext(input.userAgent),
       })
       return true

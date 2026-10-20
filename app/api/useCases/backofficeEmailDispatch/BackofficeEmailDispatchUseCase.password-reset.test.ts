@@ -12,8 +12,6 @@ mock.module("@/app/api/services/passwordResetAudit/PasswordResetAuditService", (
   },
 }))
 
-const { BackofficeEmailDispatchService } = await import("./BackofficeEmailDispatchService")
-
 function makeRepository(): IBackofficeEmailDispatchRepository {
   return {
     findProfileRecipientEmails: mock(async () => null),
@@ -51,26 +49,28 @@ function makeRepository(): IBackofficeEmailDispatchRepository {
   }
 }
 
-describe("BackofficeEmailDispatchService — password reset webhook correlation", () => {
-  it("appends the matching audit event without forwarding provider metadata", async () => {
+const repository = makeRepository()
+mock.module("@/app/api/infra/data/repositories/backoffice/backofficeEmailDispatch/BackofficeEmailDispatchRepository", () => ({
+  backofficeEmailDispatchRepository: repository,
+}))
+
+const { BackofficeEmailDispatchUseCase } = await import("./BackofficeEmailDispatchUseCase")
+
+describe("BackofficeEmailDispatchUseCase — password reset correlation", () => {
+  it("appends the provider event without persisting provider metadata", async () => {
     recordEmailLifecycleMock.mockClear()
-    const service = new BackofficeEmailDispatchService(makeRepository())
+    const useCase = new BackofficeEmailDispatchUseCase()
     const occurredAt = new Date("2026-10-20T12:00:00.000Z")
 
-    const handled = await service.applyResendWebhookEvent({
+    const output = await useCase.applyResendWebhookEvent({
       resendEmailId: "re_123",
       eventType: "opened",
       occurredAt,
       metadata: { url: "https://secret.example/reset?token=never-store" },
     })
 
-    expect(handled).toBe(true)
-    expect(recordEmailLifecycleMock).toHaveBeenCalledWith(
-      "flow-1",
-      "email_opened",
-      "re_123",
-      occurredAt,
-    )
+    expect(output.isValid).toBe(true)
+    expect(recordEmailLifecycleMock).toHaveBeenCalledWith("flow-1", "email_opened", "re_123", occurredAt)
     expect(JSON.stringify(recordEmailLifecycleMock.mock.calls[0])).not.toContain("https://")
   })
 })

@@ -3,10 +3,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { consumePublicFormRateLimit } from "@/lib/public-forms/rate-limit"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
-import {
-  passwordResetAuditService,
-  type PasswordResetTelemetryEvent,
-} from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
+import type { PasswordResetTelemetryEvent } from "@/lib/auth/password-reset-audit"
+import { passwordResetTelemetryUseCase } from "@/app/api/useCases/passwordResetAudit/PasswordResetTelemetryUseCase"
 
 const TELEMETRY_EVENTS = new Set<PasswordResetTelemetryEvent>([
   "page_opened",
@@ -63,18 +61,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const recorded = await passwordResetAuditService.recordTelemetry({
+    const output = await passwordResetTelemetryUseCase.execute({
       flowId: telemetry.flowId,
-      event: telemetry.eventType,
+      eventType: telemetry.eventType,
+      ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
       userAgent: request.headers.get("user-agent"),
     })
-    if (!recorded) {
-      return NextResponse.json(new Output(false, [], ["Fluxo de reset não encontrado"], null), {
-        status: 404,
-      })
-    }
-
-    return NextResponse.json(new Output(true, ["Telemetria registrada"], [], null), { status: 200 })
+    return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
     console.error("[PasswordResetTelemetryRoute][POST]", error)
