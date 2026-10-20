@@ -827,6 +827,8 @@ enum NotificationType {
   WEBHOOK_AUTO_PAUSED
   LEAD_DOCUMENT_UPLOADED
   LEAD_DOCUMENT_REQUEST_COMPLETED
+  STUDIO_DOMAIN_DNS_ACTION_REQUIRED
+  STUDIO_DOMAIN_DNS_RECOVERED
 
   @@map("notification_type")
 }
@@ -4777,6 +4779,15 @@ enum TeamStudioDomainStatus {
   @@map("team_studio_domain_status")
 }
 
+enum TeamStudioDnsAuditStatus {
+  verified
+  pending
+  failed
+  inconclusive
+
+  @@map("team_studio_dns_audit_status")
+}
+
 /// Domínio compartilhado do produto público do time.
 /// Os caminhos `/forms/*` e `/conversao/*` são servidos pelo mesmo hostname.
 model TeamStudioDomain {
@@ -4787,6 +4798,15 @@ model TeamStudioDomain {
   vercelDomainId   String?                @db.Text
   verifiedAt       DateTime?              @db.Timestamptz(6)
   lastCheckedAt    DateTime?              @db.Timestamptz(6)
+  dnsAuditStatus   TeamStudioDnsAuditStatus?
+  dnsMisconfigured Boolean?
+  dnsReasonCode    String?                @db.Text
+  dnsReason        String?                @db.Text
+  recommendedCNAME String?                @db.Text
+  lastDnsAuditAt   DateTime?              @db.Timestamptz(6)
+  lastDnsAttemptAt DateTime?              @db.Timestamptz(6)
+  lastDnsFingerprint String?              @db.Text
+  lastDnsNotifiedFingerprint String?      @db.Text
   headScripts      String?                @db.Text
   bodyStartScripts String?                @db.Text
   bodyEndScripts   String?                @db.Text

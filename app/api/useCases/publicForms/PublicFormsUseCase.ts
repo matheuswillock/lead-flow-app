@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
-import type { ITeamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/ITeamStudioDomainRepository"
 import { teamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
 import {
   buildPublicFormPreviewSnapshot,
@@ -46,9 +45,13 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
 const STUDIO_DOMAIN_REQUIRED_MESSAGE =
   "Configure e verifique o subdomínio studio antes de publicar."
 
+type StudioDomainStatusRepository = {
+  findByTeamId(teamId: string): Promise<{ status: string } | null>
+}
+
 export class PublicFormsUseCase {
   constructor(
-    private readonly studioDomainRepository: ITeamStudioDomainRepository = teamStudioDomainRepository,
+    private readonly studioDomainRepository: StudioDomainStatusRepository = teamStudioDomainRepository,
   ) {}
 
   async list(access: TeamAccess, filters: PublicFormListFilters) {

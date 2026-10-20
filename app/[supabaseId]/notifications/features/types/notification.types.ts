@@ -15,7 +15,9 @@ export type NotificationTypeValue =
   | "EMAIL_CAMPAIGN_DISPATCH_FAILED"
   | "EMAIL_SENDING_HEALTH_CHANGED"
   | "AUTOMATION_RULE"
-  | "WEBHOOK_AUTO_PAUSED";
+  | "WEBHOOK_AUTO_PAUSED"
+  | "STUDIO_DOMAIN_DNS_ACTION_REQUIRED"
+  | "STUDIO_DOMAIN_DNS_RECOVERED";
 
 export type NotificationMetadata = {
   event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;
@@ -44,6 +46,13 @@ export type NotificationMetadata = {
   leadCount?: number;
   role?: "closer" | "master";
   filter?: string;
+  hostname?: string;
+  status?: string;
+  misconfigured?: boolean;
+  recommendedCNAME?: string | null;
+  reasonCode?: string;
+  lastCheckedAt?: string;
+  href?: string;
 };
 
 export type MarkAllAsReadOptions = {

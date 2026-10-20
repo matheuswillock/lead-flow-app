@@ -101,7 +101,7 @@ export interface TeamMemberTransferAuthorization {
 
 export interface TeamMemberNotificationRecipient {
   profileId: string;
-  profile: { email: string; fullName: string | null } | null;
+  profile: { email: string; fullName: string | null; supabaseId: string | null } | null;
 }
 
 export interface ITeamMembersRepository {
@@ -122,7 +122,12 @@ export interface ITeamMembersRepository {
   /** Papel e permissao de transferencia, para autorizar transferencia de lead. */
   findTransferAuthorization(teamId: string, profileId: string): Promise<TeamMemberTransferAuthorization | null>;
   /** Membros do time nos papeis informados, para destinatarios de notificacao. */
-  findNotificationRecipients(input: { teamId: string; roles: UserRole[]; onlyTransferAuthorized?: boolean }): Promise<TeamMemberNotificationRecipient[]>;
+  findNotificationRecipients(input: {
+    teamId: string;
+    roles: UserRole[];
+    onlyTransferAuthorized?: boolean;
+    onlyActive?: boolean;
+  }): Promise<TeamMemberNotificationRecipient[]>;
   findNotificationRecipientsByProfileIds(input: {
     teamId: string;
     profileIds: string[];

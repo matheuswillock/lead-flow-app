@@ -100,6 +100,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "reset-credits": 60,
   "studio-bot-ai-rollup": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "studio-bot-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  "studio-domain-dns-reconcile": 300,
   "sync-contacts": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "task-overdue": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "webhook-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
