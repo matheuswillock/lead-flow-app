@@ -15,7 +15,11 @@ function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
 }
 
 function resolveBillingGraceUntil(account: AccountAccessRecord): Date | null {
-  if (account.temporaryAccessUntil) return account.temporaryAccessUntil
+  // A data de uma concessão só vale com a concessão marcada como ativa; uma data
+  // residual sem `temporaryAccessGranted` nunca pode liberar acesso.
+  if (account.temporaryAccessGranted === true && account.temporaryAccessUntil) {
+    return account.temporaryAccessUntil
+  }
   if (account.subscriptionStatus !== "past_due" || !account.subscriptionNextDueDate) {
     return null
   }
@@ -50,7 +54,11 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       if (billingGraceUntil.getTime() > now.getTime()) {
         return { state: "allowed", temporaryAccessGranted: true, temporaryAccessUntil }
       }
-      return { state: "read_only", reason: "past_due", temporaryAccessUntil }
+      // Somente past_due degrada para leitura; uma concessão expirada não transforma
+      // suspended/canceled em read_only: elas seguem para as regras restritivas abaixo.
+      if (account.subscriptionStatus === "past_due") {
+        return { state: "read_only", reason: "past_due", temporaryAccessUntil }
+      }
     }
 
     if (account.memberProBlocked) {

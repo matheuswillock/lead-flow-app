@@ -36,6 +36,39 @@ describe("PaymentProviderConfig", () => {
     ).not.toThrow()
   })
 
+  describe("public key before card release", () => {
+    const productionWithoutKey = {
+      apiKey: "abc_prod_key",
+      webhookSecret: "webhook-secret",
+      environment: "PRODUCTION" as const,
+      devMode: false,
+    }
+
+    it("allows PRODUCTION without public key or signing key", () => {
+      const config = PaymentProviderConfig.create(productionWithoutKey)
+      expect(config.publicKey).toBeNull()
+      expect(config.webhookSigningKey).toBeNull()
+      expect(config.fingerprint()).toBe("PRODUCTION:production:no-public-key")
+    })
+
+    it("still requires public key and signing key in DEV", () => {
+      expect(() =>
+        PaymentProviderConfig.create({ ...validConfig, publicKey: null, webhookSigningKey: null }),
+      ).toThrow("incompleta")
+    })
+
+    it("treats a blank key as broken configuration, not as absent", () => {
+      expect(() =>
+        PaymentProviderConfig.create({ ...productionWithoutKey, publicKey: "  ", webhookSigningKey: "  " }),
+      ).toThrow("incompleta")
+    })
+
+    it("never relaxes the webhook secret or API key", () => {
+      expect(() => PaymentProviderConfig.create({ ...productionWithoutKey, webhookSecret: "" })).toThrow("incompleta")
+      expect(() => PaymentProviderConfig.create({ ...productionWithoutKey, apiKey: "" })).toThrow("incompleta")
+    })
+  })
+
   it("freezes validated configuration at runtime", () => {
     const config = PaymentProviderConfig.create(validConfig)
 

@@ -145,7 +145,7 @@ export function PublicCheckoutSummaryStep({
       <Button
         type="button"
         size="lg"
-        className="w-full"
+        className="w-full max-lg:min-h-11"
         onClick={onFinalize}
         disabled={isLocked}
       >

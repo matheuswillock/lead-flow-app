@@ -30,7 +30,11 @@ test.describe("regularização da assinatura", () => {
               status: "pending",
               amountCents: 5990,
               effectivePriceCents: 5990,
-              paymentInstructions: { checkoutUrl: "https://app.abacatepay.com/pay/bill-e2e" },
+              paymentInstructions: {
+                brCode: "000201PIX-E2E",
+                brCodeBase64: "iVBORw0KGgo=",
+                expiresAt: new Date(Date.now() + 600_000).toISOString(),
+              },
             },
           }),
         })
@@ -58,10 +62,9 @@ test.describe("regularização da assinatura", () => {
     await expect(page.getByRole("heading", { name: "Regularizar pagamento" })).toBeVisible()
     await expect(page.getByText("R$ 59,90")).toBeAttached()
     await page.getByRole("button", { name: "Gerar PIX" }).click({ force: true })
-    await expect(page.getByRole("link", { name: "Abrir checkout Abacate Pay" })).toHaveAttribute(
-      "href",
-      "https://app.abacatepay.com/pay/bill-e2e",
-    )
+    await expect(page.getByText("000201PIX-E2E")).toBeAttached()
+    await expect(page.getByAltText("QR Code PIX")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Copiar código PIX" })).toBeVisible()
     expect(paymentCreated).toBe(true)
     await runResponsiveChecks(page)
   })

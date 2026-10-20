@@ -19,7 +19,6 @@ import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/A
 
 const ABACATE_CAPABILITIES = [
   "ONE_TIME_PAYMENT",
-  "HOSTED_CHECKOUT",
   "PIX",
   "CARD",
   "STATUS_QUERY",
@@ -32,9 +31,6 @@ export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment 
   if (configured !== "DEV" && configured !== "PRODUCTION") {
     throw new Error("PAYMENT_PROVIDER_ENVIRONMENT inválido")
   }
-  if (configured === "PRODUCTION") {
-    throw new Error("A Fase 3 aceita somente o ambiente DEV")
-  }
   return configured
 }
 
@@ -45,10 +41,23 @@ function readProviderSecret(environment: PaymentProviderEnvironment, suffix: str
   return value
 }
 
+// Em PRODUCTION a chave pública só existe depois que a loja tem "Checkout próprio" (cartão)
+// liberado. Em DEV ela é sempre obrigatória.
+function readProviderPublicKey(environment: PaymentProviderEnvironment): string | null {
+  if (environment !== "PRODUCTION") return readProviderSecret(environment, "PUBLIC_KEY")
+  const value = process.env[`ABACATE_PAY_${environment}_PUBLIC_KEY`] ?? process.env.ABACATE_PAY_PUBLIC_KEY
+  return value?.trim() ? value : null
+}
+
+function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
+  const hasPublicKey = readProviderPublicKey(environment) !== null
+  return ABACATE_CAPABILITIES.filter((capability) => capability !== "CARD" || hasPublicKey)
+}
+
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
 ): AbacatePayProvider {
-  const publicKey = readProviderSecret(environment, "PUBLIC_KEY")
+  const publicKey = readProviderPublicKey(environment)
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
       apiKey: readProviderSecret(environment, "API_KEY"),
@@ -63,18 +72,32 @@ export function createAbacatePayProvider(
   )
 }
 
-function createUseCase() {
-  const environment = resolvePaymentProviderEnvironment()
-  const registry = new PaymentProviderRegistry([
+export function createAbacatePayProviderRegistry(
+  environment: PaymentProviderEnvironment,
+): PaymentProviderRegistry {
+  return new PaymentProviderRegistry([
     {
       metadata: {
         key: "ABACATE_PAY",
         environment,
-        capabilities: ABACATE_CAPABILITIES,
+        capabilities: resolveAbacateCapabilities(environment),
       },
     },
   ])
-  const router = new PaymentProviderRouter(paymentProviderConfigRepository, registry)
+}
+
+export function createPaymentProviderRouter(
+  environment: PaymentProviderEnvironment,
+): PaymentProviderRouter {
+  return new PaymentProviderRouter(
+    paymentProviderConfigRepository,
+    createAbacatePayProviderRegistry(environment),
+  )
+}
+
+function createUseCase() {
+  const environment = resolvePaymentProviderEnvironment()
+  const router = createPaymentProviderRouter(environment)
 
   const service = new PaymentProviderPaymentService({
     purchases: platformPurchaseRepository,

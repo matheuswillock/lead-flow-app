@@ -1,10 +1,11 @@
-import { PaymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
-import { createAbacatePayProvider, resolvePaymentProviderEnvironment } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import {
+  createAbacatePayProvider,
+  createPaymentProviderRouter,
+  resolvePaymentProviderEnvironment,
+} from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary"
-import { PaymentProviderRegistry } from "@/lib/payment-provider/registry"
-import { PaymentProviderRouter } from "@/lib/payment-provider/router"
 import type { Prisma } from "@prisma/client"
 import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
 
@@ -12,19 +13,6 @@ const QUOTE_TTL_MS = 10 * 60 * 1000
 const SESSION_TTL_MS = 30 * 60 * 1000
 const ROUTE_VERSION = "BILLING-GRACE-PHASE-5"
 
-const configRepository = new PaymentProviderConfigRepository()
-const paymentProviderRouter = new PaymentProviderRouter(
-  configRepository,
-  new PaymentProviderRegistry([
-    {
-      metadata: {
-        key: "ABACATE_PAY",
-        environment: "DEV",
-        capabilities: ["ONE_TIME_PAYMENT", "HOSTED_CHECKOUT", "PIX", "STATUS_QUERY", "WEBHOOK"],
-      },
-    },
-  ]),
-)
 
 export class BillingGracePaymentService implements IBillingGracePaymentService {
   async getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {
@@ -47,11 +35,23 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
   }
 
   async createPixPayment(input: { supabaseId: string; idempotencyKey: string }) {
-    const existing = await billingGracePaymentRepository.findByIdempotencyKey(input.idempotencyKey)
-    if (existing) return existing
-
+    // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
+    // nem devolver o pagamento (e o PIX) de outra conta.
     const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
     if (!account) throw new Error("Somente o master pode regularizar esta conta")
+
+    const existing = await billingGracePaymentRepository.findByIdempotencyKey({
+      accountId: account.accountId,
+      idempotencyKey: input.idempotencyKey,
+    })
+    if (existing) return existing
+
+    // Seleciona o provider antes de persistir: provider indisponível não deixa linha órfã.
+    const environment = resolvePaymentProviderEnvironment()
+    const selected = await createPaymentProviderRouter(environment).select({
+      environment,
+      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+    })
 
     const summary = buildAccountSummary(account)
     const amountCents = Math.round(summary.totalPrice * 100)
@@ -63,22 +63,20 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       amountCents,
       effectivePriceCents: amountCents,
       provider: "ABACATE_PAY",
-      providerEnvironment: resolvePaymentProviderEnvironment(),
+      providerEnvironment: environment,
       idempotencyKey: input.idempotencyKey,
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
 
-    const environment = resolvePaymentProviderEnvironment()
-    const selected = await paymentProviderRouter.select({
-      environment,
-      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
-    })
     const provider = createAbacatePayProvider(environment)
+    // A unicidade das tentativas do provider é global: derivar a chave do pagamento
+    // (único) evita colisão entre contas que enviem a mesma chave de cliente.
+    const providerIdempotencyKey = `billing-grace-payment:${payment.id}`
     const session = await paymentProviderSessionRepository.createSession({
       tenantId: account.teamId ?? account.accountId,
       ownerType: "BILLING_GRACE_PAYMENT",
       ownerId: payment.id,
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: providerIdempotencyKey,
       provider: selected.provider,
       environment: selected.environment,
       externalAccountContext: selected.externalAccountContext,
@@ -93,7 +91,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       ownerId: payment.id,
       now: new Date(),
       attemptNumber: 1,
-      idempotencyKey: input.idempotencyKey,
+      idempotencyKey: providerIdempotencyKey,
       requestFingerprint: JSON.stringify({ amountCents, method: "PIX", accountId: account.accountId }),
       provider: selected.provider,
       environment: selected.environment,
@@ -108,12 +106,16 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       now: new Date(),
       ttlMs: 60_000,
     })
-    const outcome = await provider.createHostedCheckout({
+    const outcome = await provider.createPixPayment({
       amountInCents: amountCents,
+      customer: {
+        name: account.name,
+        email: account.email,
+        taxId: account.taxId,
+        cellphone: account.cellphone,
+      },
       externalReference: `${payment.id}:${attempt.id}`,
       metadata: { paymentId: payment.id, attemptId: attempt.id },
-      returnUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.corretorstudio.com"}/${account.accountId}/billing-grace-payment`,
-      completionUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.corretorstudio.com"}/${account.accountId}/billing-grace-payment?payment=completed`,
     })
     const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
       attemptId: leased.id,
@@ -126,13 +128,18 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       expectedStatus: "CREATED",
       operation: "PAYMENT",
       externalId: "externalId" in outcome ? outcome.externalId : null,
+      ...(outcome.status === "PENDING" && "pix" in outcome
+        ? { paymentInstructions: outcome.pix }
+        : {}),
     })
     return billingGracePaymentRepository.attachProviderAttempt({
       id: payment.id,
       providerSessionId: session.id,
       providerAttemptId: updated.id,
       providerExternalId: updated.externalId,
-      paymentInstructions: { checkoutUrl: outcome.url } as Prisma.InputJsonValue,
+      ...(updated.paymentInstructions
+        ? { paymentInstructions: updated.paymentInstructions as Prisma.InputJsonValue }
+        : {}),
     })
   }
 

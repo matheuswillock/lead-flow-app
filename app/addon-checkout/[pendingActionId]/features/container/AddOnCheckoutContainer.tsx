@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 
 import { PublicCheckoutFlow } from "@/components/public-checkout/PublicCheckoutFlow"
+import type { CheckoutPaymentProvider } from "@/components/public-checkout/providerBranding"
 import type {
   PublicCheckoutDetails,
   PublicCheckoutPaymentView,
@@ -12,6 +13,8 @@ import { useAddOnCheckout } from "../context/AddOnCheckoutHook"
 import type { AddOnCheckoutSubmitInput } from "../context/AddOnCheckoutTypes"
 
 const ATTEMPT_STORAGE_PREFIX = "addon-checkout-attempt-start:"
+const PLATFORM_PURCHASE_SUCCESS_DESCRIPTION =
+  "Os créditos são aplicados automaticamente em até 5 minutos."
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
@@ -61,7 +64,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const subtitle = isPlatformPurchase
       ? data.purchaseType === "email_credits"
         ? `Créditos de e-mail — ${data.addonLabel}`
-        : data.addonDetail
+        : data.addonDetail || data.addonLabel
       : data.pricing.remainingMonths > 1
         ? `Cobrança proporcional por ${data.pricing.remainingMonths} meses`
         : "Cobrança proporcional"
@@ -80,7 +83,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const compositionRows = isPlatformPurchase
       ? [
           { label: "Produto", value: data.addonLabel },
-          { label: "Créditos", value: data.addonDetail },
+          ...(data.addonDetail ? [{ label: "Créditos", value: data.addonDetail }] : []),
           { label: "Ciclo", value: "Mensal" },
           { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
         ]
@@ -133,12 +136,16 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     }
   }, [state.data])
 
+  // Identidade estável: o auto-refresh do fluxo depende desta referência e de `mappedPayment`.
+  const handleRefreshStatus = useCallback(() => refreshPaymentStatus(), [refreshPaymentStatus])
+
+  const presetBillingType = state.data?.presetBillingType
   const mappedPayment = useMemo<PublicCheckoutPaymentView | null>(() => {
-    if (!mappedDetails) return null
+    if (!presetBillingType) return null
     const paymentData = state.paymentData as any
     const paymentStatus = state.paymentStatus
 
-    if (!paymentData && !paymentStatus) return null
+    if (!paymentData && !paymentStatus && state.step !== "success") return null
 
     const isApplied = paymentStatus?.pendingActionStatus === "applied" || state.step === "success"
     const status = isApplied
@@ -153,13 +160,13 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
 
     return {
       status,
-      billingType: mappedDetails.presetBillingType,
+      billingType: presetBillingType,
       amountLabel: "Valor",
       amountValue: formatCurrency(amount),
       invoiceUrl: paymentData?.invoiceUrl ?? null,
       pix: paymentData?.pix ?? null,
     }
-  }, [mappedDetails, state.paymentData, state.paymentStatus, state.step])
+  }, [presetBillingType, state.paymentData, state.paymentStatus, state.step])
 
   const prefill = useMemo<PublicCheckoutPayerPrefill>(() => {
     const data = state.data
@@ -183,11 +190,20 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     mappedDetails?.presetBillingType === "PIX" ? 1 : state.data?.pricing.maxInstallments ?? 1
 
   const error = state.step === "error" ? state.error ?? "Erro ao carregar checkout" : null
+  const isPlatformPurchase = state.data?.checkoutSource === "platform_purchase"
   const isLoading = state.step === "loading"
   const isSubmitting = state.isProcessing
+  // platform_purchase paga PIX no Abacate; fluxos legados seguem no Asaas. Sem dados, sem marca.
+  const provider: CheckoutPaymentProvider | null = state.data
+    ? isPlatformPurchase
+      ? "ABACATE_PAY"
+      : "ASAAS"
+    : null
 
   return (
     <PublicCheckoutFlow
+      provider={provider}
+      canRegeneratePix={isPlatformPurchase}
       attemptStorageKey={getAttemptStorageKey(pendingActionId)}
       details={mappedDetails}
       payment={mappedPayment}
@@ -196,6 +212,8 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       error={error}
       maxInstallments={maxInstallments}
       prefill={prefill}
+      pixOnly={isPlatformPurchase}
+      successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
       onSubmit={async (input) => {
         if (!mappedDetails) return
         const payload: AddOnCheckoutSubmitInput = {
@@ -220,10 +238,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
         }
         await submitPayment(payload)
       }}
-      onRefreshStatus={async (options) => {
-        if (!options?.sync) return refreshPaymentStatus()
-        return refreshPaymentStatus()
-      }}
+      onRefreshStatus={handleRefreshStatus}
     />
   )
 }

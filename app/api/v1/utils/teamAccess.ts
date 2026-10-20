@@ -30,9 +30,22 @@ export type TeamAccess = {
   };
 };
 
+export type TeamAccessOptions = {
+  /** Rotas que precisam gravar mesmo com a conta em somente leitura (ex.: preferências de notificação). */
+  allowReadOnlyWrites?: boolean;
+};
+
 export type TeamAccessResult =
   | { access: TeamAccess; error?: never; status?: never }
   | { access?: never; error: Output; status: number };
+
+const READ_ONLY_WRITE_BLOCK_MESSAGE =
+  "A conta está em modo somente leitura até a regularização do pagamento.";
+const READ_ONLY_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function isReadOnlyWriteBlocked(request: NextRequest, options: TeamAccessOptions): boolean {
+  return !options.allowReadOnlyWrites && !READ_ONLY_SAFE_METHODS.has(request.method.toUpperCase());
+}
 
 const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
   return prisma.profile.findUnique({
@@ -94,13 +107,25 @@ const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
   });
 });
 
-async function resolveTeamAccountAccess(profileId: string, teamId: string): Promise<{
+async function resolveTeamAccountAccess(
+  profileId: string,
+  teamId: string,
+  blockReadOnlyWrites: boolean,
+): Promise<{
   decision: AccountAccessDecision | null;
   denied: TeamAccessResult | null;
 }> {
   const output = await accountAccessDecisionUseCase.execute({ profileId, teamId });
   const decision = output.result as AccountAccessDecision | null;
   if (output.isValid && decision && decision.state !== "restricted") {
+    // Falha fechado: em somente leitura toda mutação é negada aqui, na borda central,
+    // sem depender de cada rota lembrar de chamar isTeamWriteBlockedByBilling.
+    if (decision.state === "read_only" && blockReadOnlyWrites) {
+      return {
+        decision,
+        denied: { error: new Output(false, [], [READ_ONLY_WRITE_BLOCK_MESSAGE], null), status: 403 },
+      };
+    }
     return { decision, denied: null };
   }
 
@@ -119,7 +144,11 @@ async function resolveTeamAccountAccess(profileId: string, teamId: string): Prom
   };
 }
 
-export async function getTeamAccess(request: NextRequest): Promise<TeamAccessResult> {
+export async function getTeamAccess(
+  request: NextRequest,
+  options: TeamAccessOptions = {},
+): Promise<TeamAccessResult> {
+  const blockReadOnlyWrites = isReadOnlyWriteBlocked(request, options);
   const supabaseId = request.headers.get("x-supabase-user-id");
   if (!supabaseId) {
     return {
@@ -178,7 +207,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     }
 
     const accountMasterId = teamForSponsor.masterId;
-    const accountAccess = await resolveTeamAccountAccess(profile.id, teamId);
+    const accountAccess = await resolveTeamAccountAccess(profile.id, teamId, blockReadOnlyWrites);
     if (accountAccess.denied) {
       return accountAccess.denied;
     }
@@ -208,7 +237,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   }
 
   const accountMasterId = teamMember.team.masterId;
-  const accountAccess = await resolveTeamAccountAccess(profile.id, teamId);
+  const accountAccess = await resolveTeamAccountAccess(profile.id, teamId, blockReadOnlyWrites);
   if (accountAccess.denied) {
     return accountAccess.denied;
   }
@@ -280,6 +309,6 @@ export function isTeamWriteBlockedByBilling(access: TeamAccess): boolean {
 
 export function getBillingWriteBlockMessage(access: TeamAccess): string | null {
   return isTeamWriteBlockedByBilling(access)
-    ? "A conta está em modo somente leitura até a regularização do pagamento."
+    ? READ_ONLY_WRITE_BLOCK_MESSAGE
     : null;
 }

@@ -169,6 +169,11 @@ export const envSchema = z.object({
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
   NEXT_PUBLIC_ENCRYPTION_KEY: hexKeySchema.describe('Client-side encryption key'),
+  PASSWORD_RESET_AUDIT_IP_HASH_SECRET: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Optional HMAC secret for password-reset audit IP hashes'),
 
   // Integrations (Meta / WhatsApp)
   INTEGRATIONS_ENCRYPTION_KEY: nonEmptyString
