@@ -16,10 +16,22 @@ function makeRepository() {
     createFlow: mock(async (_input: CreatePasswordResetFlowInput) => ({ id: "flow-1" })),
     recordEvent: mock(async (_input: RecordPasswordResetEventInput) => undefined),
     updateFlow: mock(async (_input: UpdatePasswordResetFlowInput) => undefined),
-    findFlowById: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
+    findFlowById: mock(async () => ({
+      id: "flow-1",
+      status: "email_sent" as PasswordResetFlowStatusValue,
+      recipientEmail: "Ana@Example.com",
+    })),
   }
 
   return repository
+}
+
+function withFlowStatus(repository: IPasswordResetAuditRepository, status: PasswordResetFlowStatusValue) {
+  repository.findFlowById = mock(async () => ({
+    id: "flow-1",
+    status,
+    recipientEmail: "ana@example.com",
+  }))
 }
 
 describe("PasswordResetAuditService", () => {
@@ -128,10 +140,11 @@ describe("PasswordResetAuditService", () => {
     const recorded = await service.recordTelemetry({
       flowId: "flow-1",
       event: "password_updated",
+      verifiedEmail: "ana@example.com",
       userAgent: "browser",
     })
 
-    expect(recorded).toBe(true)
+    expect(recorded).toBe("recorded")
     expect(repository.findFlowById).toHaveBeenCalledWith("flow-1")
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
@@ -146,6 +159,59 @@ describe("PasswordResetAuditService", () => {
       ipHash: null,
       userAgent: "browser",
     })
+  })
+
+  it("rejects outcome events without the recipient's session proof", async () => {
+    for (const verifiedEmail of [undefined, null, "other@example.com"]) {
+      const repository = makeRepository()
+      const service = new PasswordResetAuditService(repository)
+
+      const result = await service.recordTelemetry({ flowId: "flow-1", event: "password_updated", verifiedEmail })
+
+      expect(result).toBe("forbidden")
+      expect(repository.updateFlow).not.toHaveBeenCalled()
+      expect(repository.recordEvent).not.toHaveBeenCalled()
+    }
+  })
+
+  it("keeps closed flows immutable even with a valid session proof", async () => {
+    for (const status of ["completed", "expired", "invalidated"] as const) {
+      const repository = makeRepository()
+      withFlowStatus(repository, status)
+      const service = new PasswordResetAuditService(repository)
+
+      const result = await service.recordTelemetry({
+        flowId: "flow-1",
+        event: "password_update_failed",
+        verifiedEmail: "ana@example.com",
+      })
+
+      expect(result).toBe("recorded")
+      expect(repository.updateFlow).not.toHaveBeenCalled()
+      expect(repository.recordEvent).not.toHaveBeenCalled()
+    }
+  })
+
+  it("logs anonymous client events without changing the outcome status", async () => {
+    const repository = makeRepository()
+    const service = new PasswordResetAuditService(repository)
+
+    await service.recordTelemetry({ flowId: "flow-1", event: "page_opened" })
+    await service.recordTelemetry({ flowId: "flow-1", event: "token_rejected" })
+
+    expect(repository.updateFlow).not.toHaveBeenCalled()
+    expect(repository.recordEvent).toHaveBeenCalledTimes(2)
+  })
+
+  it("moves to verification_pending only before verification", async () => {
+    const early = makeRepository()
+    await new PasswordResetAuditService(early).recordTelemetry({ flowId: "flow-1", event: "verification_started" })
+    expect(early.updateFlow).toHaveBeenCalledWith({ flowId: "flow-1", status: "verification_pending" })
+
+    const late = makeRepository()
+    withFlowStatus(late, "token_verified")
+    await new PasswordResetAuditService(late).recordTelemetry({ flowId: "flow-1", event: "verification_started" })
+    expect(late.updateFlow).not.toHaveBeenCalled()
   })
 
   it("appends provider delivery events using only the resend correlation", async () => {

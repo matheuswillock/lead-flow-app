@@ -31,6 +31,11 @@ function getRateLimitKey(request: NextRequest, flowId: string): string {
   return `password-reset-telemetry:${ipKey ?? flowId}`
 }
 
+function getBearerToken(request: NextRequest): string | null {
+  const header = request.headers.get("authorization")
+  return header?.startsWith("Bearer ") ? header.slice(7).trim() || null : null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: unknown = await request.json()
@@ -64,10 +69,12 @@ export async function POST(request: NextRequest) {
     const output = await passwordResetTelemetryUseCase.execute({
       flowId: telemetry.flowId,
       eventType: telemetry.eventType,
+      accessToken: getBearerToken(request),
       ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip"),
       userAgent: request.headers.get("user-agent"),
     })
-    return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
+    const forbidden = (output.result as { outcome?: string } | null)?.outcome === "forbidden"
+    return NextResponse.json(output, { status: output.isValid ? 200 : forbidden ? 403 : 404 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
     console.error("[PasswordResetTelemetryRoute][POST]", error)

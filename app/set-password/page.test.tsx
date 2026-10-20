@@ -10,7 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * Requer DOM: rode via `bun run test:ui` (preload happy-dom).
  */
 
-type AuthSession = { user?: { email?: string; id?: string } } | null
+type AuthSession = { access_token?: string; user?: { email?: string; id?: string } } | null
 
 type AuthSessionResult = {
   data: { session: AuthSession }
@@ -19,7 +19,7 @@ type AuthSessionResult = {
 
 const verifyOtpMock = mock(
   async (): Promise<AuthSessionResult> => ({
-    data: { session: { user: { email: "cliente@example.com" } } },
+    data: { session: { access_token: "access-jwt", user: { email: "cliente@example.com" } } },
     error: null,
   }),
 )
@@ -125,6 +125,17 @@ describe("/set-password — gate do token de e-mail", () => {
     )
     expect(window.location.search).toBe("")
     expect(window.location.hash).toBe("")
+
+    const headersByEvent = new Map(
+      fetchMock.mock.calls
+        .filter(([input]) => String(input).includes("/auth/password-reset/telemetry"))
+        .map(([, init]) => [
+          JSON.parse(String(init?.body)).eventType as string,
+          (init?.headers as Record<string, string>).Authorization,
+        ]),
+    )
+    expect(headersByEvent.get("page_opened")).toBeUndefined()
+    expect(headersByEvent.get("token_verified")).toBe("Bearer access-jwt")
   })
 
   it("cliques concorrentes não reutilizam o token enquanto a validação está pendente", async () => {

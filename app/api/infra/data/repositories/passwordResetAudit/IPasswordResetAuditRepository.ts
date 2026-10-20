@@ -65,6 +65,7 @@ export interface UpdatePasswordResetFlowInput {
 export interface PasswordResetFlowOwnership {
   id: string
   status: PasswordResetFlowStatusValue
+  recipientEmail: string
 }
 
 export interface IPasswordResetAuditRepository {

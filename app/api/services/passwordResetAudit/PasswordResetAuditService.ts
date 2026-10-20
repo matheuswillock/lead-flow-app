@@ -2,6 +2,8 @@ import { createHmac } from "node:crypto"
 import type {
   CreatePasswordResetFlowInput,
   IPasswordResetAuditRepository,
+  PasswordResetFlowStatusValue,
+  UpdatePasswordResetFlowInput,
 } from "../../infra/data/repositories/passwordResetAudit/IPasswordResetAuditRepository"
 import { passwordResetAuditRepository } from "../../infra/data/repositories/passwordResetAudit/PasswordResetAuditRepository"
 import type { PasswordResetTelemetryEvent } from "@/lib/auth/password-reset-audit"
@@ -33,6 +35,51 @@ function getIpHash(ip: string | null | undefined): string | null {
 function optionalContext(value: string | null | undefined): string | null {
   const normalized = value?.trim()
   return normalized && normalized !== "unknown" ? normalized : null
+}
+
+export type PasswordResetTelemetryResult = "recorded" | "not_found" | "forbidden"
+
+const IMMUTABLE_FLOW_STATUSES = new Set<PasswordResetFlowStatusValue>([
+  "completed",
+  "expired",
+  "invalidated",
+])
+
+// Eventos que mudam o desfecho do fluxo só valem com a sessão Supabase do destinatário.
+const SESSION_PROOF_EVENTS = new Set<PasswordResetTelemetryEvent>([
+  "token_verified",
+  "password_updated",
+  "password_update_failed",
+])
+
+const PRE_VERIFICATION_STATUSES = new Set<PasswordResetFlowStatusValue>([
+  "requested",
+  "link_generated",
+  "email_sent",
+])
+
+type TelemetryStatusUpdate = Omit<UpdatePasswordResetFlowInput, "flowId">
+
+function isSameEmail(left: string | null | undefined, right: string): boolean {
+  return !!left && left.trim().toLowerCase() === right.trim().toLowerCase()
+}
+
+function resolveTelemetryStatusUpdate(
+  event: PasswordResetTelemetryEvent,
+  currentStatus: PasswordResetFlowStatusValue,
+): TelemetryStatusUpdate | null {
+  switch (event) {
+    case "verification_started":
+      return PRE_VERIFICATION_STATUSES.has(currentStatus) ? { status: "verification_pending" } : null
+    case "token_verified":
+      return { status: "token_verified", tokenVerifiedAt: new Date() }
+    case "password_updated":
+      return { status: "completed", completedAt: new Date() }
+    case "password_update_failed":
+      return { status: "failed", failureCode: "password_update_failed" }
+    default:
+      return null
+  }
 }
 
 export class PasswordResetAuditService {
@@ -111,30 +158,28 @@ export class PasswordResetAuditService {
   async recordTelemetry(input: {
     flowId: string
     event: PasswordResetTelemetryEvent
+    verifiedEmail?: string | null
     ip?: string | null
     userAgent?: string | null
-  }): Promise<boolean> {
+  }): Promise<PasswordResetTelemetryResult> {
     try {
       const flow = await this.repository.findFlowById(input.flowId)
-      if (!flow) return false
+      if (!flow) return "not_found"
 
-      const update = {
-        flowId: input.flowId,
-        ...(input.event === "token_verified"
-          ? { status: "token_verified" as const, tokenVerifiedAt: new Date() }
-          : input.event === "verification_started"
-            ? { status: "verification_pending" as const }
-            : input.event === "password_updated"
-              ? { status: "completed" as const, completedAt: new Date() }
-              : input.event === "token_rejected"
-                ? { status: "failed" as const, failureCode: "token_rejected" }
-                : input.event === "password_update_failed"
-                  ? { status: "failed" as const, failureCode: "password_update_failed" }
-                  : input.event === "expired"
-                    ? { status: "expired" as const }
-                    : { status: flow.status }),
+      // Fluxos encerrados são imutáveis: o evento é descartado sem sinalizar o motivo.
+      if (IMMUTABLE_FLOW_STATUSES.has(flow.status)) return "recorded"
+
+      if (
+        SESSION_PROOF_EVENTS.has(input.event) &&
+        !isSameEmail(input.verifiedEmail, flow.recipientEmail)
+      ) {
+        return "forbidden"
       }
-      await this.repository.updateFlow(update)
+
+      const statusUpdate = resolveTelemetryStatusUpdate(input.event, flow.status)
+      if (statusUpdate) {
+        await this.repository.updateFlow({ flowId: input.flowId, ...statusUpdate })
+      }
       await this.repository.recordEvent({
         flowId: input.flowId,
         type: input.event,
@@ -148,10 +193,10 @@ export class PasswordResetAuditService {
         ipHash: getIpHash(input.ip),
         userAgent: optionalContext(input.userAgent),
       })
-      return true
+      return "recorded"
     } catch (error) {
       console.error("[PasswordResetAuditService] Falha ao registrar telemetria de reset", error)
-      return false
+      return "not_found"
     }
   }
 

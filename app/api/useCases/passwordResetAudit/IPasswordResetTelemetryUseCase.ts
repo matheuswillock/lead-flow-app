@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 export interface PasswordResetTelemetryInput {
   flowId: string
   eventType: PasswordResetTelemetryEvent
+  accessToken?: string | null
   ip?: string | null
   userAgent?: string | null
 }

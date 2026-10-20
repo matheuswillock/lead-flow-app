@@ -27,6 +27,17 @@ type PasswordResetTelemetryEvent =
   | 'password_updated'
   | 'password_update_failed'
 
+async function readAccessToken(supabase: {
+  auth: { getSession?: () => Promise<{ data: { session: { access_token: string } | null } }> }
+}): Promise<string | null> {
+  try {
+    const result = await supabase.auth.getSession?.()
+    return result?.data.session?.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
 const PASSWORD_RESET_TELEMETRY_ENDPOINT = `${API_CLIENT_BASE}/auth/password-reset/telemetry`
 
 function SetPasswordContent() {
@@ -50,7 +61,7 @@ function SetPasswordContent() {
 
   const flowId = searchParams.get('flowId') ?? searchParams.get('flow_id')
 
-  const recordTelemetry = useCallback((eventType: PasswordResetTelemetryEvent) => {
+  const recordTelemetry = useCallback((eventType: PasswordResetTelemetryEvent, accessToken?: string | null) => {
     if (!flowId) return
     if (eventType === 'page_opened' && pageOpenedFlowIdRef.current === flowId) return
 
@@ -60,7 +71,10 @@ function SetPasswordContent() {
 
     void fetch(PASSWORD_RESET_TELEMETRY_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ flowId, eventType }),
       credentials: 'omit',
       keepalive: true,
@@ -272,7 +286,7 @@ function SetPasswordContent() {
       }
 
       setEmail(data.session.user?.email ?? null)
-      recordTelemetry('token_verified')
+      recordTelemetry('token_verified', data.session.access_token)
       window.history.replaceState(null, '', '/set-password')
       setPendingEmailAuth(null)
     } catch (err) {
@@ -405,7 +419,7 @@ function SetPasswordContent() {
 
       if (updateError) {
         console.error('Erro ao definir senha:', updateError)
-        recordTelemetry('password_update_failed')
+        recordTelemetry('password_update_failed', await readAccessToken(supabase))
         const friendlyMessage = translateSupabaseError(updateError.message)
         setError(friendlyMessage)
         setIsLoading(false)
@@ -413,7 +427,7 @@ function SetPasswordContent() {
       }
 
       passwordUpdated = true
-      recordTelemetry('password_updated')
+      recordTelemetry('password_updated', await readAccessToken(supabase))
 
       // Buscar perfil do usuário para redirecionar corretamente
       const { data: { user } } = await supabase.auth.getUser()
