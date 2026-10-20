@@ -404,6 +404,7 @@ export function StudioDomainCard() {
                 type="button"
                 variant="outline"
                 className="min-h-11 w-full"
+                aria-label="Verificar DNS"
                 onClick={() => void verify()}
                 disabled={verifying}
               >
