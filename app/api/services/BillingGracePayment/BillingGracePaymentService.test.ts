@@ -50,28 +50,63 @@ mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentPro
   },
 }))
 
-mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
-  PaymentProviderConfigRepository: class {},
+let configuredEnvironment: "DEV" | "PRODUCTION" = "DEV"
+const select = mock(async (input: { environment: string }) => ({
+  provider: "ABACATE_PAY",
+  environment: input.environment,
+  externalAccountContext: "ctx",
 }))
-mock.module("@/lib/payment-provider/registry", () => ({ PaymentProviderRegistry: class {} }))
-mock.module("@/lib/payment-provider/router", () => ({
-  PaymentProviderRouter: class {
-    select = async () => ({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "ctx" })
-  },
-}))
+const createPaymentProviderRouter = mock((_environment: string) => ({ select }))
+const createPixPayment = mock(async (_input: unknown) => ({ status: "PENDING", externalId: "ext-1", pix: { brCode: "000201" } }))
 mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
-  resolvePaymentProviderEnvironment: () => "DEV",
-  createAbacatePayProvider: () => ({
-    createPixPayment: async () => ({ status: "PENDING", externalId: "ext-1", pix: { brCode: "000201" } }),
-  }),
+  resolvePaymentProviderEnvironment: () => configuredEnvironment,
+  createPaymentProviderRouter,
+  createAbacatePayProvider: () => ({ createPixPayment }),
 }))
 
 const { BillingGracePaymentService } = await import("./BillingGracePaymentService")
 
 beforeEach(() => {
-  for (const fn of [findAccountContext, findByIdempotencyKey, create, attachProviderAttempt, createSession, createAttempt]) fn.mockClear()
+  for (const fn of [findAccountContext, findByIdempotencyKey, create, attachProviderAttempt, createSession, createAttempt, select, createPaymentProviderRouter, createPixPayment]) fn.mockClear()
+  configuredEnvironment = "DEV"
   findAccountContext.mockResolvedValue(accountA)
   findByIdempotencyKey.mockResolvedValue(null)
+  select.mockImplementation(async (input) => ({
+    provider: "ABACATE_PAY",
+    environment: input.environment,
+    externalAccountContext: "ctx",
+  }))
+})
+
+describe("BillingGracePaymentService.createPixPayment — ambiente e provider", () => {
+  it("seleciona o provider no ambiente configurado na composition, exigindo PIX", async () => {
+    configuredEnvironment = "PRODUCTION"
+
+    await new BillingGracePaymentService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1" })
+
+    expect(createPaymentProviderRouter).toHaveBeenCalledWith("PRODUCTION")
+    expect(select).toHaveBeenCalledWith({ environment: "PRODUCTION", requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"] })
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ providerEnvironment: "PRODUCTION" }))
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ environment: "PRODUCTION" }))
+  })
+
+  it("não cria a linha de regularização quando nenhum provider está disponível", async () => {
+    select.mockRejectedValue(new Error("Nenhum provider disponível"))
+
+    await expect(new BillingGracePaymentService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1" })).rejects.toThrow("Nenhum provider disponível")
+
+    expect(create).not.toHaveBeenCalled()
+    expect(createSession).not.toHaveBeenCalled()
+    expect(createPixPayment).not.toHaveBeenCalled()
+  })
+
+  it("não consulta o provider quando a chave já tem pagamento da própria conta", async () => {
+    findByIdempotencyKey.mockResolvedValue({ id: "payment-existing" })
+
+    await new BillingGracePaymentService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1" })
+
+    expect(select).not.toHaveBeenCalled()
+  })
 })
 
 describe("BillingGracePaymentService.createPixPayment — escopo da chave de idempotência", () => {
