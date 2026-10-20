@@ -326,6 +326,7 @@ export function StudioDomainCard() {
                   type="button"
                   variant="outline"
                   className="min-h-11 shrink-0 sm:min-h-9"
+                  aria-label="Copiar CNAME recomendado"
                   onClick={() => void copyValue(domain.recommendedCNAME!, "CNAME recomendado")}
                 >
                   <Copy data-icon="inline-start" />
