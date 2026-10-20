@@ -31,7 +31,7 @@ create table "public"."password_reset_flows" (
   "profileId" uuid,
   "recipientEmail" text not null,
   "status" "public"."password_reset_flow_status" not null default 'requested',
-  "requestIp" text,
+  "ipHash" text,
   "userAgent" text,
   "originScreen" text,
   "requestedAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
@@ -54,7 +54,7 @@ create table "public"."password_reset_events" (
   "occurredAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
   "requestId" text,
   "failureCode" text,
-  "requestIp" text,
+  "ipHash" text,
   "userAgent" text,
   "createdAt" timestamptz(6) not null default CURRENT_TIMESTAMP,
 

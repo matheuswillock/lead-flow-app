@@ -1359,7 +1359,7 @@ model PasswordResetFlow {
   profileId         String?                @map("profileId") @db.Uuid
   recipientEmail    String                 @map("recipientEmail") @db.Text
   status            PasswordResetFlowStatus @default(requested)
-  requestIp         String?                @map("requestIp") @db.Text
+  ipHash            String?                @map("ipHash") @db.Text
   userAgent         String?                @map("userAgent") @db.Text
   originScreen      String?                @map("originScreen") @db.Text
   requestedAt       DateTime               @default(now()) @map("requestedAt") @db.Timestamptz(6)
@@ -1394,7 +1394,7 @@ model PasswordResetEvent {
   occurredAt   DateTime              @default(now()) @map("occurredAt") @db.Timestamptz(6)
   requestId    String?               @map("requestId") @db.Text
   failureCode  String?               @map("failureCode") @db.Text
-  requestIp    String?               @map("requestIp") @db.Text
+  ipHash       String?               @map("ipHash") @db.Text
   userAgent    String?               @map("userAgent") @db.Text
   createdAt    DateTime              @default(now()) @map("createdAt") @db.Timestamptz(6)
 
