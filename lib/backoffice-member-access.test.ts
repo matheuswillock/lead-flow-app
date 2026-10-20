@@ -17,7 +17,7 @@ const generateLinkMock = mock(
     ({
       data: { properties: { action_link: "https://app.local/set-password?token=NEW" } },
       error: null as { message: string } | null,
-    }) as unknown
+    }) as unknown,
 )
 
 let e2eTestModeEnabled = false
@@ -46,10 +46,12 @@ mock.module("@/lib/utils/app-url", () => ({
 }))
 
 const sendOperatorInviteEmailMock = mock(
-  async (_data: unknown) => ({ success: true as const, data: { data: { id: "resend-1" } } }) as unknown
+  async (_data: unknown) =>
+    ({ success: true as const, data: { data: { id: "resend-1" } } }) as unknown,
 )
 const sendPasswordResetEmailMock = mock(
-  async (..._args: unknown[]) => ({ success: true as const, data: { data: { id: "resend-2" } } }) as unknown
+  async (..._args: unknown[]) =>
+    ({ success: true as const, data: { data: { id: "resend-2" } } }) as unknown,
 )
 const auditCreateFlowMock = mock(async () => ({ id: "flow-1" }))
 const auditRecordLinkGeneratedMock = mock(async () => undefined)
@@ -74,10 +76,8 @@ mock.module("@/app/api/services/passwordResetAudit/PasswordResetAuditService", (
   },
 }))
 
-const {
-  sendBackofficeMemberAccessEmail,
-  generateBackofficeInviteAccessLink,
-} = await import("./backoffice-member-access")
+const { sendBackofficeMemberAccessEmail, generateBackofficeInviteAccessLink } =
+  await import("./backoffice-member-access")
 
 const pendingProfile = {
   profileId: "profile-1",
@@ -104,7 +104,7 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
         ({
           data: { properties: { action_link: "https://app.local/set-password?token=NEW" } },
           error: null,
-        }) as unknown
+        }) as unknown,
     )
   })
 
@@ -114,7 +114,10 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
       data: { data: { id: "resend-1" } },
     }))
 
-    const result = await sendBackofficeMemberAccessEmail({ profile: pendingProfile, mode: "invite" })
+    const result = await sendBackofficeMemberAccessEmail({
+      profile: pendingProfile,
+      mode: "invite",
+    })
 
     expect(result.email).toBe("ana@example.com")
   })
@@ -142,13 +145,13 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
     expect(sendPasswordResetEmailMock).toHaveBeenCalledWith(
       "ana@example.com",
       "Ana Souza",
-      "https://app.local/set-password?token=NEW",
+      "https://app.local/set-password?token=NEW&flowId=flow-1",
       {
         profileId: "profile-1",
         sourceType: "password_reset",
         sourceId: "flow-1",
         recipientEmail: "ana@example.com",
-      }
+      },
     )
   })
 
@@ -242,7 +245,7 @@ describe("generateBackofficeInviteAccessLink — Entregável 3 (copiar link, sem
     const result = await generateBackofficeInviteAccessLink(pendingProfile)
 
     expect(result.actionLink).toBe(
-      "https://app.local/set-password?token_hash=e2e-invite-profile-1&type=invite"
+      "https://app.local/set-password?token_hash=e2e-invite-profile-1&type=invite",
     )
     expect(result.email).toBe("ana@example.com")
     expect(generateLinkMock).not.toHaveBeenCalled()

@@ -22,7 +22,9 @@ export function buildSetPasswordEmailAuthLink(
   const tokenHash = data.properties?.hashed_token
 
   if (!tokenHash) {
-    return data.properties?.action_link ?? getFullUrl("/set-password")
+    const actionLink = new URL(data.properties?.action_link ?? getFullUrl("/set-password"))
+    if (flowId) actionLink.searchParams.set("flowId", flowId)
+    return actionLink.toString()
   }
 
   const url = new URL(getFullUrl("/set-password"))

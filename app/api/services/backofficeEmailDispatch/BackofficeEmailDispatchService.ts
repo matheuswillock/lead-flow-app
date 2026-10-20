@@ -6,6 +6,7 @@ import type {
 } from "@prisma/client"
 import { resolveProfileRecipientEmails } from "@/lib/email/resolve-profile-recipient-emails"
 import { backofficeEmailDispatchRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeEmailDispatch/BackofficeEmailDispatchRepository"
+import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 import type { IBackofficeEmailDispatchRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeEmailDispatch/IBackofficeEmailDispatchRepository"
 import type {
   ApplyResendWebhookEventInput,
@@ -15,7 +16,6 @@ import type {
   RecordGoogleDispatchInput,
   ProfileEmailMatch,
 } from "./IBackofficeEmailDispatchService"
-import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 
 const RESEND_EVENT_TYPE_MAP: Record<string, BackofficeEmailDispatchEventType> = {
   "email.sent": "sent",
@@ -57,7 +57,10 @@ const STATUS_PRIORITY: BackofficeEmailDispatchStatus[] = [
 ]
 
 const TIMESTAMP_FIELD: Partial<
-  Record<BackofficeEmailDispatchEventType, "sentAt" | "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt">
+  Record<
+    BackofficeEmailDispatchEventType,
+    "sentAt" | "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt"
+  >
 > = {
   sent: "sentAt",
   delivered: "deliveredAt",
@@ -65,6 +68,14 @@ const TIMESTAMP_FIELD: Partial<
   clicked: "clickedAt",
   bounced: "bouncedAt",
   complained: "complainedAt",
+}
+
+const PASSWORD_RESET_EVENT_MAP: Partial<
+  Record<BackofficeEmailDispatchEventType, "email_delivered" | "email_opened" | "email_clicked">
+> = {
+  delivered: "email_delivered",
+  opened: "email_opened",
+  clicked: "email_clicked",
 }
 
 export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchService {
@@ -81,7 +92,9 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
   }
 
   async resolveProfilesByRecipientEmails(emails: string[]): Promise<ProfileEmailMatch[]> {
-    const normalized = [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+    const normalized = [
+      ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ]
     if (normalized.length === 0) return []
 
     const profiles = await this.repository.findProfilesByRecipientEmails(normalized)
@@ -179,15 +192,14 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
       timestampUpdate,
     })
 
-    if (
-      dispatch.sourceType === "password_reset" &&
-      (eventType === "delivered" || eventType === "opened" || eventType === "clicked")
-    ) {
-      await passwordResetAuditService.recordEmailProviderEvent({
-        resendEmailId: input.resendEmailId,
-        event: eventType === "delivered" ? "email_delivered" : eventType === "opened" ? "email_opened" : "email_clicked",
-        occurredAt: input.occurredAt,
-      })
+    const passwordResetEvent = PASSWORD_RESET_EVENT_MAP[eventType]
+    if (passwordResetEvent && dispatch.sourceType === "password_reset" && dispatch.sourceId) {
+      await passwordResetAuditService.recordEmailLifecycle(
+        dispatch.sourceId,
+        passwordResetEvent,
+        input.resendEmailId,
+        input.occurredAt,
+      )
     }
 
     return true
@@ -195,5 +207,5 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
 }
 
 export const backofficeEmailDispatchService = new BackofficeEmailDispatchService(
-  backofficeEmailDispatchRepository
+  backofficeEmailDispatchRepository,
 )

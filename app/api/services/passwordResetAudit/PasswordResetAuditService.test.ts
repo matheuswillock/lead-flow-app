@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, mock } from "bun:test"
-import type { PasswordResetEventType, PasswordResetFlowStatus } from "@prisma/client"
 import { PasswordResetAuditService } from "./PasswordResetAuditService"
 import type {
   CreatePasswordResetFlowInput,
   IPasswordResetAuditRepository,
   RecordPasswordResetEventInput,
   UpdatePasswordResetFlowInput,
+  PasswordResetEventTypeValue,
+  PasswordResetFlowStatusValue,
 } from "../../infra/data/repositories/passwordResetAudit/IPasswordResetAuditRepository"
 
 const originalSecret = process.env.PASSWORD_RESET_AUDIT_IP_HASH_SECRET
@@ -15,8 +16,8 @@ function makeRepository() {
     createFlow: mock(async (_input: CreatePasswordResetFlowInput) => ({ id: "flow-1" })),
     recordEvent: mock(async (_input: RecordPasswordResetEventInput) => undefined),
     updateFlow: mock(async (_input: UpdatePasswordResetFlowInput) => undefined),
-    findFlow: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
-    findFlowByResendEmailId: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
+    findFlowForSupabaseUser: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
+    findFlowById: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
   }
 
   return repository
@@ -46,9 +47,10 @@ describe("PasswordResetAuditService", () => {
 
     expect(flow).toEqual({ id: "flow-1" })
     expect(repository.createFlow).toHaveBeenCalledTimes(1)
-    const input = (repository.createFlow as ReturnType<typeof mock>).mock.calls[0][0] as CreatePasswordResetFlowInput
-    expect(input.status).toBe("requested" satisfies PasswordResetFlowStatus)
-    expect(input.event.type).toBe("requested" satisfies PasswordResetEventType)
+    const input = (repository.createFlow as ReturnType<typeof mock>).mock
+      .calls[0][0] as CreatePasswordResetFlowInput
+    expect(input.status).toBe("requested" satisfies PasswordResetFlowStatusValue)
+    expect(input.event.type).toBe("requested" satisfies PasswordResetEventTypeValue)
     expect(input.ipHash).toBeTruthy()
     expect(input.ipHash).not.toContain("203.0.113.10")
   })
@@ -64,7 +66,8 @@ describe("PasswordResetAuditService", () => {
       ip: "203.0.113.10",
     })
 
-    const input = (repository.createFlow as ReturnType<typeof mock>).mock.calls[0][0] as CreatePasswordResetFlowInput
+    const input = (repository.createFlow as ReturnType<typeof mock>).mock
+      .calls[0][0] as CreatePasswordResetFlowInput
     expect(input.ipHash).toBeNull()
     expect(input.event.ipHash).toBeNull()
   })
@@ -81,9 +84,9 @@ describe("PasswordResetAuditService", () => {
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
       status: "email_sent",
+      emailSentAt: expect.any(Date),
       dispatchId: "dispatch-1",
       resendEmailId: "re_123",
-      emailSentAt: expect.any(Date),
     })
     expect(repository.recordEvent).toHaveBeenCalledWith({
       flowId: "flow-1",
@@ -94,7 +97,7 @@ describe("PasswordResetAuditService", () => {
       userAgent: null,
     })
     expect(
-      JSON.stringify((repository.recordEvent as ReturnType<typeof mock>).mock.calls[0][0])
+      JSON.stringify((repository.recordEvent as ReturnType<typeof mock>).mock.calls[0][0]),
     ).not.toContain("https://")
   })
 
@@ -119,18 +122,19 @@ describe("PasswordResetAuditService", () => {
     })
   })
 
-  it("maps telemetry to the flow status without accepting secrets", async () => {
+  it("maps authenticated telemetry to the flow status without accepting secrets", async () => {
     const repository = makeRepository()
     const service = new PasswordResetAuditService(repository)
 
     const recorded = await service.recordTelemetry({
       flowId: "flow-1",
+      supabaseId: "supabase-1",
       event: "password_updated",
       userAgent: "browser",
     })
 
     expect(recorded).toBe(true)
-    expect(repository.findFlow).toHaveBeenCalledWith("flow-1")
+    expect(repository.findFlowForSupabaseUser).toHaveBeenCalledWith("flow-1", "supabase-1")
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
       status: "completed",
@@ -145,5 +149,23 @@ describe("PasswordResetAuditService", () => {
       userAgent: "browser",
     })
   })
+
+  it("appends provider delivery events using only the resend correlation", async () => {
+    const repository = makeRepository()
+    const service = new PasswordResetAuditService(repository)
+    const occurredAt = new Date("2026-10-20T12:00:00.000Z")
+
+    await service.recordEmailLifecycle("flow-1", "email_opened", "re_123", occurredAt)
+
+    expect(repository.updateFlow).toHaveBeenCalledWith({ flowId: "flow-1", status: "email_sent" })
+    expect(repository.recordEvent).toHaveBeenCalledWith({
+      flowId: "flow-1",
+      type: "email_opened",
+      requestId: "re_123",
+      occurredAt,
+      failureCode: null,
+      ipHash: null,
+      userAgent: null,
+    })
+  })
 })
-    

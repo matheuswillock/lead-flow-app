@@ -1,5 +1,7 @@
+import { createHmac } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
-import { consumePublicFormRateLimit, publicFormRequestFingerprint } from "@/lib/public-forms/rate-limit"
+import { createSupabaseServer } from "@/lib/supabase/server"
+import { consumePublicFormRateLimit } from "@/lib/public-forms/rate-limit"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import {
@@ -14,35 +16,45 @@ const TELEMETRY_EVENTS = new Set<PasswordResetTelemetryEvent>([
   "token_rejected",
   "password_updated",
   "password_update_failed",
-  "expired",
 ])
 
 function isUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  )
+}
+
+function getRateLimitKey(request: NextRequest, flowId: string): string {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip")
+  const secret = process.env.PASSWORD_RESET_AUDIT_IP_HASH_SECRET?.trim()
+  const ipKey = ip && secret ? createHmac("sha256", secret).update(ip).digest("hex") : null
+  return `password-reset-telemetry:${ipKey ?? flowId}`
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: unknown = await request.json()
-    const flowId = body && typeof body === "object" && !Array.isArray(body)
-      ? (body as { flowId?: unknown }).flowId
-      : undefined
-    const eventType = body && typeof body === "object" && !Array.isArray(body)
-      ? (body as { eventType?: unknown }).eventType
-      : undefined
-
     if (
-      !isUuid(flowId) ||
-      typeof eventType !== "string" ||
-      !TELEMETRY_EVENTS.has(eventType as PasswordResetTelemetryEvent) ||
-      !Object.keys(body as object).every((key) => ["flowId", "eventType"].includes(key))
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      !isUuid((body as { flowId?: unknown }).flowId) ||
+      !TELEMETRY_EVENTS.has(
+        (body as { eventType?: unknown }).eventType as PasswordResetTelemetryEvent,
+      ) ||
+      Object.keys(body).some((key) => !["flowId", "eventType"].includes(key))
     ) {
-      return NextResponse.json(new Output(false, [], ["Payload de telemetria inválido"], null), { status: 400 })
+      return NextResponse.json(new Output(false, [], ["Payload de telemetria inválido"], null), {
+        status: 400,
+      })
     }
 
-    const fingerprint = publicFormRequestFingerprint(request)
-    const rateLimit = await consumePublicFormRateLimit(`password-reset-telemetry:${fingerprint}`, {
-      limit: 30,
+    const telemetry = body as { flowId: string; eventType: PasswordResetTelemetryEvent }
+    const rateLimit = await consumePublicFormRateLimit(getRateLimitKey(request, telemetry.flowId), {
+      limit: 20,
       windowMs: 60_000,
     })
     if (!rateLimit.allowed) {
@@ -52,14 +64,18 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    const supabase = await createSupabaseServer()
+    const user = supabase ? (await supabase.auth.getUser()).data.user : null
     const recorded = await passwordResetAuditService.recordTelemetry({
-      flowId,
-      event: eventType as PasswordResetTelemetryEvent,
-      ip: fingerprint,
+      flowId: telemetry.flowId,
+      supabaseId: user?.id ?? null,
+      event: telemetry.eventType,
       userAgent: request.headers.get("user-agent"),
     })
     if (!recorded) {
-      return NextResponse.json(new Output(false, [], ["Fluxo de reset não encontrado"], null), { status: 404 })
+      return NextResponse.json(new Output(false, [], ["Fluxo de reset não encontrado"], null), {
+        status: 404,
+      })
     }
 
     return NextResponse.json(new Output(true, ["Telemetria registrada"], [], null), { status: 200 })

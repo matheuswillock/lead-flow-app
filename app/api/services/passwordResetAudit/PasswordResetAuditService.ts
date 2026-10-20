@@ -85,9 +85,9 @@ export class PasswordResetAuditService {
       type: "email_sent",
       status: "email_sent",
       emailSentAt: new Date(),
-      dispatchId: correlation.dispatchId ?? null,
-      resendEmailId: correlation.resendEmailId ?? null,
       requestId: correlation.resendEmailId ?? correlation.dispatchId ?? null,
+      dispatchId: correlation.dispatchId,
+      resendEmailId: correlation.resendEmailId,
     })
   }
 
@@ -118,27 +118,31 @@ export class PasswordResetAuditService {
 
   async recordTelemetry(input: {
     flowId: string
+    supabaseId?: string | null
     event: PasswordResetTelemetryEvent
-    ip?: string | null
     userAgent?: string | null
   }): Promise<boolean> {
     try {
-      const flow = await this.repository.findFlow(input.flowId)
+      const flow = input.supabaseId
+        ? await this.repository.findFlowForSupabaseUser(input.flowId, input.supabaseId)
+        : await this.repository.findFlowById(input.flowId)
       if (!flow) return false
 
       const update = {
         flowId: input.flowId,
         ...(input.event === "token_verified"
           ? { status: "token_verified" as const, tokenVerifiedAt: new Date() }
-          : input.event === "password_updated"
-            ? { status: "completed" as const, completedAt: new Date() }
-            : input.event === "expired"
-              ? { status: "expired" as const }
-              : input.event === "verification_started"
-                ? { status: "verification_pending" as const }
-                : input.event === "page_opened"
-                  ? {}
-                : { status: "failed" as const, failureCode: "token_rejected" }),
+          : input.event === "verification_started"
+            ? { status: "verification_pending" as const }
+            : input.event === "password_updated"
+              ? { status: "completed" as const, completedAt: new Date() }
+              : input.event === "token_rejected"
+                ? { status: "failed" as const, failureCode: "token_rejected" }
+                : input.event === "password_update_failed"
+                  ? { status: "failed" as const, failureCode: "password_update_failed" }
+                  : input.event === "expired"
+                    ? { status: "expired" as const }
+                    : { status: flow.status }),
       }
       await this.repository.updateFlow(update)
       await this.repository.recordEvent({
@@ -151,7 +155,7 @@ export class PasswordResetAuditService {
               ? "password_update_failed"
               : null,
         requestId: null,
-        ipHash: getIpHash(input.ip),
+        ipHash: null,
         userAgent: optionalContext(input.userAgent),
       })
       return true
@@ -161,23 +165,25 @@ export class PasswordResetAuditService {
     }
   }
 
-  async recordEmailProviderEvent(input: {
-    resendEmailId: string
-    event: "email_delivered" | "email_opened" | "email_clicked"
-    occurredAt: Date
-  }): Promise<void> {
+  async recordEmailLifecycle(
+    flowId: string,
+    event: "email_delivered" | "email_opened" | "email_clicked",
+    resendEmailId: string,
+    occurredAt: Date,
+  ): Promise<void> {
     try {
-      const flow = await this.repository.findFlowByResendEmailId(input.resendEmailId)
-      if (!flow) return
+      await this.repository.updateFlow({ flowId, status: "email_sent" })
       await this.repository.recordEvent({
-        flowId: flow.id,
-        type: input.event,
-        requestId: input.resendEmailId,
+        flowId,
+        type: event,
+        requestId: resendEmailId,
+        occurredAt,
+        failureCode: null,
         ipHash: null,
         userAgent: null,
       })
     } catch (error) {
-      console.error("[PasswordResetAuditService] Falha ao registrar evento do provider", error)
+      console.error("[PasswordResetAuditService] Falha ao registrar evento de entrega", error)
     }
   }
 
@@ -187,12 +193,12 @@ export class PasswordResetAuditService {
       type: "link_generated" | "email_sent" | "email_failed"
       status: "link_generated" | "email_sent" | "failed"
       requestId?: string | null
-      dispatchId?: string | null
-      resendEmailId?: string | null
       failureCode?: string
       linkGeneratedAt?: Date
       emailSentAt?: Date
-    }
+      dispatchId?: string | null
+      resendEmailId?: string | null
+    },
   ): Promise<void> {
     try {
       const update: Parameters<IPasswordResetAuditRepository["updateFlow"]>[0] = {
@@ -201,9 +207,9 @@ export class PasswordResetAuditService {
       }
       if (input.linkGeneratedAt) update.linkGeneratedAt = input.linkGeneratedAt
       if (input.emailSentAt) update.emailSentAt = input.emailSentAt
+      if (input.failureCode) update.failureCode = input.failureCode
       if (input.dispatchId !== undefined) update.dispatchId = input.dispatchId
       if (input.resendEmailId !== undefined) update.resendEmailId = input.resendEmailId
-      if (input.failureCode) update.failureCode = input.failureCode
 
       await this.repository.updateFlow(update)
       await this.repository.recordEvent({
