@@ -14,6 +14,7 @@ export type NotificationLinkMetadata = {
   role?: "closer" | "master";
   filter?: string;
   campaignId?: string;
+  href?: string;
 };
 
 export type NotificationLinkInput = {
@@ -37,6 +38,14 @@ export function hasLeadNotificationLink(type: string, metadata?: NotificationLin
   return typeof metadata?.leadCode === "string" && metadata.leadCode.trim().length > 0;
 }
 
+export function hasStudioDomainDnsLink(type: string, metadata?: NotificationLinkMetadata | null) {
+  return (
+    (type === "STUDIO_DOMAIN_DNS_ACTION_REQUIRED" || type === "STUDIO_DOMAIN_DNS_RECOVERED") &&
+    typeof metadata?.href === "string" &&
+    metadata.href.startsWith("/")
+  );
+}
+
 export function getMeetingLink(metadata?: NotificationLinkMetadata | null) {
   if (!metadata || typeof metadata !== "object") return null;
   const meetingLink =
@@ -52,6 +61,10 @@ export function getMeetingLink(metadata?: NotificationLinkMetadata | null) {
 
 export function buildNotificationPath(input: NotificationLinkInput): string {
   const metadata = input.metadata ?? null;
+
+  if (hasStudioDomainDnsLink(input.type, metadata)) {
+    return metadata!.href!;
+  }
 
   if (input.type === "MEETING_FOLLOW_UP_DIGEST") {
     return `/${input.supabaseId}/board`;

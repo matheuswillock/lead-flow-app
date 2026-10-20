@@ -816,6 +816,8 @@ AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
 LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
 LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
+STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
+STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
         }
     
 
@@ -1204,6 +1206,15 @@ failed failed
             pending pending
 verified verified
 failed failed
+        }
+    
+
+
+        team_studio_dns_audit_status {
+            verified verified
+pending pending
+failed failed
+inconclusive inconclusive
         }
     
 
@@ -3662,6 +3673,15 @@ completed completed
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
+    TeamStudioDnsAuditStatus dnsAuditStatus "❓"
+    Boolean dnsMisconfigured "❓"
+    String dnsReasonCode "❓"
+    String dnsReason "❓"
+    String recommendedCNAME "❓"
+    DateTime lastDnsAuditAt "❓"
+    DateTime lastDnsAttemptAt "❓"
+    String lastDnsFingerprint "❓"
+    String lastDnsNotifiedFingerprint "❓"
     String headScripts "❓"
     String bodyStartScripts "❓"
     String bodyEndScripts "❓"
@@ -5304,6 +5324,7 @@ completed completed
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_domains" |o--|| "TeamStudioDomainStatus" : "enum:status"
+    "corretor_studio_team_studio_domains" |o--|o "TeamStudioDnsAuditStatus" : "enum:dnsAuditStatus"
     "corretor_studio_team_studio_domains" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
     "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
