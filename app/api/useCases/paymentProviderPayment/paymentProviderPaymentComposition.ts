@@ -47,12 +47,15 @@ function readProviderSecret(environment: PaymentProviderEnvironment, suffix: str
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
 ): AbacatePayProvider {
+  const publicKey = readProviderSecret(environment, "PUBLIC_KEY")
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
       apiKey: readProviderSecret(environment, "API_KEY"),
-      publicKey: readProviderSecret(environment, "PUBLIC_KEY"),
+      publicKey,
       webhookSecret: readProviderSecret(environment, "WEBHOOK_SECRET"),
-      webhookSigningKey: readProviderSecret(environment, "WEBHOOK_SIGNING_KEY"),
+      // AbacatePay signs webhook payloads with the store public key. There is
+      // no separate webhook-signing credential in the dashboard.
+      webhookSigningKey: publicKey,
       environment,
       devMode: environment === "DEV",
     }),
