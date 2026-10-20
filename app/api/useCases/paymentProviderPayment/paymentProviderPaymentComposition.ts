@@ -31,9 +31,6 @@ export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment 
   if (configured !== "DEV" && configured !== "PRODUCTION") {
     throw new Error("PAYMENT_PROVIDER_ENVIRONMENT inválido")
   }
-  if (configured === "PRODUCTION") {
-    throw new Error("A Fase 3 aceita somente o ambiente DEV")
-  }
   return configured
 }
 
@@ -75,9 +72,10 @@ export function createAbacatePayProvider(
   )
 }
 
-function createUseCase() {
-  const environment = resolvePaymentProviderEnvironment()
-  const registry = new PaymentProviderRegistry([
+export function createAbacatePayProviderRegistry(
+  environment: PaymentProviderEnvironment,
+): PaymentProviderRegistry {
+  return new PaymentProviderRegistry([
     {
       metadata: {
         key: "ABACATE_PAY",
@@ -86,7 +84,20 @@ function createUseCase() {
       },
     },
   ])
-  const router = new PaymentProviderRouter(paymentProviderConfigRepository, registry)
+}
+
+export function createPaymentProviderRouter(
+  environment: PaymentProviderEnvironment,
+): PaymentProviderRouter {
+  return new PaymentProviderRouter(
+    paymentProviderConfigRepository,
+    createAbacatePayProviderRegistry(environment),
+  )
+}
+
+function createUseCase() {
+  const environment = resolvePaymentProviderEnvironment()
+  const router = createPaymentProviderRouter(environment)
 
   const service = new PaymentProviderPaymentService({
     purchases: platformPurchaseRepository,

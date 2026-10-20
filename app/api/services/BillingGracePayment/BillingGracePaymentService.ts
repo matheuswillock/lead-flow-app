@@ -1,10 +1,11 @@
-import { PaymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
-import { createAbacatePayProvider, resolvePaymentProviderEnvironment } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import {
+  createAbacatePayProvider,
+  createPaymentProviderRouter,
+  resolvePaymentProviderEnvironment,
+} from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary"
-import { PaymentProviderRegistry } from "@/lib/payment-provider/registry"
-import { PaymentProviderRouter } from "@/lib/payment-provider/router"
 import type { Prisma } from "@prisma/client"
 import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
 
@@ -12,19 +13,6 @@ const QUOTE_TTL_MS = 10 * 60 * 1000
 const SESSION_TTL_MS = 30 * 60 * 1000
 const ROUTE_VERSION = "BILLING-GRACE-PHASE-5"
 
-const configRepository = new PaymentProviderConfigRepository()
-const paymentProviderRouter = new PaymentProviderRouter(
-  configRepository,
-  new PaymentProviderRegistry([
-    {
-      metadata: {
-        key: "ABACATE_PAY",
-        environment: "DEV",
-        capabilities: ["ONE_TIME_PAYMENT", "PIX", "STATUS_QUERY", "WEBHOOK"],
-      },
-    },
-  ]),
-)
 
 export class BillingGracePaymentService implements IBillingGracePaymentService {
   async getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {
@@ -58,6 +46,13 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     })
     if (existing) return existing
 
+    // Seleciona o provider antes de persistir: provider indisponível não deixa linha órfã.
+    const environment = resolvePaymentProviderEnvironment()
+    const selected = await createPaymentProviderRouter(environment).select({
+      environment,
+      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+    })
+
     const summary = buildAccountSummary(account)
     const amountCents = Math.round(summary.totalPrice * 100)
     const payment = await billingGracePaymentRepository.create({
@@ -68,16 +63,11 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       amountCents,
       effectivePriceCents: amountCents,
       provider: "ABACATE_PAY",
-      providerEnvironment: resolvePaymentProviderEnvironment(),
+      providerEnvironment: environment,
       idempotencyKey: input.idempotencyKey,
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
 
-    const environment = resolvePaymentProviderEnvironment()
-    const selected = await paymentProviderRouter.select({
-      environment,
-      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
-    })
     const provider = createAbacatePayProvider(environment)
     // A unicidade das tentativas do provider é global: derivar a chave do pagamento
     // (único) evita colisão entre contas que enviem a mesma chave de cliente.

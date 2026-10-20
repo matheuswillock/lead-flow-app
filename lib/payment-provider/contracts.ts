@@ -97,6 +97,15 @@ export interface WebhookCapability {
   normalizeEvent(input: VerifiedWebhook): ProviderWebhookEvent | null
 }
 
+export type ProviderHealthCheckResult =
+  | { readonly healthy: true }
+  | { readonly healthy: false; readonly errorCode: string; readonly errorMessage: string }
+
+/** Sondagem leve da conta do provider. Nunca lança nem expõe segredos. */
+export interface HealthCheckCapability {
+  checkHealth(): Promise<ProviderHealthCheckResult>
+}
+
 export interface PaymentProviderMetadata {
   readonly key: PaymentProviderKey
   readonly capabilities: readonly PaymentCapability[]

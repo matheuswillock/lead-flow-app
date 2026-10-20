@@ -23,8 +23,30 @@ describe("mapPlatformPurchaseToCheckoutData", () => {
     expect(data.addonDetail).toContain("Comercial")
     expect(data.pricing.totalCharge).toBe(100)
     expect(data.activationHint).toBe(
-      "A ativação acontece após confirmação do pagamento."
+      "Após a confirmação do pagamento, os créditos são aplicados automaticamente em até 5 minutos."
     )
     expect(data.alreadyPaid).toBe(false)
+  })
+
+  it("não exibe valor vazio quando a compra não tem time", () => {
+    const base = {
+      checkoutId: "p2",
+      purchaseId: "p2",
+      productSlug: "email-credits-plus",
+      purchaseType: "email_credits",
+      status: "pending",
+      billingType: "PIX",
+      amount: 100,
+      description: null,
+      teamId: null,
+      metadata: {},
+    }
+
+    const withCredits = mapPlatformPurchaseToCheckoutData({ ...base, quantity: 5000 })
+    expect(withCredits.addonDetail).toBe("5.000 créditos/mês")
+
+    const withoutAnything = mapPlatformPurchaseToCheckoutData({ ...base, quantity: null })
+    expect(withoutAnything.addonDetail).toBe("")
+    expect(withoutAnything.addonDetail).not.toContain("—")
   })
 })

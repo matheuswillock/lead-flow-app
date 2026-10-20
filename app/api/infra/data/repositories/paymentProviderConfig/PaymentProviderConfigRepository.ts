@@ -10,6 +10,7 @@ import {
 } from "@/lib/payment-provider/routing-config"
 import type {
   IPaymentProviderConfigRepository,
+  RecordProviderHealthCheckInput,
   UpdateProviderRoutingConfigInput,
 } from "./IPaymentProviderConfigRepository"
 
@@ -35,6 +36,30 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
       orderBy: { providerKey: "asc" },
     })
     return records.map(toRoutingConfigRecord)
+  }
+
+  async recordHealthCheck(
+    input: RecordProviderHealthCheckInput,
+  ): Promise<ProviderRoutingConfigRecord> {
+    const where = {
+      providerKey_environment: {
+        providerKey: toPrismaProvider(input.provider),
+        environment: toPrismaEnvironment(input.environment),
+      },
+    }
+    const exists = await prisma.paymentProviderConfig.findUnique({ where, select: { id: true } })
+    if (!exists) throw new Error("Configuração do provider não encontrada")
+    const updated = await prisma.paymentProviderConfig.update({
+      where,
+      data: {
+        healthStatus: input.healthStatus,
+        lastHealthCheckAt: input.checkedAt,
+        lastErrorCode: input.errorCode,
+        lastErrorMessage: input.errorMessage,
+      },
+      select: configSelect,
+    })
+    return toRoutingConfigRecord(updated)
   }
 
   async update(input: UpdateProviderRoutingConfigInput): Promise<ProviderRoutingConfigRecord> {
