@@ -113,4 +113,56 @@ describe("getTeamAccess com gate de cobrança", () => {
     expect(result.access?.managerId).toBe("sponsored-owner")
     expect(execute).toHaveBeenCalledWith({ profileId: "profile-1", teamId: sponsorTeamId })
   })
+
+  describe("modo somente leitura", () => {
+    const readOnly = { state: "read_only", reason: "past_due", temporaryAccessUntil: "2026-10-01T00:00:00.000Z" }
+    const requestWith = (method: string, path = `/api/v1/leads?teamId=${teamId}`) =>
+      new NextRequest(`http://localhost${path}`, { method, headers: { "x-supabase-user-id": "supabase-member" } })
+
+    beforeEach(() => {
+      execute.mockResolvedValue(new Output(true, [], [], readOnly))
+    })
+
+    it("mantém a leitura e sinaliza o modo para a UI", async () => {
+      for (const method of ["GET", "HEAD", "OPTIONS"]) {
+        const result = await getTeamAccess(requestWith(method))
+        expect(result.status).toBeUndefined()
+        expect(result.access?.accountAccessMode).toBe("read_only")
+      }
+    })
+
+    it("nega toda mutação na borda central, sem depender da rota", async () => {
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+        const result = await getTeamAccess(requestWith(method))
+        expect(result.status).toBe(403)
+        expect(result.access).toBeUndefined()
+        expect(result.error?.errorMessages[0]).toContain("somente leitura")
+      }
+    })
+
+    it("nega mutação também no acesso de sponsor sem membership", async () => {
+      teamMemberFindFirst.mockResolvedValue(null)
+      teamFindFirst.mockResolvedValue({ masterId: "sponsored-owner", deletedAt: null, master: { sponsorMasterId: "profile-1" } })
+
+      const result = await getTeamAccess(requestWith("POST", `/api/v1/leads?teamId=${sponsorTeamId}`))
+
+      expect(result.status).toBe(403)
+    })
+
+    it("permite a escrita somente quando a rota declara o opt-out", async () => {
+      const result = await getTeamAccess(requestWith("PATCH"), { allowReadOnlyWrites: true })
+
+      expect(result.status).toBeUndefined()
+      expect(result.access?.accountAccessMode).toBe("read_only")
+    })
+
+    it("não altera o comportamento de contas liberadas", async () => {
+      execute.mockResolvedValue(new Output(true, [], [], { state: "allowed" }))
+
+      const result = await getTeamAccess(requestWith("POST"))
+
+      expect(result.status).toBeUndefined()
+      expect(result.access?.accountAccessMode).toBe("full")
+    })
+  })
 })
