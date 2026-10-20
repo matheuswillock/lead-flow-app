@@ -19,9 +19,12 @@ export interface PasswordResetEmailCorrelation {
 }
 
 export type PasswordResetTelemetryEvent =
+  | "page_opened"
+  | "verification_started"
   | "token_verified"
   | "token_rejected"
   | "password_updated"
+  | "password_update_failed"
   | "expired"
 
 function getIpHash(ip: string | null | undefined): string | null {
@@ -82,6 +85,8 @@ export class PasswordResetAuditService {
       type: "email_sent",
       status: "email_sent",
       emailSentAt: new Date(),
+      dispatchId: correlation.dispatchId ?? null,
+      resendEmailId: correlation.resendEmailId ?? null,
       requestId: correlation.resendEmailId ?? correlation.dispatchId ?? null,
     })
   }
@@ -113,12 +118,12 @@ export class PasswordResetAuditService {
 
   async recordTelemetry(input: {
     flowId: string
-    supabaseId: string
     event: PasswordResetTelemetryEvent
+    ip?: string | null
     userAgent?: string | null
   }): Promise<boolean> {
     try {
-      const flow = await this.repository.findFlowForSupabaseUser(input.flowId, input.supabaseId)
+      const flow = await this.repository.findFlow(input.flowId)
       if (!flow) return false
 
       const update = {
@@ -129,15 +134,24 @@ export class PasswordResetAuditService {
             ? { status: "completed" as const, completedAt: new Date() }
             : input.event === "expired"
               ? { status: "expired" as const }
-              : { status: "failed" as const, failureCode: "token_rejected" }),
+              : input.event === "verification_started"
+                ? { status: "verification_pending" as const }
+                : input.event === "page_opened"
+                  ? {}
+                : { status: "failed" as const, failureCode: "token_rejected" }),
       }
       await this.repository.updateFlow(update)
       await this.repository.recordEvent({
         flowId: input.flowId,
         type: input.event,
-        failureCode: input.event === "token_rejected" ? "token_rejected" : null,
+        failureCode:
+          input.event === "token_rejected"
+            ? "token_rejected"
+            : input.event === "password_update_failed"
+              ? "password_update_failed"
+              : null,
         requestId: null,
-        ipHash: null,
+        ipHash: getIpHash(input.ip),
         userAgent: optionalContext(input.userAgent),
       })
       return true
@@ -147,12 +161,34 @@ export class PasswordResetAuditService {
     }
   }
 
+  async recordEmailProviderEvent(input: {
+    resendEmailId: string
+    event: "email_delivered" | "email_opened" | "email_clicked"
+    occurredAt: Date
+  }): Promise<void> {
+    try {
+      const flow = await this.repository.findFlowByResendEmailId(input.resendEmailId)
+      if (!flow) return
+      await this.repository.recordEvent({
+        flowId: flow.id,
+        type: input.event,
+        requestId: input.resendEmailId,
+        ipHash: null,
+        userAgent: null,
+      })
+    } catch (error) {
+      console.error("[PasswordResetAuditService] Falha ao registrar evento do provider", error)
+    }
+  }
+
   private async recordEventAndStatus(
     flowId: string,
     input: {
       type: "link_generated" | "email_sent" | "email_failed"
       status: "link_generated" | "email_sent" | "failed"
       requestId?: string | null
+      dispatchId?: string | null
+      resendEmailId?: string | null
       failureCode?: string
       linkGeneratedAt?: Date
       emailSentAt?: Date
@@ -165,6 +201,8 @@ export class PasswordResetAuditService {
       }
       if (input.linkGeneratedAt) update.linkGeneratedAt = input.linkGeneratedAt
       if (input.emailSentAt) update.emailSentAt = input.emailSentAt
+      if (input.dispatchId !== undefined) update.dispatchId = input.dispatchId
+      if (input.resendEmailId !== undefined) update.resendEmailId = input.resendEmailId
       if (input.failureCode) update.failureCode = input.failureCode
 
       await this.repository.updateFlow(update)

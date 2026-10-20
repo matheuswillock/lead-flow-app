@@ -15,6 +15,7 @@ import type {
   RecordGoogleDispatchInput,
   ProfileEmailMatch,
 } from "./IBackofficeEmailDispatchService"
+import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 
 const RESEND_EVENT_TYPE_MAP: Record<string, BackofficeEmailDispatchEventType> = {
   "email.sent": "sent",
@@ -177,6 +178,17 @@ export class BackofficeEmailDispatchService implements IBackofficeEmailDispatchS
       status: shouldUpdateStatus && mappedStatus ? mappedStatus : undefined,
       timestampUpdate,
     })
+
+    if (
+      dispatch.sourceType === "password_reset" &&
+      (eventType === "delivered" || eventType === "opened" || eventType === "clicked")
+    ) {
+      await passwordResetAuditService.recordEmailProviderEvent({
+        resendEmailId: input.resendEmailId,
+        event: eventType === "delivered" ? "email_delivered" : eventType === "opened" ? "email_opened" : "email_clicked",
+        occurredAt: input.occurredAt,
+      })
+    }
 
     return true
   }

@@ -33,7 +33,7 @@ const getSessionMock = mock(
 const updateUserMock = mock(async () => ({ error: null as { message: string } | null }))
 const getUserMock = mock(async () => ({ data: { user: { id: "user-123" } } }))
 const originalFetch = globalThis.fetch
-const fetchMock = mock(async (input: RequestInfo | URL) => ({
+const fetchMock = mock(async (input: RequestInfo | URL, _init?: RequestInit) => ({
   ok: true,
   json: async () =>
     String(input).includes("/profiles/")

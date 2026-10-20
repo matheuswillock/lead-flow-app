@@ -16,7 +16,8 @@ type SupabaseGeneratedLinkData = {
 
 export function buildSetPasswordEmailAuthLink(
   data: SupabaseGeneratedLinkData,
-  type: SupabaseEmailLinkType
+  type: SupabaseEmailLinkType,
+  flowId?: string | null,
 ): string {
   const tokenHash = data.properties?.hashed_token
 
@@ -27,6 +28,7 @@ export function buildSetPasswordEmailAuthLink(
   const url = new URL(getFullUrl("/set-password"))
   url.searchParams.set("token_hash", tokenHash)
   url.searchParams.set("type", type)
+  if (flowId) url.searchParams.set("flowId", flowId)
 
   return url.toString()
 }

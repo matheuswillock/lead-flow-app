@@ -15,7 +15,8 @@ function makeRepository() {
     createFlow: mock(async (_input: CreatePasswordResetFlowInput) => ({ id: "flow-1" })),
     recordEvent: mock(async (_input: RecordPasswordResetEventInput) => undefined),
     updateFlow: mock(async (_input: UpdatePasswordResetFlowInput) => undefined),
-    findFlowForSupabaseUser: mock(async () => ({ id: "flow-1", status: "email_sent" })),
+    findFlow: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
+    findFlowByResendEmailId: mock(async () => ({ id: "flow-1", status: "email_sent" as const })),
   }
 
   return repository
@@ -80,6 +81,8 @@ describe("PasswordResetAuditService", () => {
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
       status: "email_sent",
+      dispatchId: "dispatch-1",
+      resendEmailId: "re_123",
       emailSentAt: expect.any(Date),
     })
     expect(repository.recordEvent).toHaveBeenCalledWith({
@@ -116,19 +119,18 @@ describe("PasswordResetAuditService", () => {
     })
   })
 
-  it("maps authenticated telemetry to the flow status without accepting secrets", async () => {
+  it("maps telemetry to the flow status without accepting secrets", async () => {
     const repository = makeRepository()
     const service = new PasswordResetAuditService(repository)
 
     const recorded = await service.recordTelemetry({
       flowId: "flow-1",
-      supabaseId: "supabase-1",
       event: "password_updated",
       userAgent: "browser",
     })
 
     expect(recorded).toBe(true)
-    expect(repository.findFlowForSupabaseUser).toHaveBeenCalledWith("flow-1", "supabase-1")
+    expect(repository.findFlow).toHaveBeenCalledWith("flow-1")
     expect(repository.updateFlow).toHaveBeenCalledWith({
       flowId: "flow-1",
       status: "completed",

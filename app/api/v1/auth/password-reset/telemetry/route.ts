@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createSupabaseServer } from "@/lib/supabase/server"
-import { consumePublicFormRateLimit } from "@/lib/public-forms/rate-limit"
+import { consumePublicFormRateLimit, publicFormRequestFingerprint } from "@/lib/public-forms/rate-limit"
 import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import {
@@ -9,9 +8,12 @@ import {
 } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 
 const TELEMETRY_EVENTS = new Set<PasswordResetTelemetryEvent>([
+  "page_opened",
+  "verification_started",
   "token_verified",
   "token_rejected",
   "password_updated",
+  "password_update_failed",
   "expired",
 ])
 
@@ -21,14 +23,26 @@ function isUuid(value: unknown): value is string {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createSupabaseServer()
-    const user = supabase ? (await supabase.auth.getUser()).data.user : null
-    if (!user) {
-      return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
+    const body: unknown = await request.json()
+    const flowId = body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { flowId?: unknown }).flowId
+      : undefined
+    const eventType = body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { eventType?: unknown }).eventType
+      : undefined
+
+    if (
+      !isUuid(flowId) ||
+      typeof eventType !== "string" ||
+      !TELEMETRY_EVENTS.has(eventType as PasswordResetTelemetryEvent) ||
+      !Object.keys(body as object).every((key) => ["flowId", "eventType"].includes(key))
+    ) {
+      return NextResponse.json(new Output(false, [], ["Payload de telemetria inválido"], null), { status: 400 })
     }
 
-    const rateLimit = await consumePublicFormRateLimit(`password-reset-telemetry:${user.id}`, {
-      limit: 20,
+    const fingerprint = publicFormRequestFingerprint(request)
+    const rateLimit = await consumePublicFormRateLimit(`password-reset-telemetry:${fingerprint}`, {
+      limit: 30,
       windowMs: 60_000,
     })
     if (!rateLimit.allowed) {
@@ -38,23 +52,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const body: unknown = await request.json()
-    if (
-      !body ||
-      typeof body !== "object" ||
-      Array.isArray(body) ||
-      !isUuid((body as { flowId?: unknown }).flowId) ||
-      !TELEMETRY_EVENTS.has((body as { event?: unknown }).event as PasswordResetTelemetryEvent) ||
-      Object.keys(body).some((key) => !["flowId", "event"].includes(key))
-    ) {
-      return NextResponse.json(new Output(false, [], ["Payload de telemetria inválido"], null), { status: 400 })
-    }
-
-    const telemetry = body as { flowId: string; event: PasswordResetTelemetryEvent }
     const recorded = await passwordResetAuditService.recordTelemetry({
-      flowId: telemetry.flowId,
-      supabaseId: user.id,
-      event: telemetry.event,
+      flowId,
+      event: eventType as PasswordResetTelemetryEvent,
+      ip: fingerprint,
       userAgent: request.headers.get("user-agent"),
     })
     if (!recorded) {

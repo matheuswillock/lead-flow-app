@@ -59,9 +59,16 @@ export class PasswordResetAuditRepository implements IPasswordResetAuditReposito
     await prisma.passwordResetFlow.update({ where: { id: flowId }, data })
   }
 
-  async findFlowForSupabaseUser(flowId: string, supabaseId: string) {
+  async findFlowByResendEmailId(resendEmailId: string) {
     return prisma.passwordResetFlow.findFirst({
-      where: { id: flowId, profile: { supabaseId } },
+      where: { resendEmailId },
+      select: { id: true, status: true },
+    })
+  }
+
+  async findFlow(flowId: string) {
+    return prisma.passwordResetFlow.findFirst({
+      where: { id: flowId },
       select: { id: true, status: true },
     })
   }

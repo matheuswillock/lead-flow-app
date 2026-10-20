@@ -25,6 +25,8 @@ export interface RecordPasswordResetEventInput extends PasswordResetAuditEventIn
 export interface UpdatePasswordResetFlowInput {
   flowId: string
   status?: PasswordResetFlowStatus
+  dispatchId?: string | null
+  resendEmailId?: string | null
   linkGeneratedAt?: Date
   emailSentAt?: Date
   tokenVerifiedAt?: Date
@@ -41,5 +43,6 @@ export interface IPasswordResetAuditRepository {
   createFlow(input: CreatePasswordResetFlowInput): Promise<{ id: string }>
   recordEvent(input: RecordPasswordResetEventInput): Promise<void>
   updateFlow(input: UpdatePasswordResetFlowInput): Promise<void>
-  findFlowForSupabaseUser(flowId: string, supabaseId: string): Promise<PasswordResetFlowOwnership | null>
+  findFlow(flowId: string): Promise<PasswordResetFlowOwnership | null>
+  findFlowByResendEmailId(resendEmailId: string): Promise<PasswordResetFlowOwnership | null>
 }
