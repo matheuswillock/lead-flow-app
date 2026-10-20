@@ -7,7 +7,6 @@ export type PaymentCapability =
   | "CUSTOMER"
   | "CATALOG"
   | "ONE_TIME_PAYMENT"
-  | "HOSTED_CHECKOUT"
   | "PIX"
   | "CARD"
   | "STATUS_QUERY"
@@ -39,7 +38,6 @@ export const PAYMENT_CAPABILITIES = Object.freeze({
   CUSTOMER: "CUSTOMER",
   CATALOG: "CATALOG",
   ONE_TIME_PAYMENT: "ONE_TIME_PAYMENT",
-  HOSTED_CHECKOUT: "HOSTED_CHECKOUT",
   PIX: "PIX",
   CARD: "CARD",
   STATUS_QUERY: "STATUS_QUERY",
