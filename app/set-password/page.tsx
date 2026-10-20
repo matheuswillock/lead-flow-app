@@ -19,6 +19,16 @@ type PendingEmailAuth = {
 
 type SupabaseBrowserClient = NonNullable<ReturnType<typeof createSupabaseBrowser>>
 
+type PasswordResetTelemetryEvent =
+  | 'page_opened'
+  | 'verification_started'
+  | 'token_verified'
+  | 'token_rejected'
+  | 'password_updated'
+  | 'password_update_failed'
+
+const PASSWORD_RESET_TELEMETRY_ENDPOINT = `${API_CLIENT_BASE}/auth/password-reset/telemetry`
+
 function SetPasswordContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -36,6 +46,27 @@ function SetPasswordContent() {
   const [pendingEmailAuth, setPendingEmailAuth] = useState<PendingEmailAuth | null>(null)
   const [isConfirmingToken, setIsConfirmingToken] = useState(false)
   const handledAuthTokenRef = useRef<string | null>(null)
+  const pageOpenedFlowIdRef = useRef<string | null>(null)
+
+  const flowId = searchParams.get('flowId') ?? searchParams.get('flow_id')
+
+  const recordTelemetry = useCallback((eventType: PasswordResetTelemetryEvent) => {
+    if (!flowId) return
+    if (eventType === 'page_opened' && pageOpenedFlowIdRef.current === flowId) return
+
+    if (eventType === 'page_opened') {
+      pageOpenedFlowIdRef.current = flowId
+    }
+
+    void fetch(PASSWORD_RESET_TELEMETRY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flowId, eventType }),
+      credentials: 'omit',
+      keepalive: true,
+      referrerPolicy: 'no-referrer',
+    }).catch(() => undefined)
+  }, [flowId])
 
   const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
     let strength = 0
@@ -76,6 +107,8 @@ function SetPasswordContent() {
   }, [])
 
   useEffect(() => {
+    recordTelemetry('page_opened')
+
     // Verificar e estabelecer sessão com o token da URL
     const initializeSession = async () => {
       if (typeof window === 'undefined') return;
@@ -198,14 +231,16 @@ function SetPasswordContent() {
     };
 
     initializeSession();
-  }, [router, searchParams, resumeExistingSession]);
+  }, [recordTelemetry, router, searchParams, resumeExistingSession]);
 
   const handleConfirmEmailAuth = async () => {
     if (!pendingEmailAuth || isConfirmingToken) return
 
+    recordTelemetry('verification_started')
     const supabase = createSupabaseBrowser()
 
     if (!supabase) {
+      recordTelemetry('token_rejected')
       setError('Erro ao conectar com o sistema de autenticação')
       setIsTokenError(true)
       setPendingEmailAuth(null)
@@ -223,6 +258,7 @@ function SetPasswordContent() {
 
       if (verifyError || !data.session) {
         console.error('❌ Erro ao validar token do e-mail:', verifyError)
+        recordTelemetry('token_rejected')
 
         if (await resumeExistingSession(supabase)) {
           setPendingEmailAuth(null)
@@ -236,10 +272,12 @@ function SetPasswordContent() {
       }
 
       setEmail(data.session.user?.email ?? null)
+      recordTelemetry('token_verified')
       window.history.replaceState(null, '', '/set-password')
       setPendingEmailAuth(null)
     } catch (err) {
       console.error('❌ Erro ao validar token do e-mail:', err)
+      recordTelemetry('token_rejected')
       setError('Erro inesperado ao processar o link. Tente novamente.')
       setIsTokenError(true)
       setPendingEmailAuth(null)
@@ -349,11 +387,13 @@ function SetPasswordContent() {
     }
 
     setIsLoading(true)
+    let passwordUpdated = false
 
     try {
       const supabase = createSupabaseBrowser()
       
       if (!supabase) {
+        recordTelemetry('password_update_failed')
         setError('Erro ao conectar com o sistema de autenticação')
         return
       }
@@ -365,11 +405,15 @@ function SetPasswordContent() {
 
       if (updateError) {
         console.error('Erro ao definir senha:', updateError)
+        recordTelemetry('password_update_failed')
         const friendlyMessage = translateSupabaseError(updateError.message)
         setError(friendlyMessage)
         setIsLoading(false)
         return
       }
+
+      passwordUpdated = true
+      recordTelemetry('password_updated')
 
       // Buscar perfil do usuário para redirecionar corretamente
       const { data: { user } } = await supabase.auth.getUser()
@@ -393,6 +437,9 @@ function SetPasswordContent() {
       }
     } catch (err) {
       console.error('Erro ao definir senha:', err)
+      if (!passwordUpdated) {
+        recordTelemetry('password_update_failed')
+      }
       setError('Erro inesperado ao definir senha')
     } finally {
       setIsLoading(false)
