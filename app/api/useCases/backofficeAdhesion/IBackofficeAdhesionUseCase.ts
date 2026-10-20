@@ -32,4 +32,17 @@ export interface IBackofficeAdhesionUseCase {
     account: AsaasAccountId,
     options?: { deferEmailDelivery?: boolean }
   ): Promise<Output>
+  processAbacatePayWebhook(
+    event: string,
+    checkout: {
+      id: string
+      externalId?: string
+      status: string
+      amount?: number
+      metadata?: Record<string, string>
+      updatedAt?: string
+      createdAt?: string
+    },
+    options?: { deferEmailDelivery?: boolean }
+  ): Promise<Output>
 }

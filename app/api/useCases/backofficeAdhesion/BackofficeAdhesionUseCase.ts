@@ -393,6 +393,28 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       return new Output(false, [], ["Erro ao processar webhook de adesão"], null)
     }
   }
+
+  async processAbacatePayWebhook(
+    event: string,
+    checkout: {
+      id: string
+      externalId?: string
+      status: string
+      amount?: number
+      metadata?: Record<string, string>
+      updatedAt?: string
+      createdAt?: string
+    },
+    options?: { deferEmailDelivery?: boolean }
+  ): Promise<Output> {
+    try {
+      const result = await this.service.processAbacatePayWebhook(event, checkout, options)
+      return new Output(true, [], [], result)
+    } catch (error) {
+      console.error("[BackofficeAdhesionUseCase][processAbacatePayWebhook]", error)
+      return new Output(false, [], ["Erro ao processar webhook Abacate Pay de adesão"], null)
+    }
+  }
 }
 
 export const backofficeAdhesionUseCase = new BackofficeAdhesionUseCase(

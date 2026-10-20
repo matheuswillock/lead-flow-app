@@ -155,6 +155,7 @@ export interface BackofficeAdhesionPaymentDTO {
   amount: number
   invoiceUrl: string | null
   bankSlipUrl: string | null
+  checkoutUrl: string | null
   pix?: {
     encodedImage: string
     payload: string
@@ -295,6 +296,19 @@ export interface IBackofficeAdhesionService {
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,
     account: AsaasAccountId,
+    options?: { deferEmailDelivery?: boolean }
+  ): Promise<{ processed: boolean; adhesionId?: string }>
+  processAbacatePayWebhook(
+    event: string,
+    checkout: {
+      id: string
+      externalId?: string
+      status: string
+      amount?: number
+      metadata?: Record<string, string>
+      updatedAt?: string
+      createdAt?: string
+    },
     options?: { deferEmailDelivery?: boolean }
   ): Promise<{ processed: boolean; adhesionId?: string }>
 }

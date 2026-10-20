@@ -37,6 +37,8 @@ import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { createAbacatePayProvider, resolvePaymentProviderEnvironment } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import type { HostedCheckoutOutcome } from "@/lib/payment-provider/contracts"
 import type {
   BackofficeAdhesionWithRelations,
   IBackofficeAdhesionRepository,
@@ -348,6 +350,7 @@ function mapPublicAdhesion(
 function mapPayment(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesionPaymentDTO {
   const ledger = readInstallmentLedger(adhesion.installmentLedger)
   const pendingAmount = sumPendingLedgerAmount(ledger)
+  const isAbacatePay = adhesion.asaasPaymentId?.startsWith("abacate_") ?? false
   const payment: BackofficeAdhesionPaymentDTO = {
     adhesionId: adhesion.id,
     paymentId: adhesion.asaasPaymentId,
@@ -356,6 +359,7 @@ function mapPayment(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesi
     amount: ledger.length > 0 ? pendingAmount : decimalToNumber(adhesion.totalAmount),
     invoiceUrl: adhesion.invoiceUrl,
     bankSlipUrl: adhesion.bankSlipUrl,
+    checkoutUrl: isAbacatePay ? adhesion.invoiceUrl : null,
   }
 
   if (adhesion.billingType === "PIX" && adhesion.pixPayload) {
@@ -1280,7 +1284,34 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const chargeAmount = resolveCheckoutChargeAmount(publicDetails, normalized.billingType)
 
-    const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
+    let paymentResult: {
+      paymentId: string
+      installmentId: string | null
+      paymentDueDate: Date | null
+      invoiceUrl: string | null
+      bankSlipUrl: string | null
+      pix?: { encodedImage: string; payload: string; expirationDate: string | null }
+      boleto?: { bankSlipUrl: string | null; identificationField: string; barCode: string; dueDate: string | null }
+    }
+
+    if (normalized.billingType === "PIX") {
+      const abacateResult = await this.createAbacatePayPayment(adhesion, normalized, chargeAmount)
+      paymentResult = {
+        paymentId: `abacate_${abacateResult.checkoutId}`,
+        installmentId: null,
+        paymentDueDate: null,
+        invoiceUrl: abacateResult.checkoutUrl,
+        bankSlipUrl: null,
+        pix: undefined,
+        boleto: undefined,
+      }
+    } else if (normalized.billingType === "CREDIT_CARD") {
+      throw new Error("Pagamento por cartão de crédito temporariamente indisponível")
+    } else {
+      const asaasResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
+      paymentResult = asaasResult
+    }
+
     const quoteSnapshot = {
       adhesionId: adhesion.id,
       productId: adhesion.productId,
@@ -1304,7 +1335,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       asaasCustomerId: customerId,
       asaasPaymentId: paymentResult.paymentId,
       asaasInstallmentId: paymentResult.installmentId ?? null,
-      installmentCount: normalized.billingType === "CREDIT_CARD" ? (normalized.installments ?? null) : null,
+      installmentCount: (normalized.billingType as string) === "CREDIT_CARD" ? (normalized.installments ?? null) : null,
       billingType: normalized.billingType,
       paymentDueDate: paymentResult.paymentDueDate,
       invoiceUrl: paymentResult.invoiceUrl,
@@ -1318,6 +1349,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     return {
       ...mapPayment(updated),
+      checkoutUrl: (normalized.billingType as string) === "PIX" ? paymentResult.invoiceUrl : null,
       pix: paymentResult.pix,
       boleto: paymentResult.boleto,
     }
@@ -1455,6 +1487,104 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     if (isOverdue) {
+      await this.repo.updateStatus(adhesion.id, "overdue", { overdueAt: new Date() })
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    if (isCanceled) {
+      await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    return { processed: true, adhesionId: adhesion.id }
+  }
+
+  async processAbacatePayWebhook(
+    event: string,
+    checkout: {
+      id: string
+      externalId?: string
+      status: string
+      amount?: number
+      metadata?: Record<string, string>
+      updatedAt?: string
+      createdAt?: string
+    },
+    options?: { deferEmailDelivery?: boolean }
+  ): Promise<{ processed: boolean; adhesionId?: string }> {
+    if (!checkout.id) {
+      return { processed: false }
+    }
+
+    const adhesionId = checkout.metadata?.adhesionId
+    if (!adhesionId) {
+      console.info("[BackofficeAdhesionService][processAbacatePayWebhook] sem adhesionId no metadata", {
+        checkoutId: checkout.id,
+        event,
+      })
+      return { processed: false }
+    }
+
+    const adhesion = await this.repo.findById(adhesionId)
+    if (!adhesion) {
+      console.info("[BackofficeAdhesionService][processAbacatePayWebhook] adesão não encontrada", {
+        adhesionId,
+        checkoutId: checkout.id,
+        event,
+      })
+      return { processed: false }
+    }
+
+    // Verify this is an Abacate Pay payment
+    if (!adhesion.asaasPaymentId?.startsWith("abacate_")) {
+      console.info("[BackofficeAdhesionService][processAbacatePayWebhook] pagamento não é Abacate Pay", {
+        adhesionId,
+        paymentId: adhesion.asaasPaymentId,
+        event,
+      })
+      return { processed: false }
+    }
+
+    const isPaid = event === "checkout.completed" || checkout.status === "PAID"
+    const isRefunded = event === "checkout.refunded" || checkout.status === "REFUNDED"
+    const isDisputed = event === "checkout.disputed" || checkout.status === "UNDER_DISPUTE"
+    const isCanceled = checkout.status === "CANCELLED" || checkout.status === "EXPIRED"
+
+    if (isPaid) {
+      const quote = adhesion.quoteSnapshot as { amount?: unknown; billingType?: unknown } | null
+      if (adhesion.quoteSnapshot && adhesion.quoteHash && hashBillingQuote(adhesion.quoteSnapshot as Record<string, unknown>) !== adhesion.quoteHash) {
+        throw new Error("Integridade do quote da adesão inválida")
+      }
+      if (quote && (
+        typeof quote.amount !== "number" ||
+        checkout.amount == null ||
+        Math.abs(checkout.amount - quote.amount) > 0.005 ||
+        (typeof quote.billingType === "string" && quote.billingType !== "PIX")
+      )) {
+        throw new Error("Pagamento divergente do quote da adesão")
+      }
+      const paidAt = checkout.updatedAt ? new Date(checkout.updatedAt) : new Date()
+      const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
+      try {
+        await this.ensureAccountForPaidAdhesion(updated, {
+          deferEmailDelivery: options?.deferEmailDelivery,
+        })
+      } catch (accountError) {
+        console.error("[BackofficeAdhesionService][processAbacatePayWebhook][ensureAccount]", {
+          adhesionId: adhesion.id,
+          error: accountError,
+        })
+        throw accountError
+      }
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    if (isRefunded) {
+      await this.repo.updateStatus(adhesion.id, "canceled", { canceledAt: new Date() })
+      return { processed: true, adhesionId: adhesion.id }
+    }
+
+    if (isDisputed) {
       await this.repo.updateStatus(adhesion.id, "overdue", { overdueAt: new Date() })
       return { processed: true, adhesionId: adhesion.id }
     }
@@ -1750,6 +1880,37 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     })
 
     return customer.id
+  }
+
+  private async createAbacatePayPayment(
+    adhesion: BackofficeAdhesionWithRelations,
+    input: BackofficeAdhesionCheckoutInput,
+    chargeAmount: number,
+  ): Promise<{
+    checkoutId: string
+    checkoutUrl: string
+    amount: number
+    status: string
+  }> {
+    const provider = createAbacatePayProvider(resolvePaymentProviderEnvironment())
+    const externalReference = `backoffice-adhesion-${adhesion.id}`
+    const returnUrl = `${getFullUrl("/subscription")}?payment=return`
+    const completionUrl = `${getFullUrl("/subscription")}?payment=completed`
+
+    const result: HostedCheckoutOutcome = await provider.createHostedCheckout({
+      amountInCents: Math.round(chargeAmount * 100),
+      externalReference,
+      metadata: { adhesionId: adhesion.id },
+      returnUrl,
+      completionUrl,
+    })
+
+    return {
+      checkoutId: result.externalId,
+      checkoutUrl: result.url,
+      amount: result.amountInCents / 100,
+      status: result.status,
+    }
   }
 
   private async createExternalAsaasCustomer(input: {
