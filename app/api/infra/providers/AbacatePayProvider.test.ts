@@ -868,6 +868,65 @@ describe("AbacatePayProvider", () => {
     })
   })
 
+  describe("webhook authentication without a public key (card not released)", () => {
+    const rawBody = JSON.stringify({
+      id: "evt_1",
+      event: "transparent.completed",
+      apiVersion: "1",
+      devMode: false,
+      data: { id: "pay_1", status: "PAID", method: "PIX", amount: 1500 },
+    })
+    const productionProvider = () =>
+      new AbacatePayProvider(
+        PaymentProviderConfig.create({
+          apiKey: "abc_prod_key",
+          webhookSecret: "webhook-secret",
+          environment: "PRODUCTION",
+          devMode: false,
+        }),
+      )
+
+    it("authenticates by URL secret alone, with or without a signature header", () => {
+      const provider = productionProvider()
+      expect(
+        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } })
+          .environment,
+      ).toBe("PRODUCTION")
+      expect(
+        provider.verifyRequest({ rawBody, signature: "ignored", query: { webhookSecret: "webhook-secret" } })
+          .environment,
+      ).toBe("PRODUCTION")
+    })
+
+    it("still rejects a wrong or missing URL secret", () => {
+      const provider = productionProvider()
+      expect(() => provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "wrong" } })).toThrow(
+        "Webhook não autenticado",
+      )
+      expect(() => provider.verifyRequest({ rawBody, signature: null, query: {} })).toThrow("Webhook não autenticado")
+    })
+
+    it("requires the HMAC again as soon as the public key is configured", () => {
+      const provider = new AbacatePayProvider(
+        PaymentProviderConfig.create({
+          apiKey: "abc_prod_key",
+          publicKey: "pk_prod_key",
+          webhookSecret: "webhook-secret",
+          webhookSigningKey: "pk_prod_key",
+          environment: "PRODUCTION",
+          devMode: false,
+        }),
+      )
+      expect(() =>
+        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } }),
+      ).toThrow("Webhook não autenticado")
+      const signature = createHmac("sha256", "pk_prod_key").update(rawBody).digest("base64")
+      expect(
+        provider.verifyRequest({ rawBody, signature, query: { webhookSecret: "webhook-secret" } }).environment,
+      ).toBe("PRODUCTION")
+    })
+  })
+
   it("trata reembolso já realizado como idempotente", async () => {
     const http = mock(async () => response({ code: "ALREADY_REFUNDED" }, 409))
     const provider = new AbacatePayProvider(config, { http })
