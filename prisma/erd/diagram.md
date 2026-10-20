@@ -20,6 +20,7 @@ CLOSER CLOSER
             requested requested
 link_generated link_generated
 email_sent email_sent
+verification_pending verification_pending
 token_verified token_verified
 completed completed
 expired expired
@@ -34,9 +35,15 @@ failed failed
 link_generated link_generated
 email_sent email_sent
 email_failed email_failed
+email_delivered email_delivered
+email_opened email_opened
+email_clicked email_clicked
+page_opened page_opened
+verification_started verification_started
 token_verified token_verified
 token_rejected token_rejected
 password_updated password_updated
+password_update_failed password_update_failed
 expired expired
 invalidated invalidated
 failed failed
@@ -1843,8 +1850,10 @@ completed completed
   "password_reset_flows" {
     String id "🗝️"
     String recipientEmail 
+    String dispatchId "❓"
+    String resendEmailId "❓"
     PasswordResetFlowStatus status 
-    String requestIp "❓"
+    String ipHash "❓"
     String userAgent "❓"
     String originScreen "❓"
     DateTime requestedAt 
@@ -1865,7 +1874,7 @@ completed completed
     DateTime occurredAt 
     String requestId "❓"
     String failureCode "❓"
-    String requestIp "❓"
+    String ipHash "❓"
     String userAgent "❓"
     DateTime createdAt 
     }
