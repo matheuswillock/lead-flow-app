@@ -59,6 +59,13 @@ function toDto(domain: TeamStudioDomainRecord) {
     vercelDomainId: domain.vercelDomainId,
     verifiedAt: domain.verifiedAt,
     lastCheckedAt: domain.lastCheckedAt,
+    dnsAuditStatus: domain.dnsAuditStatus,
+    dnsMisconfigured: domain.dnsMisconfigured,
+    dnsReasonCode: domain.dnsReasonCode,
+    dnsReason: domain.dnsReason,
+    recommendedCNAME: domain.recommendedCNAME,
+    lastDnsAuditAt: domain.lastDnsAuditAt,
+    lastDnsAttemptAt: domain.lastDnsAttemptAt,
     createdAt: domain.createdAt,
     updatedAt: domain.updatedAt,
     tracking: {

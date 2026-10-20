@@ -65,7 +65,7 @@ const MOCK_DNS_PROVIDER = {
 }
 
 function domainRecordsPayload(
-  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER
+  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER,
 ) {
   return {
     isValid: true,
@@ -97,7 +97,7 @@ async function resolveE2eTeamId(): Promise<string> {
 
 async function seedConnectedDomain(
   status: "pending" | "verified" = "pending",
-  clickTracking = true
+  clickTracking = true,
 ): Promise<void> {
   const teamId = await resolveE2eTeamId()
   const domainFields = {
@@ -159,14 +159,14 @@ async function clearConnectedDomain(): Promise<void> {
 
 async function mockDomainRecordsRoute(
   page: Page,
-  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER
+  dnsProvider: { name: string | null; nameservers: string[] } | null = MOCK_DNS_PROVIDER,
 ): Promise<void> {
   await page.route("**/email/settings/domain/records**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(domainRecordsPayload(dnsProvider)),
-    })
+    }),
   )
 }
 
@@ -218,7 +218,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       ({ version, supabaseId }: { version: string; supabaseId: string }) => {
         window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true")
       },
-      { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID }
+      { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID },
     )
   })
 
@@ -379,7 +379,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
             errorMessages: [],
             result: { status: "pending" },
           }),
-        })
+        }),
       )
       await gotoEmailSettings(page)
 
@@ -390,7 +390,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(verifyButton).toBeEnabled()
       await verifyButton.click()
       await expect(
-        page.getByRole("alert").filter({ hasText: "Registros de envio (SPF) não encontrados" })
+        page.getByRole("alert").filter({ hasText: "Registros de envio (SPF) não encontrados" }),
       ).toBeVisible()
     })
 
@@ -408,11 +408,11 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       const copiedText = await page.evaluate(() => navigator.clipboard.readText())
       expect(copiedText).toContain(
-        `Registros DNS para verificação do domínio ${DOMAIN_NAME} no Corretor Studio`
+        `Registros DNS para verificação do domínio ${DOMAIN_NAME} no Corretor Studio`,
       )
       // Hospedagem identificada entra na narrativa: o operador sabe qual painel abrir.
       expect(copiedText).toContain(
-        `Cadastre os registros abaixo no painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}:`
+        `Cadastre os registros abaixo no painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}:`,
       )
       for (const record of MOCK_DNS_RECORDS) {
         expect(copiedText).toContain(record.value)
@@ -434,7 +434,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       const copiedPrompt = await page.evaluate(() => navigator.clipboard.readText())
       expect(copiedPrompt).toContain(
-        `Você tem acesso ao painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}.`
+        `Você tem acesso ao painel da HostGator, hospedagem de DNS do domínio ${DOMAIN_NAME}.`,
       )
       expect(copiedPrompt).toContain("nuvem laranja")
       expect(copiedPrompt).toContain("um a um")
@@ -466,34 +466,32 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await page.getByRole("menuitem", { name: "Enviar por e-mail" }).click()
 
       await expect(
-        page.getByRole("heading", { name: "Enviar instruções por e-mail" })
+        page.getByRole("heading", { name: "Enviar instruções por e-mail" }),
       ).toBeVisible()
 
       const emailInput = page.getByLabel("E-mail do responsável técnico")
       await emailInput.fill("nao-e-email")
       await page.getByRole("button", { name: "Enviar instruções" }).click()
       await expect(
-        page.getByText("Informe um e-mail válido para receber as instruções")
+        page.getByText("Informe um e-mail válido para receber as instruções"),
       ).toBeVisible()
       expect(sendRequests).toHaveLength(0)
 
       await emailInput.fill("hospedagem@cliente.com.br")
       await page.getByRole("button", { name: "Enviar instruções" }).click()
       await expect(
-        page.getByText("Instruções enviadas para hospedagem@cliente.com.br")
+        page.getByText("Instruções enviadas para hospedagem@cliente.com.br"),
       ).toBeVisible()
 
       // O cliente manda só o destinatário — conteúdo é reconstruído no servidor.
       expect(sendRequests).toEqual([{ recipientEmail: "hospedagem@cliente.com.br" }])
 
-      await expect(
-        page.getByRole("heading", { name: "Enviar instruções por e-mail" })
-      ).toHaveCount(0)
+      await expect(page.getByRole("heading", { name: "Enviar instruções por e-mail" })).toHaveCount(
+        0,
+      )
     })
 
-    test("toggle de cliques fica disponível antes da verificação do DNS", async ({
-      page,
-    }) => {
+    test("toggle de cliques fica disponível antes da verificação do DNS", async ({ page }) => {
       await mockDomainRecordsRoute(page)
       await gotoEmailSettings(page)
 
@@ -501,7 +499,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
 
       await expect(
-        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+        page.getByRole("heading", { name: "Configurar métricas de tracking" }),
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
@@ -509,7 +507,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(
         page.getByText("O rastreio de cliques fica disponível assim que o domínio", {
           exact: false,
-        })
+        }),
       ).toBeVisible()
     })
   })
@@ -531,7 +529,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(verifiedDomainRecordsPayload()),
-        })
+        }),
       )
 
       const trackingRequests: Array<Record<string, unknown>> = []
@@ -563,7 +561,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await page.getByRole("button", { name: /Configurar|Alterar/ }).click()
 
       await expect(
-        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+        page.getByRole("heading", { name: "Configurar métricas de tracking" }),
       ).toBeVisible()
 
       const clickSwitch = page.locator("#click-tracking-switch")
@@ -573,7 +571,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
 
       await page.getByRole("button", { name: "Salvar" }).click()
       await expect(
-        page.getByRole("heading", { name: "Configurar métricas de tracking" })
+        page.getByRole("heading", { name: "Configurar métricas de tracking" }),
       ).toHaveCount(0)
 
       // O corpo enviado é o contrato: clickTracking respeitado, não descartado.
@@ -593,7 +591,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(verifiedDomainRecordsPayload()),
-        })
+        }),
       )
       await page.route("**/email/settings/domain/tracking**", (route) =>
         route.fulfill({
@@ -607,7 +605,7 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
             ],
             result: null,
           }),
-        })
+        }),
       )
 
       await gotoEmailSettings(page)
@@ -706,6 +704,148 @@ test.describe("app/[supabaseId]/email/configuracoes", () => {
       await expect(page.getByText("Analytics e tráfego")).toBeVisible()
       await expect(page.getByText("e7ec430d41e066d4.vercel-dns-017.com.")).toBeVisible()
       await expect(page.getByLabel("Subdomínio dos formulários")).toHaveCount(0)
+    })
+
+    test("exibe o diagnóstico DNS acionável e copia apenas o CNAME recomendado", async ({
+      page,
+      context,
+    }) => {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"])
+      await seedConnectedDomain("verified")
+      await seedStudioDomain("pending")
+
+      let verifyRequests = 0
+      await page.route("**/email/settings/studio-domain/records", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: [],
+            errorMessages: [],
+            result: {
+              studioDomain: {
+                hostname: STUDIO_DOMAIN_HOSTNAME,
+                status: "pending",
+                dnsAuditStatus: "pending",
+                dnsMisconfigured: false,
+                dnsReasonCode: "CNAME_NOT_FOUND",
+                dnsReason: "O CNAME ainda não foi encontrado.",
+                recommendedCNAME: "e7ec430d41e066d4.vercel-dns-017.com.",
+                lastDnsAuditAt: "2026-10-19T12:00:00.000Z",
+                lastDnsAttemptAt: "2026-10-19T11:55:00.000Z",
+              },
+              records: [
+                {
+                  record: "CNAME",
+                  name: "studio",
+                  value: "e7ec430d41e066d4.vercel-dns-017.com.",
+                  status: "pending",
+                },
+              ],
+            },
+          }),
+        }),
+      )
+      await page.route("**/email/settings/studio-domain", (route) => {
+        verifyRequests += 1
+        return new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve(
+                route.fulfill({
+                  status: 200,
+                  contentType: "application/json",
+                  body: JSON.stringify({
+                    isValid: true,
+                    successMessages: ["Verificação solicitada"],
+                    errorMessages: [],
+                    result: { studioDomain: { status: "pending" } },
+                  }),
+                }),
+              ),
+            300,
+          ),
+        )
+      })
+
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/landing-pages`, { waitUntil: "domcontentloaded" })
+      await expect(page.getByRole("heading", { name: "Páginas de cotação" })).toBeVisible({
+        timeout: 30_000,
+      })
+      await page.getByRole("button", { name: "Configurar domínio de cotação" }).click()
+
+      await expect(page.getByText("Ação necessária", { exact: true })).toBeVisible()
+      await expect(
+        page.getByText("O CNAME ainda não foi encontrado.", { exact: true }),
+      ).toBeVisible()
+      await expect(page.getByText("Última auditoria", { exact: true })).toBeVisible()
+      await expect(
+        page.getByText("e7ec430d41e066d4.vercel-dns-017.com.", { exact: true }),
+      ).toHaveCount(3)
+
+      await page.getByRole("button", { name: "Copiar CNAME recomendado" }).click()
+      await expect(page.getByText("CNAME recomendado copiado")).toBeVisible()
+      await expect(page.evaluate(() => navigator.clipboard.readText())).resolves.toBe(
+        "e7ec430d41e066d4.vercel-dns-017.com.",
+      )
+
+      const verifyButton = page.getByRole("button", { name: "Verificar DNS", exact: true })
+      await verifyButton.click()
+      await expect(verifyButton).toBeDisabled()
+      await expect(page.getByText("Verificação do DNS solicitada")).toBeVisible()
+      expect(verifyRequests).toBe(1)
+    })
+
+    test("preserva domínio verificado quando a auditoria está inconclusiva", async ({ page }) => {
+      await seedConnectedDomain("verified")
+      await seedStudioDomain("verified")
+      await page.route("**/email/settings/studio-domain/records", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            successMessages: [],
+            errorMessages: [],
+            result: {
+              studioDomain: {
+                hostname: STUDIO_DOMAIN_HOSTNAME,
+                status: "verified",
+                dnsAuditStatus: "inconclusive",
+                dnsMisconfigured: false,
+                dnsReasonCode: "DNS_PROVIDER_UNAVAILABLE",
+                dnsReason: "Não foi possível consultar o provedor DNS temporariamente.",
+                recommendedCNAME: null,
+                lastDnsAuditAt: "2026-10-19T12:00:00.000Z",
+                lastDnsAttemptAt: "2026-10-19T12:01:00.000Z",
+              },
+              records: [
+                {
+                  record: "CNAME",
+                  name: "studio",
+                  value: "e7ec.vercel-dns.com.",
+                  status: "verified",
+                },
+              ],
+            },
+          }),
+        }),
+      )
+
+      await page.goto(`/${E2E_MASTER_SUPABASE_ID}/landing-pages`, { waitUntil: "domcontentloaded" })
+      await page.getByRole("button", { name: "Configurar domínio de cotação" }).click()
+
+      await expect(page.getByText("Verificado", { exact: true })).toBeVisible()
+      await expect(
+        page.getByText("Consulta temporariamente indisponível", { exact: true }),
+      ).toBeVisible()
+      await expect(
+        page.getByText("Não foi possível consultar o provedor DNS temporariamente.", {
+          exact: true,
+        }),
+      ).toBeVisible()
+      await expect(page.getByRole("button", { name: "Verificar DNS", exact: true })).toHaveCount(0)
     })
   })
 })

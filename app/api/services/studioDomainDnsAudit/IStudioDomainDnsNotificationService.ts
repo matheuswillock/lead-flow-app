@@ -1,5 +1,12 @@
+import type { StudioDomainDnsAuditResult } from "./StudioDomainDnsAuditTypes"
+
+export type StudioDomainDnsNotificationInput = {
+  domainId: string
+  teamId: string
+  result: StudioDomainDnsAuditResult
+  lastCheckedAt: Date
+}
+
 export interface IStudioDomainDnsNotificationService {
-  sendDnsFailureNotification(domain: string, status: string, reasonCode: string, recommendedCNAME?: string, fingerprint?: string): Promise<void>
-  sendDnsRecoveryNotification(domain: string, previousStatus: string, currentStatus: string, fingerprint: string): Promise<void>
-  isNotificationDuplicated(fingerprint: string, lastCheckedFingerprints: string[]): boolean
+  notify(input: StudioDomainDnsNotificationInput): Promise<void>
 }

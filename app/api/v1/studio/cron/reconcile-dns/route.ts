@@ -1,45 +1,49 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest, connection } from "next/server"
+import { Output } from "@/lib/output"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
+import { studioDomainDnsAuditUseCase } from "@/app/api/useCases/studioDomainDnsAudit/StudioDomainDnsAuditUseCase"
 
-// CRON_SECRET must be set in environment variables
-const CRON_SECRET = process.env.CRON_SECRET
+export const maxDuration = 300
 
-if (!CRON_SECRET) {
-  throw new Error('CRON_SECRET environment variable is not set')
+function isAuthorized(request: NextRequest): boolean {
+  const cronSecret = process.env.CRON_SECRET
+  return Boolean(cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`)
 }
 
-// UseCase for cron execution - no direct service import
-import { StudioDomainDnsCronUseCase } from '@/app/api/useCases/studioDomainDnsAudit/StudioDomainDnsCronUseCase'
+export async function GET(request: NextRequest) {
+  await connection()
 
-// Route protected by CRON_SECRET header
-export const POST = async (request: Request) => {
-  const authHeader = request.headers.get('x-cron-secret')
-
-  if (!authHeader || authHeader !== CRON_SECRET) {
-    return NextResponse.json(
-      { error: 'Unauthorized: Invalid CRON_SECRET' },
-      { status: 401 }
-    )
+  if (!isAuthorized(request)) {
+    return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
   }
 
+  console.info(JSON.stringify({ event: "studio_dns_reconciliation_started" }))
+
   try {
-    const useCase = new StudioDomainDnsCronUseCase(
-      {} as any,
-      {} as any
+    const output = await withCronAudit(
+      {
+        cronKey: "studio-domain-dns-reconcile",
+        cronPath: "/api/v1/studio/cron/reconcile-dns",
+      },
+      () => studioDomainDnsAuditUseCase.execute(),
+      { onFailure: getDefaultCronSlackCallback() },
     )
 
-    const result = await useCase.execute()
+    console.info(JSON.stringify({
+      event: "studio_dns_reconciliation_finished",
+      success: output.isValid,
+      summary: output.isValid ? output.result : null,
+    }))
 
-    return NextResponse.json({
-      success: true,
-      message: 'DNS audit completed',
-      ...result,
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
   } catch (error) {
-    console.error('Cron reconcile-dns error:', error)
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[StudioDnsReconciliationCronRoute][GET] Falha na reconciliação", error)
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      new Output(false, [], ["Erro interno no cron de reconciliação DNS"], null),
+      { status: 500 },
     )
   }
 }

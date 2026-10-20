@@ -4767,8 +4767,6 @@ model TeamStudioDomain {
   vercelDomainId   String?                @db.Text
   verifiedAt       DateTime?              @db.Timestamptz(6)
   lastCheckedAt    DateTime?              @db.Timestamptz(6)
-<<<<<<< HEAD
-=======
   dnsAuditStatus   TeamStudioDnsAuditStatus?
   dnsMisconfigured Boolean?
   dnsReasonCode    String?                @db.Text
@@ -4778,7 +4776,6 @@ model TeamStudioDomain {
   lastDnsAttemptAt DateTime?              @db.Timestamptz(6)
   lastDnsFingerprint String?              @db.Text
   lastDnsNotifiedFingerprint String?      @db.Text
->>>>>>> cb8425663 (feat: implementar auditoria DNS Studio/Vercel completa per SPEC)
   headScripts      String?                @db.Text
   bodyStartScripts String?                @db.Text
   bodyEndScripts   String?                @db.Text
@@ -6533,10 +6530,7 @@ model PaymentProviderAttempt {
   externalAccountContext String                       @map("external_account_context") @db.Text
   status                 PaymentProviderAttemptStatus @default(CREATED)
   externalId             String?                      @map("external_id") @db.Text
-<<<<<<< HEAD
   reconciliationReference String?                     @map("reconciliation_reference") @db.Text
-=======
->>>>>>> cb8425663 (feat: implementar auditoria DNS Studio/Vercel completa per SPEC)
   leaseToken             String?                      @map("lease_token") @db.Uuid
   leaseUntil             DateTime?                    @map("lease_until") @db.Timestamptz(6)
   fenceVersion           Int                          @default(0) @map("fence_version")
