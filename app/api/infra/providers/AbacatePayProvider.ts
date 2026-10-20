@@ -4,11 +4,13 @@ import type {
   CreateCardPaymentInput,
   CreatePixPaymentInput,
   FullRefundCapability,
+  HealthCheckCapability,
   OneTimePaymentCapability,
   PaymentCustomer,
   PaymentProviderMetadata,
   PaymentQueryCapability,
   ProviderCardPaymentOutcome,
+  ProviderHealthCheckResult,
   ProviderPixPaymentOutcome,
   RawWebhookRequest,
   VerifiedWebhook,
@@ -65,6 +67,7 @@ export class AbacatePayProvider
     OneTimePaymentCapability,
     PaymentQueryCapability,
     FullRefundCapability,
+    HealthCheckCapability,
     WebhookCapability
 {
   private readonly verifiedWebhooks = new WeakSet<object>()
@@ -118,6 +121,22 @@ export class AbacatePayProvider
       })
     }
     throw providerError
+  }
+
+  async checkHealth(): Promise<ProviderHealthCheckResult> {
+    try {
+      const response = await this.requestJson<{
+        success?: unknown
+        data?: { id?: unknown }
+      }>("/v2/stores/get", { method: "GET", headers: this.authHeaders() })
+      if (response.success === false || stringOrNull(response.data?.id) === null) {
+        return unhealthy("REMOTE_REQUEST_FAILED", "O provedor não retornou a loja")
+      }
+      return { healthy: true }
+    } catch (error) {
+      const providerError = this.providerError(error)
+      return unhealthy(providerError.code, providerError.message)
+    }
   }
 
   async getStatus(input: {
@@ -505,6 +524,10 @@ export class AbacatePayProvider
   private authHeaders(): Record<string, string> {
     return { authorization: `Bearer ${this.config.apiKey}` }
   }
+}
+
+function unhealthy(errorCode: string, errorMessage: string): ProviderHealthCheckResult {
+  return { healthy: false, errorCode, errorMessage }
 }
 
 function requireString(value: unknown, label: string): string {
