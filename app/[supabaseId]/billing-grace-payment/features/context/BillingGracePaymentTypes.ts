@@ -11,7 +11,7 @@ export type BillingGracePaymentRecord = {
   status: string
   amountCents: number
   effectivePriceCents: number
-  paymentInstructions: { checkoutUrl?: string; brCode?: string; brCodeBase64?: string; expiresAt?: string } | null
+  paymentInstructions: { brCode?: string; brCodeBase64?: string; expiresAt?: string } | null
 }
 
 export interface IBillingGracePaymentState {
