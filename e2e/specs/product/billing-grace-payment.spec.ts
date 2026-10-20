@@ -8,7 +8,7 @@ test.describe("regularização da assinatura", () => {
     await injectE2eAuthCookie(context)
     let paymentCreated = false
 
-    await page.route("**/api/v1/billing-grace-payment**", async (route) => {
+    await page.route("**/billing-grace-payment**", async (route) => {
       if (route.request().method() === "POST") {
         paymentCreated = true
         await route.fulfill({
