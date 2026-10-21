@@ -5,6 +5,12 @@ import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositor
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
 import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
+import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
+import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
+import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
+import { ApplyEmailCreditsOnConfirmation } from "./applyEmailCreditsOnConfirmation"
+import { PaymentEventMatchGuard } from "./paymentEventMatchGuard"
+import { reportPaymentDisputed } from "./reportPaymentDisputed"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import {
@@ -23,6 +29,15 @@ export async function createPaymentProviderWebhookService() {
 
   const provider = createAbacatePayProvider(environment)
   const settlement = createPaymentOwnerSettlement()
+  const eventMatchGuard = new PaymentEventMatchGuard({
+    purchases: platformPurchaseRepository,
+    adhesionPayments: backofficeAdhesionPaymentRepository,
+    gracePayments: billingGracePaymentRepository,
+  })
+  const emailCreditsOnConfirmation = new ApplyEmailCreditsOnConfirmation({
+    purchases: platformPurchaseRepository,
+    applyEmailCredits: (input) => applyEmailCreditsPaidPurchaseUseCase.apply(input),
+  })
   const eventProcessor = new PaymentProviderEventProcessor(paymentProviderEventInboxRepository)
   const service = new PaymentProviderWebhookService({
     provider,
@@ -65,6 +80,9 @@ export async function createPaymentProviderWebhookService() {
           throw new Error("Tentativa correlacionada não pertence a este provider")
         }
       }
+
+      // Valor e método do evento conferidos contra o dono antes de qualquer efeito (PAY-HARD-T011).
+      await eventMatchGuard.assertMatches(attempt, event)
 
       // The fenced attempt transition (via claimToken) is the authority.
       // Only after winning the transition do we bind the identity and
@@ -112,6 +130,21 @@ export async function createPaymentProviderWebhookService() {
         })
         // Pagamento confirmado sem efeito de domínio conhecido não pode passar em silêncio.
         if (settled === "unsupported") reportUnknownOwnerType(attempt)
+      }
+      if (nextStatus === "CONFIRMED" && attempt.ownerType === "PLATFORM_PURCHASE") {
+        await emailCreditsOnConfirmation.apply({
+          purchaseId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+        })
+      }
+      if (nextStatus === "DISPUTED") {
+        await reportPaymentDisputed({
+          attemptId: attempt.id,
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          chargeId: event.externalPaymentId!,
+          eventId: event.eventId,
+        })
       }
     },
   })

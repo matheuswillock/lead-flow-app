@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs"
 import { NextResponse } from "next/server"
 import { PaymentProviderError } from "@/lib/payment-provider/errors"
 import { redactSensitiveUrls } from "@/lib/payment-provider/operational-alerts"
+import { PaymentEventMismatchError } from "@/app/api/useCases/paymentProviderWebhook/paymentEventMatchGuard"
 import { createPaymentProviderWebhookService } from "@/app/api/useCases/paymentProviderWebhook/paymentProviderWebhookComposition"
 
 const ROUTE_NAME = "POST /api/v1/webhooks/payment-provider/abacate"
@@ -27,8 +28,14 @@ export async function POST(request: Request) {
   } catch (error) {
     const rejected = error instanceof PaymentProviderError && error.code === "WEBHOOK_INVALID"
     reportRouteError(error, rawBody, rejected)
-    return respond({ accepted: false }, rejected ? 401 : 500)
+    return respond({ accepted: false }, statusForError(error))
   }
+}
+
+function statusForError(error: unknown): number {
+  if (error instanceof PaymentEventMismatchError) return 422
+  if (error instanceof PaymentProviderError && error.code === "WEBHOOK_INVALID") return 401
+  return 500
 }
 
 // Respostas diretas, sem redirecionamento, e sem Referer: a URL do webhook carrega o segredo.
