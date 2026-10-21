@@ -59,6 +59,7 @@ import {
 } from "@/lib/payment-methods/availability"
 import * as Sentry from "@sentry/nextjs"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
+import { cohortForPaidAdhesion } from "@/lib/payments/cohort"
 import type { IBackofficeAdhesionPixPaymentService } from "./IBackofficeAdhesionPixPaymentService"
 import { createBackofficeAdhesionPixPaymentService } from "./backofficeAdhesionPixPaymentComposition"
 import { resolvePixProvider, toAdhesionPixView } from "./backofficeAdhesionPixHelpers"
@@ -2353,6 +2354,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionStartDate,
         subscriptionEndDate,
         subscriptionNextDueDate: subscriptionEndDate,
+        // Conta nova sem cobrança Asaas nasce na coorte do router (PAY-COHORT-R001).
+        paymentCohort: cohortForPaidAdhesion(adhesion),
       })
 
       // Timeline (20 — Assinaturas — Backend E1, C12): primeira assinatura de

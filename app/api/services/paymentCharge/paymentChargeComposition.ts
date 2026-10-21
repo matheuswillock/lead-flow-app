@@ -1,3 +1,5 @@
+import { asaasProfileLookupRepository } from "@/app/api/infra/data/repositories/paymentCharge/AsaasProfileLookupRepository"
+import { AsaasShadowMirror } from "./AsaasShadowMirror"
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
@@ -81,4 +83,12 @@ function createOwnerChargeSource(): OwnerChargeSource {
       return null
     },
   }
+}
+
+export function createAsaasShadowMirror(): AsaasShadowMirror {
+  return new AsaasShadowMirror({
+    ledger: chargeLedger,
+    profiles: asaasProfileLookupRepository,
+    environment: () => (process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"),
+  })
 }

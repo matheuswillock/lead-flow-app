@@ -25,3 +25,10 @@ export function isPaymentCohort(value: unknown): value is PaymentCohort {
 export function isChargePurpose(value: unknown): value is ChargePurpose {
   return typeof value === "string" && (CHARGE_PURPOSES as readonly string[]).includes(value)
 }
+
+/** Dono da cobrança que está pedindo um provider ao router (contexto opcional; não filtra a seleção). */
+export type PaymentOwnerContext = {
+  readonly ownerType: string
+  readonly ownerId: string
+  readonly profileId?: string
+}
