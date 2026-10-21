@@ -15,9 +15,7 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
     gracePayments: billingGracePaymentRepository,
     adhesions: {
       async markPaidFromProvider(adhesionId, input) {
-        const { backofficeAdhesionService } = await import(
-          "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
-        )
+        const { backofficeAdhesionService } = await import("../backofficeAdhesion/BackofficeAdhesionService")
         await backofficeAdhesionService.markPaidFromProvider(adhesionId, input)
       },
     },

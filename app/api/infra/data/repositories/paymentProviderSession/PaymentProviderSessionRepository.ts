@@ -492,7 +492,7 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
           AND a."external_id" IS NOT NULL
           AND s."owner_type" = 'BACKOFFICE_ADHESION'
-          AND p."status" <> 'completed'
+          AND p."status" NOT IN ('completed', 'superseded', 'review')
           AND a."updated_at" >= now() - interval '30 days'
         UNION ALL
         SELECT a."id", a."updated_at"
@@ -526,7 +526,7 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         INNER JOIN "backoffice_adhesion_payments" p ON p."id"::text = s."owner_id"
         WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
           AND s."owner_type" = 'BACKOFFICE_ADHESION'
-          AND p."status" <> 'completed'
+          AND p."status" NOT IN ('completed', 'superseded', 'review')
           AND (
             a."external_id" IS NOT NULL
             OR (a."reconciliation_reference" IS NOT NULL AND a."updated_at" >= now() - interval '7 days')

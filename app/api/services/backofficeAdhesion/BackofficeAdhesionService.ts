@@ -57,6 +57,7 @@ import {
   resolveCardAvailability,
   type BillingType,
 } from "@/lib/payment-methods/availability"
+import * as Sentry from "@sentry/nextjs"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
 import type { IBackofficeAdhesionPixPaymentService } from "./IBackofficeAdhesionPixPaymentService"
 import { createBackofficeAdhesionPixPaymentService } from "./backofficeAdhesionPixPaymentComposition"
@@ -412,6 +413,16 @@ function mapPayment(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesi
   }
 
   return payment
+}
+
+function quoteMatchesAmount(
+  adhesion: { quoteSnapshot: unknown; quoteHash: string | null },
+  amountCents: number
+): boolean {
+  const snapshot = adhesion.quoteSnapshot as { amount?: unknown } | null
+  if (!snapshot || typeof snapshot !== "object" || !adhesion.quoteHash) return false
+  if (hashBillingQuote(snapshot as Record<string, unknown>) !== adhesion.quoteHash) return false
+  return typeof snapshot.amount === "number" && Math.round(snapshot.amount * 100) === amountCents
 }
 
 function tokenError(status: BackofficeAdhesionTokenError["tokenStatus"]): BackofficeAdhesionTokenError {
@@ -893,6 +904,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId: next.closerBackofficeUserId,
       hasUnlimitedUsers: next.hasUnlimitedUsers === true,
     })
+    // A recotação invalida PIX do provider em aberto: pagamento tardio dele não ativa conta
+    // com valor/dados desatualizados (vai para revisão manual).
+    await this.pixPayments.supersedePending(id)
 
     const persisted = shouldResetPaymentData
       ? await this.repo.updateCheckoutData(updated.id, {
@@ -1427,11 +1441,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       amount: amountCents / 100,
       createdAt: new Date().toISOString(),
     }
+    // Os dados do pagador NÃO sobrescrevem a adesão aqui: ficam congelados na linha do pagamento
+    // e só viram a conta depois da confirmação (markPaidFromProvider).
     adhesion = await this.repo.updateCheckoutData(adhesion.id, {
-      fullName: payer.name,
-      phone: payer.cellphone,
-      email: payer.email,
-      cpfCnpj: payer.taxId,
       billingType: "PIX",
       quoteSnapshot,
       quoteHash: hashBillingQuote(quoteSnapshot),
@@ -1498,23 +1510,76 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const adhesion = await this.repo.findById(adhesionId)
     if (!adhesion) throw new Error("Adesão não encontrada")
 
-    if (input.adhesionPaymentId) {
-      await this.pixPayments.markConfirmed({
-        id: input.adhesionPaymentId,
-        providerExternalId: input.providerPaymentId,
-        confirmedAt: input.paidAt,
-      })
+    const payment = await this.pixPayments.findById(input.adhesionPaymentId)
+    if (!payment || payment.adhesionId !== adhesionId) {
+      throw new Error("Pagamento não pertence à adesão")
     }
+    if (payment.status === "completed") return
+
+    const reviewReason = this.findSettlementBlocker(adhesion, payment, input)
+    if (reviewReason) {
+      await this.sendPaymentToManualReview(adhesion, payment, reviewReason)
+      return
+    }
+
+    await this.pixPayments.markConfirmed({
+      id: payment.id,
+      providerExternalId: input.providerPaymentId,
+      confirmedAt: input.paidAt,
+    })
     const paid =
       adhesion.status === "paid"
         ? adhesion
         : await this.repo.updateStatus(adhesionId, "paid", { paidAt: input.paidAt })
+    const withPayer = await this.applyPayerToUnprovisionedAdhesion(paid, payment)
     // Idempotente: com a conta já criada só garante a assinatura; a falha propaga para o
     // webhook/cron tentar de novo (a linha do pagamento só conclui depois do efeito).
-    await this.ensureAccountForPaidAdhesion(paid)
-    if (input.adhesionPaymentId) {
-      await this.pixPayments.markCompleted(input.adhesionPaymentId)
+    await this.ensureAccountForPaidAdhesion(withPayer)
+    await this.pixPayments.markCompleted(payment.id)
+  }
+
+  /** Motivo pelo qual o pagamento confirmado NÃO pode ativar a conta sozinho; null = pode. */
+  private findSettlementBlocker(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment,
+    input: BackofficeAdhesionProviderPaymentInput
+  ): string | null {
+    if (payment.status === "superseded" || payment.status === "review") return `payment_${payment.status}`
+    if (adhesion.status === "canceled") return "adhesion_canceled"
+    if (input.amountInCents == null || input.amountInCents !== payment.amountCents) {
+      return "provider_amount_mismatch"
     }
+    if (!quoteMatchesAmount(adhesion, payment.amountCents)) return "quote_mismatch"
+    return null
+  }
+
+  private async sendPaymentToManualReview(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment,
+    reason: string
+  ): Promise<void> {
+    await this.pixPayments.markNeedsReview(payment.id, reason)
+    const context = { adhesionId: adhesion.id, paymentId: payment.id, reason }
+    console.error("[BackofficeAdhesionService][markPaidFromProvider][manual-review]", context)
+    Sentry.captureMessage("Pagamento de adesão confirmado exige revisão manual", {
+      level: "error",
+      tags: { route: "BackofficeAdhesionService", phase: "manual-review", reason },
+      extra: context,
+    })
+  }
+
+  /** A conta nasce dos dados do pagador da cobrança confirmada, não dos campos mutáveis da adesão. */
+  private async applyPayerToUnprovisionedAdhesion(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment
+  ): Promise<BackofficeAdhesionWithRelations> {
+    if (adhesion.createdProfileId || adhesion.createdSupabaseId) return adhesion
+    return this.repo.updateCheckoutData(adhesion.id, {
+      fullName: payment.payerName,
+      phone: payment.payerCellphone,
+      email: payment.payerEmail,
+      cpfCnpj: payment.payerTaxId,
+    })
   }
 
   private normalizePixPayer(input: BackofficeAdhesionPixCheckoutInput) {

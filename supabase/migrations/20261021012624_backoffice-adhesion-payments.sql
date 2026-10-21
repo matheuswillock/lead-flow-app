@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS "public"."backoffice_adhesion_payments" (
   "provider_attempt_id" UUID,
   "provider_external_id" TEXT,
   "idempotency_key" TEXT NOT NULL,
+  -- Pagador congelado no momento da cobrança: a conta é criada a partir destes dados, nunca dos
+  -- campos mutáveis da adesão. status: pending | confirmed | completed | failed | superseded | review.
+  "payer_name" TEXT NOT NULL,
+  "payer_email" TEXT NOT NULL,
+  "payer_tax_id" TEXT NOT NULL,
+  "payer_cellphone" TEXT NOT NULL,
   "payment_instructions" JSONB,
   "confirmed_at" TIMESTAMPTZ(6),
   "completed_at" TIMESTAMPTZ(6),

@@ -130,6 +130,7 @@ export class PaymentProviderReconciliationService {
           ownerType: input.attempt.ownerType,
           ownerId: input.attempt.ownerId,
           externalId: result.externalId,
+          amountInCents: result.amountInCents,
           paidAt: this.now(),
         })
         purchaseStatus = "paid"

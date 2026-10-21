@@ -6,6 +6,10 @@ export type CreateBackofficeAdhesionPaymentInput = {
   provider: string
   providerEnvironment: string
   idempotencyKey: string
+  payerName: string
+  payerEmail: string
+  payerTaxId: string
+  payerCellphone: string
 }
 
 export interface IBackofficeAdhesionPaymentRepository {
@@ -32,4 +36,11 @@ export interface IBackofficeAdhesionPaymentRepository {
   }): Promise<BackofficeAdhesionPayment | null>
   markCompleted(id: string, now?: Date): Promise<BackofficeAdhesionPayment | null>
   markFailed(id: string, reason: string): Promise<BackofficeAdhesionPayment | null>
+  /** Pagamento que não pode ativar conta sozinho (valor/adesão divergente): revisão manual. */
+  markNeedsReview(id: string, reason: string): Promise<BackofficeAdhesionPayment | null>
+  /**
+   * Invalida os PIX ainda pendentes da adesão (edição, recotação, troca de método): um
+   * pagamento tardio deles não pode mais ativar a conta com valor desatualizado.
+   */
+  supersedePending(adhesionId: string): Promise<number>
 }

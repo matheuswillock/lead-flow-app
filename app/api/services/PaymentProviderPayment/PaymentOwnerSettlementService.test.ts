@@ -27,6 +27,7 @@ describe("PaymentOwnerSettlementService", () => {
       ownerType: "BACKOFFICE_ADHESION",
       ownerId: "pay-1",
       externalId: "pix_1",
+      amountInCents: 29990,
       paidAt: PAID_AT,
     })
 
@@ -35,6 +36,7 @@ describe("PaymentOwnerSettlementService", () => {
       paidAt: PAID_AT,
       providerPaymentId: "pix_1",
       adhesionPaymentId: "pay-1",
+      amountInCents: 29990,
     })
   })
 
@@ -42,7 +44,7 @@ describe("PaymentOwnerSettlementService", () => {
     const { service, markPaidFromProvider } = makeHarness({ adhesionPayment: null })
 
     await expect(
-      service.settleConfirmed({ ownerType: "BACKOFFICE_ADHESION", ownerId: "x", externalId: "pix_1", paidAt: PAID_AT }),
+      service.settleConfirmed({ ownerType: "BACKOFFICE_ADHESION", ownerId: "x", externalId: "pix_1", amountInCents: null, paidAt: PAID_AT }),
     ).rejects.toThrow("Pagamento da adesão não encontrado")
     expect(markPaidFromProvider).not.toHaveBeenCalled()
   })
@@ -50,7 +52,7 @@ describe("PaymentOwnerSettlementService", () => {
   it("BILLING_GRACE_PAYMENT: confirma e restaura o acesso", async () => {
     const { service, markConfirmed, completeAndRestoreAccess } = makeHarness()
 
-    await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", paidAt: PAID_AT })
+    await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT })
 
     expect(markConfirmed).toHaveBeenCalledWith({ id: "grace-1", providerExternalId: "pix_2", confirmedAt: PAID_AT })
     expect(completeAndRestoreAccess).toHaveBeenCalledWith("grace-1")
@@ -59,7 +61,7 @@ describe("PaymentOwnerSettlementService", () => {
   it("BILLING_GRACE_PAYMENT: regularização já concluída é no-op idempotente", async () => {
     const { service, markConfirmed, completeAndRestoreAccess } = makeHarness({ gracePayment: { status: "completed" } })
 
-    const result = await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", paidAt: PAID_AT })
+    const result = await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT })
 
     expect(result).toBe("settled")
     expect(markConfirmed).not.toHaveBeenCalled()
@@ -69,7 +71,7 @@ describe("PaymentOwnerSettlementService", () => {
   it("owner sem efeito de domínio neste serviço devolve unsupported", async () => {
     const { service } = makeHarness()
     expect(
-      await service.settleConfirmed({ ownerType: "PLATFORM_PURCHASE", ownerId: "p", externalId: "e", paidAt: PAID_AT }),
+      await service.settleConfirmed({ ownerType: "PLATFORM_PURCHASE", ownerId: "p", externalId: "e", amountInCents: null, paidAt: PAID_AT }),
     ).toBe("unsupported")
   })
 })

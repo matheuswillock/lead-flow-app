@@ -2238,6 +2238,10 @@ completed completed
     String provider_attempt_id "❓"
     String provider_external_id "❓"
     String idempotency_key 
+    String payer_name 
+    String payer_email 
+    String payer_tax_id 
+    String payer_cellphone 
     Json payment_instructions "❓"
     DateTime confirmed_at "❓"
     DateTime completed_at "❓"

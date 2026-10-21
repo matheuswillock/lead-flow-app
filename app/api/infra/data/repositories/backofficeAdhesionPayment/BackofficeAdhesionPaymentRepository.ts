@@ -83,6 +83,23 @@ export class BackofficeAdhesionPaymentRepository implements IBackofficeAdhesionP
     return this.findById(id)
   }
 
+  async markNeedsReview(id: string, reason: string): Promise<BackofficeAdhesionPayment | null> {
+    const result = await prisma.backofficeAdhesionPayment.updateMany({
+      where: { id, status: { in: ["pending", "confirmed", "failed"] } },
+      data: { status: "review", failureReason: reason },
+    })
+    if (result.count === 0) return null
+    return this.findById(id)
+  }
+
+  async supersedePending(adhesionId: string): Promise<number> {
+    const result = await prisma.backofficeAdhesionPayment.updateMany({
+      where: { adhesionId, status: "pending" },
+      data: { status: "superseded", failureReason: "superseded_by_adhesion_change" },
+    })
+    return result.count
+  }
+
   async markFailed(id: string, reason: string): Promise<BackofficeAdhesionPayment | null> {
     const result = await prisma.backofficeAdhesionPayment.updateMany({
       where: { id, status: { in: ["pending", "confirmed"] } },

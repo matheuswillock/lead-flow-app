@@ -17,6 +17,8 @@ const LEASE_TTL_MS = 60_000
 
 export const PIX_UNAVAILABLE_MESSAGE = "Não foi possível gerar o PIX agora. Tente novamente em instantes."
 export const INCOMPLETE_PAYER_MESSAGE = "Dados do pagador incompletos"
+export const PAYER_MISMATCH_MESSAGE =
+  "Já existe um PIX aguardando pagamento para outro pagador. Aguarde o vencimento ou fale com o suporte."
 export const INVALID_AMOUNT_MESSAGE = "Valor da adesão inválido para PIX"
 
 export type SelectedAdhesionProvider = {
@@ -57,14 +59,18 @@ export class BackofficeAdhesionPixPaymentService implements IBackofficeAdhesionP
     })
     if (replay) return replay
 
-    const reusable = await this.findReusablePending(input.adhesionId, input.amountCents)
-    if (reusable) return reusable
+    const existing = await this.resolveExistingPayment(input)
+    if (existing) return existing
 
     // Seleciona o provider antes de persistir: provider indisponível não deixa linha órfã.
     const selected = await this.dependencies.gateway.select()
     const payment = await this.dependencies.payments.create({
       adhesionId: input.adhesionId,
       amountCents: input.amountCents,
+      payerName: input.payer.name,
+      payerEmail: input.payer.email,
+      payerTaxId: input.payer.taxId,
+      payerCellphone: input.payer.cellphone,
       provider: selected.provider,
       providerEnvironment: selected.environment,
       idempotencyKey: input.idempotencyKey,
@@ -93,10 +99,32 @@ export class BackofficeAdhesionPixPaymentService implements IBackofficeAdhesionP
     return latest !== null && this.isLivePending(latest)
   }
 
-  private async findReusablePending(adhesionId: string, amountCents: number) {
-    const latest = await this.dependencies.payments.findLatestByAdhesion(adhesionId)
-    if (!latest || latest.amountCents !== amountCents) return null
-    return this.isLivePending(latest) ? latest : null
+  /**
+   * Pagamento já existente que deve ser devolvido em vez de abrir outra cobrança: PIX
+   * confirmado/concluído, ou PIX vivo do mesmo valor. PIX vivo de outro pagador é recusado:
+   * sobrescrever o pagador de uma cobrança já emitida mudaria quem recebe a conta.
+   */
+  private async resolveExistingPayment(
+    input: CreateAdhesionPixPaymentInput
+  ): Promise<BackofficeAdhesionPayment | null> {
+    const latest = await this.dependencies.payments.findLatestByAdhesion(input.adhesionId)
+    if (!latest) return null
+    if (latest.status === "confirmed" || latest.status === "completed") return latest
+    if (!this.isLivePending(latest)) return null
+    if (!isSamePayer(latest, input.payer)) throw new Error(PAYER_MISMATCH_MESSAGE)
+    return latest.amountCents === input.amountCents ? latest : null
+  }
+
+  findById(id: string): Promise<BackofficeAdhesionPayment | null> {
+    return this.dependencies.payments.findById(id)
+  }
+
+  supersedePending(adhesionId: string): Promise<number> {
+    return this.dependencies.payments.supersedePending(adhesionId)
+  }
+
+  markNeedsReview(id: string, reason: string): Promise<BackofficeAdhesionPayment | null> {
+    return this.dependencies.payments.markNeedsReview(id, reason)
   }
 
   private isLivePending(payment: BackofficeAdhesionPayment): boolean {
@@ -214,6 +242,13 @@ export class BackofficeAdhesionPixPaymentService implements IBackofficeAdhesionP
       error instanceof Error ? error.message.slice(0, 200) : "provider_error",
     )
   }
+}
+
+function isSamePayer(payment: BackofficeAdhesionPayment, payer: AdhesionPixPayer): boolean {
+  return (
+    payment.payerEmail.trim().toLowerCase() === payer.email.trim().toLowerCase() &&
+    payment.payerTaxId === payer.taxId
+  )
 }
 
 function assertPayerComplete(payer: AdhesionPixPayer): void {

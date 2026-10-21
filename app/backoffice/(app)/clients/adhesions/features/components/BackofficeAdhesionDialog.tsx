@@ -101,6 +101,15 @@ function resolveChargeBillingType(
   return billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
 }
 
+function resolveShowCardOption(input: {
+  availableBillingTypes: BackofficeAdhesionOptions["availableBillingTypes"]
+  mode: "create" | "edit"
+  billingType: BackofficeAdhesionFormValues["billingType"]
+}): boolean {
+  if (input.availableBillingTypes?.includes("CREDIT_CARD")) return true
+  return input.mode === "edit" && input.billingType === "CREDIT_CARD"
+}
+
 const ROLE_LABELS: Record<BackofficeAdhesionAdditionalUser["role"], string> = {
   manager: "Gerente",
   backoffice: "Backoffice",
@@ -315,6 +324,13 @@ export function BackofficeAdhesionDialog({
   const cardTotal = roundCurrency(cardPlanBaseTotal + extrasMonthly * cycleMonths)
   const pixTotal = roundCurrency(pixMonthlyTotal * cycleMonths)
   const chargeBillingType = resolveChargeBillingType(values.billingType)
+  // O cartão só é oferecido quando o servidor o libera; uma adesão que já era cartão mantém a
+  // opção para continuar representável na edição.
+  const showCardOption = resolveShowCardOption({
+    availableBillingTypes: options?.availableBillingTypes,
+    mode,
+    billingType: values.billingType,
+  })
   const chargeTotal = chargeBillingType === "PIX" ? pixTotal : cardTotal
   const baseChargeTotal =
     chargeBillingType === "PIX"
@@ -1287,10 +1303,12 @@ export function BackofficeAdhesionDialog({
                     <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
                     <Label htmlFor="adhesion-billing-pix">PIX</Label>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
-                    <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
-                  </div>
+                  {showCardOption ? (
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
+                      <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
+                    </div>
+                  ) : null}
                   {mode === "edit" ? (
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />

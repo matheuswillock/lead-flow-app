@@ -261,10 +261,18 @@ export class PaymentProviderMaintenanceService {
     for (const attempt of attempts) {
       if (!attempt.externalId) continue
       try {
+        // O valor pago vem da consulta ao provider (a tentativa persistida não guarda o valor).
+        const remote = await this.dependencies
+          .resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment })
+          .getStatus({ externalId: attempt.externalId, method: "PIX" })
+        if (remote.status !== "CONFIRMED") {
+          throw new Error(`Provider não confirma o pagamento (${remote.status})`)
+        }
         await this.owners.settlement.settleConfirmed({
           ownerType: attempt.ownerType,
           ownerId: attempt.ownerId,
           externalId: attempt.externalId,
+          amountInCents: remote.amountInCents,
           paidAt: this.now(),
         })
         ownerSettlementsRepaired += 1

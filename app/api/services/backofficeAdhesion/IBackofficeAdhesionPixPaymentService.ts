@@ -19,6 +19,11 @@ export interface IBackofficeAdhesionPixPaymentService {
   findLatest(adhesionId: string): Promise<BackofficeAdhesionPayment | null>
   /** PIX do provider ainda aguardando pagamento e dentro da validade. */
   hasLivePendingPix(adhesionId: string): Promise<boolean>
+  findById(id: string): Promise<BackofficeAdhesionPayment | null>
+  /** Invalida os PIX pendentes quando a adesão muda (valor/dados) ou troca de método. */
+  supersedePending(adhesionId: string): Promise<number>
+  /** Pagamento confirmado que não pode ativar conta sozinho: fica para revisão manual. */
+  markNeedsReview(id: string, reason: string): Promise<BackofficeAdhesionPayment | null>
   /** Registra a confirmação do provider; idempotente (linha concluída não regride). */
   markConfirmed(input: {
     id: string

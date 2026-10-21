@@ -1,12 +1,14 @@
 import type { IBackofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/IBackofficeAdhesionPaymentRepository"
 import type { IBillingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/IBillingGracePaymentRepository"
-import type { BackofficeAdhesionProviderPaymentInput } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
+import type { BackofficeAdhesionProviderPaymentInput } from "../backofficeAdhesion/IBackofficeAdhesionService"
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
 
 export type OwnerSettlementInput = {
   readonly ownerType: string
   readonly ownerId: string
   readonly externalId: string
+  /** Valor confirmado pelo provider (webhook/consulta), em centavos; null = não informado. */
+  readonly amountInCents: number | null
   readonly paidAt: Date
 }
 
@@ -55,6 +57,7 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
       paidAt: input.paidAt,
       providerPaymentId: input.externalId,
       adhesionPaymentId: payment.id,
+      amountInCents: input.amountInCents,
     })
   }
 

@@ -2,6 +2,7 @@ import type {
   PublicAdhesionCheckoutInput,
   PublicAdhesionDetails,
   PublicAdhesionPayment,
+  PublicAdhesionPixInput,
 } from "../context/PublicAdhesionTypes"
 
 export interface IPublicAdhesionService {
@@ -10,6 +11,8 @@ export interface IPublicAdhesionService {
     token: string,
     input: PublicAdhesionCheckoutInput
   ): Promise<PublicAdhesionPayment>
+  /** PIX cobrado pelo provider de pagamento (Abacate). */
+  createPixCheckout(token: string, input: PublicAdhesionPixInput): Promise<PublicAdhesionPayment>
   getPaymentStatus(
     token: string,
     options?: { sync?: boolean }

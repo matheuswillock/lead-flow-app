@@ -181,6 +181,7 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BACKOFFICE_AD
       expect.objectContaining({
         providerPaymentId: "pix_char_prod_1",
         adhesionPaymentId: "adhesion-payment-1",
+        amountInCents: 6990,
         paidAt: expect.any(Date),
       }),
     )

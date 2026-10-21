@@ -75,6 +75,7 @@ function makeOwnerMaintenance(input: {
   confirmed?: StoredPaymentProviderAttemptRecord[]
   unknown?: StoredPaymentProviderAttemptRecord[]
   settle?: (input: { ownerType: string; ownerId: string; externalId: string }) => Promise<"settled" | "unsupported">
+  remoteStatus?: "CONFIRMED" | "REFUNDED"
   reconcile?: () => Promise<{ requiresReconciliation?: true }>
 }) {
   const settleConfirmed = mock(input.settle ?? (async () => "settled" as const))
@@ -90,9 +91,13 @@ function makeOwnerMaintenance(input: {
     purchases: { findById: async () => null, markPaidOnceForProvider: mock(async () => null) },
     reconciliation: { reconcile: reconcile as never },
     resolveQueryProvider: () => ({
-      getStatus: async () => {
-        throw new Error("não deveria consultar")
-      },
+      getStatus: async () => ({
+        status: input.remoteStatus ?? ("CONFIRMED" as const),
+        externalId: "pix",
+        method: "PIX" as const,
+        amountInCents: 29990,
+        currency: "BRL" as const,
+      }),
     }),
     applyEmailCredits: async () => ({ handled: false, applied: false, alreadyApplied: false }),
     now: () => new Date("2026-10-21T12:00:00.000Z"),
@@ -151,6 +156,17 @@ describe("PaymentProviderMaintenanceService — owners sem compra (adesão e reg
 
     expect(settleConfirmed).toHaveBeenCalledTimes(2)
     expect(result.ownerSettlementsRepaired).toBe(1)
+    expect(result.ownerSettlementFailures).toBe(1)
+  })
+
+  it("usa o valor confirmado pelo provider no reparo e recusa quando o provider não confirma", async () => {
+    const ok = makeOwnerMaintenance({ confirmed: [adhesionAttempt] })
+    await ok.service.run()
+    expect(ok.settleConfirmed).toHaveBeenCalledWith(expect.objectContaining({ amountInCents: 29990 }))
+
+    const refunded = makeOwnerMaintenance({ confirmed: [adhesionAttempt], remoteStatus: "REFUNDED" })
+    const result = await refunded.service.run()
+    expect(refunded.settleConfirmed).not.toHaveBeenCalled()
     expect(result.ownerSettlementFailures).toBe(1)
   })
 

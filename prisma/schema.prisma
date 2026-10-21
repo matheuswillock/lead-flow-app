@@ -2039,6 +2039,10 @@ model BackofficeAdhesionPayment {
   providerAttemptId   String?   @map("provider_attempt_id") @db.Uuid
   providerExternalId  String?   @map("provider_external_id") @db.Text
   idempotencyKey      String    @map("idempotency_key") @db.Text
+  payerName           String    @map("payer_name") @db.Text
+  payerEmail          String    @map("payer_email") @db.Text
+  payerTaxId          String    @map("payer_tax_id") @db.Text
+  payerCellphone      String    @map("payer_cellphone") @db.Text
   paymentInstructions Json?     @map("payment_instructions")
   confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz(6)
   completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)

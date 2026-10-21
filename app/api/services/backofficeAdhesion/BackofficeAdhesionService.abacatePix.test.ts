@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
 import type { BackofficeAdhesionWithRelations } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 
+import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
+
+const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
+mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
+
 const actualTokenValidation = await import("@/lib/backoffice-adhesions/adhesion-token-validation")
 let tokenValidation: { status: string; adhesionId: string | null; adhesionStatus: string | null } = {
   status: "valid",
@@ -16,6 +21,7 @@ mock.module("@/lib/backoffice-adhesions/adhesion-token-validation", () => ({
 const { BackofficeAdhesionService, PIX_PENDING_SWITCH_BLOCKED_MESSAGE } = await import("./BackofficeAdhesionService")
 
 const NOW = new Date("2026-10-21T12:00:00.000Z")
+const QUOTE = { adhesionId: "adhesion-1", billingType: "PIX", amount: 299.9, createdAt: "2026-10-21T11:59:00.000Z" } as Record<string, unknown>
 const payerInput = { fullName: "Maria Souza", email: "Maria@Example.com", phone: "(11) 99999-9999", cpfCnpj: "123.456.789-09" }
 
 function buildAdhesion(overrides: Record<string, unknown> = {}): BackofficeAdhesionWithRelations {
@@ -46,6 +52,8 @@ function buildAdhesion(overrides: Record<string, unknown> = {}): BackofficeAdhes
     createdAt: NOW,
     expiresAt: new Date("2026-10-22T12:00:00.000Z"),
     paidAt: null,
+    quoteSnapshot: QUOTE,
+    quoteHash: hashBillingQuote(QUOTE),
     ...overrides,
   } as unknown as BackofficeAdhesionWithRelations
 }
@@ -62,6 +70,10 @@ function buildPayment(overrides: Partial<BackofficeAdhesionPayment> = {}): Backo
     providerAttemptId: "a-1",
     providerExternalId: "pix_1",
     idempotencyKey: "k",
+    payerName: "Maria Souza",
+    payerEmail: "maria@example.com",
+    payerTaxId: "12345678909",
+    payerCellphone: "11999999999",
     paymentInstructions: { brCode: "000201", brCodeBase64: "AAA", expiresAt: "2026-10-21T12:30:00.000Z" },
     confirmedAt: null,
     completedAt: null,
@@ -101,6 +113,9 @@ function makeHarness(adhesion: BackofficeAdhesionWithRelations) {
     hasLivePendingPix: mock(async () => false),
     markConfirmed: mock(async (_input: unknown) => null),
     markCompleted: mock(async (_id: string) => null),
+    findById: mock(async (_id: string): Promise<BackofficeAdhesionPayment | null> => buildPayment()),
+    supersedePending: mock(async (_adhesionId: string) => 0),
+    markNeedsReview: mock(async (_id: string, _reason: string) => null),
   }
   const service = new BackofficeAdhesionService(
     repo as never,
@@ -118,13 +133,14 @@ function makeHarness(adhesion: BackofficeAdhesionWithRelations) {
     return state.adhesion
   })
   ;(service as unknown as { cancelExistingCheckoutPayments: unknown }).cancelExistingCheckoutPayments = cancelExisting
-  return { service, repo, pixPayments, providerPayments: pixPayments, ensureAccount, cancelExisting, state }
+  return { service, repo, productRepo, pixPayments, providerPayments: pixPayments, ensureAccount, cancelExisting, state }
 }
 
 const ENV_KEYS = ["PAYMENT_PROVIDER_ENVIRONMENT", "ABACATE_PAY_PRODUCTION_PUBLIC_KEY", "ABACATE_PAY_PUBLIC_KEY", "CARD_PAYMENTS_ENABLED"] as const
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
+  captureMessage.mockClear()
   for (const key of ENV_KEYS) {
     saved[key] = process.env[key]
     delete process.env[key]
@@ -151,10 +167,10 @@ describe("BackofficeAdhesionService.createPixCheckout (Abacate)", () => {
       payer: { name: "Maria Souza", email: "maria@example.com", cellphone: "11999999999", taxId: "12345678909" },
       idempotencyKey: "idem-1",
     })
-    expect(h.repo.updateCheckoutData).toHaveBeenCalledWith(
-      "adhesion-1",
-      expect.objectContaining({ email: "maria@example.com", cpfCnpj: "12345678909", billingType: "PIX", quoteHash: expect.any(String) }),
-    )
+    // O pagador fica na linha do pagamento; a adesão não é sobrescrita antes da confirmação.
+    const checkoutData = h.repo.updateCheckoutData.mock.calls[0][1]
+    expect(checkoutData).toMatchObject({ billingType: "PIX", quoteHash: expect.any(String) })
+    for (const field of ["fullName", "phone", "email", "cpfCnpj"]) expect(checkoutData).not.toHaveProperty(field)
     expect(result).toMatchObject({
       provider: "ABACATE_PAY",
       billingType: "PIX",
@@ -260,18 +276,31 @@ describe("BackofficeAdhesionService.getPaymentStatus (Abacate)", () => {
 
 describe("BackofficeAdhesionService.markPaidFromProvider", () => {
   const paidAt = new Date("2026-10-21T12:10:00.000Z")
+  const settle = { paidAt, providerPaymentId: "pix_1", adhesionPaymentId: "pay-1", amountInCents: 29990 }
 
   it("marca a adesão como paga, cria a conta e conclui o pagamento nessa ordem", async () => {
     const h = makeHarness(buildAdhesion({ email: "maria@example.com" }))
 
-    await h.service.markPaidFromProvider("adhesion-1", { paidAt, providerPaymentId: "pix_1", adhesionPaymentId: "pay-1" })
+    await h.service.markPaidFromProvider("adhesion-1", settle)
 
     expect(h.repo.updateStatus).toHaveBeenCalledWith("adhesion-1", "paid", { paidAt })
     expect(h.ensureAccount).toHaveBeenCalledTimes(1)
-    expect(h.providerPayments.markConfirmed).toHaveBeenCalledWith({ id: "pay-1", providerExternalId: "pix_1", confirmedAt: paidAt })
-    expect(h.providerPayments.markCompleted).toHaveBeenCalledWith("pay-1")
+    expect(h.pixPayments.markConfirmed).toHaveBeenCalledWith({ id: "pay-1", providerExternalId: "pix_1", confirmedAt: paidAt })
+    expect(h.pixPayments.markCompleted).toHaveBeenCalledWith("pay-1")
     expect(h.repo.updateStatus.mock.invocationCallOrder[0]).toBeLessThan(h.ensureAccount.mock.invocationCallOrder[0])
-    expect(h.ensureAccount.mock.invocationCallOrder[0]).toBeLessThan(h.providerPayments.markCompleted.mock.invocationCallOrder[0])
+    expect(h.ensureAccount.mock.invocationCallOrder[0]).toBeLessThan(h.pixPayments.markCompleted.mock.invocationCallOrder[0])
+  })
+
+  it("cria a conta com os dados do pagador da cobrança confirmada, não os da adesão", async () => {
+    const h = makeHarness(buildAdhesion({ email: "editado@outro.com", fullName: "Nome Editado" }))
+
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+
+    expect(h.repo.updateCheckoutData).toHaveBeenCalledWith(
+      "adhesion-1",
+      expect.objectContaining({ email: "maria@example.com", fullName: "Maria Souza", cpfCnpj: "12345678909", phone: "11999999999" }),
+    )
+    expect((h.ensureAccount.mock.calls[0][0] as { email: string }).email).toBe("maria@example.com")
   })
 
   it("falha ao criar a conta deixa o pagamento confirmado (não concluído) para o cron reparar", async () => {
@@ -280,28 +309,90 @@ describe("BackofficeAdhesionService.markPaidFromProvider", () => {
       throw new Error("Supabase Admin indisponível")
     })
 
-    await expect(
-      h.service.markPaidFromProvider("adhesion-1", { paidAt, providerPaymentId: "pix_1", adhesionPaymentId: "pay-1" }),
-    ).rejects.toThrow("Supabase Admin indisponível")
-    expect(h.providerPayments.markConfirmed).toHaveBeenCalled()
-    expect(h.providerPayments.markCompleted).not.toHaveBeenCalled()
+    await expect(h.service.markPaidFromProvider("adhesion-1", settle)).rejects.toThrow("Supabase Admin indisponível")
+    expect(h.pixPayments.markConfirmed).toHaveBeenCalled()
+    expect(h.pixPayments.markCompleted).not.toHaveBeenCalled()
   })
 
   it("é idempotente: adesão já paga não regrava o status e a conta é garantida de novo", async () => {
     const h = makeHarness(buildAdhesion({ status: "paid", paidAt }))
 
-    await h.service.markPaidFromProvider("adhesion-1", { paidAt, providerPaymentId: "pix_1", adhesionPaymentId: "pay-1" })
-    await h.service.markPaidFromProvider("adhesion-1", { paidAt, providerPaymentId: "pix_1", adhesionPaymentId: "pay-1" })
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+    await h.service.markPaidFromProvider("adhesion-1", settle)
 
     expect(h.repo.updateStatus).not.toHaveBeenCalled()
     expect(h.ensureAccount).toHaveBeenCalledTimes(2)
+  })
+
+  it("pagamento já concluído é no-op", async () => {
+    const h = makeHarness(buildAdhesion({ status: "paid" }))
+    h.pixPayments.findById.mockImplementation(async () => buildPayment({ status: "completed" }))
+
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+
+    expect(h.ensureAccount).not.toHaveBeenCalled()
+    expect(h.pixPayments.markNeedsReview).not.toHaveBeenCalled()
   })
 
   it("adesão inexistente falha em vez de ser ignorada", async () => {
     const h = makeHarness(buildAdhesion())
     h.repo.findById.mockImplementation(async () => null as never)
 
-    await expect(h.service.markPaidFromProvider("x", { paidAt, providerPaymentId: "p" })).rejects.toThrow("Adesão não encontrada")
+    await expect(h.service.markPaidFromProvider("x", settle)).rejects.toThrow("Adesão não encontrada")
+  })
+
+  it("(a) recusa pagamento que pertence a outra adesão", async () => {
+    const h = makeHarness(buildAdhesion())
+    h.pixPayments.findById.mockImplementation(async () => buildPayment({ adhesionId: "adhesion-OUTRA" }))
+
+    await expect(h.service.markPaidFromProvider("adhesion-1", settle)).rejects.toThrow("não pertence")
+    expect(h.repo.updateStatus).not.toHaveBeenCalled()
+    expect(h.ensureAccount).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["(b) valor do provider diferente do cobrado", { amountInCents: 100 }, {}, "provider_amount_mismatch"],
+    ["(b) provider sem valor informado", { amountInCents: null }, {}, "provider_amount_mismatch"],
+    ["(c) quote com hash adulterado", {}, { quoteHash: "adulterado" }, "quote_mismatch"],
+    ["(c) quote com valor diferente do pagamento", {}, { quoteSnapshot: { ...QUOTE, amount: 10 }, quoteHash: hashBillingQuote({ ...QUOTE, amount: 10 }) }, "quote_mismatch"],
+    ["(c) adesão sem quote", {}, { quoteSnapshot: null, quoteHash: null }, "quote_mismatch"],
+    ["(d) adesão cancelada", {}, { status: "canceled" }, "adhesion_canceled"],
+  ])("%s vai para revisão manual sem pagar nem criar conta", async (_label, inputOverride, adhesionOverride, reason) => {
+    const h = makeHarness(buildAdhesion(adhesionOverride))
+
+    await h.service.markPaidFromProvider("adhesion-1", { ...settle, ...inputOverride })
+
+    expect(h.pixPayments.markNeedsReview).toHaveBeenCalledWith("pay-1", reason)
+    expect(h.repo.updateStatus).not.toHaveBeenCalled()
+    expect(h.ensureAccount).not.toHaveBeenCalled()
+    expect(h.pixPayments.markCompleted).not.toHaveBeenCalled()
+    expect(captureMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it("(e) pagamento tardio de PIX substituído vai para revisão manual", async () => {
+    const h = makeHarness(buildAdhesion())
+    h.pixPayments.findById.mockImplementation(async () => buildPayment({ status: "superseded" }))
+
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+
+    expect(h.pixPayments.markNeedsReview).toHaveBeenCalledWith("pay-1", "payment_superseded")
+    expect(h.ensureAccount).not.toHaveBeenCalled()
+  })
+
+  it("(e) editar a adesão substitui os PIX pendentes do provider", async () => {
+    const h = makeHarness(buildAdhesion({ leadId: "lead-1", hasUnlimitedUsers: false }))
+    ;(h.service as unknown as { resolvePrices: unknown }).resolvePrices = async () => ({
+      baseMonthlyPrice: 299.9,
+      extraTeamPrice: 50,
+      extraUserPrice: 30,
+    })
+    h.productRepo.findDefaultByFeatureSlugWithPaymentRules.mockImplementation(
+      async () => ({ id: "prod-1", isActive: true, paymentRules: [] }) as never,
+    )
+
+    await h.service.update("adhesion-1", { fullName: "Novo Nome", extraUsers: 2 })
+
+    expect(h.pixPayments.supersedePending).toHaveBeenCalledWith("adhesion-1")
   })
 })
 

@@ -61,6 +61,12 @@ function createHarness(options: { selectFails?: boolean; createPixFails?: boolea
     async markCompleted() {
       return null
     },
+    async markNeedsReview() {
+      return null
+    },
+    async supersedePending() {
+      return 0
+    },
     async markFailed(id, reason) {
       const row = rows.find((item) => item.id === id)!
       Object.assign(row, { status: "failed", failureReason: reason })
@@ -227,5 +233,45 @@ describe("BackofficeAdhesionPixPaymentService.createPixPayment", () => {
       failing.service.createPixPayment({ adhesionId: "adh-1", amountCents: 29900, payer, idempotencyKey: "k" }),
     ).rejects.toThrow("rejeitado")
     expect(failing.rows[0].status).toBe("failed")
+  })
+
+  it("congela o pagador na linha do pagamento", async () => {
+    const payment = await harness.service.createPixPayment({ adhesionId: "adh-1", amountCents: 29900, payer, idempotencyKey: "k" })
+
+    expect(payment).toMatchObject({
+      payerName: payer.name,
+      payerEmail: payer.email,
+      payerTaxId: payer.taxId,
+      payerCellphone: payer.cellphone,
+    })
+  })
+
+  it("recusa outro pagador enquanto há PIX vivo em vez de sobrescrever", async () => {
+    await harness.service.createPixPayment({ adhesionId: "adh-1", amountCents: 29900, payer, idempotencyKey: "a" })
+
+    await expect(
+      harness.service.createPixPayment({
+        adhesionId: "adh-1",
+        amountCents: 29900,
+        payer: { ...payer, email: "outra@example.com", taxId: "98765432100" },
+        idempotencyKey: "b",
+      }),
+    ).rejects.toThrow("outro pagador")
+    expect(harness.calls.createPix).toHaveLength(1)
+  })
+
+  it("devolve o pagamento já confirmado em vez de abrir nova cobrança", async () => {
+    const first = await harness.service.createPixPayment({ adhesionId: "adh-1", amountCents: 29900, payer, idempotencyKey: "a" })
+    harness.rows[0].status = "confirmed"
+
+    const again = await harness.service.createPixPayment({
+      adhesionId: "adh-1",
+      amountCents: 29900,
+      payer: { ...payer, taxId: "98765432100" },
+      idempotencyKey: "b",
+    })
+
+    expect(again.id).toBe(first.id)
+    expect(harness.calls.createPix).toHaveLength(1)
   })
 })

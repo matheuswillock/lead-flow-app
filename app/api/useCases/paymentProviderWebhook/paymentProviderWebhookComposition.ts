@@ -107,6 +107,7 @@ export async function createPaymentProviderWebhookService() {
           ownerType: attempt.ownerType,
           ownerId: attempt.ownerId,
           externalId: event.externalPaymentId!,
+          amountInCents: event.amountInCents,
           paidAt: new Date(),
         })
         // Pagamento confirmado sem efeito de domínio conhecido não pode passar em silêncio.

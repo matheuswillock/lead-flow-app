@@ -18,8 +18,10 @@ export interface BackofficeAdhesionPixCheckoutInput {
 export interface BackofficeAdhesionProviderPaymentInput {
   paidAt: Date
   providerPaymentId: string
-  /** Linha de backoffice_adhesion_payments confirmada, quando já resolvida. */
-  adhesionPaymentId?: string
+  /** Linha de backoffice_adhesion_payments que o provider confirmou. */
+  adhesionPaymentId: string
+  /** Valor confirmado pelo provider, em centavos (webhook/consulta); null = não informado. */
+  amountInCents: number | null
 }
 
 export interface BackofficeAdhesionAdditionalUser {

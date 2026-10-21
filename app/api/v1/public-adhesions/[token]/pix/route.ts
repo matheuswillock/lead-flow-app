@@ -2,10 +2,15 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 import { consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit"
-import { getClientIpFromRequest } from "@/lib/http/get-client-ip"
+import { getTrustedClientIp } from "@/lib/http/get-trusted-client-ip"
+import { hashBackofficeAdhesionToken } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
-const RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 }
+const IP_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 }
+// Um token não pode gerar cobranças ilimitadas, de qualquer IP.
+const TOKEN_RATE_LIMIT = { limit: 10, windowMs: 10 * 60_000 }
+// IP não confiável (cabeçalho forjável) cai num balde compartilhado: falha fechada.
+const UNTRUSTED_IP_BUCKET = "untrusted-shared"
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : ""
@@ -20,14 +25,19 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    const rateLimit = await consumeBillingRateLimit(
-      `public-adhesion-pix:${getClientIpFromRequest(request)}`,
-      RATE_LIMIT
-    )
-    if (!rateLimit.allowed) {
+    const { token } = await params
+    const clientIp = getTrustedClientIp(request.headers) ?? UNTRUSTED_IP_BUCKET
+    const ipLimit = await consumeBillingRateLimit(`public-adhesion-pix:${clientIp}`, IP_RATE_LIMIT)
+    const tokenLimit = ipLimit.allowed
+      ? await consumeBillingRateLimit(
+          `public-adhesion-pix-token:${hashBackofficeAdhesionToken(token)}`,
+          TOKEN_RATE_LIMIT
+        )
+      : ipLimit
+    if (!tokenLimit.allowed) {
       return NextResponse.json(
         new Output(false, [], ["Muitas tentativas. Aguarde alguns minutos e tente novamente."], null),
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+        { status: 429, headers: { "Retry-After": String(tokenLimit.retryAfterSeconds) } }
       )
     }
 
@@ -36,7 +46,6 @@ export async function POST(
       return NextResponse.json(new Output(false, [], ["Payload inválido"], null), { status: 400 })
     }
 
-    const { token } = await params
     const data = body as Record<string, unknown>
     const output = await backofficeAdhesionUseCase.createPixCheckout(
       token,

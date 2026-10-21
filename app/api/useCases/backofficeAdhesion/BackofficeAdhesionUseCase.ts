@@ -11,6 +11,7 @@ import {
 import {
   INCOMPLETE_PAYER_MESSAGE,
   INVALID_AMOUNT_MESSAGE,
+  PAYER_MISMATCH_MESSAGE,
   PIX_UNAVAILABLE_MESSAGE,
 } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionPixPaymentService"
 import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
@@ -139,6 +140,7 @@ const KNOWN_SAFE_PIX_CHECKOUT_ERROR_MESSAGES = new Set([
   PIX_UNAVAILABLE_MESSAGE,
   INCOMPLETE_PAYER_MESSAGE,
   INVALID_AMOUNT_MESSAGE,
+  PAYER_MISMATCH_MESSAGE,
 ])
 
 function isKnownSafePixCheckoutError(error: unknown): boolean {
