@@ -1,4 +1,4 @@
-import { paymentProviderAlerter } from "@/app/api/services/paymentProviderAlert/paymentProviderAlerter"
+import { paymentProviderAlerter } from "@/app/api/useCases/paymentProviderAlert/paymentProviderAlerter"
 import { PaymentProviderError } from "@/lib/payment-provider/errors"
 import type { OperationalAlerter } from "@/lib/payment-provider/operational-alerts"
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"

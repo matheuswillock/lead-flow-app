@@ -4,7 +4,7 @@ import {
   type PaymentProviderMaintenanceResult,
 } from "@/app/api/services/PaymentProviderPayment/PaymentProviderMaintenanceService"
 import { paymentProviderEventInboxRepository } from "@/app/api/infra/data/repositories/paymentProviderEvent/PaymentProviderEventInboxRepository"
-import { PaymentProviderInboxMonitor } from "@/app/api/services/paymentProviderAlert/PaymentProviderInboxMonitor"
+import { PaymentProviderInboxMonitor } from "@/app/api/useCases/paymentProviderAlert/PaymentProviderInboxMonitor"
 
 const DEFAULT_BATCH_SIZE = 50
 const MAX_BATCH_SIZE = 500

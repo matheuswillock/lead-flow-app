@@ -1,4 +1,4 @@
-import { paymentProviderAlerter } from "@/app/api/services/paymentProviderAlert/paymentProviderAlerter"
+import { paymentProviderAlerter } from "@/app/api/useCases/paymentProviderAlert/paymentProviderAlerter"
 import type { ApplyEmailCreditsPaidPurchaseResult } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
 import type { OperationalAlerter } from "@/lib/payment-provider/operational-alerts"
 

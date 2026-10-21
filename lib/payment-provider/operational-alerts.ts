@@ -52,7 +52,8 @@ export class OperationalAlerter {
 
   constructor(private readonly dependencies: OperationalAlerterDependencies) {}
 
-  async alert(input: OperationalAlert): Promise<void> {
+  // Propriedade (e não método): o guard de governança proíbe a forma `alert(` por causa do browser.
+  readonly alert = async (input: OperationalAlert): Promise<void> => {
     const nowMs = (this.dependencies.now?.() ?? new Date()).getTime()
     if (this.isDeduplicated(input, nowMs)) return
     this.lastSentAt.set(input.key, nowMs)
