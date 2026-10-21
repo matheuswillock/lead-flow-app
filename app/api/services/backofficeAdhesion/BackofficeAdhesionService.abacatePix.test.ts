@@ -455,3 +455,83 @@ describe("BackofficeAdhesionService — cartão e preset", () => {
     await expect(h.service.update("adhesion-1", { billingType: "CREDIT_CARD" })).rejects.toThrow("cartão")
   })
 })
+
+describe("BackofficeAdhesionService.createCheckout — guarda do Asaas no servidor (PAY-HARD-T014)", () => {
+  const fullInput = {
+    ...payerInput,
+    postalCode: "01310-100",
+    address: "Av. Paulista",
+    addressNumber: "1000",
+    neighborhood: "Bela Vista",
+    city: "São Paulo",
+    state: "SP",
+  }
+  const ASAAS_STAGE = "chegou ao Asaas"
+
+  function spyOnAsaas(h: ReturnType<typeof makeHarness>) {
+    const ensureAsaasCustomer = mock(async () => {
+      throw new Error(ASAAS_STAGE)
+    })
+    const createAsaasPayment = mock(async () => {
+      throw new Error(ASAAS_STAGE)
+    })
+    ;(h.service as unknown as { ensureAsaasCustomer: unknown }).ensureAsaasCustomer = ensureAsaasCustomer
+    ;(h.service as unknown as { createAsaasPayment: unknown }).createAsaasPayment = createAsaasPayment
+    return { ensureAsaasCustomer, createAsaasPayment }
+  }
+
+  it("PIX de adesão que deve seguir o Abacate é recusado sem criar cobrança nem cliente no Asaas", async () => {
+    const h = makeHarness(buildAdhesion())
+    const asaas = spyOnAsaas(h)
+
+    await expect(h.service.createCheckout("tok", { ...fullInput, billingType: "PIX" } as never)).rejects.toThrow(
+      "checkout PIX",
+    )
+
+    expect(asaas.ensureAsaasCustomer).not.toHaveBeenCalled()
+    expect(asaas.createAsaasPayment).not.toHaveBeenCalled()
+    expect(h.cancelExisting).not.toHaveBeenCalled()
+  })
+
+  it("PIX sem billingType explícito também cai na guarda", async () => {
+    const h = makeHarness(buildAdhesion())
+    const asaas = spyOnAsaas(h)
+
+    await expect(h.service.createCheckout("tok", fullInput as never)).rejects.toThrow("checkout PIX")
+    expect(asaas.createAsaasPayment).not.toHaveBeenCalled()
+  })
+
+  it("cartão com oferta indisponível é recusado sem tocar no Asaas", async () => {
+    const h = makeHarness(buildAdhesion())
+    const asaas = spyOnAsaas(h)
+
+    await expect(
+      h.service.createCheckout("tok", { ...fullInput, billingType: "CREDIT_CARD" } as never),
+    ).rejects.toThrow("cartão")
+    expect(asaas.ensureAsaasCustomer).not.toHaveBeenCalled()
+    expect(asaas.createAsaasPayment).not.toHaveBeenCalled()
+  })
+
+  it("adesão com parcela Asaas pendente continua chegando ao Asaas", async () => {
+    const ledger = [
+      { index: 0, amount: 299.9, paymentSource: "ASAAS", status: "pending", asaasPaymentId: null, paidAt: null },
+    ]
+    const h = makeHarness(buildAdhesion({ installmentLedger: ledger }))
+    const asaas = spyOnAsaas(h)
+
+    await expect(h.service.createCheckout("tok", { ...fullInput, billingType: "PIX" } as never)).rejects.toThrow(
+      ASAAS_STAGE,
+    )
+    expect(asaas.ensureAsaasCustomer).toHaveBeenCalledTimes(1)
+  })
+
+  it("PIX Asaas legado já gerado para a mesma adesão continua sendo devolvido, sem nova cobrança", async () => {
+    const h = makeHarness(buildAdhesion({ asaasPaymentId: "pay_legacy", billingType: "PIX" }))
+    const asaas = spyOnAsaas(h)
+
+    await expect(h.service.createCheckout("tok", { ...fullInput, billingType: "PIX" } as never)).resolves.toMatchObject({
+      paymentId: "pay_legacy",
+    })
+    expect(asaas.createAsaasPayment).not.toHaveBeenCalled()
+  })
+})
