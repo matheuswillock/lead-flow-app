@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import type { EmailCreditPlan } from "@prisma/client"
 import { Output } from "@/lib/output"
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard"
 import { isManagerLikeRole } from "@/lib/roles"
 import { parseEmailCreditsPlanFromProductSlug } from "@/lib/email/email-credit-plans"
 import type { AuthenticatedSupabaseIdResult } from "@/app/api/v1/utils/getAuthenticatedSupabaseId"
@@ -51,7 +52,7 @@ export async function handleCreatePlatformCheckout(request: NextRequest, deps: P
   }
 
   const output = await deps.subscribeEmailCredits(plan, teamAccess.access, body.billingType)
-  return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  return NextResponse.json(output, { status: output.isValid ? 200 : failedOutputStatus(output) })
 }
 
 export async function handleGetPlatformCheckout(
