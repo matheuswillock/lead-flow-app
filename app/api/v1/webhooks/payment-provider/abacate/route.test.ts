@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
+import { credentialCache } from "@/lib/payment-provider/credential-cache"
 // --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
 const listConfigs = mock(async (_environment: string) => [
@@ -103,6 +104,8 @@ const ENV_KEYS = [
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
+  // O resolver guarda as credenciais por 30 s; sem limpar, o ambiente alterado abaixo não é relido.
+  credentialCache.invalidateAll()
   for (const key of ENV_KEYS) {
     saved[key] = process.env[key]
     delete process.env[key]
