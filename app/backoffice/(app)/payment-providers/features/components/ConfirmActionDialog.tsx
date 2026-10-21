@@ -25,7 +25,7 @@ interface Props {
 }
 
 export function ConfirmActionDialog({ pending, isBusy, onClose }: Props) {
-  async function confirm() {
+  async function runPendingAction() {
     if (!pending || isBusy) return
     await pending.run()
     onClose()
@@ -40,7 +40,7 @@ export function ConfirmActionDialog({ pending, isBusy, onClose }: Props) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isBusy}>Cancelar</AlertDialogCancel>
-          <Button type="button" onClick={confirm} disabled={isBusy}>
+          <Button type="button" onClick={runPendingAction} disabled={isBusy}>
             {pending?.confirmLabel}
           </Button>
         </AlertDialogFooter>

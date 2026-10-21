@@ -40,7 +40,7 @@ export function CreateProviderInstanceDialog({ open, onOpenChange }: Props) {
     providerKey !== "" && accountContext.trim() !== "" && displayName.trim() !== "" && !isCreating
 
   async function submit() {
-    if (!canSubmit || providerKey === "") return
+    if (!canSubmit || !providerKey) return
     const created = await createInstance({
       providerKey,
       environment,
