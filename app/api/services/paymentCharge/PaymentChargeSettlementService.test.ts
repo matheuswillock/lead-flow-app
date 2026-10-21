@@ -116,7 +116,7 @@ describe("registro de handlers por finalidade", () => {
   })
 
   it("SUBSCRIPTION_RENEWAL, ADD_*, CREDITS, CHANGE_ORDER e BACKOFFICE_CHARGE ficam não implementados nesta rodada", () => {
-    expect([...UNIMPLEMENTED_SETTLEMENT_PURPOSES].sort()).toEqual(
+    expect([...(UNIMPLEMENTED_SETTLEMENT_PURPOSES as readonly string[])].sort()).toEqual(
       ["ADD_TEAM", "ADD_USER", "BACKOFFICE_CHARGE", "CHANGE_ORDER", "CREDITS", "SUBSCRIPTION_RENEWAL"].sort(),
     )
   })
