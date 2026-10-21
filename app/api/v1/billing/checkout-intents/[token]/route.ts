@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { billingCheckoutIntentUseCase } from "@/app/api/useCases/billingCheckoutIntent/BillingCheckoutIntentUseCase"
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
+import { paymentMethodUnavailableOutput } from "@/lib/payment-methods/route-guard"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 export async function GET(
@@ -31,6 +33,13 @@ export async function POST(
     return NextResponse.json(output, { status: result?.reused ? 200 : 201 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
+    if (error instanceof PaymentMethodUnavailableError) {
+      // Mantém `error` (contrato atual desta rota) e acrescenta o Output padrão.
+      return NextResponse.json(
+        { error: error.message, ...paymentMethodUnavailableOutput(error) },
+        { status: error.status },
+      )
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível criar o checkout" }, { status: 400 })
   }
 }

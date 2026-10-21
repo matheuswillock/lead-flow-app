@@ -17846,6 +17846,27 @@
           "response": []
         },
         {
+          "name": "GET Payment Methods Availability (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payment-methods/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payment-methods",
+                "availability"
+              ]
+            },
+            "description": "Público. Retorna { card, reason, availableBillingTypes } (['PIX'] ou ['PIX','CREDIT_CARD']). Cache-Control curto (30s). CREDIT_CARD em rotas de checkout com cartão desligado responde 422 PAYMENT_METHOD_UNAVAILABLE."
+          },
+          "response": []
+        },
+        {
           "name": "GET Platform Checkout Detalhes",
           "request": {
             "method": "GET",

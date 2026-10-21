@@ -5,6 +5,9 @@ import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { assertCardChoiceAllowedForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService";
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability";
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import { isManagerLikeRole } from "@/lib/roles";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
@@ -297,6 +300,22 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
   }
 
+  /** Cobrança incremental: barra só a NOVA escolha de cartão (assinante com cartão é isento). */
+  private async rejectUnavailableCardChoice(
+    billingType: unknown,
+    billingOwner: Parameters<typeof assertCardChoiceAllowedForMaster>[1],
+  ): Promise<ManagerAccountUsersResult | null> {
+    try {
+      await assertCardChoiceAllowedForMaster(billingType, billingOwner);
+      return null;
+    } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) {
+        return { output: markedUnavailableOutput(error), status: error.status };
+      }
+      throw error;
+    }
+  }
+
   async createAccountUser(params: CreateAccountUserParams): Promise<ManagerAccountUsersResult> {
     const { teamId, profileId, managerId, isMaster } = params.ctx;
     const validatedData = params.userData;
@@ -455,6 +474,12 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         status: 200,
       };
     }
+
+    const unavailableCardChoice = await this.rejectUnavailableCardChoice(
+      validatedData.billingType,
+      billingOwner,
+    );
+    if (unavailableCardChoice) return unavailableCardChoice;
 
     const payload = {
       name: validatedData.name,

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+import { resolveCardAvailability } from "@/lib/payment-methods/availability"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function GET(request: NextRequest) {
@@ -14,6 +15,12 @@ export async function GET(request: NextRequest) {
     }
 
     const output = await backofficeAdhesionUseCase.getOptions()
+    if (output.isValid && output.result) {
+      output.result = {
+        ...output.result,
+        availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      }
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);

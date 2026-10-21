@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 import { NextRequest } from "next/server"
 import { Output } from "@/lib/output"
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 
 const teamAccessMock = mock(async () => ({
   access: {
@@ -93,6 +95,17 @@ describe("POST /teams/payments/create — rota fina (refactor pós-allowlist)", 
       requesterRole: "manager",
       requesterFunctions: [],
     })
+  })
+
+  it("cartão indisponível (UseCase devolve erro marcado) → 422 com Output de erro", async () => {
+    executeMock.mockResolvedValueOnce(markedUnavailableOutput(new PaymentMethodUnavailableError()))
+
+    const response = await POST(makeRequest({ name: "Novo Time", billingType: "CREDIT_CARD" }))
+    const json = await response.json()
+
+    expect(response.status).toBe(422)
+    expect(json.isValid).toBe(false)
+    expect(json.errorMessages[0]).toContain("PIX")
   })
 
   it("UseCase devolve 'Perfil não encontrado' → 404", async () => {

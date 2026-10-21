@@ -5,9 +5,15 @@ import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { resolvePrice } from "@/lib/billing/resolvePrice";
+import { rejectUnavailableBillingType } from "@/lib/payment-methods/route-guard";
 
+// Rota órfã e pública (sem consumidor no front): cobra sempre em CREDIT_CARD, então com o cartão
+// desligado responde 422 antes de qualquer efeito. Candidata a remoção (issue de remoção pendente).
 export async function POST(request: NextRequest) {
   try {
+    const unavailableMethod = rejectUnavailableBillingType("CREDIT_CARD");
+    if (unavailableMethod) return unavailableMethod;
+
     const body = await request.json();
     const {
       supabaseId,

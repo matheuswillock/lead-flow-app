@@ -1,4 +1,5 @@
 import { Output } from "@/lib/output";
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability";
 
 export interface AddOnCheckoutDefaultBillingData {
   fullName: string;
@@ -18,6 +19,8 @@ export interface CheckoutDetailsResponse {
   pendingActionId: string;
   paymentId: string | null;
   presetBillingType: "PIX" | "CREDIT_CARD";
+  /** Métodos que esta conta pode escolher agora (cartão só volta com o Abacate, salvo assinante com cartão). */
+  availableBillingTypes: AvailableBillingTypes;
   addonType: "user" | "team";
   addonLabel: string;
   addonDetail: string;

@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { assertCardChoiceAllowedForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService"
+import { isMethodUnavailableOutput } from "@/lib/payment-methods/route-guard"
 import type { TeamCheckoutMasterProfile } from "@/app/api/infra/data/repositories/teamCheckout/ITeamCheckoutRepository"
 
 const shouldBypassIncrementalChargeMock = mock(async () => false)
@@ -218,5 +220,57 @@ describe("CreateTeamCheckoutUseCase — regressão pós-refactor (achado codex[b
 
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toEqual(["db down"])
+  })
+})
+
+describe("CreateTeamCheckoutUseCase — cartão desligado", () => {
+  const originalEnv = { ...process.env }
+  type CardInfoFetcher = Parameters<typeof assertCardChoiceAllowedForMaster>[2]
+  const noCardFetch: CardInfoFetcher = async () => ({ billingType: "PIX", creditCardToken: null })
+  const cardFetch: CardInfoFetcher = async () => ({ billingType: "CREDIT_CARD", creditCardToken: "tok_1" })
+  const guardWith = (fetchCardInfo: CardInfoFetcher) =>
+    ((billingType: unknown, master: Parameters<typeof assertCardChoiceAllowedForMaster>[1]) =>
+      assertCardChoiceAllowedForMaster(billingType, master, fetchCardInfo)) as typeof assertCardChoiceAllowedForMaster
+
+  beforeEach(() => {
+    process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
+    delete process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY
+    delete process.env.CARD_PAYMENTS_ENABLED
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  it("CREDIT_CARD sem cartão existente → erro marcado 422, nenhuma escrita nem e-mail", async () => {
+    const repository = makeRepository(MASTER_BASE)
+    const useCase = new CreateTeamCheckoutUseCase(repository, makeBillingService({ billingDelta: 50, totalCharge: 50 }), guardWith(noCardFetch))
+
+    const output = await useCase.execute({ ...INPUT, billingType: "CREDIT_CARD" })
+
+    expect(output.isValid).toBe(false)
+    expect(isMethodUnavailableOutput(output)).toBe(true)
+    expect(repository.createPendingAction).not.toHaveBeenCalled()
+    expect(repository.createTeamWithMember).not.toHaveBeenCalled()
+    expect(sendAddOnPendingPaymentEmailMock).not.toHaveBeenCalled()
+  })
+
+  it("CREDIT_CARD de assinante com cartão → segue o fluxo normal e cria a pending action", async () => {
+    const repository = makeRepository(MASTER_BASE)
+    const useCase = new CreateTeamCheckoutUseCase(repository, makeBillingService({ billingDelta: 50, totalCharge: 50 }), guardWith(cardFetch))
+
+    const output = await useCase.execute({ ...INPUT, billingType: "CREDIT_CARD" })
+
+    expect(output.isValid).toBe(true)
+    expect(repository.createPendingAction).toHaveBeenCalledTimes(1)
+  })
+
+  it("PIX passa mesmo com o cartão desligado", async () => {
+    const repository = makeRepository(MASTER_BASE)
+    const useCase = new CreateTeamCheckoutUseCase(repository, makeBillingService({ billingDelta: 50, totalCharge: 50 }), guardWith(noCardFetch))
+
+    const output = await useCase.execute(INPUT)
+
+    expect(output.isValid).toBe(true)
   })
 })

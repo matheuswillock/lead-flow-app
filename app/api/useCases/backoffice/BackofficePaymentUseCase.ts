@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
 import { asaasFetch, asaasApi } from "@/lib/asaas"
+import { PaymentMethodUnavailableError, assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 import { IBackofficePaymentRepository } from "../../infra/data/repositories/backoffice/PaymentRepository/IBackofficePaymentRepository"
 import { IBackofficeClientRepository } from "../../infra/data/repositories/backoffice/ClientRepository/IBackofficeClientRepository"
 
@@ -41,6 +43,7 @@ export class BackofficePaymentUseCase {
       }
 
       const billingType = data.billingType ?? "PIX"
+      assertBillingTypeAllowed(billingType)
       const id = randomUUID()
 
       // Criar cobrança no Asaas
@@ -90,6 +93,7 @@ export class BackofficePaymentUseCase {
 
       return new Output(true, ["Cobrança criada com sucesso"], [], payment)
     } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error)
       console.error("[BackofficePaymentUseCase][createPayment]", error)
       return new Output(false, [], ["Erro ao criar cobrança"], null)
     }

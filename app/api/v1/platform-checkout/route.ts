@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { platformCheckoutUseCase } from "@/app/api/useCases/platformCheckout/PlatformCheckoutUseCase"
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard"
 
 type PlatformPurchaseTypeInput =
   | "email_credits"
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
       asaasCustomerId: body.asaasCustomerId,
     })
 
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+    return NextResponse.json(output, { status: output.isValid ? 200 : failedOutputStatus(output) })
   } catch (error) {
     console.error("[PlatformCheckoutRoute][POST]", error)
     return NextResponse.json(

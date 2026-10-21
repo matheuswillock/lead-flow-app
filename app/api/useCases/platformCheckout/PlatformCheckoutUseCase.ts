@@ -9,6 +9,12 @@ import {
 } from "@/lib/billing/platform-purchase-external-reference"
 import { getFullUrl } from "@/lib/utils/app-url"
 import type { AsaasAccountId } from "@/lib/asaas"
+import {
+  PaymentMethodUnavailableError,
+  assertBillingTypeAllowed,
+  resolveCardAvailability,
+} from "@/lib/payment-methods/availability"
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 
 export type CreatePlatformCheckoutInput = {
   productSlug: string
@@ -98,6 +104,7 @@ export class PlatformCheckoutUseCase {
       if (input.billingType !== "PIX" && input.billingType !== "CREDIT_CARD") {
         return new Output(false, [], ["billingType inválido"], null)
       }
+      assertBillingTypeAllowed(input.billingType)
 
       const purchaseId = randomUUID()
       const externalReference = buildPlatformPurchaseExternalReference(purchaseId)
@@ -120,6 +127,7 @@ export class PlatformCheckoutUseCase {
 
       return new Output(true, ["Checkout criado com sucesso"], [], toDetails(created))
     } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error)
       console.error("[PlatformCheckoutUseCase][createCheckout]", error)
       return new Output(false, [], ["Erro ao criar checkout genérico"], null)
     }
@@ -136,7 +144,10 @@ export class PlatformCheckoutUseCase {
         return new Output(false, [], ["Checkout não encontrado"], null)
       }
 
-      return new Output(true, [], [], toDetails(purchase))
+      return new Output(true, [], [], {
+        ...toDetails(purchase),
+        availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      })
     } catch (error) {
       console.error("[PlatformCheckoutUseCase][getCheckoutDetails]", error)
       return new Output(false, [], ["Erro ao carregar checkout"], null)

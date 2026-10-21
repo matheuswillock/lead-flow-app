@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
 import { Output } from '@/lib/output';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { rejectUnavailableBillingType } from '@/lib/payment-methods/route-guard';
 import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function POST(request: NextRequest) {
@@ -48,6 +49,10 @@ export async function POST(request: NextRequest) {
       const error = new Output(false, [], ['Dados do cartão de crédito são obrigatórios para pagamento com cartão'], null);
       return NextResponse.json(error, { status: 400 });
     }
+
+    // Reativação exige o formulário do cartão (nova escolha de cartão), então não há isenção de assinante.
+    const unavailableMethod = rejectUnavailableBillingType(paymentMethod);
+    if (unavailableMethod) return unavailableMethod;
 
     // Chamar UseCase para reativar assinatura (cancelar antiga + criar nova)
     const result = await subscriptionUpgradeUseCase.reactivateSubscription({
