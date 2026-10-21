@@ -43,6 +43,21 @@ describe("credential cipher", () => {
     expect(() => cipher.decrypt("")).toThrow(CredentialCipherError)
   })
 
+  it("rejeita tag truncada, IV de tamanho errado e partes faltando", () => {
+    const cipher = createCredentialCipher({ currentKeyId: "k1", keys: { k1: KEY_A } })
+    const parts = cipher.encrypt(SECRET).split(".")
+    const withPart = (index: number, value: string) =>
+      parts.map((part, i) => (i === index ? value : part)).join(".")
+    const bytes = (n: number) => Buffer.alloc(n, 1).toString("base64url")
+    expect(() => cipher.decrypt(withPart(3, bytes(4)))).toThrow(CredentialCipherError)
+    expect(() => cipher.decrypt(withPart(3, bytes(17)))).toThrow(CredentialCipherError)
+    expect(() => cipher.decrypt(withPart(2, bytes(8)))).toThrow(CredentialCipherError)
+    expect(() => cipher.decrypt(withPart(2, bytes(16)))).toThrow(CredentialCipherError)
+    expect(() => cipher.decrypt(parts.slice(0, 4).join("."))).toThrow(CredentialCipherError)
+    expect(() => cipher.decrypt([...parts, "x"].join("."))).toThrow(CredentialCipherError)
+    expect(cipher.decrypt(parts.join("."))).toBe(SECRET)
+  })
+
   it("a mensagem de erro nunca contém o valor", () => {
     const writer = createCredentialCipher({ currentKeyId: "k1", keys: { k1: KEY_A } })
     const reader = createCredentialCipher({ currentKeyId: "k1", keys: { k1: KEY_B } })

@@ -7,6 +7,8 @@ import crypto from "node:crypto"
  */
 
 const VERSION = "v1"
+const IV_BYTES = 12
+const TAG_BYTES = 16
 const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
 const HEX_KEY_PATTERN = /^[0-9a-f]{64}$/i
 const MIN_LAST4_LENGTH = 12
@@ -43,8 +45,10 @@ export function createCredentialCipher(options: CredentialCipherOptions): Creden
       if (typeof plaintext !== "string" || plaintext === "") {
         throw new CredentialCipherError("Valor de credencial vazio")
       }
-      const iv = crypto.randomBytes(12)
-      const cipher = crypto.createCipheriv("aes-256-gcm", keyring.get(currentKeyId) as Buffer, iv)
+      const iv = crypto.randomBytes(IV_BYTES)
+      const cipher = crypto.createCipheriv("aes-256-gcm", keyring.get(currentKeyId) as Buffer, iv, {
+        authTagLength: TAG_BYTES,
+      })
       if (context) cipher.setAAD(Buffer.from(context, "utf8"))
       const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()])
       return [
@@ -63,9 +67,16 @@ export function createCredentialCipher(options: CredentialCipherOptions): Creden
       }
       const key = keyring.get(keyId)
       if (!key) throw new CredentialCipherError("Chave de cifra da credencial desconhecida")
+      const ivBytes = Buffer.from(iv, "base64url")
+      const tagBytes = Buffer.from(tag, "base64url")
+      if (ivBytes.length !== IV_BYTES || tagBytes.length !== TAG_BYTES) {
+        throw new CredentialCipherError("Credencial cifrada em formato inválido")
+      }
       try {
-        const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"))
-        decipher.setAuthTag(Buffer.from(tag, "base64url"))
+        const decipher = crypto.createDecipheriv("aes-256-gcm", key, ivBytes, {
+          authTagLength: TAG_BYTES,
+        })
+        decipher.setAuthTag(tagBytes)
         if (context) decipher.setAAD(Buffer.from(context, "utf8"))
         return Buffer.concat([
           decipher.update(Buffer.from(encrypted, "base64url")),
