@@ -3,7 +3,7 @@ import type {
   OwnerSettlementInput,
   OwnerSettlementResult,
   PaymentOwnerSettlement,
-} from "@/app/api/services/PaymentProviderPayment/PaymentOwnerSettlementService"
+} from "@/lib/payments/owner-settlement"
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
 import type { ChargePurpose } from "@/lib/payments/types"
 import type { ChargeLedger } from "./ChargeLedger"

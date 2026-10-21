@@ -4,21 +4,13 @@ import type { BackofficeAdhesionProviderPaymentInput } from "../backofficeAdhesi
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
 import type { OwnerChargeMirror } from "../paymentCharge/OwnerChargeMirror"
 
-export type OwnerSettlementInput = {
-  readonly ownerType: string
-  readonly ownerId: string
-  readonly externalId: string
-  /** Valor confirmado pelo provider (webhook/consulta), em centavos; null = não informado. */
-  readonly amountInCents: number | null
-  readonly paidAt: Date
-}
+import type {
+  OwnerSettlementInput,
+  OwnerSettlementResult,
+  PaymentOwnerSettlement,
+} from "@/lib/payments/owner-settlement"
 
-export type OwnerSettlementResult = "settled" | "unsupported"
-
-/** Aplica o efeito de domínio de um pagamento confirmado pelo provider. Idempotente. */
-export interface PaymentOwnerSettlement {
-  settleConfirmed(input: OwnerSettlementInput): Promise<OwnerSettlementResult>
-}
+export type { OwnerSettlementInput, OwnerSettlementResult, PaymentOwnerSettlement }
 
 export type PaymentOwnerSettlementDependencies = {
   readonly adhesionPayments: Pick<IBackofficeAdhesionPaymentRepository, "findById">

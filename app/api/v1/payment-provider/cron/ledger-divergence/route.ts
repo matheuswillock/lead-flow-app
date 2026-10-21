@@ -3,8 +3,7 @@ import { Output } from "@/lib/output"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
 import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
-import { createChargeDivergenceService } from "@/app/api/services/paymentCharge/paymentChargeComposition"
-import { ChargeDivergenceUseCase } from "@/app/api/useCases/paymentCharge/ChargeDivergenceUseCase"
+import { getChargeDivergenceUseCase } from "@/app/api/useCases/paymentCharge/chargeDivergenceComposition"
 
 export const maxDuration = 60
 
@@ -23,7 +22,7 @@ export async function GET(request: NextRequest) {
         cronKey: "payment-ledger-divergence",
         cronPath: "/api/v1/payment-provider/cron/ledger-divergence",
       },
-      () => new ChargeDivergenceUseCase(createChargeDivergenceService()).execute(),
+      () => getChargeDivergenceUseCase().execute(),
       { onFailure: getDefaultCronSlackCallback() },
     )
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })

@@ -10,7 +10,7 @@ import { getFullUrl } from "@/lib/utils/app-url";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 import type { AsaasAccountId } from "@/lib/asaas";
-import { mirrorAsaasPaymentToLedger } from "./mirrorAsaasPaymentToLedger";
+import { mirrorAsaasPaymentToLedger } from "@/app/api/useCases/paymentCharge/mirrorAsaasPaymentToLedger";
 
 export type AsaasWebhookBody = {
   id?: string;

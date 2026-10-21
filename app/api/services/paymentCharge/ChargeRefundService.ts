@@ -1,6 +1,8 @@
 import type { IPaymentChargeRepository } from "@/app/api/infra/data/repositories/paymentCharge/IPaymentChargeRepository"
-import type { IPaymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
-import type { PaymentProviderPostPaymentService } from "@/app/api/services/PaymentProviderPayment/PaymentProviderPostPaymentService"
+import type {
+  IPaymentProviderSessionRepository,
+  StoredPaymentProviderAttemptRecord,
+} from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
 import type { FullRefundCapability } from "@/lib/payment-provider/contracts"
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 import type { ChargePurpose } from "@/lib/payments/types"
@@ -19,7 +21,14 @@ export type ChargeRefundDependencies = {
   readonly charges: Pick<IPaymentChargeRepository, "findById">
   readonly ledger: Pick<ChargeLedger, "transition">
   readonly attempts: Pick<IPaymentProviderSessionRepository, "findAttemptById">
-  readonly refunder: Pick<PaymentProviderPostPaymentService, "refund">
+  /** Em produção: PaymentProviderPostPaymentService. */
+  readonly refunder: {
+    refund(input: {
+      readonly attempt: StoredPaymentProviderAttemptRecord
+      readonly provider: FullRefundCapability
+      readonly reason?: string
+    }): Promise<unknown>
+  }
   readonly resolveProvider: (input: {
     provider: PaymentProviderKey
     environment: PaymentProviderEnvironment
