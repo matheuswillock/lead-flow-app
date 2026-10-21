@@ -11,6 +11,10 @@ export type PaymentProviderConfigInput = {
   readonly environment: PaymentProviderEnvironment
   readonly devMode: boolean
   readonly baseUrl?: string
+  /** Segredo anterior aceito durante a rotação do segredo da query (janela atual + anterior). */
+  readonly webhookSecretPrevious?: string | null
+  /** Exige HMAC válido em todo evento, mesmo com o segredo da query correto. */
+  readonly requireSignature?: boolean
 }
 
 export class PaymentProviderConfig {
@@ -21,6 +25,8 @@ export class PaymentProviderConfig {
   readonly environment: PaymentProviderEnvironment
   readonly devMode: boolean
   readonly baseUrl: string
+  readonly webhookSecretPrevious: string | null
+  readonly requireSignature: boolean
 
   private constructor(input: PaymentProviderConfigInput) {
     this.apiKey = input.apiKey
@@ -30,6 +36,8 @@ export class PaymentProviderConfig {
     this.environment = input.environment
     this.devMode = input.devMode
     this.baseUrl = (input.baseUrl ?? "https://api.abacatepay.com").replace(/\/$/, "")
+    this.webhookSecretPrevious = input.webhookSecretPrevious ?? null
+    this.requireSignature = input.requireSignature ?? false
     Object.freeze(this)
   }
 
@@ -42,7 +50,7 @@ export class PaymentProviderConfig {
       throw new PaymentProviderError("CONFIGURATION_INVALID", "Configuração do provedor incompleta")
     }
     // Chave informada, mas vazia, é configuração quebrada: não pode virar "sem HMAC" em silêncio.
-    const optional = [input.publicKey, input.webhookSigningKey]
+    const optional = [input.publicKey, input.webhookSigningKey, input.webhookSecretPrevious]
     if (optional.some((value) => value != null && isBlank(value))) {
       throw new PaymentProviderError("CONFIGURATION_INVALID", "Configuração do provedor incompleta")
     }
