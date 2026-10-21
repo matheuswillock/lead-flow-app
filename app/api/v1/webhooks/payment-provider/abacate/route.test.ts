@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 // --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
 const listConfigs = mock(async (_environment: string) => [
@@ -70,7 +70,8 @@ mock.module("@/app/api/services/backofficeAdhesion/BackofficeAdhesionService", (
 }))
 
 const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
-mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
+const captureException = mock((_error: unknown, _options?: unknown) => "event-id")
+mock.module("@sentry/nextjs", () => ({ captureMessage, captureException }))
 
 const { POST } = await import("./route")
 
@@ -94,7 +95,7 @@ beforeEach(() => {
   process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
   process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
   attempt = { ...defaultAttempt }
-  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage]) {
+  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage, captureException]) {
     fn.mockClear()
   }
   markPaidFromProvider.mockImplementation(async () => undefined)
@@ -240,5 +241,61 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BILLING_GRACE
       tags: { ownerType: "ALGUM_OWNER_NOVO" },
     })
     expect(markPaidFromProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — nenhum rastro do segredo (PAY-HARD-T012B)", () => {
+  const SECRET = "prod-webhook-secret"
+  const request = () => webhookRequest(completedPayload(false), `?webhookSecret=${SECRET}`)
+
+  it("erro forçado com a URL na mensagem: log e evento do Sentry saem sem o segredo, com provider e id do evento", async () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined)
+    claim.mockImplementationOnce(async () => {
+      throw new Error(`fetch failed https://app.example.com/api/v1/webhooks/payment-provider/abacate?webhookSecret=${SECRET}`)
+    })
+
+    const response = await POST(request())
+
+    expect(response.status).toBe(500)
+    expect(captureException).toHaveBeenCalledTimes(1)
+    const sentryPayload = JSON.stringify(captureException.mock.calls)
+    expect(sentryPayload).not.toContain(SECRET)
+    expect(sentryPayload).toContain("ABACATE_PAY")
+    expect(sentryPayload).toContain("evt_prod_1")
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(SECRET)
+    consoleError.mockRestore()
+  })
+
+  it("segredo inválido (401) também não vai ao log e não gera evento de erro no Sentry", async () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined)
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=wrong-secret-xyz"))
+
+    expect(response.status).toBe(401)
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("wrong-secret-xyz")
+    expect(captureException).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it.each([
+    ["sucesso", () => request(), 202],
+    ["segredo errado", () => webhookRequest(completedPayload(false), "?webhookSecret=x"), 401],
+  ])("responde %s sem redirecionamento e com Referrer-Policy no-referrer", async (_name, build, status) => {
+    const response = await POST(build())
+
+    expect(response.status).toBe(status)
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer")
+    expect(response.headers.get("location")).toBeNull()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — assinatura HMAC", () => {
+  it("com chave pública configurada, evento sem X-Webhook-Signature responde 401 mesmo com o segredo correto", async () => {
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_prod_key"
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(401)
+    expect(claim).not.toHaveBeenCalled()
   })
 })
