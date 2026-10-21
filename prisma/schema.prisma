@@ -2003,6 +2003,7 @@ model BackofficeAdhesion {
   createdAt                         DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                         DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
+  providerPayments        BackofficeAdhesionPayment[]
   lead                    BackofficeLead     @relation(fields: [leadId], references: [id], onDelete: Restrict)
   product                 BackofficeProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
   sdrBackofficeUser       BackofficeUser?    @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
@@ -2023,6 +2024,35 @@ model BackofficeAdhesion {
   @@index([createdProfileId, createdAt(sort: Desc)], map: "backoffice_adhesions_created_profile_id_created_at_idx")
   @@index([sponsorMasterId], map: "backoffice_adhesions_sponsor_master_id_idx")
   @@map("backoffice_adhesions")
+}
+
+/// Pagamento PIX da adesão cobrado por provider de pagamento (Abacate). A adesão ainda não tem
+/// conta/tenant, então a sessão do provider usa adhesionId como tenantId.
+model BackofficeAdhesionPayment {
+  id                  String    @id @default(uuid()) @db.Uuid
+  adhesionId          String    @map("adhesion_id") @db.Uuid
+  amountCents         Int       @map("amount_cents")
+  status              String    @db.Text
+  provider            String    @db.Text
+  providerEnvironment String    @map("provider_environment") @db.Text
+  providerSessionId   String?   @map("provider_session_id") @db.Uuid
+  providerAttemptId   String?   @map("provider_attempt_id") @db.Uuid
+  providerExternalId  String?   @map("provider_external_id") @db.Text
+  idempotencyKey      String    @map("idempotency_key") @db.Text
+  paymentInstructions Json?     @map("payment_instructions")
+  confirmedAt         DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
+  failureReason       String?   @map("failure_reason") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  adhesion BackofficeAdhesion @relation(fields: [adhesionId], references: [id], onDelete: Cascade)
+
+  @@unique([adhesionId, idempotencyKey], map: "backoffice_adhesion_payments_adhesion_idempotency_key")
+  @@index([adhesionId, status], map: "backoffice_adhesion_payments_adhesion_status_idx")
+  @@index([providerAttemptId], map: "backoffice_adhesion_payments_provider_attempt_idx")
+  @@index([providerExternalId], map: "backoffice_adhesion_payments_provider_external_idx")
+  @@map("backoffice_adhesion_payments")
 }
 
 model BackofficeLeadSchedule {
