@@ -14,7 +14,6 @@ export const PUBLIC_PAGE_ROUTES = [
   "/cookies",
   "/recursos",
   "/prime",
-  "/adquirir/creditos",
   "/checkout-return",
   "/lead-form",
   "/backoffice-lead-form",
@@ -37,7 +36,6 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/addon-checkout/",
   "/oferta/",
   "/adesao/",
-  "/adquirir/",
   "/documentos/",
 ] as const
 
@@ -106,6 +104,13 @@ export function isPublicPageRoute(pathname: string): boolean {
   return PUBLIC_PAGE_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 }
 
+/** Páginas fora do app tenant que só abrem com sessão; sem ela vão ao login e voltam. */
+const SESSION_REQUIRED_PAGE_ROUTES = ["/adquirir/creditos"] as const
+
+export function requiresSessionPage(pathname: string): boolean {
+  return (SESSION_REQUIRED_PAGE_ROUTES as readonly string[]).includes(pathname)
+}
+
 export function isLegacyTenantRoute(pathname: string): boolean {
   return TENANT_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
@@ -143,5 +148,5 @@ export function requiresManagerRole(pathname: string): boolean {
 }
 
 export function isSensitiveRoute(pathname: string): boolean {
-  return requiresAuth(pathname) || isBackofficeAppRoute(pathname)
+  return requiresAuth(pathname) || requiresSessionPage(pathname) || isBackofficeAppRoute(pathname)
 }

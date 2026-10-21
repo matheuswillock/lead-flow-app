@@ -1,30 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldGroup } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAdquirirCreditos } from "../context/AdquirirCreditosHook";
 
 export function AdquirirCreditosContainer() {
-  const {
-    email,
-    open,
-    loading,
-    fieldError,
-    handleOpen,
-    handleOpenChange,
-    handleEmailChange,
-    handleConfirm,
-  } = useAdquirirCreditos();
+  const { pendingPlan, handleActivate } = useAdquirirCreditos();
+  const isBusy = pendingPlan !== null;
 
   return (
     <>
@@ -76,11 +57,12 @@ export function AdquirirCreditosContainer() {
                   <span className="text-[13px]" style={{ color: "var(--ec-ink-soft)" }}>/mês</span>
                 </div>
                 <Button
-                  className="mt-5 w-full rounded-lg"
+                  className="mt-5 h-11 w-full rounded-lg"
                   style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
-                  onClick={() => handleOpen("25k")}
+                  disabled={isBusy}
+                  onClick={() => void handleActivate("25k")}
                 >
-                  Ativar
+                  {pendingPlan === "25k" ? "Gerando pagamento..." : "Ativar"}
                 </Button>
               </div>
 
@@ -103,11 +85,12 @@ export function AdquirirCreditosContainer() {
                   <span className="text-[13px]" style={{ color: "var(--ec-ink-soft)" }}>/mês</span>
                 </div>
                 <Button
-                  className="mt-5 w-full rounded-lg"
+                  className="mt-5 h-11 w-full rounded-lg"
                   style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
-                  onClick={() => handleOpen("50k")}
+                  disabled={isBusy}
+                  onClick={() => void handleActivate("50k")}
                 >
-                  Ativar
+                  {pendingPlan === "50k" ? "Gerando pagamento..." : "Ativar"}
                 </Button>
               </div>
             </div>
@@ -124,51 +107,6 @@ export function AdquirirCreditosContainer() {
           </div>
         </div>
 
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogContent className="sm:max-w-[440px] max-h-[90vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Confirme seu e-mail</DialogTitle>
-              <DialogDescription>
-                Informe o e-mail da sua conta no Corretor Studio para liberar o checkout.
-              </DialogDescription>
-            </DialogHeader>
-
-            <FieldGroup>
-              <Field>
-                <Label htmlFor="ec-email">E-mail da conta</Label>
-                <Input
-                  id="ec-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="seu@email.com"
-                  value={email}
-                  onChange={(event) => handleEmailChange(event.target.value)}
-                  aria-invalid={fieldError ? true : undefined}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void handleConfirm();
-                    }
-                  }}
-                />
-                {fieldError ? (
-                  <p className="text-xs" style={{ color: "var(--destructive)" }}>
-                    {fieldError}
-                  </p>
-                ) : null}
-              </Field>
-            </FieldGroup>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={loading}>
-                Cancelar
-              </Button>
-              <Button type="button" onClick={() => void handleConfirm()} disabled={loading || !email.trim()}>
-                {loading ? "Validando..." : "Continuar para pagamento"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </>
   );

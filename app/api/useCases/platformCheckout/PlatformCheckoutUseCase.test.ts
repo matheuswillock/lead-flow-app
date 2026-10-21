@@ -230,3 +230,56 @@ describe("PlatformCheckoutUseCase", () => {
     expect(repo.items.get(legacyDetails.checkoutId)?.status).toBe("pending")
   })
 })
+
+describe("PlatformCheckoutUseCase.getCheckoutDetailsForOwner", () => {
+  async function seedOwnedPurchase() {
+    const repo = new FakePlatformPurchaseRepository()
+    const useCase = new PlatformCheckoutUseCase(repo)
+    const created = await useCase.createCheckout({
+      productSlug: "email-credits-upgrade",
+      purchaseType: "email_credits",
+      profileId: "profile-owner",
+      teamId: "team-1",
+      billingType: "PIX",
+      amount: 375,
+      quantity: 25000,
+      metadata: { plan: "upgrade", teamName: "Time A", internalNote: "segredo" },
+    })
+    const checkoutId = (created.result as { checkoutId: string }).checkoutId
+    return { useCase, checkoutId }
+  }
+
+  it("dono recebe os detalhes necessários ao checkout, sem profileId nem metadados internos", async () => {
+    const { useCase, checkoutId } = await seedOwnedPurchase()
+
+    const output = await useCase.getCheckoutDetailsForOwner(checkoutId, "profile-owner")
+
+    expect(output.isValid).toBe(true)
+    const details = output.result as Record<string, unknown>
+    expect(details.checkoutId).toBe(checkoutId)
+    expect(details.amount).toBe(375)
+    expect(details.teamId).toBe("team-1")
+    expect(details.metadata).toEqual({ teamName: "Time A" })
+    expect(details).not.toHaveProperty("profileId")
+    expect(details).not.toHaveProperty("asaasPaymentId")
+    expect(details).not.toHaveProperty("externalReference")
+  })
+
+  it("outro profile recebe 'não encontrado' (sem revelar que a compra existe)", async () => {
+    const { useCase, checkoutId } = await seedOwnedPurchase()
+
+    const output = await useCase.getCheckoutDetailsForOwner(checkoutId, "profile-intruso")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Checkout não encontrado"])
+  })
+
+  it("checkout inexistente recebe a mesma resposta", async () => {
+    const { useCase } = await seedOwnedPurchase()
+
+    const output = await useCase.getCheckoutDetailsForOwner("nao-existe", "profile-owner")
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Checkout não encontrado"])
+  })
+})

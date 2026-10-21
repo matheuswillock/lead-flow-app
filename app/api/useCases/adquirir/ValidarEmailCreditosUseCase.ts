@@ -1,81 +1,72 @@
 import { z } from "zod";
+import type { EmailCreditPlan as PrismaEmailCreditPlan } from "@prisma/client";
 import { Output } from "@/lib/output";
-import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { EmailCreditUseCase } from "@/app/api/useCases/email/EmailCreditUseCase";
 import { slackEmailCreditsService } from "@/app/api/services/slackEmailCredits/SlackEmailCreditsService";
-import { getAsaasCheckoutBaseUrl } from "@/lib/asaas";
-import type { EmailCreditPlan } from "@/app/api/services/slackEmailCredits/ISlackEmailCreditsService";
+import type { ISlackEmailCreditsService } from "@/app/api/services/slackEmailCredits/ISlackEmailCreditsService";
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 
-// DA3/E1 de [[40 — Checkout, Adesões e Add-ons — Backend]] (C17): o ID do
-// checkout hospedado pertence à conta Asaas onde foi criado — nunca literal
-// de código. Vem de env validada, sem fallback: ausência é Output inválido,
-// não um ID legado silenciosamente reusado.
-const ASAAS_CREDIT_CHECKOUT_ENV_KEYS: Record<EmailCreditPlan, string> = {
-  "25k": "ASAAS_CREDIT_CHECKOUT_ID_25K",
-  "50k": "ASAAS_CREDIT_CHECKOUT_ID_50K",
+type LandingCreditPlan = "25k" | "50k";
+
+// 25k/50k da página pública correspondem aos planos canônicos de preço
+// (R$ 375 e R$ 650 em lib/email/email-credit-plans.ts).
+const BILLING_PLAN_BY_LANDING_PLAN: Record<LandingCreditPlan, PrismaEmailCreditPlan> = {
+  "25k": "upgrade",
+  "50k": "business",
 };
 
-const validarCreditosSchema = z.object({
-  email: z.string().trim().email("Informe um e-mail válido"),
-  plan: z.enum(["25k", "50k"]),
-});
+const planSchema = z.enum(["25k", "50k"], { message: "Plano inválido" });
 
-export type ValidarEmailCreditosInput = z.infer<typeof validarCreditosSchema>;
+export type ValidarEmailCreditosInput = {
+  plan: LandingCreditPlan;
+  access: TeamAccess;
+};
 
 export interface IValidarEmailCreditosUseCase {
   execute(input: ValidarEmailCreditosInput): Promise<Output>;
 }
 
 export class ValidarEmailCreditosUseCase implements IValidarEmailCreditosUseCase {
+  constructor(
+    private readonly emailCredits: Pick<EmailCreditUseCase, "subscribe"> = new EmailCreditUseCase(),
+    private readonly slack: ISlackEmailCreditsService = slackEmailCreditsService,
+  ) {}
+
   async execute(input: ValidarEmailCreditosInput): Promise<Output> {
-    const parsed = validarCreditosSchema.safeParse(input);
-
-    if (!parsed.success) {
-      const messages = parsed.error.issues.map((issue) => issue.message);
-      return new Output(false, [], messages, null);
+    const parsedPlan = planSchema.safeParse(input.plan);
+    if (!parsedPlan.success) {
+      return new Output(false, [], parsedPlan.error.issues.map((issue) => issue.message), null);
     }
 
-    const normalizedEmail = parsed.data.email.trim().toLowerCase();
-    const plan = parsed.data.plan as EmailCreditPlan;
+    const plan = parsedPlan.data;
+    const purchase = await this.emailCredits.subscribe(
+      BILLING_PLAN_BY_LANDING_PLAN[plan],
+      input.access,
+      "PIX",
+    );
 
-    const checkoutEnvKey = ASAAS_CREDIT_CHECKOUT_ENV_KEYS[plan];
-    const checkoutId = process.env[checkoutEnvKey];
-
-    if (!checkoutId) {
-      console.error(
-        `[ValidarEmailCreditosUseCase] Checkout hospedado não configurado — env ${checkoutEnvKey} ausente.`
-      );
-      return new Output(
-        false,
-        [],
-        ["Checkout de créditos temporariamente indisponível. Tente novamente em instantes."],
-        null,
-      );
+    if (!purchase.isValid || !purchase.result) {
+      return new Output(false, [], purchase.errorMessages, null);
     }
 
-    const profile = await profileRepository.findByEmail(normalizedEmail);
+    await this.notifyInterest(input.access, plan);
 
-    if (!profile) {
-      return new Output(
-        false,
-        [],
-        ["E-mail não encontrado. Use o e-mail da sua conta no Corretor Studio."],
-        null,
-      );
-    }
+    const { checkoutUrl } = purchase.result as { checkoutUrl: string };
+    return new Output(true, [], [], { checkoutUrl, plan });
+  }
 
-    const slackResult = await slackEmailCreditsService.notify({
-      email: normalizedEmail,
+  private async notifyInterest(access: TeamAccess, plan: LandingCreditPlan): Promise<void> {
+    if (!access.profileEmail) return;
+
+    const result = await this.slack.notify({
+      email: access.profileEmail,
       plan,
-      profileId: profile.id,
+      profileId: access.profileId,
     });
 
-    if (!slackResult.success) {
-      console.error("[ValidarEmailCreditosUseCase] Falha ao notificar Slack:", slackResult.error);
+    if (!result.success) {
+      console.error("[ValidarEmailCreditosUseCase] Falha ao notificar Slack:", result.error);
     }
-
-    const checkoutUrl = `${getAsaasCheckoutBaseUrl()}/c/${checkoutId}`;
-
-    return new Output(true, [], [], { checkoutUrl, plan, email: normalizedEmail });
   }
 }
 

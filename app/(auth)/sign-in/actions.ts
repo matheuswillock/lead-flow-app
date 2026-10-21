@@ -3,6 +3,7 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { loginFormSchema } from "@/lib/validations/validationForms";
 import { redirect } from "next/navigation";
+import { resolveSafeReturnPath } from "@/lib/auth/safe-return-path";
 
 export async function signin(formData: FormData) {
   const supabase = await createSupabaseServer();
@@ -41,6 +42,11 @@ export async function signin(formData: FormData) {
 
   // Se o login foi bem-sucedido, redirecionar
   if (data.user) {
+    const returnPath = resolveSafeReturnPath(formData.get('next') as string | null);
+    if (returnPath) {
+      redirect(returnPath);
+    }
+
     // Redirect de subscription ou checkout
     if (from === 'checkout') {
       redirect(`/${data.user.id}/dashboard`);

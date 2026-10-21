@@ -84,6 +84,20 @@ function toDetails(purchase: PlatformPurchase): PlatformCheckoutDetails {
   }
 }
 
+export type PlatformCheckoutOwnerDetails = Omit<
+  PlatformCheckoutDetails,
+  "profileId" | "asaasPaymentId" | "externalReference" | "metadata"
+> & { metadata: { teamName?: string } }
+
+function toOwnerDetails(purchase: PlatformPurchase): PlatformCheckoutOwnerDetails {
+  const { profileId, asaasPaymentId, externalReference, metadata, ...rest } = toDetails(purchase)
+  void profileId
+  void asaasPaymentId
+  void externalReference
+  const teamName = (metadata as { teamName?: unknown } | null)?.teamName
+  return { ...rest, metadata: typeof teamName === "string" ? { teamName } : {} }
+}
+
 export class PlatformCheckoutUseCase {
   constructor(private readonly purchaseRepo: IPlatformPurchaseRepository) {}
 
@@ -150,6 +164,21 @@ export class PlatformCheckoutUseCase {
       })
     } catch (error) {
       console.error("[PlatformCheckoutUseCase][getCheckoutDetails]", error)
+      return new Output(false, [], ["Erro ao carregar checkout"], null)
+    }
+  }
+
+  // Leitura exposta ao navegador: só o dono enxerga a compra, e o payload
+  // omite identificadores internos (profileId, asaasPaymentId, externalReference).
+  async getCheckoutDetailsForOwner(checkoutId: string, ownerProfileId: string): Promise<Output> {
+    try {
+      const purchase = checkoutId?.trim() ? await this.purchaseRepo.findById(checkoutId) : null
+      if (!purchase || purchase.profileId !== ownerProfileId) {
+        return new Output(false, [], ["Checkout não encontrado"], null)
+      }
+      return new Output(true, [], [], toOwnerDetails(purchase))
+    } catch (error) {
+      console.error("[PlatformCheckoutUseCase][getCheckoutDetailsForOwner]", error)
       return new Output(false, [], ["Erro ao carregar checkout"], null)
     }
   }

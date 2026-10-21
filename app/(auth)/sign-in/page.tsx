@@ -25,6 +25,8 @@ function SignInInner() {
     const formData = new FormData();
     formData.append("email", data.email);
     formData.append("password", data.password);
+    const returnPath = searchParams.get("next");
+    if (returnPath) formData.append("next", returnPath);
 
     const result = await signin(formData);
     if (!result.success) {
