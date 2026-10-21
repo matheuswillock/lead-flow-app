@@ -1,3 +1,5 @@
+import { credentialCache } from "@/lib/payment-provider/credential-cache"
+import { derivePaymentProviderEnvironment } from "@/lib/payment-provider/environment"
 import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
 import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 
@@ -28,8 +30,22 @@ export class PaymentMethodUnavailableError extends Error {
 }
 
 function resolveEnvironment(env: Env): PaymentProviderEnvironment | null {
-  const configured = env.PAYMENT_PROVIDER_ENVIRONMENT ?? "DEV"
-  return configured === "DEV" || configured === "PRODUCTION" ? configured : null
+  return derivePaymentProviderEnvironment(env)
+}
+
+/**
+ * Interruptor por instância (M11): `cardEnabled` do backoffice vence; quando a instância não o
+ * definiu, a variável CARD_PAYMENTS_ENABLED continua valendo como reserva.
+ */
+function isCardDisabledByConfiguration(
+  env: Env,
+  environment: PaymentProviderEnvironment | null,
+): boolean {
+  const instanceSetting = environment
+    ? credentialCache.peekAndRefresh({ provider: "ABACATE_PAY", environment })?.settings.cardEnabled
+    : undefined
+  if (instanceSetting !== undefined) return instanceSetting === false
+  return env.CARD_PAYMENTS_ENABLED === "false"
 }
 
 function build(card: boolean, reason: CardAvailabilityReason): CardAvailability {
@@ -39,11 +55,11 @@ function build(card: boolean, reason: CardAvailabilityReason): CardAvailability 
 /**
  * Fonte única de "o cartão pode ser oferecido agora?". Vale para todos os checkouts, inclusive
  * os que cobram pelo Asaas: o cartão só volta quando o Abacate tiver a chave pública (cartão
- * liberado na loja). CARD_PAYMENTS_ENABLED=false desliga sem deploy. Falha fechada.
+ * liberado na loja). `cardEnabled` da instância (backoffice) desliga sem deploy; CARD_PAYMENTS_ENABLED=false é a reserva. Falha fechada.
  */
 export function resolveCardAvailability(env: Env = process.env): CardAvailability {
-  if (env.CARD_PAYMENTS_ENABLED === "false") return build(false, "DISABLED_BY_FLAG")
   const environment = resolveEnvironment(env)
+  if (isCardDisabledByConfiguration(env, environment)) return build(false, "DISABLED_BY_FLAG")
   if (!environment || !readAbacatePublicKey(environment, env)) {
     return build(false, "PROVIDER_WITHOUT_CARD")
   }

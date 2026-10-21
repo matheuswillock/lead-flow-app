@@ -51,10 +51,23 @@ export function createCredentialResolver(deps: CredentialResolverDeps): Credenti
       const pending = inFlight.get(key)
       if (pending) return pending
       const load = (async () => {
-        const resolved = await loadFromDatabaseWithFallback(deps, selector)
-        deps.cache.set(selector, resolved)
-        logSources(deps, selector, resolved)
-        return resolved
+        try {
+          const resolved = await loadFromDatabase(deps, selector)
+          deps.cache.set(selector, resolved)
+          logSources(deps, selector, resolved)
+          return resolved
+        } catch (error) {
+          if (!(error instanceof CredentialReadError)) throw error
+          const stale = deps.cache.peek(selector)
+          deps.log("payment_provider_credentials_db_unavailable", {
+            provider: selector.provider,
+            environment: selector.environment,
+            error: error.cause,
+            servedFrom: stale ? "stale_cache" : "none",
+          })
+          if (stale) return stale
+          throw error
+        }
       })().finally(() => inFlight.delete(key))
       inFlight.set(key, load)
       return load
@@ -65,23 +78,23 @@ export function createCredentialResolver(deps: CredentialResolverDeps): Credenti
   }
 }
 
-async function loadFromDatabaseWithFallback(
+/**
+ * Distingue "chave ausente no banco" (bootstrap: cai no ambiente) de "erro ao ler o banco"
+ * (NUNCA cai no ambiente: usa a última entrada boa do cache e, sem ela, lança — falha fechada).
+ * Schema ainda não aplicado (tabela/coluna inexistente) equivale a "nada gravado".
+ */
+async function loadFromDatabase(
   deps: CredentialResolverDeps,
   selector: InstanceSelector,
 ): Promise<ResolvedCredentials> {
-  let instance: Awaited<ReturnType<CredentialResolverDeps["findInstance"]>>
+  let instance: ResolverInstance | null
   let stored: readonly StoredCredentialRow[] = []
   try {
     instance = await deps.findInstance(selector)
     if (instance) stored = await deps.loadStored(instance.id)
   } catch (error) {
-    // Banco indisponível (ou migration ainda não aplicada): a reserva no ambiente mantém o serviço.
-    deps.log("payment_provider_credentials_db_unavailable", {
-      provider: selector.provider,
-      environment: selector.environment,
-      error: error instanceof Error ? error.name : "unknown",
-    })
-    return resolveFromEnvironment(selector, deps.env(), null, {})
+    if (isSchemaNotApplied(error)) return resolveFromEnvironment(selector, deps.env(), null, {})
+    throw new CredentialReadError(error)
   }
   if (!instance) return resolveFromEnvironment(selector, deps.env(), null, {})
   const dbValues: Record<string, string> = {}
@@ -90,6 +103,19 @@ async function loadFromDatabaseWithFallback(
     dbValues[row.key] = deps.decrypt(row.valueCiphertext, credentialContext(instance.id, row.key))
   }
   return resolveFromEnvironment(selector, deps.env(), instance, dbValues)
+}
+
+export class CredentialReadError extends Error {
+  constructor(cause: unknown) {
+    super("Não foi possível ler as credenciais do provider")
+    this.name = "CredentialReadError"
+    this.cause = cause instanceof Error ? cause.name : "unknown"
+  }
+}
+
+function isSchemaNotApplied(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code
+  return code === "P2021" || code === "P2022"
 }
 
 /** Merge por CHAVE: banco primeiro; a variável de ambiente só preenche o que o banco não tem. */

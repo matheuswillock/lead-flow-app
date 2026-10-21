@@ -124,13 +124,6 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
         hint: "Carteira usada em splits, quando houver.",
         envFallbackNames: asaasEnv("WALLET_ID", { legacy: false }),
       },
-      {
-        key: "BASE_URL",
-        label: "URL base",
-        required: false,
-        secret: false,
-        hint: "Sobrescreve o host da API (sandbox ou produção).",
-      },
     ],
   },
 ])
@@ -149,8 +142,17 @@ export function isPaymentCapableProvider(providerKey: PaymentProviderKey): boole
   return getAdapterDescriptor(providerKey).paymentCapable
 }
 
+/**
+ * Chaves que apontam para um destino de rede (URL/host/endpoint) NÃO são credenciais editáveis:
+ * a API key viajaria para o destino escolhido (SSRF/exfiltração). A URL base de cada adapter é
+ * derivada do código/ambiente (ex.: Asaas via ASAAS_ENV).
+ */
+const NETWORK_TARGET_KEY_PATTERN = /(^|_)(URL|URI|HOST|HOSTNAME|ENDPOINT|DOMAIN)$/
+
 export function isValidCredentialKey(key: unknown): key is string {
-  return typeof key === "string" && CREDENTIAL_KEY_PATTERN.test(key)
+  return (
+    typeof key === "string" && CREDENTIAL_KEY_PATTERN.test(key) && !NETWORK_TARGET_KEY_PATTERN.test(key)
+  )
 }
 
 export function isRequiredCredentialKey(providerKey: PaymentProviderKey, key: string): boolean {

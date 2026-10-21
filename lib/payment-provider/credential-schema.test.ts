@@ -20,10 +20,10 @@ describe("credential schema", () => {
     expect(optional).toEqual(["PUBLIC_KEY", "WEBHOOK_SECRET_PREVIOUS", "REQUIRE_SIGNATURE"])
   })
 
-  it("Asaas exige API_KEY e WEBHOOK_TOKEN; WALLET_ID e BASE_URL são opcionais", () => {
+  it("Asaas exige API_KEY e WEBHOOK_TOKEN; WALLET_ID é opcional", () => {
     const fields = getAdapterDescriptor("ASAAS").fields
     expect(fields.filter((f) => f.required).map((f) => f.key)).toEqual(["API_KEY", "WEBHOOK_TOKEN"])
-    expect(fields.filter((f) => !f.required).map((f) => f.key)).toEqual(["WALLET_ID", "BASE_URL"])
+    expect(fields.filter((f) => !f.required).map((f) => f.key)).toEqual(["WALLET_ID"])
   })
 
   it("somente o Abacate é capaz de pagamento no router", () => {
@@ -38,6 +38,14 @@ describe("credential schema", () => {
       expect(isValidCredentialKey(bad)).toBe(false)
     }
     expect(isRequiredCredentialKey("ABACATE_PAY", "EXTRA_TOKEN")).toBe(false)
+  })
+
+  it("BASE_URL e demais chaves de destino de rede NÃO são aceitas (SSRF)", () => {
+    for (const key of ["BASE_URL", "ASAAS_URL", "API_HOST", "WEBHOOK_ENDPOINT", "CALLBACK_URI", "URL"]) {
+      expect(isValidCredentialKey(key)).toBe(false)
+    }
+    expect(getAdapterDescriptor("ASAAS").fields.some((f) => f.key === "BASE_URL")).toBe(false)
+    expect(isValidCredentialKey("URL_TOKEN")).toBe(true)
   })
 
   it("mapeia a reserva de ambiente por instância", () => {

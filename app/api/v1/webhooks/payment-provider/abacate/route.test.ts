@@ -6,7 +6,8 @@ const listConfigs = mock(async (_environment: string) => [
 ])
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
-  paymentProviderConfigRepository: { list: listConfigs },
+  // findPrimary/findByScope: o resolver de credenciais (M11) consulta a instância; sem linha, vale o ambiente.
+  paymentProviderConfigRepository: { list: listConfigs, findPrimary: async () => null, findByScope: async () => null },
 }))
 
 const claim = mock(async (_input: unknown) => ({ kind: "claimed" as const, claimToken: "claim-1" }))

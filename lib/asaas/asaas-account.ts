@@ -71,7 +71,8 @@ function readStoredCredential(accountId: AsaasAccountId, key: string): string | 
 }
 
 export function resolveAsaasAccount(accountId: AsaasAccountId): ResolvedAsaasAccount {
-  const baseUrl = readStoredCredential(accountId, "BASE_URL")?.replace(/\/$/, "") ?? resolveAsaasBaseUrl()
+  // A URL base vem SOMENTE de ASAAS_ENV/ASAAS_URL*: nunca de credencial editável (SSRF).
+  const baseUrl = resolveAsaasBaseUrl()
   const environment = detectAsaasEnvironment()
 
   if (accountId === "legacy") {

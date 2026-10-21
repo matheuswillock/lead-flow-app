@@ -78,11 +78,47 @@ describe("credential resolver", () => {
     expect(resolved.instanceId).toBeNull()
   })
 
-  it("banco indisponível cai no ambiente em vez de derrubar o pagamento", async () => {
+  it("erro ao ler o banco SEM cache lança e NUNCA cai no ambiente (falha fechada)", async () => {
     const { resolver, logs } = setup({ dbFails: true, env: { ABACATE_PAY_API_KEY: ENV_SECRET } })
-    const resolved = await resolver.resolve(selector)
-    expect(resolved.values.API_KEY).toBe(ENV_SECRET)
-    expect(logs.some((l) => l.event === "payment_provider_credentials_db_unavailable")).toBe(true)
+    await expect(resolver.resolve(selector)).rejects.toThrow("Não foi possível ler")
+    const event = logs.find((l) => l.event === "payment_provider_credentials_db_unavailable")
+    expect(event?.fields.servedFrom).toBe("none")
+    expect(JSON.stringify(logs)).not.toContain(ENV_SECRET)
+  })
+
+  it("erro ao ler o banco COM cache stale mantém requireSignature e os segredos do banco", async () => {
+    const clock = { value: 0 }
+    const healthy = setup({
+      stored: { API_KEY: DB_SECRET },
+      env: { ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET },
+      now: clock,
+    })
+    await healthy.resolver.resolve(selector)
+    clock.value = 60_000
+    healthy.findInstance.mockImplementation(async () => {
+      throw new Error("connection refused")
+    })
+    const resolved = await healthy.resolver.resolve(selector)
+    expect(resolved.settings.requireSignature).toBe(true)
+    expect(resolved.values.API_KEY).toBe(DB_SECRET)
+    expect(resolved.sources.API_KEY).toBe("db")
+    expect(healthy.logs.at(-1)?.fields.servedFrom).toBe("stale_cache")
+  })
+
+  it("chave ausente no banco usa o ambiente (bootstrap); schema não aplicado também", async () => {
+    const { resolver } = setup({ stored: {}, env: { ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET } })
+    expect((await resolver.resolve(selector)).sources.API_KEY).toBe("env")
+    const missingTable = createCredentialResolver({
+      findInstance: async () => {
+        throw Object.assign(new Error("relation does not exist"), { code: "P2021" })
+      },
+      loadStored: async () => [],
+      decrypt: () => "",
+      env: () => ({ ABACATE_PAY_API_KEY: ENV_SECRET }),
+      cache: new CredentialCache(),
+      log: () => undefined,
+    })
+    expect((await missingTable.resolve(selector)).values.API_KEY).toBe(ENV_SECRET)
   })
 
   it("credencial gravada e ilegível LANÇA e não cai no ambiente", async () => {
