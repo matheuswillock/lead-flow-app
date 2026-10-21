@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { AlertCircle, Plus, ExternalLink } from "lucide-react"
+import { useAvailableBillingTypes } from "@/lib/payment-methods/useAvailableBillingTypes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -123,7 +124,11 @@ export function BackofficePaymentsContainer() {
     useBackofficePayments()
   const { tz } = useTimezone()
   const [open, setOpen] = useState(false)
+  const { cardOffered } = useAvailableBillingTypes(open)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
+  // Cartão indisponível nunca fica selecionado nem é enviado (BOLETO continua como está).
+  const effectiveBillingType =
+    form.billingType === "CREDIT_CARD" && !cardOffered ? "PIX" : form.billingType
   const [pixDialog, setPixDialog] = useState<{
     open: boolean
     pixQrCode: string | null
@@ -149,12 +154,16 @@ export function BackofficePaymentsContainer() {
 
     submitLock.current = true
     try {
-      const created = await createPayment({ ...form, amount: Number(form.amount) })
+      const created = await createPayment({
+        ...form,
+        billingType: effectiveBillingType,
+        amount: Number(form.amount),
+      })
       toast.success("Cobrança criada com sucesso")
       setOpen(false)
       setForm(initialForm)
 
-      if (form.billingType === "PIX" && created.pixQrCode) {
+      if (effectiveBillingType === "PIX" && created.pixQrCode) {
         setPixDialog({
           open: true,
           pixQrCode: created.pixQrCode,
@@ -301,7 +310,7 @@ export function BackofficePaymentsContainer() {
             <div className="space-y-2">
               <Label>Tipo de cobrança</Label>
               <Select
-                value={form.billingType}
+                value={effectiveBillingType}
                 onValueChange={(v) => handleChange("billingType", v)}
               >
                 <SelectTrigger>
@@ -310,7 +319,7 @@ export function BackofficePaymentsContainer() {
                 <SelectContent>
                   <SelectItem value="PIX">PIX</SelectItem>
                   <SelectItem value="BOLETO">Boleto</SelectItem>
-                  <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>
+                  {cardOffered && <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

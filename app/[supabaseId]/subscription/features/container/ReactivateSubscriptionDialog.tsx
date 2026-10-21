@@ -14,6 +14,8 @@ import { CreditCardForm, type CreditCardFormData } from "@/app/[supabaseId]/mana
 import Image from "next/image";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { cn } from "@/lib/utils";
+import { coerceBillingType } from "@/lib/payment-methods/availability-client";
+import { useAvailableBillingTypes } from "@/lib/payment-methods/useAvailableBillingTypes";
 import { classifyPaymentStatus } from "@/lib/billing/payment-status-vocabulary";
 import {
   buildReactivationPayload,
@@ -46,7 +48,10 @@ export function ReactivateSubscriptionDialog({
   onReactivationSuccess
 }: ReactivateSubscriptionDialogProps) {
   const [operatorCount, setOperatorCount] = useState(currentOperatorCount);
-  const [paymentMethod, setPaymentMethod] = useState<"PIX" | "CREDIT_CARD">("CREDIT_CARD");
+  const { availableMethods, cardOffered } = useAvailableBillingTypes(open);
+  const [requestedMethod, setPaymentMethod] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  // Cartão indisponível nunca fica selecionado: o método efetivo cai para PIX.
+  const paymentMethod = coerceBillingType(requestedMethod, availableMethods);
   const [loading, setLoading] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileLoadFailed, setProfileLoadFailed] = useState(false);
@@ -124,7 +129,7 @@ export function ReactivateSubscriptionDialog({
         return;
       }
 
-      setPaymentMethod("CREDIT_CARD");
+      setPaymentMethod("PIX");
       setCreditCardFormData(null);
       setIsCreditCardFormValid(false);
       setPaymentData(null);
@@ -394,6 +399,7 @@ export function ReactivateSubscriptionDialog({
                       </CardContent>
                     </Card>
 
+                    {cardOffered && (
                     <Card className={cn(paymentMethod === 'CREDIT_CARD' && 'ring-2 ring-primary')}>
                       <CardContent className="flex items-start gap-3 pb-4 pt-4">
                         <RadioGroupItem value="CREDIT_CARD" id="card" className="mt-1" />
@@ -409,12 +415,13 @@ export function ReactivateSubscriptionDialog({
                         </Label>
                       </CardContent>
                     </Card>
+                    )}
                   </RadioGroup>
                 </div>
               )}
 
               {/* Formulário de Cartão de Crédito */}
-              {!paymentData && paymentMethod === 'CREDIT_CARD' && (
+              {!paymentData && cardOffered && paymentMethod === 'CREDIT_CARD' && (
                 <CreditCardForm
                   initialData={{
                     name: managerData.name,

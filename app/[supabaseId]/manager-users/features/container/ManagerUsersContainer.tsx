@@ -27,6 +27,8 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability";
+import { coerceBillingType, normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -55,6 +57,8 @@ export function ManagerUsersContainer({
   const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
   const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerUserTableRow | null>(null);
   const [pendingPaymentBillingType, setPendingPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [pendingPaymentMethods, setPendingPaymentMethods] = useState<AvailableBillingTypes>(["PIX"]);
+  const effectivePendingPaymentBillingType = coerceBillingType(pendingPaymentBillingType, pendingPaymentMethods);
   const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
   const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
   const [pendingPaymentSummary, setPendingPaymentSummary] = useState({
@@ -137,6 +141,7 @@ export function ManagerUsersContainer({
       }
 
       const details = result.result as any;
+      setPendingPaymentMethods(normalizeAvailableBillingTypes(details.availableBillingTypes));
       setPendingPaymentBillingType(details.presetBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX");
       setPendingPaymentSummary({
         addonLabel: details.addonLabel ?? "Pagamento pendente",
@@ -162,7 +167,7 @@ export function ManagerUsersContainer({
       const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ billingType: pendingPaymentBillingType }),
+        body: JSON.stringify({ billingType: effectivePendingPaymentBillingType }),
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
@@ -433,7 +438,8 @@ export function ManagerUsersContainer({
         open={isEditPendingPaymentOpen}
         loading={pendingPaymentLoading}
         submitting={pendingPaymentSubmitting}
-        billingType={pendingPaymentBillingType}
+        billingType={effectivePendingPaymentBillingType}
+        availableMethods={pendingPaymentMethods}
         addonLabel={pendingPaymentSummary.addonLabel}
         addonDetail={pendingPaymentSummary.addonDetail}
         totalCharge={pendingPaymentSummary.totalCharge}

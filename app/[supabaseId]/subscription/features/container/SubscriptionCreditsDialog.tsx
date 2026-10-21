@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { toastUserError } from '@/lib/ui/to-user-toast-message';
+import { coerceBillingType } from '@/lib/payment-methods/availability-client';
+import { useAvailableBillingTypes } from '@/lib/payment-methods/useAvailableBillingTypes';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -30,7 +32,10 @@ export function SubscriptionCreditsDialog({
   const hasUnlimitedUsers = subscription.billingSummary?.hasUnlimitedUsers === true;
   const [action, setAction] = useState<'add' | 'remove'>('add');
   const [resource, setResource] = useState<'user' | 'team'>(hasUnlimitedUsers ? 'team' : 'user');
-  const [billingType, setBillingType] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  const { availableMethods, cardOffered } = useAvailableBillingTypes(open);
+  const [requestedBillingType, setBillingType] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  // Cartão indisponível nunca é enviado: o método efetivo cai para PIX.
+  const billingType = coerceBillingType(requestedBillingType, availableMethods);
   const [quantity, setQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -145,7 +150,7 @@ export function SubscriptionCreditsDialog({
                     <SelectContent>
                       <SelectGroup>
                         <SelectItem value="PIX">PIX</SelectItem>
-                        <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>
+                        {cardOffered && <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>}
                       </SelectGroup>
                     </SelectContent>
                   </Select>

@@ -20,6 +20,8 @@ export interface AddOnCheckoutData {
   pendingActionId: string;
   paymentId: string | null;
   presetBillingType: "PIX" | "CREDIT_CARD";
+  /** Métodos que o servidor permite oferecer agora. Ausente = somente PIX (falha fechada). */
+  availableBillingTypes?: ("PIX" | "CREDIT_CARD")[];
   addonType: AddOnType;
   addonLabel: string;
   addonDetail: string;
