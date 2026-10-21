@@ -1,3 +1,7 @@
+import { asaasPaymentEventSourceRepository } from "@/app/api/infra/data/repositories/paymentCharge/AsaasPaymentEventSourceRepository"
+import { ChargeDivergenceService } from "./ChargeDivergenceService"
+import { createChargeSourceReader } from "./chargeSourceReader"
+import { reportChargeDivergences } from "./reportChargeDivergences"
 import { asaasProfileLookupRepository } from "@/app/api/infra/data/repositories/paymentCharge/AsaasProfileLookupRepository"
 import { AsaasShadowMirror } from "./AsaasShadowMirror"
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
@@ -37,7 +41,7 @@ export function createOwnerChargeMirror(): OwnerChargeMirror {
   })
 }
 
-function createOwnerChargeSource(): OwnerChargeSource {
+export function createOwnerChargeSource(): OwnerChargeSource {
   const adhesions = new BackofficeAdhesionRepository()
   return {
     async snapshot(ownerType, ownerId): Promise<OwnerChargeSnapshot | null> {
@@ -90,5 +94,18 @@ export function createAsaasShadowMirror(): AsaasShadowMirror {
     ledger: chargeLedger,
     profiles: asaasProfileLookupRepository,
     environment: () => (process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"),
+  })
+}
+
+export function createChargeDivergenceService(): ChargeDivergenceService {
+  return new ChargeDivergenceService({
+    charges: paymentChargeRepository,
+    source: createChargeSourceReader({
+      asaasEvents: asaasPaymentEventSourceRepository,
+      attempts: paymentProviderSessionRepository,
+      owners: createOwnerChargeSource(),
+    }),
+    asaasEnvironment: () => (process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"),
+    report: reportChargeDivergences,
   })
 }

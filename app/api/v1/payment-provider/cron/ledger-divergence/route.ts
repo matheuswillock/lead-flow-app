@@ -1,0 +1,39 @@
+import { NextResponse, type NextRequest, connection } from "next/server"
+import { Output } from "@/lib/output"
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { withCronAudit } from "@/app/api/lib/cron/withCronAudit"
+import { getDefaultCronSlackCallback } from "@/app/api/lib/cron/cronSlackCallback"
+import { createChargeDivergenceService } from "@/app/api/services/paymentCharge/paymentChargeComposition"
+import { ChargeDivergenceUseCase } from "@/app/api/useCases/paymentCharge/ChargeDivergenceUseCase"
+
+export const maxDuration = 60
+
+export async function GET(request: NextRequest) {
+  await connection()
+
+  try {
+    const authHeader = request.headers.get("authorization")
+    const cronSecret = process.env.CRON_SECRET
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json(new Output(false, [], ["Não autorizado"], null), { status: 401 })
+    }
+
+    const output = await withCronAudit(
+      {
+        cronKey: "payment-ledger-divergence",
+        cronPath: "/api/v1/payment-provider/cron/ledger-divergence",
+      },
+      () => new ChargeDivergenceUseCase(createChargeDivergenceService()).execute(),
+      { onFailure: getDefaultCronSlackCallback() },
+    )
+    return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error)
+    console.error("[PaymentLedgerDivergenceCronRoute][GET]", {
+      message: error instanceof Error ? error.message : "unknown",
+    })
+    return NextResponse.json(new Output(false, [], ["Erro interno na verificação do ledger"], null), {
+      status: 500,
+    })
+  }
+}
