@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   evaluateRollingRelease,
   parseRollingReleaseOutput,
+  redactSecret,
   waitForRollingRelease,
   type RollingRelease,
 } from "./wait-rolling-release"
@@ -85,5 +86,15 @@ describe("waitForRollingRelease", () => {
   it("reprova de imediato quando o release é abortado", async () => {
     const result = await waitForRollingRelease(baseOptions, makeDeps([release({ state: "ABORTED" })]))
     expect(result.kind).toBe("failed")
+  })
+})
+
+describe("redactSecret", () => {
+  it("troca toda ocorrência do segredo", () => {
+    expect(redactSecret("a tok b tok", "tok")).toBe("a *** b ***")
+  })
+
+  it("não altera o texto quando o segredo é vazio", () => {
+    expect(redactSecret("texto", "")).toBe("texto")
   })
 })

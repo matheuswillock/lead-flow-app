@@ -86,3 +86,7 @@ export async function waitForRollingRelease(
 
   return { kind: "failed", detail: `tempo esgotado; última leitura: ${last.detail}` }
 }
+
+export function redactSecret(text: string, secret: string): string {
+  return secret ? text.split(secret).join("***") : text
+}
