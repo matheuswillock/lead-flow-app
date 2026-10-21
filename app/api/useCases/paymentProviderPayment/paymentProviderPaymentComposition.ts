@@ -16,6 +16,7 @@ import { PaymentProviderMaintenanceService } from "@/app/api/services/PaymentPro
 import { PaymentProviderRefundUseCase } from "./PaymentProviderRefundUseCase"
 import { PaymentProviderMaintenanceUseCase } from "./PaymentProviderMaintenanceUseCase"
 import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
+import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
 
 const ABACATE_CAPABILITIES = [
   "ONE_TIME_PAYMENT",
@@ -45,11 +46,10 @@ function readProviderSecret(environment: PaymentProviderEnvironment, suffix: str
 // liberado. Em DEV ela é sempre obrigatória.
 function readProviderPublicKey(environment: PaymentProviderEnvironment): string | null {
   if (environment !== "PRODUCTION") return readProviderSecret(environment, "PUBLIC_KEY")
-  const value = process.env[`ABACATE_PAY_${environment}_PUBLIC_KEY`] ?? process.env.ABACATE_PAY_PUBLIC_KEY
-  return value?.trim() ? value : null
+  return readAbacatePublicKey(environment)
 }
 
-function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
+export function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
   const hasPublicKey = readProviderPublicKey(environment) !== null
   return ABACATE_CAPABILITIES.filter((capability) => capability !== "CARD" || hasPublicKey)
 }

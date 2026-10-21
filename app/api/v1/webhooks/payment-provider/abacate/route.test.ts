@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+// --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
 const listConfigs = mock(async (_environment: string) => [
   { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
@@ -16,7 +17,7 @@ mock.module("@/app/api/infra/data/repositories/paymentProviderEvent/PaymentProvi
   paymentProviderEventInboxRepository: { claim, assertClaimActive, markProcessed, markFailed },
 }))
 
-const attempt = {
+const defaultAttempt = {
   id: "attempt-1",
   status: "PENDING",
   provider: "ABACATE_PAY",
@@ -26,6 +27,7 @@ const attempt = {
   ownerId: "purchase-1",
   tenantId: "tenant-1",
 }
+let attempt: typeof defaultAttempt = { ...defaultAttempt }
 const findAttemptByExternalId = mock(async (_input: unknown) => attempt)
 const applyEventWithClaim = mock(async (_input: unknown) => undefined)
 mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository", () => ({
@@ -46,9 +48,29 @@ mock.module("@/app/api/infra/data/repositories/platformPurchase/PlatformPurchase
   platformPurchaseRepository: { markPaidOnceForProvider },
 }))
 
+const graceFindById = mock(async (_id: string): Promise<unknown> => ({ id: "grace-1", status: "pending" }))
+const graceMarkConfirmed = mock(async (_input: unknown): Promise<unknown> => ({ id: "grace-1", status: "confirmed" }))
+const graceComplete = mock(async (_id: string): Promise<unknown> => ({ id: "grace-1", status: "completed" }))
 mock.module("@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository", () => ({
-  billingGracePaymentRepository: {},
+  billingGracePaymentRepository: {
+    findById: graceFindById,
+    markConfirmed: graceMarkConfirmed,
+    completeAndRestoreAccess: graceComplete,
+  },
 }))
+
+const adhesionPaymentFindById = mock(async (_id: string): Promise<unknown> => ({ id: "adhesion-payment-1", adhesionId: "adhesion-1" }))
+mock.module("@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository", () => ({
+  backofficeAdhesionPaymentRepository: { findById: adhesionPaymentFindById },
+}))
+
+const markPaidFromProvider = mock(async (_adhesionId: string, _input: unknown): Promise<void> => undefined)
+mock.module("@/app/api/services/backofficeAdhesion/BackofficeAdhesionService", () => ({
+  backofficeAdhesionService: { markPaidFromProvider },
+}))
+
+const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
+mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
 
 const { POST } = await import("./route")
 
@@ -71,9 +93,11 @@ beforeEach(() => {
   process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
   process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
   process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
-  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider]) {
+  attempt = { ...defaultAttempt }
+  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage]) {
     fn.mockClear()
   }
+  markPaidFromProvider.mockImplementation(async () => undefined)
 })
 
 afterEach(() => {
@@ -135,5 +159,86 @@ describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
     expect(response.status).toBe(401)
     expect(claim).not.toHaveBeenCalled()
     expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — owner BACKOFFICE_ADHESION", () => {
+  const confirmedRequest = () =>
+    webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret")
+
+  beforeEach(() => {
+    attempt = { ...defaultAttempt, ownerType: "BACKOFFICE_ADHESION", ownerId: "adhesion-payment-1", tenantId: "adhesion-1" }
+  })
+
+  it("CONFIRMED paga a adesão e provisiona a conta pelo pagamento vinculado", async () => {
+    const response = await POST(confirmedRequest())
+
+    expect(response.status).toBe(202)
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+    expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
+    expect(markPaidFromProvider).toHaveBeenCalledWith(
+      "adhesion-1",
+      expect.objectContaining({
+        providerPaymentId: "pix_char_prod_1",
+        adhesionPaymentId: "adhesion-payment-1",
+        amountInCents: 6990,
+        paidAt: expect.any(Date),
+      }),
+    )
+  })
+
+  it("falha no efeito de domínio responde 500 e o reenvio (tentativa já CONFIRMED) não repete o efeito", async () => {
+    markPaidFromProvider.mockImplementation(async () => {
+      throw new Error("Supabase Admin indisponível")
+    })
+    const failed = await POST(confirmedRequest())
+    expect(failed.status).toBe(500)
+    expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
+
+    // O CAS da tentativa já a levou a CONFIRMED; o reenvio do webhook não passa mais pelo efeito.
+    attempt = { ...attempt, status: "CONFIRMED" }
+    markPaidFromProvider.mockImplementation(async () => undefined)
+    const replay = await POST(confirmedRequest())
+
+    expect(replay.status).toBe(202)
+    expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
+  })
+
+  it("pagamento da adesão inexistente falha em vez de ser ignorado", async () => {
+    adhesionPaymentFindById.mockImplementationOnce(async () => null)
+
+    const response = await POST(confirmedRequest())
+
+    expect(response.status).toBe(500)
+    expect(markPaidFromProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — owner BILLING_GRACE_PAYMENT e desconhecido", () => {
+  const confirmedRequest = () =>
+    webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret")
+
+  it("regularização confirmada restaura o acesso", async () => {
+    attempt = { ...defaultAttempt, ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1" }
+
+    const response = await POST(confirmedRequest())
+
+    expect(response.status).toBe(202)
+    expect(graceMarkConfirmed).toHaveBeenCalledWith(expect.objectContaining({ id: "grace-1", providerExternalId: "pix_char_prod_1" }))
+    expect(graceComplete).toHaveBeenCalledWith("grace-1")
+  })
+
+  it("ownerType desconhecido gera alerta estruturado em vez de passar em silêncio", async () => {
+    attempt = { ...defaultAttempt, ownerType: "ALGUM_OWNER_NOVO", ownerId: "x-1" }
+
+    const response = await POST(confirmedRequest())
+
+    expect(response.status).toBe(202)
+    expect(captureMessage).toHaveBeenCalledTimes(1)
+    expect(captureMessage.mock.calls[0]?.[1]).toMatchObject({
+      level: "error",
+      tags: { ownerType: "ALGUM_OWNER_NOVO" },
+    })
+    expect(markPaidFromProvider).not.toHaveBeenCalled()
   })
 })

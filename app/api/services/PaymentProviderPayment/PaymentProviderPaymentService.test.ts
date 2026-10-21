@@ -108,6 +108,8 @@ function makeDependencies(
       listAttemptsPendingReconciliation: mock(async () => []),
       listAttemptsPendingEmailCreditEntitlements: mock(async () => []),
       listAttemptsPendingPurchaseActivation: mock(async () => []),
+      listOwnerAttemptsPendingSettlement: mock(async () => []),
+      listOwnerAttemptsPendingReconciliation: mock(async () => []),
       releaseAttemptLease: mock(async () => undefined),
     },
     identities: {

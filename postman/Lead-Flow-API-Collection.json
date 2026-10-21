@@ -10076,6 +10076,36 @@
               }
             },
             {
+              "name": "POST Public Adhesion Pix (Abacate)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"12345678909\",\n  \"idempotencyKey\": \"adhesion-pix-{{$guid}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}/pix",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}",
+                    "pix"
+                  ]
+                },
+                "description": "Gera o PIX transparente da adesão pelo provider de pagamento (Abacate). O token define a adesão e o valor; a chave de idempotência vale por adesão. Adesões com parcelas pendentes no Asaas usam o checkout padrão. Limitado por IP (429)."
+              }
+            },
+            {
               "name": "GET Public Adhesion Payment Status",
               "request": {
                 "method": "GET",
@@ -17842,6 +17872,27 @@
               ]
             },
             "description": "Cria PlatformPurchase pendente e retorna checkoutId/externalReference (URL pública /addon-checkout/[id])."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Payment Methods Availability (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payment-methods/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payment-methods",
+                "availability"
+              ]
+            },
+            "description": "Público. Retorna { card, reason, availableBillingTypes } (['PIX'] ou ['PIX','CREDIT_CARD']). Cache-Control curto (30s). CREDIT_CARD em rotas de checkout com cartão desligado responde 422 PAYMENT_METHOD_UNAVAILABLE."
           },
           "response": []
         },

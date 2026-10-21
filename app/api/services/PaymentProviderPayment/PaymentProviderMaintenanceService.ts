@@ -7,6 +7,9 @@ import type {
 import type { PaymentQueryCapability } from "@/lib/payment-provider/contracts"
 import type { PaymentMethod } from "@/lib/payment-provider/types"
 import { PaymentProviderReconciliationService } from "./PaymentProviderReconciliationService"
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
+import { createPaymentOwnerSettlement } from "./paymentOwnerSettlementComposition"
+import type { PaymentOwnerSettlement } from "./PaymentOwnerSettlementService"
 
 const DEFAULT_BATCH_SIZE = 50
 
@@ -14,6 +17,15 @@ type QueryProviderResolver = (input: {
   readonly provider: StoredPaymentProviderAttemptRecord["provider"]
   readonly environment: StoredPaymentProviderAttemptRecord["environment"]
 }) => PaymentQueryCapability
+
+/** Owners sem compra (adesão, regularização): reparo do efeito de domínio e reconciliação. */
+export type PaymentProviderOwnerMaintenance = {
+  readonly sessions: Pick<
+    IPaymentProviderSessionRepository,
+    "listOwnerAttemptsPendingSettlement" | "listOwnerAttemptsPendingReconciliation"
+  >
+  readonly settlement: PaymentOwnerSettlement
+}
 
 export type PaymentProviderMaintenanceDependencies = {
   readonly sessions: Pick<
@@ -33,6 +45,8 @@ export type PaymentProviderMaintenanceDependencies = {
     readonly productSlug: string
   }) => Promise<ApplyEmailCreditsPaidPurchaseResult>
   readonly now: () => Date
+  /** Padrão: repositório de sessões real + settlement de produção. */
+  readonly owners?: PaymentProviderOwnerMaintenance
 }
 
 export type PaymentProviderMaintenanceResult = {
@@ -44,13 +58,21 @@ export type PaymentProviderMaintenanceResult = {
   readonly entitlementFailures: number
   readonly purchasesActivated: number
   readonly purchaseActivationFailures: number
+  readonly ownerAttemptsReconciled: number
+  readonly ownerSettlementsRepaired: number
+  readonly ownerSettlementFailures: number
 }
 
 export class PaymentProviderMaintenanceService {
   private readonly now: () => Date
+  private readonly owners: PaymentProviderOwnerMaintenance
 
   constructor(private readonly dependencies: PaymentProviderMaintenanceDependencies) {
     this.now = dependencies.now ?? (() => new Date())
+    this.owners = dependencies.owners ?? {
+      sessions: paymentProviderSessionRepository,
+      settlement: createPaymentOwnerSettlement(),
+    }
   }
 
   async run(input: { limit?: number } = {}): Promise<PaymentProviderMaintenanceResult> {
@@ -182,6 +204,8 @@ export class PaymentProviderMaintenanceService {
       }
     }
 
+    const ownerResult = await this.runOwnerPasses(limit)
+
     return {
       reconciled,
       stillUnknown,
@@ -191,7 +215,77 @@ export class PaymentProviderMaintenanceService {
       entitlementFailures,
       purchasesActivated,
       purchaseActivationFailures,
+      ...ownerResult,
     }
+  }
+
+  private async runOwnerPasses(limit: number) {
+    const ownerAttemptsReconciled = await this.reconcileOwnerAttempts(limit)
+    const repair = await this.repairOwnerSettlements(limit)
+    return { ownerAttemptsReconciled, ...repair }
+  }
+
+  // Tentativas UNKNOWN de adesão/regularização: sempre PIX. A reconciliação aplica o efeito
+  // de domínio antes de fechar a tentativa quando o provider confirma o pagamento.
+  private async reconcileOwnerAttempts(limit: number): Promise<number> {
+    const attempts = await this.owners.sessions.listOwnerAttemptsPendingReconciliation({ limit })
+    let reconciled = 0
+    for (const attempt of attempts) {
+      try {
+        const result = await this.dependencies.reconciliation.reconcile({
+          attempt,
+          method: "PIX",
+          provider: this.dependencies.resolveQueryProvider({
+            provider: attempt.provider,
+            environment: attempt.environment,
+          }),
+        })
+        if (!result.requiresReconciliation) reconciled += 1
+      } catch (error) {
+        console.error("[PaymentProviderMaintenanceService][owner-reconcile] Error", {
+          attemptId: attempt.id,
+          ownerType: attempt.ownerType,
+          message: error instanceof Error ? error.message : "unknown",
+        })
+      }
+    }
+    return reconciled
+  }
+
+  // Reparo: a tentativa já está CONFIRMED (o reenvio do webhook não repete o efeito), mas o
+  // efeito de domínio do owner não concluiu. O settlement é idempotente.
+  private async repairOwnerSettlements(limit: number) {
+    const attempts = await this.owners.sessions.listOwnerAttemptsPendingSettlement({ limit })
+    let ownerSettlementsRepaired = 0
+    let ownerSettlementFailures = 0
+    for (const attempt of attempts) {
+      if (!attempt.externalId) continue
+      try {
+        // O valor pago vem da consulta ao provider (a tentativa persistida não guarda o valor).
+        const remote = await this.dependencies
+          .resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment })
+          .getStatus({ externalId: attempt.externalId, method: "PIX" })
+        if (remote.status !== "CONFIRMED") {
+          throw new Error(`Provider não confirma o pagamento (${remote.status})`)
+        }
+        await this.owners.settlement.settleConfirmed({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: attempt.externalId,
+          amountInCents: remote.amountInCents,
+          paidAt: this.now(),
+        })
+        ownerSettlementsRepaired += 1
+      } catch (error) {
+        ownerSettlementFailures += 1
+        console.error("[PaymentProviderMaintenanceService][owner-settlement] Error", {
+          attemptId: attempt.id,
+          ownerType: attempt.ownerType,
+          message: error instanceof Error ? error.message : "unknown",
+        })
+      }
+    }
+    return { ownerSettlementsRepaired, ownerSettlementFailures }
   }
 }
 

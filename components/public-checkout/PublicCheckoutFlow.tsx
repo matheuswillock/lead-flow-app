@@ -17,6 +17,8 @@ import type {
   PublicCheckoutPayerPrefill,
   PublicCheckoutStep,
 } from "./publicCheckoutTypes"
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
+import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
 import { isPixExpired } from "./pixExpiry"
 import type { CheckoutPaymentProvider } from "./providerBranding"
 import { PublicCheckoutPaymentStep } from "./PublicCheckoutPaymentStep"
@@ -49,14 +51,21 @@ export function PublicCheckoutFlow({
   onSubmit,
   onRefreshStatus,
   pixOnly = false,
+  availableMethods,
   successDescription = "Verifique seu e-mail para os proximos passos.",
   provider,
   canRegeneratePix = false,
 }: {
+  /**
+   * Métodos que o checkout pode oferecer. Ausente = somente PIX (falha fechada): o cartão
+   * só aparece quando o servidor o declara disponível.
+   */
+  availableMethods?: AvailableBillingTypes
   /** `undefined` = Asaas (legado); `null` = ainda não resolvido (rodapé sem marca). */
   provider?: CheckoutPaymentProvider | null
   /** Quando true, PIX/tentativa expirados oferecem "Gerar novo PIX" reaproveitando os dados do pagador. */
   canRegeneratePix?: boolean
+  /** Legado: PIX sem coleta de endereço. Implica `availableMethods = ["PIX"]`. */
   pixOnly?: boolean
   successDescription?: string
   attemptStorageKey: string
@@ -87,13 +96,17 @@ export function PublicCheckoutFlow({
   const remainingMs = expiresAt ? expiresAt - now : null
   const isExpired = remainingMs != null && remainingMs <= 0
 
+  const methods = useMemo(
+    () => resolveCheckoutMethods({ availableMethods, pixOnly }),
+    // A identidade do array muda a cada render do pai; a chave estável evita reexecutar o efeito.
+    [availableMethods?.join(","), pixOnly]
+  )
+  const cardOffered = methods.includes("CREDIT_CARD")
+  const canChooseMethod = cardOffered && methods.includes("PIX")
+
   useEffect(() => {
-    if (pixOnly) {
-      setSelectedBillingType("PIX")
-      return
-    }
-    if (details?.presetBillingType) setSelectedBillingType(details.presetBillingType)
-  }, [details?.presetBillingType, pixOnly])
+    setSelectedBillingType(pickBillingType(details?.presetBillingType, methods))
+  }, [details?.presetBillingType, methods])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -225,9 +238,9 @@ export function PublicCheckoutFlow({
 
       {!isLoading && details && step === "payment" ? (
         <>
-          {pixOnly ? null : (
+          {canChooseMethod ? (
           <div className="mb-4 grid grid-cols-2 gap-3">
-            {(["PIX", "CREDIT_CARD"] as const).map((method) => {
+            {methods.map((method) => {
               const price = details.billingTypePrices[method]
               return (
                 <button
@@ -245,9 +258,10 @@ export function PublicCheckoutFlow({
               )
             })}
           </div>
-          )}
+          ) : null}
           <PublicCheckoutPaymentStep
             pixOnly={pixOnly}
+            availableMethods={methods}
             details={details}
             billingType={selectedBillingType}
             prefill={prefill}

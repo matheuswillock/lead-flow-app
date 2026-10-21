@@ -6,6 +6,9 @@ import { useParams } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability";
+import { coerceBillingType, normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client";
+import { useAvailableBillingTypes } from "@/lib/payment-methods/useAvailableBillingTypes";
 import { Check, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -194,6 +197,11 @@ export default function TeamsPage() {
   const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
   const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
   const [pendingPaymentBillingType, setPendingPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [pendingPaymentMethods, setPendingPaymentMethods] = useState<AvailableBillingTypes>(["PIX"]);
+  const effectivePendingPaymentBillingType = coerceBillingType(pendingPaymentBillingType, pendingPaymentMethods);
+  const { availableMethods: createTeamMethods, cardOffered: createTeamCardOffered } =
+    useAvailableBillingTypes(isCreateTeamOpen);
+  const effectiveCreateTeamBillingType = coerceBillingType(createTeamBillingType, createTeamMethods);
   const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerTeamTableRow | null>(null);
   const [pendingPaymentSummary, setPendingPaymentSummary] = useState({
     addonLabel: "",
@@ -360,7 +368,7 @@ export default function TeamsPage() {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
         },
-        body: JSON.stringify({ name: trimmedName, billingType: createTeamBillingType }),
+        body: JSON.stringify({ name: trimmedName, billingType: effectiveCreateTeamBillingType }),
       });
 
       const result = await response.json();
@@ -429,6 +437,7 @@ export default function TeamsPage() {
         throw new Error(result?.errorMessages?.[0] || "Erro ao carregar pagamento pendente.");
       }
       const details = result.result as any;
+      setPendingPaymentMethods(normalizeAvailableBillingTypes(details.availableBillingTypes));
       setPendingPaymentBillingType(details.presetBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX");
       setPendingPaymentSummary({
         addonLabel: details.addonLabel ?? "Time adicional",
@@ -478,7 +487,7 @@ export default function TeamsPage() {
       const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ billingType: pendingPaymentBillingType }),
+        body: JSON.stringify({ billingType: effectivePendingPaymentBillingType }),
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
@@ -1000,7 +1009,7 @@ export default function TeamsPage() {
             <div className="flex flex-col gap-2">
               <Label>Forma de pagamento</Label>
               <RadioGroup
-                value={createTeamBillingType}
+                value={effectiveCreateTeamBillingType}
                 onValueChange={(value) =>
                   setCreateTeamBillingType(value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
                 }
@@ -1011,10 +1020,12 @@ export default function TeamsPage() {
                   <RadioGroupItem value="PIX" id="create-team-pix" />
                   <Label htmlFor="create-team-pix">PIX</Label>
                 </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
-                  <Label htmlFor="create-team-card">Cartão de crédito</Label>
-                </div>
+                {createTeamCardOffered && (
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
+                    <Label htmlFor="create-team-card">Cartão de crédito</Label>
+                  </div>
+                )}
               </RadioGroup>
             </div>
           )}
@@ -1038,7 +1049,8 @@ export default function TeamsPage() {
         open={isEditPendingPaymentOpen}
         loading={pendingPaymentLoading}
         submitting={pendingPaymentSubmitting}
-        billingType={pendingPaymentBillingType}
+        billingType={effectivePendingPaymentBillingType}
+        availableMethods={pendingPaymentMethods}
         addonLabel={pendingPaymentSummary.addonLabel}
         addonDetail={pendingPaymentSummary.addonDetail}
         totalCharge={pendingPaymentSummary.totalCharge}

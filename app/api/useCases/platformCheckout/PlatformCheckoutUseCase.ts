@@ -9,6 +9,12 @@ import {
 } from "@/lib/billing/platform-purchase-external-reference"
 import { getFullUrl } from "@/lib/utils/app-url"
 import type { AsaasAccountId } from "@/lib/asaas"
+import {
+  PaymentMethodUnavailableError,
+  assertBillingTypeAllowed,
+  resolveCardAvailability,
+} from "@/lib/payment-methods/availability"
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 
 export type CreatePlatformCheckoutInput = {
   productSlug: string
@@ -78,6 +84,20 @@ function toDetails(purchase: PlatformPurchase): PlatformCheckoutDetails {
   }
 }
 
+export type PlatformCheckoutOwnerDetails = Omit<
+  PlatformCheckoutDetails,
+  "profileId" | "asaasPaymentId" | "externalReference" | "metadata"
+> & { metadata: { teamName?: string } }
+
+function toOwnerDetails(purchase: PlatformPurchase): PlatformCheckoutOwnerDetails {
+  const { profileId, asaasPaymentId, externalReference, metadata, ...rest } = toDetails(purchase)
+  void profileId
+  void asaasPaymentId
+  void externalReference
+  const teamName = (metadata as { teamName?: unknown } | null)?.teamName
+  return { ...rest, metadata: typeof teamName === "string" ? { teamName } : {} }
+}
+
 export class PlatformCheckoutUseCase {
   constructor(private readonly purchaseRepo: IPlatformPurchaseRepository) {}
 
@@ -98,6 +118,7 @@ export class PlatformCheckoutUseCase {
       if (input.billingType !== "PIX" && input.billingType !== "CREDIT_CARD") {
         return new Output(false, [], ["billingType inválido"], null)
       }
+      assertBillingTypeAllowed(input.billingType)
 
       const purchaseId = randomUUID()
       const externalReference = buildPlatformPurchaseExternalReference(purchaseId)
@@ -120,6 +141,7 @@ export class PlatformCheckoutUseCase {
 
       return new Output(true, ["Checkout criado com sucesso"], [], toDetails(created))
     } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error)
       console.error("[PlatformCheckoutUseCase][createCheckout]", error)
       return new Output(false, [], ["Erro ao criar checkout genérico"], null)
     }
@@ -136,9 +158,27 @@ export class PlatformCheckoutUseCase {
         return new Output(false, [], ["Checkout não encontrado"], null)
       }
 
-      return new Output(true, [], [], toDetails(purchase))
+      return new Output(true, [], [], {
+        ...toDetails(purchase),
+        availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      })
     } catch (error) {
       console.error("[PlatformCheckoutUseCase][getCheckoutDetails]", error)
+      return new Output(false, [], ["Erro ao carregar checkout"], null)
+    }
+  }
+
+  // Leitura exposta ao navegador: só o dono enxerga a compra, e o payload
+  // omite identificadores internos (profileId, asaasPaymentId, externalReference).
+  async getCheckoutDetailsForOwner(checkoutId: string, ownerProfileId: string): Promise<Output> {
+    try {
+      const purchase = checkoutId?.trim() ? await this.purchaseRepo.findById(checkoutId) : null
+      if (!purchase || purchase.profileId !== ownerProfileId) {
+        return new Output(false, [], ["Checkout não encontrado"], null)
+      }
+      return new Output(true, [], [], toOwnerDetails(purchase))
+    } catch (error) {
+      console.error("[PlatformCheckoutUseCase][getCheckoutDetailsForOwner]", error)
       return new Output(false, [], ["Erro ao carregar checkout"], null)
     }
   }

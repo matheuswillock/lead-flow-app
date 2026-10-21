@@ -7,6 +7,15 @@ export type PublicAdhesionStatusKey =
 
 export type PublicAdhesionBillingCycleKey = "monthly" | "quarterly" | "quadrimester" | "semiannual" | "annual"
 export type PublicAdhesionBillingType = "PIX" | "CREDIT_CARD"
+export type PublicAdhesionPixProvider = "ABACATE_PAY" | "ASAAS"
+
+export interface PublicAdhesionPixInput {
+  fullName: string
+  email: string
+  phone: string
+  cpfCnpj: string
+  idempotencyKey: string
+}
 
 export interface PublicAdhesionDetails {
   id: string
@@ -37,6 +46,10 @@ export interface PublicAdhesionDetails {
   installmentSchedule: number[]
   remainingBalance: number
   chargeAmount: number
+  /** Métodos oferecidos agora; o cartão some enquanto indisponível. */
+  availableBillingTypes: PublicAdhesionBillingType[]
+  /** Provider que cobra o PIX: define o endpoint e a marca do checkout. */
+  pixProvider: PublicAdhesionPixProvider
   createdAt: string
   paidAt: string | null
   expiresAt: string
@@ -68,6 +81,8 @@ export interface PublicAdhesionCheckoutInput {
 export interface PublicAdhesionPayment {
   adhesionId: string
   paymentId: string | null
+  /** Ausente = Asaas (legado). */
+  provider?: PublicAdhesionPixProvider
   status: PublicAdhesionStatusKey
   billingType: string | null
   amount: number

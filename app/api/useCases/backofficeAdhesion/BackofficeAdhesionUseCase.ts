@@ -2,14 +2,24 @@ import type { BackofficeAdhesionStatus } from "@prisma/client"
 import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import {
+  ASAAS_ADHESION_PIX_MISMATCH_MESSAGE,
   AsaasPaymentCancellationError,
   backofficeAdhesionService,
   BackofficeAdhesionService,
+  PIX_PENDING_SWITCH_BLOCKED_MESSAGE,
 } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
+import {
+  INCOMPLETE_PAYER_MESSAGE,
+  INVALID_AMOUNT_MESSAGE,
+  PAYER_MISMATCH_MESSAGE,
+  PIX_UNAVAILABLE_MESSAGE,
+} from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionPixPaymentService"
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionPaymentWebhookInput,
+  BackofficeAdhesionPixCheckoutInput,
   BackofficeAdhesionUpdateInput,
   IBackofficeAdhesionService,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
@@ -112,6 +122,31 @@ const KNOWN_SAFE_ADHESION_ERROR_PATTERNS: readonly RegExp[] = [
   /^Usuários adicionais não estão disponíveis para o ciclo .+$/,
 ]
 
+const ASAAS_CANCELLATION_PUBLIC_MESSAGE =
+  "Não foi possível trocar a forma de pagamento agora. " +
+  "A cobrança anterior ainda está sendo encerrada — fale com o suporte antes de pagar, " +
+  "para não correr o risco de pagar duas vezes."
+
+/** Copy de negócio do PIX público que pode chegar ao cliente que está pagando. */
+const KNOWN_SAFE_PIX_CHECKOUT_ERROR_MESSAGES = new Set([
+  "Nome completo inválido",
+  "E-mail inválido",
+  "Telefone inválido",
+  "CPF/CNPJ inválido",
+  "Já existe uma conta cadastrada com este e-mail",
+  "Assinatura já ativada. Use o link de fatura das parcelas pendentes para pagamento.",
+  PIX_PENDING_SWITCH_BLOCKED_MESSAGE,
+  ASAAS_ADHESION_PIX_MISMATCH_MESSAGE,
+  PIX_UNAVAILABLE_MESSAGE,
+  INCOMPLETE_PAYER_MESSAGE,
+  INVALID_AMOUNT_MESSAGE,
+  PAYER_MISMATCH_MESSAGE,
+])
+
+function isKnownSafePixCheckoutError(error: unknown): boolean {
+  return error instanceof Error && KNOWN_SAFE_PIX_CHECKOUT_ERROR_MESSAGES.has(error.message)
+}
+
 function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undefined): void {
   if (!accessExpiresAt) return
   if (Number.isNaN(new Date(accessExpiresAt).getTime())) {
@@ -122,6 +157,7 @@ function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undef
 function isKnownSafeAdhesionError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   return (
+    error instanceof PaymentMethodUnavailableError ||
     KNOWN_SAFE_ADHESION_ERROR_MESSAGES.has(error.message) ||
     KNOWN_SAFE_ADHESION_ERROR_PATTERNS.some((pattern) => pattern.test(error.message))
   )
@@ -346,21 +382,42 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       // (painel Asaas, ledger de migração, id de cobrança) só faz sentido no
       // log acima — ver `AsaasPaymentCancellationError`.
       if (error instanceof AsaasPaymentCancellationError) {
-        return new Output(
-          false,
-          [],
-          [
-            "Não foi possível trocar a forma de pagamento agora. " +
-              "A cobrança anterior ainda está sendo encerrada — fale com o suporte antes de pagar, " +
-              "para não correr o risco de pagar duas vezes.",
-          ],
-          null
-        )
+        return new Output(false, [], [ASAAS_CANCELLATION_PUBLIC_MESSAGE], null)
       }
       return new Output(
         false,
         [],
         [error instanceof Error ? error.message : "Erro ao gerar pagamento"],
+        null
+      )
+    }
+  }
+
+  async createPixCheckout(
+    token: string,
+    input: BackofficeAdhesionPixCheckoutInput,
+    idempotencyKey: string
+  ): Promise<Output> {
+    try {
+      if (!idempotencyKey.trim()) {
+        return new Output(false, [], ["Idempotency key é obrigatória"], null)
+      }
+      const result = await this.service.createPixCheckout(token, input, idempotencyKey.trim())
+      if ("tokenStatus" in result) {
+        return new Output(false, [], [`Token inválido: ${result.tokenStatus}`], result)
+      }
+      return new Output(true, ["PIX gerado com sucesso"], [], result)
+    } catch (error) {
+      if (!isKnownSafePixCheckoutError(error)) {
+        console.error("[BackofficeAdhesionUseCase][createPixCheckout]", error)
+      }
+      if (error instanceof AsaasPaymentCancellationError) {
+        return new Output(false, [], [ASAAS_CANCELLATION_PUBLIC_MESSAGE], null)
+      }
+      return new Output(
+        false,
+        [],
+        [isKnownSafePixCheckoutError(error) ? (error as Error).message : PIX_UNAVAILABLE_MESSAGE],
         null
       )
     }

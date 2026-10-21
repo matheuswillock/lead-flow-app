@@ -2227,6 +2227,30 @@ completed completed
     }
   
 
+  "backoffice_adhesion_payments" {
+    String id "🗝️"
+    String adhesion_id 
+    Int amount_cents 
+    String status 
+    String provider 
+    String provider_environment 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    String idempotency_key 
+    String payer_name 
+    String payer_email 
+    String payer_tax_id 
+    String payer_cellphone 
+    Json payment_instructions "❓"
+    DateTime confirmed_at "❓"
+    DateTime completed_at "❓"
+    String failure_reason "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_leads_schedule" {
     String id "🗝️"
     DateTime date 
@@ -5117,6 +5141,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
+    "backoffice_adhesion_payments" }o--|| backoffice_adhesions : "adhesion"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"

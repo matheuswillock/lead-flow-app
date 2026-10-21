@@ -28,6 +28,23 @@ describe("mapPlatformPurchaseToCheckoutData", () => {
     expect(data.alreadyPaid).toBe(false)
   })
 
+  it("falha fechada para PIX quando a API não declara availableBillingTypes", () => {
+    const data = mapPlatformPurchaseToCheckoutData({
+      checkoutId: "p3",
+      purchaseId: "p3",
+      productSlug: "email-credits-plus",
+      purchaseType: "email_credits",
+      status: "pending",
+      billingType: "CREDIT_CARD",
+      amount: 100,
+      quantity: 1,
+      description: null,
+      teamId: null,
+    })
+
+    expect(data.availableBillingTypes).toEqual(["PIX"])
+  })
+
   it("não exibe valor vazio quando a compra não tem time", () => {
     const base = {
       checkoutId: "p2",

@@ -10,7 +10,9 @@ function formatCurrency(value: number | null): string {
 }
 
 export function BillingCheckoutIntentContainer() {
-  const { details, selectedMethod, setSelectedMethod, loading, submitting, error, submit } = useBillingCheckoutIntent()
+  const { details, availableMethods, selectedMethod, setSelectedMethod, loading, submitting, error, submit } =
+    useBillingCheckoutIntent()
+  const canChooseMethod = availableMethods.length > 1
 
   async function handleSubmit() {
     const checkoutUrl = await submit()
@@ -21,7 +23,9 @@ export function BillingCheckoutIntentContainer() {
     <main className="mx-auto flex min-h-screen max-w-xl items-center justify-center p-6">
       <section className="w-full space-y-6 rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-semibold">Escolha a forma de pagamento</h1>
+          <h1 className="text-2xl font-semibold">
+            {details && !canChooseMethod ? "Pagamento via PIX" : "Escolha a forma de pagamento"}
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">Plano CRM mensal. O preço é confirmado no momento do checkout.</p>
         </div>
         {loading ? <p>Carregando checkout…</p> : null}
@@ -29,7 +33,7 @@ export function BillingCheckoutIntentContainer() {
         {details ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
-              {(["PIX", "CREDIT_CARD"] as BillingType[]).map((method) => (
+              {availableMethods.map((method: BillingType) => (
                 <button
                   key={method}
                   type="button"

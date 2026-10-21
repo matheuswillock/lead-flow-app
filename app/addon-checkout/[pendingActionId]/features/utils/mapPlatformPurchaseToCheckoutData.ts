@@ -1,4 +1,5 @@
 import { parseEmailCreditsPlanFromProductSlug } from "@/lib/email/email-credit-plans"
+import { normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client"
 import type { AddOnCheckoutData } from "../context/AddOnCheckoutTypes"
 
 export type PlatformCheckoutApiResult = {
@@ -13,6 +14,7 @@ export type PlatformCheckoutApiResult = {
   description: string | null
   teamId: string | null
   metadata?: unknown
+  availableBillingTypes?: unknown
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -63,6 +65,7 @@ export function mapPlatformPurchaseToCheckoutData(
     pendingActionId: purchase.purchaseId || purchase.checkoutId,
     paymentId: null,
     presetBillingType: billingType,
+    availableBillingTypes: normalizeAvailableBillingTypes(purchase.availableBillingTypes),
     addonType: "user",
     addonLabel: planLabel,
     addonDetail: [
