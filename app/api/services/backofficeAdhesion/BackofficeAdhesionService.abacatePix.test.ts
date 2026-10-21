@@ -111,7 +111,7 @@ function makeHarness(adhesion: BackofficeAdhesionWithRelations) {
     createPixPayment: mock(async () => buildPayment()),
     findLatest: mock(async (): Promise<BackofficeAdhesionPayment | null> => null),
     hasLivePendingPix: mock(async () => false),
-    markConfirmed: mock(async (_input: unknown) => null),
+    markConfirmed: mock(async (_input: unknown): Promise<BackofficeAdhesionPayment | null> => buildPayment({ status: "confirmed" })),
     markCompleted: mock(async (_id: string) => null),
     findById: mock(async (_id: string): Promise<BackofficeAdhesionPayment | null> => buildPayment()),
     supersedePending: mock(async (_adhesionId: string) => 0),
@@ -322,6 +322,33 @@ describe("BackofficeAdhesionService.markPaidFromProvider", () => {
 
     expect(h.repo.updateStatus).not.toHaveBeenCalled()
     expect(h.ensureAccount).toHaveBeenCalledTimes(2)
+  })
+
+  it("markConfirmed sem transição (pagamento mudou de estado) vai para revisão e não ativa a conta", async () => {
+    const h = makeHarness(buildAdhesion({ email: "maria@example.com" }))
+    h.pixPayments.markConfirmed.mockImplementation(async () => null)
+
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+
+    expect(h.pixPayments.markNeedsReview).toHaveBeenCalledWith("pay-1", "payment_state_changed")
+    expect(h.repo.updateStatus).not.toHaveBeenCalled()
+    expect(h.ensureAccount).not.toHaveBeenCalled()
+    expect(h.pixPayments.markCompleted).not.toHaveBeenCalled()
+  })
+
+  it("adesão cancelada entre a leitura e a ativação vai para revisão", async () => {
+    const h = makeHarness(buildAdhesion({ email: "maria@example.com" }))
+    let reads = 0
+    h.repo.findById.mockImplementation(async () => {
+      reads += 1
+      return (reads === 1 ? h.state.adhesion : { ...h.state.adhesion, status: "canceled" }) as BackofficeAdhesionWithRelations
+    })
+
+    await h.service.markPaidFromProvider("adhesion-1", settle)
+
+    expect(h.pixPayments.markNeedsReview).toHaveBeenCalledWith("pay-1", "adhesion_canceled")
+    expect(h.repo.updateStatus).not.toHaveBeenCalled()
+    expect(h.ensureAccount).not.toHaveBeenCalled()
   })
 
   it("pagamento já concluído é no-op", async () => {

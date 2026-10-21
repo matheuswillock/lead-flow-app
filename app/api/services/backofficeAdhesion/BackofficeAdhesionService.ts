@@ -1522,14 +1522,31 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return
     }
 
-    await this.pixPayments.markConfirmed({
+    const confirmed = await this.pixPayments.markConfirmed({
       id: payment.id,
       providerExternalId: input.providerPaymentId,
       confirmedAt: input.paidAt,
     })
+    // A transição é condicional: se o pagamento virou superseded/review entre a leitura e aqui,
+    // o dinheiro já entrou no provider e a adesão NÃO pode ser ativada sozinha.
+    if (!confirmed) {
+      await this.sendPaymentToManualReview(adhesion, payment, "payment_state_changed")
+      return
+    }
+    if (confirmed.status === "completed") return
+
+    // Reler a adesão logo antes de ativar: edição ou cancelamento concorrente derruba a ativação.
+    const current = await this.repo.findById(adhesionId)
+    if (!current) throw new Error("Adesão não encontrada")
+    const driftReason = this.findSettlementBlocker(current, confirmed, input)
+    if (driftReason) {
+      await this.sendPaymentToManualReview(current, confirmed, driftReason)
+      return
+    }
+
     const paid =
-      adhesion.status === "paid"
-        ? adhesion
+      current.status === "paid"
+        ? current
         : await this.repo.updateStatus(adhesionId, "paid", { paidAt: input.paidAt })
     const withPayer = await this.applyPayerToUnprovisionedAdhesion(paid, payment)
     // Idempotente: com a conta já criada só garante a assinatura; a falha propaga para o

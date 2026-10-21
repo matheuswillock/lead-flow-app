@@ -218,10 +218,11 @@ export function PublicAdhesionContainer() {
     <PublicCheckoutFlow
       provider={provider}
       canRegeneratePix={usesProviderPix}
-      // PIX do Abacate dispensa endereço e cartão. Adesões que seguem no Asaas ainda exigem o
-      // endereço, então o ocultamento do cartão nelas depende de `availableMethods` (A-front);
-      // até lá o servidor recusa o cartão com 4xx (assertBillingTypeAllowed).
+      // PIX do Abacate dispensa endereço (pixOnly). Adesões que seguem no Asaas ainda exigem o
+      // endereço; nelas o cartão some via `availableMethods` e o servidor recusa o cartão com
+      // 4xx (assertBillingTypeAllowed). Sem o campo, a falha é fechada em PIX.
       pixOnly={usesProviderPix}
+      availableMethods={details?.availableBillingTypes}
       attemptStorageKey={getAttemptStorageKey(token)}
       details={mappedDetails}
       payment={mappedPayment}
