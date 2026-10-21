@@ -20,6 +20,9 @@ export class PaymentProviderRefundUseCase {
       if (attempt.provider !== "ABACATE_PAY" || attempt.ownerType !== "PLATFORM_PURCHASE") {
         return new Output(false, [], ["Provider não suportado para refund"], null)
       }
+      if (attempt.status === "DISPUTED") {
+        return new Output(false, [], ["Pagamento em disputa não pode ser reembolsado automaticamente"], null)
+      }
       const refunded = await this.dependencies.refundService.refund({
         attempt,
         provider: this.dependencies.resolveProvider(attempt.environment),
