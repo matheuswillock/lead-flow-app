@@ -49,6 +49,11 @@ describe("credential cipher", () => {
     const withPart = (index: number, value: string) =>
       parts.map((part, i) => (i === index ? value : part)).join(".")
     const bytes = (n: number) => Buffer.alloc(n, 1).toString("base64url")
+    const realTag = Buffer.from(parts[3], "base64url")
+    for (const length of [4, 8, 12]) {
+      const truncated = realTag.subarray(0, length).toString("base64url")
+      expect(() => cipher.decrypt(withPart(3, truncated))).toThrow(CredentialCipherError)
+    }
     expect(() => cipher.decrypt(withPart(3, bytes(4)))).toThrow(CredentialCipherError)
     expect(() => cipher.decrypt(withPart(3, bytes(17)))).toThrow(CredentialCipherError)
     expect(() => cipher.decrypt(withPart(2, bytes(8)))).toThrow(CredentialCipherError)
