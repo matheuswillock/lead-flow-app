@@ -135,6 +135,11 @@ export interface IPaymentProviderSessionRepository {
     readonly environment: PaymentProviderEnvironment
     readonly externalAccountContext: string
   }): Promise<StoredPaymentProviderAttemptRecord | null>
+  /** Tentativa mais relevante do dono (CONFIRMED primeiro, depois a mais recente). */
+  findLatestAttemptByOwner(input: {
+    readonly ownerType: string
+    readonly ownerId: string
+  }): Promise<StoredPaymentProviderAttemptRecord | null>
   applyEventWithClaim(
     input: ApplyPaymentProviderEventInput,
   ): Promise<StoredPaymentProviderAttemptRecord>

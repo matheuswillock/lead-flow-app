@@ -375,6 +375,25 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     return attempt ? toAttemptRecord(attempt) : null
   }
 
+  async findLatestAttemptByOwner(input: {
+    readonly ownerType: string
+    readonly ownerId: string
+  }): Promise<StoredPaymentProviderAttemptRecord | null> {
+    const where = { session: { is: { ownerType: input.ownerType, ownerId: input.ownerId } } }
+    const confirmed = await prisma.paymentProviderAttempt.findFirst({
+      where: { ...where, status: "CONFIRMED" },
+      orderBy: { updatedAt: "desc" },
+      select: attemptSelect,
+    })
+    if (confirmed) return toAttemptRecord(confirmed)
+    const latest = await prisma.paymentProviderAttempt.findFirst({
+      where,
+      orderBy: { updatedAt: "desc" },
+      select: attemptSelect,
+    })
+    return latest ? toAttemptRecord(latest) : null
+  }
+
   async listAttempts(input: {
     readonly status: PaymentAttemptStatus
     readonly limit: number
@@ -504,6 +523,16 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
           AND s."owner_type" = 'BILLING_GRACE_PAYMENT'
           AND g."status" IN ('pending', 'confirmed')
           AND a."updated_at" >= now() - interval '30 days'
+        UNION ALL
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "payment_charges" c ON c."id"::text = s."owner_id"
+        WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
+          AND a."external_id" IS NOT NULL
+          AND s."owner_type" = 'PAYMENT_CHARGE'
+          AND c."status" IN ('PENDING', 'CONFIRMED')
+          AND a."updated_at" >= now() - interval '30 days'
       ) pending
       ORDER BY pending."updated_at" ASC
       LIMIT ${input.limit}
@@ -539,6 +568,18 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
         WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
           AND s."owner_type" = 'BILLING_GRACE_PAYMENT'
           AND g."status" IN ('pending', 'confirmed')
+          AND (
+            a."external_id" IS NOT NULL
+            OR (a."reconciliation_reference" IS NOT NULL AND a."updated_at" >= now() - interval '7 days')
+          )
+        UNION ALL
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "payment_charges" c ON c."id"::text = s."owner_id"
+        WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
+          AND s."owner_type" = 'PAYMENT_CHARGE'
+          AND c."status" IN ('PENDING', 'CONFIRMED')
           AND (
             a."external_id" IS NOT NULL
             OR (a."reconciliation_reference" IS NOT NULL AND a."updated_at" >= now() - interval '7 days')

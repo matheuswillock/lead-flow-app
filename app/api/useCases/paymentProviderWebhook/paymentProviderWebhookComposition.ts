@@ -4,6 +4,7 @@ import { paymentProviderIdentityRepository } from "@/app/api/infra/data/reposito
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
 import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
+import { createOwnerChargeMirror } from "@/app/api/services/paymentCharge/paymentChargeComposition"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
@@ -43,6 +44,7 @@ export async function createPaymentProviderWebhookService() {
     purchases: platformPurchaseRepository,
     applyEmailCredits: (input) => applyEmailCreditsPaidPurchaseUseCase.apply(input),
   })
+  const ledgerMirror = createOwnerChargeMirror()
   const eventProcessor = new PaymentProviderEventProcessor(paymentProviderEventInboxRepository)
   const service = new PaymentProviderWebhookService({
     provider,
@@ -123,6 +125,13 @@ export async function createPaymentProviderWebhookService() {
           id: attempt.ownerId,
           provider: "ABACATE_PAY",
           externalId: event.externalPaymentId!,
+        })
+        // Espelho no ledger: nunca lança e nunca altera o efeito acima.
+        await ledgerMirror.mirrorSettled({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+          paidAt: new Date(),
         })
       }
       if (nextStatus === "CONFIRMED" && attempt.ownerType !== "PLATFORM_PURCHASE") {
