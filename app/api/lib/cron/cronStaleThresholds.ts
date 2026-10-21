@@ -90,6 +90,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "member-pro-expiration": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "overdue-reminder": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "payment-provider-maintenance": 60,
+  "payment-provider-health-check": 60,
   "provision-live-campaign": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "public-forms-mark-abandoned-sessions": 60,
   "public-forms-queue-event-failures-retry": 60,

@@ -3,6 +3,13 @@
   "name": "Lead Flow App - Development",
   "values": [
     {
+      "key": "providerConfigId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma instância de provider de pagamento (GET payment-providers/config)"
+    },
+    {
       "key": "baseUrl",
       "value": "http://localhost:3000",
       "type": "default",

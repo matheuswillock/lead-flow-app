@@ -210,6 +210,325 @@
     ]
   },
   "item": [
+{
+  "name": "Payment Providers (Backoffice)",
+  "description": "Instâncias de provider de pagamento e credenciais (M11). Leitura: qualquer acesso backoffice; escrita: manager + Origin same-origin. O valor de uma credencial nunca é devolvido.",
+  "item": [
+    {
+      "name": "GET Instances",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config?environment=DEV",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config"
+          ],
+          "query": [
+            {
+              "key": "environment",
+              "value": "DEV"
+            }
+          ]
+        },
+        "description": "Lista instâncias (ProviderInstanceView[]) com credenciais mascaradas."
+      }
+    },
+    {
+      "name": "POST Create Instance",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config"
+          ]
+        },
+        "description": "Cria instância. 409 em duplicata.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"providerKey\": \"ASAAS\",\n  \"environment\": \"DEV\",\n  \"externalAccountContext\": \"primary\",\n  \"displayName\": \"Asaas (primária)\",\n  \"logoUrl\": null,\n  \"logoAltText\": null\n}"
+        }
+      }
+    },
+    {
+      "name": "PUT Update Instance",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config"
+          ]
+        },
+        "description": "Atualiza instância (409 em revisão desatualizada). Instância somente de credencial não vira padrão.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{providerConfigId}}\",\n  \"expectedRevision\": 1,\n  \"killSwitch\": false,\n  \"displayName\": \"Abacate Pay\",\n  \"settings\": {\n    \"requireSignature\": true,\n    \"cardEnabled\": true\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "PUT Credential (write-only)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config/credentials",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config",
+            "credentials"
+          ]
+        },
+        "description": "Define/rotaciona credencial. Valor vazio rejeitado; máx. 4096 caracteres; limite de taxa.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"configId\": \"{{providerConfigId}}\",\n  \"key\": \"API_KEY\",\n  \"value\": \"<segredo>\"\n}"
+        }
+      }
+    },
+    {
+      "name": "DELETE Credential",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config/credentials?configId={{providerConfigId}}&key=API_KEY",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config",
+            "credentials"
+          ],
+          "query": [
+            {
+              "key": "configId",
+              "value": "{{providerConfigId}}"
+            },
+            {
+              "key": "key",
+              "value": "API_KEY"
+            }
+          ]
+        },
+        "description": "Remove uma credencial."
+      }
+    },
+    {
+      "name": "GET Adapters",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config/adapters",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config",
+            "adapters"
+          ]
+        },
+        "description": "Adapters e schema de credenciais."
+      }
+    },
+    {
+      "name": "POST Health-check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config/health-check",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config",
+            "health-check"
+          ]
+        },
+        "description": "Sonda a instância pelo adapter.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{providerConfigId}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GET History",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/backoffice/payment-providers/config/history?configId={{providerConfigId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "backoffice",
+            "payment-providers",
+            "config",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "configId",
+              "value": "{{providerConfigId}}"
+            }
+          ]
+        },
+        "description": "Histórico de auditoria da instância."
+      }
+    },
+    {
+      "name": "GET Cron Health-check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cronSecret}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/payment-provider/cron/health-check",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payment-provider",
+            "cron",
+            "health-check"
+          ]
+        },
+        "description": "Cron de health-check dos providers (duas falhas seguidas degradam)."
+      }
+    }
+  ]
+},
     {
       "name": "Auth",
       "item": [

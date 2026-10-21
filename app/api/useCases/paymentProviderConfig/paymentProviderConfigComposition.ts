@@ -18,6 +18,7 @@ import {
 import { createAsaasHealthCheck } from "@/lib/asaas/asaas-health"
 import { PaymentProviderConfigUseCase } from "./PaymentProviderConfigUseCase"
 import { PaymentProviderHealthCheckUseCase } from "./PaymentProviderHealthCheckUseCase"
+import { PaymentProviderHealthSweepUseCase } from "./PaymentProviderHealthSweepUseCase"
 
 const auditHistory = new AuditLogRepository()
 
@@ -60,4 +61,8 @@ export const paymentProviderHealthCheckService = new PaymentProviderHealthCheckS
 export const paymentProviderHealthCheckUseCase = new PaymentProviderHealthCheckUseCase(
   paymentProviderHealthCheckService,
   configService,
+)
+
+export const paymentProviderHealthSweepUseCase = new PaymentProviderHealthSweepUseCase(
+  paymentProviderHealthCheckService,
 )
