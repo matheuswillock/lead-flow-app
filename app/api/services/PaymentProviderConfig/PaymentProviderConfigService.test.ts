@@ -209,7 +209,7 @@ describe("update e create", () => {
 
   it("valida logo (https) e nome no update e na criação", async () => {
     const { service } = setup()
-    await expect(service.update({ id: "inst-1", expectedRevision: 1, logoUrl: "javascript:alert(1)" })).rejects.toThrow()
+    await expect(service.update({ id: "inst-1", expectedRevision: 1, logoUrl: "javascript:void(0)" })).rejects.toThrow()
     await expect(
       service.create({ providerKey: "ASAAS", environment: "DEV", externalAccountContext: "primary", displayName: "  " }),
     ).rejects.toThrow()

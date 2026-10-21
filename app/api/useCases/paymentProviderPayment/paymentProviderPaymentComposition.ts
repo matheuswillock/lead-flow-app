@@ -77,9 +77,16 @@ export function resolveAbacateCapabilities(environment: PaymentProviderEnvironme
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
 ): AbacatePayProvider {
+  return new AbacatePayProvider(buildAbacatePayProviderConfig(environment))
+}
+
+/** Config do provider a partir do resolver (banco primeiro, ambiente como reserva). */
+export function buildAbacatePayProviderConfig(
+  environment: PaymentProviderEnvironment,
+): PaymentProviderConfig {
   const credentials = providerCredentialResolver.resolveSync(abacateSelector(environment))
   const publicKey = readProviderPublicKey(environment, credentials)
-  return new AbacatePayProvider(
+  return (
     PaymentProviderConfig.create({
       apiKey: readProviderSecret(credentials, "API_KEY"),
       publicKey,
@@ -91,7 +98,7 @@ export function createAbacatePayProvider(
       requireSignature: resolveRequireSignature(credentials),
       environment,
       devMode: environment === "DEV",
-    }),
+    })
   )
 }
 

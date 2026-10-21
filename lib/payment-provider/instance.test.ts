@@ -38,7 +38,7 @@ describe("validateLogoUrl", () => {
 
   it("rejeita javascript:, data:, http, localhost e credenciais embutidas", () => {
     for (const bad of [
-      "javascript:alert(1)",
+      "javascript:void(0)",
       "data:image/png;base64,AAAA",
       "http://cdn.example.com/a.png",
       "https://localhost/a.png",

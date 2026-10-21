@@ -1,69 +1,87 @@
-import { redactProviderSecrets, scrubUrl } from "@/lib/observability/redaction"
+import {
+  SECRET_KEY_NAME_PATTERN,
+  isWebhookPath,
+  redactProviderSecrets,
+  scrubUrl,
+} from "@/lib/observability/redaction"
+
+const MAX_DEPTH = 25
+const REDACTED = "[redacted]"
+/** Atributos de URL de span/transação: a query some por inteiro em requisições de webhook. */
+const URL_ATTRIBUTE_KEYS = new Set([
+  "url",
+  "http.url",
+  "url.full",
+  "http.target",
+  "url.path",
+  "to",
+  "from",
+])
+const QUERY_ATTRIBUTE_KEYS = new Set(["query_string", "url.query", "http.query", "query", "http.query_string"])
 
 type Loose = Record<string, unknown>
 
-function scrubString(value: unknown): unknown {
-  return typeof value === "string" ? redactProviderSecrets(value) : value
+function isRecord(value: unknown): value is Loose {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function scrubBreadcrumb(breadcrumb: Loose): Loose {
-  const data = breadcrumb.data as Loose | undefined
-  return {
-    ...breadcrumb,
-    message: scrubString(breadcrumb.message),
-    ...(data
-      ? {
-          data: {
-            ...data,
-            ...(typeof data.url === "string" ? { url: scrubUrl(data.url) } : {}),
-            ...(typeof data.to === "string" ? { to: scrubUrl(data.to) } : {}),
-            ...(typeof data.from === "string" ? { from: scrubUrl(data.from) } : {}),
-          },
-        }
-      : {}),
+function webhookRequest(event: Loose): boolean {
+  const request = event.request
+  const url = isRecord(request) && typeof request.url === "string" ? request.url : null
+  if (url && isWebhookPath(url)) return true
+  return typeof event.transaction === "string" && isWebhookPath(event.transaction.split(" ").pop() ?? "")
+}
+
+function scrubQuery(value: unknown, webhook: boolean): unknown {
+  if (webhook) {
+    if (typeof value === "string") return ""
+    if (Array.isArray(value)) return []
+    if (isRecord(value)) return {}
+    return value
   }
+  if (typeof value === "string") return redactProviderSecrets(value)
+  if (Array.isArray(value)) {
+    return value.map((entry) =>
+      Array.isArray(entry) && typeof entry[0] === "string" && SECRET_KEY_NAME_PATTERN.test(entry[0])
+        ? [entry[0], REDACTED]
+        : walk(entry, null, false, 1),
+    )
+  }
+  return walk(value, null, false, 1)
+}
+
+function walk(value: unknown, key: string | null, webhook: boolean, depth: number): unknown {
+  if (typeof value === "string") {
+    if (key && URL_ATTRIBUTE_KEYS.has(key)) return scrubUrl(value)
+    return redactProviderSecrets(value)
+  }
+  if (depth >= MAX_DEPTH) return typeof value === "object" && value !== null ? "[max-depth]" : value
+  if (Array.isArray(value)) return value.map((item) => walk(item, key, webhook, depth + 1))
+  if (isRecord(value)) {
+    const result: Loose = {}
+    for (const [childKey, child] of Object.entries(value)) {
+      if (QUERY_ATTRIBUTE_KEYS.has(childKey)) result[childKey] = scrubQuery(child, webhook)
+      else if (SECRET_KEY_NAME_PATTERN.test(childKey) && child !== null && typeof child !== "object") {
+        result[childKey] = REDACTED
+      } else result[childKey] = walk(child, childKey, webhook, depth + 1)
+    }
+    return result
+  }
+  return value
 }
 
 /**
- * `beforeSend` / `beforeSendTransaction` do Sentry: remove a query de URLs de webhook (carrega o
- * segredo do provider) e mascara chaves de provider em mensagens, exceções e breadcrumbs.
+ * `beforeSend` / `beforeSendTransaction` do Sentry: percorre o evento INTEIRO (request, spans,
+ * contexts, extra, tags, breadcrumbs, exceções, atributos de transação) em qualquer profundidade,
+ * mascarando chaves de provider e segredos em query string. Em requisição de webhook (decidido só
+ * pelo caminho da URL) a query inteira é removida, pois carrega o segredo do provider.
  */
 export function scrubSentryEvent<T extends object>(event: T): T {
-  const source = event as Loose
-  const next: Loose = { ...source }
-
-  const request = source.request as Loose | undefined
-  if (request) {
-    const url = typeof request.url === "string" ? scrubUrl(request.url) : request.url
-    const isWebhook = typeof request.url === "string" && url !== request.url
-    next.request = {
-      ...request,
-      url,
-      ...(typeof request.query_string === "string" || isWebhook
-        ? { query_string: redactProviderSecrets(String(request.query_string ?? "")) }
-        : {}),
-      ...(isWebhook ? { query_string: "" } : {}),
-    }
-  }
-  if (typeof source.message === "string") next.message = redactProviderSecrets(source.message)
-  if (typeof source.transaction === "string") next.transaction = scrubUrl(source.transaction)
-
-  const exception = source.exception as { values?: Loose[] } | undefined
-  if (exception?.values) {
-    next.exception = {
-      ...exception,
-      values: exception.values.map((entry) => ({ ...entry, value: scrubString(entry.value) })),
-    }
-  }
-  if (Array.isArray(source.breadcrumbs)) {
-    next.breadcrumbs = (source.breadcrumbs as Loose[]).map(scrubBreadcrumb)
-  }
-  return next as T
+  const webhook = webhookRequest(event as Loose)
+  return walk(event, null, webhook, 0) as T
 }
 
 /** `beforeSendLog`: logs do console enviados ao Sentry passam pelo mesmo mascaramento. */
 export function scrubSentryLog<T extends { message?: unknown }>(log: T): T {
-  return typeof log.message === "string"
-    ? { ...log, message: redactProviderSecrets(log.message) }
-    : log
+  return walk(log, null, false, 0) as T
 }
