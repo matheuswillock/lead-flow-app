@@ -86,7 +86,7 @@ export const ADAPTERS: ProviderAdapterView[] = [
     label: "Abacate Pay",
     paymentCapable: true,
     credentialSchema: [
-      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: null },
+      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" },
       { key: "WEBHOOK_SECRET", label: "Segredo do webhook", required: true, secret: true, hint: "Usado na assinatura HMAC." },
     ],
   },
@@ -94,7 +94,7 @@ export const ADAPTERS: ProviderAdapterView[] = [
     providerKey: "ASAAS",
     label: "Asaas",
     paymentCapable: false,
-    credentialSchema: [{ key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: null }],
+    credentialSchema: [{ key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" }],
   },
 ]
 

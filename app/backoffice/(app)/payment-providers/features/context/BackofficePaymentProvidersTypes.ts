@@ -1,63 +1,27 @@
-export type PaymentProviderKey = "ASAAS" | "ABACATE_PAY"
-export type PaymentProviderEnvironment = "DEV" | "PRODUCTION"
-export type ProviderRolloutState = "DISABLED" | "SANDBOX_VALIDATED" | "APPROVED" | "ACTIVE"
-export type ProviderHealthStatus = "UNKNOWN" | "HEALTHY" | "UNHEALTHY"
+import type {
+  ProviderAdapterView,
+  ProviderCredentialFieldView,
+  ProviderCredentialView,
+  ProviderHistoryItem,
+  ProviderInstanceSettingsView,
+  ProviderInstanceView,
+} from "@/lib/payment-provider/admin-contract"
+import type { ProviderHealthStatus } from "@/lib/payment-provider/routing-config"
+import type { ProviderRolloutState } from "@/lib/payment-provider/routing"
+import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 
-export interface ProviderCredentialView {
-  key: string
-  isSet: boolean
-  last4: string | null
-  fingerprint: string | null
-  required: boolean
-  updatedAt: string | null
-}
-
-export interface ProviderInstanceSettings {
-  requireSignature: boolean
-  cardEnabled: boolean
-}
-
-export interface ProviderInstanceView {
-  id: string
-  providerKey: PaymentProviderKey
-  environment: PaymentProviderEnvironment
-  externalAccountContext: string
-  displayName: string
-  logoUrl: string | null
-  logoAltText: string | null
-  enabled: boolean
-  isDefault: boolean
-  rolloutState: ProviderRolloutState
-  killSwitch: boolean
-  configRevision: number
-  healthStatus: ProviderHealthStatus
-  lastHealthCheckAt: string | null
-  lastErrorCode: string | null
-  paymentCapable: boolean
-  credentials: ProviderCredentialView[]
-  settings: ProviderInstanceSettings
-}
-
-export interface ProviderAdapterCredentialField {
-  key: string
-  label: string
-  required: boolean
-  secret: boolean
-  hint: string | null
-}
-
-export interface ProviderAdapterView {
-  providerKey: PaymentProviderKey
-  label: string
-  paymentCapable: boolean
-  credentialSchema: ProviderAdapterCredentialField[]
-}
-
-export interface ProviderHistoryItem {
-  at: string
-  actor: string
-  operation: string
-  summary: string
+// Os formatos que cruzam a API vêm do contrato do backend: uma só fonte, sem cópia que possa divergir.
+export type {
+  PaymentProviderEnvironment,
+  PaymentProviderKey,
+  ProviderAdapterView,
+  ProviderCredentialFieldView as ProviderAdapterCredentialField,
+  ProviderCredentialView,
+  ProviderHealthStatus,
+  ProviderHistoryItem,
+  ProviderInstanceSettingsView as ProviderInstanceSettings,
+  ProviderInstanceView,
+  ProviderRolloutState,
 }
 
 export interface CreateProviderInstanceInput {
@@ -80,7 +44,7 @@ export interface UpdateProviderInstanceInput {
   displayName?: string
   logoUrl?: string
   logoAltText?: string
-  settings?: Partial<ProviderInstanceSettings>
+  settings?: Partial<ProviderInstanceSettingsView>
 }
 
 export const PAYMENT_PROVIDER_ENVIRONMENTS: PaymentProviderEnvironment[] = ["DEV", "PRODUCTION"]
