@@ -206,6 +206,8 @@ jobs:
       - e2e
     runs-on: [self-hosted, linux, x64, lead-flow-ci]
     timeout-minutes: 10
+    outputs:
+      deploy-url: ${{ steps.vercel-prod.outputs.deploy-url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -444,6 +446,41 @@ jobs:
           echo "- Branch: main" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
+  # O job acima termina quando o deployment sobe, responde e alcança o banco;
+  # o tráfego só migra depois, pelo rolling release (canary 10% e então 100%).
+  # Este job mantém o run em andamento até o release chegar a 100%, para que
+  # "verde" signifique produção inteira no SHA novo. Roda em runner hospedado
+  # para não ocupar o runner self-hosted durante a espera.
+  wait-rolling-release:
+    name: Rolling release 100%
+    needs:
+      - deploy-production
+    if: ${{ needs.deploy-production.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun-deps
+        with:
+          install: "false"
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Aguardar rolling release chegar a 100%
+        run: bun scripts/ci/wait-rolling-release.cli.ts
+        env:
+          DEPLOY_URL: ${{ needs.deploy-production.outputs.deploy-url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          TIMEOUT_MINUTES: "20"
+
   # Um push em `main` que não termina com produção no SHA do push é um
   # incidente, e o modo mais perigoso é o job de deploy ser **pulado** (o `if:`
   # exige build + migration-status + e2e verdes): nesse caso nada falha e
@@ -454,6 +491,7 @@ jobs:
     if: ${{ always() && ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'main') }}
     needs:
       - deploy-production
+      - wait-rolling-release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -462,11 +500,17 @@ jobs:
           set -euo pipefail
 
           RESULT="${{ needs.deploy-production.result }}"
+          ROLLING="${{ needs.wait-rolling-release.result }}"
           echo "deploy-production: $RESULT"
+          echo "wait-rolling-release: $ROLLING"
+
+          if [ "$RESULT" = "success" ] && [ "$ROLLING" = "success" ]; then
+            echo "Deploy concluiu, foi verificado e o rolling release chegou a 100%."
+            exit 0
+          fi
 
           if [ "$RESULT" = "success" ]; then
-            echo "Deploy concluiu e foi verificado."
-            exit 0
+            RESULT="rolling-release-$ROLLING"
           fi
 
           if [ "$RESULT" = "skipped" ]; then
