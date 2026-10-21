@@ -164,3 +164,74 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     await runResponsiveChecks(page)
   })
 })
+
+const PENDING_ACTION_ID = "e2e-pending-action"
+
+async function mockPendingActionCheckout(page: Page, availableBillingTypes?: string[]) {
+  // Sem compra de plataforma: força o caminho legado (pending action, Asaas).
+  await page.route(`**/api/**/platform-checkout/${PENDING_ACTION_ID}`, async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ isValid: false }) })
+  })
+  await page.route(`**/api/**/addon-checkout/${PENDING_ACTION_ID}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: envelope({
+        pendingActionId: PENDING_ACTION_ID,
+        paymentId: null,
+        // Time que já veio com cartão pré-selecionado: não pode aparecer com o cartão desligado.
+        presetBillingType: "CREDIT_CARD",
+        addonType: "team",
+        addonLabel: "Time adicional",
+        addonDetail: "Time Comercial",
+        pricing: { monthlyPrice: 50, remainingMonths: 3, totalCharge: 150, maxInstallments: 3 },
+        status: "pending",
+        masterName: "Master",
+        defaultBillingData: {
+          fullName: "",
+          email: "",
+          phone: "",
+          cpfCnpj: "",
+          postalCode: "",
+          address: "",
+          addressNumber: "",
+          neighborhood: "",
+          complement: "",
+          city: "",
+          state: "",
+        },
+        ...(availableBillingTypes ? { availableBillingTypes } : {}),
+      }),
+    })
+  })
+}
+
+test.describe("addon-checkout — cartão desligado em checkouts Asaas", () => {
+  for (const [label, types] of [
+    ["só PIX declarado", ["PIX"]],
+    ["campo ausente (falha fechada)", undefined],
+  ] as const) {
+    test(`não oferece nem pré-seleciona cartão com ${label}`, async ({ page }) => {
+      await mockPendingActionCheckout(page, types ? [...types] : undefined)
+
+      await page.goto(`/addon-checkout/${PENDING_ACTION_ID}`)
+      await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+
+      await expect(page.getByRole("button", { name: "Gerar QR Code Pix" })).toBeVisible()
+      await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
+      await expect(page.getByText("Pagar com cartão")).toHaveCount(0)
+      await expect(page.getByText("Número do cartão")).toHaveCount(0)
+
+      await runResponsiveChecks(page)
+    })
+  }
+
+  test("oferece cartão apenas quando o servidor declara CREDIT_CARD disponível", async ({ page }) => {
+    await mockPendingActionCheckout(page, ["PIX", "CREDIT_CARD"])
+
+    await page.goto(`/addon-checkout/${PENDING_ACTION_ID}`)
+    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+
+    await expect(page.getByText("Cartão de crédito").first()).toBeVisible()
+  })
+})

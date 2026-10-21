@@ -6,6 +6,8 @@ import type {
 } from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
 import type { PaymentQueryCapability } from "@/lib/payment-provider/contracts"
 import type { PaymentMethod } from "@/lib/payment-provider/types"
+import { createPaymentOwnerSettlement } from "./paymentOwnerSettlementComposition"
+import { SETTLED_OWNER_TYPES, type PaymentOwnerSettlement } from "./PaymentOwnerSettlementService"
 
 const ROUTE_VERSION = "PAY-PROV-PHASE-3"
 const RECONCILIATION_LEASE_TTL_MS = 60 * 1000
@@ -31,14 +33,18 @@ export type PaymentProviderReconciliationServiceDependencies = {
   >
   readonly identities: IPaymentProviderIdentityRepository
   readonly purchases: Pick<IPlatformPurchaseRepository, "markPaidOnceForProvider">
+  /** Efeito de domínio dos owners sem compra (adesão, regularização). */
+  readonly settlement?: PaymentOwnerSettlement
   readonly now?: () => Date
 }
 
 export class PaymentProviderReconciliationService {
   private readonly now: () => Date
+  private readonly settlement: PaymentOwnerSettlement
 
   constructor(private readonly dependencies: PaymentProviderReconciliationServiceDependencies) {
     this.now = dependencies.now ?? (() => new Date())
+    this.settlement = dependencies.settlement ?? createPaymentOwnerSettlement()
   }
 
   async reconcile(input: ReconcilePaymentAttemptInput): Promise<ReconciledPaymentAttempt> {
@@ -113,6 +119,18 @@ export class PaymentProviderReconciliationService {
           id: input.attempt.ownerId,
           provider: input.attempt.provider,
           externalId: result.externalId,
+          paidAt: this.now(),
+        })
+        purchaseStatus = "paid"
+      }
+      if (result.status === "CONFIRMED" && SETTLED_OWNER_TYPES.has(input.attempt.ownerType)) {
+        // Efeito de domínio ANTES da transição: se falhar, a tentativa segue UNKNOWN e o
+        // próximo ciclo do cron reconcilia de novo.
+        await this.settlement.settleConfirmed({
+          ownerType: input.attempt.ownerType,
+          ownerId: input.attempt.ownerId,
+          externalId: result.externalId,
+          amountInCents: result.amountInCents,
           paidAt: this.now(),
         })
         purchaseStatus = "paid"

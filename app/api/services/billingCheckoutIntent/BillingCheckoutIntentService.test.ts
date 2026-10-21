@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
 
 mock.module("@/lib/utils/app-url", () => ({
   getFullUrl: (path: string) => `https://app.test${path}`,
@@ -67,6 +68,55 @@ describe("BillingCheckoutIntentService", () => {
     const service = new BillingCheckoutIntentService(repository, priceResolver)
     await expect(service.createCheckout("token", "BOLETO")).rejects.toThrow("Forma de pagamento inválida")
     expect(requestMock).not.toHaveBeenCalled()
+  })
+
+  describe("cartão desligado", () => {
+    const originalEnv = { ...process.env }
+    afterEach(() => {
+      process.env = { ...originalEnv }
+    })
+    beforeEach(() => {
+      process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
+      delete process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY
+      delete process.env.CARD_PAYMENTS_ENABLED
+    })
+
+    it("CREDIT_CARD é barrado antes de qualquer leitura, preço ou chamada ao Asaas", async () => {
+      const service = new BillingCheckoutIntentService(repository, priceResolver)
+
+      await expect(service.createCheckout("token", "CREDIT_CARD")).rejects.toBeInstanceOf(
+        PaymentMethodUnavailableError
+      )
+      expect(repository.findByTokenHash).not.toHaveBeenCalled()
+      expect(priceResolver.resolvePrice).not.toHaveBeenCalled()
+      expect(requestMock).not.toHaveBeenCalled()
+    })
+
+    it("CARD_PAYMENTS_ENABLED=false barra mesmo com a chave pública", async () => {
+      process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+      process.env.CARD_PAYMENTS_ENABLED = "false"
+      const service = new BillingCheckoutIntentService(repository, priceResolver)
+
+      await expect(service.createCheckout("token", "CREDIT_CARD")).rejects.toBeInstanceOf(
+        PaymentMethodUnavailableError
+      )
+    })
+
+    it("PIX segue funcionando", async () => {
+      const service = new BillingCheckoutIntentService(repository, priceResolver)
+
+      const result = await service.createCheckout("token", "PIX")
+
+      expect(result.billingType).toBe("PIX")
+    })
+
+    it("detalhes públicos expõem availableBillingTypes só com PIX", async () => {
+      const service = new BillingCheckoutIntentService(repository, priceResolver)
+
+      const details = await service.getPublicDetails("token")
+
+      expect(details.availableBillingTypes).toEqual(["PIX"])
+    })
   })
 
   it("marca reconciliação quando o checkout remoto divergente é reutilizado", async () => {

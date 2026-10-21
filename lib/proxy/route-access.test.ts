@@ -9,10 +9,24 @@ import {
   parseTenantPath,
   requiresAuth,
   requiresManagerRole,
+  requiresSessionPage,
 } from "@/lib/proxy/route-access"
 
 const USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 const USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+describe("requiresSessionPage", () => {
+  it("exige sessão em /adquirir/creditos e a tira das páginas públicas", () => {
+    expect(requiresSessionPage("/adquirir/creditos")).toBe(true)
+    expect(isPublicPageRoute("/adquirir/creditos")).toBe(false)
+  })
+
+  it("não afeta rotas públicas nem o app autenticado", () => {
+    expect(requiresSessionPage("/prime")).toBe(false)
+    expect(requiresSessionPage("/adquirir/creditos/outra")).toBe(false)
+    expect(requiresSessionPage(`/${USER_A}/crm`)).toBe(false)
+  })
+})
 
 describe("parseTenantPath", () => {
   it("parses tenant routes with UUID prefix", () => {

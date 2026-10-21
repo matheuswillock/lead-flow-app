@@ -106,6 +106,8 @@ export interface BackofficeAdhesionOptions {
   sdrOptions: BackofficeAdhesionUserOption[]
   closerOptions: BackofficeAdhesionUserOption[]
   sponsorOptions: BackofficeAdhesionSponsorOption[]
+  /** Formas de pagamento oferecidas agora; sem "CREDIT_CARD" o cartão fica oculto. */
+  availableBillingTypes?: Array<"PIX" | "CREDIT_CARD">
   productVariants: BackofficeAdhesionProductVariant[]
   pricing: {
     cycles: Record<

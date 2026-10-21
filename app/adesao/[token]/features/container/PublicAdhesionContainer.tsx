@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react"
 
 import { PublicCheckoutFlow } from "@/components/public-checkout/PublicCheckoutFlow"
+import type { CheckoutPaymentProvider } from "@/components/public-checkout/providerBranding"
 import type {
   PublicCheckoutDetails,
   PublicCheckoutPaymentView,
@@ -206,8 +207,22 @@ export function PublicAdhesionContainer() {
         ? Math.max(1, mappedDetails.installmentSchedule?.length ?? 1)
         : details?.maxCardInstallments ?? details?.maxInstallments ?? 1
 
+  const usesProviderPix = details?.pixProvider === "ABACATE_PAY"
+  const provider: CheckoutPaymentProvider | null = details
+    ? usesProviderPix
+      ? "ABACATE_PAY"
+      : "ASAAS"
+    : null
+
   return (
     <PublicCheckoutFlow
+      provider={provider}
+      canRegeneratePix={usesProviderPix}
+      // PIX do Abacate dispensa endereço (pixOnly). Adesões que seguem no Asaas ainda exigem o
+      // endereço; nelas o cartão some via `availableMethods` e o servidor recusa o cartão com
+      // 4xx (assertBillingTypeAllowed). Sem o campo, a falha é fechada em PIX.
+      pixOnly={usesProviderPix}
+      availableMethods={details?.availableBillingTypes}
       attemptStorageKey={getAttemptStorageKey(token)}
       details={mappedDetails}
       payment={mappedPayment}

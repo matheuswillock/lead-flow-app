@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailCreditUseCase } from "@/app/api/useCases/email/EmailCreditUseCase"
 import { isManagerLikeRole } from "@/lib/roles"
+import { rejectUnavailableBillingType } from "@/lib/payment-methods/route-guard"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const schema = z.object({
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
       const errors = validation.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 })
     }
+
+    const unavailableMethod = rejectUnavailableBillingType(validation.data.billingType)
+    if (unavailableMethod) return unavailableMethod
 
     const useCase = makeUseCase()
     const output = await useCase.subscribe(

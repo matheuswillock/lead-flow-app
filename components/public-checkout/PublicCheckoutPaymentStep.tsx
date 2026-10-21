@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator"
 import { CepService } from "@/lib/services/CepService"
 import { maskCEP, maskCardNumber, maskPhone, formatDocumentInput, unmask } from "@/lib/masks"
 import { cn } from "@/lib/utils"
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
+import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
 import { Field, FieldGroup } from "./PublicCheckoutField"
 import { PixPaymentBlock } from "./PixPaymentBlock"
 import type { PublicCheckoutBillingType, PublicCheckoutDetails, PublicCheckoutPaymentInput, PublicCheckoutPaymentView, PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
@@ -39,7 +41,8 @@ const checkoutInputClassName =
 
 export function PublicCheckoutPaymentStep({
   details,
-  billingType,
+  billingType: requestedBillingType,
+  availableMethods,
   prefill,
   maxInstallments,
   isSubmitting,
@@ -54,7 +57,10 @@ export function PublicCheckoutPaymentStep({
   isPixExpired?: boolean
   isRegeneratingPix?: boolean
   onRegeneratePix?: () => Promise<void>
+  /** Legado: não coleta endereço. */
   pixOnly?: boolean
+  /** Ausente = somente PIX. O cartão nunca é renderizado se não estiver aqui. */
+  availableMethods?: AvailableBillingTypes
   details: PublicCheckoutDetails
   billingType: PublicCheckoutBillingType
   prefill: PublicCheckoutPayerPrefill
@@ -64,6 +70,10 @@ export function PublicCheckoutPaymentStep({
   onSubmit: (input: PublicCheckoutPaymentInput) => Promise<void>
   onRefreshStatus?: (options?: { sync?: boolean }) => Promise<void>
 }) {
+  const billingType = pickBillingType(
+    requestedBillingType,
+    resolveCheckoutMethods({ availableMethods, pixOnly })
+  )
   const [form, setForm] = useState<PublicCheckoutPaymentInput>(() => initialPaymentInput(prefill))
   const [isValidatingPayment, setIsValidatingPayment] = useState(false)
   const [isResolvingCep, setIsResolvingCep] = useState(false)

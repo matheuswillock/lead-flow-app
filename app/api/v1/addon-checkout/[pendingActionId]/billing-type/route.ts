@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addOnCheckoutUseCase } from "@/app/api/useCases/addOnCheckout/AddOnCheckoutUseCase";
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard";
 
 export async function PATCH(
   request: NextRequest,
@@ -15,7 +16,7 @@ export async function PATCH(
     );
 
     return NextResponse.json(result, {
-      status: result.isValid ? 200 : 400,
+      status: result.isValid ? 200 : failedOutputStatus(result),
     });
   } catch (error: any) {
     console.error("[PATCH /api/v1/addon-checkout/[id]/billing-type][PATCH]", error);

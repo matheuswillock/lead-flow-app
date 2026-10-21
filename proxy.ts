@@ -8,6 +8,7 @@ import {
   isLegacyTenantRoute,
   parseTenantPath,
   requiresAuth,
+  requiresSessionPage,
   requiresManagerRole,
 } from "@/lib/proxy/route-access"
 import { resolveProfileRoleForProxy } from "@/lib/proxy/resolve-profile-role"
@@ -148,6 +149,12 @@ export async function proxy(request: NextRequest) {
       const url = new URL(`/${user.id}/crm`, request.url)
       url.search = request.nextUrl.search
       return redirectWithSession(response, url)
+    }
+
+    if (requiresSessionPage(pathname) && !user) {
+      const signIn = new URL("/sign-in", request.url)
+      signIn.searchParams.set("next", pathname)
+      return redirectWithSession(response, signIn)
     }
 
     if (isPublicPageRoute(pathname)) {

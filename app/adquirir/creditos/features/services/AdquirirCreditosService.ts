@@ -12,11 +12,10 @@ interface OutputResponse<T> {
   result?: T;
 }
 
+const GENERIC_ERROR = "Não foi possível iniciar o pagamento. Tente novamente.";
+
 export class AdquirirCreditosService implements IAdquirirCreditosService {
-  async validarCredito(input: {
-    email: string;
-    plan: CreditPlan;
-  }): Promise<AdquirirCreditosResult> {
+  async iniciarCompra(input: { plan: CreditPlan }): Promise<AdquirirCreditosResult> {
     const response = await fetch(`${API_CLIENT_BASE}/adquirir/creditos/validar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -27,17 +26,8 @@ export class AdquirirCreditosService implements IAdquirirCreditosService {
       .json()
       .catch(() => null)) as OutputResponse<AdquirirCreditosResult> | null;
 
-    if (response.status === 404) {
-      throw new Error(
-        data?.errorMessages?.[0] ??
-          "E-mail não encontrado. Use o e-mail da sua conta no Corretor Studio.",
-      );
-    }
-
     if (!response.ok || !data?.isValid || !data?.result?.checkoutUrl) {
-      throw new Error(
-        data?.errorMessages?.[0] ?? "Não foi possível validar o e-mail. Tente novamente.",
-      );
+      throw new Error(data?.errorMessages?.[0] ?? GENERIC_ERROR);
     }
 
     return data.result;

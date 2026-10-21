@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo } from "react"
 
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
+import { coerceBillingType, normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client"
 import { PublicCheckoutFlow } from "@/components/public-checkout/PublicCheckoutFlow"
 import type { CheckoutPaymentProvider } from "@/components/public-checkout/providerBranding"
 import type {
@@ -46,11 +48,21 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     return () => clearPolling()
   }, [pendingActionId, fetchCheckoutData, clearPolling])
 
+  // Compra de plataforma é sempre PIX (Abacate); os demais seguem o que o servidor declarou.
+  const availableMethods = useMemo(
+    () =>
+      state.data?.checkoutSource === "platform_purchase"
+        ? (["PIX"] as AvailableBillingTypes)
+        : normalizeAvailableBillingTypes(state.data?.availableBillingTypes),
+    [state.data?.checkoutSource, state.data?.availableBillingTypes]
+  )
+
   const mappedDetails = useMemo<PublicCheckoutDetails | null>(() => {
     const data = state.data
     if (!data) return null
 
-    const preset = data.presetBillingType
+    // Cartão indisponível nunca é o método pré-selecionado.
+    const preset = coerceBillingType(data.presetBillingType, availableMethods)
     const startDate = new Date()
     const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
     const totalCharge = data.pricing.totalCharge ?? 0
@@ -134,12 +146,14 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       issuedLabel: "Emitido por Corretor Studio",
       issuedValue: formatDate(new Date()),
     }
-  }, [state.data])
+  }, [state.data, availableMethods])
 
   // Identidade estável: o auto-refresh do fluxo depende desta referência e de `mappedPayment`.
   const handleRefreshStatus = useCallback(() => refreshPaymentStatus(), [refreshPaymentStatus])
 
-  const presetBillingType = state.data?.presetBillingType
+  const presetBillingType = state.data
+    ? coerceBillingType(state.data.presetBillingType, availableMethods)
+    : undefined
   const mappedPayment = useMemo<PublicCheckoutPaymentView | null>(() => {
     if (!presetBillingType) return null
     const paymentData = state.paymentData as any
@@ -213,6 +227,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       maxInstallments={maxInstallments}
       prefill={prefill}
       pixOnly={isPlatformPurchase}
+      availableMethods={availableMethods}
       successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
       onSubmit={async (input) => {
         if (!mappedDetails) return

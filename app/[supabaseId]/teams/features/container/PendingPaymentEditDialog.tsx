@@ -4,12 +4,15 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability";
 
 interface PendingPaymentEditDialogProps {
   open: boolean;
   loading: boolean;
   submitting: boolean;
   billingType: "PIX" | "CREDIT_CARD";
+  /** Ausente = somente PIX (falha fechada). */
+  availableMethods?: AvailableBillingTypes;
   addonLabel: string;
   addonDetail: string;
   totalCharge: number;
@@ -27,6 +30,7 @@ export function PendingPaymentEditDialog({
   loading,
   submitting,
   billingType,
+  availableMethods = ["PIX"],
   addonLabel,
   addonDetail,
   totalCharge,
@@ -68,10 +72,12 @@ export function PendingPaymentEditDialog({
                 <RadioGroupItem value="PIX" />
                 <span>PIX</span>
               </label>
-              <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-                <RadioGroupItem value="CREDIT_CARD" />
-                <span>Cartão de crédito</span>
-              </label>
+              {availableMethods.includes("CREDIT_CARD") && (
+                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                  <RadioGroupItem value="CREDIT_CARD" />
+                  <span>Cartão de crédito</span>
+                </label>
+              )}
             </RadioGroup>
           </div>
         </div>

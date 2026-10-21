@@ -1,12 +1,14 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { coerceBillingType, normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client"
 import { BillingCheckoutIntentService } from "../services/BillingCheckoutIntentService"
 import type { IBillingCheckoutIntentService } from "../services/IBillingCheckoutIntentService"
 import type { BillingType, CheckoutDetails } from "./BillingCheckoutIntentTypes"
 
 type ContextValue = {
   details: CheckoutDetails | null
+  availableMethods: BillingType[]
   selectedMethod: BillingType
   setSelectedMethod: (method: BillingType) => void
   loading: boolean
@@ -20,7 +22,12 @@ const Context = createContext<ContextValue | null>(null)
 export function BillingCheckoutIntentProvider({ token, children }: { token: string; children: ReactNode }) {
   const service = useMemo<IBillingCheckoutIntentService>(() => new BillingCheckoutIntentService(), [])
   const [details, setDetails] = useState<CheckoutDetails | null>(null)
-  const [selectedMethod, setSelectedMethod] = useState<BillingType>("PIX")
+  const [requestedMethod, setSelectedMethod] = useState<BillingType>("PIX")
+  const availableMethods = useMemo(
+    () => normalizeAvailableBillingTypes(details?.availableBillingTypes),
+    [details?.availableBillingTypes]
+  )
+  const selectedMethod = coerceBillingType(requestedMethod, availableMethods)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +64,7 @@ export function BillingCheckoutIntentProvider({ token, children }: { token: stri
   }, [selectedMethod, service, submitting, token])
 
   return (
-    <Context.Provider value={{ details, selectedMethod, setSelectedMethod, loading, submitting, error, submit }}>
+    <Context.Provider value={{ details, availableMethods, selectedMethod, setSelectedMethod, loading, submitting, error, submit }}>
       {children}
     </Context.Provider>
   )

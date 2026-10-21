@@ -152,5 +152,16 @@ export interface IPaymentProviderSessionRepository {
   listAttemptsPendingPurchaseActivation(input: {
     readonly limit: number
   }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  /**
+   * Reparo dos owners sem compra (adesão e regularização): tentativa CONFIRMED cujo registro
+   * do owner ainda não concluiu o efeito de domínio.
+   */
+  listOwnerAttemptsPendingSettlement(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
+  /** Tentativas UNKNOWN dos owners sem compra que ainda podem ser reconciliadas. */
+  listOwnerAttemptsPendingReconciliation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]>
   releaseAttemptLease(input: ReleasePaymentProviderAttemptLeaseInput): Promise<void>
 }

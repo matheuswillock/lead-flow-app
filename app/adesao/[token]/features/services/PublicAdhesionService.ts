@@ -2,6 +2,7 @@ import type {
   PublicAdhesionCheckoutInput,
   PublicAdhesionDetails,
   PublicAdhesionPayment,
+  PublicAdhesionPixInput,
 } from "../context/PublicAdhesionTypes"
 import type { IPublicAdhesionService } from "./IPublicAdhesionService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
@@ -33,6 +34,19 @@ export class PublicAdhesionService implements IPublicAdhesionService {
   ): Promise<PublicAdhesionPayment> {
     return parseOutput<PublicAdhesionPayment>(
       await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      })
+    )
+  }
+
+  async createPixCheckout(
+    token: string,
+    input: PublicAdhesionPixInput
+  ): Promise<PublicAdhesionPayment> {
+    return parseOutput<PublicAdhesionPayment>(
+      await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/pix`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addOnCheckoutUseCase } from "@/app/api/useCases/addOnCheckout/AddOnCheckoutUseCase";
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard";
 
 export async function POST(
   request: NextRequest,
@@ -33,7 +34,7 @@ export async function POST(
     });
 
     return NextResponse.json(result, {
-      status: result.isValid ? 201 : 400,
+      status: result.isValid ? 201 : failedOutputStatus(result),
     });
   } catch (error: any) {
     console.error("[POST /api/v1/addon-checkout/[id]/pay][POST]", error);

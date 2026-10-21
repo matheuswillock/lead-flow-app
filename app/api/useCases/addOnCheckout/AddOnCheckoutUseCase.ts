@@ -3,6 +3,14 @@ import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendi
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import {
+  assertCardChoiceAllowedForMaster,
+  resolveAvailableBillingTypesForMaster,
+} from "@/app/api/services/billing/ExistingCardSubscriberService";
+import {
+  PaymentMethodUnavailableError,
+} from "@/lib/payment-methods/availability";
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -68,10 +76,12 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         payload.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX";
 
       const m = pendingAction.master as Record<string, any>;
+      const availableBillingTypes = await resolveAvailableBillingTypesForMaster(m);
       const checkoutDetails: CheckoutDetailsResponse = {
         pendingActionId,
         paymentId: pendingAction.paymentId ?? null,
         presetBillingType,
+        availableBillingTypes,
         addonType,
         addonLabel,
         addonDetail,
@@ -173,6 +183,8 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Forma de pagamento invalida para este checkout"], null);
       }
 
+      await assertCardChoiceAllowedForMaster(input.billingType, pendingAction.master);
+
       const addonLabel =
         pendingAction.actionType === "create_team"
           ? `Time adicional: ${payload.teamName}`
@@ -252,6 +264,9 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       return new Output(true, ["Cobrança criada com sucesso"], [], response);
     } catch (error: any) {
+      if (error instanceof PaymentMethodUnavailableError) {
+        return markedUnavailableOutput(error);
+      }
       console.error("[AddOnCheckoutUseCase][createPayment]", error);
       return new Output(
         false,
@@ -393,7 +408,12 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Esta ação já foi processada"], null);
       }
 
-      const currentPayload = (pendingAction.payload as Record<string, unknown>) || {};
+      if (nextBillingType === "CREDIT_CARD") {
+        const withMaster = await pendingActionRepository.findById(pendingActionId);
+        await assertCardChoiceAllowedForMaster(nextBillingType, withMaster?.master);
+      }
+
+      const currentPayload =(pendingAction.payload as Record<string, unknown>) || {};
       const currentBillingType = normalizeBillingType(currentPayload.billingType) ?? "PIX";
       if (currentBillingType === nextBillingType) {
         return new Output(true, ["Forma de pagamento já está atualizada"], [], {
@@ -431,6 +451,9 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         billingType: nextBillingType,
       });
     } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) {
+        return markedUnavailableOutput(error);
+      }
       console.error("[AddOnCheckoutUseCase][updateBillingType]", error);
       return new Output(false, [], ["Erro ao atualizar forma de pagamento"], null);
     }

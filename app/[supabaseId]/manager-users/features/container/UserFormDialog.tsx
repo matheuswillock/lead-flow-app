@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 
+import { coerceBillingType } from "@/lib/payment-methods/availability-client";
+import { useAvailableBillingTypes } from "@/lib/payment-methods/useAvailableBillingTypes";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -89,6 +91,8 @@ export function UserFormDialog({
     return new ManagerUsersService(supabaseId, activeTeamId ?? null);
   }, [supabaseId, activeTeamId]);
   
+  const { availableMethods, cardOffered } = useAvailableBillingTypes(open);
+
   const form = useForm<CreateManagerUserFormData | UpdateManagerUserFormData>({
     resolver: zodResolver(schema),
     defaultValues: isEditing
@@ -114,6 +118,13 @@ export function UserFormDialog({
           canViewAllTeams: false,
         },
   });
+
+  // Cartão indisponível: nunca deixa CREDIT_CARD selecionado (nem como valor residual do form).
+  React.useEffect(() => {
+    if (!cardOffered && form.getValues("billingType") === "CREDIT_CARD") {
+      form.setValue("billingType", "PIX");
+    }
+  }, [cardOffered, form, open]);
 
   // Reset form quando o dialog abre/fecha ou user muda
   React.useEffect(() => {
@@ -239,8 +250,12 @@ export function UserFormDialog({
       }
 
       const selectedRole = (data as { role?: string }).role ?? user?.role ?? "operator";
+      const requestedBillingType = (data as CreateManagerUserFormData).billingType;
       const nextData = {
         ...data,
+        ...(requestedBillingType
+          ? { billingType: coerceBillingType(requestedBillingType, availableMethods) }
+          : {}),
         canCreateAccountUsers:
           currentUser?.isMaster && selectedRole === "manager"
             ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canCreateAccountUsers === true
@@ -413,10 +428,12 @@ export function UserFormDialog({
                           <RadioGroupItem value="PIX" id="manager-user-billing-pix" />
                           <FormLabel htmlFor="manager-user-billing-pix">PIX</FormLabel>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <RadioGroupItem value="CREDIT_CARD" id="manager-user-billing-card" />
-                          <FormLabel htmlFor="manager-user-billing-card">Cartão de crédito</FormLabel>
-                        </div>
+                        {cardOffered ? (
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="CREDIT_CARD" id="manager-user-billing-card" />
+                            <FormLabel htmlFor="manager-user-billing-card">Cartão de crédito</FormLabel>
+                          </div>
+                        ) : null}
                       </RadioGroup>
                     </FormControl>
                     <FormDescription>
