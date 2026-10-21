@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS "public"."payment_charges" (
   CONSTRAINT "payment_charges_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "payment_charges_profile_id_fkey"
     FOREIGN KEY ("profile_id") REFERENCES "public"."corretor_studio_profiles"("id")
-    ON DELETE CASCADE ON UPDATE CASCADE,
+    ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "payment_charges_subscription_id_fkey"
     FOREIGN KEY ("subscription_id") REFERENCES "public"."corretor_studio_profile_subscriptions"("id")
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS "public"."payment_charge_events" (
   CONSTRAINT "payment_charge_events_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "payment_charge_events_charge_id_fkey"
     FOREIGN KEY ("charge_id") REFERENCES "public"."payment_charges"("id")
-    ON DELETE CASCADE ON UPDATE CASCADE,
+    ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "payment_charge_events_to_status_check" CHECK ("to_status" IN
     ('PENDING','CONFIRMED','COMPLETED','FAILED','EXPIRED','REFUNDED','REVIEW','CANCELED')),
   CONSTRAINT "payment_charge_events_from_status_check" CHECK ("from_status" IS NULL OR "from_status" IN

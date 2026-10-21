@@ -21,7 +21,9 @@ WHERE "display_name" = '';
 -- A unicidade passa a incluir a conta externa: duas contas do mesmo provider são duas instâncias.
 CREATE UNIQUE INDEX IF NOT EXISTS "payment_provider_configs_provider_env_context_key"
   ON "public"."payment_provider_configs" ("provider_key", "environment", "external_account_context");
-DROP INDEX IF EXISTS "public"."payment_provider_configs_provider_environment_key";
+-- A unicidade antiga é uma CONSTRAINT (20261018120000), não um índice avulso: DROP INDEX falharia.
+ALTER TABLE "public"."payment_provider_configs"
+  DROP CONSTRAINT IF EXISTS "payment_provider_configs_provider_environment_key";
 
 CREATE TABLE IF NOT EXISTS "public"."payment_provider_credentials" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),

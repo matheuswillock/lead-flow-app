@@ -1702,7 +1702,7 @@ model PaymentCharge {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  profile      Profile                @relation(fields: [profileId], references: [id], onDelete: Cascade, map: "payment_charges_profile_id_fkey")
+  profile      Profile                @relation(fields: [profileId], references: [id], onDelete: Restrict, map: "payment_charges_profile_id_fkey")
   subscription ProfileSubscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull, map: "payment_charges_subscription_id_fkey")
   events       PaymentChargeEvent[]
 
@@ -1724,7 +1724,7 @@ model PaymentChargeEvent {
   actor      String   @db.Text
   occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
 
-  charge PaymentCharge @relation(fields: [chargeId], references: [id], onDelete: Cascade, map: "payment_charge_events_charge_id_fkey")
+  charge PaymentCharge @relation(fields: [chargeId], references: [id], onDelete: Restrict, map: "payment_charge_events_charge_id_fkey")
 
   @@index([chargeId, occurredAt], map: "payment_charge_events_charge_idx")
   @@map("payment_charge_events")
