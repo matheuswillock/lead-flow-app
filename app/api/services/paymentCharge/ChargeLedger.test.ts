@@ -157,3 +157,30 @@ describe("ChargeLedger.transition", () => {
     expect(charges.events).toHaveLength(1)
   })
 })
+
+describe("ChargeLedger.transition e paidAt", () => {
+  it("CONFIRMED -> COMPLETED não regrava o paidAt já gravado", async () => {
+    const charges = new InMemoryPaymentChargeRepository()
+    let clock = new Date("2026-10-21T12:00:00.000Z")
+    const ledger = new ChargeLedger({ charges, now: () => clock, logError: () => undefined })
+    await ledger.record(input({ status: "PENDING" }))
+    await ledger.transition({ chargeId: "charge-1", toStatus: "CONFIRMED", actor: "SETTLEMENT" })
+    const firstPaidAt = charges.charges[0].paidAt
+
+    clock = new Date("2026-10-22T09:00:00.000Z")
+    await ledger.transition({ chargeId: "charge-1", toStatus: "COMPLETED", actor: "SETTLEMENT" })
+
+    expect(firstPaidAt).toEqual(new Date("2026-10-21T12:00:00.000Z"))
+    expect(charges.charges[0].paidAt).toEqual(firstPaidAt)
+  })
+
+  it("evento atrasado (EXPIRED depois de CONFIRMED) é ignorado e o pagamento permanece", async () => {
+    const { ledger, charges } = makeLedger()
+    await ledger.record(input({ status: "CONFIRMED" }))
+
+    const result = await ledger.record(input({ status: "EXPIRED" }))
+
+    expect(result.ok && result.outcome).toBe("unchanged")
+    expect(charges.charges[0].status).toBe("CONFIRMED")
+  })
+})

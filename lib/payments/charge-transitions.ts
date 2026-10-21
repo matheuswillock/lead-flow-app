@@ -1,15 +1,22 @@
 import type { ChargeStatus } from "./charge-status"
 
-const NEVER_RETURNS_TO = new Set<ChargeStatus>(["PENDING"])
-
 /**
- * Regras de transição do ledger. Espelhos recebem eventos fora de ordem e repetidos:
- * o ledger só avança, nunca volta a PENDING e nunca sai de REFUNDED.
+ * Destinos permitidos por origem. O ledger só avança: um evento atrasado ou fora de ordem
+ * (ex.: EXPIRED depois de CONFIRMED) nunca desfaz um pagamento, e REFUNDED é terminal.
+ * Cobranças encerradas sem pagamento (EXPIRED/CANCELED/FAILED) só reabrem por um pagamento
+ * explícito (CONFIRMED) ou por revisão; PENDING nunca é destino.
  */
+const ALLOWED_TARGETS: Readonly<Record<ChargeStatus, readonly ChargeStatus[]>> = {
+  PENDING: ["CONFIRMED", "COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "REVIEW", "CANCELED"],
+  CONFIRMED: ["COMPLETED", "REFUNDED", "REVIEW"],
+  COMPLETED: ["REFUNDED", "REVIEW"],
+  FAILED: ["CONFIRMED", "REVIEW"],
+  EXPIRED: ["CONFIRMED", "REVIEW"],
+  CANCELED: ["CONFIRMED", "REVIEW"],
+  REVIEW: ["CONFIRMED", "COMPLETED", "FAILED", "EXPIRED", "REFUNDED", "CANCELED"],
+  REFUNDED: [],
+}
+
 export function canTransitionCharge(from: ChargeStatus, to: ChargeStatus): boolean {
-  if (from === to) return false
-  if (from === "REFUNDED") return false
-  if (from === "COMPLETED") return to === "REFUNDED" || to === "REVIEW"
-  if (NEVER_RETURNS_TO.has(to)) return false
-  return true
+  return ALLOWED_TARGETS[from].includes(to)
 }

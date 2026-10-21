@@ -75,10 +75,16 @@ export class PaymentChargeRepository implements IPaymentChargeRepository {
         data: {
           status: input.toStatus,
           ...(input.rawStatus !== undefined ? { rawStatus: input.rawStatus } : {}),
-          ...(input.paidAt ? { paidAt: input.paidAt } : {}),
         },
       })
       if (updated.count === 0) return null
+      // O primeiro paidAt é o instante do pagamento: nunca é regravado (ex.: CONFIRMED -> COMPLETED).
+      if (input.paidAt) {
+        await transaction.paymentCharge.updateMany({
+          where: { id: input.id, paidAt: null },
+          data: { paidAt: input.paidAt },
+        })
+      }
       await transaction.paymentChargeEvent.create({
         data: {
           chargeId: input.id,

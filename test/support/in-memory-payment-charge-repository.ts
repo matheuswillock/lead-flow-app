@@ -93,7 +93,7 @@ export class InMemoryPaymentChargeRepository implements IPaymentChargeRepository
     if (!charge || charge.status !== input.expectedStatus) return null
     charge.status = input.toStatus
     if (input.rawStatus !== undefined) charge.rawStatus = input.rawStatus
-    if (input.paidAt) charge.paidAt = input.paidAt
+    if (input.paidAt && !charge.paidAt) charge.paidAt = input.paidAt
     this.pushEvent(charge.id, input.expectedStatus, input.toStatus, input.rawStatus ?? null, input.actor)
     return charge
   }
