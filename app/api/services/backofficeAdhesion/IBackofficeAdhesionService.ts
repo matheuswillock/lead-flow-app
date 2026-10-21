@@ -4,6 +4,23 @@ import type {
 } from "@prisma/client"
 import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import type { AsaasAccountId } from "@/lib/asaas"
+import type { BillingType } from "@/lib/payment-methods/availability"
+
+export type AdhesionPixProvider = "ABACATE_PAY" | "ASAAS"
+
+export interface BackofficeAdhesionPixCheckoutInput {
+  fullName: string
+  email: string
+  phone: string
+  cpfCnpj: string
+}
+
+export interface BackofficeAdhesionProviderPaymentInput {
+  paidAt: Date
+  providerPaymentId: string
+  /** Linha de backoffice_adhesion_payments confirmada, quando já resolvida. */
+  adhesionPaymentId?: string
+}
 
 export interface BackofficeAdhesionAdditionalUser {
   name: string
@@ -142,6 +159,10 @@ export interface BackofficeAdhesionPublicDTO {
   installmentSchedule: number[]
   remainingBalance: number
   chargeAmount: number
+  /** Métodos que podem ser oferecidos agora (cartão some enquanto indisponível). */
+  availableBillingTypes: BillingType[]
+  /** Provider que cobra o PIX desta adesão: define o endpoint e a marca do checkout. */
+  pixProvider: AdhesionPixProvider
   createdAt: string
   paidAt: string | null
   expiresAt: string
@@ -150,6 +171,8 @@ export interface BackofficeAdhesionPublicDTO {
 export interface BackofficeAdhesionPaymentDTO {
   adhesionId: string
   paymentId: string | null
+  /** Provider que gerou esta cobrança; ausente = Asaas (legado). */
+  provider?: AdhesionPixProvider
   status: BackofficeAdhesionStatus
   billingType: string | null
   amount: number
@@ -182,6 +205,8 @@ export interface BackofficeAdhesionOptionsDTO {
   sdrOptions: Array<{ id: string; name: string; email: string }>
   closerOptions: Array<{ id: string; name: string; email: string }>
   sponsorOptions: Array<{ id: string; name: string; email: string }>
+  /** Formas de pagamento oferecidas agora; o cartão some enquanto indisponível. */
+  availableBillingTypes: BillingType[]
   productVariants: Array<{
     id: string
     name: string
@@ -287,10 +312,24 @@ export interface IBackofficeAdhesionService {
     token: string,
     input: BackofficeAdhesionCheckoutInput
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  createPixCheckout(
+    token: string,
+    input: BackofficeAdhesionPixCheckoutInput,
+    idempotencyKey: string
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   getPaymentStatus(
     token: string,
     options?: { sync?: boolean }
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  /**
+   * Efeito de domínio de um pagamento confirmado pelo provider: marca a adesão como paga e
+   * provisiona a conta. Idempotente — pode ser repetido pelo webhook, pelo cron de reparo
+   * e pela reconciliação.
+   */
+  markPaidFromProvider(
+    adhesionId: string,
+    input: BackofficeAdhesionProviderPaymentInput
+  ): Promise<void>
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput,

@@ -59,6 +59,119 @@ function makePurchase(overrides: Partial<PlatformPurchase> = {}): PlatformPurcha
   }
 }
 
+const emptyOwners = {
+  sessions: {
+    listOwnerAttemptsPendingSettlement: async () => [],
+    listOwnerAttemptsPendingReconciliation: async () => [],
+  },
+  settlement: {
+    settleConfirmed: async () => {
+      throw new Error("não deveria aplicar efeito de owner")
+    },
+  },
+}
+
+function makeOwnerMaintenance(input: {
+  confirmed?: StoredPaymentProviderAttemptRecord[]
+  unknown?: StoredPaymentProviderAttemptRecord[]
+  settle?: (input: { ownerType: string; ownerId: string; externalId: string }) => Promise<"settled" | "unsupported">
+  reconcile?: () => Promise<{ requiresReconciliation?: true }>
+}) {
+  const settleConfirmed = mock(input.settle ?? (async () => "settled" as const))
+  const reconcile = mock(input.reconcile ?? (async () => ({})))
+  const service = new PaymentProviderMaintenanceService({
+    sessions: {
+      listAttemptsPendingReconciliation: async () => [],
+      listAttemptsPendingEmailCreditEntitlements: async () => [],
+      listAttemptsPendingPurchaseActivation: async () => [],
+      acquireAttemptLease: async () => makeAttempt(),
+      releaseAttemptLease: async () => undefined,
+    },
+    purchases: { findById: async () => null, markPaidOnceForProvider: mock(async () => null) },
+    reconciliation: { reconcile: reconcile as never },
+    resolveQueryProvider: () => ({
+      getStatus: async () => {
+        throw new Error("não deveria consultar")
+      },
+    }),
+    applyEmailCredits: async () => ({ handled: false, applied: false, alreadyApplied: false }),
+    now: () => new Date("2026-10-21T12:00:00.000Z"),
+    owners: {
+      sessions: {
+        listOwnerAttemptsPendingSettlement: async () => input.confirmed ?? [],
+        listOwnerAttemptsPendingReconciliation: async () => input.unknown ?? [],
+      },
+      settlement: { settleConfirmed },
+    },
+  })
+  return { service, settleConfirmed, reconcile }
+}
+
+describe("PaymentProviderMaintenanceService — owners sem compra (adesão e regularização)", () => {
+  const adhesionAttempt = makeAttempt({
+    id: "attempt-adhesion",
+    ownerType: "BACKOFFICE_ADHESION",
+    ownerId: "adhesion-payment-1",
+    status: "CONFIRMED",
+    externalId: "pix_char_1",
+  })
+  const graceAttempt = makeAttempt({
+    id: "attempt-grace",
+    ownerType: "BILLING_GRACE_PAYMENT",
+    ownerId: "grace-1",
+    status: "CONFIRMED",
+    externalId: "pix_char_2",
+  })
+
+  it("repara adesão e regularização com tentativa CONFIRMED cujo efeito de domínio não concluiu", async () => {
+    const { service, settleConfirmed } = makeOwnerMaintenance({ confirmed: [adhesionAttempt, graceAttempt] })
+
+    const result = await service.run({ limit: 10 })
+
+    expect(result.ownerSettlementsRepaired).toBe(2)
+    expect(result.ownerSettlementFailures).toBe(0)
+    expect(settleConfirmed).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerType: "BACKOFFICE_ADHESION", ownerId: "adhesion-payment-1", externalId: "pix_char_1" }),
+    )
+    expect(settleConfirmed).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_char_2" }),
+    )
+  })
+
+  it("falha de um reparo é contada e não impede os demais", async () => {
+    const { service, settleConfirmed } = makeOwnerMaintenance({
+      confirmed: [adhesionAttempt, graceAttempt],
+      settle: async (input) => {
+        if (input.ownerType === "BACKOFFICE_ADHESION") throw new Error("Supabase Admin indisponível")
+        return "settled"
+      },
+    })
+
+    const result = await service.run()
+
+    expect(settleConfirmed).toHaveBeenCalledTimes(2)
+    expect(result.ownerSettlementsRepaired).toBe(1)
+    expect(result.ownerSettlementFailures).toBe(1)
+  })
+
+  it("reconcilia tentativas UNKNOWN dos owners como PIX", async () => {
+    const unknown = makeAttempt({ id: "attempt-u", ownerType: "BACKOFFICE_ADHESION", ownerId: "adhesion-payment-9" })
+    const { service, reconcile } = makeOwnerMaintenance({ unknown: [unknown] })
+
+    const result = await service.run()
+
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ attempt: unknown, method: "PIX" }))
+    expect(result.ownerAttemptsReconciled).toBe(1)
+  })
+
+  it("UNKNOWN ainda indeterminado não conta como reconciliado", async () => {
+    const unknown = makeAttempt({ id: "attempt-u", ownerType: "BACKOFFICE_ADHESION" })
+    const { service } = makeOwnerMaintenance({ unknown: [unknown], reconcile: async () => ({ requiresReconciliation: true }) })
+
+    expect((await service.run()).ownerAttemptsReconciled).toBe(0)
+  })
+})
+
 describe("PaymentProviderMaintenanceService", () => {
   it("reconcilia UNKNOWN e aplica entitlement confirmado sob lease", async () => {
     const unknownAttempt = makeAttempt()
@@ -107,6 +220,7 @@ describe("PaymentProviderMaintenanceService", () => {
       }),
       applyEmailCredits,
       now: () => new Date("2026-10-18T12:00:00.000Z"),
+      owners: emptyOwners,
     })
 
     const result = await service.run({ limit: 10 })
@@ -120,6 +234,9 @@ describe("PaymentProviderMaintenanceService", () => {
       entitlementFailures: 0,
       purchasesActivated: 0,
       purchaseActivationFailures: 0,
+      ownerAttemptsReconciled: 0,
+      ownerSettlementsRepaired: 0,
+      ownerSettlementFailures: 0,
     })
     expect(listAttemptsPendingReconciliation).toHaveBeenCalledWith({ limit: 10 })
     expect(listAttemptsPendingEmailCreditEntitlements).toHaveBeenCalledWith({ limit: 10 })
@@ -165,6 +282,7 @@ describe("PaymentProviderMaintenanceService", () => {
       }),
       applyEmailCredits,
       now: () => new Date("2026-10-18T12:00:00.000Z"),
+      owners: emptyOwners,
     })
 
     const result = await service.run()
@@ -211,6 +329,7 @@ describe("PaymentProviderMaintenanceService", () => {
       }),
       applyEmailCredits,
       now: () => new Date("2026-10-18T12:00:00.000Z"),
+      owners: emptyOwners,
     })
 
     const result = await service.run()

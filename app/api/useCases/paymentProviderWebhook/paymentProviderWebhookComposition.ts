@@ -3,7 +3,8 @@ import { paymentProviderEventInboxRepository } from "@/app/api/infra/data/reposi
 import { paymentProviderIdentityRepository } from "@/app/api/infra/data/repositories/paymentProviderIdentity/PaymentProviderIdentityRepository"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
-import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
+import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
+import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import {
@@ -21,6 +22,7 @@ export async function createPaymentProviderWebhookService() {
   if (!configuration) throw new Error("Configuração do provider não encontrada")
 
   const provider = createAbacatePayProvider(environment)
+  const settlement = createPaymentOwnerSettlement()
   const eventProcessor = new PaymentProviderEventProcessor(paymentProviderEventInboxRepository)
   const service = new PaymentProviderWebhookService({
     provider,
@@ -100,14 +102,15 @@ export async function createPaymentProviderWebhookService() {
           externalId: event.externalPaymentId!,
         })
       }
-      if (nextStatus === "CONFIRMED" && attempt.ownerType === "BILLING_GRACE_PAYMENT") {
-        const payment = await billingGracePaymentRepository.markConfirmed({
-          id: attempt.ownerId,
-          providerExternalId: event.externalPaymentId!,
-          confirmedAt: new Date(),
+      if (nextStatus === "CONFIRMED" && attempt.ownerType !== "PLATFORM_PURCHASE") {
+        const settled = await settlement.settleConfirmed({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+          paidAt: new Date(),
         })
-        if (!payment) throw new Error("Regularização não encontrada ou já processada")
-        await billingGracePaymentRepository.completeAndRestoreAccess(payment.id)
+        // Pagamento confirmado sem efeito de domínio conhecido não pode passar em silêncio.
+        if (settled === "unsupported") reportUnknownOwnerType(attempt)
       }
     },
   })

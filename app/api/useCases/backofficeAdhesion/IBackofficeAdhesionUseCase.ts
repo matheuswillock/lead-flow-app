@@ -4,6 +4,7 @@ import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionPaymentWebhookInput,
+  BackofficeAdhesionPixCheckoutInput,
   BackofficeAdhesionUpdateInput,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import type { AsaasAccountId } from "@/lib/asaas"
@@ -25,6 +26,11 @@ export interface IBackofficeAdhesionUseCase {
   getPublicUrl(id: string): Promise<Output>
   getPublicDetails(token: string): Promise<Output>
   createCheckout(token: string, input: BackofficeAdhesionCheckoutInput): Promise<Output>
+  createPixCheckout(
+    token: string,
+    input: BackofficeAdhesionPixCheckoutInput,
+    idempotencyKey: string
+  ): Promise<Output>
   getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output>
   processPaymentWebhook(
     event: string,

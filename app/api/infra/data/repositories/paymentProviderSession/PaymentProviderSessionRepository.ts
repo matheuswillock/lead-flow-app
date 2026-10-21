@@ -474,6 +474,82 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     return fetchAttemptsByIdsInOrder(rows)
   }
 
+  async listOwnerAttemptsPendingSettlement(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    assertAttemptListLimit(input.limit)
+    // Reparo da janela entre a transição fenceada da tentativa (CONFIRMED) e o efeito de
+    // domínio do owner: o reenvio do webhook não repete o efeito porque a tentativa já está
+    // CONFIRMED. O registro do owner só chega a "completed" depois do efeito, então ele é o
+    // marcador do que falta. A janela de 30 dias evita repetir para sempre um caso sem saída.
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT pending."id"
+      FROM (
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "backoffice_adhesion_payments" p ON p."id"::text = s."owner_id"
+        WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
+          AND a."external_id" IS NOT NULL
+          AND s."owner_type" = 'BACKOFFICE_ADHESION'
+          AND p."status" <> 'completed'
+          AND a."updated_at" >= now() - interval '30 days'
+        UNION ALL
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "billing_grace_payments" g ON g."id"::text = s."owner_id"
+        WHERE a."status" = 'CONFIRMED'::"payment_provider_attempt_status"
+          AND a."external_id" IS NOT NULL
+          AND s."owner_type" = 'BILLING_GRACE_PAYMENT'
+          AND g."status" IN ('pending', 'confirmed')
+          AND a."updated_at" >= now() - interval '30 days'
+      ) pending
+      ORDER BY pending."updated_at" ASC
+      LIMIT ${input.limit}
+    `
+    return fetchAttemptsByIdsInOrder(rows)
+  }
+
+  async listOwnerAttemptsPendingReconciliation(input: {
+    readonly limit: number
+  }): Promise<readonly StoredPaymentProviderAttemptRecord[]> {
+    assertAttemptListLimit(input.limit)
+    // Mesmos critérios de elegibilidade de listAttemptsPendingReconciliation: com id do
+    // provider, ou com a referência única da tentativa dentro da janela de 7 dias.
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT unknown_attempts."id"
+      FROM (
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "backoffice_adhesion_payments" p ON p."id"::text = s."owner_id"
+        WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
+          AND s."owner_type" = 'BACKOFFICE_ADHESION'
+          AND p."status" <> 'completed'
+          AND (
+            a."external_id" IS NOT NULL
+            OR (a."reconciliation_reference" IS NOT NULL AND a."updated_at" >= now() - interval '7 days')
+          )
+        UNION ALL
+        SELECT a."id", a."updated_at"
+        FROM "payment_provider_attempts" a
+        INNER JOIN "payment_provider_sessions" s ON s."id" = a."session_id"
+        INNER JOIN "billing_grace_payments" g ON g."id"::text = s."owner_id"
+        WHERE a."status" = 'UNKNOWN'::"payment_provider_attempt_status"
+          AND s."owner_type" = 'BILLING_GRACE_PAYMENT'
+          AND g."status" IN ('pending', 'confirmed')
+          AND (
+            a."external_id" IS NOT NULL
+            OR (a."reconciliation_reference" IS NOT NULL AND a."updated_at" >= now() - interval '7 days')
+          )
+      ) unknown_attempts
+      ORDER BY unknown_attempts."updated_at" ASC
+      LIMIT ${input.limit}
+    `
+    return fetchAttemptsByIdsInOrder(rows)
+  }
+
   async releaseAttemptLease(input: {
     readonly attemptId: string
     readonly lease: ProviderLeaseState
