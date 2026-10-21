@@ -99,7 +99,6 @@ export function PublicCheckoutFlow({
   const methods = useMemo(
     () => resolveCheckoutMethods({ availableMethods, pixOnly }),
     // A identidade do array muda a cada render do pai; a chave estável evita reexecutar o efeito.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [availableMethods?.join(","), pixOnly]
   )
   const cardOffered = methods.includes("CREDIT_CARD")
