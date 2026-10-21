@@ -2026,6 +2026,45 @@ completed completed
     }
   
 
+  "payment_charges" {
+    String id "🗝️"
+    String profile_id 
+    String subscription_id "❓"
+    String purpose 
+    String purpose_ref_id "❓"
+    String status 
+    String raw_status "❓"
+    Int amount_cents 
+    String currency 
+    String method "❓"
+    String cycle_key "❓"
+    DateTime due_date "❓"
+    DateTime paid_at "❓"
+    String provider 
+    String provider_environment 
+    String provider_context 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    Json payment_instructions "❓"
+    String idempotency_key 
+    String source 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_charge_events" {
+    String id "🗝️"
+    String charge_id 
+    String from_status "❓"
+    String to_status 
+    String raw_status "❓"
+    String actor 
+    DateTime occurred_at 
+    }
+  
+
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
@@ -3593,6 +3632,7 @@ completed completed
     String subscriptionCycle "❓"
     DateTime subscriptionLastSyncedAt "❓"
     Boolean hasPermanentSubscription 
+    String payment_cohort 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -5120,6 +5160,9 @@ completed completed
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
     "billing_access_graces" }o--|| corretor_studio_teams : "team"
+    "payment_charges" }o--|| corretor_studio_profiles : "profile"
+    "payment_charges" }o--|o corretor_studio_profile_subscriptions : "subscription"
+    "payment_charge_events" }o--|| payment_charges : "charge"
     "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "profile"
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"

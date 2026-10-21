@@ -1344,6 +1344,7 @@ model Profile {
   backofficeDeletionApprovals         BackofficeDeletionApproval[] @relation("BackofficeDeletionApprovalApprover")
   backofficeDeletionAuditLogs         BackofficeDeletionAuditLog[] @relation("BackofficeDeletionAuditLogActor")
   leadExtractions                     BackofficeLeadExtraction[]
+  paymentCharges                      PaymentCharge[]
 
   @@index([role])
   @@index([managerId])
@@ -1671,6 +1672,62 @@ model BillingGracePayment {
   @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
   @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")
   @@map("billing_grace_payments")
+}
+
+/// Ledger interno de cobranças (M12): visão de negócio provider-neutra. Valores de status/finalidade/origem
+/// em lib/payments (CHECK no SQL).
+model PaymentCharge {
+  id                  String    @id @default(uuid()) @db.Uuid
+  profileId           String    @map("profile_id") @db.Uuid
+  subscriptionId      String?   @map("subscription_id") @db.Uuid
+  purpose             String    @db.Text
+  purposeRefId        String?   @map("purpose_ref_id") @db.Text
+  status              String    @db.Text
+  rawStatus           String?   @map("raw_status") @db.Text
+  amountCents         Int       @map("amount_cents")
+  currency            String    @default("BRL") @db.Text
+  method              String?   @db.Text
+  cycleKey            String?   @map("cycle_key") @db.Text
+  dueDate             DateTime? @map("due_date") @db.Timestamptz(6)
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(6)
+  provider            String    @db.Text
+  providerEnvironment String    @map("provider_environment") @db.Text
+  providerContext     String    @map("provider_context") @db.Text
+  providerSessionId   String?   @map("provider_session_id") @db.Uuid
+  providerAttemptId   String?   @map("provider_attempt_id") @db.Uuid
+  providerExternalId  String?   @map("provider_external_id") @db.Text
+  paymentInstructions Json?     @map("payment_instructions")
+  idempotencyKey      String    @map("idempotency_key") @db.Text
+  source              String    @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile      Profile                @relation(fields: [profileId], references: [id], onDelete: Cascade, map: "payment_charges_profile_id_fkey")
+  subscription ProfileSubscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull, map: "payment_charges_subscription_id_fkey")
+  events       PaymentChargeEvent[]
+
+  @@unique([profileId, idempotencyKey], map: "payment_charges_profile_idempotency_key")
+  // Índices parciais (subscription_id+cycle_key e identidade externa) vivem só no SQL da migration.
+  @@index([profileId, status], map: "payment_charges_profile_status_idx")
+  @@index([providerAttemptId], map: "payment_charges_provider_attempt_idx")
+  @@index([purpose, purposeRefId], map: "payment_charges_purpose_ref_idx")
+  @@map("payment_charges")
+}
+
+/// Histórico append-only de transições de status de uma cobrança.
+model PaymentChargeEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  chargeId   String   @map("charge_id") @db.Uuid
+  fromStatus String?  @map("from_status") @db.Text
+  toStatus   String   @map("to_status") @db.Text
+  rawStatus  String?  @map("raw_status") @db.Text
+  actor      String   @db.Text
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  charge PaymentCharge @relation(fields: [chargeId], references: [id], onDelete: Cascade, map: "payment_charge_events_charge_id_fkey")
+
+  @@index([chargeId, occurredAt], map: "payment_charge_events_charge_idx")
+  @@map("payment_charge_events")
 }
 
 model BackofficeOperationalAccessGrant {
@@ -4592,9 +4649,12 @@ model ProfileSubscription {
   subscriptionCycle        String?             @db.Text
   subscriptionLastSyncedAt DateTime?           @db.Timestamptz(6)
   hasPermanentSubscription Boolean             @default(false)
+  /// ASAAS (padrão, comportamento atual) ou ROUTER (PaymentProviderRouter). Valores em lib/payments/types.ts.
+  paymentCohort            String              @default("ASAAS") @map("payment_cohort") @db.Text
   createdAt                DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
 
+  paymentCharges PaymentCharge[]
   profile  Profile                      @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
   adhesion BackofficeAdhesion?          @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
   product  BackofficeProduct?           @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
