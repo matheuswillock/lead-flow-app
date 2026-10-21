@@ -1,101 +1,139 @@
-import { connection, NextResponse, type NextRequest } from "next/server"
-import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
+import { connection, type NextRequest } from "next/server"
 import { paymentProviderConfigUseCase } from "@/app/api/useCases/paymentProviderConfig/paymentProviderConfigComposition"
-import { Output } from "@/lib/output"
+import type { UpdateProviderConfigInput } from "@/app/api/useCases/paymentProviderConfig/IPaymentProviderConfigUseCase"
+import type { CreateProviderInstanceBody } from "@/lib/payment-provider/admin-contract"
 import type { ProviderRolloutState } from "@/lib/payment-provider/routing"
-import type { ProviderRoutingConfigPatch } from "@/lib/payment-provider/routing-config"
-import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import {
+  authorizeRead,
+  authorizeWrite,
+  invalidRequest,
+  isRecord,
+  isUuid,
+  parseEnvironment,
+  parseProvider,
+  respond,
+  toActor,
+} from "./providerConfigRoute"
+
+const ROLLOUT_STATES = ["DISABLED", "SANDBOX_VALIDATED", "APPROVED", "ACTIVE"]
 
 export async function GET(request: NextRequest) {
   await connection()
-  const access = await getBackofficeAccess(request)
-  if (access.error) return NextResponse.json(access.error, { status: access.status })
+  const guard = await authorizeRead(request)
+  if (guard.response) return guard.response
 
   const environment = parseEnvironment(request.nextUrl.searchParams.get("environment"))
   if (!environment) return invalidRequest("Ambiente inválido")
-  const output = await paymentProviderConfigUseCase.list({ environment })
-  return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
+  return respond(await paymentProviderConfigUseCase.list({ environment }))
+}
+
+export async function POST(request: NextRequest) {
+  const guard = await authorizeWrite(request)
+  if (guard.response) return guard.response
+
+  const body = await readBody(request)
+  const input = parseCreateBody(body)
+  if (!input) return invalidRequest("Payload de instância inválido")
+  return respond(await paymentProviderConfigUseCase.create(input, toActor(guard.access)), 201)
 }
 
 export async function PUT(request: NextRequest) {
-  const access = await getBackofficeAccess(request)
-  if (access.error) return NextResponse.json(access.error, { status: access.status })
-  const denied = requireManagerAccess(access.access)
-  if (denied) return denied
+  const guard = await authorizeWrite(request)
+  if (guard.response) return guard.response
 
+  const body = await readBody(request)
+  const input = parseUpdateBody(body)
+  if (!input) return invalidRequest("Payload de configuração inválido")
+  return respond(await paymentProviderConfigUseCase.update(input, toActor(guard.access)))
+}
+
+async function readBody(request: NextRequest): Promise<unknown> {
   try {
-    const body = await request.json()
-    const environment = parseEnvironment(body?.environment)
-    const provider = parseProvider(body?.provider)
-    const patch = parsePatch(body?.patch)
-    if (!environment || !provider || !patch)
-      return invalidRequest("Payload de configuração inválido")
-
-    const output = await paymentProviderConfigUseCase.update({ environment, provider, patch })
-    return NextResponse.json(output, { status: output.isValid ? 200 : 409 })
-  } catch (error) {
-    console.error("[BackofficePaymentProviderConfigRoute][PUT]", error)
-    return invalidRequest("Payload de configuração inválido")
+    return await request.json()
+  } catch {
+    return null
   }
 }
 
-function parseEnvironment(value: unknown): PaymentProviderEnvironment | null {
-  return value === "DEV" || value === "PRODUCTION" ? value : null
+function optionalText(value: unknown): string | null | undefined | false {
+  if (value === undefined || value === null) return value
+  return typeof value === "string" ? value : false
 }
 
-function parseProvider(value: unknown): PaymentProviderKey | null {
-  return value === "ASAAS" || value === "ABACATE_PAY" ? value : null
-}
-
-function parsePatch(value: unknown): ProviderRoutingConfigPatch | null {
+function parseCreateBody(body: unknown): CreateProviderInstanceBody | null {
+  if (!isRecord(body)) return null
+  const providerKey = parseProvider(body.providerKey)
+  const environment = parseEnvironment(body.environment)
+  const logoUrl = optionalText(body.logoUrl)
+  const logoAltText = optionalText(body.logoAltText)
   if (
-    !isRecord(value) ||
-    typeof value.expectedRevision !== "number" ||
-    !Number.isInteger(value.expectedRevision)
+    !providerKey ||
+    !environment ||
+    typeof body.externalAccountContext !== "string" ||
+    typeof body.displayName !== "string" ||
+    logoUrl === false ||
+    logoAltText === false
   ) {
     return null
   }
-  const patch: {
-    enabled?: boolean
-    isDefault?: boolean
-    externalAccountContext?: string
-    rolloutState?: ProviderRolloutState
-    killSwitch?: boolean
-    expectedRevision: number
-  } = { expectedRevision: value.expectedRevision }
-  if (value.enabled !== undefined) {
-    if (typeof value.enabled !== "boolean") return null
-    patch.enabled = value.enabled
+  return {
+    providerKey,
+    environment,
+    externalAccountContext: body.externalAccountContext,
+    displayName: body.displayName,
+    logoUrl,
+    logoAltText,
   }
-  if (value.isDefault !== undefined) {
-    if (typeof value.isDefault !== "boolean") return null
-    patch.isDefault = value.isDefault
-  }
-  if (value.externalAccountContext !== undefined) {
-    if (typeof value.externalAccountContext !== "string") return null
-    patch.externalAccountContext = value.externalAccountContext
-  }
-  if (value.rolloutState !== undefined) {
-    if (
-      typeof value.rolloutState !== "string" ||
-      !["DISABLED", "SANDBOX_VALIDATED", "APPROVED", "ACTIVE"].includes(value.rolloutState)
-    ) {
-      return null
-    }
-    patch.rolloutState = value.rolloutState as ProviderRolloutState
-  }
-  if (value.killSwitch !== undefined) {
-    if (typeof value.killSwitch !== "boolean") return null
-    patch.killSwitch = value.killSwitch
-  }
-  return patch
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
+/** Aceita o corpo novo (`id` + campos) e o antigo (`providerKey|provider`, `environment`, `patch`). */
+function parseUpdateBody(body: unknown): UpdateProviderConfigInput | null {
+  if (!isRecord(body)) return null
+  const source = isRecord(body.patch) ? body.patch : body
+  if (typeof source.expectedRevision !== "number" || !Number.isInteger(source.expectedRevision)) return null
 
-function invalidRequest(message: string) {
-  return NextResponse.json(new Output(false, [], [message], null), { status: 400 })
+  let id: string | undefined
+  let provider: ReturnType<typeof parseProvider> = null
+  let environment: ReturnType<typeof parseEnvironment> = null
+  if (body.id !== undefined) {
+    if (!isUuid(body.id)) return null
+    id = body.id
+  } else {
+    provider = parseProvider(body.providerKey ?? body.provider)
+    environment = parseEnvironment(body.environment)
+    if (!provider || !environment) return null
+  }
+
+  const input: {
+    -readonly [K in keyof UpdateProviderConfigInput]: UpdateProviderConfigInput[K]
+  } = { expectedRevision: source.expectedRevision, ...(id ? { id } : {}), ...(provider ? { provider } : {}), ...(environment ? { environment } : {}) }
+
+  for (const key of ["enabled", "isDefault", "killSwitch"] as const) {
+    if (source[key] === undefined) continue
+    if (typeof source[key] !== "boolean") return null
+    input[key] = source[key]
+  }
+  if (source.externalAccountContext !== undefined) {
+    if (typeof source.externalAccountContext !== "string") return null
+    input.externalAccountContext = source.externalAccountContext
+  }
+  if (source.rolloutState !== undefined) {
+    if (typeof source.rolloutState !== "string" || !ROLLOUT_STATES.includes(source.rolloutState)) return null
+    input.rolloutState = source.rolloutState as ProviderRolloutState
+  }
+  if (source.displayName !== undefined) {
+    if (typeof source.displayName !== "string") return null
+    input.displayName = source.displayName
+  }
+  for (const key of ["logoUrl", "logoAltText"] as const) {
+    if (source[key] === undefined) continue
+    const value = optionalText(source[key])
+    if (value === false) return null
+    input[key] = value
+  }
+  if (source.settings !== undefined) {
+    if (!isRecord(source.settings)) return null
+    input.settings = source.settings
+  }
+  return input as UpdateProviderConfigInput
 }

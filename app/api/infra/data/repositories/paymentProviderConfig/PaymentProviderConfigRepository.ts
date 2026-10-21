@@ -1,20 +1,25 @@
-import {
-  Prisma,
-  PaymentProviderEnvironment as PrismaEnvironment,
-  PaymentProviderKey as PrismaProvider,
-} from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import {
+  ProviderInstanceConflictError,
+  ProviderInstanceNotFoundError,
+  parseStoredSettings,
+  type ProviderInstanceRecord,
+} from "@/lib/payment-provider/instance"
+import {
   applyProviderRoutingConfigPatch,
-  type ProviderRoutingConfigRecord,
+  ProviderRoutingConfigError,
 } from "@/lib/payment-provider/routing-config"
+import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 import type {
+  CreateProviderInstanceInput,
   IPaymentProviderConfigRepository,
   RecordProviderHealthCheckInput,
-  UpdateProviderRoutingConfigInput,
+  UpdateProviderInstanceInput,
 } from "./IPaymentProviderConfigRepository"
 
 const configSelect = {
+  id: true,
   providerKey: true,
   environment: true,
   enabled: true,
@@ -24,123 +29,200 @@ const configSelect = {
   killSwitch: true,
   configRevision: true,
   healthStatus: true,
+  displayName: true,
+  logoUrl: true,
+  logoAltText: true,
+  settings: true,
+  lastHealthCheckAt: true,
+  lastErrorCode: true,
 } as const
 
+type ConfigRow = Prisma.PaymentProviderConfigGetPayload<{ select: typeof configSelect }>
+
 export class PaymentProviderConfigRepository implements IPaymentProviderConfigRepository {
-  async list(
-    environment: ProviderRoutingConfigRecord["environment"],
-  ): Promise<readonly ProviderRoutingConfigRecord[]> {
-    const records = await prisma.paymentProviderConfig.findMany({
-      where: { environment: toPrismaEnvironment(environment) },
+  async list(environment: PaymentProviderEnvironment): Promise<readonly ProviderInstanceRecord[]> {
+    const rows = await prisma.paymentProviderConfig.findMany({
+      where: { environment },
       select: configSelect,
-      orderBy: { providerKey: "asc" },
+      orderBy: [{ providerKey: "asc" }, { createdAt: "asc" }],
     })
-    return records.map(toRoutingConfigRecord)
+    return rows.map(toInstanceRecord)
   }
 
-  async recordHealthCheck(
-    input: RecordProviderHealthCheckInput,
-  ): Promise<ProviderRoutingConfigRecord> {
-    const where = {
-      providerKey_environment: {
-        providerKey: toPrismaProvider(input.provider),
-        environment: toPrismaEnvironment(input.environment),
+  async listAll(): Promise<readonly ProviderInstanceRecord[]> {
+    const rows = await prisma.paymentProviderConfig.findMany({
+      select: configSelect,
+      orderBy: [{ environment: "asc" }, { providerKey: "asc" }, { createdAt: "asc" }],
+    })
+    return rows.map(toInstanceRecord)
+  }
+
+  async findById(id: string): Promise<ProviderInstanceRecord | null> {
+    const row = await prisma.paymentProviderConfig.findUnique({ where: { id }, select: configSelect })
+    return row ? toInstanceRecord(row) : null
+  }
+
+  async findPrimary(
+    provider: PaymentProviderKey,
+    environment: PaymentProviderEnvironment,
+  ): Promise<ProviderInstanceRecord | null> {
+    const row = await prisma.paymentProviderConfig.findFirst({
+      where: { providerKey: provider, environment },
+      select: configSelect,
+      orderBy: [{ isDefault: "desc" }, { enabled: "desc" }, { createdAt: "asc" }],
+    })
+    return row ? toInstanceRecord(row) : null
+  }
+
+  async findByScope(
+    provider: PaymentProviderKey,
+    environment: PaymentProviderEnvironment,
+    externalAccountContext: string,
+  ): Promise<ProviderInstanceRecord | null> {
+    const row = await prisma.paymentProviderConfig.findUnique({
+      where: {
+        providerKey_environment_externalAccountContext: {
+          providerKey: provider,
+          environment,
+          externalAccountContext,
+        },
       },
+      select: configSelect,
+    })
+    return row ? toInstanceRecord(row) : null
+  }
+
+  async create(input: CreateProviderInstanceInput): Promise<ProviderInstanceRecord> {
+    try {
+      const row = await prisma.paymentProviderConfig.create({
+        data: {
+          providerKey: input.provider,
+          environment: input.environment,
+          externalAccountContext: input.externalAccountContext,
+          displayName: input.displayName,
+          logoUrl: input.logoUrl,
+          logoAltText: input.logoAltText,
+        },
+        select: configSelect,
+      })
+      return toInstanceRecord(row)
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ProviderInstanceConflictError("Já existe uma instância para esta conta")
+      }
+      throw error
     }
-    const exists = await prisma.paymentProviderConfig.findUnique({ where, select: { id: true } })
-    if (!exists) throw new Error("Configuração do provider não encontrada")
+  }
+
+  async update(input: UpdateProviderInstanceInput): Promise<ProviderInstanceRecord> {
+    try {
+      return await this.updateInTransaction(input)
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ProviderInstanceConflictError("Já existe uma instância para esta conta")
+      }
+      throw error
+    }
+  }
+
+  private async updateInTransaction(input: UpdateProviderInstanceInput) {
+    return prisma.$transaction(
+      async (transaction) => {
+        const row = await transaction.paymentProviderConfig.findUnique({
+          where: { id: input.id },
+          select: configSelect,
+        })
+        if (!row) throw new ProviderInstanceNotFoundError()
+        const current = toInstanceRecord(row)
+        const routing = applyProviderRoutingConfigPatch(current, input.patch)
+        const settings = { ...current.settings, ...(input.metadata?.settings ?? {}) }
+        const next: ProviderInstanceRecord = {
+          ...current,
+          ...routing,
+          displayName: input.metadata?.displayName ?? current.displayName,
+          logoUrl: input.metadata?.logoUrl !== undefined ? input.metadata.logoUrl : current.logoUrl,
+          logoAltText:
+            input.metadata?.logoAltText !== undefined ? input.metadata.logoAltText : current.logoAltText,
+          settings,
+        }
+        input.assertNext?.(next)
+        if (next.isDefault) {
+          await transaction.paymentProviderConfig.updateMany({
+            where: { environment: row.environment, isDefault: true, id: { not: row.id } },
+            data: { isDefault: false, configRevision: { increment: 1 } },
+          })
+        }
+        const result = await transaction.paymentProviderConfig.updateMany({
+          where: { id: row.id, configRevision: input.patch.expectedRevision },
+          data: {
+            enabled: next.enabled,
+            isDefault: next.isDefault,
+            externalAccountContext: next.externalAccountContext,
+            rolloutState: next.rolloutState,
+            killSwitch: next.killSwitch,
+            configRevision: next.revision,
+            healthStatus: next.healthStatus,
+            displayName: next.displayName,
+            logoUrl: next.logoUrl,
+            logoAltText: next.logoAltText,
+            settings: next.settings as Prisma.InputJsonValue,
+          },
+        })
+        if (result.count !== 1) {
+          throw new ProviderRoutingConfigError(
+            "REVISION_CONFLICT",
+            "A revisão da configuração está desatualizada",
+          )
+        }
+        const updated = await transaction.paymentProviderConfig.findUniqueOrThrow({
+          where: { id: row.id },
+          select: configSelect,
+        })
+        return toInstanceRecord(updated)
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    )
+  }
+
+  async recordHealthCheck(input: RecordProviderHealthCheckInput): Promise<ProviderInstanceRecord> {
+    const exists = await prisma.paymentProviderConfig.findUnique({
+      where: { id: input.id },
+      select: { id: true },
+    })
+    if (!exists) throw new ProviderInstanceNotFoundError()
     const updated = await prisma.paymentProviderConfig.update({
-      where,
+      where: { id: input.id },
       data: {
-        healthStatus: input.healthStatus,
+        ...(input.healthStatus ? { healthStatus: input.healthStatus } : {}),
         lastHealthCheckAt: input.checkedAt,
         lastErrorCode: input.errorCode,
         lastErrorMessage: input.errorMessage,
       },
       select: configSelect,
     })
-    return toRoutingConfigRecord(updated)
-  }
-
-  async update(input: UpdateProviderRoutingConfigInput): Promise<ProviderRoutingConfigRecord> {
-    const updated = await prisma.$transaction(async (transaction) => {
-      const current = await transaction.paymentProviderConfig.findUnique({
-        where: {
-          providerKey_environment: {
-            providerKey: toPrismaProvider(input.provider),
-            environment: toPrismaEnvironment(input.environment),
-          },
-        },
-        select: { ...configSelect, id: true },
-      })
-      if (!current) throw new Error("Configuração do provider não encontrada")
-
-      const next = applyProviderRoutingConfigPatch(toRoutingConfigRecord(current), input.patch)
-      if (next.isDefault) {
-        await transaction.paymentProviderConfig.updateMany({
-          where: {
-            environment: current.environment,
-            isDefault: true,
-            id: { not: current.id },
-          },
-          data: { isDefault: false, configRevision: { increment: 1 } },
-        })
-      }
-
-      const result = await transaction.paymentProviderConfig.updateMany({
-        where: { id: current.id, configRevision: input.patch.expectedRevision },
-        data: {
-          enabled: next.enabled,
-          isDefault: next.isDefault,
-          externalAccountContext: next.externalAccountContext,
-          rolloutState: next.rolloutState,
-          killSwitch: next.killSwitch,
-          configRevision: next.revision,
-          healthStatus: next.healthStatus,
-        },
-      })
-      if (result.count !== 1) throw new Error("A revisão da configuração está desatualizada")
-      return transaction.paymentProviderConfig.findUniqueOrThrow({
-        where: { id: current.id },
-        select: configSelect,
-      })
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
-    return toRoutingConfigRecord(updated)
+    return toInstanceRecord(updated)
   }
 }
 
-function toRoutingConfigRecord(record: {
-  providerKey: string
-  environment: string
-  enabled: boolean
-  isDefault: boolean
-  externalAccountContext: string
-  rolloutState: string
-  killSwitch: boolean
-  configRevision: number
-  healthStatus: string
-}): ProviderRoutingConfigRecord {
+function toInstanceRecord(row: ConfigRow): ProviderInstanceRecord {
   return {
-    provider: record.providerKey as ProviderRoutingConfigRecord["provider"],
-    environment: record.environment as ProviderRoutingConfigRecord["environment"],
-    enabled: record.enabled,
-    isDefault: record.isDefault,
-    externalAccountContext: record.externalAccountContext,
-    rolloutState: record.rolloutState as ProviderRoutingConfigRecord["rolloutState"],
-    killSwitch: record.killSwitch,
-    revision: record.configRevision,
-    healthStatus: record.healthStatus as ProviderRoutingConfigRecord["healthStatus"],
+    id: row.id,
+    provider: row.providerKey as ProviderInstanceRecord["provider"],
+    environment: row.environment as ProviderInstanceRecord["environment"],
+    enabled: row.enabled,
+    isDefault: row.isDefault,
+    externalAccountContext: row.externalAccountContext,
+    rolloutState: row.rolloutState as ProviderInstanceRecord["rolloutState"],
+    killSwitch: row.killSwitch,
+    revision: row.configRevision,
+    healthStatus: row.healthStatus as ProviderInstanceRecord["healthStatus"],
+    displayName: row.displayName,
+    logoUrl: row.logoUrl,
+    logoAltText: row.logoAltText,
+    settings: parseStoredSettings(row.settings),
+    lastHealthCheckAt: row.lastHealthCheckAt,
+    lastErrorCode: row.lastErrorCode,
   }
-}
-
-function toPrismaProvider(provider: ProviderRoutingConfigRecord["provider"]): PrismaProvider {
-  return provider as PrismaProvider
-}
-
-function toPrismaEnvironment(
-  environment: ProviderRoutingConfigRecord["environment"],
-): PrismaEnvironment {
-  return environment as PrismaEnvironment
 }
 
 export const paymentProviderConfigRepository = new PaymentProviderConfigRepository()

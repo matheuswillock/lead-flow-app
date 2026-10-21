@@ -12,9 +12,11 @@ import { ApplyEmailCreditsOnConfirmation } from "./applyEmailCreditsOnConfirmati
 import { PaymentEventMatchGuard } from "./paymentEventMatchGuard"
 import { reportPaymentDisputed } from "./reportPaymentDisputed"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
+import { pickPrimaryInstance } from "@/lib/payment-provider/instance"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import {
   createAbacatePayProvider,
+  hydrateAbacateCredentials,
   resolvePaymentProviderEnvironment,
 } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
 
@@ -22,11 +24,14 @@ const ROUTE_VERSION = "PAY-PROV-PHASE-3"
 
 export async function createPaymentProviderWebhookService() {
   const environment = resolvePaymentProviderEnvironment()
-  const configuration = (await paymentProviderConfigRepository.list(environment)).find(
-    (item) => item.provider === "ABACATE_PAY",
+  // Várias instâncias por provider são permitidas: o webhook atende a instância principal.
+  const configuration = pickPrimaryInstance(
+    await paymentProviderConfigRepository.list(environment),
+    "ABACATE_PAY",
   )
   if (!configuration) throw new Error("Configuração do provider não encontrada")
 
+  await hydrateAbacateCredentials(environment)
   const provider = createAbacatePayProvider(environment)
   const settlement = createPaymentOwnerSettlement()
   const eventMatchGuard = new PaymentEventMatchGuard({

@@ -16,7 +16,12 @@ import { PaymentProviderMaintenanceService } from "@/app/api/services/PaymentPro
 import { PaymentProviderRefundUseCase } from "./PaymentProviderRefundUseCase"
 import { PaymentProviderMaintenanceUseCase } from "./PaymentProviderMaintenanceUseCase"
 import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
-import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
+import { derivePaymentProviderEnvironment } from "@/lib/payment-provider/environment"
+import type { InstanceSelector, ResolvedCredentials } from "@/lib/payment-provider/credential-cache"
+import {
+  hydrateProviderCredentials,
+  providerCredentialResolver,
+} from "./providerCredentialRuntime"
 
 const ABACATE_CAPABILITIES = [
   "ONE_TIME_PAYMENT",
@@ -28,47 +33,72 @@ const ABACATE_CAPABILITIES = [
 ] as const
 
 export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment {
-  const configured = process.env.PAYMENT_PROVIDER_ENVIRONMENT ?? "DEV"
-  if (configured !== "DEV" && configured !== "PRODUCTION") {
-    throw new Error("PAYMENT_PROVIDER_ENVIRONMENT inválido")
-  }
-  return configured
+  const environment = derivePaymentProviderEnvironment(process.env)
+  if (!environment) throw new Error("PAYMENT_PROVIDER_ENVIRONMENT inválido")
+  return environment
 }
 
-function readProviderSecret(environment: PaymentProviderEnvironment, suffix: string): string {
-  const environmentKey = `ABACATE_PAY_${environment}_${suffix}`
-  const value = process.env[environmentKey] ?? process.env[`ABACATE_PAY_${suffix}`]
+function abacateSelector(environment: PaymentProviderEnvironment): InstanceSelector {
+  return { provider: "ABACATE_PAY", environment }
+}
+
+/** Aquece o cache de credenciais (banco primeiro, ambiente como reserva) antes do uso síncrono. */
+export async function hydrateAbacateCredentials(
+  environment: PaymentProviderEnvironment,
+): Promise<void> {
+  await hydrateProviderCredentials(abacateSelector(environment))
+}
+
+function readProviderSecret(
+  credentials: ResolvedCredentials,
+  suffix: string,
+): string {
+  const value = credentials.values[suffix]
   if (!value?.trim()) throw new Error(`Segredo ${suffix} do provider não configurado`)
   return value
 }
 
 // Em PRODUCTION a chave pública só existe depois que a loja tem "Checkout próprio" (cartão)
 // liberado. Em DEV ela é sempre obrigatória.
-function readProviderPublicKey(environment: PaymentProviderEnvironment): string | null {
-  if (environment !== "PRODUCTION") return readProviderSecret(environment, "PUBLIC_KEY")
-  return readAbacatePublicKey(environment)
+function readProviderPublicKey(
+  environment: PaymentProviderEnvironment,
+  credentials: ResolvedCredentials,
+): string | null {
+  if (environment !== "PRODUCTION") return readProviderSecret(credentials, "PUBLIC_KEY")
+  return credentials.values.PUBLIC_KEY?.trim() ? credentials.values.PUBLIC_KEY : null
 }
 
 export function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
-  const hasPublicKey = readProviderPublicKey(environment) !== null
+  const credentials = providerCredentialResolver.resolveSync(abacateSelector(environment))
+  const hasPublicKey = readProviderPublicKey(environment, credentials) !== null
   return ABACATE_CAPABILITIES.filter((capability) => capability !== "CARD" || hasPublicKey)
 }
 
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
 ): AbacatePayProvider {
-  const publicKey = readProviderPublicKey(environment)
+  const credentials = providerCredentialResolver.resolveSync(abacateSelector(environment))
+  const publicKey = readProviderPublicKey(environment, credentials)
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
-      apiKey: readProviderSecret(environment, "API_KEY"),
+      apiKey: readProviderSecret(credentials, "API_KEY"),
       publicKey,
-      webhookSecret: readProviderSecret(environment, "WEBHOOK_SECRET"),
+      webhookSecret: readProviderSecret(credentials, "WEBHOOK_SECRET"),
       // AbacatePay signs webhook payloads with the store public key. There is
       // no separate webhook-signing credential in the dashboard.
       webhookSigningKey: publicKey,
+      webhookSecretPrevious: credentials.values.WEBHOOK_SECRET_PREVIOUS ?? null,
+      requireSignature: resolveRequireSignature(credentials),
       environment,
       devMode: environment === "DEV",
     }),
+  )
+}
+
+function resolveRequireSignature(credentials: ResolvedCredentials): boolean {
+  return (
+    credentials.values.REQUIRE_SIGNATURE?.trim().toLowerCase() === "true" ||
+    credentials.settings.requireSignature === true
   )
 }
 
@@ -86,13 +116,25 @@ export function createAbacatePayProviderRegistry(
   ])
 }
 
+/** Roteador que aquece as credenciais (capacidade de cartão depende da chave pública) antes de decidir. */
+class CredentialAwarePaymentProviderRouter extends PaymentProviderRouter {
+  constructor(private readonly environment: PaymentProviderEnvironment) {
+    super(paymentProviderConfigRepository, createAbacatePayProviderRegistry(environment))
+  }
+
+  override async select(input: Parameters<PaymentProviderRouter["select"]>[0]) {
+    await hydrateAbacateCredentials(this.environment)
+    return new PaymentProviderRouter(
+      paymentProviderConfigRepository,
+      createAbacatePayProviderRegistry(this.environment),
+    ).select(input)
+  }
+}
+
 export function createPaymentProviderRouter(
   environment: PaymentProviderEnvironment,
 ): PaymentProviderRouter {
-  return new PaymentProviderRouter(
-    paymentProviderConfigRepository,
-    createAbacatePayProviderRegistry(environment),
-  )
+  return new CredentialAwarePaymentProviderRouter(environment)
 }
 
 function createUseCase() {
@@ -118,8 +160,9 @@ export function getPaymentProviderPaymentUseCase() {
   return createUseCase()
 }
 
-export function getPaymentProviderRefundUseCase(): PaymentProviderRefundUseCase {
+export async function getPaymentProviderRefundUseCase(): Promise<PaymentProviderRefundUseCase> {
   const environment = resolvePaymentProviderEnvironment()
+  await hydrateAbacateCredentials(environment)
   return new PaymentProviderRefundUseCase({
     sessions: paymentProviderSessionRepository,
     refundService: new PaymentProviderPostPaymentService(paymentProviderSessionRepository),
@@ -132,8 +175,9 @@ export function getPaymentProviderRefundUseCase(): PaymentProviderRefundUseCase 
   })
 }
 
-export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenanceUseCase {
+export async function getPaymentProviderMaintenanceUseCase(): Promise<PaymentProviderMaintenanceUseCase> {
   const environment = resolvePaymentProviderEnvironment()
+  await hydrateAbacateCredentials(environment)
   const reconciliation = new PaymentProviderReconciliationService({
     sessions: paymentProviderSessionRepository,
     identities: paymentProviderIdentityRepository,

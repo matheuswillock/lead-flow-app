@@ -1,5 +1,6 @@
 import type { PaymentProviderMetadata } from "./contracts"
-import type { IPaymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/IPaymentProviderConfigRepository"
+import type { ProviderRoutingConfigRecord } from "./routing-config"
+import type { PaymentProviderEnvironment } from "./types"
 import {
   selectProviderForNewPayment,
   type SelectProviderInput,
@@ -14,7 +15,9 @@ export type SelectRoutedProviderInput = Omit<
 
 export class PaymentProviderRouter {
   constructor(
-    private readonly configRepository: Pick<IPaymentProviderConfigRepository, "list">,
+    private readonly configRepository: {
+      list(environment: PaymentProviderEnvironment): Promise<readonly ProviderRoutingConfigRecord[]>
+    },
     private readonly registry: PaymentProviderRegistry,
   ) {}
 

@@ -11,7 +11,21 @@
  * `ASAAS_ENV` — as duas contas compartilham a mesma baseUrl efetiva.
  */
 
+import { credentialCache, type InstanceSelector } from "@/lib/payment-provider/credential-cache"
+
 export type AsaasAccountId = "primary" | "legacy"
+
+/**
+ * Instância de credenciais da conta Asaas no backoffice (M11): o contexto da conta é o próprio
+ * `accountId` e o ambiente Asaas (`production`/`sandbox`) mapeia para `PRODUCTION`/`DEV`.
+ */
+export function asaasInstanceSelector(accountId: AsaasAccountId): InstanceSelector {
+  return {
+    provider: "ASAAS",
+    environment: detectAsaasEnvironment() === "production" ? "PRODUCTION" : "DEV",
+    externalAccountContext: accountId,
+  }
+}
 
 export type ResolvedAsaasAccount = {
   accountId: AsaasAccountId
@@ -50,12 +64,18 @@ function resolveAsaasBaseUrl(): string {
   return process.env.ASAAS_URL_sandbox || "https://sandbox.asaas.com"
 }
 
+/** Valor vindo do banco (cache hidratado), se existir; o ambiente continua sendo a reserva. */
+function readStoredCredential(accountId: AsaasAccountId, key: string): string | undefined {
+  const cached = credentialCache.peekAndRefresh(asaasInstanceSelector(accountId))
+  return cached?.sources[key] === "db" ? cached.values[key] : undefined
+}
+
 export function resolveAsaasAccount(accountId: AsaasAccountId): ResolvedAsaasAccount {
-  const baseUrl = resolveAsaasBaseUrl()
+  const baseUrl = readStoredCredential(accountId, "BASE_URL")?.replace(/\/$/, "") ?? resolveAsaasBaseUrl()
   const environment = detectAsaasEnvironment()
 
   if (accountId === "legacy") {
-    const apiKey = process.env.ASAAS_LEGACY_API_KEY
+    const apiKey = readStoredCredential("legacy", "API_KEY") ?? process.env.ASAAS_LEGACY_API_KEY
     if (!apiKey) {
       throw new Error(
         "Conta Asaas 'legacy' solicitada, mas ASAAS_LEGACY_API_KEY não está configurada " +
@@ -67,16 +87,17 @@ export function resolveAsaasAccount(accountId: AsaasAccountId): ResolvedAsaasAcc
       apiKey,
       baseUrl,
       environment,
-      webhookToken: process.env.ASAAS_LEGACY_WEBHOOK_TOKEN,
+      webhookToken:
+        readStoredCredential("legacy", "WEBHOOK_TOKEN") ?? process.env.ASAAS_LEGACY_WEBHOOK_TOKEN,
     }
   }
 
   return {
     accountId: "primary",
-    apiKey: process.env.ASAAS_API_KEY,
+    apiKey: readStoredCredential("primary", "API_KEY") ?? process.env.ASAAS_API_KEY,
     baseUrl,
     environment,
-    walletId: process.env.ASAAS_WALLET_ID,
-    webhookToken: process.env.ASAAS_WEBHOOK_TOKEN,
+    walletId: readStoredCredential("primary", "WALLET_ID") ?? process.env.ASAAS_WALLET_ID,
+    webhookToken: readStoredCredential("primary", "WEBHOOK_TOKEN") ?? process.env.ASAAS_WEBHOOK_TOKEN,
   }
 }

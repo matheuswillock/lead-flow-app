@@ -10,6 +10,7 @@ import { getClientIpFromRequest } from "@/lib/http/get-client-ip";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
+import { hydrateAsaasCredentials } from "@/lib/asaas/asaas-hydration";
 import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
 import { reportAsaasWebhookAuthRejected } from "./asaasWebhookAuthFailureAlert";
 import {
@@ -64,6 +65,8 @@ export async function POST(request: NextRequest) {
 
     // M3.1 (E4): resolve qual conta (primary/legacy) enviou o evento
     // comparando contra os dois tokens, cada um via timingSafeEqual (E3).
+    // M11: tokens gravados no backoffice (cache curto) antes de comparar; sem eles, vale o ambiente.
+    await Promise.all([hydrateAsaasCredentials("primary"), hydrateAsaasCredentials("legacy")]);
     const account = resolveAsaasWebhookAccount(receivedToken);
 
     if (!account) {

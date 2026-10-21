@@ -13,3 +13,13 @@ export interface AuditLogEntry {
 export interface IAuditLogRepository {
   create(entry: AuditLogEntry): Promise<void>;
 }
+
+export interface AuditLogHistoryRow {
+  createdAt: Date;
+  actorProfileId: string | null;
+  metadata: unknown;
+}
+
+export interface IAuditLogHistoryRepository {
+  listByEntity(entityType: AuditEntityType, entityId: string, limit: number): Promise<AuditLogHistoryRow[]>;
+}
