@@ -35,11 +35,11 @@ function build() {
   return { guard, purchases, adhesionPayments, gracePayments, alert }
 }
 
-const owners = [
-  PAYMENT_PROVIDER_OWNER_TYPES.PLATFORM_PURCHASE,
-  PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION,
-  PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT,
-] as const
+const owners: Array<[string]> = [
+  [PAYMENT_PROVIDER_OWNER_TYPES.PLATFORM_PURCHASE],
+  [PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION],
+  [PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT],
+]
 const attemptFor = (ownerType: string) => ({ id: "att-1", ownerType, ownerId: "owner-1" })
 
 describe("PaymentEventMatchGuard (PAY-HARD-T011)", () => {
