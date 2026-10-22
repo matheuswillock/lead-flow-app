@@ -41,8 +41,9 @@ export const paymentProviderConfigUseCase = new PaymentProviderConfigUseCase(con
 /** Sonda por adapter. Asaas: contexto da instância (primary/legacy) escolhe a conta. */
 export const createInstanceHealthProbe: HealthCheckProviderFactory = async (instance) => {
   if (instance.provider === "ABACATE_PAY") {
-    await hydrateAbacateCredentials(instance.environment)
-    return createAbacatePayProvider(instance.environment)
+    // Sonda as credenciais DESTA instância: sem credencial própria (e sem ser a principal) falha.
+    await hydrateAbacateCredentials(instance.environment, instance.externalAccountContext)
+    return createAbacatePayProvider(instance.environment, instance.externalAccountContext)
   }
   if (instance.provider === "ASAAS") {
     if (instance.externalAccountContext === "primary" || instance.externalAccountContext === "legacy") {

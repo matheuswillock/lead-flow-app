@@ -151,3 +151,36 @@ describe("buildAbacatePayProviderConfig (rotação e assinatura obrigatória)", 
     expect(resolvePaymentProviderEnvironment()).toBe("DEV")
   })
 })
+
+describe("credenciais por instância (multi-instância do Abacate)", () => {
+  const instanceB = {
+    provider: "ABACATE_PAY",
+    environment: "PRODUCTION",
+    externalAccountContext: "ctx-b",
+  } as const
+
+  function warm(values: Record<string, string>) {
+    credentialCache.set(instanceB, {
+      instanceId: "b",
+      values,
+      sources: Object.fromEntries(Object.keys(values).map((key) => [key, "db" as const])),
+      settings: {},
+    })
+  }
+
+  it("a instância B (default) usa as credenciais de B, não as do ambiente da principal", () => {
+    setProductionSecrets()
+    warm({ API_KEY: "b-api-key", WEBHOOK_SECRET: "b-webhook-secret", PUBLIC_KEY: "b-public" })
+    const config = buildAbacatePayProviderConfig("PRODUCTION", "ctx-b")
+    expect(config.apiKey).toBe("b-api-key")
+    expect(config.webhookSecret).toBe("b-webhook-secret")
+    expect(buildAbacatePayProviderConfig("PRODUCTION").apiKey).toBe("prod-api-key")
+  })
+
+  it("instância B com cache frio NÃO herda o ambiente da principal (falha fechada)", () => {
+    setProductionSecrets()
+    expect(() => createAbacatePayProvider("PRODUCTION", "ctx-b")).toThrow(
+      "Segredo API_KEY do provider não configurado",
+    )
+  })
+})

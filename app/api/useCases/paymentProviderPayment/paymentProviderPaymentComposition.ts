@@ -39,15 +39,21 @@ export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment 
   return environment
 }
 
-function abacateSelector(environment: PaymentProviderEnvironment): InstanceSelector {
-  return { provider: "ABACATE_PAY", environment }
+function abacateSelector(
+  environment: PaymentProviderEnvironment,
+  externalAccountContext?: string,
+): InstanceSelector {
+  return externalAccountContext
+    ? { provider: "ABACATE_PAY", environment, externalAccountContext }
+    : { provider: "ABACATE_PAY", environment }
 }
 
 /** Aquece o cache de credenciais (banco primeiro, ambiente como reserva) antes do uso síncrono. */
 export async function hydrateAbacateCredentials(
   environment: PaymentProviderEnvironment,
+  externalAccountContext?: string,
 ): Promise<void> {
-  await hydrateProviderCredentials(abacateSelector(environment))
+  await hydrateProviderCredentials(abacateSelector(environment, externalAccountContext))
 }
 
 function readProviderSecret(
@@ -77,15 +83,19 @@ export function resolveAbacateCapabilities(environment: PaymentProviderEnvironme
 
 export function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
+  externalAccountContext?: string,
 ): AbacatePayProvider {
-  return new AbacatePayProvider(buildAbacatePayProviderConfig(environment))
+  return new AbacatePayProvider(buildAbacatePayProviderConfig(environment, externalAccountContext))
 }
 
 /** Config do provider a partir do resolver (banco primeiro, ambiente como reserva). */
 export function buildAbacatePayProviderConfig(
   environment: PaymentProviderEnvironment,
+  externalAccountContext?: string,
 ): PaymentProviderConfig {
-  const credentials = providerCredentialResolver.resolveSync(abacateSelector(environment))
+  const credentials = providerCredentialResolver.resolveSync(
+    abacateSelector(environment, externalAccountContext),
+  )
   const publicKey = readProviderPublicKey(environment, credentials)
   return (
     PaymentProviderConfig.create({
@@ -132,10 +142,15 @@ class CredentialAwarePaymentProviderRouter extends PaymentProviderRouter {
 
   override async select(input: Parameters<PaymentProviderRouter["select"]>[0]) {
     await hydrateAbacateCredentials(this.environment)
-    return new PaymentProviderRouter(
+    const selected = await new PaymentProviderRouter(
       paymentProviderConfigRepository,
       createAbacatePayProviderRegistry(this.environment),
     ).select(input)
+    // A instância escolhida pode não ser a principal: aquece as credenciais DELA antes do uso síncrono.
+    if (selected.provider === "ABACATE_PAY") {
+      await hydrateAbacateCredentials(this.environment, selected.externalAccountContext)
+    }
+    return selected
   }
 }
 
@@ -156,9 +171,9 @@ function createUseCase() {
     sessions: paymentProviderSessionRepository,
     identities: paymentProviderIdentityRepository,
     environment,
-    resolveProvider: ({ provider, environment: providerEnvironment }) => {
+    resolveProvider: ({ provider, environment: providerEnvironment, externalAccountContext }) => {
       if (provider !== "ABACATE_PAY") throw new Error("Provider não suportado nesta fase")
-      return createAbacatePayProvider(providerEnvironment)
+      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
     },
   })
   return new PaymentProviderPaymentUseCase(service)

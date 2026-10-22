@@ -75,7 +75,7 @@ export function createCredentialResolver(deps: CredentialResolverDeps): Credenti
       return load
     },
     resolveSync(selector) {
-      return deps.cache.peek(selector) ?? resolveFromEnvironment(selector, deps.env(), null, {})
+      return deps.cache.peek(selector) ?? resolveColdSelector(selector, deps.env())
     },
   }
 }
@@ -105,6 +105,18 @@ async function loadFromDatabase(
     dbValues[row.key] = deps.decrypt(row.valueCiphertext, credentialContext(instance.id, row.key))
   }
   return resolveFromEnvironment(selector, deps.env(), instance, dbValues)
+}
+
+/**
+ * Cache frio no uso síncrono: sem saber se a instância é a principal, uma instância ESPECÍFICA de
+ * um adapter com ambiente compartilhado não recebe a reserva (falha fechada até hidratar).
+ */
+function resolveColdSelector(selector: InstanceSelector, env: Env): ResolvedCredentials {
+  const sharedEnv = getAdapterDescriptor(selector.provider).envFallbackSharedAcrossInstances
+  if (sharedEnv && selector.externalAccountContext) {
+    return resolveFromEnvironment(selector, {}, null, {})
+  }
+  return resolveFromEnvironment(selector, env, null, {})
 }
 
 export class CredentialReadError extends Error {
