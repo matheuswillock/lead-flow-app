@@ -4,36 +4,48 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
 import type { ProviderInstanceView } from "../context/BackofficePaymentProvidersTypes"
+import { DISABLED_PRIMARY_CLASS } from "./providerButtonStyles"
 
+type IdentityField = "displayName" | "externalAccountContext" | "logoUrl" | "logoAltText"
+type IdentityDraft = Partial<Record<IdentityField, string>>
+
+function currentValue(instance: ProviderInstanceView, field: IdentityField): string {
+  return instance[field] ?? ""
+}
+
+/**
+ * O rascunho guarda só os campos editados: depois de um 409 (dados recarregados) o que
+ * a pessoa digitou continua valendo e o resto acompanha a versão nova do servidor.
+ */
 export function ProviderIdentitySection({ instance }: { instance: ProviderInstanceView }) {
   const { canManage, busyInstanceId, updateInstance } = useBackofficePaymentProviders()
-  const [displayName, setDisplayName] = useState(instance.displayName)
-  const [accountContext, setAccountContext] = useState(instance.externalAccountContext)
-  const [logoUrl, setLogoUrl] = useState(instance.logoUrl ?? "")
-  const [logoAltText, setLogoAltText] = useState(instance.logoAltText ?? "")
+  const [draft, setDraft] = useState<IdentityDraft>({})
 
-  const isDirty =
-    displayName !== instance.displayName ||
-    accountContext !== instance.externalAccountContext ||
-    logoUrl !== (instance.logoUrl ?? "") ||
-    logoAltText !== (instance.logoAltText ?? "")
-  const canSave = canManage && isDirty && busyInstanceId === null && displayName.trim() !== ""
+  const editedFields = (Object.keys(draft) as IdentityField[]).filter(
+    (field) => draft[field] !== currentValue(instance, field)
+  )
+  const valueOf = (field: IdentityField) => draft[field] ?? currentValue(instance, field)
+  const canSave = canManage && editedFields.length > 0 && busyInstanceId === null && valueOf("displayName").trim() !== ""
   const readOnly = !canManage
 
-  function save() {
-    if (!canSave) return Promise.resolve(false)
-    return updateInstance(
-      instance,
-      {
-        displayName: displayName.trim(),
-        externalAccountContext: accountContext.trim(),
-        logoUrl: logoUrl.trim(),
-        logoAltText: logoAltText.trim(),
-      },
-      "Identidade atualizada"
-    )
+  async function save() {
+    if (!canSave) return
+    const patch: Partial<Record<IdentityField, string>> = {}
+    for (const field of editedFields) patch[field] = (draft[field] ?? "").trim()
+    const saved = await updateInstance(instance, patch, "Identidade atualizada")
+    if (saved) setDraft({})
+  }
+
+  function fieldProps(field: IdentityField) {
+    return {
+      value: valueOf(field),
+      readOnly,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft((prev) => ({ ...prev, [field]: e.target.value })),
+      className: "max-lg:h-11",
+    }
   }
 
   return (
@@ -44,23 +56,28 @@ export function ProviderIdentitySection({ instance }: { instance: ProviderInstan
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="identity-name">Nome exibido</FieldLabel>
-          <Input id="identity-name" value={displayName} readOnly={readOnly} onChange={(e) => setDisplayName(e.target.value)} className="max-lg:h-11" />
+          <Input id="identity-name" {...fieldProps("displayName")} />
         </Field>
         <Field>
           <FieldLabel htmlFor="identity-context">Contexto da conta externa</FieldLabel>
-          <Input id="identity-context" value={accountContext} readOnly={readOnly} onChange={(e) => setAccountContext(e.target.value)} className="max-lg:h-11" />
+          <Input id="identity-context" {...fieldProps("externalAccountContext")} />
         </Field>
         <Field>
           <FieldLabel htmlFor="identity-logo">URL do logo</FieldLabel>
-          <Input id="identity-logo" type="url" inputMode="url" value={logoUrl} readOnly={readOnly} onChange={(e) => setLogoUrl(e.target.value)} className="max-lg:h-11" />
+          <Input id="identity-logo" type="url" inputMode="url" {...fieldProps("logoUrl")} />
         </Field>
         <Field>
           <FieldLabel htmlFor="identity-logo-alt">Texto alternativo do logo</FieldLabel>
-          <Input id="identity-logo-alt" value={logoAltText} readOnly={readOnly} onChange={(e) => setLogoAltText(e.target.value)} className="max-lg:h-11" />
+          <Input id="identity-logo-alt" {...fieldProps("logoAltText")} />
         </Field>
       </FieldGroup>
       {canManage && (
-        <Button type="button" onClick={save} disabled={!canSave} className="self-start max-lg:h-11">
+        <Button
+          type="button"
+          onClick={save}
+          disabled={!canSave}
+          className={cn("self-start max-lg:h-11", DISABLED_PRIMARY_CLASS)}
+        >
           Salvar identidade
         </Button>
       )}

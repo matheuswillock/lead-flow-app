@@ -80,6 +80,11 @@ export function makeInstance(overrides: Partial<ProviderInstanceView> = {}): Pro
   }
 }
 
+export const ALL_CREDENTIALS_SET: ProviderInstanceView["credentials"] = [
+  { key: "API_KEY", isSet: true, last4: "ab12", fingerprint: "fp_1a2b", required: true, updatedAt: null },
+  { key: "WEBHOOK_SECRET", isSet: true, last4: "cd34", fingerprint: "fp_3c4d", required: true, updatedAt: null },
+]
+
 export const ADAPTERS: ProviderAdapterView[] = [
   {
     providerKey: "ABACATE_PAY",
@@ -101,6 +106,7 @@ export const ADAPTERS: ProviderAdapterView[] = [
 export class FakePaymentProvidersService implements IBackofficePaymentProvidersService {
   calls: { method: string; args: unknown[] }[] = []
   failNextUpdateWith: Error | null = null
+  failNextCredentialWith: Error | null = null
 
   constructor(public instances: ProviderInstanceView[]) {}
 
@@ -150,6 +156,11 @@ export class FakePaymentProvidersService implements IBackofficePaymentProvidersS
   }
   async setCredential(configId: string, key: string, value: string) {
     this.record("setCredential", configId, key, value)
+    if (this.failNextCredentialWith) {
+      const error = this.failNextCredentialWith
+      this.failNextCredentialWith = null
+      throw error
+    }
     const current = this.instances.find((i) => i.id === configId)!
     const updated: ProviderInstanceView = {
       ...current,

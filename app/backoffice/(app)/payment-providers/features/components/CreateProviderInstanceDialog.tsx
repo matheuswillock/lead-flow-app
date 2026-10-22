@@ -13,7 +13,9 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
+import { DISABLED_PRIMARY_CLASS } from "./providerButtonStyles"
 import {
   ENVIRONMENT_LABELS,
   PAYMENT_PROVIDER_ENVIRONMENTS,
@@ -68,7 +70,7 @@ export function CreateProviderInstanceDialog({ open, onOpenChange }: Props) {
             Só é possível usar adapters que existem no código. As credenciais são cadastradas depois.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto">
+        <div className="-mx-1 flex-1 overflow-y-auto px-1 py-1">
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="new-provider-adapter">Adapter</FieldLabel>
@@ -143,10 +145,16 @@ export function CreateProviderInstanceDialog({ open, onOpenChange }: Props) {
           </FieldGroup>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isCreating}
+            className="max-lg:h-11"
+          >
             Cancelar
           </Button>
-          <Button type="button" onClick={submit} disabled={!canSubmit}>
+          <Button type="button" onClick={submit} disabled={!canSubmit} className={cn("max-lg:h-11", DISABLED_PRIMARY_CLASS)}>
             Criar instância
           </Button>
         </DialogFooter>

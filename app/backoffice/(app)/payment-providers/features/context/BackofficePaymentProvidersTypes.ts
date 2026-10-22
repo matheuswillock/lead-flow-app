@@ -4,7 +4,7 @@ import type {
   ProviderCredentialView,
   ProviderHistoryItem,
   ProviderInstanceSettingsView,
-  ProviderInstanceView,
+  ProviderInstanceView as ContractProviderInstanceView,
 } from "@/lib/payment-provider/admin-contract"
 import type { ProviderHealthStatus } from "@/lib/payment-provider/routing-config"
 import type { ProviderRolloutState } from "@/lib/payment-provider/routing"
@@ -20,8 +20,20 @@ export type {
   ProviderHealthStatus,
   ProviderHistoryItem,
   ProviderInstanceSettingsView as ProviderInstanceSettings,
-  ProviderInstanceView,
   ProviderRolloutState,
+}
+
+export type ApplicableSetting = "requireSignature" | "cardEnabled"
+
+/**
+ * Contrato do backend + campos que o servidor passa a enviar. Enquanto o contrato
+ * não os traz, ficam opcionais e a UI calcula o equivalente localmente (comportamento seguro).
+ */
+export type ProviderInstanceView = ContractProviderInstanceView & {
+  /** Motivos que impedem tornar a instância o padrão; vazio/ausente = sem bloqueio informado. */
+  defaultBlockers?: string[]
+  /** Configurações que fazem sentido para o adapter da instância. */
+  applicableSettings?: ApplicableSetting[]
 }
 
 export interface CreateProviderInstanceInput {

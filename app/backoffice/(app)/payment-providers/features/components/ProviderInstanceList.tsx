@@ -1,6 +1,6 @@
 "use client"
 
-import { KeyRound, Plus, Settings2 } from "lucide-react"
+import { KeyRound, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -8,11 +8,7 @@ import type { ProviderInstanceView } from "../context/BackofficePaymentProviders
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
 import { ProviderStatusBadges } from "./ProviderStatusBadges"
 
-interface Props {
-  onCreate: () => void
-}
-
-export function ProviderInstanceList({ onCreate }: Props) {
+export function ProviderInstanceList() {
   const { instances, adapters, isLoading, canManage, selectInstance } = useBackofficePaymentProviders()
 
   if (isLoading) {
@@ -27,19 +23,15 @@ export function ProviderInstanceList({ onCreate }: Props) {
 
   if (instances.length === 0) {
     return (
-      <Empty className="border">
+      <Empty className="border-2 border-muted-foreground/30">
         <EmptyHeader>
           <EmptyTitle>Nenhuma instância neste ambiente</EmptyTitle>
           <EmptyDescription>
-            Crie uma instância a partir de um adapter disponível e cadastre as credenciais.
+            {canManage
+              ? "Use “Nova instância” para escolher um adapter disponível e cadastrar as credenciais."
+              : "Ainda não há instâncias configuradas neste ambiente."}
           </EmptyDescription>
         </EmptyHeader>
-        {canManage && (
-          <Button type="button" onClick={onCreate} className="max-lg:h-11">
-            <Plus data-icon="inline-start" />
-            Nova instância
-          </Button>
-        )}
       </Empty>
     )
   }
@@ -78,7 +70,7 @@ function InstanceRow({
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h2 className="text-base font-semibold break-words">{instance.displayName}</h2>
           <span className="text-sm text-muted-foreground">
-            {adapterLabel} · conta {instance.externalAccountContext}
+            {adapterLabel} · contexto {instance.externalAccountContext}
           </span>
         </div>
         <ProviderStatusBadges instance={instance} />

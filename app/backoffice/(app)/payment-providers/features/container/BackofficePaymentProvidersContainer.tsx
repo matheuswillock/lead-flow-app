@@ -51,7 +51,7 @@ export function BackofficePaymentProvidersContainer() {
         </p>
       )}
 
-      <ProviderInstanceList onCreate={() => setCreateOpen(true)} />
+      <ProviderInstanceList />
       <ProviderInstanceSheet />
       <CreateProviderInstanceDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>

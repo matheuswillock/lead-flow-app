@@ -4,7 +4,7 @@ import { Activity, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
+import { ProviderSwitch } from "./ProviderSwitch"
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
 import {
   ENVIRONMENT_LABELS,
@@ -14,7 +14,7 @@ import {
   type ProviderInstanceView,
   type ProviderRolloutState,
 } from "../context/BackofficePaymentProvidersTypes"
-import { canMakeDefault, makeDefaultBlockedReason } from "../utils/providerInstanceRules"
+import { canMakeDefault, getApplicableSettings, getDefaultBlockers } from "../utils/providerInstanceRules"
 import type { PendingConfirmation } from "./ConfirmActionDialog"
 
 interface Props {
@@ -31,7 +31,9 @@ export function ProviderOperationSection({ instance, onRequestConfirmation }: Pr
   const { canManage, busyInstanceId, currentDefault, updateInstance, runHealthCheck } =
     useBackofficePaymentProviders()
   const isBusy = busyInstanceId !== null
-  const blockedReason = makeDefaultBlockedReason(instance)
+  const blockers = getDefaultBlockers(instance)
+  const isDefaultAllowed = canMakeDefault(instance)
+  const applicableSettings = getApplicableSettings(instance)
 
   function confirmMakeDefault() {
     const replaced = currentDefault && currentDefault.id !== instance.id ? currentDefault : null
@@ -81,16 +83,33 @@ export function ProviderOperationSection({ instance, onRequestConfirmation }: Pr
             <Activity data-icon="inline-start" />
             Verificar saúde
           </Button>
-          <Button type="button" disabled={isBusy || !canMakeDefault(instance)} onClick={confirmMakeDefault} className="max-lg:h-11">
+          <Button
+            type="button"
+            variant={isDefaultAllowed ? "default" : "outline"}
+            disabled={isBusy || !isDefaultAllowed}
+            onClick={confirmMakeDefault}
+            className="max-lg:h-11"
+          >
             <Star data-icon="inline-start" />
             Tornar padrão
           </Button>
         </div>
       )}
-      {blockedReason && (
+      {instance.isDefault ? (
         <p className="text-xs text-muted-foreground" data-testid="make-default-reason">
-          {blockedReason}
+          Esta instância já é o padrão do ambiente.
         </p>
+      ) : (
+        blockers.length > 0 && (
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground" data-testid="make-default-reason">
+            <p className="font-medium text-foreground">Para tornar padrão, resolva:</p>
+            <ul className="flex list-disc flex-col gap-0.5 pl-4">
+              {blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          </div>
+        )
       )}
       <FieldGroup>
         <Field>
@@ -120,26 +139,30 @@ export function ProviderOperationSection({ instance, onRequestConfirmation }: Pr
           disabled={!canManage || isBusy}
           onChange={confirmKillSwitch}
         />
-        <ToggleField
-          id="operation-require-signature"
-          label="Exigir assinatura do webhook"
-          description="Rejeita eventos sem assinatura HMAC válida."
-          checked={instance.settings.requireSignature}
-          disabled={!canManage || isBusy}
-          onChange={(next) =>
-            updateInstance(instance, { settings: { requireSignature: next } }, "Configuração atualizada")
-          }
-        />
-        <ToggleField
-          id="operation-card-enabled"
-          label="Cartão habilitado"
-          description="Oferece cartão de crédito no checkout desta instância."
-          checked={instance.settings.cardEnabled}
-          disabled={!canManage || isBusy}
-          onChange={(next) =>
-            updateInstance(instance, { settings: { cardEnabled: next } }, "Configuração atualizada")
-          }
-        />
+        {applicableSettings.includes("requireSignature") && (
+          <ToggleField
+            id="operation-require-signature"
+            label="Exigir assinatura do webhook"
+            description="Rejeita eventos sem assinatura HMAC válida."
+            checked={instance.settings.requireSignature}
+            disabled={!canManage || isBusy}
+            onChange={(next) =>
+              updateInstance(instance, { settings: { requireSignature: next } }, "Configuração atualizada")
+            }
+          />
+        )}
+        {applicableSettings.includes("cardEnabled") && (
+          <ToggleField
+            id="operation-card-enabled"
+            label="Cartão habilitado"
+            description="Oferece cartão de crédito no checkout desta instância."
+            checked={instance.settings.cardEnabled}
+            disabled={!canManage || isBusy}
+            onChange={(next) =>
+              updateInstance(instance, { settings: { cardEnabled: next } }, "Configuração atualizada")
+            }
+          />
+        )}
       </FieldGroup>
     </section>
   )
@@ -161,12 +184,12 @@ function ToggleField({
   onChange: (next: boolean) => void
 }) {
   return (
-    <Field orientation="horizontal">
+    <Field orientation="horizontal" className="max-lg:min-h-11">
       <FieldContent>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <FieldDescription>{description}</FieldDescription>
       </FieldContent>
-      <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      <ProviderSwitch id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </Field>
   )
 }

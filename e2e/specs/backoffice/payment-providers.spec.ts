@@ -202,6 +202,9 @@ test.describe("app/backoffice/(app)/payment-providers", () => {
     await expect(page.getByRole("heading", { name: "Providers de pagamento" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("heading", { name: "Abacate Pay principal" })).toBeVisible();
     await expect(page.getByText("Somente credenciais")).toBeVisible();
+    // Espera o fim de qualquer carregamento (skeleton/spinner) antes das checagens responsivas.
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Gerenciar Abacate Pay principal" })).toBeVisible();
     await runResponsiveChecks(page);
 
     // criar instância

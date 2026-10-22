@@ -39,8 +39,10 @@ export function ConfirmActionDialog({ pending, isBusy, onClose }: Props) {
           <AlertDialogDescription>{pending?.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isBusy}>Cancelar</AlertDialogCancel>
-          <Button type="button" onClick={runPendingAction} disabled={isBusy}>
+          <AlertDialogCancel disabled={isBusy} className="max-lg:h-11">
+            Cancelar
+          </AlertDialogCancel>
+          <Button type="button" onClick={runPendingAction} disabled={isBusy} className="max-lg:h-11">
             {pending?.confirmLabel}
           </Button>
         </AlertDialogFooter>

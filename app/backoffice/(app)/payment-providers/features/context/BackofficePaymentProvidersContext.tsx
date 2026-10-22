@@ -19,6 +19,23 @@ import {
 
 type InstancePatch = Omit<UpdateProviderInstanceInput, "id" | "expectedRevision">
 
+export interface CredentialMutationError {
+  instanceId: string
+  key: string
+  message: string
+}
+
+interface MutationOptions {
+  successMessage?: string
+  credentialKey?: string
+  /** Valor sensível enviado na chamada: removido de qualquer mensagem de erro exibida. */
+  redact?: string
+}
+
+function redactValue(message: string, value: string | undefined): string {
+  return value ? message.split(value).join("••••") : message
+}
+
 interface PaymentProvidersContextValue {
   environment: PaymentProviderEnvironment
   setEnvironment: (environment: PaymentProviderEnvironment) => void
@@ -34,6 +51,10 @@ interface PaymentProvidersContextValue {
 
   /** Id da instância com mutação em andamento (trava o primeiro clique). */
   busyInstanceId: string | null
+  /** Instância cuja gravação deu 409: os dados foram recarregados e o aviso fica visível até a próxima gravação. */
+  conflictInstanceId: string | null
+  /** Último erro de gravação de credencial; nunca contém o valor enviado. */
+  credentialError: CredentialMutationError | null
   isCreating: boolean
   createInstance: (input: CreateProviderInstanceInput) => Promise<boolean>
   updateInstance: (instance: ProviderInstanceView, patch: InstancePatch, successMessage: string) => Promise<boolean>
@@ -67,6 +88,8 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busyInstanceId, setBusyInstanceId] = useState<string | null>(null)
+  const [conflictInstanceId, setConflictInstanceId] = useState<string | null>(null)
+  const [credentialError, setCredentialError] = useState<CredentialMutationError | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [history, setHistory] = useState<ProviderHistoryItem[]>([])
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
@@ -107,8 +130,9 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
   }, [environment, service])
 
   const handleMutationError = useCallback(
-    async (err: unknown) => {
+    async (err: unknown, instanceId: string, options: MutationOptions) => {
       if (err instanceof PaymentProvidersApiError && err.isConflict) {
+        setConflictInstanceId(instanceId)
         toast.error(CONFLICT_MESSAGE)
         try {
           await reloadInstances(environment)
@@ -117,23 +141,29 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
         }
         return
       }
-      toast.error(toUserToastMessage(err))
+      const message = redactValue(toUserToastMessage(err), options.redact)
+      if (options.credentialKey) {
+        setCredentialError({ instanceId, key: options.credentialKey, message })
+      }
+      toast.error(message)
     },
     [environment, reloadInstances]
   )
 
   const runInstanceMutation = useCallback(
-    async (instanceId: string, action: () => Promise<ProviderInstanceView>, successMessage?: string) => {
+    async (instanceId: string, action: () => Promise<ProviderInstanceView>, options: MutationOptions = {}) => {
       if (busyRef.current) return false
       busyRef.current = true
       setBusyInstanceId(instanceId)
+      setCredentialError(null)
       try {
         const updated = await action()
         setInstances((prev) => replaceInstance(prev, updated))
-        if (successMessage) toast.success(successMessage)
+        setConflictInstanceId((current) => (current === instanceId ? null : current))
+        if (options.successMessage) toast.success(options.successMessage)
         return true
       } catch (err) {
-        await handleMutationError(err)
+        await handleMutationError(err, instanceId, options)
         return false
       } finally {
         busyRef.current = false
@@ -148,7 +178,7 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
       runInstanceMutation(
         instance.id,
         () => service.updateInstance({ ...patch, id: instance.id, expectedRevision: instance.configRevision }),
-        successMessage
+        { successMessage }
       ),
     [runInstanceMutation, service]
   )
@@ -156,20 +186,29 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
   const setCredential = useCallback(
     (instance: ProviderInstanceView, key: string, value: string) => {
       if (value.length === 0) return Promise.resolve(false)
-      return runInstanceMutation(instance.id, () => service.setCredential(instance.id, key, value), "Credencial salva")
+      return runInstanceMutation(instance.id, () => service.setCredential(instance.id, key, value), {
+        successMessage: "Credencial salva",
+        credentialKey: key,
+        redact: value,
+      })
     },
     [runInstanceMutation, service]
   )
 
   const removeCredential = useCallback(
     (instance: ProviderInstanceView, key: string) =>
-      runInstanceMutation(instance.id, () => service.removeCredential(instance.id, key), "Credencial removida"),
+      runInstanceMutation(instance.id, () => service.removeCredential(instance.id, key), {
+        successMessage: "Credencial removida",
+        credentialKey: key,
+      }),
     [runInstanceMutation, service]
   )
 
   const runHealthCheck = useCallback(
     async (instance: ProviderInstanceView) => {
-      await runInstanceMutation(instance.id, () => service.runHealthCheck(instance.id), "Verificação concluída")
+      await runInstanceMutation(instance.id, () => service.runHealthCheck(instance.id), {
+        successMessage: "Verificação concluída",
+      })
     },
     [runInstanceMutation, service]
   )
@@ -212,6 +251,12 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
     [service]
   )
 
+  const selectInstance = useCallback((id: string | null) => {
+    setSelectedId(id)
+    setConflictInstanceId(null)
+    setCredentialError(null)
+  }, [])
+
   const selectedInstance = useMemo(
     () => instances.find((item) => item.id === selectedId) ?? null,
     [instances, selectedId]
@@ -227,8 +272,10 @@ export function BackofficePaymentProvidersProvider({ children, service }: Props)
     canManage,
     currentDefault,
     selectedInstance,
-    selectInstance: setSelectedId,
+    selectInstance,
     busyInstanceId,
+    conflictInstanceId,
+    credentialError,
     isCreating,
     createInstance,
     updateInstance,

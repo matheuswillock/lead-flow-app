@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
@@ -12,7 +13,7 @@ import { ProviderOperationSection } from "./ProviderOperationSection"
 import { ProviderStatusBadges } from "./ProviderStatusBadges"
 
 export function ProviderInstanceSheet() {
-  const { selectedInstance, selectInstance, busyInstanceId } = useBackofficePaymentProviders()
+  const { selectedInstance, selectInstance, busyInstanceId, conflictInstanceId } = useBackofficePaymentProviders()
   const [pending, setPending] = useState<PendingConfirmation | null>(null)
 
   return (
@@ -23,18 +24,27 @@ export function ProviderInstanceSheet() {
             <SheetTitle>{selectedInstance?.displayName ?? "Instância"}</SheetTitle>
             <SheetDescription>
               {selectedInstance
-                ? `${selectedInstance.providerKey} · conta ${selectedInstance.externalAccountContext}`
+                ? `${selectedInstance.providerKey} · contexto ${selectedInstance.externalAccountContext}`
                 : ""}
             </SheetDescription>
             {selectedInstance && <ProviderStatusBadges instance={selectedInstance} />}
           </SheetHeader>
           {selectedInstance && (
             <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
+              {conflictInstanceId === selectedInstance.id && (
+                <Alert role="status" data-testid="conflict-notice">
+                  <AlertTitle>Dados recarregados</AlertTitle>
+                  <AlertDescription>
+                    Outra pessoa alterou esta instância. Atualizamos os dados e mantivemos o que você digitou na
+                    identidade; revise e salve de novo.
+                  </AlertDescription>
+                </Alert>
+              )}
               <ProviderOperationSection instance={selectedInstance} onRequestConfirmation={setPending} />
               <Separator />
               <ProviderCredentialsSection instance={selectedInstance} onRequestConfirmation={setPending} />
               <Separator />
-              <ProviderIdentitySection key={`${selectedInstance.id}-${selectedInstance.configRevision}`} instance={selectedInstance} />
+              <ProviderIdentitySection key={selectedInstance.id} instance={selectedInstance} />
               <Separator />
               <ProviderHistorySection configId={selectedInstance.id} />
             </div>

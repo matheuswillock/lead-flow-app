@@ -3,21 +3,57 @@ import {
   buildCredentialRows,
   canMakeDefault,
   findCurrentDefault,
-  makeDefaultBlockedReason,
+  getApplicableSettings,
+  getDefaultBlockers,
   missingRequiredCredentials,
   replaceInstance,
 } from "../features/utils/providerInstanceRules"
-import { ADAPTERS, makeInstance } from "./testHarness"
+import { ADAPTERS, ALL_CREDENTIALS_SET, makeInstance } from "./testHarness"
 
 describe("providerInstanceRules", () => {
   it("bloqueia padrão para instância somente de credenciais", () => {
     const credentialsOnly = makeInstance({ paymentCapable: false, isDefault: false })
     expect(canMakeDefault(credentialsOnly)).toBe(false)
-    expect(makeDefaultBlockedReason(credentialsOnly)).toContain("Somente credenciais")
+    expect(getDefaultBlockers(credentialsOnly).join(" ")).toContain("Somente credenciais")
+  })
+
+  it("lista cada bloqueio calculado localmente quando o servidor não informa defaultBlockers", () => {
+    const blockers = getDefaultBlockers(
+      makeInstance({ isDefault: false, enabled: false, killSwitch: true, rolloutState: "APPROVED" })
+    )
+    expect(blockers).toHaveLength(4)
+    expect(blockers.join(" ")).toContain("desativada")
+    expect(blockers.join(" ")).toContain("kill switch")
+    expect(blockers.join(" ")).toContain("rollout")
+    expect(blockers.join(" ")).toContain("WEBHOOK_SECRET")
+  })
+
+  it("prefere os bloqueios informados pelo servidor", () => {
+    const instance = makeInstance({ isDefault: false, defaultBlockers: ["Motivo do servidor"] })
+    expect(getDefaultBlockers(instance)).toEqual(["Motivo do servidor"])
+    expect(canMakeDefault(instance)).toBe(false)
+    expect(canMakeDefault(makeInstance({ isDefault: false, defaultBlockers: [] }))).toBe(true)
+  })
+
+  it("ignora credenciais de política ao calcular o que falta e ao montar as linhas", () => {
+    const instance = makeInstance({
+      credentials: [
+        ...ALL_CREDENTIALS_SET,
+        { key: "REQUIRE_SIGNATURE", isSet: false, last4: null, fingerprint: null, required: true, updatedAt: null },
+      ],
+    })
+    expect(missingRequiredCredentials(instance)).toEqual([])
+    expect(buildCredentialRows(instance, ADAPTERS[0]).map((r) => r.key)).toEqual(["API_KEY", "WEBHOOK_SECRET"])
+  })
+
+  it("mostra configurações só quando aplicáveis", () => {
+    expect(getApplicableSettings(makeInstance({ paymentCapable: false }))).toEqual([])
+    expect(getApplicableSettings(makeInstance())).toEqual(["requireSignature", "cardEnabled"])
+    expect(getApplicableSettings(makeInstance({ applicableSettings: ["cardEnabled"] }))).toEqual(["cardEnabled"])
   })
 
   it("permite padrão para instância com pagamento que ainda não é o padrão", () => {
-    expect(canMakeDefault(makeInstance({ isDefault: false }))).toBe(true)
+    expect(canMakeDefault(makeInstance({ isDefault: false, credentials: ALL_CREDENTIALS_SET }))).toBe(true)
     expect(canMakeDefault(makeInstance({ isDefault: true }))).toBe(false)
   })
 

@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import { useBackofficePaymentProviders } from "../context/BackofficePaymentProvidersContext"
+import { DISABLED_PRIMARY_CLASS } from "./providerButtonStyles"
 import type { ProviderInstanceView } from "../context/BackofficePaymentProvidersTypes"
 import { buildCredentialRows, type CredentialRow } from "../utils/providerInstanceRules"
 import type { PendingConfirmation } from "./ConfirmActionDialog"
@@ -17,7 +19,7 @@ interface Props {
 }
 
 export function ProviderCredentialsSection({ instance, onRequestConfirmation }: Props) {
-  const { adapters, canManage, busyInstanceId, setCredential, removeCredential } =
+  const { adapters, canManage, busyInstanceId, credentialError, setCredential, removeCredential } =
     useBackofficePaymentProviders()
   const adapter = adapters.find((a) => a.providerKey === instance.providerKey)
   const rows = buildCredentialRows(instance, adapter)
@@ -42,6 +44,7 @@ export function ProviderCredentialsSection({ instance, onRequestConfirmation }: 
             row={row}
             canManage={canManage}
             isBusy={isBusy}
+            error={credentialError?.instanceId === instance.id && credentialError.key === row.key ? credentialError.message : null}
             onSave={(value) => setCredential(instance, row.key, value)}
             onRemove={() =>
               onRequestConfirmation({
@@ -65,16 +68,21 @@ interface CredentialFieldProps {
   isBusy: boolean
   onSave: (value: string) => Promise<boolean>
   onRemove: () => void
+  /** Mensagem persistente do último erro de gravação desta credencial; nunca traz o valor. */
+  error: string | null
 }
 
-function CredentialField({ row, canManage, isBusy, onSave, onRemove }: CredentialFieldProps) {
+function CredentialField({ row, canManage, isBusy, onSave, onRemove, error }: CredentialFieldProps) {
   const [draft, setDraft] = useState("")
   const inputId = `credential-${row.key}`
 
   async function save() {
     if (draft.length === 0 || isBusy) return
-    const saved = await onSave(draft)
-    if (saved) setDraft("")
+    const value = draft
+    // O valor nunca fica em estado depois do envio, com sucesso ou falha: em caso de erro
+    // o campo é limpo e a pessoa precisa digitar de novo (evita reenviar/expor um valor rejeitado).
+    setDraft("")
+    await onSave(value)
   }
 
   return (
@@ -102,7 +110,12 @@ function CredentialField({ row, canManage, isBusy, onSave, onRemove }: Credentia
             placeholder={row.isSet ? "•••• (já definido)" : "Informe o valor"}
             className="max-lg:h-11"
           />
-          <Button type="button" onClick={save} disabled={draft.length === 0 || isBusy} className="max-lg:h-11">
+          <Button
+            type="button"
+            onClick={save}
+            disabled={draft.length === 0 || isBusy}
+            className={cn("max-lg:h-11", DISABLED_PRIMARY_CLASS)}
+          >
             {row.isSet ? "Rotacionar" : "Salvar"}
           </Button>
           {row.isSet && (
@@ -121,6 +134,11 @@ function CredentialField({ row, canManage, isBusy, onSave, onRemove }: Credentia
         </div>
       ) : (
         <Input id={inputId} value={row.isSet ? "•••• (já definido)" : "Não definida"} readOnly disabled />
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-destructive" data-testid={`credential-error-${row.key}`}>
+          Não foi possível salvar. {error} Digite o valor novamente.
+        </p>
       )}
       {row.hint && <FieldDescription>{row.hint}</FieldDescription>}
     </Field>
