@@ -217,3 +217,32 @@ describe("createAsaasClient", () => {
     })
   })
 })
+
+describe("createAsaasClient: banco de credenciais indisponível", () => {
+  it("chamada de saída usa a chave do ambiente (disponibilidade) em vez de falhar", async () => {
+    const { CredentialReadError } = await import("@/lib/payment-provider/credential-resolver")
+    const loader = await import("@/lib/payment-provider/credential-runtime-loader")
+    process.env.ASAAS_ENV = "sandbox"
+    process.env.ASAAS_API_KEY = "aact_env_key"
+    process.env.PAYMENT_CREDENTIALS_ENCRYPTION_KEY = "m".repeat(64)
+    loader.setCredentialRuntimeLoaderForTests(async () => ({
+      hydrateProviderCredentials: async () => {
+        throw new CredentialReadError(new Error("down"))
+      },
+    }))
+    let token: string | undefined
+    // @ts-expect-error override global fetch for the test
+    globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
+      token = (init?.headers as Record<string, string>).access_token
+      return new Response("{}", { status: 200 })
+    })
+    try {
+      const client = createAsaasClient("primary")
+      await client.request(client.endpoints.customers, { method: "GET" })
+      expect(token).toBe("$aact_env_key")
+    } finally {
+      loader.resetCredentialRuntimeLoader()
+      delete process.env.PAYMENT_CREDENTIALS_ENCRYPTION_KEY
+    }
+  })
+})

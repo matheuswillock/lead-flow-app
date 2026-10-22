@@ -202,6 +202,25 @@ describe("credential resolver", () => {
     expect(resolved.sources).toEqual({ WEBHOOK_SECRET: "db" })
   })
 
+  it("instância não principal sem REQUIRE_SIGNATURE no banco herda a política do ambiente (nunca false por falta de valor)", async () => {
+    const { resolver } = setup({
+      primary: false,
+      stored: { API_KEY: DB_SECRET },
+      env: { ABACATE_PAY_PRODUCTION_REQUIRE_SIGNATURE: "true", ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET },
+    })
+    const resolved = await resolver.resolve({ ...selector, externalAccountContext: "abacate-b" })
+    expect(resolved.values.REQUIRE_SIGNATURE).toBe("true")
+    expect(resolved.sources.REQUIRE_SIGNATURE).toBe("env")
+    expect(resolved.values.API_KEY).toBe(DB_SECRET)
+  })
+
+  it("cache frio de instância específica também mantém a política do ambiente", () => {
+    const { resolver } = setup({ env: { ABACATE_PAY_PRODUCTION_REQUIRE_SIGNATURE: "true", ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET } })
+    const cold = resolver.resolveSync({ ...selector, externalAccountContext: "abacate-b" })
+    expect(cold.values.REQUIRE_SIGNATURE).toBe("true")
+    expect(cold.values.API_KEY).toBeUndefined()
+  })
+
   it("instância principal do Abacate continua recebendo a reserva de ambiente", async () => {
     const { resolver } = setup({ primary: true, env: { ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET } })
     const resolved = await resolver.resolve({ ...selector, externalAccountContext: "abacate-a" })

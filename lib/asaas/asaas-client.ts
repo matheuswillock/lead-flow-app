@@ -1,5 +1,5 @@
 import { resolveAsaasAccount, type AsaasAccountId } from "./asaas-account"
-import { hydrateAsaasCredentials } from "./asaas-hydration"
+import { hydrateAsaasCredentialsOrEnvFallback } from "./asaas-hydration"
 import { buildAsaasEndpoints, type AsaasEndpoints } from "./asaas-endpoints"
 import {
   extractAsaasEntityIdPrefix,
@@ -43,7 +43,7 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
     recordAsaasRequestBreadcrumb({ asaasAccount: accountId, entityIdPrefix, endpoint })
 
     // M11: credenciais do backoffice (cache curto) antes de ler a chave; sem elas, vale o ambiente.
-    await hydrateAsaasCredentials(accountId)
+    await hydrateAsaasCredentialsOrEnvFallback(accountId)
     const account = resolveAsaasAccount(accountId)
     if (!account.apiKey) {
       throw new Error("ASAAS_API_KEY não configurada")

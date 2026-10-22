@@ -328,3 +328,26 @@ describe("Asaas webhook route", () => {
     })
   })
 })
+
+describe("Asaas webhook route: leitura de credenciais indisponível", () => {
+  it("chave-mestra + banco fora + cache frio → 503 (falha fechada), sem rebaixar para o token do env", async () => {
+    resetMocks()
+    const { CredentialReadError } = await import("@/lib/payment-provider/credential-resolver")
+    const runtimeLoader = await import("@/lib/payment-provider/credential-runtime-loader")
+    process.env.PAYMENT_CREDENTIALS_ENCRYPTION_KEY = "m".repeat(64)
+    runtimeLoader.setCredentialRuntimeLoaderForTests(async () => ({
+      hydrateProviderCredentials: async () => {
+        throw new CredentialReadError(new Error("down"))
+      },
+    }))
+    try {
+      // O token do env ("test-token") seria aceito se a verificação fosse rebaixada.
+      const response = await POST(makeRequest(VALID_BODY))
+      expect(response.status).toBe(503)
+      expect(claimForProcessingMock).not.toHaveBeenCalled()
+    } finally {
+      runtimeLoader.resetCredentialRuntimeLoader()
+      delete process.env.PAYMENT_CREDENTIALS_ENCRYPTION_KEY
+    }
+  })
+})

@@ -141,9 +141,11 @@ describe("cardEnabled com cache frio (falha fechada quando o deploy é gerenciad
   beforeEach(() => {
     warmed.length = 0
     credentialCache.invalidateAll()
-    setCredentialRuntimeLoaderForTests(async () => {
-      warmed.push(true)
-    })
+    setCredentialRuntimeLoaderForTests(async () => ({
+      hydrateProviderCredentials: async () => {
+        warmed.push(true)
+      },
+    }))
   })
 
   afterEach(() => {

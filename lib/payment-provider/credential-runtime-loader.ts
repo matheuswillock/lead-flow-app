@@ -1,6 +1,10 @@
-import { credentialCache, type InstanceSelector } from "./credential-cache"
+import type { InstanceSelector } from "./credential-cache"
 
-type RuntimeLoader = () => Promise<unknown>
+export type CredentialRuntime = {
+  hydrateProviderCredentials(selector: InstanceSelector): Promise<unknown>
+}
+
+type RuntimeLoader = () => Promise<CredentialRuntime>
 
 const defaultLoader: RuntimeLoader = () =>
   import("@/app/api/useCases/paymentProviderPayment/providerCredentialRuntime")
@@ -8,12 +12,20 @@ const defaultLoader: RuntimeLoader = () =>
 let loader: RuntimeLoader = defaultLoader
 
 /**
- * Garante que o runtime de credenciais (que registra o hook de atualização do cache) esteja
- * carregado e dispara a hidratação em segundo plano. Para quem lê o cache de forma síncrona.
+ * Carrega sob demanda o runtime de credenciais (banco + cifra), que não pode ser importado
+ * estaticamente por código de `lib/` usado fora do servidor de pagamentos.
+ */
+export function loadCredentialRuntime(): Promise<CredentialRuntime> {
+  return loader()
+}
+
+/**
+ * Para quem lê o cache de forma síncrona: dispara a hidratação em segundo plano (o que também
+ * registra o hook de atualização do cache). Nunca lança nem aguarda.
  */
 export function warmCredentialRuntime(selector: InstanceSelector): void {
-  void loader()
-    .then(() => credentialCache.peekAndRefresh(selector))
+  void loadCredentialRuntime()
+    .then((runtime) => runtime.hydrateProviderCredentials(selector))
     .catch((error: unknown) => {
       console.error("[PaymentProviderCredentials] warm-up failed", {
         error: error instanceof Error ? error.name : "unknown",

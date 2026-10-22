@@ -113,10 +113,23 @@ async function loadFromDatabase(
  */
 function resolveColdSelector(selector: InstanceSelector, env: Env): ResolvedCredentials {
   const sharedEnv = getAdapterDescriptor(selector.provider).envFallbackSharedAcrossInstances
-  if (sharedEnv && selector.externalAccountContext) {
-    return resolveFromEnvironment(selector, {}, null, {})
-  }
-  return resolveFromEnvironment(selector, env, null, {})
+  const restrict = sharedEnv && Boolean(selector.externalAccountContext)
+  return resolveFromEnvironment(selector, env, null, {}, restrict)
+}
+
+/**
+ * Variáveis de ambiente compartilhadas entre instâncias pertencem só à principal: uma instância
+ * secundária sem credencial própria fica sem credencial (falha fechada), não na conta da principal.
+ */
+function isSecondaryOfSharedEnvAdapter(
+  selector: InstanceSelector,
+  instance: ResolverInstance | null,
+): boolean {
+  return (
+    instance !== null &&
+    !instance.isPrimary &&
+    getAdapterDescriptor(selector.provider).envFallbackSharedAcrossInstances
+  )
 }
 
 export class CredentialReadError extends Error {
@@ -138,6 +151,7 @@ function resolveFromEnvironment(
   env: Env,
   instance: ResolverInstance | null,
   dbValues: Readonly<Record<string, string>>,
+  restrictAccountEnv: boolean = isSecondaryOfSharedEnvAdapter(selector, instance),
 ): ResolvedCredentials {
   const values: Record<string, string> = { ...dbValues }
   const sources: Record<string, CredentialSource> = {}
@@ -147,10 +161,9 @@ function resolveFromEnvironment(
     externalAccountContext: selector.externalAccountContext ?? instance?.externalAccountContext ?? "",
   }
   const descriptor = getAdapterDescriptor(selector.provider)
-  // Variáveis de ambiente compartilhadas entre instâncias pertencem só à principal: uma instância
-  // secundária sem credencial própria fica sem credencial (falha fechada), não na conta da principal.
-  const envAllowed = !instance || instance.isPrimary || !descriptor.envFallbackSharedAcrossInstances
-  for (const field of envAllowed ? descriptor.fields : []) {
+  for (const field of descriptor.fields) {
+    // Campos de política (ex.: REQUIRE_SIGNATURE) mantêm a reserva em toda instância.
+    if (restrictAccountEnv && !field.policy) continue
     if (field.key in values) continue
     for (const name of envFallbackNames(selector.provider, field.key, scope)) {
       const candidate = env[name]

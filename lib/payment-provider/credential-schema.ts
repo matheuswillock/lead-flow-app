@@ -17,6 +17,11 @@ export type CredentialFieldDescriptor = {
   readonly label: string
   readonly required: boolean
   readonly secret: boolean
+  /**
+   * Campo de POLÍTICA (não específico da conta): mantém a reserva de ambiente em toda instância,
+   * para que uma instância secundária nunca perca, em silêncio, uma restrição definida no ambiente.
+   */
+  readonly policy?: boolean
   readonly hint: string
   /** Nomes de variável de ambiente (em ordem de precedência) usados como reserva. */
   readonly envFallbackNames?: (scope: CredentialInstanceScope) => readonly string[]
@@ -96,6 +101,7 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
         label: "Exigir assinatura",
         required: false,
         secret: false,
+        policy: true,
         hint: "Use true para recusar eventos sem assinatura HMAC válida.",
         envFallbackNames: abacateEnv("REQUIRE_SIGNATURE"),
       },
