@@ -2,6 +2,7 @@ import type {
   ProviderCredentialView,
   ProviderInstanceSettingsView,
   ProviderInstanceView,
+  ProviderSettingKey,
 } from "./admin-contract"
 import { getAdapterDescriptor, isPaymentCapableProvider } from "./credential-schema"
 import { isConfigurationRoutable } from "./routing"
@@ -150,7 +151,9 @@ export function toCredentialViews(
 ): ProviderCredentialView[] {
   const byKey = new Map(metas.map((meta) => [meta.key, meta]))
   const declared = getAdapterDescriptor(providerKey).fields
-  const views: ProviderCredentialView[] = declared.map((field) =>
+  // Campos de política (ex.: REQUIRE_SIGNATURE) são controlados por `settings`, não por credencial.
+  const editable = declared.filter((field) => !field.policy)
+  const views: ProviderCredentialView[] = editable.map((field) =>
     toCredentialView(field.key, field.required, byKey.get(field.key)),
   )
   const declaredKeys = new Set(declared.map((field) => field.key))
@@ -158,6 +161,65 @@ export function toCredentialViews(
     if (!declaredKeys.has(meta.key)) views.push(toCredentialView(meta.key, false, meta))
   }
   return views
+}
+
+/** Rejeita `settings` que não se aplicam ao adapter (ex.: cartão/assinatura numa instância Asaas). */
+export function assertSettingsApplicable(
+  providerKey: ProviderRoutingConfigRecord["provider"],
+  settings: StoredProviderSettings,
+): void {
+  const descriptor = getAdapterDescriptor(providerKey)
+  for (const key of Object.keys(settings)) {
+    if (!descriptor.applicableSettings.includes(key as ProviderSettingKey)) {
+      throw new ProviderInstanceValidationError(
+        `A configuração "${key}" não se aplica ao adapter ${descriptor.label}`,
+      )
+    }
+  }
+}
+
+const ROLLOUT_LABEL = "ACTIVE"
+
+/**
+ * Motivos pelos quais a instância ainda não pode ser o provider padrão. O padrão inelegível
+ * BLOQUEIA todas as novas cobranças (não há fallback), então a promoção só passa sem motivos.
+ * `envProvidedKeys` são as chaves obrigatórias cobertas pela reserva de ambiente (só vale para a
+ * instância principal, conforme o resolver).
+ */
+export function computeDefaultBlockers(
+  record: Pick<
+    ProviderInstanceRecord,
+    "provider" | "enabled" | "killSwitch" | "rolloutState"
+  >,
+  metas: readonly Pick<ProviderCredentialMeta, "key">[],
+  envProvidedKeys: ReadonlySet<string> = new Set(),
+): string[] {
+  const descriptor = getAdapterDescriptor(record.provider)
+  const blockers: string[] = []
+  if (!descriptor.paymentCapable) {
+    blockers.push(
+      `O adapter ${descriptor.label} não tem capacidade de pagamento (instância somente de credencial).`,
+    )
+  }
+  if (!record.enabled) blockers.push("A instância está desativada.")
+  if (record.killSwitch) blockers.push("O kill switch está ligado.")
+  if (record.rolloutState !== ROLLOUT_LABEL) {
+    blockers.push(`O rollout precisa estar ACTIVE (atual: ${record.rolloutState}).`)
+  }
+  const stored = new Set(metas.map((meta) => meta.key))
+  for (const field of descriptor.fields) {
+    if (field.required && !stored.has(field.key) && !envProvidedKeys.has(field.key)) {
+      blockers.push(`Falta a credencial obrigatória ${field.label} (${field.key}).`)
+    }
+  }
+  return blockers
+}
+
+export function assertCanBeDefault(blockers: readonly string[]): void {
+  if (blockers.length === 0) return
+  throw new ProviderInstanceConflictError(
+    `Esta instância ainda não pode ser o provider padrão: ${blockers.join(" ")}`,
+  )
 }
 
 function toCredentialView(
@@ -179,6 +241,7 @@ export function toInstanceView(
   record: ProviderInstanceRecord,
   metas: readonly ProviderCredentialMeta[],
   cardEnabledFallback: boolean,
+  envProvidedKeys: ReadonlySet<string> = new Set(),
 ): ProviderInstanceView {
   return {
     id: record.id,
@@ -199,6 +262,8 @@ export function toInstanceView(
     paymentCapable: isPaymentCapableProvider(record.provider),
     credentials: toCredentialViews(record.provider, metas),
     settings: toSettingsView(record.settings, cardEnabledFallback),
+    applicableSettings: getAdapterDescriptor(record.provider).applicableSettings,
+    defaultBlockers: computeDefaultBlockers(record, metas, envProvidedKeys),
   }
 }
 

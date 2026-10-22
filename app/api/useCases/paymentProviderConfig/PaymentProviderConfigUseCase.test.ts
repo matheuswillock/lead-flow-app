@@ -6,6 +6,7 @@ import {
   ProviderInstanceNotFoundError,
   ProviderInstanceValidationError,
 } from "@/lib/payment-provider/instance"
+import { CredentialCipherError } from "@/lib/payment-provider/credential-cipher"
 import { ProviderRoutingConfigError } from "@/lib/payment-provider/routing-config"
 import { PaymentProviderConfigUseCase } from "./PaymentProviderConfigUseCase"
 
@@ -77,6 +78,32 @@ describe("PaymentProviderConfigUseCase", () => {
     const bad = await useCase.update({ expectedRevision: 1 }, actor)
     expect(bad.isValid).toBe(false)
     expect(bad.result).toEqual({ errorCode: "VALIDATION" })
+  })
+
+  it("falha ao salvar credencial: mensagem estável, INTERNAL e sem eco do valor", async () => {
+    const cases: Array<[Error, string]> = [
+      [new Error(`insert failed for value ${SECRET}`), "Não foi possível gravar a credencial"],
+      [new CredentialCipherError(`PAYMENT_CREDENTIALS_ENCRYPTION_KEY ausente (${SECRET})`), "A chave de cifra das credenciais não está disponível"],
+    ]
+    for (const [failure, message] of cases) {
+      const { useCase } = build({ setCredential: async () => { throw failure } })
+      const output = await useCase.setCredential({ configId: "i1", key: "API_KEY", value: SECRET }, actor)
+      expect(output.isValid).toBe(false)
+      expect(output.result).toEqual({ errorCode: "INTERNAL" })
+      expect(output.errorMessages).toEqual([message])
+      expect(JSON.stringify(output)).not.toContain(SECRET)
+    }
+  })
+
+  it("promoção a padrão inelegível vira CONFLICT (409) com a mensagem do motivo", async () => {
+    const { useCase } = build({
+      update: async () => {
+        throw new ProviderInstanceConflictError("Esta instância ainda não pode ser o provider padrão: A instância está desativada.")
+      },
+    })
+    const output = await useCase.update({ id: "i1", expectedRevision: 1, isDefault: true }, actor)
+    expect(output.result).toEqual({ errorCode: "CONFLICT" })
+    expect(output.errorMessages[0]).toContain("desativada")
   })
 
   it("mapeia erros de domínio para códigos", async () => {

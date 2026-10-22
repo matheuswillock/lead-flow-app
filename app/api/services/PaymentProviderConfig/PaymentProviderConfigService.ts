@@ -10,13 +10,18 @@ import {
 import { describeCredentialValue, type CredentialCipher } from "@/lib/payment-provider/credential-cipher"
 import { credentialContext } from "@/lib/payment-provider/credential-resolver"
 import {
+  envFallbackNames,
   getAdapterDescriptor,
   isRequiredCredentialKey,
   isValidCredentialKey,
   listAdapterDescriptors,
 } from "@/lib/payment-provider/credential-schema"
 import {
+  assertCanBeDefault,
   assertInstanceRoutingPolicy,
+  assertSettingsApplicable,
+  computeDefaultBlockers,
+  pickPrimaryInstance,
   ProviderInstanceConflictError,
   ProviderInstanceNotFoundError,
   ProviderInstanceValidationError,
@@ -44,6 +49,8 @@ export type PaymentProviderConfigServiceOptions = {
   readonly onChange: () => void
   /** Reserva de `cardEnabled` quando a instância não definiu (CARD_PAYMENTS_ENABLED). */
   readonly cardEnabledFallback: () => boolean
+  /** Ambiente lido para a reserva de credenciais (padrão: process.env). */
+  readonly env?: () => Readonly<Record<string, string | undefined>>
 }
 
 export class PaymentProviderConfigService implements IPaymentProviderConfigService {
@@ -54,10 +61,18 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
   ) {}
 
   async list(environment: PaymentProviderEnvironment): Promise<readonly ProviderInstanceView[]> {
-    const records = await this.configs.list(environment)
+    // Ordem determinística (nome, id): nunca depende de updatedAt nem da ordem física do banco.
+    const records = [...(await this.configs.list(environment))].sort(compareInstances)
     const metas = await this.credentials.listMetaByConfigIds(records.map((record) => record.id))
     const fallback = this.options.cardEnabledFallback()
-    return records.map((record) => toInstanceView(record, metas.get(record.id) ?? [], fallback))
+    return records.map((record) =>
+      toInstanceView(
+        record,
+        metas.get(record.id) ?? [],
+        fallback,
+        this.envProvidedKeys(record, pickPrimaryInstance(records, record.provider)?.id === record.id),
+      ),
+    )
   }
 
   async get(id: string): Promise<ProviderInstanceView> {
@@ -84,13 +99,11 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
         providerKey: adapter.providerKey,
         label: adapter.label,
         paymentCapable: adapter.paymentCapable,
-        credentialSchema: adapter.fields.map(({ key, label, required, secret, hint }) => ({
-          key,
-          label,
-          required,
-          secret,
-          hint,
-        })),
+        applicableSettings: adapter.applicableSettings,
+        // Campos de política ficam de fora: a UI os controla por `settings`.
+        credentialSchema: adapter.fields
+          .filter((field) => !field.policy)
+          .map(({ key, label, required, secret, hint }) => ({ key, label, required, secret, hint })),
       })),
     }
   }
@@ -134,6 +147,10 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
       ...(input.rolloutState !== undefined ? { rolloutState: input.rolloutState } : {}),
       ...(input.killSwitch !== undefined ? { killSwitch: input.killSwitch } : {}),
     }
+    const settings = input.settings !== undefined ? validateSettingsPatch(input.settings) : undefined
+    if (settings) assertSettingsApplicable(current.provider, settings)
+    // Só a promoção a padrão exige elegibilidade; os passos anteriores da ativação seguem livres.
+    const credentialKeys = patch.isDefault === true && !current.isDefault ? await this.credentialCoverage(current) : null
     const updated = await this.configs.update({
       id: input.id,
       patch,
@@ -141,9 +158,14 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
         ...(input.displayName !== undefined ? { displayName: validateDisplayName(input.displayName) } : {}),
         ...(input.logoUrl !== undefined ? { logoUrl: validateLogoUrl(input.logoUrl) } : {}),
         ...(input.logoAltText !== undefined ? { logoAltText: validateLogoAltText(input.logoAltText) } : {}),
-        ...(input.settings !== undefined ? { settings: validateSettingsPatch(input.settings) } : {}),
+        ...(settings ? { settings } : {}),
       },
-      assertNext: (next) => assertInstanceRoutingPolicy(next),
+      assertNext: (next) => {
+        assertInstanceRoutingPolicy(next)
+        if (credentialKeys && next.isDefault) {
+          assertCanBeDefault(computeDefaultBlockers(next, credentialKeys.stored, credentialKeys.env))
+        }
+      },
     })
     this.options.onChange()
     const before = snapshotInstance(current)
@@ -239,8 +261,41 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
 
   private async toView(record: ProviderInstanceRecord): Promise<ProviderInstanceView> {
     const metas = await this.credentials.listMeta(record.id)
-    return toInstanceView(record, metas, this.options.cardEnabledFallback())
+    const siblings = await this.configs.list(record.environment)
+    const isPrimary = pickPrimaryInstance(siblings, record.provider)?.id === record.id
+    return toInstanceView(record, metas, this.options.cardEnabledFallback(), this.envProvidedKeys(record, isPrimary))
   }
+
+  /** Credenciais gravadas e chaves obrigatórias cobertas pela reserva de ambiente (instância que viraria a principal). */
+  private async credentialCoverage(record: ProviderInstanceRecord) {
+    return {
+      stored: await this.credentials.listMeta(record.id),
+      env: this.envProvidedKeys(record, true),
+    }
+  }
+
+  /**
+   * Chaves obrigatórias que o ambiente cobre. A reserva compartilhada entre instâncias (Abacate) só
+   * vale para a instância principal; a por contexto (Asaas) vale para a própria conta.
+   */
+  private envProvidedKeys(record: ProviderInstanceRecord, isPrimary: boolean): ReadonlySet<string> {
+    const descriptor = getAdapterDescriptor(record.provider)
+    if (descriptor.envFallbackSharedAcrossInstances && !isPrimary) return new Set()
+    const env = this.options.env?.() ?? process.env
+    const scope = { environment: record.environment, externalAccountContext: record.externalAccountContext }
+    const covered = new Set<string>()
+    for (const field of descriptor.fields) {
+      if (!field.required) continue
+      if (envFallbackNames(record.provider, field.key, scope).some((name) => env[name]?.trim())) {
+        covered.add(field.key)
+      }
+    }
+    return covered
+  }
+}
+
+function compareInstances(a: ProviderInstanceRecord, b: ProviderInstanceRecord): number {
+  return a.displayName.localeCompare(b.displayName, "pt-BR") || a.id.localeCompare(b.id)
 }
 
 /**

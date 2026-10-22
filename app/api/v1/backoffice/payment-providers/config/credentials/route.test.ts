@@ -70,6 +70,17 @@ describe("PUT credentials", () => {
     const response = await PUT(put({ configId: ID, key: "API_KEY", value: "   " }))
     expect(response.status).toBe(400)
   })
+
+  it("falha ao salvar (500) devolve mensagem estável e NUNCA ecoa o valor", async () => {
+    setCredential.mockResolvedValueOnce(
+      new Output(false, [], ["Não foi possível gravar a credencial"], { errorCode: "INTERNAL" }),
+    )
+    const response = await PUT(put({ configId: ID, key: "API_KEY", value: SECRET }))
+    expect(response.status).toBe(500)
+    const text = await response.text()
+    expect(text).not.toContain(SECRET)
+    expect(JSON.parse(text).errorMessages).toEqual(["Não foi possível gravar a credencial"])
+  })
 })
 
 describe("DELETE credentials", () => {

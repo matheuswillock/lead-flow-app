@@ -32,6 +32,8 @@ export type AdapterDescriptor = {
   readonly label: string
   /** false: o router não seleciona o adapter para pagamentos; a instância só guarda credenciais. */
   readonly paymentCapable: boolean
+  /** `settings` da instância que se aplicam ao adapter (o PUT rejeita as demais). */
+  readonly applicableSettings: readonly ("requireSignature" | "cardEnabled")[]
   /**
    * true: os nomes de variável de ambiente não dependem do contexto da conta (valem para o
    * provider/ambiente inteiro), então só a instância principal pode usá-los como reserva.
@@ -62,6 +64,7 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
     providerKey: "ABACATE_PAY",
     label: "Abacate Pay",
     paymentCapable: true,
+    applicableSettings: ["requireSignature", "cardEnabled"],
     envFallbackSharedAcrossInstances: true,
     fields: [
       {
@@ -111,6 +114,7 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
     providerKey: "ASAAS",
     label: "Asaas",
     paymentCapable: false,
+    applicableSettings: [],
     envFallbackSharedAcrossInstances: false,
     fields: [
       {

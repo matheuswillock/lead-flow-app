@@ -39,7 +39,7 @@ function record(overrides: Partial<ProviderInstanceRecord> = {}): ProviderInstan
   }
 }
 
-function setup(initial: ProviderInstanceRecord[] = [record()]) {
+function setup(initial: ProviderInstanceRecord[] = [record()], env: Record<string, string> = {}) {
   const instances = new Map(initial.map((item) => [item.id, item]))
   const metas = new Map<string, ProviderCredentialMeta[]>()
   const upserts: UpsertCredentialInput[] = []
@@ -105,8 +105,9 @@ function setup(initial: ProviderInstanceRecord[] = [record()]) {
     getCipher: () => cipher,
     onChange,
     cardEnabledFallback: () => true,
+    env: () => env,
   })
-  return { service, upserts, onChange, instances }
+  return { service, upserts, onChange, instances, metas }
 }
 
 describe("setCredential", () => {
@@ -309,5 +310,146 @@ describe("remoção de credencial obrigatória", () => {
     )
     const enabled = await withCredentials({ enabled: true })
     expect((await enabled.service.deleteCredential("inst-1", "EXTRA_TOKEN")).audit).not.toBeNull()
+  })
+})
+
+describe("promoção a provider padrão (elegibilidade)", () => {
+  const meta = (key: string): ProviderCredentialMeta => ({
+    key,
+    last4: null,
+    fingerprint: "ffffffffffff",
+    updatedAt: new Date("2026-10-21T10:00:00.000Z"),
+  })
+
+  it("RECUSA (409) instância desativada e sem credencial obrigatória, listando o que falta", async () => {
+    const { service, instances } = setup()
+    const error = await service.update({ id: "inst-1", expectedRevision: 1, isDefault: true }).catch((e) => e)
+    expect(error.name).toBe("ProviderInstanceConflictError")
+    expect(error.message).toContain("A instância está desativada.")
+    expect(error.message).toContain("O rollout precisa estar ACTIVE (atual: DISABLED).")
+    expect(error.message).toContain("Falta a credencial obrigatória Chave de API (API_KEY).")
+    expect(error.message).toContain("Falta a credencial obrigatória Segredo do webhook (WEBHOOK_SECRET).")
+    expect(instances.get("inst-1")?.isDefault).toBe(false)
+  })
+
+  it("recusa com kill switch ligado mesmo estando habilitada, ACTIVE e com credenciais", async () => {
+    const { service, metas } = setup([
+      record({ enabled: true, rolloutState: "ACTIVE", killSwitch: true, revision: 3 }),
+    ])
+    metas.set("inst-1", [meta("API_KEY"), meta("WEBHOOK_SECRET")])
+    await expect(service.update({ id: "inst-1", expectedRevision: 3, isDefault: true })).rejects.toThrow(
+      "O kill switch está ligado.",
+    )
+  })
+
+  it("aceita instância elegível: habilitada, ACTIVE, sem kill switch e com as credenciais no banco", async () => {
+    const { service, metas } = setup([record({ enabled: true, rolloutState: "ACTIVE", revision: 3 })])
+    metas.set("inst-1", [meta("API_KEY"), meta("WEBHOOK_SECRET")])
+    const change = await service.update({ id: "inst-1", expectedRevision: 3, isDefault: true })
+    expect(change.view.isDefault).toBe(true)
+    expect(change.view.defaultBlockers).toEqual([])
+  })
+
+  it("a reserva de ambiente conta para a instância principal, mas não para uma secundária", async () => {
+    const env = { ABACATE_PAY_PRODUCTION_API_KEY: "x", ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET: "y" }
+    const primary = record({ id: "a", displayName: "A", enabled: true, rolloutState: "ACTIVE", revision: 3, isDefault: false })
+    const { service } = setup([primary], env)
+    expect((await service.update({ id: "a", expectedRevision: 3, isDefault: true })).view.isDefault).toBe(true)
+
+    const second = record({ id: "b", displayName: "B", externalAccountContext: "conta-2", enabled: true, rolloutState: "ACTIVE", revision: 3 })
+    const both = setup([record({ id: "a", displayName: "A", enabled: true, rolloutState: "ACTIVE", revision: 3, isDefault: true, healthStatus: "HEALTHY" }), second], env)
+    const view = (await both.service.list("PRODUCTION")).find((item) => item.id === "b")
+    expect(view?.defaultBlockers.join(" ")).toContain("API_KEY")
+  })
+
+  it("instância somente de credencial (Asaas) nunca pode ser padrão: motivo aparece em defaultBlockers", async () => {
+    const asaas = record({ id: "s1", provider: "ASAAS", externalAccountContext: "primary", displayName: "Asaas" })
+    const { service } = setup([asaas])
+    const view = await service.get("s1")
+    expect(view.defaultBlockers.join(" ")).toContain("não tem capacidade de pagamento")
+  })
+
+  it("defaultBlockers vem vazio quando pode ser padrão", async () => {
+    const { service, metas } = setup([record({ enabled: true, rolloutState: "ACTIVE" })])
+    metas.set("inst-1", [meta("API_KEY"), meta("WEBHOOK_SECRET")])
+    expect((await service.get("inst-1")).defaultBlockers).toEqual([])
+  })
+
+  it("o fluxo de ativação continua: os passos anteriores (sem isDefault) não exigem elegibilidade", async () => {
+    const { service } = setup()
+    const step = await service.update({ id: "inst-1", expectedRevision: 1, rolloutState: "SANDBOX_VALIDATED" })
+    expect(step.view.rolloutState).toBe("SANDBOX_VALIDATED")
+  })
+
+  it("o passo final da ativação (ACTIVE + enabled + isDefault no mesmo patch) passa com credenciais", async () => {
+    const { service, metas } = setup([record({ rolloutState: "APPROVED", revision: 3 })])
+    metas.set("inst-1", [meta("API_KEY"), meta("WEBHOOK_SECRET")])
+    const change = await service.update({ id: "inst-1", expectedRevision: 3, rolloutState: "ACTIVE", enabled: true, isDefault: true })
+    expect(change.view).toMatchObject({ isDefault: true, enabled: true, rolloutState: "ACTIVE" })
+  })
+
+  it("o passo final SEM credenciais é recusado (regra não relaxada)", async () => {
+    const { service } = setup([record({ rolloutState: "APPROVED", revision: 3 })])
+    await expect(
+      service.update({ id: "inst-1", expectedRevision: 3, rolloutState: "ACTIVE", enabled: true, isDefault: true }),
+    ).rejects.toThrow("Falta a credencial obrigatória")
+  })
+})
+
+describe("campos de política e settings aplicáveis", () => {
+  it("REQUIRE_SIGNATURE não aparece em credentials da view nem no schema de GET /adapters", async () => {
+    const { service, metas } = setup()
+    metas.set("inst-1", [
+      { key: "REQUIRE_SIGNATURE", last4: null, fingerprint: "ffffffffffff", updatedAt: new Date() },
+    ])
+    const view = await service.get("inst-1")
+    expect(view.credentials.map((c) => c.key)).not.toContain("REQUIRE_SIGNATURE")
+    const abacate = service.listAdapters().adapters.find((a) => a.providerKey === "ABACATE_PAY")
+    expect(abacate?.credentialSchema.map((f) => f.key)).not.toContain("REQUIRE_SIGNATURE")
+    expect(abacate?.credentialSchema.map((f) => f.key)).toContain("API_KEY")
+  })
+
+  it("applicableSettings: Abacate ambos, Asaas nenhum (view e adapters)", async () => {
+    const { service } = setup([
+      record(),
+      record({ id: "s1", provider: "ASAAS", externalAccountContext: "primary", displayName: "Asaas" }),
+    ])
+    expect((await service.get("inst-1")).applicableSettings).toEqual(["requireSignature", "cardEnabled"])
+    expect((await service.get("s1")).applicableSettings).toEqual([])
+    const adapters = service.listAdapters().adapters
+    expect(adapters.find((a) => a.providerKey === "ASAAS")?.applicableSettings).toEqual([])
+    expect(adapters.find((a) => a.providerKey === "ABACATE_PAY")?.applicableSettings).toEqual([
+      "requireSignature",
+      "cardEnabled",
+    ])
+  })
+
+  it("PUT rejeita setting não aplicável ao adapter (Asaas) e não grava", async () => {
+    const { service, instances } = setup([
+      record(),
+      record({ id: "s1", provider: "ASAAS", externalAccountContext: "primary", displayName: "Asaas" }),
+    ])
+    for (const settings of [{ cardEnabled: false }, { requireSignature: true }]) {
+      const error = await service.update({ id: "s1", expectedRevision: 1, settings }).catch((e) => e)
+      expect(error.name).toBe("ProviderInstanceValidationError")
+      expect(error.message).toContain("não se aplica")
+    }
+    expect(instances.get("s1")?.settings).toEqual({})
+    await expect(service.update({ id: "inst-1", expectedRevision: 1, settings: { cardEnabled: false } })).resolves.toBeDefined()
+  })
+})
+
+describe("ordem estável da lista", () => {
+  it("ordena por nome de exibição e id, independente da ordem do repositório e de edições", async () => {
+    const { service } = setup([
+      record({ id: "c", displayName: "Zeta", externalAccountContext: "z" }),
+      record({ id: "b", displayName: "alfa", externalAccountContext: "b" }),
+      record({ id: "a", displayName: "alfa", externalAccountContext: "a" }),
+    ])
+    const ids = async () => (await service.list("PRODUCTION")).map((item) => item.id)
+    expect(await ids()).toEqual(["a", "b", "c"])
+    await service.update({ id: "c", expectedRevision: 1, killSwitch: true })
+    await service.update({ id: "a", expectedRevision: 1, killSwitch: true })
+    expect(await ids()).toEqual(["a", "b", "c"])
   })
 })

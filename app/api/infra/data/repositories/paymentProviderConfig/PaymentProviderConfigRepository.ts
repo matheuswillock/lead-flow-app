@@ -45,7 +45,8 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
     const rows = await prisma.paymentProviderConfig.findMany({
       where: { environment },
       select: configSelect,
-      orderBy: [{ providerKey: "asc" }, { createdAt: "asc" }],
+      // Determinístico (nunca updatedAt): a ordem não muda quando uma instância é editada.
+      orderBy: [{ providerKey: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     })
     return rows.map(toInstanceRecord)
   }
@@ -53,7 +54,7 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
   async listAll(): Promise<readonly ProviderInstanceRecord[]> {
     const rows = await prisma.paymentProviderConfig.findMany({
       select: configSelect,
-      orderBy: [{ environment: "asc" }, { providerKey: "asc" }, { createdAt: "asc" }],
+      orderBy: [{ environment: "asc" }, { providerKey: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     })
     return rows.map(toInstanceRecord)
   }

@@ -40,9 +40,19 @@ export type ProviderInstanceView = {
   readonly lastErrorCode: string | null
   /** false: instância somente de credencial (o router não a seleciona para pagamentos). */
   readonly paymentCapable: boolean
+  /** Credenciais editáveis (campos de política, como REQUIRE_SIGNATURE, ficam em `settings`). */
   readonly credentials: readonly ProviderCredentialView[]
   readonly settings: ProviderInstanceSettingsView
+  /** Quais `settings` valem para o adapter; o PUT rejeita os demais. Asaas: nenhum. */
+  readonly applicableSettings: readonly ProviderSettingKey[]
+  /**
+   * Motivos (PT-BR) pelos quais a instância ainda não pode ser o provider padrão; vazio quando
+   * pode. O PUT com `isDefault=true` devolve 409 listando estes motivos.
+   */
+  readonly defaultBlockers: readonly string[]
 }
+
+export type ProviderSettingKey = "requireSignature" | "cardEnabled"
 
 export type ProviderCredentialFieldView = {
   readonly key: string
@@ -56,6 +66,8 @@ export type ProviderAdapterView = {
   readonly providerKey: PaymentProviderKey
   readonly label: string
   readonly paymentCapable: boolean
+  readonly applicableSettings: readonly ProviderSettingKey[]
+  /** Sem campos de política (REQUIRE_SIGNATURE etc.): a UI os controla por `settings`. */
   readonly credentialSchema: readonly ProviderCredentialFieldView[]
 }
 

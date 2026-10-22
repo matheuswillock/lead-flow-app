@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  assertCanBeDefault,
   assertInstanceRoutingPolicy,
+  assertSettingsApplicable,
+  computeDefaultBlockers,
   parseStoredSettings,
   pickPrimaryInstance,
   toInstanceView,
@@ -109,7 +112,6 @@ describe("toInstanceView", () => {
       "WEBHOOK_SECRET",
       "PUBLIC_KEY",
       "WEBHOOK_SECRET_PREVIOUS",
-      "REQUIRE_SIGNATURE",
       "EXTRA_TOKEN",
     ])
     expect(view.credentials[0]).toEqual({
@@ -175,5 +177,47 @@ describe("pickPrimaryInstance", () => {
 
   it("filtra pelo provider", () => {
     expect(pickPrimaryInstance([instance("a", { provider: "ASAAS" })], "ABACATE_PAY")).toBeUndefined()
+  })
+})
+
+describe("computeDefaultBlockers / assertCanBeDefault", () => {
+  const eligible = { provider: "ABACATE_PAY" as const, enabled: true, killSwitch: false, rolloutState: "ACTIVE" as const }
+  const both = [{ key: "API_KEY" }, { key: "WEBHOOK_SECRET" }]
+
+  it("vazio quando enabled, sem kill switch, ACTIVE, capaz de pagamento e com obrigatórias", () => {
+    expect(computeDefaultBlockers(eligible, both)).toEqual([])
+    expect(() => assertCanBeDefault([])).not.toThrow()
+  })
+
+  it("lista cada motivo em PT-BR", () => {
+    const blockers = computeDefaultBlockers(
+      { provider: "ABACATE_PAY", enabled: false, killSwitch: true, rolloutState: "APPROVED" },
+      [],
+    )
+    expect(blockers).toEqual([
+      "A instância está desativada.",
+      "O kill switch está ligado.",
+      "O rollout precisa estar ACTIVE (atual: APPROVED).",
+      "Falta a credencial obrigatória Chave de API (API_KEY).",
+      "Falta a credencial obrigatória Segredo do webhook (WEBHOOK_SECRET).",
+    ])
+    expect(() => assertCanBeDefault(blockers)).toThrow("Esta instância ainda não pode ser o provider padrão")
+  })
+
+  it("credencial coberta pela reserva de ambiente não bloqueia", () => {
+    expect(computeDefaultBlockers(eligible, [{ key: "API_KEY" }], new Set(["WEBHOOK_SECRET"]))).toEqual([])
+  })
+
+  it("adapter sem capacidade de pagamento sempre bloqueia", () => {
+    const blockers = computeDefaultBlockers({ ...eligible, provider: "ASAAS" }, [{ key: "API_KEY" }, { key: "WEBHOOK_TOKEN" }])
+    expect(blockers).toEqual(["O adapter Asaas não tem capacidade de pagamento (instância somente de credencial)."])
+  })
+})
+
+describe("assertSettingsApplicable", () => {
+  it("Abacate aceita ambos; Asaas rejeita qualquer setting", () => {
+    expect(() => assertSettingsApplicable("ABACATE_PAY", { requireSignature: true, cardEnabled: false })).not.toThrow()
+    expect(() => assertSettingsApplicable("ASAAS", {})).not.toThrow()
+    expect(() => assertSettingsApplicable("ASAAS", { cardEnabled: true })).toThrow("não se aplica")
   })
 })
