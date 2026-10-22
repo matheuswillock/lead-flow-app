@@ -340,7 +340,6 @@
       "app/api/useCases/leads/LeadDocumentRequestUseCase.ts"
     ],
     "e2ePageCoverageAllowlist": [
-      "app/(auth)/sign-in/page.tsx",
       "app/[supabaseId]/account/page.tsx",
       "app/[supabaseId]/associados/page.tsx",
       "app/[supabaseId]/automations/page.tsx",
