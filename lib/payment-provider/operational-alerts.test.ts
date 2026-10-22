@@ -52,6 +52,15 @@ describe("OperationalAlerter", () => {
     expect(captureMessage).toHaveBeenCalledTimes(2)
   })
 
+  it("dedupes by dedupeKey when given, so distinct events of the same alert key still notify", async () => {
+    const { alerter, captureMessage } = build()
+    const base = { key: "k", message: "m", level: "warning" as const, dedupeWindowMs: 60_000 }
+    await alerter.alert({ ...base, dedupeKey: "k:a:1" })
+    await alerter.alert({ ...base, dedupeKey: "k:a:1" })
+    await alerter.alert({ ...base, dedupeKey: "k:a:2" })
+    expect(captureMessage).toHaveBeenCalledTimes(2)
+  })
+
   it("only notifies Slack when asked and never throws if Slack fails", async () => {
     const { alerter, slack } = build()
     await alerter.alert({ key: "a", message: "m", level: "error" })

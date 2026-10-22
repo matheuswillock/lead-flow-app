@@ -12,6 +12,8 @@ export type OperationalAlert = {
   readonly slack?: boolean
   /** Suprime repetições da mesma chave dentro da janela (ms). */
   readonly dedupeWindowMs?: number
+  /** Identidade da deduplicação quando diferente da chave do alerta (ex.: chave + tentativa + evento). */
+  readonly dedupeKey?: string
 }
 
 export type SlackAlertPayload = {
@@ -56,7 +58,7 @@ export class OperationalAlerter {
   readonly alert = async (input: OperationalAlert): Promise<void> => {
     const nowMs = (this.dependencies.now?.() ?? new Date()).getTime()
     if (this.isDeduplicated(input, nowMs)) return
-    this.lastSentAt.set(input.key, nowMs)
+    this.lastSentAt.set(input.dedupeKey ?? input.key, nowMs)
 
     const message = redactSensitiveUrls(input.message)
     const context = redactValue(input.context ?? {}) as Record<string, unknown>
@@ -71,7 +73,7 @@ export class OperationalAlerter {
 
   private isDeduplicated(input: OperationalAlert, nowMs: number): boolean {
     if (!input.dedupeWindowMs) return false
-    const last = this.lastSentAt.get(input.key)
+    const last = this.lastSentAt.get(input.dedupeKey ?? input.key)
     return last !== undefined && nowMs - last < input.dedupeWindowMs
   }
 

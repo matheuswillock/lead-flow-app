@@ -30,15 +30,28 @@ function build() {
   const gracePayments = {
     findById: mock(async (_id: string): Promise<{ amountCents: number } | null> => ({ amountCents: 6990 })),
   }
+  const paymentCharges = {
+    findById: mock(async (_id: string): Promise<{ amountCents: number; method: string | null } | null> => ({
+      amountCents: 6990,
+      method: "PIX",
+    })),
+  }
   const alert = mock(async (_input: unknown) => undefined)
-  const guard = new PaymentEventMatchGuard({ purchases, adhesionPayments, gracePayments, alerter: { alert } })
-  return { guard, purchases, adhesionPayments, gracePayments, alert }
+  const guard = new PaymentEventMatchGuard({
+    purchases,
+    adhesionPayments,
+    gracePayments,
+    paymentCharges,
+    alerter: { alert },
+  })
+  return { guard, purchases, adhesionPayments, gracePayments, paymentCharges, alert }
 }
 
 const owners: Array<[string]> = [
   [PAYMENT_PROVIDER_OWNER_TYPES.PLATFORM_PURCHASE],
   [PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION],
   [PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT],
+  [PAYMENT_PROVIDER_OWNER_TYPES.PAYMENT_CHARGE],
 ]
 const attemptFor = (ownerType: string) => ({ id: "att-1", ownerType, ownerId: "owner-1" })
 
@@ -73,11 +86,51 @@ describe("PaymentEventMatchGuard (PAY-HARD-T011)", () => {
     })
 
     it("rejeita quando o dono não existe (nada a aplicar)", async () => {
-      const { guard, purchases, adhesionPayments, gracePayments } = build()
+      const { guard, purchases, adhesionPayments, gracePayments, paymentCharges } = build()
+      paymentCharges.findById.mockImplementation(async () => null)
       purchases.findById.mockImplementation(async () => null)
       adhesionPayments.findById.mockImplementation(async () => null)
       gracePayments.findById.mockImplementation(async () => null)
       await expect(guard.assertMatches(attemptFor(ownerType), event())).rejects.toBeInstanceOf(PaymentEventMismatchError)
+    })
+  })
+
+  describe("PAYMENT_CHARGE (valor e método vêm da cobrança do ledger)", () => {
+    it("cobrança de R$ 500 recebendo CONFIRMED de R$ 1 é rejeitada", async () => {
+      const { guard, paymentCharges } = build()
+      paymentCharges.findById.mockImplementation(async () => ({ amountCents: 50000, method: "PIX" }))
+      await expect(
+        guard.assertMatches(attemptFor("PAYMENT_CHARGE"), event({ amountInCents: 100 })),
+      ).rejects.toBeInstanceOf(PaymentEventMismatchError)
+    })
+
+    it("valor correto é aceito e a cobrança é lida pelo ownerId", async () => {
+      const { guard, paymentCharges } = build()
+      paymentCharges.findById.mockImplementation(async () => ({ amountCents: 50000, method: "PIX" }))
+      await expect(
+        guard.assertMatches(attemptFor("PAYMENT_CHARGE"), event({ amountInCents: 50000 })),
+      ).resolves.toBeUndefined()
+      expect(paymentCharges.findById).toHaveBeenCalledWith("owner-1")
+    })
+
+    it("cobrança de cartão rejeita evento PIX", async () => {
+      const { guard, paymentCharges } = build()
+      paymentCharges.findById.mockImplementation(async () => ({ amountCents: 6990, method: "CREDIT_CARD" }))
+      await expect(guard.assertMatches(attemptFor("PAYMENT_CHARGE"), event({ method: "PIX" }))).rejects.toBeInstanceOf(
+        PaymentEventMismatchError,
+      )
+      await expect(guard.assertMatches(attemptFor("PAYMENT_CHARGE"), event({ method: "CARD" }))).resolves.toBeUndefined()
+    })
+  })
+
+  it("o alerta de divergência é deduplicado por tentativa + evento (reentrega não reenvia Slack)", async () => {
+    const { guard, alert } = build()
+    await expect(guard.assertMatches(attemptFor("PLATFORM_PURCHASE"), event({ amountInCents: 1 }))).rejects.toBeInstanceOf(
+      PaymentEventMismatchError,
+    )
+    expect(alert.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: "payment-event-mismatch:att-1:evt_1",
+      dedupeWindowMs: 3_600_000,
     })
   })
 

@@ -5,6 +5,7 @@ import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositor
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
 import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
 import { createOwnerChargeMirror } from "@/app/api/services/paymentCharge/paymentChargeComposition"
+import { paymentChargeRepository } from "@/app/api/infra/data/repositories/paymentCharge/PaymentChargeRepository"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
@@ -39,6 +40,7 @@ export async function createPaymentProviderWebhookService() {
     purchases: platformPurchaseRepository,
     adhesionPayments: backofficeAdhesionPaymentRepository,
     gracePayments: billingGracePaymentRepository,
+    paymentCharges: paymentChargeRepository,
   })
   const emailCreditsOnConfirmation = new ApplyEmailCreditsOnConfirmation({
     purchases: platformPurchaseRepository,

@@ -19,8 +19,15 @@ export type PaymentEventMatchGuardDependencies = {
   }
   readonly adhesionPayments: { findById(id: string): Promise<{ amountCents: number } | null> }
   readonly gracePayments: { findById(id: string): Promise<{ amountCents: number } | null> }
+  /** Cobrança do ledger: dono PAYMENT_CHARGE tem valor e método definidos na própria cobrança. */
+  readonly paymentCharges: {
+    findById(id: string): Promise<{ amountCents: number; method: string | null } | null>
+  }
   readonly alerter?: Pick<OperationalAlerter, "alert">
 }
+
+/** Reentregas do provedor repetem o mesmo evento; um alerta por tentativa+evento por hora basta. */
+const MISMATCH_ALERT_DEDUPE_MS = 3_600_000
 
 type GuardedAttempt = { readonly id: string; readonly ownerType: string; readonly ownerId: string }
 
@@ -48,6 +55,8 @@ export class PaymentEventMatchGuard {
       key: "payment-event-mismatch",
       level: "error",
       slack: true,
+      dedupeKey: `payment-event-mismatch:${attempt.id}:${event.eventId}`,
+      dedupeWindowMs: MISMATCH_ALERT_DEDUPE_MS,
       message: `Evento de pagamento rejeitado: ${divergence}`,
       context: {
         attemptId: attempt.id,
@@ -60,7 +69,7 @@ export class PaymentEventMatchGuard {
   }
 
   private async resolveExpected(attempt: GuardedAttempt): Promise<ExpectedPayment | null> {
-    const { purchases, adhesionPayments, gracePayments } = this.dependencies
+    const { purchases, adhesionPayments, gracePayments, paymentCharges } = this.dependencies
     switch (attempt.ownerType) {
       case PAYMENT_PROVIDER_OWNER_TYPES.PLATFORM_PURCHASE: {
         const purchase = await purchases.findById(attempt.ownerId)
@@ -71,6 +80,10 @@ export class PaymentEventMatchGuard {
       case PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION: {
         const payment = await adhesionPayments.findById(attempt.ownerId)
         return payment ? { amountInCents: payment.amountCents, method: "PIX" } : null
+      }
+      case PAYMENT_PROVIDER_OWNER_TYPES.PAYMENT_CHARGE: {
+        const charge = await paymentCharges.findById(attempt.ownerId)
+        return charge ? { amountInCents: charge.amountCents, method: methodOfBillingType(charge.method) } : null
       }
       default: {
         const payment = await gracePayments.findById(attempt.ownerId)
@@ -84,7 +97,8 @@ function isKnownOwner(ownerType: string): boolean {
   return (
     ownerType === PAYMENT_PROVIDER_OWNER_TYPES.PLATFORM_PURCHASE ||
     ownerType === PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION ||
-    ownerType === PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT
+    ownerType === PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT ||
+    ownerType === PAYMENT_PROVIDER_OWNER_TYPES.PAYMENT_CHARGE
   )
 }
 
@@ -100,7 +114,7 @@ function describeDivergence(expected: ExpectedPayment, event: ProviderWebhookEve
 }
 
 function methodOfBillingType(billingType: string | null | undefined): PaymentMethod {
-  return billingType === "CREDIT_CARD" ? "CARD" : "PIX"
+  return billingType === "CREDIT_CARD" || billingType === "CARD" ? "CARD" : "PIX"
 }
 
 function toCents(amount: unknown): number {
