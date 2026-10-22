@@ -98,19 +98,32 @@ runs:
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_ACTOR:-github-actions}" --password-stdin \
               || echo "Login no ghcr.io falhou; seguindo com pull anônimo."
           fi
+          # 429 do ghcr.io persistiu por mais de uma hora em 22/10/2026 (medido
+          # também fora do CI). A mesma tag existe no Docker Hub: alterna entre as
+          # duas origens e re-etiqueta para o nome ghcr usado pelo `docker run`.
+          E2E_PG_FALLBACK_IMAGE="docker.io/supabase/postgres:17.6.1.149"
+          pulled=""
           pull_delay=10
           for pull_attempt in 1 2 3 4 5 6; do
             if docker pull "${E2E_PG_IMAGE}"; then
+              pulled="ghcr"
+              break
+            fi
+            echo "Pull de ${E2E_PG_IMAGE} falhou (tentativa ${pull_attempt}/6); tentando ${E2E_PG_FALLBACK_IMAGE}."
+            if docker pull "${E2E_PG_FALLBACK_IMAGE}"; then
+              docker tag "${E2E_PG_FALLBACK_IMAGE}" "${E2E_PG_IMAGE}"
+              pulled="dockerhub"
               break
             fi
             if [ "${pull_attempt}" = "6" ]; then
-              echo "::error::Não foi possível baixar ${E2E_PG_IMAGE} após 6 tentativas (rate limit do ghcr.io?)."
+              echo "::error::Não foi possível baixar a imagem do Postgres E2E (ghcr.io e Docker Hub) após 6 tentativas."
               exit 1
             fi
-            echo "Pull de ${E2E_PG_IMAGE} falhou (tentativa ${pull_attempt}/6); nova tentativa em ${pull_delay}s."
+            echo "Nova tentativa em ${pull_delay}s."
             sleep "${pull_delay}"
             pull_delay=$((pull_delay * 2))
           done
+          echo "Imagem do Postgres E2E obtida via ${pulled}."
           docker save "${E2E_PG_IMAGE}" -o "${E2E_PG_IMAGE_TAR}" || rm -f "${E2E_PG_IMAGE_TAR}"
           unset DOCKER_CONFIG
         fi
