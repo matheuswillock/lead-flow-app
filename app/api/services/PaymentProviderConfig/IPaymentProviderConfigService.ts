@@ -23,6 +23,12 @@ export type ProviderInstanceChange = {
   readonly audit: ProviderAuditDraft | null
 }
 
+/**
+ * Registra a trilha ANTES de a gravação do segredo ser confirmada. Se lançar, a gravação não
+ * acontece (falha fechada). Quando informado, a mudança devolvida vem com `audit: null`.
+ */
+export type ProviderAuditSink = (draft: ProviderAuditDraft) => Promise<void>
+
 export type UpdateProviderInstanceInput = Omit<UpdateProviderInstanceBody, "id"> & { readonly id: string }
 
 export interface IPaymentProviderConfigService {
@@ -36,6 +42,14 @@ export interface IPaymentProviderConfigService {
   listAdapters(): ProviderAdaptersResponse
   create(input: CreateProviderInstanceBody): Promise<ProviderInstanceChange>
   update(input: UpdateProviderInstanceInput): Promise<ProviderInstanceChange>
-  setCredential(input: SetProviderCredentialBody, actorProfileId: string | null): Promise<ProviderInstanceChange>
-  deleteCredential(configId: string, key: string): Promise<ProviderInstanceChange>
+  setCredential(
+    input: SetProviderCredentialBody,
+    actorProfileId: string | null,
+    recordAudit?: ProviderAuditSink,
+  ): Promise<ProviderInstanceChange>
+  deleteCredential(
+    configId: string,
+    key: string,
+    recordAudit?: ProviderAuditSink,
+  ): Promise<ProviderInstanceChange>
 }

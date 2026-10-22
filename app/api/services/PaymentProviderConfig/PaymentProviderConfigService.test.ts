@@ -11,6 +11,7 @@ import { createCredentialCipher } from "@/lib/payment-provider/credential-cipher
 import { credentialContext } from "@/lib/payment-provider/credential-resolver"
 import type { ProviderInstanceRecord, ProviderCredentialMeta } from "@/lib/payment-provider/instance"
 import { applyProviderRoutingConfigPatch } from "@/lib/payment-provider/routing-config"
+import { ProviderInstanceConflictError } from "@/lib/payment-provider/instance"
 import { PaymentProviderConfigService } from "./PaymentProviderConfigService"
 
 const SECRET = "sk_live_TOP_SECRET_VALUE_9876543210"
@@ -235,5 +236,78 @@ describe("update e create", () => {
     const adapters = service.listAdapters().adapters
     expect(adapters.find((a) => a.providerKey === "ASAAS")?.paymentCapable).toBe(false)
     expect(adapters.find((a) => a.providerKey === "ABACATE_PAY")?.credentialSchema.map((f) => f.key)).toContain("WEBHOOK_SECRET_PREVIOUS")
+  })
+})
+
+describe("trilha de auditoria antes da gravação da credencial", () => {
+  it("registra a trilha ANTES de gravar e não devolve rascunho duplicado", async () => {
+    const { service, upserts } = setup()
+    const order: string[] = []
+    const change = await service.setCredential(
+      { configId: "inst-1", key: "API_KEY", value: SECRET },
+      "p1",
+      async (draft) => {
+        order.push(`audit:${upserts.length}:${draft.operation}`)
+      },
+    )
+    expect(order).toEqual(["audit:0:provider_credential_created"])
+    expect(upserts).toHaveLength(1)
+    expect(change.audit).toBeNull()
+  })
+
+  it("auditoria que falha impede a gravação e a invalidação do cache (falha fechada)", async () => {
+    const { service, upserts, onChange } = setup()
+    await expect(
+      service.setCredential({ configId: "inst-1", key: "API_KEY", value: SECRET }, "p1", async () => {
+        throw new Error("audit down")
+      }),
+    ).rejects.toThrow("audit down")
+    expect(upserts).toHaveLength(0)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("remoção: auditoria que falha mantém a credencial", async () => {
+    const { service } = setup()
+    await service.setCredential({ configId: "inst-1", key: "API_KEY", value: SECRET }, null)
+    await expect(
+      service.deleteCredential("inst-1", "API_KEY", async () => {
+        throw new Error("audit down")
+      }),
+    ).rejects.toThrow("audit down")
+    const view = await service.get("inst-1")
+    expect(view.credentials.find((c) => c.key === "API_KEY")?.isSet).toBe(true)
+  })
+})
+
+describe("remoção de credencial obrigatória", () => {
+  async function withCredentials(overrides: Partial<ProviderInstanceRecord>) {
+    const ctx = setup([record(overrides)])
+    await ctx.service.setCredential({ configId: "inst-1", key: "API_KEY", value: SECRET }, null)
+    await ctx.service.setCredential({ configId: "inst-1", key: "EXTRA_TOKEN", value: SECRET }, null)
+    return ctx
+  }
+
+  it("bloqueia (conflito) a remoção de API_KEY de instância habilitada", async () => {
+    const { service } = await withCredentials({ enabled: true })
+    await expect(service.deleteCredential("inst-1", "API_KEY")).rejects.toBeInstanceOf(
+      ProviderInstanceConflictError,
+    )
+    expect((await service.get("inst-1")).credentials.find((c) => c.key === "API_KEY")?.isSet).toBe(true)
+  })
+
+  it("bloqueia também instância ACTIVE", async () => {
+    const { service } = await withCredentials({ rolloutState: "ACTIVE" })
+    await expect(service.deleteCredential("inst-1", "API_KEY")).rejects.toBeInstanceOf(
+      ProviderInstanceConflictError,
+    )
+  })
+
+  it("permite remover obrigatória de instância desabilitada e opcional de qualquer instância", async () => {
+    const disabled = await withCredentials({})
+    expect((await disabled.service.deleteCredential("inst-1", "API_KEY")).audit?.operation).toBe(
+      "provider_credential_deleted",
+    )
+    const enabled = await withCredentials({ enabled: true })
+    expect((await enabled.service.deleteCredential("inst-1", "EXTRA_TOKEN")).audit).not.toBeNull()
   })
 })

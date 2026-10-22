@@ -11,11 +11,13 @@ import { describeCredentialValue, type CredentialCipher } from "@/lib/payment-pr
 import { credentialContext } from "@/lib/payment-provider/credential-resolver"
 import {
   getAdapterDescriptor,
+  isRequiredCredentialKey,
   isValidCredentialKey,
   listAdapterDescriptors,
 } from "@/lib/payment-provider/credential-schema"
 import {
   assertInstanceRoutingPolicy,
+  ProviderInstanceConflictError,
   ProviderInstanceNotFoundError,
   ProviderInstanceValidationError,
   toInstanceView,
@@ -30,6 +32,8 @@ import type { ProviderRoutingConfigPatch } from "@/lib/payment-provider/routing-
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 import type {
   IPaymentProviderConfigService,
+  ProviderAuditDraft,
+  ProviderAuditSink,
   ProviderInstanceChange,
   UpdateProviderInstanceInput,
 } from "./IPaymentProviderConfigService"
@@ -161,6 +165,7 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
   async setCredential(
     input: SetProviderCredentialBody,
     actorProfileId: string | null,
+    recordAudit?: ProviderAuditSink,
   ): Promise<ProviderInstanceChange> {
     const value = typeof input.value === "string" ? input.value.trim() : ""
     if (!isValidCredentialKey(input.key)) {
@@ -174,7 +179,18 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
     const previous = (await this.credentials.listMeta(instance.id)).find((meta) => meta.key === input.key)
     const cipher = this.options.getCipher()
     const described = describeCredentialValue(value)
-    const { existed } = await this.credentials.upsert({
+    const rotated = Boolean(previous)
+    const audit: ProviderAuditDraft = {
+      action: rotated ? "UPDATE" : "CREATE",
+      entityId: instance.id,
+      operation: rotated ? "provider_credential_rotated" : "provider_credential_created",
+      before: { key: input.key, isSet: rotated, last4: previous?.last4 ?? null },
+      after: { key: input.key, isSet: true, last4: described.last4 },
+      extra: { credentialKey: input.key },
+    }
+    // A trilha vem antes: sem ela o segredo não muda.
+    await recordAudit?.(audit)
+    await this.credentials.upsert({
       configId: instance.id,
       key: input.key,
       valueCiphertext: cipher.encrypt(value, credentialContext(instance.id, input.key)),
@@ -184,37 +200,34 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
       updatedBy: actorProfileId,
     })
     this.options.onChange()
-    return {
-      view: await this.toView(instance),
-      audit: {
-        action: existed ? "UPDATE" : "CREATE",
-        entityId: instance.id,
-        operation: existed ? "provider_credential_rotated" : "provider_credential_created",
-        before: { key: input.key, isSet: Boolean(previous), last4: previous?.last4 ?? null },
-        after: { key: input.key, isSet: true, last4: described.last4 },
-        extra: { credentialKey: input.key },
-      },
-    }
+    return { view: await this.toView(instance), audit: recordAudit ? null : audit }
   }
 
-  async deleteCredential(configId: string, key: string): Promise<ProviderInstanceChange> {
+  async deleteCredential(
+    configId: string,
+    key: string,
+    recordAudit?: ProviderAuditSink,
+  ): Promise<ProviderInstanceChange> {
     if (!isValidCredentialKey(key)) throw new ProviderInstanceValidationError("Nome de credencial inválido")
     const instance = await this.requireInstance(configId)
+    assertCredentialRemovable(instance, key)
     const previous = (await this.credentials.listMeta(instance.id)).find((meta) => meta.key === key)
+    const audit: ProviderAuditDraft | null = previous
+      ? {
+          action: "DELETE",
+          entityId: instance.id,
+          operation: "provider_credential_deleted",
+          before: { key, isSet: true, last4: previous.last4 ?? null },
+          after: { key, isSet: false, last4: null },
+          extra: { credentialKey: key },
+        }
+      : null
+    if (audit) await recordAudit?.(audit)
     const { deleted } = await this.credentials.delete(instance.id, key)
     if (deleted) this.options.onChange()
     return {
       view: await this.toView(instance),
-      audit: deleted
-        ? {
-            action: "DELETE",
-            entityId: instance.id,
-            operation: "provider_credential_deleted",
-            before: { key, isSet: true, last4: previous?.last4 ?? null },
-            after: { key, isSet: false, last4: null },
-            extra: { credentialKey: key },
-          }
-        : null,
+      audit: deleted && !recordAudit ? audit : null,
     }
   }
 
@@ -228,4 +241,16 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
     const metas = await this.credentials.listMeta(record.id)
     return toInstanceView(record, metas, this.options.cardEnabledFallback())
   }
+}
+
+/**
+ * Credencial obrigatória de instância habilitada ou ACTIVE não pode ser apagada: a leitura cairia
+ * em silêncio no ambiente (ou a instância ficaria sem segredo). Desabilite a instância antes.
+ */
+function assertCredentialRemovable(instance: ProviderInstanceRecord, key: string): void {
+  if (!isRequiredCredentialKey(instance.provider, key)) return
+  if (!instance.enabled && instance.rolloutState !== "ACTIVE") return
+  throw new ProviderInstanceConflictError(
+    "Não é possível remover uma credencial obrigatória de uma instância habilitada. Desabilite a instância antes.",
+  )
 }

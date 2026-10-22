@@ -5,6 +5,7 @@ import type {
 } from "@/app/api/infra/data/repositories/audit/IAuditLogRepository"
 import type {
   IPaymentProviderConfigService,
+  ProviderAuditDraft,
   ProviderInstanceChange,
 } from "@/app/api/services/PaymentProviderConfig/IPaymentProviderConfigService"
 import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor"
@@ -71,7 +72,11 @@ export class PaymentProviderConfigUseCase implements IPaymentProviderConfigUseCa
 
   setCredential(input: SetProviderCredentialBody, actor: ProviderConfigActor): Promise<Output> {
     return this.run("setCredential", "Não foi possível gravar a credencial", async () =>
-      this.finish(await this.service.setCredential(input, actor.profileId), actor, "Credencial gravada"),
+      this.finish(
+        await this.service.setCredential(input, actor.profileId, (draft) => this.recordAudit(draft, actor)),
+        actor,
+        "Credencial gravada",
+      ),
     )
   }
 
@@ -80,7 +85,13 @@ export class PaymentProviderConfigUseCase implements IPaymentProviderConfigUseCa
     actor: ProviderConfigActor,
   ): Promise<Output> {
     return this.run("deleteCredential", "Não foi possível remover a credencial", async () =>
-      this.finish(await this.service.deleteCredential(input.configId, input.key), actor, "Credencial removida"),
+      this.finish(
+        await this.service.deleteCredential(input.configId, input.key, (draft) =>
+          this.recordAudit(draft, actor),
+        ),
+        actor,
+        "Credencial removida",
+      ),
     )
   }
 
@@ -100,21 +111,23 @@ export class PaymentProviderConfigUseCase implements IPaymentProviderConfigUseCa
   }
 
   private async finish(change: ProviderInstanceChange, actor: ProviderConfigActor, message: string) {
-    if (change.audit) {
-      await this.audit.logAudit({
-        entityType: ENTITY_TYPE,
-        entityId: change.audit.entityId,
-        action: change.audit.action,
-        actorProfileId: actor.profileId,
-        before: change.audit.before,
-        after: change.audit.after,
-        metadata: buildAuditActorMetadata(actor, {
-          operation: change.audit.operation,
-          ...(change.audit.extra ?? {}),
-        }),
-      })
-    }
+    if (change.audit) await this.recordAudit(change.audit, actor)
     return new Output(true, [message], [], change.view)
+  }
+
+  private recordAudit(draft: ProviderAuditDraft, actor: ProviderConfigActor): Promise<void> {
+    return this.audit.logAudit({
+      entityType: ENTITY_TYPE,
+      entityId: draft.entityId,
+      action: draft.action,
+      actorProfileId: actor.profileId,
+      before: draft.before,
+      after: draft.after,
+      metadata: buildAuditActorMetadata(actor, {
+        operation: draft.operation,
+        ...(draft.extra ?? {}),
+      }),
+    })
   }
 
   private async run(name: string, fallback: string, action: () => Promise<Output>): Promise<Output> {

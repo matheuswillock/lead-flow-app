@@ -103,3 +103,41 @@ describe("PaymentProviderConfigUseCase", () => {
     expect(output.result.items[0]).toMatchObject({ actor: "dono@x.com", operation: "provider_credential_created", summary: "Credencial criada: API_KEY" })
   })
 })
+
+describe("auditoria antes da gravação da credencial", () => {
+  const draft = {
+    action: "UPDATE" as const,
+    entityId: "i1",
+    operation: "provider_credential_rotated",
+    before: { key: "API_KEY", isSet: true, last4: "abcd" },
+    after: { key: "API_KEY", isSet: true, last4: "wxyz" },
+  }
+
+  it("entrega à service um sink que audita; falha na auditoria vira erro e a gravação não ocorre", async () => {
+    let written = false
+    const { useCase, logAudit } = build({
+      setCredential: async (_input, _actor, recordAudit) => {
+        await recordAudit?.(draft)
+        written = true
+        return { view, audit: null }
+      },
+    })
+    logAudit.mockRejectedValueOnce(new Error("audit down"))
+    const output = await useCase.setCredential({ configId: "i1", key: "API_KEY", value: SECRET }, actor)
+    expect(output.isValid).toBe(false)
+    expect(written).toBe(false)
+  })
+
+  it("auditoria ok: audita uma única vez, com o ator", async () => {
+    const { useCase, logAudit } = build({
+      deleteCredential: async (_id, _key, recordAudit) => {
+        await recordAudit?.({ ...draft, action: "DELETE", operation: "provider_credential_deleted" })
+        return { view, audit: null }
+      },
+    })
+    const output = await useCase.deleteCredential({ configId: "i1", key: "API_KEY" }, actor)
+    expect(output.isValid).toBe(true)
+    expect(logAudit).toHaveBeenCalledTimes(1)
+    expect(logAudit.mock.calls[0][0]).toMatchObject({ action: "DELETE", actorProfileId: "p1" })
+  })
+})
