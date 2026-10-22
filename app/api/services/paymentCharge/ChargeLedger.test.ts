@@ -41,6 +41,26 @@ describe("ChargeLedger.record", () => {
     expect(charges.events[0]).toMatchObject({ fromStatus: null, toStatus: "PENDING", actor: "MIRROR" })
   })
 
+  it("grava profileRef igual ao perfil dono, como cópia imutável", async () => {
+    const { ledger, charges } = makeLedger()
+
+    await ledger.record(input())
+
+    expect(charges.charges[0]).toMatchObject({ profileId: "profile-1", profileRef: "profile-1" })
+  })
+
+  it("depois que a conta é apagada (profile_id NULL) a idempotência continua por profileRef: sem duplicar", async () => {
+    const { ledger, charges } = makeLedger()
+    await ledger.record(input())
+
+    charges.deleteProfile("profile-1")
+    const again = await ledger.record(input({ status: "CONFIRMED" }))
+
+    expect(again).toMatchObject({ ok: true, outcome: "transitioned" })
+    expect(charges.charges).toHaveLength(1)
+    expect(charges.charges[0]).toMatchObject({ profileId: null, profileRef: "profile-1", status: "CONFIRMED" })
+  })
+
   it("é idempotente por chave: repetir o mesmo registro não duplica linha nem evento", async () => {
     const { ledger, charges } = makeLedger()
 

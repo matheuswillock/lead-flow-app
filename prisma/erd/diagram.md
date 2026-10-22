@@ -2028,7 +2028,8 @@ completed completed
 
   "payment_charges" {
     String id "🗝️"
-    String profile_id 
+    String profile_id "❓"
+    String profile_ref 
     String subscription_id "❓"
     String purpose 
     String purpose_ref_id "❓"
@@ -5160,7 +5161,7 @@ completed completed
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
     "billing_access_graces" }o--|| corretor_studio_teams : "team"
-    "payment_charges" }o--|| corretor_studio_profiles : "profile"
+    "payment_charges" }o--|o corretor_studio_profiles : "profile"
     "payment_charges" }o--|o corretor_studio_profile_subscriptions : "subscription"
     "payment_charge_events" }o--|| payment_charges : "charge"
     "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"

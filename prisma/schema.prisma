@@ -1678,7 +1678,10 @@ model BillingGracePayment {
 /// em lib/payments (CHECK no SQL).
 model PaymentCharge {
   id                  String    @id @default(uuid()) @db.Uuid
-  profileId           String    @map("profile_id") @db.Uuid
+  /// Zera (SET NULL) quando o perfil é apagado; o histórico financeiro permanece.
+  profileId           String?   @map("profile_id") @db.Uuid
+  /// Cópia imutável do id do perfil, sem FK: identifica o dono mesmo depois da exclusão da conta.
+  profileRef          String    @map("profile_ref") @db.Uuid
   subscriptionId      String?   @map("subscription_id") @db.Uuid
   purpose             String    @db.Text
   purposeRefId        String?   @map("purpose_ref_id") @db.Text
@@ -1702,13 +1705,14 @@ model PaymentCharge {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  profile      Profile                @relation(fields: [profileId], references: [id], onDelete: Restrict, map: "payment_charges_profile_id_fkey")
+  profile      Profile?               @relation(fields: [profileId], references: [id], onDelete: SetNull, map: "payment_charges_profile_id_fkey")
   subscription ProfileSubscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull, map: "payment_charges_subscription_id_fkey")
   events       PaymentChargeEvent[]
 
-  @@unique([profileId, idempotencyKey], map: "payment_charges_profile_idempotency_key")
+  @@unique([profileRef, idempotencyKey], map: "payment_charges_profile_ref_idempotency_key")
   // Índices parciais (subscription_id+cycle_key e identidade externa) vivem só no SQL da migration.
-  @@index([profileId, status], map: "payment_charges_profile_status_idx")
+  @@index([profileRef], map: "payment_charges_profile_ref_idx")
+  @@index([profileRef, status], map: "payment_charges_profile_status_idx")
   @@index([providerAttemptId], map: "payment_charges_provider_attempt_idx")
   @@index([purpose, purposeRefId], map: "payment_charges_purpose_ref_idx")
   @@map("payment_charges")

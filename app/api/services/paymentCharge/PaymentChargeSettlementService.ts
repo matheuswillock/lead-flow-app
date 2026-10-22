@@ -43,7 +43,7 @@ export class PaymentChargeSettlementService implements PaymentOwnerSettlement {
       reportUnsupportedPurpose({
         chargeId: charge.id,
         purpose: charge.purpose as ChargePurpose,
-        profileId: charge.profileId,
+        profileId: charge.profileRef,
         externalId: input.externalId,
       })
       return "unsupported"

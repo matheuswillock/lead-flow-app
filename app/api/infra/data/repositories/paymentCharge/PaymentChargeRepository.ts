@@ -14,7 +14,10 @@ export class PaymentChargeRepository implements IPaymentChargeRepository {
   create(input: CreatePaymentChargeInput): Promise<PaymentCharge> {
     const { actor, ...data } = input
     return prisma.$transaction(async (transaction) => {
-      const charge = await transaction.paymentCharge.create({ data })
+      // profile_ref é a cópia imutável do dono; profile_id zera se a conta for apagada.
+      const charge = await transaction.paymentCharge.create({
+        data: { ...data, profileRef: data.profileId },
+      })
       await transaction.paymentChargeEvent.create({
         data: {
           chargeId: charge.id,
@@ -38,8 +41,8 @@ export class PaymentChargeRepository implements IPaymentChargeRepository {
   }): Promise<PaymentCharge | null> {
     return prisma.paymentCharge.findUnique({
       where: {
-        profileId_idempotencyKey: {
-          profileId: input.profileId,
+        profileRef_idempotencyKey: {
+          profileRef: input.profileId,
           idempotencyKey: input.idempotencyKey,
         },
       },

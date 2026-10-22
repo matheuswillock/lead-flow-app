@@ -34,6 +34,7 @@ export class InMemoryPaymentChargeRepository implements IPaymentChargeRepository
     const now = new Date("2026-10-21T12:00:00.000Z")
     const charge = {
       id: `charge-${this.sequence}`,
+      profileRef: input.profileId,
       subscriptionId: null,
       purposeRefId: null,
       rawStatus: null,
@@ -55,6 +56,13 @@ export class InMemoryPaymentChargeRepository implements IPaymentChargeRepository
     return charge
   }
 
+  /** Simula ON DELETE SET NULL do perfil: a cobrança fica, profile_id zera e profile_ref permanece. */
+  deleteProfile(profileId: string): void {
+    for (const charge of this.charges) {
+      if (charge.profileId === profileId) charge.profileId = null
+    }
+  }
+
   async findById(id: string) {
     return this.charges.find((charge) => charge.id === id) ?? null
   }
@@ -63,7 +71,7 @@ export class InMemoryPaymentChargeRepository implements IPaymentChargeRepository
     return (
       this.charges.find(
         (charge) =>
-          charge.profileId === input.profileId && charge.idempotencyKey === input.idempotencyKey,
+          charge.profileRef === input.profileId && charge.idempotencyKey === input.idempotencyKey,
       ) ?? null
     )
   }
@@ -145,7 +153,7 @@ export class InMemoryPaymentChargeRepository implements IPaymentChargeRepository
 
   private assertUnique(input: CreatePaymentChargeInput) {
     const duplicatedKey = this.charges.some(
-      (charge) => charge.profileId === input.profileId && charge.idempotencyKey === input.idempotencyKey,
+      (charge) => charge.profileRef === input.profileId && charge.idempotencyKey === input.idempotencyKey,
     )
     const duplicatedCycle =
       input.subscriptionId &&

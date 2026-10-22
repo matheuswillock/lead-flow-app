@@ -3,6 +3,7 @@ import type { ChargeStatus } from "@/lib/payments/charge-status"
 import type { ChargePurpose, ChargeSource } from "@/lib/payments/types"
 
 export type CreatePaymentChargeInput = {
+  /** Perfil dono no momento da criação; vira `profile_id` (FK) e `profile_ref` (cópia imutável). */
   readonly profileId: string
   readonly subscriptionId?: string | null
   readonly purpose: ChargePurpose
@@ -65,6 +66,7 @@ export interface IPaymentChargeRepository {
   /** Cria a linha e o evento inicial na mesma transação. Lança em violação de unicidade. */
   create(input: CreatePaymentChargeInput): Promise<PaymentCharge>
   findById(id: string): Promise<PaymentCharge | null>
+  /** A chave vale por dono (`profile_ref`), mesmo depois de `profile_id` virar NULL. */
   findByIdempotencyKey(input: {
     profileId: string
     idempotencyKey: string

@@ -84,6 +84,15 @@ describe("PaymentChargeSettlementService", () => {
     expect(charges.charges[0].status).toBe("PENDING")
   })
 
+  it("o alerta de finalidade sem handler usa profileRef: identifica o dono mesmo com a conta apagada", async () => {
+    const { service, charges, reportUnsupportedPurpose } = await makeHarness("CREDITS")
+    charges.deleteProfile("profile-1")
+
+    await service.settleConfirmed(settleInput())
+
+    expect(reportUnsupportedPurpose.mock.calls[0][0]).toMatchObject({ profileId: "profile-1" })
+  })
+
   it("falha do handler propaga e deixa a cobrança em CONFIRMED para o reparo repetir", async () => {
     const failing = { ADHESION: { settle: async () => { throw new Error("efeito falhou") } } }
     const { service, charges } = await makeHarness("ADHESION", failing)

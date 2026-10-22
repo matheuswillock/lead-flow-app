@@ -8,7 +8,10 @@
 
 CREATE TABLE IF NOT EXISTS "public"."payment_charges" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "profile_id" UUID NOT NULL,
+  -- Historico financeiro sobrevive a exclusao da conta: profile_id vira NULL (ON DELETE SET NULL) e
+  -- profile_ref guarda a copia imutavel do id do perfil, sem FK.
+  "profile_id" UUID,
+  "profile_ref" UUID NOT NULL,
   "subscription_id" UUID,
   "purpose" TEXT NOT NULL,
   "purpose_ref_id" TEXT,
@@ -34,7 +37,7 @@ CREATE TABLE IF NOT EXISTS "public"."payment_charges" (
   CONSTRAINT "payment_charges_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "payment_charges_profile_id_fkey"
     FOREIGN KEY ("profile_id") REFERENCES "public"."corretor_studio_profiles"("id")
-    ON DELETE RESTRICT ON UPDATE CASCADE,
+    ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT "payment_charges_subscription_id_fkey"
     FOREIGN KEY ("subscription_id") REFERENCES "public"."corretor_studio_profile_subscriptions"("id")
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -47,8 +50,10 @@ CREATE TABLE IF NOT EXISTS "public"."payment_charges" (
   CONSTRAINT "payment_charges_source_check" CHECK ("source" IN ('ROUTER','ASAAS_SHADOW','MIRROR'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "payment_charges_profile_idempotency_key"
-  ON "public"."payment_charges" ("profile_id", "idempotency_key");
+CREATE UNIQUE INDEX IF NOT EXISTS "payment_charges_profile_ref_idempotency_key"
+  ON "public"."payment_charges" ("profile_ref", "idempotency_key");
+CREATE INDEX IF NOT EXISTS "payment_charges_profile_ref_idx"
+  ON "public"."payment_charges" ("profile_ref");
 CREATE UNIQUE INDEX IF NOT EXISTS "payment_charges_subscription_cycle_key"
   ON "public"."payment_charges" ("subscription_id", "cycle_key")
   WHERE "subscription_id" IS NOT NULL AND "cycle_key" IS NOT NULL;
@@ -56,7 +61,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "payment_charges_provider_external_key"
   ON "public"."payment_charges" ("provider", "provider_environment", "provider_context", "provider_external_id")
   WHERE "provider_external_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "payment_charges_profile_status_idx"
-  ON "public"."payment_charges" ("profile_id", "status");
+  ON "public"."payment_charges" ("profile_ref", "status");
 CREATE INDEX IF NOT EXISTS "payment_charges_provider_attempt_idx"
   ON "public"."payment_charges" ("provider_attempt_id");
 CREATE INDEX IF NOT EXISTS "payment_charges_purpose_ref_idx"
