@@ -28,4 +28,22 @@ WHERE ps."profileId" = p."id"
     ps."asaasSubscriptionId" IS NULL
     OR ps."asaasSubscriptionId" LIKE 'adhesion-%'
     OR ps."asaasSubscriptionId" LIKE 'external-adhesion-%'
+  )
+  -- Adesao parcelada com cobrancas so no installmentLedger (sem asaasPaymentId) continua Asaas:
+  -- parcela ASAAS pendente, ou paga com cobranca Asaas real (mesma regra de cohortForPaidAdhesion).
+  AND NOT (
+    p."subscriptionId" LIKE 'adhesion-%'
+    AND EXISTS (
+      SELECT 1
+      FROM "public"."backoffice_adhesions" ba,
+        LATERAL jsonb_array_elements(
+          CASE WHEN jsonb_typeof(ba."installmentLedger") = 'array' THEN ba."installmentLedger" ELSE '[]'::jsonb END
+        ) AS entry
+      WHERE ba."id" = ps."adhesionId"
+        AND COALESCE(entry ->> 'paymentSource', 'ASAAS') <> 'EXTERNAL'
+        AND (
+          COALESCE(entry ->> 'status', 'pending') <> 'paid'
+          OR NULLIF(btrim(COALESCE(entry ->> 'asaasPaymentId', '')), '') IS NOT NULL
+        )
+    )
   );
