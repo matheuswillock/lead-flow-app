@@ -122,7 +122,8 @@ export function assertInstanceRoutingPolicy(
 ): void {
   if (isPaymentCapableProvider(next.provider)) return
   if (next.isDefault) {
-    throw new ProviderInstanceValidationError(
+    // Estado incompatível (409), como as demais recusas de padrão inelegível.
+    throw new ProviderInstanceConflictError(
       "Instância somente de credencial não pode ser o provider padrão",
     )
   }

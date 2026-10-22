@@ -172,6 +172,22 @@ export function isValidCredentialKey(key: unknown): key is string {
   )
 }
 
+/**
+ * Chaves de política (ex.: REQUIRE_SIGNATURE) são configuração da instância, controladas pelos
+ * `settings`: não podem ser gravadas como credencial em nenhum adapter, nem no que não as declara.
+ */
+const POLICY_CREDENTIAL_KEYS: ReadonlySet<string> = new Set([
+  "REQUIRE_SIGNATURE",
+  "CARD_PAYMENTS_ENABLED",
+  ...ADAPTERS.flatMap((descriptor) =>
+    descriptor.fields.filter((field) => field.policy).map((field) => field.key),
+  ),
+])
+
+export function isPolicyCredentialKey(key: string): boolean {
+  return POLICY_CREDENTIAL_KEYS.has(key)
+}
+
 export function isRequiredCredentialKey(providerKey: PaymentProviderKey, key: string): boolean {
   return getAdapterDescriptor(providerKey).fields.some(
     (field) => field.key === key && field.required,

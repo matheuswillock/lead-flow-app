@@ -137,7 +137,7 @@ function CredentialField({ row, canManage, isBusy, onSave, onRemove, error }: Cr
       )}
       {error && (
         <p role="alert" className="text-sm text-destructive" data-testid={`credential-error-${row.key}`}>
-          Não foi possível salvar. {error} Digite o valor novamente.
+          Não foi possível salvar. {error.replace(/[\s.]+$/, "")}. Digite o valor novamente.
         </p>
       )}
       {row.hint && <FieldDescription>{row.hint}</FieldDescription>}

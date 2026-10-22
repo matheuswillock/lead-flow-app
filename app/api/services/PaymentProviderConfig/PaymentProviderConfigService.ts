@@ -12,6 +12,7 @@ import { credentialContext } from "@/lib/payment-provider/credential-resolver"
 import {
   envFallbackNames,
   getAdapterDescriptor,
+  isPolicyCredentialKey,
   isRequiredCredentialKey,
   isValidCredentialKey,
   listAdapterDescriptors,
@@ -192,6 +193,11 @@ export class PaymentProviderConfigService implements IPaymentProviderConfigServi
     const value = typeof input.value === "string" ? input.value.trim() : ""
     if (!isValidCredentialKey(input.key)) {
       throw new ProviderInstanceValidationError("Nome de credencial inválido")
+    }
+    if (isPolicyCredentialKey(input.key)) {
+      throw new ProviderInstanceValidationError(
+        `“${input.key}” é uma configuração da instância e não uma credencial; altere-a em Configurações`,
+      )
     }
     if (!value) throw new ProviderInstanceValidationError("O valor da credencial não pode ser vazio")
     if (value.length > MAX_CREDENTIAL_VALUE_LENGTH) {

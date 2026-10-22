@@ -34,6 +34,8 @@ interface FakeInstance {
   paymentCapable: boolean;
   credentials: FakeCredential[];
   settings: { requireSignature: boolean; cardEnabled: boolean };
+  defaultBlockers: string[];
+  applicableSettings: Array<"requireSignature" | "cardEnabled">;
 }
 
 const ADAPTERS = [
@@ -41,22 +43,27 @@ const ADAPTERS = [
     providerKey: "ABACATE_PAY",
     label: "Abacate Pay",
     paymentCapable: true,
+    applicableSettings: ["requireSignature", "cardEnabled"],
     credentialSchema: [
-      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: null },
+      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" },
     ],
   },
   {
     providerKey: "ASAAS",
     label: "Asaas",
     paymentCapable: false,
+    applicableSettings: [],
     credentialSchema: [
-      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: null },
+      { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" },
     ],
   },
 ];
 
+const CREDENTIALS_ONLY_BLOCKER =
+  "Somente credenciais: o adapter ainda não declara capacidades de pagamento.";
+
 function instance(overrides: Partial<FakeInstance>): FakeInstance {
-  return {
+  const base: FakeInstance = {
     id: randomUUID(),
     providerKey: "ABACATE_PAY",
     environment: "PRODUCTION",
@@ -77,8 +84,18 @@ function instance(overrides: Partial<FakeInstance>): FakeInstance {
       { key: "API_KEY", isSet: false, last4: null, fingerprint: null, required: true, updatedAt: null },
     ],
     settings: { requireSignature: true, cardEnabled: false },
+    defaultBlockers: [],
+    applicableSettings: ["requireSignature", "cardEnabled"],
     ...overrides,
   };
+  // O servidor é quem calcula estes dois campos; o mock os deriva do adapter, como ele faz.
+  if (!base.paymentCapable && overrides.defaultBlockers === undefined) {
+    base.defaultBlockers = [CREDENTIALS_ONLY_BLOCKER];
+  }
+  if (base.providerKey === "ASAAS" && overrides.applicableSettings === undefined) {
+    base.applicableSettings = [];
+  }
+  return base;
 }
 
 function envelope(result: unknown) {
@@ -220,7 +237,8 @@ test.describe("app/backoffice/(app)/payment-providers", () => {
     // definir credencial
     await page.getByRole("button", { name: "Gerenciar Abacate reserva" }).click();
     const sheet = page.getByRole("dialog");
-    const keyInput = sheet.getByLabel("Chave de API");
+    // Depois de salvar, "Remover Chave de API" também casa o rótulo parcial: exige o nome exato.
+    const keyInput = sheet.getByLabel("Chave de API", { exact: true });
     await expect(keyInput).toHaveAttribute("type", "password");
     await keyInput.fill(CREDENTIAL_SENTINEL);
     await sheet.getByRole("button", { name: "Salvar", exact: true }).first().click();

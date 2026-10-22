@@ -133,6 +133,17 @@ describe("setCredential", () => {
     expect(rotated.audit?.before).toMatchObject({ isSet: true })
   })
 
+  it("chaves de política não são credenciais e não gravam nada, em nenhum adapter", async () => {
+    const { service, upserts, onChange } = setup()
+    for (const key of ["REQUIRE_SIGNATURE", "CARD_PAYMENTS_ENABLED"]) {
+      await expect(service.setCredential({ configId: "inst-1", key, value: "true" }, null)).rejects.toThrow(
+        "configuração da instância",
+      )
+    }
+    expect(upserts).toHaveLength(0)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it("valor vazio, só espaços, grande demais e chave inválida NÃO gravam nada", async () => {
     const { service, upserts, onChange } = setup()
     for (const value of ["", "   ", "x".repeat(4097)]) {

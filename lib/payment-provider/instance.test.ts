@@ -6,6 +6,7 @@ import {
   computeDefaultBlockers,
   parseStoredSettings,
   pickPrimaryInstance,
+  ProviderInstanceConflictError,
   toInstanceView,
   validateDisplayName,
   validateLogoAltText,
@@ -86,6 +87,8 @@ describe("assertInstanceRoutingPolicy (PAY-CRED-T019)", () => {
     expect(() => assertInstanceRoutingPolicy(base)).not.toThrow()
     expect(() => assertInstanceRoutingPolicy({ ...base, rolloutState: "SANDBOX_VALIDATED" })).not.toThrow()
     expect(() => assertInstanceRoutingPolicy({ ...base, isDefault: true })).toThrow()
+    // Promover uma instância só de credencial é um estado incompatível: 409, como as demais recusas de padrão.
+    expect(() => assertInstanceRoutingPolicy({ ...base, isDefault: true })).toThrow(ProviderInstanceConflictError)
     expect(() => assertInstanceRoutingPolicy({ ...base, rolloutState: "APPROVED" })).toThrow()
     expect(() => assertInstanceRoutingPolicy({ ...base, rolloutState: "ACTIVE" })).toThrow()
   })

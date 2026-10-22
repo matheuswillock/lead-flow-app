@@ -3,10 +3,20 @@ import {
   envFallbackNames,
   getAdapterDescriptor,
   isPaymentCapableProvider,
+  isPolicyCredentialKey,
   isRequiredCredentialKey,
   isValidCredentialKey,
   listAdapterDescriptors,
 } from "./credential-schema"
+
+describe("chaves de política", () => {
+  it("REQUIRE_SIGNATURE e CARD_PAYMENTS_ENABLED são política; credenciais comuns não são", () => {
+    expect(isPolicyCredentialKey("REQUIRE_SIGNATURE")).toBe(true)
+    expect(isPolicyCredentialKey("CARD_PAYMENTS_ENABLED")).toBe(true)
+    expect(isPolicyCredentialKey("API_KEY")).toBe(false)
+    expect(isPolicyCredentialKey("EXTRA_TOKEN_2")).toBe(false)
+  })
+})
 
 describe("credential schema", () => {
   it("Abacate exige API_KEY e WEBHOOK_SECRET e deixa o resto opcional", () => {
