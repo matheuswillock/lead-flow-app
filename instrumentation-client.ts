@@ -2,6 +2,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { scrubSentryEvent, scrubSentryLog } from "@/lib/sentry/scrub-event";
 import { isSentryEnabled } from "@/lib/sentry/is-sentry-enabled";
 
 const sentryEnabled = isSentryEnabled();
@@ -9,6 +10,11 @@ const sentryEnabled = isSentryEnabled();
 if (sentryEnabled) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+    // M11: a query de URLs de webhook carrega o segredo do provider.
+    beforeSend: (event) => scrubSentryEvent(event),
+    beforeSendTransaction: (event) => scrubSentryEvent(event),
+    beforeSendLog: (log) => scrubSentryLog(log),
 
     // Amostragem de traces reduzida: 100% gerava volume alto de envelopes
     // (e 429 no túnel /monitoring) sem ganho proporcional de sinal.

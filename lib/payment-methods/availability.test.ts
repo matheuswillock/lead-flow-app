@@ -1,4 +1,9 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { credentialCache } from "@/lib/payment-provider/credential-cache"
+import {
+  resetCredentialRuntimeLoader,
+  setCredentialRuntimeLoaderForTests,
+} from "@/lib/payment-provider/credential-runtime-loader"
 import {
   PaymentMethodUnavailableError,
   assertBillingTypeAllowed,
@@ -86,5 +91,89 @@ describe("assertBillingTypeAllowed", () => {
       expect((error as PaymentMethodUnavailableError).status).toBe(422)
       expect((error as Error).message).toContain("PIX")
     }
+  })
+})
+
+describe("cardEnabled por instância (PAY-CRED-T018)", () => {
+  const selector = { provider: "ABACATE_PAY", environment: "PRODUCTION" } as const
+  const withKey = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION", ABACATE_PAY_PRODUCTION_PUBLIC_KEY: "pk" }
+
+  function seed(settings: { cardEnabled?: boolean }) {
+    credentialCache.set(selector, { instanceId: "i1", values: {}, sources: {}, settings })
+  }
+
+  afterEach(() => credentialCache.invalidateAll())
+
+  it("cardEnabled=false na instância desliga o cartão mesmo com a chave pública", () => {
+    seed({ cardEnabled: false })
+    expect(resolveCardAvailability(withKey)).toMatchObject({ card: false, reason: "DISABLED_BY_FLAG" })
+  })
+
+  it("cardEnabled=true na instância vence CARD_PAYMENTS_ENABLED=false", () => {
+    seed({ cardEnabled: true })
+    expect(resolveCardAvailability({ ...withKey, CARD_PAYMENTS_ENABLED: "false" }).card).toBe(true)
+  })
+
+  it("sem definição na instância, a variável continua como reserva", () => {
+    seed({})
+    expect(resolveCardAvailability({ ...withKey, CARD_PAYMENTS_ENABLED: "false" })).toMatchObject({
+      card: false,
+      reason: "DISABLED_BY_FLAG",
+    })
+    expect(resolveCardAvailability(withKey).card).toBe(true)
+  })
+
+  it("cardEnabled=true não dispensa a chave pública", () => {
+    seed({ cardEnabled: true })
+    expect(resolveCardAvailability({ PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION" }).card).toBe(false)
+  })
+})
+
+describe("cardEnabled com cache frio (falha fechada quando o deploy é gerenciado pelo banco)", () => {
+  const selector = { provider: "ABACATE_PAY", environment: "PRODUCTION" } as const
+  const managed = {
+    PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION",
+    ABACATE_PAY_PRODUCTION_PUBLIC_KEY: "pk",
+    PAYMENT_CREDENTIALS_ENCRYPTION_KEY: "m".repeat(64),
+  }
+  const warmed: unknown[] = []
+
+  beforeEach(() => {
+    warmed.length = 0
+    credentialCache.invalidateAll()
+    setCredentialRuntimeLoaderForTests(async () => ({
+      hydrateProviderCredentials: async () => {
+        warmed.push(true)
+      },
+    }))
+  })
+
+  afterEach(() => {
+    credentialCache.invalidateAll()
+    resetCredentialRuntimeLoader()
+  })
+
+  it("chave-mestra presente e cache frio: cartão indisponível e hidratação disparada", async () => {
+    expect(resolveCardAvailability(managed)).toMatchObject({ card: false, reason: "CREDENTIALS_NOT_LOADED" })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(warmed).toHaveLength(1)
+  })
+
+  it("cache quente com cardEnabled=true e chave pública: cartão disponível", () => {
+    credentialCache.set(selector, { instanceId: "i", values: {}, sources: {}, settings: { cardEnabled: true } })
+    expect(resolveCardAvailability(managed).card).toBe(true)
+  })
+
+  it("cache quente com cardEnabled=false: desligado", () => {
+    credentialCache.set(selector, { instanceId: "i", values: {}, sources: {}, settings: { cardEnabled: false } })
+    expect(resolveCardAvailability(managed)).toMatchObject({ card: false, reason: "DISABLED_BY_FLAG" })
+  })
+
+  it("sem chave-mestra o comportamento é o atual e nada é hidratado", async () => {
+    const { PAYMENT_CREDENTIALS_ENCRYPTION_KEY: _omit, ...unmanaged } = managed
+    expect(resolveCardAvailability(unmanaged).card).toBe(true)
+    await Promise.resolve()
+    expect(warmed).toHaveLength(0)
   })
 })

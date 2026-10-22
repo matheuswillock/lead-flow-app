@@ -7,22 +7,33 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { getProviderBranding, type CheckoutPaymentProvider } from "./providerBranding"
+import {
+  hasBrandingOverride,
+  resolveProviderBranding,
+  type CheckoutPaymentProvider,
+  type ProviderBrandingOverride,
+} from "./providerBranding"
 
 export function PublicCheckoutShell({
   children,
   issuedLabel,
   issuedValue,
   provider,
+  brandingOverride,
 }: {
   children: ReactNode
   issuedLabel?: string
   issuedValue?: string
   /** `undefined` = padrão legado (Asaas); `null` = provider ainda não resolvido (sem marca). */
   provider?: CheckoutPaymentProvider | null
+  /** Identidade vinda do banco; quando presente vence o catálogo estático. */
+  brandingOverride?: ProviderBrandingOverride | null
 }) {
   const { theme, setTheme } = useTheme()
-  const branding = provider === null ? null : getProviderBranding(provider)
+  const branding =
+    provider === null && !hasBrandingOverride(brandingOverride)
+      ? null
+      : resolveProviderBranding(provider ?? undefined, brandingOverride)
 
   return (
     <main className="min-h-dvh w-full bg-background">
@@ -69,6 +80,7 @@ export function PublicCheckoutShell({
                     alt={branding.logoAlt ?? branding.label}
                     width={72}
                     height={16}
+                    unoptimized={branding.logoUrl.startsWith("https://")}
                     className="h-4 w-auto"
                   />
                 ) : branding ? (

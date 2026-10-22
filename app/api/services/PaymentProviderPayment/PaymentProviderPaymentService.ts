@@ -26,6 +26,7 @@ const PAYMENT_LEASE_TTL_MS = 60 * 1000
 type ProviderResolver = (input: {
   readonly provider: "ASAAS" | "ABACATE_PAY"
   readonly environment: PaymentProviderEnvironment
+  readonly externalAccountContext: string
 }) => OneTimePaymentCapability
 
 export type PaymentProviderPaymentServiceDependencies = {
@@ -66,6 +67,7 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
     const provider = this.dependencies.resolveProvider({
       provider: selected.provider,
       environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
     })
     const now = this.now()
     const tenantId = purchase.teamId ?? purchase.profileId

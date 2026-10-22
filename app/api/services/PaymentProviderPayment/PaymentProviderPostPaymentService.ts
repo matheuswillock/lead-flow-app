@@ -5,6 +5,7 @@ import type {
 } from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
 
 const POST_PAYMENT_LEASE_TTL_MS = 60 * 1000
+const DISPUTED_REFUND_MESSAGE = "Pagamento em disputa não pode ser reembolsado automaticamente"
 
 export type RefundPaymentInput = {
   readonly attempt: StoredPaymentProviderAttemptRecord
@@ -36,8 +37,10 @@ export class PaymentProviderPostPaymentService {
         status: "REFUNDED",
       }
     }
-    if (input.attempt.status !== "CONFIRMED" && input.attempt.status !== "DISPUTED") {
-      throw new Error("Somente pagamentos confirmados ou disputados podem ser reembolsados")
+    // Disputa é decisão humana (decisão 17): nunca reembolsa sozinho nem pela API.
+    if (input.attempt.status === "DISPUTED") throw new Error(DISPUTED_REFUND_MESSAGE)
+    if (input.attempt.status !== "CONFIRMED") {
+      throw new Error("Somente pagamentos confirmados podem ser reembolsados")
     }
     if (!input.attempt.externalId) throw new Error("Pagamento sem ID externo")
 
@@ -52,6 +55,8 @@ export class PaymentProviderPostPaymentService {
     })
     let transitioned = false
     try {
+      // A disputa pode ter chegado entre a leitura da tentativa e a lease.
+      if (leased.status === "DISPUTED") throw new Error(DISPUTED_REFUND_MESSAGE)
       const refunded = await input.provider.refundFull({
         externalId: input.attempt.externalId,
         reason: normalizeRefundReason(input.reason),

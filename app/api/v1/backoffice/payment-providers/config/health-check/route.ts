@@ -1,45 +1,34 @@
-import { NextResponse, type NextRequest } from "next/server"
-import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
+import type { NextRequest } from "next/server"
 import { paymentProviderHealthCheckUseCase } from "@/app/api/useCases/paymentProviderConfig/paymentProviderConfigComposition"
-import { Output } from "@/lib/output"
-import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import {
+  authorizeWrite,
+  invalidRequest,
+  isRecord,
+  isUuid,
+  parseEnvironment,
+  parseProvider,
+  respond,
+} from "../providerConfigRoute"
 
 export async function POST(request: NextRequest) {
-  const access = await getBackofficeAccess(request)
-  if (access.error) return NextResponse.json(access.error, { status: access.status })
-  const denied = requireManagerAccess(access.access)
-  if (denied) return denied
+  const guard = await authorizeWrite(request)
+  if (guard.response) return guard.response
 
+  let body: unknown
   try {
-    const body = await request.json()
-    const environment = parseEnvironment(body?.environment)
-    const provider = parseProvider(body?.provider)
-    if (!environment || !provider) return invalidRequest("Payload de health-check inválido")
-
-    const output = await paymentProviderHealthCheckUseCase.check({
-      environment,
-      provider,
-      actor: {
-        profileId: access.access.profileId,
-        backofficeUserId: access.access.backofficeUserId,
-      },
-    })
-    return NextResponse.json(output, { status: output.isValid ? 200 : 409 })
-  } catch (error) {
-    console.error("[BackofficePaymentProviderHealthCheckRoute][POST]", error)
+    body = await request.json()
+  } catch {
     return invalidRequest("Payload de health-check inválido")
   }
-}
+  if (!isRecord(body)) return invalidRequest("Payload de health-check inválido")
 
-function parseEnvironment(value: unknown): PaymentProviderEnvironment | null {
-  return value === "DEV" || value === "PRODUCTION" ? value : null
-}
-
-function parseProvider(value: unknown): PaymentProviderKey | null {
-  return value === "ASAAS" || value === "ABACATE_PAY" ? value : null
-}
-
-function invalidRequest(message: string) {
-  return NextResponse.json(new Output(false, [], [message], null), { status: 400 })
+  const actor = { profileId: guard.access.profileId, backofficeUserId: guard.access.backofficeUserId }
+  if (body.id !== undefined) {
+    if (!isUuid(body.id)) return invalidRequest("Payload de health-check inválido")
+    return respond(await paymentProviderHealthCheckUseCase.check({ id: body.id, actor }))
+  }
+  const provider = parseProvider(body.providerKey ?? body.provider)
+  const environment = parseEnvironment(body.environment)
+  if (!provider || !environment) return invalidRequest("Payload de health-check inválido")
+  return respond(await paymentProviderHealthCheckUseCase.check({ provider, environment, actor }))
 }

@@ -4,11 +4,22 @@ import { paymentProviderIdentityRepository } from "@/app/api/infra/data/reposito
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
 import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
+import { createOwnerChargeMirror } from "@/app/api/services/paymentCharge/paymentChargeComposition"
+import { paymentChargeRepository } from "@/app/api/infra/data/repositories/paymentCharge/PaymentChargeRepository"
+import { chargeStatusFromAttempt } from "@/lib/payments/charge-status"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
+import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
+import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
+import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
+import { ApplyEmailCreditsOnConfirmation } from "./applyEmailCreditsOnConfirmation"
+import { PaymentEventMatchGuard } from "./paymentEventMatchGuard"
+import { reportPaymentDisputed } from "./reportPaymentDisputed"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
+import { pickPrimaryInstance } from "@/lib/payment-provider/instance"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import {
   createAbacatePayProvider,
+  hydrateAbacateCredentials,
   resolvePaymentProviderEnvironment,
 } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
 
@@ -16,13 +27,27 @@ const ROUTE_VERSION = "PAY-PROV-PHASE-3"
 
 export async function createPaymentProviderWebhookService() {
   const environment = resolvePaymentProviderEnvironment()
-  const configuration = (await paymentProviderConfigRepository.list(environment)).find(
-    (item) => item.provider === "ABACATE_PAY",
+  // Várias instâncias por provider são permitidas: o webhook atende a instância principal.
+  const configuration = pickPrimaryInstance(
+    await paymentProviderConfigRepository.list(environment),
+    "ABACATE_PAY",
   )
   if (!configuration) throw new Error("Configuração do provider não encontrada")
 
+  await hydrateAbacateCredentials(environment)
   const provider = createAbacatePayProvider(environment)
   const settlement = createPaymentOwnerSettlement()
+  const eventMatchGuard = new PaymentEventMatchGuard({
+    purchases: platformPurchaseRepository,
+    adhesionPayments: backofficeAdhesionPaymentRepository,
+    gracePayments: billingGracePaymentRepository,
+    paymentCharges: paymentChargeRepository,
+  })
+  const emailCreditsOnConfirmation = new ApplyEmailCreditsOnConfirmation({
+    purchases: platformPurchaseRepository,
+    applyEmailCredits: (input) => applyEmailCreditsPaidPurchaseUseCase.apply(input),
+  })
+  const ledgerMirror = createOwnerChargeMirror()
   const eventProcessor = new PaymentProviderEventProcessor(paymentProviderEventInboxRepository)
   const service = new PaymentProviderWebhookService({
     provider,
@@ -66,6 +91,9 @@ export async function createPaymentProviderWebhookService() {
         }
       }
 
+      // Valor e método do evento conferidos contra o dono antes de qualquer efeito (PAY-HARD-T011).
+      await eventMatchGuard.assertMatches(attempt, event)
+
       // The fenced attempt transition (via claimToken) is the authority.
       // Only after winning the transition do we bind the identity and
       // activate the purchase — so a concurrent refund cannot win the CAS
@@ -101,6 +129,13 @@ export async function createPaymentProviderWebhookService() {
           provider: "ABACATE_PAY",
           externalId: event.externalPaymentId!,
         })
+        // Espelho no ledger: nunca lança e nunca altera o efeito acima.
+        await ledgerMirror.mirrorSettled({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+          paidAt: new Date(),
+        })
       }
       if (nextStatus === "CONFIRMED" && attempt.ownerType !== "PLATFORM_PURCHASE") {
         const settled = await settlement.settleConfirmed({
@@ -112,6 +147,30 @@ export async function createPaymentProviderWebhookService() {
         })
         // Pagamento confirmado sem efeito de domínio conhecido não pode passar em silêncio.
         if (settled === "unsupported") reportUnknownOwnerType(attempt)
+      }
+      if (nextStatus === "CONFIRMED" && attempt.ownerType === "PLATFORM_PURCHASE") {
+        await emailCreditsOnConfirmation.apply({
+          purchaseId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+        })
+      }
+      if (nextStatus === "REFUNDED" || nextStatus === "DISPUTED") {
+        // Reembolso e disputa também chegam ao ledger (nunca lança nem altera o efeito).
+        await ledgerMirror.mirrorStatus({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+          status: chargeStatusFromAttempt(nextStatus),
+        })
+      }
+      if (nextStatus === "DISPUTED") {
+        await reportPaymentDisputed({
+          attemptId: attempt.id,
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          chargeId: event.externalPaymentId!,
+          eventId: event.eventId,
+        })
       }
     },
   })

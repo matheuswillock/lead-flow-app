@@ -1110,6 +1110,7 @@ MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
             PROFILE PROFILE
 TEAM TEAM
 TEAM_MEMBER TEAM_MEMBER
+PAYMENT_PROVIDER_CONFIG PAYMENT_PROVIDER_CONFIG
         }
     
 
@@ -2022,6 +2023,46 @@ completed completed
     String failure_reason "❓"
     DateTime created_at 
     DateTime updated_at 
+    }
+  
+
+  "payment_charges" {
+    String id "🗝️"
+    String profile_id "❓"
+    String profile_ref 
+    String subscription_id "❓"
+    String purpose 
+    String purpose_ref_id "❓"
+    String status 
+    String raw_status "❓"
+    Int amount_cents 
+    String currency 
+    String method "❓"
+    String cycle_key "❓"
+    DateTime due_date "❓"
+    DateTime paid_at "❓"
+    String provider 
+    String provider_environment 
+    String provider_context 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    Json payment_instructions "❓"
+    String idempotency_key 
+    String source 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_charge_events" {
+    String id "🗝️"
+    String charge_id 
+    String from_status "❓"
+    String to_status 
+    String raw_status "❓"
+    String actor 
+    DateTime occurred_at 
     }
   
 
@@ -3592,6 +3633,7 @@ completed completed
     String subscriptionCycle "❓"
     DateTime subscriptionLastSyncedAt "❓"
     Boolean hasPermanentSubscription 
+    String payment_cohort 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4587,6 +4629,22 @@ completed completed
     String public_key_fingerprint "❓"
     String logo_url "❓"
     String logo_alt_text "❓"
+    String display_name 
+    Json settings 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_credentials" {
+    String id "🗝️"
+    String config_id 
+    String key 
+    String value_ciphertext 
+    String key_id 
+    String last4 "❓"
+    String fingerprint 
+    String updated_by "❓"
     DateTime created_at 
     DateTime updated_at 
     }
@@ -5103,6 +5161,9 @@ completed completed
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
     "billing_access_graces" }o--|| corretor_studio_teams : "team"
+    "payment_charges" }o--|o corretor_studio_profiles : "profile"
+    "payment_charges" }o--|o corretor_studio_profile_subscriptions : "subscription"
+    "payment_charge_events" }o--|| payment_charges : "charge"
     "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "profile"
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
@@ -5605,6 +5666,7 @@ completed completed
     "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
     "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_credentials" }o--|| payment_provider_configs : "config"
     "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
     "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"

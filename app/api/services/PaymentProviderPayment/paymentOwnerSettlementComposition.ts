@@ -1,6 +1,10 @@
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
 import {
+  createOwnerChargeMirror,
+  createPaymentChargeSettlement,
+} from "../paymentCharge/paymentChargeComposition"
+import {
   PaymentOwnerSettlementService,
   type PaymentOwnerSettlement,
 } from "./PaymentOwnerSettlementService"
@@ -13,6 +17,8 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
   return new PaymentOwnerSettlementService({
     adhesionPayments: backofficeAdhesionPaymentRepository,
     gracePayments: billingGracePaymentRepository,
+    paymentCharges: createPaymentChargeSettlement(),
+    ledgerMirror: createOwnerChargeMirror(),
     adhesions: {
       async markPaidFromProvider(adhesionId, input) {
         const { backofficeAdhesionService } = await import("../backofficeAdhesion/BackofficeAdhesionService")

@@ -33,6 +33,7 @@ import {
   Clock,
   Gauge,
   BarChart3,
+  Landmark,
 } from "lucide-react"
 import {
   Sidebar,
@@ -126,6 +127,7 @@ const navigationItems: NavItem[] = [
   { title: "Contratos", url: "/backoffice/contracts", icon: FileText },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
+  { title: "Providers de pagamento", url: "/backoffice/payment-providers", icon: Landmark },
   {
     title: "Funcionalidades",
     url: "/backoffice/features",

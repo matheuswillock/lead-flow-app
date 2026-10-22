@@ -6,9 +6,11 @@ export type PaymentProviderHealthCheckActor = {
   readonly backofficeUserId: string | null
 }
 
+/** `id` da instância; o par `provider` + `environment` é o corpo antigo (instância única). */
 export type PaymentProviderHealthCheckInput = {
-  readonly provider: PaymentProviderKey
-  readonly environment: PaymentProviderEnvironment
+  readonly id?: string
+  readonly provider?: PaymentProviderKey
+  readonly environment?: PaymentProviderEnvironment
   readonly actor: PaymentProviderHealthCheckActor
 }
 

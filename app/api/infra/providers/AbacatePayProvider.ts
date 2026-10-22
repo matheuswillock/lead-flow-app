@@ -18,6 +18,10 @@ import type {
 } from "@/lib/payment-provider/contracts"
 import { PaymentProviderError } from "@/lib/payment-provider/errors"
 import {
+  sentryOperationalAlerter,
+  type OperationalAlerter,
+} from "@/lib/payment-provider/operational-alerts"
+import {
   PAYMENT_CAPABILITIES,
   assertPositiveCents,
   createIndeterminatePaymentResult,
@@ -49,7 +53,12 @@ type AbacateStatusResponse = {
   data?: { id?: unknown; status?: unknown; amount?: unknown; method?: unknown }
 }
 
-type AbacateProviderDependencies = PaymentProviderDependencies
+type AbacateProviderDependencies = PaymentProviderDependencies & {
+  /** Alertas de segurança do webhook; padrão: log estruturado + Sentry. */
+  readonly alerter?: Pick<OperationalAlerter, "alert">
+}
+
+const SIGNATURE_ALERT_WINDOW_MS = 60 * 60 * 1000
 
 type AbacateTransparentRequest = {
   readonly amountInCents: number
@@ -74,8 +83,11 @@ export class AbacatePayProvider
 
   readonly metadata: PaymentProviderMetadata
 
+  private readonly alerter: Pick<OperationalAlerter, "alert">
+
   constructor(config: PaymentProviderConfig, dependencies: AbacateProviderDependencies = {}) {
     super("ABACATE_PAY", config.environment, config, dependencies)
+    this.alerter = dependencies.alerter ?? sentryOperationalAlerter
     this.metadata = Object.freeze({
       key: "ABACATE_PAY",
       environment: config.environment,
@@ -309,34 +321,66 @@ export class AbacatePayProvider
   }
 
   verifyRequest(input: RawWebhookRequest): VerifiedWebhook {
-    const signature = input.signature
-    const configuredSecret = this.config.webhookSecret
-    const secretMatches =
-      configuredSecret.length > 0 &&
-      constantTimeEqual(input.query.webhookSecret ?? "", configuredSecret)
-    if (!secretMatches) {
+    if (!this.queryMatchesAcceptedSecret(input.query.webhookSecret ?? "")) {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
     }
-    // Sem chave pública (loja sem cartão liberado) o HMAC não é verificável; a origem
-    // continua autenticada pelo secret da URL. Com a chave configurada o HMAC é obrigatório.
-    const signingKey = this.config.webhookSigningKey
-    if (signingKey !== null) {
-      if (typeof signature !== "string") {
-        throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
-      }
-      const expected = createHmac("sha256", signingKey).update(input.rawBody).digest("base64")
-      const actual = Buffer.from(signature)
-      const expectedBuffer = Buffer.from(expected)
-      if (actual.length !== expectedBuffer.length || !timingSafeEqual(actual, expectedBuffer)) {
-        throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
-      }
-    }
+    this.assertSignaturePolicy(input)
     const verified = {
       rawBody: input.rawBody,
       environment: this.environment,
     }
     this.verifiedWebhooks.add(verified)
     return Object.freeze(verified) as VerifiedWebhook
+  }
+
+  // Janela de rotação: o segredo atual e o anterior são comparados sempre, em tempo constante,
+  // para o tempo de resposta não revelar qual deles (ou nenhum) casou.
+  private queryMatchesAcceptedSecret(candidate: string): boolean {
+    const current = this.config.webhookSecret
+    const previous = this.config.webhookSecretPrevious
+    const matchesCurrent = current.length > 0 && constantTimeEqual(candidate, current)
+    const matchesPrevious =
+      previous !== null && previous.length > 0 && constantTimeEqual(candidate, previous)
+    return matchesCurrent || matchesPrevious
+  }
+
+  // Com a chave de assinatura, o HMAC é obrigatório e vale mais que o segredo da query. Sem a
+  // chave (produção ainda sem chave pública) a origem só é autenticada pelo segredo: tolerado
+  // com alerta, ou recusado quando `requireSignature` está ligado.
+  private assertSignaturePolicy(input: RawWebhookRequest): void {
+    const signingKey = this.config.webhookSigningKey
+    if (signingKey === null) {
+      if (this.config.requireSignature) {
+        this.alertSignatureKeyMissing()
+        throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+      }
+      if (this.environment === "PRODUCTION") this.alertProductionWithoutHmac()
+      return
+    }
+    if (!signatureMatches(signingKey, input.rawBody, input.signature)) {
+      throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+    }
+  }
+
+  private alertProductionWithoutHmac(): void {
+    void this.alerter.alert({
+      key: "payment-webhook-without-hmac",
+      level: "warning",
+      message: "Webhook de produção aceito sem HMAC: chave pública da loja não configurada",
+      dedupeWindowMs: SIGNATURE_ALERT_WINDOW_MS,
+      context: { provider: "ABACATE_PAY", environment: this.environment },
+    })
+  }
+
+  private alertSignatureKeyMissing(): void {
+    void this.alerter.alert({
+      key: "payment-webhook-signature-key-missing",
+      level: "error",
+      message: "Webhook recusado: assinatura obrigatória, mas a chave de assinatura não está configurada",
+      dedupeWindowMs: SIGNATURE_ALERT_WINDOW_MS,
+      slack: true,
+      context: { provider: "ABACATE_PAY", environment: this.environment },
+    })
   }
 
   normalizeEvent(input: VerifiedWebhook): ProviderWebhookEvent | null {
@@ -544,6 +588,12 @@ function isCanonicalIdentifier(value: unknown): value is string {
   return (
     typeof value === "string" && value.length > 0 && value === value.trim() && !/\s/.test(value)
   )
+}
+
+function signatureMatches(signingKey: string, rawBody: string, signature: string | null): boolean {
+  if (typeof signature !== "string") return false
+  const expected = createHmac("sha256", signingKey).update(rawBody).digest("base64")
+  return constantTimeEqual(signature, expected)
 }
 
 function constantTimeEqual(a: string, b: string): boolean {

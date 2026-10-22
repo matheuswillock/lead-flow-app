@@ -98,3 +98,59 @@ describe("redactSecret", () => {
     expect(redactSecret("texto", "")).toBe("texto")
   })
 })
+
+// Estados oficiais da API (GET /v1/projects/{id}/rolling-release): ACTIVE, COMPLETE, ABORTED.
+describe("evaluateRollingRelease — estados reais da Vercel (PAY-CI-T002)", () => {
+  it("ACTIVE é pendente, com percentual na mensagem", () => {
+    const verdict = evaluateRollingRelease(release({ state: "ACTIVE", currentCanaryPercentage: 50 }), `https://${NEW}`)
+    expect(verdict.kind).toBe("pending")
+    expect(verdict.detail).toContain("50%")
+  })
+
+  it("estado desconhecido nunca conclui: segue pendente e nomeia o estado inesperado", () => {
+    const verdict = evaluateRollingRelease(release({ state: "ROLLING_BACK" }), `https://${NEW}`)
+    expect(verdict.kind).toBe("pending")
+    expect(verdict.detail).toContain("desconhecido")
+    expect(verdict.detail).toContain("ROLLING_BACK")
+  })
+
+  it("canary com deployment em ERROR ou CANCELED reprova sem esperar o prazo", () => {
+    for (const readyState of ["ERROR", "CANCELED"]) {
+      const verdict = evaluateRollingRelease(
+        release({ canaryDeployment: { url: NEW, readyState } }),
+        `https://${NEW}`,
+      )
+      expect(verdict.kind).toBe("failed")
+    }
+  })
+
+  it("aceita o estado em minúsculas", () => {
+    expect(evaluateRollingRelease(release({ state: "complete" }), `https://${NEW}`).kind).toBe("complete")
+  })
+
+  it("COMPLETE sem rolling release apontando para o deploy segue pendente (release anterior)", () => {
+    const old = release({ state: "COMPLETE", canaryDeployment: null, currentDeployment: { url: OLD } })
+    expect(evaluateRollingRelease(old, `https://${NEW}`).kind).toBe("pending")
+  })
+})
+
+describe("waitForRollingRelease — prazo com estado desconhecido", () => {
+  it("o erro final explica o estado desconhecido e os estados esperados", async () => {
+    let clock = 0
+    const result = await waitForRollingRelease(
+      { deployUrl: `https://${NEW}`, timeoutMs: 300, intervalMs: 100 },
+      {
+        fetchRelease: async () => release({ state: "PAUSED" }),
+        sleep: async (ms) => {
+          clock += ms
+        },
+        now: () => clock,
+        log: () => {},
+      },
+    )
+    expect(result.kind).toBe("failed")
+    expect(result.detail).toContain("tempo esgotado")
+    expect(result.detail).toContain("PAUSED")
+    expect(result.detail).toContain("ACTIVE, COMPLETE, ABORTED")
+  })
+})

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { PaymentProviderEventInboxClaim } from "@/lib/payment-provider/event-inbox"
+import type { InboxHealthSnapshot } from "@/lib/payment-provider/inbox-health"
 import type { IPaymentProviderEventInboxRepository, PaymentProviderEventClaimInput } from "./IPaymentProviderEventInboxRepository"
 
 const MAX_ERROR_LENGTH = 2_000
@@ -105,6 +106,20 @@ export class PaymentProviderEventInboxRepository implements IPaymentProviderEven
       where: { dedupeKey: input.dedupeKey, claimToken: input.claimToken, status: "processing" },
       data: { status: "processed", processedAt: new Date(), errorMessage: null },
     })
+  }
+
+  async getHealthSnapshot(input: { failedSince: Date }): Promise<InboxHealthSnapshot> {
+    const [failedCount, oldestUnfinished] = await Promise.all([
+      prisma.paymentProviderEventInbox.count({
+        where: { status: "failed", receivedAt: { gte: input.failedSince } },
+      }),
+      prisma.paymentProviderEventInbox.findFirst({
+        where: { status: { in: ["pending", "processing"] } },
+        orderBy: { receivedAt: "asc" },
+        select: { receivedAt: true },
+      }),
+    ])
+    return { failedCount, oldestUnfinishedAt: oldestUnfinished?.receivedAt ?? null }
   }
 
   async markFailed(input: { dedupeKey: string; claimToken: string; message: string }): Promise<void> {

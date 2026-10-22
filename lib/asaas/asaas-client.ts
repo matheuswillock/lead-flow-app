@@ -1,4 +1,5 @@
 import { resolveAsaasAccount, type AsaasAccountId } from "./asaas-account"
+import { hydrateAsaasCredentialsOrEnvFallback } from "./asaas-hydration"
 import { buildAsaasEndpoints, type AsaasEndpoints } from "./asaas-endpoints"
 import {
   extractAsaasEntityIdPrefix,
@@ -31,8 +32,7 @@ export type AsaasClient = {
  * da função.
  */
 export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
-  const account = resolveAsaasAccount(accountId)
-  const endpoints = buildAsaasEndpoints(account.baseUrl)
+  const endpoints = buildAsaasEndpoints(resolveAsaasAccount(accountId).baseUrl)
 
   async function request(endpoint: string, options?: AsaasRequestOptions): Promise<any> {
     const { suppressLegacy404Alert = false, ...fetchOptions } = options ?? {}
@@ -42,6 +42,9 @@ export function createAsaasClient(accountId: AsaasAccountId): AsaasClient {
     const entityIdPrefix = extractAsaasEntityIdPrefix(endpoint)
     recordAsaasRequestBreadcrumb({ asaasAccount: accountId, entityIdPrefix, endpoint })
 
+    // M11: credenciais do backoffice (cache curto) antes de ler a chave; sem elas, vale o ambiente.
+    await hydrateAsaasCredentialsOrEnvFallback(accountId)
+    const account = resolveAsaasAccount(accountId)
     if (!account.apiKey) {
       throw new Error("ASAAS_API_KEY não configurada")
     }

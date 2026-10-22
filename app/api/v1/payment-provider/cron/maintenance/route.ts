@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         cronKey: "payment-provider-maintenance",
         cronPath: "/api/v1/payment-provider/cron/maintenance",
       },
-      () => getPaymentProviderMaintenanceUseCase().execute({ limit }),
+      async () => (await getPaymentProviderMaintenanceUseCase()).execute({ limit }),
       { onFailure: getDefaultCronSlackCallback() },
     )
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })

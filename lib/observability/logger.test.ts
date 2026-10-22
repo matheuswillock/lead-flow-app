@@ -129,3 +129,18 @@ describe("structured logger", () => {
     expect((sanitized.fields as Record<string, unknown>).__truncated).toBe("[1 fields truncated]");
   });
 });
+
+describe("redaction de credenciais de provider", () => {
+  test("mascara prefixos de chave, webhookSecret em URL e chaves sensíveis", () => {
+    const value = sanitize({
+      msg: "chamada https://x.com/api/v1/webhooks/payment-provider/abacate?webhookSecret=SEGREDO123&ok=1 com abc_prod_KEYVALUE9 e $aact_prod_ASAASKEY",
+      PUBLIC_KEY: "pk_live_value",
+      credentialValue: "valor",
+    })
+    const serialized = JSON.stringify(value)
+    for (const leaked of ["SEGREDO123", "KEYVALUE9", "ASAASKEY", "pk_live_value", '"valor"']) {
+      expect(serialized).not.toContain(leaked)
+    }
+    expect(serialized).toContain("ok=1")
+  })
+})

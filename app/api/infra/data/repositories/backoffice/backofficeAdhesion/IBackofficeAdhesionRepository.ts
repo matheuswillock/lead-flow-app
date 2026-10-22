@@ -265,6 +265,8 @@ export interface IBackofficeAdhesionRepository {
     subscriptionStartDate: Date
     subscriptionEndDate: Date
     subscriptionNextDueDate: Date
+    /** Só informado quando a adesão define a coorte (ROUTER); omitido preserva a coorte atual. */
+    paymentCohort?: import("@/lib/payments/types").PaymentCohort
   }): Promise<void>
   clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>

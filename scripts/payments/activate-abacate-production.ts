@@ -12,22 +12,29 @@
  */
 import { paymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
 import {
+  ABACATE_PRODUCTION_ACCOUNT_CONTEXT,
   parseActivationArgs,
   runAbacateProductionActivation,
   type ActivationDependencies,
 } from "./lib/abacateProductionActivation"
 
 const dependencies: ActivationDependencies = {
-  getConfig: async () => {
-    const records = await paymentProviderConfigRepository.list("PRODUCTION")
-    return records.find((record) => record.provider === "ABACATE_PAY") ?? null
+  // Várias instâncias por provider são permitidas: a ativação mira a conta de produção do Abacate.
+  getConfig: () =>
+    paymentProviderConfigRepository.findByScope(
+      "ABACATE_PAY",
+      "PRODUCTION",
+      ABACATE_PRODUCTION_ACCOUNT_CONTEXT,
+    ),
+  applyPatch: async (patch) => {
+    const instance = await paymentProviderConfigRepository.findByScope(
+      "ABACATE_PAY",
+      "PRODUCTION",
+      ABACATE_PRODUCTION_ACCOUNT_CONTEXT,
+    )
+    if (!instance) throw new Error("Configuração não encontrada")
+    return paymentProviderConfigRepository.update({ id: instance.id, patch })
   },
-  applyPatch: (patch) =>
-    paymentProviderConfigRepository.update({
-      provider: "ABACATE_PAY",
-      environment: "PRODUCTION",
-      patch,
-    }),
 }
 
 async function main(): Promise<number> {
