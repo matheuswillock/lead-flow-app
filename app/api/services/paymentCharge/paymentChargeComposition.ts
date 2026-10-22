@@ -10,6 +10,7 @@ import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories
 import { paymentChargeRepository } from "@/app/api/infra/data/repositories/paymentCharge/PaymentChargeRepository"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository"
+import { resolveAsaasLedgerEnvironment } from "@/lib/payments/asaas-ledger-environment"
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
 import { ChargeLedger } from "./ChargeLedger"
 import { createChargePurposeSettlementHandlers } from "./chargePurposeHandlers"
@@ -93,7 +94,7 @@ export function createAsaasShadowMirror(): AsaasShadowMirror {
   return new AsaasShadowMirror({
     ledger: chargeLedger,
     profiles: asaasProfileLookupRepository,
-    environment: () => (process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"),
+    environment: resolveAsaasLedgerEnvironment,
   })
 }
 
@@ -105,7 +106,7 @@ export function createChargeDivergenceService(): ChargeDivergenceService {
       attempts: paymentProviderSessionRepository,
       owners: createOwnerChargeSource(),
     }),
-    asaasEnvironment: () => (process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"),
+    asaasEnvironment: resolveAsaasLedgerEnvironment,
     report: reportChargeDivergences,
   })
 }

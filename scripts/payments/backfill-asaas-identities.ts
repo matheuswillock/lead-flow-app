@@ -9,13 +9,14 @@
  */
 import { asaasIdentityBackfillRepository } from "@/app/api/infra/data/repositories/paymentCharge/AsaasIdentityBackfillRepository"
 import { paymentProviderIdentityRepository } from "@/app/api/infra/data/repositories/paymentProviderIdentity/PaymentProviderIdentityRepository"
+import { resolveAsaasLedgerEnvironment } from "@/lib/payments/asaas-ledger-environment"
 import {
   parseBackfillArgs,
   runAsaasIdentityBackfill,
   type BackfillDependencies,
 } from "./lib/asaasIdentityBackfill"
 
-const environment = process.env.ASAAS_ENV === "sandbox" ? "DEV" : "PRODUCTION"
+const environment = resolveAsaasLedgerEnvironment()
 
 const dependencies: BackfillDependencies = {
   environment,

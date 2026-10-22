@@ -45,7 +45,7 @@ export type ResolvedAsaasAccount = {
   webhookToken?: string
 }
 
-function detectAsaasEnvironment(): "production" | "sandbox" {
+export function detectAsaasEnvironment(): "production" | "sandbox" {
   if (process.env.ASAAS_ENV) {
     return process.env.ASAAS_ENV === "production" ? "production" : "sandbox"
   }
