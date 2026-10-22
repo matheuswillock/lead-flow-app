@@ -93,3 +93,34 @@ describe("OwnerChargeMirror.mirrorSettled", () => {
     expect(charges.charges).toHaveLength(0)
   })
 })
+
+describe("OwnerChargeMirror.mirrorStatus (estados terminais não pagos)", () => {
+  const refundInput = { ownerType: "PLATFORM_PURCHASE", ownerId: "pay-1", externalId: "pix_1" }
+
+  it("reembolso depois do pagamento leva a cobrança espelhada para REFUNDED sem mexer no paidAt", async () => {
+    const { mirror, charges } = makeMirror()
+    await mirror.mirrorSettled(input)
+
+    await mirror.mirrorStatus({ ...refundInput, status: "REFUNDED" })
+
+    expect(charges.charges).toHaveLength(1)
+    expect(charges.charges[0].status).toBe("REFUNDED")
+    expect(charges.charges[0].paidAt).toEqual(PAID_AT)
+  })
+
+  it("disputa leva a cobrança para REVIEW", async () => {
+    const { mirror, charges } = makeMirror()
+    await mirror.mirrorSettled(input)
+
+    await mirror.mirrorStatus({ ...refundInput, status: "REVIEW" })
+
+    expect(charges.charges[0].status).toBe("REVIEW")
+  })
+
+  it("nunca lança: falha ao ler o dono só gera log", async () => {
+    const { mirror, logError } = makeMirror({ throwOnSnapshot: true })
+
+    await expect(mirror.mirrorStatus({ ...refundInput, status: "REFUNDED" })).resolves.toBeUndefined()
+    expect(logError).toHaveBeenCalled()
+  })
+})

@@ -16,6 +16,7 @@ import { PaymentProviderMaintenanceService } from "@/app/api/services/PaymentPro
 import { PaymentProviderRefundUseCase } from "./PaymentProviderRefundUseCase"
 import { PaymentProviderMaintenanceUseCase } from "./PaymentProviderMaintenanceUseCase"
 import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
+import { createOwnerChargeMirror } from "@/app/api/services/paymentCharge/paymentChargeComposition"
 import { derivePaymentProviderEnvironment } from "@/lib/payment-provider/environment"
 import type { InstanceSelector, ResolvedCredentials } from "@/lib/payment-provider/credential-cache"
 import {
@@ -173,6 +174,7 @@ export async function getPaymentProviderRefundUseCase(): Promise<PaymentProvider
   return new PaymentProviderRefundUseCase({
     sessions: paymentProviderSessionRepository,
     refundService: new PaymentProviderPostPaymentService(paymentProviderSessionRepository),
+    ledgerMirror: createOwnerChargeMirror(),
     resolveProvider: (providerEnvironment) => {
       if (providerEnvironment !== environment) {
         throw new Error("Ambiente do provider não suportado nesta fase")

@@ -26,6 +26,14 @@ export type OwnerMirrorInput = {
   readonly paidAt: Date
 }
 
+/** Estado explícito (reembolso, disputa) que o dono ainda não reflete no próprio status. */
+export type OwnerStatusMirrorInput = {
+  readonly ownerType: string
+  readonly ownerId: string
+  readonly externalId: string
+  readonly status: ChargeStatus
+}
+
 export type OwnerChargeMirrorDependencies = {
   readonly ledger: Pick<ChargeLedger, "record">
   readonly source: OwnerChargeSource
@@ -47,13 +55,25 @@ export class OwnerChargeMirror {
 
   async mirrorSettled(input: OwnerMirrorInput): Promise<void> {
     try {
-      await this.mirror(input)
+      await this.mirror(input, { status: undefined, paidAt: input.paidAt })
     } catch (error) {
       this.log("[OwnerChargeMirror] Error", input, error)
     }
   }
 
-  private async mirror(input: OwnerMirrorInput): Promise<void> {
+  /** Espelha reembolso/disputa: o status vem do evento, não do dono (que segue como "pago"). */
+  async mirrorStatus(input: OwnerStatusMirrorInput): Promise<void> {
+    try {
+      await this.mirror(input, { status: input.status, paidAt: undefined })
+    } catch (error) {
+      this.log("[OwnerChargeMirror] Error", input, error)
+    }
+  }
+
+  private async mirror(
+    input: { ownerType: string; ownerId: string; externalId: string },
+    override: { status: ChargeStatus | undefined; paidAt: Date | undefined },
+  ): Promise<void> {
     const { source, attempts, ledger } = this.dependencies
     const snapshot = await source.snapshot(input.ownerType, input.ownerId)
     if (!snapshot) return
@@ -68,10 +88,10 @@ export class OwnerChargeMirror {
       subscriptionId: snapshot.subscriptionId ?? null,
       purpose: snapshot.purpose,
       purposeRefId: snapshot.purposeRefId,
-      status: snapshot.status,
+      status: override.status ?? snapshot.status,
       amountCents: snapshot.amountCents,
       method: snapshot.method ?? null,
-      paidAt: input.paidAt,
+      paidAt: override.paidAt,
       provider: attempt.provider,
       providerEnvironment: attempt.environment,
       providerContext: attempt.externalAccountContext,
@@ -83,7 +103,7 @@ export class OwnerChargeMirror {
     })
   }
 
-  private log(message: string, input: OwnerMirrorInput, error: unknown) {
+  private log(message: string, input: { ownerType: string; ownerId: string }, error: unknown) {
     const logError = this.dependencies.logError ?? ((m, c) => console.error(m, c))
     logError(message, {
       ownerType: input.ownerType,

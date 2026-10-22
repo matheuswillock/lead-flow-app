@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from "bun:test"
 import { InMemoryPaymentChargeRepository } from "@/test/support/in-memory-payment-charge-repository"
 import { ChargeLedger, type RecordChargeInput } from "./ChargeLedger"
-import { ChargeDivergenceService, type ChargeSourceReader } from "./ChargeDivergenceService"
+import { ChargeDivergenceService, statusesAgree, type ChargeSourceReader } from "./ChargeDivergenceService"
 
 const NOW = new Date("2026-10-21T12:00:00.000Z")
 
@@ -102,5 +102,21 @@ describe("ChargeDivergenceService", () => {
     await record({ source: "ROUTER" })
 
     expect((await service.run({ windowHours: 24, limit: 100 })).checked).toBe(0)
+  })
+})
+
+describe("statusesAgree: donos que ainda não espelham estado terminal", () => {
+  it("ledger pago com fonte REFUNDED ou REVIEW é tolerado (espelho de reembolso/disputa pode atrasar)", () => {
+    for (const ledger of ["CONFIRMED", "COMPLETED"] as const) {
+      expect(statusesAgree(ledger, "REFUNDED")).toBe(true)
+      expect(statusesAgree(ledger, "REVIEW")).toBe(true)
+    }
+  })
+
+  it("a tolerância é de um sentido só: fonte paga com ledger REFUNDED/REVIEW ou ledger pendente continuam divergindo", () => {
+    expect(statusesAgree("REFUNDED", "CONFIRMED")).toBe(false)
+    expect(statusesAgree("REVIEW", "COMPLETED")).toBe(false)
+    expect(statusesAgree("PENDING", "REFUNDED")).toBe(false)
+    expect(statusesAgree("COMPLETED", "EXPIRED")).toBe(false)
   })
 })

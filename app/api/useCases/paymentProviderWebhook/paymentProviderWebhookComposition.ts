@@ -6,6 +6,7 @@ import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/pl
 import { createPaymentOwnerSettlement } from "@/app/api/services/PaymentProviderPayment/paymentOwnerSettlementComposition"
 import { createOwnerChargeMirror } from "@/app/api/services/paymentCharge/paymentChargeComposition"
 import { paymentChargeRepository } from "@/app/api/infra/data/repositories/paymentCharge/PaymentChargeRepository"
+import { chargeStatusFromAttempt } from "@/lib/payments/charge-status"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
@@ -151,6 +152,15 @@ export async function createPaymentProviderWebhookService() {
         await emailCreditsOnConfirmation.apply({
           purchaseId: attempt.ownerId,
           externalId: event.externalPaymentId!,
+        })
+      }
+      if (nextStatus === "REFUNDED" || nextStatus === "DISPUTED") {
+        // Reembolso e disputa também chegam ao ledger (nunca lança nem altera o efeito).
+        await ledgerMirror.mirrorStatus({
+          ownerType: attempt.ownerType,
+          ownerId: attempt.ownerId,
+          externalId: event.externalPaymentId!,
+          status: chargeStatusFromAttempt(nextStatus),
         })
       }
       if (nextStatus === "DISPUTED") {

@@ -40,9 +40,18 @@ export type ChargeDivergenceDependencies = {
 
 const PAID: ReadonlySet<ChargeStatus> = new Set(["CONFIRMED", "COMPLETED"])
 
-/** CONFIRMED e COMPLETED são o mesmo fato (pago); o ledger pode estar um passo à frente da fonte. */
+/** Estados terminais que alguns donos (ex.: adesão, regularização) ainda não espelham no ledger. */
+const OWNER_MAY_LAG: ReadonlySet<ChargeStatus> = new Set(["REFUNDED", "REVIEW"])
+
+/**
+ * CONFIRMED e COMPLETED são o mesmo fato (pago); o ledger pode estar um passo à frente da fonte.
+ * Tolerância deliberada, de um sentido só: ledger pago com fonte REFUNDED/REVIEW não diverge, porque
+ * o espelho de reembolso/disputa só existe para parte dos donos e o cron diário reportaria o mesmo
+ * falso positivo todos os dias. O inverso (ledger REFUNDED/REVIEW e fonte paga) continua divergindo.
+ */
 export function statusesAgree(ledger: ChargeStatus, source: ChargeStatus): boolean {
   if (ledger === source) return true
+  if (PAID.has(ledger) && OWNER_MAY_LAG.has(source)) return true
   return PAID.has(ledger) && PAID.has(source)
 }
 
