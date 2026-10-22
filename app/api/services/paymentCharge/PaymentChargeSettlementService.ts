@@ -36,6 +36,7 @@ export class PaymentChargeSettlementService implements PaymentOwnerSettlement {
     const charge = await charges.findById(input.ownerId)
     if (!charge) throw new Error("Cobrança não encontrada")
     if (charge.status === "COMPLETED") return "settled"
+    assertConfirmedAmount(charge.amountCents, input.amountInCents)
 
     const handler = handlers[charge.purpose as ChargePurpose]
     if (!handler) {
@@ -57,5 +58,15 @@ export class PaymentChargeSettlementService implements PaymentOwnerSettlement {
     await handler.settle(confirmed)
     await ledger.transition({ chargeId: charge.id, toStatus: "COMPLETED", actor: ACTOR })
     return "settled"
+  }
+}
+
+/** Defesa em profundidade: o guard do webhook já confere, mas a liquidação nunca confia no chamador. */
+function assertConfirmedAmount(expectedCents: number, confirmedCents: number | null | undefined): void {
+  if (confirmedCents === null || confirmedCents === undefined) {
+    throw new Error("Valor confirmado ausente: liquidação recusada")
+  }
+  if (confirmedCents !== expectedCents) {
+    throw new Error(`Valor confirmado divergente (evento ${confirmedCents}, cobrança ${expectedCents} centavos)`)
   }
 }

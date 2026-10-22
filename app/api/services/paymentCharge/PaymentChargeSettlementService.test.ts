@@ -98,6 +98,24 @@ describe("PaymentChargeSettlementService", () => {
     await expect(service.settleConfirmed(settleInput("nope"))).rejects.toThrow("Cobrança não encontrada")
   })
 
+  it("valor confirmado diferente do da cobrança lança e não liquida", async () => {
+    const { service, charges } = await makeHarness("ADHESION")
+
+    await expect(service.settleConfirmed({ ...settleInput(), amountInCents: 1 })).rejects.toThrow(
+      "Valor confirmado divergente",
+    )
+    expect(charges.charges[0].status).toBe("PENDING")
+  })
+
+  it("valor confirmado ausente lança e não liquida", async () => {
+    const { service, charges } = await makeHarness("ADHESION")
+
+    await expect(service.settleConfirmed({ ...settleInput(), amountInCents: null })).rejects.toThrow(
+      "Valor confirmado ausente",
+    )
+    expect(charges.charges[0].status).toBe("PENDING")
+  })
+
   it("ownerType diferente de PAYMENT_CHARGE é unsupported", async () => {
     const { service } = await makeHarness("ADHESION")
 
