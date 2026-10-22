@@ -321,9 +321,10 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — assinatura HMAC", (
 })
 
 describe("POST /api/v1/webhooks/payment-provider/abacate — valor e método contra a tentativa (PAY-HARD-T011)", () => {
-  const payload = (amount: number, method = "PIX") =>
+  // O alerta de divergência é deduplicado por tentativa + evento: cada caso usa um evento próprio.
+  const payload = (amount: number, method = "PIX", eventId = "evt_mismatch") =>
     JSON.stringify({
-      id: "evt_mismatch",
+      id: eventId,
       event: "transparent.completed",
       devMode: false,
       data: { transparent: { id: "pix_char_prod_1", status: "PAID", method, amount } },
@@ -337,7 +338,7 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — valor e método con
   ])("%s: valor divergente é rejeitado sem nenhum efeito e a inbox registra a falha", async (ownerType, ownerId) => {
     attempt = { ...defaultAttempt, ownerType, ownerId, tenantId: "adhesion-1" }
 
-    const response = await POST(request(payload(100)))
+    const response = await POST(request(payload(100, "PIX", `evt_mismatch_valor_${ownerType}`)))
 
     expect(response.status).toBe(422)
     expect(applyEventWithClaim).not.toHaveBeenCalled()
@@ -357,7 +358,7 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — valor e método con
   ])("%s: método divergente é rejeitado sem efeito", async (ownerType, ownerId) => {
     attempt = { ...defaultAttempt, ownerType, ownerId, tenantId: "adhesion-1" }
 
-    const response = await POST(request(payload(6990, "CARD")))
+    const response = await POST(request(payload(6990, "CARD", `evt_mismatch_metodo_${ownerType}`)))
 
     expect(response.status).toBe(422)
     expect(applyEventWithClaim).not.toHaveBeenCalled()
