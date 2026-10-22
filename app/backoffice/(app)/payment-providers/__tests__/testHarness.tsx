@@ -76,6 +76,8 @@ export function makeInstance(overrides: Partial<ProviderInstanceView> = {}): Pro
       { key: "WEBHOOK_SECRET", isSet: false, last4: null, fingerprint: null, required: true, updatedAt: null },
     ],
     settings: { requireSignature: true, cardEnabled: false },
+    defaultBlockers: [],
+    applicableSettings: ["requireSignature", "cardEnabled"],
     ...overrides,
   }
 }
@@ -90,6 +92,7 @@ export const ADAPTERS: ProviderAdapterView[] = [
     providerKey: "ABACATE_PAY",
     label: "Abacate Pay",
     paymentCapable: true,
+    applicableSettings: ["requireSignature", "cardEnabled"],
     credentialSchema: [
       { key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" },
       { key: "WEBHOOK_SECRET", label: "Segredo do webhook", required: true, secret: true, hint: "Usado na assinatura HMAC." },
@@ -99,6 +102,7 @@ export const ADAPTERS: ProviderAdapterView[] = [
     providerKey: "ASAAS",
     label: "Asaas",
     paymentCapable: false,
+    applicableSettings: [],
     credentialSchema: [{ key: "API_KEY", label: "Chave de API", required: true, secret: true, hint: "" }],
   },
 ]

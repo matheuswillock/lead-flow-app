@@ -11,24 +11,21 @@ import {
 import { ADAPTERS, ALL_CREDENTIALS_SET, makeInstance } from "./testHarness"
 
 describe("providerInstanceRules", () => {
-  it("bloqueia padrão para instância somente de credenciais", () => {
-    const credentialsOnly = makeInstance({ paymentCapable: false, isDefault: false })
+  it("bloqueia padrão para instância somente de credenciais, como o servidor informa", () => {
+    const credentialsOnly = makeInstance({
+      paymentCapable: false,
+      isDefault: false,
+      defaultBlockers: ["Somente credenciais: o adapter não declara capacidades de pagamento."],
+    })
     expect(canMakeDefault(credentialsOnly)).toBe(false)
     expect(getDefaultBlockers(credentialsOnly).join(" ")).toContain("Somente credenciais")
   })
 
-  it("lista cada bloqueio calculado localmente quando o servidor não informa defaultBlockers", () => {
-    const blockers = getDefaultBlockers(
-      makeInstance({ isDefault: false, enabled: false, killSwitch: true, rolloutState: "APPROVED" })
-    )
-    expect(blockers).toHaveLength(4)
-    expect(blockers.join(" ")).toContain("desativada")
-    expect(blockers.join(" ")).toContain("kill switch")
-    expect(blockers.join(" ")).toContain("rollout")
-    expect(blockers.join(" ")).toContain("WEBHOOK_SECRET")
+  it("a instância que já é o padrão não lista bloqueios", () => {
+    expect(getDefaultBlockers(makeInstance({ isDefault: true, defaultBlockers: ["x"] }))).toEqual([])
   })
 
-  it("prefere os bloqueios informados pelo servidor", () => {
+  it("usa os bloqueios informados pelo servidor, sem recalculá-los", () => {
     const instance = makeInstance({ isDefault: false, defaultBlockers: ["Motivo do servidor"] })
     expect(getDefaultBlockers(instance)).toEqual(["Motivo do servidor"])
     expect(canMakeDefault(instance)).toBe(false)
@@ -47,7 +44,7 @@ describe("providerInstanceRules", () => {
   })
 
   it("mostra configurações só quando aplicáveis", () => {
-    expect(getApplicableSettings(makeInstance({ paymentCapable: false }))).toEqual([])
+    expect(getApplicableSettings(makeInstance({ paymentCapable: false, applicableSettings: [] }))).toEqual([])
     expect(getApplicableSettings(makeInstance())).toEqual(["requireSignature", "cardEnabled"])
     expect(getApplicableSettings(makeInstance({ applicableSettings: ["cardEnabled"] }))).toEqual(["cardEnabled"])
   })

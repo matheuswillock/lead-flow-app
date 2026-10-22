@@ -1,5 +1,4 @@
 import {
-  ROLLOUT_LABELS,
   type ApplicableSetting,
   type ProviderAdapterView,
   type ProviderCredentialView,
@@ -29,40 +28,21 @@ export function missingRequiredCredentials(instance: ProviderInstanceView): stri
 }
 
 /**
- * Motivos que impedem tornar a instância o padrão. Usa o que o servidor informou
- * (`defaultBlockers`) e, na ausência, calcula o equivalente localmente.
+ * Motivos que impedem tornar a instância o padrão, como o servidor os calcula
+ * (`defaultBlockers`): a regra de elegibilidade é do backend e a tela só a mostra.
  * Instâncias somente de credencial nunca podem ser o padrão (PAY-CRED-T019).
  */
-export function getDefaultBlockers(instance: ProviderInstanceView): string[] {
-  if (instance.isDefault) return []
-  if (instance.defaultBlockers !== undefined) return instance.defaultBlockers
-
-  const blockers: string[] = []
-  if (!instance.paymentCapable) {
-    blockers.push(
-      "Somente credenciais: o adapter ainda não declara capacidades de pagamento, então o roteador não o seleciona."
-    )
-  }
-  if (!instance.enabled) blockers.push("A instância está desativada.")
-  if (instance.killSwitch) blockers.push("O kill switch está ativo.")
-  if (instance.rolloutState !== "ACTIVE") {
-    blockers.push(`O rollout está em “${ROLLOUT_LABELS[instance.rolloutState]}”; precisa estar em “Ativo”.`)
-  }
-  const missing = missingRequiredCredentials(instance)
-  if (missing.length > 0) {
-    blockers.push(`Credenciais obrigatórias faltando: ${missing.join(", ")}.`)
-  }
-  return blockers
+export function getDefaultBlockers(instance: ProviderInstanceView): readonly string[] {
+  return instance.isDefault ? [] : instance.defaultBlockers
 }
 
 export function canMakeDefault(instance: ProviderInstanceView): boolean {
   return !instance.isDefault && getDefaultBlockers(instance).length === 0
 }
 
-/** Configurações exibidas: as informadas pelo servidor; sem a informação, só adapters com pagamento. */
-export function getApplicableSettings(instance: ProviderInstanceView): ApplicableSetting[] {
-  if (instance.applicableSettings !== undefined) return instance.applicableSettings
-  return instance.paymentCapable ? ["requireSignature", "cardEnabled"] : []
+/** Configurações exibidas: as que o servidor declara aplicáveis ao adapter da instância. */
+export function getApplicableSettings(instance: ProviderInstanceView): readonly ApplicableSetting[] {
+  return instance.applicableSettings
 }
 
 export interface CredentialRow extends ProviderCredentialView {

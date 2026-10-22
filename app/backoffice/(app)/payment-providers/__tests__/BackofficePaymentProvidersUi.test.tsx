@@ -85,7 +85,15 @@ describe("página de providers de pagamento", () => {
 
   it("desabilita tornar padrão para instância somente de credenciais e explica o motivo", async () => {
     const service = new FakePaymentProvidersService([
-      makeInstance({ id: "cfg-2", displayName: "Asaas conta B", providerKey: "ASAAS", isDefault: false, paymentCapable: false }),
+      makeInstance({
+        id: "cfg-2",
+        displayName: "Asaas conta B",
+        providerKey: "ASAAS",
+        isDefault: false,
+        paymentCapable: false,
+        applicableSettings: [],
+        defaultBlockers: ["Somente credenciais: o adapter ainda não declara capacidades de pagamento."],
+      }),
       makeInstance(),
     ])
     await renderPage(service)
@@ -158,7 +166,18 @@ describe("correções de usabilidade da página de providers", () => {
   it("lista cada bloqueio e mantém Tornar padrão desabilitado e fora de destaque", async () => {
     const service = new FakePaymentProvidersService([
       makeInstance(),
-      makeInstance({ id: "cfg-2", displayName: "Abacate reserva", isDefault: false, killSwitch: true, rolloutState: "APPROVED" }),
+      makeInstance({
+        id: "cfg-2",
+        displayName: "Abacate reserva",
+        isDefault: false,
+        killSwitch: true,
+        rolloutState: "APPROVED",
+        defaultBlockers: [
+          "O kill switch está ativo.",
+          "O rollout está em “Aprovado”; precisa estar em “Ativo”.",
+          "Credenciais obrigatórias faltando: WEBHOOK_SECRET.",
+        ],
+      }),
     ])
     await renderPage(service)
     const sheet = await openManage("Abacate reserva")
@@ -193,6 +212,7 @@ describe("correções de usabilidade da página de providers", () => {
         providerKey: "ASAAS",
         isDefault: false,
         paymentCapable: false,
+        applicableSettings: [],
         credentials: [
           ...ALL_CREDENTIALS_SET,
           { key: "REQUIRE_SIGNATURE", isSet: false, last4: null, fingerprint: null, required: true, updatedAt: null },
