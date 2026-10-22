@@ -4,6 +4,7 @@ import {
   ProviderInstanceConflictError,
   ProviderInstanceNotFoundError,
   parseStoredSettings,
+  pickPrimaryInstance,
   type ProviderInstanceRecord,
 } from "@/lib/payment-provider/instance"
 import {
@@ -66,12 +67,13 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
     provider: PaymentProviderKey,
     environment: PaymentProviderEnvironment,
   ): Promise<ProviderInstanceRecord | null> {
-    const row = await prisma.paymentProviderConfig.findFirst({
+    const rows = await prisma.paymentProviderConfig.findMany({
       where: { providerKey: provider, environment },
       select: configSelect,
-      orderBy: [{ isDefault: "desc" }, { enabled: "desc" }, { createdAt: "asc" }],
+      orderBy: { createdAt: "asc" },
     })
-    return row ? toInstanceRecord(row) : null
+    // Mesmos critérios do roteador (elegível e padrão primeiro): ver pickPrimaryInstance.
+    return pickPrimaryInstance(rows.map(toInstanceRecord), provider) ?? null
   }
 
   async findByScope(

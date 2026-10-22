@@ -16,6 +16,8 @@ export type ResolverInstance = {
   readonly id: string
   readonly externalAccountContext: string
   readonly settings: StoredProviderSettings
+  /** Instância principal do provider/ambiente (mesmos critérios do roteador). */
+  readonly isPrimary: boolean
 }
 
 export type CredentialResolverDeps = {
@@ -58,7 +60,7 @@ export function createCredentialResolver(deps: CredentialResolverDeps): Credenti
           return resolved
         } catch (error) {
           if (!(error instanceof CredentialReadError)) throw error
-          const stale = deps.cache.peek(selector)
+          const stale = deps.cache.peekStale(selector)
           deps.log("payment_provider_credentials_db_unavailable", {
             provider: selector.provider,
             environment: selector.environment,
@@ -132,7 +134,11 @@ function resolveFromEnvironment(
     environment: selector.environment,
     externalAccountContext: selector.externalAccountContext ?? instance?.externalAccountContext ?? "",
   }
-  for (const field of getAdapterDescriptor(selector.provider).fields) {
+  const descriptor = getAdapterDescriptor(selector.provider)
+  // Variáveis de ambiente compartilhadas entre instâncias pertencem só à principal: uma instância
+  // secundária sem credencial própria fica sem credencial (falha fechada), não na conta da principal.
+  const envAllowed = !instance || instance.isPrimary || !descriptor.envFallbackSharedAcrossInstances
+  for (const field of envAllowed ? descriptor.fields : []) {
     if (field.key in values) continue
     for (const name of envFallbackNames(selector.provider, field.key, scope)) {
       const candidate = env[name]

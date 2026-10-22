@@ -27,6 +27,11 @@ export type AdapterDescriptor = {
   readonly label: string
   /** false: o router não seleciona o adapter para pagamentos; a instância só guarda credenciais. */
   readonly paymentCapable: boolean
+  /**
+   * true: os nomes de variável de ambiente não dependem do contexto da conta (valem para o
+   * provider/ambiente inteiro), então só a instância principal pode usá-los como reserva.
+   */
+  readonly envFallbackSharedAcrossInstances: boolean
   readonly fields: readonly CredentialFieldDescriptor[]
 }
 
@@ -52,6 +57,7 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
     providerKey: "ABACATE_PAY",
     label: "Abacate Pay",
     paymentCapable: true,
+    envFallbackSharedAcrossInstances: true,
     fields: [
       {
         key: "API_KEY",
@@ -99,6 +105,7 @@ const ADAPTERS: readonly AdapterDescriptor[] = Object.freeze([
     providerKey: "ASAAS",
     label: "Asaas",
     paymentCapable: false,
+    envFallbackSharedAcrossInstances: false,
     fields: [
       {
         key: "API_KEY",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
   assertInstanceRoutingPolicy,
   parseStoredSettings,
+  pickPrimaryInstance,
   toInstanceView,
   validateDisplayName,
   validateLogoAltText,
@@ -131,5 +132,48 @@ describe("toInstanceView", () => {
   it("cardEnabled armazenado vence a reserva", () => {
     const view = toInstanceView({ ...record, settings: { cardEnabled: false } }, [], true)
     expect(view.settings.cardEnabled).toBe(false)
+  })
+})
+
+describe("pickPrimaryInstance", () => {
+  const instance = (id: string, overrides: Partial<ProviderInstanceRecord> = {}) => ({
+    ...record,
+    id,
+    isDefault: false,
+    externalAccountContext: `ctx-${id}`,
+    ...overrides,
+  })
+
+  it("prefere a padrão elegível", () => {
+    const a = instance("a")
+    const b = instance("b", { isDefault: true })
+    expect(pickPrimaryInstance([a, b], "ABACATE_PAY")?.id).toBe("b")
+  })
+
+  it("ignora padrão inelegível (kill switch, rollout, saúde, contexto) se houver elegível", () => {
+    const eligible = instance("a")
+    for (const broken of [
+      { killSwitch: true },
+      { rolloutState: "APPROVED" as const },
+      { healthStatus: "UNKNOWN" as const },
+      { externalAccountContext: " " },
+      { enabled: false },
+    ]) {
+      const defaultBroken = instance("b", { isDefault: true, ...broken })
+      expect(pickPrimaryInstance([defaultBroken, eligible], "ABACATE_PAY")?.id).toBe("a")
+    }
+  })
+
+  it("sem nenhuma elegível, mantém a reserva: padrão, habilitada, primeira", () => {
+    const first = instance("a", { enabled: false, rolloutState: "DISABLED" })
+    const enabled = instance("b", { healthStatus: "UNKNOWN" })
+    const def = instance("c", { isDefault: true, enabled: false, rolloutState: "DISABLED" })
+    expect(pickPrimaryInstance([first, enabled], "ABACATE_PAY")?.id).toBe("b")
+    expect(pickPrimaryInstance([first, enabled, def], "ABACATE_PAY")?.id).toBe("c")
+    expect(pickPrimaryInstance([first], "ABACATE_PAY")?.id).toBe("a")
+  })
+
+  it("filtra pelo provider", () => {
+    expect(pickPrimaryInstance([instance("a", { provider: "ASAAS" })], "ABACATE_PAY")).toBeUndefined()
   })
 })

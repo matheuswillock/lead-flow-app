@@ -2,6 +2,7 @@ import { paymentProviderConfigRepository } from "@/app/api/infra/data/repositori
 import { paymentProviderCredentialRepository } from "@/app/api/infra/data/repositories/paymentProviderCredential/PaymentProviderCredentialRepository"
 import { credentialCache, type InstanceSelector } from "@/lib/payment-provider/credential-cache"
 import { createCredentialCipherFromEnv, type CredentialCipher } from "@/lib/payment-provider/credential-cipher"
+import { createCredentialInstanceLookup } from "@/lib/payment-provider/credential-instance-lookup"
 import { createCredentialResolver } from "@/lib/payment-provider/credential-resolver"
 
 let cachedCipher: CredentialCipher | null = null
@@ -13,22 +14,7 @@ export function getCredentialCipher(): CredentialCipher {
 }
 
 export const providerCredentialResolver = createCredentialResolver({
-  async findInstance(selector) {
-    const instance = selector.externalAccountContext
-      ? await paymentProviderConfigRepository.findByScope(
-          selector.provider,
-          selector.environment,
-          selector.externalAccountContext,
-        )
-      : await paymentProviderConfigRepository.findPrimary(selector.provider, selector.environment)
-    return instance
-      ? {
-          id: instance.id,
-          externalAccountContext: instance.externalAccountContext,
-          settings: instance.settings,
-        }
-      : null
-  },
+  findInstance: createCredentialInstanceLookup(paymentProviderConfigRepository),
   loadStored: (configId) => paymentProviderCredentialRepository.listCiphertexts(configId),
   decrypt: (payload, context) => getCredentialCipher().decrypt(payload, context),
   env: () => process.env,

@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
-import { CredentialCache } from "./credential-cache"
+import { CREDENTIAL_STALE_MAX_AGE_MS, CredentialCache } from "./credential-cache"
 import { createCredentialCipher } from "./credential-cipher"
 import {
   createCredentialResolver,
@@ -18,6 +18,7 @@ function setup(options: {
   stored?: Record<string, string>
   env?: Record<string, string>
   instance?: boolean
+  primary?: boolean
   dbFails?: boolean
   now?: { value: number }
 }) {
@@ -27,7 +28,7 @@ function setup(options: {
     if (options.dbFails) throw new Error("connection refused")
     return options.instance === false
       ? null
-      : { id: CONFIG_ID, externalAccountContext: "abacate-production", settings: { requireSignature: true } }
+      : { id: CONFIG_ID, externalAccountContext: "abacate-production", settings: { requireSignature: true }, isPrimary: options.primary !== false }
   })
   const loadStored = mock(async () =>
     Object.entries(options.stored ?? {}).map(([key, value]) => ({
@@ -125,7 +126,7 @@ describe("credential resolver", () => {
     const other = createCredentialCipher({ currentKeyId: "k1", keys: { k1: "d".repeat(64) } })
     const { resolver } = setup({ stored: { API_KEY: DB_SECRET }, env: { ABACATE_PAY_API_KEY: ENV_SECRET } })
     const broken = createCredentialResolver({
-      findInstance: async () => ({ id: CONFIG_ID, externalAccountContext: "x", settings: {} }),
+      findInstance: async () => ({ id: CONFIG_ID, externalAccountContext: "x", settings: {}, isPrimary: true }),
       loadStored: async () => [{ key: "API_KEY", valueCiphertext: other.encrypt(DB_SECRET, "cfg-1:API_KEY") }],
       decrypt: (payload, context) => cipher.decrypt(payload, context),
       env: () => ({ ABACATE_PAY_API_KEY: ENV_SECRET }),
@@ -189,9 +190,51 @@ describe("credential resolver", () => {
     expect(resolved.values.API_KEY).toBe("aact_legacy_000")
   })
 
+  it("instância NÃO principal do Abacate não recebe a reserva de ambiente (fica sem credencial)", async () => {
+    const { resolver } = setup({
+      primary: false,
+      stored: { WEBHOOK_SECRET: "db_whsec_000000" },
+      env: { ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET, ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET: ENV_SECRET },
+    })
+    const resolved = await resolver.resolve({ ...selector, externalAccountContext: "abacate-b" })
+    expect(resolved.values.API_KEY).toBeUndefined()
+    expect(resolved.values.WEBHOOK_SECRET).toBe("db_whsec_000000")
+    expect(resolved.sources).toEqual({ WEBHOOK_SECRET: "db" })
+  })
+
+  it("instância principal do Abacate continua recebendo a reserva de ambiente", async () => {
+    const { resolver } = setup({ primary: true, env: { ABACATE_PAY_PRODUCTION_API_KEY: ENV_SECRET } })
+    const resolved = await resolver.resolve({ ...selector, externalAccountContext: "abacate-a" })
+    expect(resolved.values.API_KEY).toBe(ENV_SECRET)
+  })
+
+  it("Asaas legacy (ambiente por contexto de conta) mantém a reserva mesmo sem ser a principal", async () => {
+    const { resolver } = setup({ primary: false, env: { ASAAS_LEGACY_API_KEY: "aact_legacy_000" } })
+    const resolved = await resolver.resolve({
+      provider: "ASAAS",
+      environment: "PRODUCTION",
+      externalAccountContext: "legacy",
+    })
+    expect(resolved.values.API_KEY).toBe("aact_legacy_000")
+  })
+
+  it("stale tem idade máxima de 10 min: dentro serve, depois lança (falha fechada)", async () => {
+    const clock = { value: 0 }
+    const ctx = setup({ stored: { API_KEY: DB_SECRET }, now: clock })
+    await ctx.resolver.resolve(selector)
+    ctx.findInstance.mockImplementation(async () => {
+      throw new Error("connection refused")
+    })
+    clock.value = CREDENTIAL_STALE_MAX_AGE_MS
+    expect((await ctx.resolver.resolve(selector)).values.API_KEY).toBe(DB_SECRET)
+    clock.value = CREDENTIAL_STALE_MAX_AGE_MS + 1
+    await expect(ctx.resolver.resolve(selector)).rejects.toThrow("Não foi possível ler")
+    expect(ctx.logs.at(-1)?.fields.servedFrom).toBe("none")
+  })
+
   it("controle: cipher amarra o contexto (linha trocada falha)", async () => {
     const swapped = createCredentialResolver({
-      findInstance: async () => ({ id: CONFIG_ID, externalAccountContext: "x", settings: {} }),
+      findInstance: async () => ({ id: CONFIG_ID, externalAccountContext: "x", settings: {}, isPrimary: true }),
       loadStored: async () => [{ key: "API_KEY", valueCiphertext: cipher.encrypt(DB_SECRET, "outra:API_KEY") }],
       decrypt: (payload, context) => cipher.decrypt(payload, context),
       env: () => ({}),

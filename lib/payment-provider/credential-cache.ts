@@ -19,11 +19,18 @@ export type ResolvedCredentials = {
 
 export const CREDENTIAL_CACHE_TTL_MS = 30_000
 
+/** Idade máxima de uma entrada servida como stale quando o banco falha; depois disso a leitura lança. */
+export const CREDENTIAL_STALE_MAX_AGE_MS = 10 * 60_000
+
 export function selectorKey(selector: InstanceSelector): string {
   return `${selector.provider}|${selector.environment}|${selector.externalAccountContext ?? "*"}`
 }
 
-type Entry = { readonly value: ResolvedCredentials; readonly expiresAt: number }
+type Entry = {
+  readonly value: ResolvedCredentials
+  readonly storedAt: number
+  readonly expiresAt: number
+}
 
 /** Cache curto em memória. Leitura síncrona é permitida mesmo vencida (melhor que nada). */
 export class CredentialCache {
@@ -44,8 +51,18 @@ export class CredentialCache {
     return this.entries.get(selectorKey(selector))?.value
   }
 
+  /** Entrada vencida, mas ainda dentro da idade máxima de stale. */
+  peekStale(
+    selector: InstanceSelector,
+    maxAgeMs: number = CREDENTIAL_STALE_MAX_AGE_MS,
+  ): ResolvedCredentials | undefined {
+    const entry = this.entries.get(selectorKey(selector))
+    return entry && this.now() - entry.storedAt <= maxAgeMs ? entry.value : undefined
+  }
+
   set(selector: InstanceSelector, value: ResolvedCredentials): void {
-    this.entries.set(selectorKey(selector), { value, expiresAt: this.now() + this.ttlMs })
+    const storedAt = this.now()
+    this.entries.set(selectorKey(selector), { value, storedAt, expiresAt: storedAt + this.ttlMs })
   }
 
   /**

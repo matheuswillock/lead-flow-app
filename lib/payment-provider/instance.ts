@@ -4,6 +4,7 @@ import type {
   ProviderInstanceView,
 } from "./admin-contract"
 import { getAdapterDescriptor, isPaymentCapableProvider } from "./credential-schema"
+import { isConfigurationRoutable } from "./routing"
 import type { ProviderRoutingConfigRecord } from "./routing-config"
 
 /** Configurações não secretas de uma instância. Campo ausente = não definido (cai na reserva). */
@@ -215,13 +216,32 @@ export class ProviderInstanceNotFoundError extends Error {
   }
 }
 
-/** Instância principal de um provider: padrão, depois habilitada, depois a primeira da lista. */
-export function pickPrimaryInstance<T extends Pick<ProviderRoutingConfigRecord, "provider" | "isDefault" | "enabled">>(
+type PrimaryCandidate = Pick<
+  ProviderRoutingConfigRecord,
+  | "provider"
+  | "isDefault"
+  | "enabled"
+  | "killSwitch"
+  | "rolloutState"
+  | "healthStatus"
+  | "externalAccountContext"
+  | "revision"
+>
+
+/**
+ * Instância principal de um provider, com os mesmos critérios do roteador: entre as elegíveis
+ * (habilitada, sem kill switch, ACTIVE, HEALTHY, contexto preenchido) prefere a padrão. Sem nenhuma
+ * elegível (bootstrap, webhook de instância já desligada) a reserva é padrão, habilitada, primeira.
+ */
+export function pickPrimaryInstance<T extends PrimaryCandidate>(
   instances: readonly T[],
   provider: ProviderRoutingConfigRecord["provider"],
 ): T | undefined {
   const candidates = instances.filter((instance) => instance.provider === provider)
+  const eligible = candidates.filter(isConfigurationRoutable)
   return (
+    eligible.find((instance) => instance.isDefault) ??
+    eligible[0] ??
     candidates.find((instance) => instance.isDefault) ??
     candidates.find((instance) => instance.enabled) ??
     candidates[0]
