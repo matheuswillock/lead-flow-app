@@ -66,6 +66,25 @@ runs:
         # para novas conexões e repete o start se ela ainda assim estiver ocupada.
         sudo sysctl -w net.ipv4.ip_local_reserved_ports=55322 >/dev/null 2>&1 || true
 
+        # O ghcr.io responde `toomanyrequests` (rate limit do registry) em picos;
+        # três starts com 5 s de intervalo esgotavam a janela em 22/10/2026
+        # (run 39830851161). Puxa a imagem com backoff crescente, separado do
+        # `docker run`, para que a falha de rede/limite não se misture com a de bind.
+        E2E_PG_IMAGE="ghcr.io/supabase/postgres:17.6.1.149"
+        pull_delay=10
+        for pull_attempt in 1 2 3 4 5 6; do
+          if docker pull "${E2E_PG_IMAGE}"; then
+            break
+          fi
+          if [ "${pull_attempt}" = "6" ]; then
+            echo "::error::Não foi possível baixar ${E2E_PG_IMAGE} após 6 tentativas (rate limit do ghcr.io?)."
+            exit 1
+          fi
+          echo "Pull de ${E2E_PG_IMAGE} falhou (tentativa ${pull_attempt}/6); nova tentativa em ${pull_delay}s."
+          sleep "${pull_delay}"
+          pull_delay=$((pull_delay * 2))
+        done
+
         start_postgres() {
           docker run -d --name "${E2E_PG_CONTAINER}" \
             -e POSTGRES_PASSWORD=postgres \
@@ -73,7 +92,7 @@ runs:
             -p 55322:5432 \
             -v "$PWD/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro" \
             -v "$PWD/docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro" \
-            ghcr.io/supabase/postgres:17.6.1.149 \
+            "${E2E_PG_IMAGE}" \
             postgres \
             -c listen_addresses=* \
             -c wal_level=logical \
