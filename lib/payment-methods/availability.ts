@@ -1,4 +1,5 @@
 import { credentialCache } from "@/lib/payment-provider/credential-cache"
+import { warmCredentialRuntime } from "@/lib/payment-provider/credential-runtime-loader"
 import { derivePaymentProviderEnvironment } from "@/lib/payment-provider/environment"
 import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
 import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
@@ -6,7 +7,11 @@ import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 export type BillingType = "PIX" | "CREDIT_CARD"
 export type AvailableBillingTypes = BillingType[]
 
-export type CardAvailabilityReason = "AVAILABLE" | "PROVIDER_WITHOUT_CARD" | "DISABLED_BY_FLAG"
+export type CardAvailabilityReason =
+  | "AVAILABLE"
+  | "PROVIDER_WITHOUT_CARD"
+  | "DISABLED_BY_FLAG"
+  | "CREDENTIALS_NOT_LOADED"
 
 export interface CardAvailability {
   card: boolean
@@ -48,6 +53,24 @@ function isCardDisabledByConfiguration(
   return env.CARD_PAYMENTS_ENABLED === "false"
 }
 
+/** Deploy gerenciado pelo banco: a chave-mestra existe, então o backoffice pode ter desligado o cartão. */
+function isDatabaseManaged(env: Env): boolean {
+  return Boolean(env.PAYMENT_CREDENTIALS_ENCRYPTION_KEY?.trim())
+}
+
+/**
+ * Cache frio (lambda nova) num deploy gerenciado pelo banco: o interruptor `cardEnabled` ainda é
+ * desconhecido, então o cartão não é oferecido (falha fechada) e a hidratação roda em segundo plano.
+ * A primeira requisição de uma lambda fria vê só PIX.
+ */
+function isCredentialCacheCold(env: Env, environment: PaymentProviderEnvironment | null): boolean {
+  if (!environment || !isDatabaseManaged(env)) return false
+  const selector = { provider: "ABACATE_PAY", environment } as const
+  if (credentialCache.peek(selector)) return false
+  warmCredentialRuntime(selector)
+  return true
+}
+
 function build(card: boolean, reason: CardAvailabilityReason): CardAvailability {
   return { card, reason, availableBillingTypes: card ? ["PIX", "CREDIT_CARD"] : ["PIX"] }
 }
@@ -59,6 +82,7 @@ function build(card: boolean, reason: CardAvailabilityReason): CardAvailability 
  */
 export function resolveCardAvailability(env: Env = process.env): CardAvailability {
   const environment = resolveEnvironment(env)
+  if (isCredentialCacheCold(env, environment)) return build(false, "CREDENTIALS_NOT_LOADED")
   if (isCardDisabledByConfiguration(env, environment)) return build(false, "DISABLED_BY_FLAG")
   if (!environment || !readAbacatePublicKey(environment, env)) {
     return build(false, "PROVIDER_WITHOUT_CARD")

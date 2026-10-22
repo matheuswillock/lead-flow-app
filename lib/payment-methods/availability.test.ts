@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { credentialCache } from "@/lib/payment-provider/credential-cache"
+import {
+  resetCredentialRuntimeLoader,
+  setCredentialRuntimeLoaderForTests,
+} from "@/lib/payment-provider/credential-runtime-loader"
 import {
   PaymentMethodUnavailableError,
   assertBillingTypeAllowed,
@@ -122,5 +126,52 @@ describe("cardEnabled por instância (PAY-CRED-T018)", () => {
   it("cardEnabled=true não dispensa a chave pública", () => {
     seed({ cardEnabled: true })
     expect(resolveCardAvailability({ PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION" }).card).toBe(false)
+  })
+})
+
+describe("cardEnabled com cache frio (falha fechada quando o deploy é gerenciado pelo banco)", () => {
+  const selector = { provider: "ABACATE_PAY", environment: "PRODUCTION" } as const
+  const managed = {
+    PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION",
+    ABACATE_PAY_PRODUCTION_PUBLIC_KEY: "pk",
+    PAYMENT_CREDENTIALS_ENCRYPTION_KEY: "m".repeat(64),
+  }
+  const warmed: unknown[] = []
+
+  beforeEach(() => {
+    warmed.length = 0
+    credentialCache.invalidateAll()
+    setCredentialRuntimeLoaderForTests(async () => {
+      warmed.push(true)
+    })
+  })
+
+  afterEach(() => {
+    credentialCache.invalidateAll()
+    resetCredentialRuntimeLoader()
+  })
+
+  it("chave-mestra presente e cache frio: cartão indisponível e hidratação disparada", async () => {
+    expect(resolveCardAvailability(managed)).toMatchObject({ card: false, reason: "CREDENTIALS_NOT_LOADED" })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(warmed).toHaveLength(1)
+  })
+
+  it("cache quente com cardEnabled=true e chave pública: cartão disponível", () => {
+    credentialCache.set(selector, { instanceId: "i", values: {}, sources: {}, settings: { cardEnabled: true } })
+    expect(resolveCardAvailability(managed).card).toBe(true)
+  })
+
+  it("cache quente com cardEnabled=false: desligado", () => {
+    credentialCache.set(selector, { instanceId: "i", values: {}, sources: {}, settings: { cardEnabled: false } })
+    expect(resolveCardAvailability(managed)).toMatchObject({ card: false, reason: "DISABLED_BY_FLAG" })
+  })
+
+  it("sem chave-mestra o comportamento é o atual e nada é hidratado", async () => {
+    const { PAYMENT_CREDENTIALS_ENCRYPTION_KEY: _omit, ...unmanaged } = managed
+    expect(resolveCardAvailability(unmanaged).card).toBe(true)
+    await Promise.resolve()
+    expect(warmed).toHaveLength(0)
   })
 })
