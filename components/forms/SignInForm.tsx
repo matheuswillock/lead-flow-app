@@ -16,6 +16,7 @@ import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 interface SignInFormProps {
   form: UseFormReturn<loginFormData>;
   errors: Record<string, string>;
+  isRedirecting?: boolean;
   onSubmit: (data: loginFormData) => void | Promise<void>;
 }
 
@@ -23,6 +24,7 @@ export function SignInForm({
   className,
   form,
   errors,
+  isRedirecting = false,
   onSubmit,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignInFormProps) {
@@ -94,7 +96,7 @@ export function SignInForm({
                     <FormLabel>Senha</FormLabel>
                     <Link 
                       href="/forgot-password" 
-                      className="text-sm text-primary hover:underline underline-offset-4"
+                      className="inline-flex items-center text-sm text-primary hover:underline underline-offset-4 max-lg:min-h-11"
                     >
                       Esqueci minha senha
                     </Link>
@@ -108,8 +110,9 @@ export function SignInForm({
                       />
                       <button
                         type="button"
+                        aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        className="absolute right-0 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center text-gray-500 hover:text-gray-700 max-lg:size-11"
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -122,10 +125,10 @@ export function SignInForm({
 
             <Button
               type="submit"
-              className="w-full cursor-pointer text-lg font-medium"
-              disabled={!form.formState.isValid || form.formState.isSubmitting}
+              className="w-full cursor-pointer text-lg font-medium max-lg:h-11"
+              disabled={!form.formState.isValid || form.formState.isSubmitting || isRedirecting}
             >
-              {form.formState.isSubmitting ? "Entrando..." : "Entrar"}
+              {form.formState.isSubmitting || isRedirecting ? "Entrando..." : "Entrar"}
             </Button>
           </div>
           <div className="flex items-center gap-4">
@@ -138,7 +141,7 @@ export function SignInForm({
               type="button"
               variant="outline"
               onClick={handleGoogleSignIn}
-              className="w-full flex justify-center items-center gap-2 cursor-pointer text-sm font-medium"
+              className="w-full flex justify-center items-center gap-2 cursor-pointer text-sm font-medium max-lg:h-11"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-4 w-4">
               <path
