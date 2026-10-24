@@ -34,3 +34,44 @@ describe("PublicCheckoutShell footer", () => {
     expect(html).not.toContain("AbacatePay")
   })
 })
+
+describe("PublicCheckoutShell brandingOverride", () => {
+  function renderOverride(
+    brandingOverride: Parameters<typeof PublicCheckoutShell>[0]["brandingOverride"],
+    provider?: Parameters<typeof PublicCheckoutShell>[0]["provider"]
+  ) {
+    return renderToStaticMarkup(
+      <PublicCheckoutShell issuedValue="20/10/2026" provider={provider} brandingOverride={brandingOverride}>
+        <div />
+      </PublicCheckoutShell>
+    )
+  }
+
+  it("mostra o nome vindo do banco no lugar do catálogo estático", () => {
+    const html = renderOverride({ displayName: "Pagamentos XPTO" }, "ASAAS")
+
+    expect(html).toContain("Pagamentos XPTO")
+    expect(html).not.toContain("asaas-pagamentos-logo.svg")
+  })
+
+  it("mostra o logo do banco com o texto alternativo configurado", () => {
+    const html = renderOverride(
+      { displayName: "XPTO", logoUrl: "https://cdn.exemplo.com/xpto.svg", logoAltText: "Logo da XPTO" },
+      "ABACATE_PAY"
+    )
+
+    expect(html).toContain("Logo da XPTO")
+    expect(html).toContain("cdn.exemplo.com")
+  })
+
+  it("override vazio mantém o comportamento atual por provider", () => {
+    expect(renderOverride({ displayName: null, logoUrl: null }, "ABACATE_PAY")).toContain(
+      "Pagamento processado pela AbacatePay"
+    )
+    expect(renderOverride(undefined)).toContain("asaas-pagamentos-logo.svg")
+  })
+
+  it("com provider não resolvido, o override do banco ainda é exibido", () => {
+    expect(renderOverride({ displayName: "XPTO" }, null)).toContain("XPTO")
+  })
+})

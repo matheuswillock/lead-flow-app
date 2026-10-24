@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
+import { credentialCache } from "@/lib/payment-provider/credential-cache"
 // --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
 const listConfigs = mock(async (_environment: string) => [
@@ -6,7 +7,8 @@ const listConfigs = mock(async (_environment: string) => [
 ])
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
-  paymentProviderConfigRepository: { list: listConfigs },
+  // findPrimary/findByScope: o resolver de credenciais (M11) consulta a instância; sem linha, vale o ambiente.
+  paymentProviderConfigRepository: { list: listConfigs, findPrimary: async () => null, findByScope: async () => null },
 }))
 
 const claim = mock(async (_input: unknown) => ({ kind: "claimed" as const, claimToken: "claim-1" }))
@@ -44,11 +46,26 @@ mock.module("@/app/api/infra/data/repositories/paymentProviderIdentity/PaymentPr
 }))
 
 const markPaidOnceForProvider = mock(async (_input: unknown) => undefined)
+const purchaseFindById = mock(async (_id: string): Promise<unknown> => ({
+  id: "purchase-1",
+  amount: "69.90",
+  billingType: "PIX",
+  purchaseType: "subscription",
+  productSlug: "plano",
+}))
+const applyEmailCredits = mock(async (_input: unknown) => ({ handled: true, applied: true, alreadyApplied: false }))
+mock.module("@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase", () => ({
+  applyEmailCreditsPaidPurchaseUseCase: { apply: applyEmailCredits },
+}))
+const sendSlack = mock(async (_input: unknown) => undefined)
+mock.module("@/app/api/services/backofficeCronSlack/BackofficeCronSlackNotificationService", () => ({
+  backofficeCronSlackNotificationService: { sendFailureAlertBestEffort: sendSlack },
+}))
 mock.module("@/app/api/infra/data/repositories/platformPurchase/PlatformPurchaseRepository", () => ({
-  platformPurchaseRepository: { markPaidOnceForProvider },
+  platformPurchaseRepository: { markPaidOnceForProvider, findById: purchaseFindById },
 }))
 
-const graceFindById = mock(async (_id: string): Promise<unknown> => ({ id: "grace-1", status: "pending" }))
+const graceFindById = mock(async (_id: string): Promise<unknown> => ({ id: "grace-1", status: "pending", amountCents: 6990 }))
 const graceMarkConfirmed = mock(async (_input: unknown): Promise<unknown> => ({ id: "grace-1", status: "confirmed" }))
 const graceComplete = mock(async (_id: string): Promise<unknown> => ({ id: "grace-1", status: "completed" }))
 mock.module("@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository", () => ({
@@ -59,7 +76,7 @@ mock.module("@/app/api/infra/data/repositories/billingGracePayment/BillingGraceP
   },
 }))
 
-const adhesionPaymentFindById = mock(async (_id: string): Promise<unknown> => ({ id: "adhesion-payment-1", adhesionId: "adhesion-1" }))
+const adhesionPaymentFindById = mock(async (_id: string): Promise<unknown> => ({ id: "adhesion-payment-1", adhesionId: "adhesion-1", amountCents: 6990 }))
 mock.module("@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository", () => ({
   backofficeAdhesionPaymentRepository: { findById: adhesionPaymentFindById },
 }))
@@ -70,7 +87,8 @@ mock.module("@/app/api/services/backofficeAdhesion/BackofficeAdhesionService", (
 }))
 
 const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
-mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
+const captureException = mock((_error: unknown, _options?: unknown) => "event-id")
+mock.module("@sentry/nextjs", () => ({ captureMessage, captureException }))
 
 const { POST } = await import("./route")
 
@@ -86,6 +104,8 @@ const ENV_KEYS = [
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
+  // O resolver guarda as credenciais por 30 s; sem limpar, o ambiente alterado abaixo não é relido.
+  credentialCache.invalidateAll()
   for (const key of ENV_KEYS) {
     saved[key] = process.env[key]
     delete process.env[key]
@@ -94,7 +114,7 @@ beforeEach(() => {
   process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
   process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
   attempt = { ...defaultAttempt }
-  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage]) {
+  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage, captureException, purchaseFindById, applyEmailCredits, sendSlack]) {
     fn.mockClear()
   }
   markPaidFromProvider.mockImplementation(async () => undefined)
@@ -209,7 +229,8 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BACKOFFICE_AD
 
     const response = await POST(confirmedRequest())
 
-    expect(response.status).toBe(500)
+    // O guard de valor/método (T011) barra antes de qualquer efeito.
+    expect(response.status).toBe(422)
     expect(markPaidFromProvider).not.toHaveBeenCalled()
   })
 })
@@ -240,5 +261,159 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BILLING_GRACE
       tags: { ownerType: "ALGUM_OWNER_NOVO" },
     })
     expect(markPaidFromProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — nenhum rastro do segredo (PAY-HARD-T012B)", () => {
+  const SECRET = "prod-webhook-secret"
+  const request = () => webhookRequest(completedPayload(false), `?webhookSecret=${SECRET}`)
+
+  it("erro forçado com a URL na mensagem: log e evento do Sentry saem sem o segredo, com provider e id do evento", async () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined)
+    claim.mockImplementationOnce(async () => {
+      throw new Error(`fetch failed https://app.example.com/api/v1/webhooks/payment-provider/abacate?webhookSecret=${SECRET}`)
+    })
+
+    const response = await POST(request())
+
+    expect(response.status).toBe(500)
+    expect(captureException).toHaveBeenCalledTimes(1)
+    const sentryPayload = JSON.stringify(captureException.mock.calls)
+    expect(sentryPayload).not.toContain(SECRET)
+    expect(sentryPayload).toContain("ABACATE_PAY")
+    expect(sentryPayload).toContain("evt_prod_1")
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(SECRET)
+    consoleError.mockRestore()
+  })
+
+  it("segredo inválido (401) também não vai ao log e não gera evento de erro no Sentry", async () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined)
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=wrong-secret-xyz"))
+
+    expect(response.status).toBe(401)
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("wrong-secret-xyz")
+    expect(captureException).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it.each([
+    ["sucesso", () => request(), 202],
+    ["segredo errado", () => webhookRequest(completedPayload(false), "?webhookSecret=x"), 401],
+  ])("responde %s sem redirecionamento e com Referrer-Policy no-referrer", async (_name, build, status) => {
+    const response = await POST(build())
+
+    expect(response.status).toBe(status)
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer")
+    expect(response.headers.get("location")).toBeNull()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — assinatura HMAC", () => {
+  it("com chave pública configurada, evento sem X-Webhook-Signature responde 401 mesmo com o segredo correto", async () => {
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_prod_key"
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(401)
+    expect(claim).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — valor e método contra a tentativa (PAY-HARD-T011)", () => {
+  // O alerta de divergência é deduplicado por tentativa + evento: cada caso usa um evento próprio.
+  const payload = (amount: number, method = "PIX", eventId = "evt_mismatch") =>
+    JSON.stringify({
+      id: eventId,
+      event: "transparent.completed",
+      devMode: false,
+      data: { transparent: { id: "pix_char_prod_1", status: "PAID", method, amount } },
+    })
+  const request = (body: string) => webhookRequest(body, "?webhookSecret=prod-webhook-secret")
+
+  it.each([
+    ["PLATFORM_PURCHASE", "purchase-1"],
+    ["BACKOFFICE_ADHESION", "adhesion-payment-1"],
+    ["BILLING_GRACE_PAYMENT", "grace-1"],
+  ])("%s: valor divergente é rejeitado sem nenhum efeito e a inbox registra a falha", async (ownerType, ownerId) => {
+    attempt = { ...defaultAttempt, ownerType, ownerId, tenantId: "adhesion-1" }
+
+    const response = await POST(request(payload(100, "PIX", `evt_mismatch_valor_${ownerType}`)))
+
+    expect(response.status).toBe(422)
+    expect(applyEventWithClaim).not.toHaveBeenCalled()
+    expect(bind).not.toHaveBeenCalled()
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+    expect(markPaidFromProvider).not.toHaveBeenCalled()
+    expect(graceMarkConfirmed).not.toHaveBeenCalled()
+    expect(applyEmailCredits).not.toHaveBeenCalled()
+    expect(markFailed).toHaveBeenCalledTimes(1)
+    expect(sendSlack).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ["PLATFORM_PURCHASE", "purchase-1"],
+    ["BACKOFFICE_ADHESION", "adhesion-payment-1"],
+    ["BILLING_GRACE_PAYMENT", "grace-1"],
+  ])("%s: método divergente é rejeitado sem efeito", async (ownerType, ownerId) => {
+    attempt = { ...defaultAttempt, ownerType, ownerId, tenantId: "adhesion-1" }
+
+    const response = await POST(request(payload(6990, "CARD", `evt_mismatch_metodo_${ownerType}`)))
+
+    expect(response.status).toBe(422)
+    expect(applyEventWithClaim).not.toHaveBeenCalled()
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+    expect(markPaidFromProvider).not.toHaveBeenCalled()
+    expect(graceMarkConfirmed).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — disputa e créditos", () => {
+  const disputedBody = JSON.stringify({
+    id: "evt_disputed_1",
+    event: "transparent.disputed",
+    devMode: false,
+    data: { transparent: { id: "pix_char_prod_1", status: "UNDER_DISPUTE", method: "PIX", amount: 6990 } },
+  })
+  const request = (body: string) => webhookRequest(body, "?webhookSecret=prod-webhook-secret")
+
+  it("transparent.disputed marca DISPUTED e alerta Slack e Sentry com o id da cobrança, sem reembolso", async () => {
+    attempt = { ...defaultAttempt, status: "CONFIRMED" }
+
+    const response = await POST(request(disputedBody))
+
+    expect(response.status).toBe(202)
+    expect(applyEventWithClaim).toHaveBeenCalledWith(expect.objectContaining({ nextStatus: "DISPUTED" }))
+    expect(sendSlack).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(sendSlack.mock.calls[0])).toContain("pix_char_prod_1")
+    expect(JSON.stringify(captureMessage.mock.calls)).toContain("pix_char_prod_1")
+  })
+
+  it("compra de créditos de e-mail confirmada aplica os créditos no próprio webhook", async () => {
+    purchaseFindById.mockImplementation(async () => ({
+      id: "purchase-1",
+      amount: "69.90",
+      billingType: "PIX",
+      purchaseType: "email_credits",
+      productSlug: "email-credits-starter",
+    }))
+    try {
+      const response = await POST(request(completedPayload(false)))
+
+      expect(response.status).toBe(202)
+      expect(applyEmailCredits).toHaveBeenCalledWith({
+        paymentId: "pix_char_prod_1",
+        checkoutId: "purchase-1",
+        productSlug: "email-credits-starter",
+      })
+    } finally {
+      purchaseFindById.mockImplementation(async () => ({
+        id: "purchase-1",
+        amount: "69.90",
+        billingType: "PIX",
+        purchaseType: "subscription",
+        productSlug: "plano",
+      }))
+    }
   })
 })

@@ -1,3 +1,5 @@
+import { redactProviderSecrets } from "./redaction";
+
 export type LogLevel = "info" | "warn" | "error";
 
 export type LogFields = Record<string, unknown>;
@@ -29,7 +31,7 @@ type RuntimeProcess = {
 function getRuntimeProcess(): RuntimeProcess | undefined {
   return (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
 }
-const SECRET_KEY_PATTERN = /token|secret|cookie|password|passwd|pwd|pass|authorization|api[_-]?key|access[_-]?key|service[_-]?role|database[_-]?url|connection[_-]?string/i;
+const SECRET_KEY_PATTERN = /token|secret|cookie|password|passwd|pwd|pass|authorization|api[_-]?key|access[_-]?key|public[_-]?key|credential|service[_-]?role|database[_-]?url|connection[_-]?string/i;
 const SECRET_VALUE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /Bearer\s+[A-Za-z0-9\-._~+/=]+/gi, replacement: "Bearer [redacted]" },
   { pattern: /\bsk-[A-Za-z0-9\-_]+/g, replacement: "sk-[redacted]" },
@@ -38,10 +40,12 @@ const SECRET_VALUE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
 ];
 
 function redactText(value: string): string {
-  return SECRET_VALUE_PATTERNS.reduce((result, { pattern, replacement }) => {
-    pattern.lastIndex = 0;
-    return result.replace(pattern, replacement);
-  }, value);
+  return redactProviderSecrets(
+    SECRET_VALUE_PATTERNS.reduce((result, { pattern, replacement }) => {
+      pattern.lastIndex = 0;
+      return result.replace(pattern, replacement);
+    }, value),
+  );
 }
 
 function sanitizeValue(value: unknown, activeObjects: WeakSet<object>, depth: number): unknown {

@@ -54,3 +54,35 @@ describe("payment provider router", () => {
     ).rejects.toThrow("padrão")
   })
 })
+
+describe("payment provider router: ownerContext opcional", () => {
+  const registry = () =>
+    new PaymentProviderRegistry([
+      { metadata: { key: "ABACATE_PAY", environment: "PRODUCTION", capabilities: ["PIX"] } },
+    ])
+
+  it("aceita o dono como contexto sem mudar a seleção (comportamento atual preservado)", async () => {
+    const router = new PaymentProviderRouter({ list: async () => [config] }, registry())
+
+    const withoutOwner = await router.select({ environment: "PRODUCTION", requiredCapabilities: ["PIX"] })
+    const withOwner = await router.select({
+      environment: "PRODUCTION",
+      requiredCapabilities: ["PIX"],
+      ownerContext: { ownerType: "PAYMENT_CHARGE", ownerId: "charge-1", profileId: "profile-1" },
+    })
+
+    expect(withOwner).toEqual(withoutOwner)
+  })
+
+  it("o contexto do dono não vaza para a função de seleção (não vira fallback nem filtro)", async () => {
+    const router = new PaymentProviderRouter({ list: async () => [{ ...config, killSwitch: true }] }, registry())
+
+    await expect(
+      router.select({
+        environment: "PRODUCTION",
+        requiredCapabilities: ["PIX"],
+        ownerContext: { ownerType: "PAYMENT_CHARGE", ownerId: "charge-1" },
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_NOT_AVAILABLE" })
+  })
+})

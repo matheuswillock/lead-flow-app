@@ -10,6 +10,7 @@ import { getFullUrl } from "@/lib/utils/app-url";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 import type { AsaasAccountId } from "@/lib/asaas";
+import { mirrorAsaasPaymentToLedger } from "@/app/api/useCases/paymentCharge/mirrorAsaasPaymentToLedger";
 
 export type AsaasWebhookBody = {
   id?: string;
@@ -137,6 +138,9 @@ export async function processAsaasWebhookEvent(
       body.payment.externalReference || body.subscription?.externalReference;
     const paymentStatus = body.payment.status;
     const checkoutSessionId = body.payment.checkoutSession;
+
+    // Espelho no ledger (ASAAS_SHADOW): nunca lança nem altera o efeito abaixo.
+    await mirrorAsaasPaymentToLedger(body, account);
 
     try {
       const { backofficeAdhesionUseCase } = await import(

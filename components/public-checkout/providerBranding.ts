@@ -34,3 +34,49 @@ export function getProviderBranding(
 ): ProviderBranding {
   return PROVIDER_BRANDING[provider]
 }
+
+/**
+ * Identidade configurada no banco (`display_name`, `logo_url`, `logo_alt_text` de
+ * `payment_provider_configs`), vinda dos detalhes que cada checkout já busca.
+ */
+export interface ProviderBrandingOverride {
+  displayName?: string | null
+  logoUrl?: string | null
+  logoAltText?: string | null
+}
+
+function clean(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+/** Só caminhos do próprio site ou https; qualquer outro esquema é descartado. */
+function safeLogoUrl(value: string | null | undefined): string | undefined {
+  const url = clean(value)
+  if (!url) return undefined
+  if (url.startsWith("/") && !url.startsWith("//")) return url
+  return url.startsWith("https://") ? url : undefined
+}
+
+export function hasBrandingOverride(override?: ProviderBrandingOverride | null): boolean {
+  return Boolean(clean(override?.displayName) || safeLogoUrl(override?.logoUrl))
+}
+
+/**
+ * Dado do banco vence; sem ele, vale o catálogo estático (fallback). Quando o banco
+ * define a identidade, o logo estático do provider não é misturado com o nome do banco.
+ */
+export function resolveProviderBranding(
+  provider: CheckoutPaymentProvider | undefined,
+  override?: ProviderBrandingOverride | null
+): ProviderBranding {
+  if (!hasBrandingOverride(override)) return getProviderBranding(provider)
+
+  const fallback = getProviderBranding(provider)
+  const label = clean(override?.displayName) ?? fallback.label
+  const logoUrl = safeLogoUrl(override?.logoUrl)
+  return {
+    label,
+    ...(logoUrl ? { logoUrl, logoAlt: clean(override?.logoAltText) ?? label } : {}),
+  }
+}

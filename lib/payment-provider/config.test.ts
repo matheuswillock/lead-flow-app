@@ -104,4 +104,28 @@ describe("PaymentProviderConfig", () => {
 
     expect(config.baseUrl).toBe("https://api.abacatepay.com")
   })
+
+  it("defaults to no previous secret and no mandatory signature", () => {
+    const config = PaymentProviderConfig.create(validConfig)
+
+    expect(config.webhookSecretPrevious).toBeNull()
+    expect(config.requireSignature).toBe(false)
+  })
+
+  it("carries the previous secret and the signature requirement", () => {
+    const config = PaymentProviderConfig.create({
+      ...validConfig,
+      webhookSecretPrevious: "old-secret",
+      requireSignature: true,
+    })
+
+    expect(config.webhookSecretPrevious).toBe("old-secret")
+    expect(config.requireSignature).toBe(true)
+  })
+
+  it("rejects a blank previous secret instead of silently ignoring it", () => {
+    expect(() =>
+      PaymentProviderConfig.create({ ...validConfig, webhookSecretPrevious: "  " }),
+    ).toThrow("incompleta")
+  })
 })

@@ -59,6 +59,7 @@ import {
 } from "@/lib/payment-methods/availability"
 import * as Sentry from "@sentry/nextjs"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
+import { cohortForPaidAdhesion } from "@/lib/payments/cohort"
 import type { IBackofficeAdhesionPixPaymentService } from "./IBackofficeAdhesionPixPaymentService"
 import { createBackofficeAdhesionPixPaymentService } from "./backofficeAdhesionPixPaymentComposition"
 import { resolvePixProvider, toAdhesionPixView } from "./backofficeAdhesionPixHelpers"
@@ -108,6 +109,23 @@ export const PIX_PENDING_SWITCH_BLOCKED_MESSAGE =
   "Já existe um PIX aguardando pagamento. Pague-o ou aguarde o vencimento para trocar a forma de pagamento."
 export const ASAAS_ADHESION_PIX_MISMATCH_MESSAGE =
   "Esta adesão possui parcelas no Asaas e deve ser paga pelo checkout padrão."
+export const ABACATE_ADHESION_PIX_ON_ASAAS_MESSAGE =
+  "O PIX desta adesão é gerado pelo checkout PIX do provedor de pagamento."
+
+/**
+ * Guarda de servidor: o PIX de uma adesão que segue o Abacate nunca vira cobrança nova no Asaas
+ * (a UI esconder o botão não basta). Um PIX Asaas legado já gerado continua sendo devolvido.
+ */
+function assertPixNotCreatedOnAsaas(
+  adhesion: { installmentLedger: unknown; asaasPaymentId: string | null; status: string; billingType: string | null },
+  billingType: string
+): void {
+  if (billingType !== "PIX" || resolvePixProvider(adhesion) !== "ABACATE_PAY") return
+  const returnsExistingLegacyPix =
+    Boolean(adhesion.asaasPaymentId) && (adhesion.status === "paid" || adhesion.billingType === "PIX")
+  if (returnsExistingLegacyPix) return
+  throw new Error(ABACATE_ADHESION_PIX_ON_ASAAS_MESSAGE)
+}
 
 const CRM_MODULES = ["crm"]
 const CRM_PRODUCT_SLUG = "crm"
@@ -1208,6 +1226,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (await this.pixPayments.hasLivePendingPix(adhesion.id)) {
       throw new Error(PIX_PENDING_SWITCH_BLOCKED_MESSAGE)
     }
+    assertPixNotCreatedOnAsaas(adhesion, input.billingType ?? "PIX")
 
     if (adhesion.asaasPaymentId) {
       if (adhesion.status === "paid") {
@@ -2335,6 +2354,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionStartDate,
         subscriptionEndDate,
         subscriptionNextDueDate: subscriptionEndDate,
+        // Conta nova sem cobrança Asaas nasce na coorte do router (PAY-COHORT-R001).
+        paymentCohort: cohortForPaidAdhesion(adhesion),
       })
 
       // Timeline (20 — Assinaturas — Backend E1, C12): primeira assinatura de

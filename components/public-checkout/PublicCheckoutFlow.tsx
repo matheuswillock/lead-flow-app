@@ -20,7 +20,7 @@ import type {
 import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
 import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
 import { isPixExpired } from "./pixExpiry"
-import type { CheckoutPaymentProvider } from "./providerBranding"
+import type { CheckoutPaymentProvider, ProviderBrandingOverride } from "./providerBranding"
 import { PublicCheckoutPaymentStep } from "./PublicCheckoutPaymentStep"
 import { PublicCheckoutShell } from "./PublicCheckoutShell"
 import { PublicCheckoutSummaryStep } from "./PublicCheckoutSummaryStep"
@@ -54,6 +54,7 @@ export function PublicCheckoutFlow({
   availableMethods,
   successDescription = "Verifique seu e-mail para os proximos passos.",
   provider,
+  brandingOverride,
   canRegeneratePix = false,
 }: {
   /**
@@ -63,6 +64,8 @@ export function PublicCheckoutFlow({
   availableMethods?: AvailableBillingTypes
   /** `undefined` = Asaas (legado); `null` = ainda não resolvido (rodapé sem marca). */
   provider?: CheckoutPaymentProvider | null
+  /** Identidade (nome/logo) configurada no banco; vence o catálogo estático quando presente. */
+  brandingOverride?: ProviderBrandingOverride | null
   /** Quando true, PIX/tentativa expirados oferecem "Gerar novo PIX" reaproveitando os dados do pagador. */
   canRegeneratePix?: boolean
   /** Legado: PIX sem coleta de endereço. Implica `availableMethods = ["PIX"]`. */
@@ -198,6 +201,7 @@ export function PublicCheckoutFlow({
   return (
     <PublicCheckoutShell
       provider={provider}
+      brandingOverride={brandingOverride}
       issuedLabel={details?.issuedLabel}
       issuedValue={details?.issuedValue || getNowDateKey()}
     >

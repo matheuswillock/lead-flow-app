@@ -88,3 +88,16 @@ describe("envSchema — envs legacy do Asaas (E2)", () => {
     }
   })
 })
+
+describe("PAYMENT_CREDENTIALS_ENCRYPTION_KEY no .env.test.example", () => {
+  it("existe, tem 64 hex e é aceita pelo schema (sem ela PUT /config/credentials devolve 500 no E2E)", async () => {
+    const { readFileSync } = await import("node:fs")
+    const content = readFileSync(new URL("../../.env.test.example", import.meta.url), "utf8")
+    const line = content.split("\n").find((entry) => entry.startsWith("PAYMENT_CREDENTIALS_ENCRYPTION_KEY="))
+    expect(line).toBeDefined()
+    const value = (line as string).split("=")[1].trim()
+    expect(value).toMatch(/^[0-9a-f]{64}$/)
+    const result = envSchema.safeParse({ ...BASE_VALID_ENV, PAYMENT_CREDENTIALS_ENCRYPTION_KEY: value })
+    expect(result.success).toBe(true)
+  })
+})

@@ -1,11 +1,24 @@
-import type { ProviderRoutingConfigRecord } from "@/lib/payment-provider/routing-config"
-import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import type { ProviderInstanceRecord } from "@/lib/payment-provider/instance"
 
-export type CheckPaymentProviderHealthInput = {
-  readonly provider: PaymentProviderKey
-  readonly environment: PaymentProviderEnvironment
+export type HealthCheckMode = "manual" | "scheduled"
+
+export type DegradedInstance = {
+  readonly id: string
+  readonly displayName: string
+  readonly provider: string
+  readonly environment: string
+  readonly errorCode: string | null
+}
+
+export type HealthCheckSweepSummary = {
+  readonly checked: number
+  readonly healthy: number
+  readonly failing: number
+  /** Instâncias que ficaram UNHEALTHY neste ciclo (segunda falha seguida). */
+  readonly degraded: readonly DegradedInstance[]
 }
 
 export interface IPaymentProviderHealthCheckService {
-  check(input: CheckPaymentProviderHealthInput): Promise<ProviderRoutingConfigRecord>
+  check(input: { readonly id: string; readonly mode?: HealthCheckMode }): Promise<ProviderInstanceRecord>
+  checkAll(): Promise<HealthCheckSweepSummary>
 }

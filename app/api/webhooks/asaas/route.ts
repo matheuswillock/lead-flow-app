@@ -10,6 +10,8 @@ import { getClientIpFromRequest } from "@/lib/http/get-client-ip";
 import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
+import { hydrateAsaasCredentials } from "@/lib/asaas/asaas-hydration";
+import { CredentialReadError } from "@/lib/payment-provider/credential-resolver";
 import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
 import { reportAsaasWebhookAuthRejected } from "./asaasWebhookAuthFailureAlert";
 import {
@@ -64,6 +66,21 @@ export async function POST(request: NextRequest) {
 
     // M3.1 (E4): resolve qual conta (primary/legacy) enviou o evento
     // comparando contra os dois tokens, cada um via timingSafeEqual (E3).
+    // M11: tokens gravados no backoffice (cache curto) antes de comparar; sem eles, vale o ambiente.
+    // Autenticação falha FECHADA: sem ler as credenciais não se rebaixa para o token do env;
+    // 503 faz o Asaas reenviar o evento depois.
+    try {
+      await Promise.all([hydrateAsaasCredentials("primary"), hydrateAsaasCredentials("legacy")]);
+    } catch (error) {
+      if (!(error instanceof CredentialReadError)) throw error;
+      console.error("[AsaasWebhookRoute][POST] credenciais indisponíveis; falha fechada", {
+        cause: error.cause,
+      });
+      return NextResponse.json(
+        { error: "Credenciais temporariamente indisponíveis" },
+        { status: 503, headers: { "Retry-After": "30" } }
+      );
+    }
     const account = resolveAsaasWebhookAccount(receivedToken);
 
     if (!account) {

@@ -340,6 +340,14 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/payment-provider/cron/health-check",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/payment-provider/cron/ledger-divergence",
+      "schedule": "30 6 * * *"
+    },
+    {
       "path": "/api/v1/studio/cron/reconcile-dns",
       "schedule": "0 11,23 * * *"
     }

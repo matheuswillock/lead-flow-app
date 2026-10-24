@@ -26,6 +26,7 @@ const checkMock = mock(
 
 mock.module("@/app/api/useCases/paymentProviderConfig/paymentProviderConfigComposition", () => ({
   paymentProviderHealthCheckUseCase: { check: checkMock },
+  paymentProviderConfigUseCase: {},
 }))
 
 const { POST } = await import("./route")
@@ -33,7 +34,7 @@ const { POST } = await import("./route")
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/v1/backoffice/payment-providers/config/health-check", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", host: "localhost", origin: "http://localhost" },
     body: JSON.stringify(body),
   })
 }
@@ -80,6 +81,21 @@ describe("POST /api/v1/backoffice/payment-providers/config/health-check", () => 
     const response = await POST(makeRequest({ provider: "OUTRO", environment: "PRODUCTION" }))
 
     expect(response.status).toBe(400)
+    expect(checkMock).not.toHaveBeenCalled()
+  })
+
+  it("aceita o id da instância e rejeita Origin de outro site", async () => {
+    grantAccess(false)
+    const id = "11111111-1111-4111-8111-111111111111"
+    expect((await POST(makeRequest({ id }))).status).toBe(200)
+    expect(checkMock).toHaveBeenCalledWith({ id, actor: { profileId: "bo-profile-1", backofficeUserId: "bo-1" } })
+    const forged = new NextRequest("http://localhost/api/v1/backoffice/payment-providers/config/health-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", origin: "https://evil.com" },
+      body: JSON.stringify({ id }),
+    })
+    checkMock.mockClear()
+    expect((await POST(forged)).status).toBe(403)
     expect(checkMock).not.toHaveBeenCalled()
   })
 

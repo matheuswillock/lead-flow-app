@@ -1,4 +1,5 @@
 import type { PaymentProviderEventInboxClaim } from "@/lib/payment-provider/event-inbox"
+import type { InboxHealthSnapshot } from "@/lib/payment-provider/inbox-health"
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 
 export type PaymentProviderEventClaimInput = {
@@ -16,6 +17,8 @@ export type PaymentProviderEventClaimInput = {
 }
 
 export interface IPaymentProviderEventInboxRepository {
+  /** Contagens somente-leitura para o alerta de saúde da inbox. */
+  getHealthSnapshot(input: { readonly failedSince: Date }): Promise<InboxHealthSnapshot>
   claim(input: PaymentProviderEventClaimInput): Promise<PaymentProviderEventInboxClaim>
   assertClaimActive(input: {
     readonly dedupeKey: string

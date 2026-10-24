@@ -131,6 +131,12 @@ export const envSchema = z.object({
   // Asaas — conta "legacy" (antiga, somente leitura). Opcionais: pré-cutover
   // elas não existem; `resolveAsaasAccount("legacy")` (lib/asaas/asaas-account.ts)
   // lança em runtime com mensagem clara se forem pedidas sem estarem configuradas.
+  // M11: chave-mestra das credenciais de provider gravadas no backoffice (AES-256-GCM). Opcional
+  // até o cutover (PAY-CRED-T016); sem ela, as credenciais continuam vindo do ambiente.
+  PAYMENT_CREDENTIALS_ENCRYPTION_KEY: optionalWhenBlank(hexKeySchema).describe('Master key (64 hex) for provider credentials stored in the database'),
+  PAYMENT_CREDENTIALS_ENCRYPTION_KEY_ID: optionalWhenBlank(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/)).describe('Key id of the current credentials master key (default k1)'),
+  PAYMENT_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS: optionalWhenBlank(hexKeySchema).describe('Previous master key, kept only during rotation'),
+  PAYMENT_CREDENTIALS_ENCRYPTION_KEY_PREVIOUS_ID: optionalWhenBlank(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/)).describe('Key id of the previous credentials master key (default k0)'),
   ASAAS_LEGACY_API_KEY: optionalWhenBlank(asaasApiKeySchema).describe('Asaas API key da conta legacy (antiga) — opcional pré-cutover'),
   ASAAS_LEGACY_WEBHOOK_TOKEN: optionalWhenBlank(nonEmptyString).describe('Token de webhook da conta legacy — opcional pré-cutover'),
 

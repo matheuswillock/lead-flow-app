@@ -11,12 +11,24 @@ function makeHarness(overrides: { adhesionPayment?: unknown; gracePayment?: { st
   const graseFind = mock(async (_id: string) => overrides.gracePayment ?? { id: "grace-1", status: "pending" })
   const markConfirmed = mock(async (_input: unknown) => ({ id: "grace-1", status: "confirmed" }))
   const completeAndRestoreAccess = mock(async (_id: string) => ({ id: "grace-1", status: "completed" }))
+  const mirrorSettled = mock(async (_input: unknown) => undefined)
+  const settlePaymentCharge = mock(async (_input: unknown) => "settled" as const)
   const service = new PaymentOwnerSettlementService({
     adhesionPayments: { findById: findAdhesionPayment } as never,
     adhesions: { markPaidFromProvider },
     gracePayments: { findById: graseFind, markConfirmed, completeAndRestoreAccess } as never,
+    paymentCharges: { settleConfirmed: settlePaymentCharge },
+    ledgerMirror: { mirrorSettled },
   })
-  return { service, markPaidFromProvider, markConfirmed, completeAndRestoreAccess, graseFind }
+  return {
+    service,
+    markPaidFromProvider,
+    markConfirmed,
+    completeAndRestoreAccess,
+    graseFind,
+    mirrorSettled,
+    settlePaymentCharge,
+  }
 }
 
 describe("PaymentOwnerSettlementService", () => {
@@ -66,6 +78,49 @@ describe("PaymentOwnerSettlementService", () => {
     expect(result).toBe("settled")
     expect(markConfirmed).not.toHaveBeenCalled()
     expect(completeAndRestoreAccess).not.toHaveBeenCalled()
+  })
+
+  it("espelha adesão e regularização no ledger depois do efeito de domínio", async () => {
+    const { service, mirrorSettled } = makeHarness()
+    const adhesion = { ownerType: "BACKOFFICE_ADHESION", ownerId: "pay-1", externalId: "pix_1", amountInCents: 1, paidAt: PAID_AT }
+    const grace = { ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT }
+
+    await service.settleConfirmed(adhesion)
+    await service.settleConfirmed(grace)
+
+    expect(mirrorSettled).toHaveBeenCalledTimes(2)
+    expect(mirrorSettled).toHaveBeenNthCalledWith(1, adhesion)
+    expect(mirrorSettled).toHaveBeenNthCalledWith(2, grace)
+  })
+
+  it("falha do espelho não altera o resultado nem o efeito de domínio", async () => {
+    const { service, markPaidFromProvider, mirrorSettled } = makeHarness()
+    mirrorSettled.mockImplementation(async () => {
+      throw new Error("ledger fora do ar")
+    })
+
+    const result = await service.settleConfirmed({ ownerType: "BACKOFFICE_ADHESION", ownerId: "pay-1", externalId: "pix_1", amountInCents: 1, paidAt: PAID_AT })
+
+    expect(result).toBe("settled")
+    expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
+  })
+
+  it("não espelha quando o efeito de domínio falha", async () => {
+    const { service, mirrorSettled } = makeHarness({ adhesionPayment: null })
+
+    await expect(
+      service.settleConfirmed({ ownerType: "BACKOFFICE_ADHESION", ownerId: "x", externalId: "pix_1", amountInCents: null, paidAt: PAID_AT }),
+    ).rejects.toThrow()
+    expect(mirrorSettled).not.toHaveBeenCalled()
+  })
+
+  it("PAYMENT_CHARGE delega a liquidação por finalidade", async () => {
+    const { service, settlePaymentCharge, mirrorSettled } = makeHarness()
+    const input = { ownerType: "PAYMENT_CHARGE", ownerId: "charge-1", externalId: "pix_3", amountInCents: 5, paidAt: PAID_AT }
+
+    expect(await service.settleConfirmed(input)).toBe("settled")
+    expect(settlePaymentCharge).toHaveBeenCalledWith(input)
+    expect(mirrorSettled).not.toHaveBeenCalled()
   })
 
   it("owner sem efeito de domínio neste serviço devolve unsupported", async () => {

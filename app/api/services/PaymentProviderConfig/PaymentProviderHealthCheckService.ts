@@ -3,16 +3,18 @@ import type {
   HealthCheckCapability,
   ProviderHealthCheckResult,
 } from "@/lib/payment-provider/contracts"
-import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import { ProviderInstanceNotFoundError, type ProviderInstanceRecord } from "@/lib/payment-provider/instance"
 import type {
-  CheckPaymentProviderHealthInput,
+  DegradedInstance,
+  HealthCheckMode,
+  HealthCheckSweepSummary,
   IPaymentProviderHealthCheckService,
 } from "./IPaymentProviderHealthCheckService"
 
+/** Cria a sonda do adapter da instância (async: hidrata credenciais). Lança se não suportado. */
 export type HealthCheckProviderFactory = (
-  provider: PaymentProviderKey,
-  environment: PaymentProviderEnvironment,
-) => HealthCheckCapability
+  instance: ProviderInstanceRecord,
+) => Promise<HealthCheckCapability>
 
 const CONFIGURATION_UNHEALTHY: ProviderHealthCheckResult = {
   healthy: false,
@@ -33,25 +35,49 @@ export class PaymentProviderHealthCheckService implements IPaymentProviderHealth
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async check(input: CheckPaymentProviderHealthInput) {
-    if (input.provider !== "ABACATE_PAY") {
-      throw new Error("Health-check não suportado para este provider")
-    }
-    const result = await this.probe(input)
+  async check(input: { readonly id: string; readonly mode?: HealthCheckMode }) {
+    const instance = await this.repository.findById(input.id)
+    if (!instance) throw new ProviderInstanceNotFoundError()
+    const result = await this.probe(instance)
     return this.repository.recordHealthCheck({
-      provider: input.provider,
-      environment: input.environment,
-      healthStatus: result.healthy ? "HEALTHY" : "UNHEALTHY",
+      id: instance.id,
+      healthStatus: nextStatus(instance, result, input.mode ?? "manual"),
       checkedAt: this.now(),
       errorCode: result.healthy ? null : result.errorCode,
       errorMessage: result.healthy ? null : result.errorMessage,
     })
   }
 
-  private async probe(input: CheckPaymentProviderHealthInput): Promise<ProviderHealthCheckResult> {
+  async checkAll(): Promise<HealthCheckSweepSummary> {
+    const instances = (await this.repository.listAll()).filter(isMonitored)
+    const degraded: DegradedInstance[] = []
+    let healthy = 0
+    let failing = 0
+    for (const instance of instances) {
+      const wasUnhealthy = instance.healthStatus === "UNHEALTHY"
+      const updated = await this.check({ id: instance.id, mode: "scheduled" })
+      if (updated.lastErrorCode === null) {
+        healthy += 1
+        continue
+      }
+      failing += 1
+      if (updated.healthStatus === "UNHEALTHY" && !wasUnhealthy) {
+        degraded.push({
+          id: updated.id,
+          displayName: updated.displayName,
+          provider: updated.provider,
+          environment: updated.environment,
+          errorCode: updated.lastErrorCode,
+        })
+      }
+    }
+    return { checked: instances.length, healthy, failing, degraded }
+  }
+
+  private async probe(instance: ProviderInstanceRecord): Promise<ProviderHealthCheckResult> {
     let provider: HealthCheckCapability
     try {
-      provider = this.createProvider(input.provider, input.environment)
+      provider = await this.createProvider(instance)
     } catch {
       return CONFIGURATION_UNHEALTHY
     }
@@ -61,4 +87,23 @@ export class PaymentProviderHealthCheckService implements IPaymentProviderHealth
       return UNEXPECTED_UNHEALTHY
     }
   }
+}
+
+/** Instâncias fora de uso (desligadas e sem rollout) não são sondadas pelo cron. */
+function isMonitored(instance: ProviderInstanceRecord): boolean {
+  return !instance.killSwitch && (instance.enabled || instance.rolloutState !== "DISABLED")
+}
+
+/**
+ * Manual: reflete o resultado na hora. Agendado: a primeira falha só é registrada (status mantido);
+ * a segunda falha seguida degrada para UNHEALTHY.
+ */
+function nextStatus(
+  instance: ProviderInstanceRecord,
+  result: ProviderHealthCheckResult,
+  mode: HealthCheckMode,
+): "HEALTHY" | "UNHEALTHY" | null {
+  if (result.healthy) return "HEALTHY"
+  if (mode === "manual") return "UNHEALTHY"
+  return instance.lastErrorCode !== null ? "UNHEALTHY" : null
 }

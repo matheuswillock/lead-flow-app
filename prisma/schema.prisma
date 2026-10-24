@@ -1344,6 +1344,7 @@ model Profile {
   backofficeDeletionApprovals         BackofficeDeletionApproval[] @relation("BackofficeDeletionApprovalApprover")
   backofficeDeletionAuditLogs         BackofficeDeletionAuditLog[] @relation("BackofficeDeletionAuditLogActor")
   leadExtractions                     BackofficeLeadExtraction[]
+  paymentCharges                      PaymentCharge[]
 
   @@index([role])
   @@index([managerId])
@@ -1671,6 +1672,66 @@ model BillingGracePayment {
   @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
   @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")
   @@map("billing_grace_payments")
+}
+
+/// Ledger interno de cobranças (M12): visão de negócio provider-neutra. Valores de status/finalidade/origem
+/// em lib/payments (CHECK no SQL).
+model PaymentCharge {
+  id                  String    @id @default(uuid()) @db.Uuid
+  /// Zera (SET NULL) quando o perfil é apagado; o histórico financeiro permanece.
+  profileId           String?   @map("profile_id") @db.Uuid
+  /// Cópia imutável do id do perfil, sem FK: identifica o dono mesmo depois da exclusão da conta.
+  profileRef          String    @map("profile_ref") @db.Uuid
+  subscriptionId      String?   @map("subscription_id") @db.Uuid
+  purpose             String    @db.Text
+  purposeRefId        String?   @map("purpose_ref_id") @db.Text
+  status              String    @db.Text
+  rawStatus           String?   @map("raw_status") @db.Text
+  amountCents         Int       @map("amount_cents")
+  currency            String    @default("BRL") @db.Text
+  method              String?   @db.Text
+  cycleKey            String?   @map("cycle_key") @db.Text
+  dueDate             DateTime? @map("due_date") @db.Timestamptz(6)
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(6)
+  provider            String    @db.Text
+  providerEnvironment String    @map("provider_environment") @db.Text
+  providerContext     String    @map("provider_context") @db.Text
+  providerSessionId   String?   @map("provider_session_id") @db.Uuid
+  providerAttemptId   String?   @map("provider_attempt_id") @db.Uuid
+  providerExternalId  String?   @map("provider_external_id") @db.Text
+  paymentInstructions Json?     @map("payment_instructions")
+  idempotencyKey      String    @map("idempotency_key") @db.Text
+  source              String    @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile      Profile?               @relation(fields: [profileId], references: [id], onDelete: SetNull, map: "payment_charges_profile_id_fkey")
+  subscription ProfileSubscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull, map: "payment_charges_subscription_id_fkey")
+  events       PaymentChargeEvent[]
+
+  @@unique([profileRef, idempotencyKey], map: "payment_charges_profile_ref_idempotency_key")
+  // Índices parciais (subscription_id+cycle_key e identidade externa) vivem só no SQL da migration.
+  @@index([profileRef], map: "payment_charges_profile_ref_idx")
+  @@index([profileRef, status], map: "payment_charges_profile_status_idx")
+  @@index([providerAttemptId], map: "payment_charges_provider_attempt_idx")
+  @@index([purpose, purposeRefId], map: "payment_charges_purpose_ref_idx")
+  @@map("payment_charges")
+}
+
+/// Histórico append-only de transições de status de uma cobrança.
+model PaymentChargeEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  chargeId   String   @map("charge_id") @db.Uuid
+  fromStatus String?  @map("from_status") @db.Text
+  toStatus   String   @map("to_status") @db.Text
+  rawStatus  String?  @map("raw_status") @db.Text
+  actor      String   @db.Text
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  charge PaymentCharge @relation(fields: [chargeId], references: [id], onDelete: Restrict, map: "payment_charge_events_charge_id_fkey")
+
+  @@index([chargeId, occurredAt], map: "payment_charge_events_charge_idx")
+  @@map("payment_charge_events")
 }
 
 model BackofficeOperationalAccessGrant {
@@ -2588,6 +2649,7 @@ enum AuditEntityType {
   PROFILE
   TEAM
   TEAM_MEMBER
+  PAYMENT_PROVIDER_CONFIG
 }
 
 enum AuditAction {
@@ -4591,9 +4653,12 @@ model ProfileSubscription {
   subscriptionCycle        String?             @db.Text
   subscriptionLastSyncedAt DateTime?           @db.Timestamptz(6)
   hasPermanentSubscription Boolean             @default(false)
+  /// ASAAS (padrão, comportamento atual) ou ROUTER (PaymentProviderRouter). Valores em lib/payments/types.ts.
+  paymentCohort            String              @default("ASAAS") @map("payment_cohort") @db.Text
   createdAt                DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
 
+  paymentCharges PaymentCharge[]
   profile  Profile                      @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
   adhesion BackofficeAdhesion?          @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
   product  BackofficeProduct?           @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
@@ -6596,13 +6661,38 @@ model PaymentProviderConfig {
   publicKeyFingerprint     String?                   @map("public_key_fingerprint") @db.Text
   logoUrl                  String?                   @map("logo_url") @db.Text
   logoAltText              String?                   @map("logo_alt_text") @db.Text
+  displayName              String                    @default("") @map("display_name") @db.Text
+  /// Configurações de execução que não são segredo (requireSignature, cardEnabled), validadas na aplicação.
+  settings                 Json                      @default("{}")
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([providerKey, environment], map: "payment_provider_configs_provider_environment_key")
+  credentials              PaymentProviderCredential[]
+
+  @@unique([providerKey, environment, externalAccountContext], map: "payment_provider_configs_provider_env_context_key")
   @@index([environment, enabled, rolloutState], map: "payment_provider_configs_routing_idx")
   @@index([environment, isDefault], map: "payment_provider_configs_default_idx")
   @@map("payment_provider_configs")
+}
+
+/// Credenciais de uma instância de provider, cifradas em repouso (AES-256-GCM, ver
+/// lib/payment-provider/credential-cipher.ts). O valor nunca sai do servidor.
+model PaymentProviderCredential {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  configId        String                @map("config_id") @db.Uuid
+  key             String                @db.Text
+  valueCiphertext String                @map("value_ciphertext") @db.Text
+  keyId           String                @map("key_id") @db.Text
+  last4           String?               @db.Text
+  fingerprint     String                @db.Text
+  updatedBy       String?               @map("updated_by") @db.Uuid
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  config          PaymentProviderConfig @relation(fields: [configId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([configId, key], map: "payment_provider_credentials_config_key_key")
+  @@map("payment_provider_credentials")
 }
 
 /// Identidade externa imutável por provider, ambiente, conta e tipo.

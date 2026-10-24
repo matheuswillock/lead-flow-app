@@ -488,8 +488,10 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     subscriptionStartDate: Date
     subscriptionEndDate: Date
     subscriptionNextDueDate: Date
+    paymentCohort?: import("@/lib/payments/types").PaymentCohort
   }): Promise<void> {
     const payload = {
+      ...(data.paymentCohort ? { paymentCohort: data.paymentCohort } : {}),
       adhesionId: data.adhesionId,
       productId: data.productId,
       subscriptionStatus: data.subscriptionStatus as SubscriptionStatus,

@@ -80,9 +80,12 @@ export function selectProviderForNewPayment(input: SelectProviderInput): Selecte
   return freezeConfiguration(eligibleConfigurations[0])
 }
 
-function isEligibleForOperation(
-  configuration: ProviderRoutingConfig,
-  input: SelectProviderInput,
+/** Critérios de elegibilidade da própria instância (sem capacidades): o roteador e a escolha da principal usam os mesmos. */
+export function isConfigurationRoutable(
+  configuration: Pick<
+    ProviderRoutingConfig,
+    "enabled" | "killSwitch" | "rolloutState" | "healthStatus" | "externalAccountContext" | "revision"
+  >,
 ): boolean {
   if (
     !configuration.enabled ||
@@ -92,7 +95,14 @@ function isEligibleForOperation(
     return false
   }
   if (configuration.healthStatus !== "HEALTHY") return false
-  if (!configuration.externalAccountContext.trim() || configuration.revision < 1) return false
+  return Boolean(configuration.externalAccountContext.trim()) && configuration.revision >= 1
+}
+
+function isEligibleForOperation(
+  configuration: ProviderRoutingConfig,
+  input: SelectProviderInput,
+): boolean {
+  if (!isConfigurationRoutable(configuration)) return false
   const metadata = input.providerMetadata.find(
     (candidate) =>
       candidate.key === configuration.provider &&
