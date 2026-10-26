@@ -135,11 +135,19 @@ export class LeadSchedulePersistenceRepository {
           meetingLink: input.resolvedMeetingLink,
           meetingType: input.resolvedMeetingType,
           closerId: input.closerId,
+          // SPEC 11 (DA9): lead agendado deixa de precisar de remarcação.
+          needsReschedule: false,
           ...(input.existingSchedule?.date?.getTime() !== input.meetingDate.getTime()
             ? { meetingPresenceConfirmed: false, meetingPresenceConfirmedAt: null }
             : {}),
           ...(input.transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
         },
+      });
+
+      // O alerta "remarcar urgente" se resolve sozinho assim que existe reunião gravada.
+      await tx.leadRescheduleAlert.updateMany({
+        where: { leadId: input.leadId, resolvedAt: null },
+        data: { resolvedAt: new Date() },
       });
 
       if (input.transitionStatusToScheduled === true && input.leadStatus !== LeadStatus.scheduled) {
