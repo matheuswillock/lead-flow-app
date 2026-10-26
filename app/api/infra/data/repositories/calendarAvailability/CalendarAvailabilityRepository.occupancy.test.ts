@@ -68,4 +68,34 @@ describe("CalendarAvailabilityRepository — ocupação do closer", () => {
     expect(where).not.toHaveProperty("teamId");
     expect(where).toMatchObject({ closerId: { in: ["closer-1"] }, state: { in: ["reserved", "consumed"] } });
   });
+
+  it("findConflictingLeadId devolve o lead que sobrepõe o horário, em qualquer time", async () => {
+    leadFindManyMock.mockResolvedValueOnce([
+      { id: "lead-antes", meetingDate: new Date("2026-11-03T13:00:00.000Z"), meetingDurationMinutes: 30 },
+      { id: "lead-conflito", meetingDate: new Date("2026-11-03T14:10:00.000Z"), meetingDurationMinutes: 30 },
+    ]);
+
+    const id = await new CalendarAvailabilityRepository().findConflictingLeadId({
+      closerId: "closer-1",
+      startsAt: new Date("2026-11-03T14:00:00.000Z"),
+      endsAt: new Date("2026-11-03T14:30:00.000Z"),
+    });
+
+    expect(id).toBe("lead-conflito");
+    const where = leadFindManyMock.mock.calls[0]?.[0].where;
+    expect(where).not.toHaveProperty("teamId");
+    expect(where).toMatchObject({ closerId: "closer-1", deletedAt: null });
+  });
+
+  it("findConflictingLeadId devolve null quando só há reunião encerrada antes do horário", async () => {
+    leadFindManyMock.mockResolvedValueOnce([
+      { id: "lead-antes", meetingDate: new Date("2026-11-03T13:00:00.000Z"), meetingDurationMinutes: 30 },
+    ]);
+    const id = await new CalendarAvailabilityRepository().findConflictingLeadId({
+      closerId: "closer-1",
+      startsAt: new Date("2026-11-03T14:00:00.000Z"),
+      endsAt: new Date("2026-11-03T14:30:00.000Z"),
+    });
+    expect(id).toBeNull();
+  });
 });

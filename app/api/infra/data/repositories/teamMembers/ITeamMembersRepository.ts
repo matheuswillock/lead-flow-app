@@ -148,6 +148,8 @@ export interface ITeamMembersRepository {
     teamId: string,
     emails: string[]
   ): Promise<TeamMemberGoogleConnectionStatus[]>;
+  /** Membro do time com a função SDR e perfil não deletado (valida `assigned_to` do webhook v2). */
+  isActiveSdr(teamId: string, profileId: string): Promise<boolean>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;

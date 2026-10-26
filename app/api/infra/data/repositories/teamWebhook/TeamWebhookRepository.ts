@@ -62,6 +62,13 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
     });
   }
 
+  async findInboundById(webhookId: string): Promise<TeamWebhookRow | null> {
+    return prisma.teamWebhook.findFirst({
+      where: { id: webhookId, direction: "inbound" },
+      select: TEAM_WEBHOOK_SELECT,
+    });
+  }
+
   async listInboundByTeamId(teamId: string): Promise<TeamWebhookRow[]> {
     return prisma.teamWebhook.findMany({
       where: { teamId, direction: "inbound" },

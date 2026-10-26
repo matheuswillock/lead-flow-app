@@ -106,7 +106,7 @@ export interface IInboundSchedulePort {
   filterTeamMemberEmails(teamId: string, emails: string[]): Promise<string[]>;
   createSchedule(request: InboundScheduleRequest): Promise<InboundScheduleResult>;
   /** Reunião que ocupa o mesmo horário do closer (qualquer time), para o alerta. */
-  findConflictingLeadId(closerProfileId: string, startsAt: Date): Promise<string | null>;
+  findConflictingLeadId(teamId: string, closerProfileId: string, startsAt: Date): Promise<string | null>;
   /** Até 5 próximos horários livres do closer a partir do horário pedido. */
   suggestSlots(input: { teamId: string; closerProfileId: string; from: Date }): Promise<Prisma.InputJsonValue>;
 }

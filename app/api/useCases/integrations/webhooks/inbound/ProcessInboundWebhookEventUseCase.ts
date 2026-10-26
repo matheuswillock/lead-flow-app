@@ -310,6 +310,7 @@ export class ProcessInboundWebhookEventUseCase {
 
     if (created.reason === "slot_unavailable") {
       const conflictingLeadId = await this.deps.schedule.findConflictingLeadId(
+        team.teamId,
         schedule.closerProfileId,
         schedule.startsAt,
       );

@@ -87,6 +87,27 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
     });
   }
 
+  async findConflictingLeadId(params: { closerId: string; startsAt: Date; endsAt: Date }): Promise<string | null> {
+    const candidates = await prisma.lead.findMany({
+      where: {
+        ...MEETING_OCCUPANCY_LEAD_WHERE,
+        closerId: params.closerId,
+        // Reunião que começou até 1h antes ainda pode estar em andamento (duração máxima 60 min).
+        meetingDate: { gte: new Date(params.startsAt.getTime() - 60 * 60 * 1000), lt: params.endsAt },
+      },
+      select: { id: true, meetingDate: true, meetingDurationMinutes: true },
+      orderBy: { meetingDate: "asc" },
+    });
+
+    const conflict = candidates.find((lead) => {
+      if (!lead.meetingDate) return false;
+      const duration = lead.meetingDurationMinutes ?? 30;
+      const leadEndsAt = lead.meetingDate.getTime() + duration * 60 * 1000;
+      return lead.meetingDate.getTime() < params.endsAt.getTime() && leadEndsAt > params.startsAt.getTime();
+    });
+    return conflict?.id ?? null;
+  }
+
   async findScheduledLeadsForDay(params: {
     teamId: string;
     requestedCloserIds: string[];

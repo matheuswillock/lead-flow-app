@@ -127,6 +127,8 @@ export interface ITeamWebhookRepository {
   ): Promise<{ items: TeamWebhookRow[]; total: number }>;
   findByIdWithCtx(ctx: TeamWebhookTeamContext, id: string): Promise<TeamWebhookRow | null>;
   findInboundByTeamId(teamId: string): Promise<TeamWebhookRow | null>;
+  /** SPEC 11: webhook de entrada pelo id (sem contexto de usuário; uso do processamento assíncrono). */
+  findInboundById(webhookId: string): Promise<TeamWebhookRow | null>;
   listInboundByTeamId(teamId: string): Promise<TeamWebhookRow[]>;
   createWithCtx(ctx: TeamWebhookTeamContext, data: CreateTeamWebhookData): Promise<TeamWebhookRow>;
   updateWithCtx(

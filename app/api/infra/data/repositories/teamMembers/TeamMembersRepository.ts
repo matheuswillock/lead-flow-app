@@ -373,6 +373,14 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async isActiveSdr(teamId: string, profileId: string): Promise<boolean> {
+    const member = await prisma.teamMember.findFirst({
+      where: { teamId, profileId, functions: { has: "SDR" }, profile: { deletedAt: null } },
+      select: { id: true },
+    });
+    return member !== null;
+  }
+
   async findTransferAuthorization(teamId: string, profileId: string) {
     return await prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },

@@ -4,6 +4,9 @@ import type { ICalendarAvailabilityRepository } from "@/app/api/infra/data/repos
 
 function createRepository(): ICalendarAvailabilityRepository {
   return {
+    async findConflictingLeadId() {
+      return null;
+    },
     async findMeetingDuration() {
       return 45;
     },
