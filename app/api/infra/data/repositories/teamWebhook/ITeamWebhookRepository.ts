@@ -16,6 +16,11 @@ export type TeamWebhookTeamContext = {
 export type CreateTeamWebhookData = {
   direction: TeamWebhookDirection;
   name: string;
+  /** SPEC 11: só webhook de entrada. Default do banco = 1. */
+  contractVersion?: number;
+  scopes?: string[];
+  defaultAssigneeProfileIds?: string[];
+  defaultMeetingLink?: string | null;
   status?: TeamWebhookStatus;
   targetUrl?: string | null;
   destinationPreset?: TeamWebhookDestinationPreset | null;
@@ -53,6 +58,11 @@ export type TeamWebhookSelect = {
   direction: true;
   status: true;
   name: true;
+  contractVersion: true;
+  scopes: true;
+  defaultAssigneeProfileIds: true;
+  lastAssignedProfileId: true;
+  defaultMeetingLink: true;
   targetUrl: true;
   destinationPreset: true;
   selectedEvents: true;
@@ -81,6 +91,11 @@ export const TEAM_WEBHOOK_SELECT = {
   direction: true,
   status: true,
   name: true,
+  contractVersion: true,
+  scopes: true,
+  defaultAssigneeProfileIds: true,
+  lastAssignedProfileId: true,
+  defaultMeetingLink: true,
   targetUrl: true,
   destinationPreset: true,
   selectedEvents: true,
@@ -142,6 +157,14 @@ export interface ITeamWebhookRepository {
       name: string;
     }>
   >;
+  /**
+   * SPEC 11 (DA11): escolhe o próximo SDR do rodízio do webhook e avança o ponteiro numa única
+   * transação, com a linha do webhook travada. `listConfigured` distingue "webhook sem lista"
+   * de "lista sem nenhum SDR válido" (o segundo gera `no_valid_assignee` e aviso ao manager).
+   */
+  claimNextRoundRobinAssignee(
+    webhookId: string,
+  ): Promise<{ assigneeProfileId: string | null; listConfigured: boolean }>;
   incrementFailureStreak(webhookId: string): Promise<TeamWebhook>;
   resetFailureStreak(webhookId: string): Promise<void>;
   markPausedByFailures(webhookId: string): Promise<TeamWebhook>;
