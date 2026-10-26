@@ -34,6 +34,7 @@ export function IntegrationsContainer() {
   const subscriptionHref = `/${supabaseId}/subscription`;
   const webhooksHref = `/${supabaseId}/integrations/webhooks`;
   const pixelHref = `/${supabaseId}/integrations/pixel`;
+  const apiCatalogHref = `/${supabaseId}/integrations/api-catalog`;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -49,10 +50,11 @@ export function IntegrationsContainer() {
           icon={Code2}
           title="Catálogo de API"
           description="Consulte recursos da API do Studio, cada um com escopo e token próprios."
-          badge={{ label: "Em breve", variant: "outline" }}
-          state="Disponível em breve"
+          badge={{ label: "Horários disponíveis", variant: "secondary" }}
+          state="Gerar token e ver como usar"
           locked={apiCatalogLocked}
           lockedHref={subscriptionHref}
+          href={apiCatalogLocked ? undefined : apiCatalogHref}
         />
 
         <IntegrationEntryCard

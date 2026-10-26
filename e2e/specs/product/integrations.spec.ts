@@ -7,8 +7,8 @@
  * - O hub carrega sem erro de console e mostra as três entradas (Catálogo de
  *   API, Webhooks, Pixel).
  * - Webhooks e Pixel navegam para a subpágina própria.
- * - Catálogo de API aparece como "Em breve", sem link quebrado (SPEC 14 ainda
- *   não existe).
+ * - Catálogo de API navega para a página própria (SPEC 14: recurso "Horários
+ *   disponíveis").
  * - Sem overflow horizontal em 360px.
  */
 
@@ -111,7 +111,7 @@ test.describe("app/[supabaseId]/integrations", () => {
     await expect(main.getByText("Catálogo de API")).toBeVisible();
     await expect(main.getByText("Webhooks", { exact: true })).toBeVisible();
     await expect(main.getByText("Pixel", { exact: true })).toBeVisible();
-    await expect(main.getByText("Em breve").first()).toBeVisible();
+    await expect(main.getByText("Horários disponíveis")).toBeVisible();
 
     expect(consoleErrors, `Erros de console: ${consoleErrors.join(" | ")}`).toEqual([]);
     expect(
@@ -120,15 +120,12 @@ test.describe("app/[supabaseId]/integrations", () => {
     ).toEqual([]);
   });
 
-  test("Catálogo de API não tem link quebrado (recurso ainda não existe)", async ({ page }) => {
+  test("Catálogo de API navega para a página própria do catálogo", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
-    const main = page.locator("main");
 
-    const apiCatalogCard = main.locator("div, a").filter({ hasText: "Catálogo de API" }).last();
-    await expect(apiCatalogCard).toBeVisible();
-
-    const apiCatalogLink = page.locator('a[href="' + `/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog` + '"]');
-    await expect(apiCatalogLink).toHaveCount(0);
+    await page.locator("main").getByRole("link", { name: /Catálogo de API/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog$`));
+    await expect(page.getByRole("heading", { name: "Catálogo de API", exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
   test("Webhooks navega para a página de entrada de webhooks", async ({ page }) => {
