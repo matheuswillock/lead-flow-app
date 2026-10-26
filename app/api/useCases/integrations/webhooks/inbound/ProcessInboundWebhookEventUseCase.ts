@@ -248,18 +248,25 @@ export class ProcessInboundWebhookEventUseCase {
     const type = schedule.type ?? "call";
     const now = this.now();
 
+    // Segurança (multi-tenant): `closer.profile_id` vem do payload do parceiro. Antes de qualquer outro
+    // uso, confirma que é closer deste time. Um UUID de fora nunca vira consulta de agenda, referência
+    // no alerta nem destinatário de notificação.
+    const closerEligible = await this.deps.schedule.isEligibleCloser(team.teamId, schedule.closerProfileId);
+
     const flag = async (reasonCode: string, resultCode: InboundResultCode, conflictingLeadId: string | null = null) => {
-      const suggestedSlots = await this.deps.schedule.suggestSlots({
-        teamId: team.teamId,
-        closerProfileId: schedule.closerProfileId,
-        from: schedule.startsAt,
-      });
+      const suggestedSlots = closerEligible
+        ? await this.deps.schedule.suggestSlots({
+            teamId: team.teamId,
+            closerProfileId: schedule.closerProfileId,
+            from: schedule.startsAt,
+          })
+        : [];
       await this.deps.alerts.flag({
         team,
         lead,
         reasonCode,
         requestedStartsAt: schedule.startsAt,
-        requestedCloserId: schedule.closerProfileId,
+        requestedCloserId: closerEligible ? schedule.closerProfileId : null,
         conflictingLeadId,
         suggestedSlots,
         sourceEventId: eventId,
@@ -273,7 +280,7 @@ export class ProcessInboundWebhookEventUseCase {
     if (schedule.startsAt.getTime() > now.getTime() + MAX_HORIZON_MS) {
       return flag(INBOUND_RESULT_CODES.scheduleOutOfRange, INBOUND_RESULT_CODES.scheduleOutOfRange);
     }
-    if (!(await this.deps.schedule.isEligibleCloser(team.teamId, schedule.closerProfileId))) {
+    if (!closerEligible) {
       return flag(INBOUND_RESULT_CODES.closerNotInTeam, INBOUND_RESULT_CODES.closerNotInTeam);
     }
     // T-11.21: reunião online exige e-mail do lead; nunca `scheduled` sem os requisitos.

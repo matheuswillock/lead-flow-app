@@ -117,7 +117,8 @@ export interface IInboundAlertPort {
     lead: { id: string; leadCode: string | null; name: string; assignedTo: string | null };
     reasonCode: string;
     requestedStartsAt: Date;
-    requestedCloserId: string;
+    /** `null` quando o closer do payload não foi confirmado como closer do time. */
+    requestedCloserId: string | null;
     conflictingLeadId: string | null;
     suggestedSlots: Prisma.InputJsonValue;
     sourceEventId: string;

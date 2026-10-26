@@ -107,6 +107,9 @@ function build(overrides: {
   const isValidSdr = mock(async () => overrides.validSdr ?? true);
   const createSchedule = mock(async (_request: Record<string, unknown>) => overrides.scheduleResult ?? { ok: true as const });
   const filterTeamMemberEmails = mock(async (_teamId: string, emails: string[]) => overrides.guests ?? emails);
+  const suggestSlots = mock(async (_input: Record<string, unknown>) => [
+    { startsAt: "2026-11-03T14:30:00-03:00", endsAt: "2026-11-03T15:00:00-03:00" },
+  ]);
   const record = mock(async (_input: Record<string, unknown>) => undefined);
   const touchUsage = mock(async (_id: string, _ok: boolean) => undefined);
 
@@ -129,13 +132,13 @@ function build(overrides: {
       filterTeamMemberEmails,
       createSchedule,
       findConflictingLeadId: async () => overrides.conflictingLeadId ?? "lead-conflicting",
-      suggestSlots: async () => [{ startsAt: "2026-11-03T14:30:00-03:00", endsAt: "2026-11-03T15:00:00-03:00" }],
+      suggestSlots,
     },
     alerts: { flag },
     eventLog: { record, touchUsage },
   });
 
-  return { useCase, markProcessed, markFailed, flag, create, merge, claimNextAssignee, isValidSdr, createSchedule, filterTeamMemberEmails, record, touchUsage };
+  return { useCase, suggestSlots, markProcessed, markFailed, flag, create, merge, claimNextAssignee, isValidSdr, createSchedule, filterTeamMemberEmails, record, touchUsage };
 }
 
 const outcomeOf = (fake: ReturnType<typeof build>) =>
@@ -314,6 +317,28 @@ describe("webhook v2 — agendamento (DA7, DA9, DA10)", () => {
     expect(outcomeOf(fake).resultCode).toBe("closer_not_in_team");
     expect(fake.createSchedule).not.toHaveBeenCalled();
     expect(fake.flag.mock.calls[0]?.[0]).toMatchObject({ reasonCode: "closer_not_in_team" });
+  });
+
+  // Segurança (multi-tenant): o closer vem do payload do parceiro. Um UUID que não é closer deste time
+  // nunca pode virar consulta de agenda, referência no alerta nem destinatário de notificação.
+  it("closer de fora do time nunca é usado: sem sugestão de horários e sem closer no alerta", async () => {
+    for (const startsAt of ["2026-11-03T14:00:00-03:00", "2026-11-02T12:03:00Z", "2027-06-01T12:00:00Z"]) {
+      const fake = build({ eligibleCloser: false });
+      await fake.useCase.execute(eventRow(schedulePayload({ starts_at: startsAt })));
+
+      expect(fake.suggestSlots).not.toHaveBeenCalled();
+      const alert = fake.flag.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(alert.requestedCloserId).toBeNull();
+      expect(alert.suggestedSlots).toEqual([]);
+      expect(JSON.stringify(alert)).not.toContain(CLOSER_ID);
+    }
+  });
+
+  it("closer do time continua entrando nas sugestões e no alerta", async () => {
+    const fake = build({ scheduleResult: { ok: false, reason: "slot_unavailable", message: "Este horário não está mais disponível." } });
+    await fake.useCase.execute(eventRow(schedulePayload()));
+    expect(fake.suggestSlots).toHaveBeenCalledTimes(1);
+    expect(fake.flag.mock.calls[0]?.[0]).toMatchObject({ requestedCloserId: CLOSER_ID });
   });
 
   it("horário a menos de 5 minutos ou já passado: alerta schedule_in_past", async () => {
