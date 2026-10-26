@@ -135,6 +135,7 @@ const CRM_LEAD_LIST_SELECT = {
   currentValue: true,
   referenceHospital: true,
   currentTreatment: true,
+  needsReschedule: true,
   meetingDate: true,
   meetingDurationMinutes: true,
   meetingTitle: true,
