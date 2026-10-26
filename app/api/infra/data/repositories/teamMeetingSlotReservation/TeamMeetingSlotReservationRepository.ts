@@ -44,12 +44,14 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
       });
       if (!eligibleCloser) return { available: false };
 
-      const lockKey = `${input.teamId}:${input.closerId}`;
+      // Regra decidida em 21/09 (SPEC 13): o mesmo closer nunca tem duas reuniões
+      // no mesmo horário, em QUALQUER time. Por isso a trava e a checagem de
+      // conflito são por closer, não por time+closer.
+      const lockKey = `closer:${input.closerId}`;
       await transaction.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 
       const conflictingReservation = await transaction.teamMeetingSlotReservation.findFirst({
         where: {
-          teamId: input.teamId,
           closerId: input.closerId,
           state: { in: [TeamMeetingSlotReservationState.reserved, TeamMeetingSlotReservationState.consumed] },
           startsAt: { lt: input.endsAt },
@@ -62,7 +64,6 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
 
       const conflictingLeads = await transaction.lead.findMany({
         where: {
-          teamId: input.teamId,
           closerId: input.closerId,
           status: "scheduled",
           meetingDate: { gte: new Date(input.startsAt.getTime() - 60 * 60 * 1000), lt: input.endsAt },
