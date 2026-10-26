@@ -148,6 +148,8 @@ export interface ITeamMembersRepository {
     teamId: string,
     emails: string[]
   ): Promise<TeamMemberGoogleConnectionStatus[]>;
+  /** Closers ativos do time (função CLOSER, perfil não deletado), por nome — API de horários (SPEC 14). */
+  findActiveClosers(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>>;
   /** Membro do time com a função SDR e perfil não deletado (valida `assigned_to` do webhook v2). */
   isActiveSdr(teamId: string, profileId: string): Promise<boolean>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;

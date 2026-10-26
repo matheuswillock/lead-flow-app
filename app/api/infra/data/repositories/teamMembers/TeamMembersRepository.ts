@@ -373,6 +373,16 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async findActiveClosers(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>> {
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, functions: { has: "CLOSER" }, team: { deletedAt: null }, profile: { deletedAt: null } },
+      select: { profileId: true, profile: { select: { fullName: true } } },
+    });
+    return members
+      .map((member) => ({ profileId: member.profileId, fullName: member.profile.fullName }))
+      .sort((a, b) => (a.fullName ?? "").localeCompare(b.fullName ?? "", "pt-BR"));
+  }
+
   async isActiveSdr(teamId: string, profileId: string): Promise<boolean> {
     const member = await prisma.teamMember.findFirst({
       where: { teamId, profileId, functions: { has: "SDR" }, profile: { deletedAt: null } },
