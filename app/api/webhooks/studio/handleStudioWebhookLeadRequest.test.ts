@@ -43,6 +43,7 @@ type AuthResult = {
   webhookId: string | null;
   supabaseId: string | null;
   source: "team_webhook" | "legacy" | null;
+  contractVersion?: number;
 };
 
 let authOutput = {
@@ -360,6 +361,62 @@ describe("handleStudioWebhookLeadRequest (SPEC 10, A-E2/A-E3, DA2/DA3)", () => {
     expect(registerWebhookRequestLogMock).toHaveBeenCalledWith(
       expect.objectContaining({ statusCode: 201, resultType: "success" })
     );
+  });
+
+  it("T-11.2 — webhook v2 chamado pela rota v1 → 400 version_mismatch, sem ler o corpo nem processar", async () => {
+    authOutput = {
+      isValid: true,
+      successMessages: [],
+      errorMessages: [],
+      result: {
+        authenticated: true,
+        webhookId: "webhook-v2",
+        supabaseId: "supabase-1",
+        source: "team_webhook",
+        contractVersion: 2,
+      } as AuthResult,
+    };
+    const { request, textMock } = makeRequest({ body: JSON.stringify({ name: "Lead X" }) });
+
+    const response = await handleStudioWebhookLeadRequest({
+      request,
+      routePrefix: "[test]",
+      teamId: VALID_TEAM_ID,
+      token: "token-certo",
+    });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await readJson(response))).toContain("version_mismatch");
+    expect(textMock).not.toHaveBeenCalled();
+    expect(processWebhookLeadMock).not.toHaveBeenCalled();
+    expect(registerWebhookRequestLogMock).not.toHaveBeenCalled();
+  });
+
+  it("T-11.1 — webhook v1 (e o legado, sem versão) continua no fluxo de sempre", async () => {
+    for (const contractVersion of [1, undefined]) {
+      authOutput = {
+        isValid: true,
+        successMessages: [],
+        errorMessages: [],
+        result: {
+          authenticated: true,
+          webhookId: "webhook-1",
+          supabaseId: "supabase-1",
+          source: "team_webhook",
+          contractVersion,
+        } as AuthResult,
+      };
+      const { request } = makeRequest({
+        body: JSON.stringify({ name: "Lead X", email: "lead@example.com", phone: "11999999999" }),
+      });
+      const response = await handleStudioWebhookLeadRequest({
+        request,
+        routePrefix: "[test]",
+        teamId: VALID_TEAM_ID,
+        token: "token-certo",
+      });
+      expect(response.status).toBe(201);
+    }
   });
 
   it("R10-18 — payload autenticado e válido de ~20KB (dentro do teto de 64KB do corpo) → 201, não 400 por 'payload inválido'", async () => {

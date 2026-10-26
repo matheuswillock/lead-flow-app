@@ -396,6 +396,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
           webhookId: matched.id,
           supabaseId: team.master.supabaseId,
           source: "team_webhook",
+          contractVersion: matched.contractVersion,
         });
       }
 

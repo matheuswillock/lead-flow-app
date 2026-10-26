@@ -106,6 +106,8 @@ type AuthenticateInboundWebhookResult = {
   webhookId: string | null;
   supabaseId: string | null;
   source: "team_webhook" | "legacy" | null;
+  /** Versão gravada no `TeamWebhook` (SPEC 11, DA1). Ausente no legado, que é sempre v1. */
+  contractVersion?: number;
 };
 
 /**
@@ -187,6 +189,20 @@ export const handleStudioWebhookLeadRequest = async ({
     return NextResponse.json(new Output(false, [], [studioWebhookErrors.UNAUTHORIZED_ERROR], null), {
       status: 401,
     });
+  }
+
+  // 4b) SPEC 11, DA1: a versão gravada no webhook decide. Um webhook v2 chamado por esta rota (v1)
+  // é recusado antes de ler o corpo, gravar log ou consumir cota: o integrador usou a URL errada.
+  if (auth.contractVersion !== undefined && auth.contractVersion !== 1) {
+    return NextResponse.json(
+      new Output(
+        false,
+        [],
+        ["version_mismatch: este webhook é da versão 2. Use a URL /api/webhooks/studio/v2/{teamId} com o token no header Authorization."],
+        null
+      ),
+      { status: 400 }
+    );
   }
 
   // 5) Identidade resolvida (webhook ou legado). Limites por webhook e por
