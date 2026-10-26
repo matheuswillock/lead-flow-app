@@ -118,7 +118,7 @@ describe("FeatureAccessService.resolveAllowedSlugs — feature integration por p
   let service: InstanceType<typeof FeatureAccessService>
 
   // Regra de produção pós-correção (migration
-  // 20260922010016_seed-integration-feature-manager-access.sql +
+  // 20261026130100_seed-integration-feature-manager-access.sql +
   // prisma/seed-backoffice-products.ts): MASTER e MANAGER = FULL, resto NONE.
   const CORRECTED_ACCESS_RULES: ActiveFeatureRecord["accessRules"] = [
     { principal: "MASTER", accessLevel: "FULL" },

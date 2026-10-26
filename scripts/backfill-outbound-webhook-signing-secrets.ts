@@ -3,7 +3,7 @@
  * Backfill: gera um segredo de assinatura HMAC para webhook de saída
  * (`direction: "outbound"`) que exista sem `signingSecretCipher` (SPEC 20 — A-E1).
  *
- * Contexto: a migration `20260921235600_add-team-webhook-signing-secret.sql` só
+ * Contexto: a migration `20261026130200_add-team-webhook-signing-secret.sql` só
  * criou as colunas `signingSecretCipher`/`signingSecretPreview` vazias — não gera
  * segredo para linha nenhuma. `TeamWebhookService.create()` e `rotateSigningSecret()`
  * sempre geram um segredo válido, então este script é defensivo: cobre qualquer

@@ -14,7 +14,7 @@ import { join } from "node:path";
  */
 const MIGRATION_PATH = join(
   __dirname,
-  "20260922002222_add-team-webhook-contract-version-and-rate-limit.sql",
+  "20261026130000_add-team-webhook-contract-version-and-rate-limit.sql",
 );
 
 describe("migration webhooks_inbound_rate_limit_windows — RLS (R10-2)", () => {
