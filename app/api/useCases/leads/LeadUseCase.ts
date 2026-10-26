@@ -2356,6 +2356,7 @@ export class LeadUseCase implements ILeadUseCase {
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
       meetingPresenceConfirmed: lead.meetingPresenceConfirmed === true,
+      needsReschedule: lead.needsReschedule === true,
       meetingPresenceConfirmedAt: lead.meetingPresenceConfirmedAt
         ? lead.meetingPresenceConfirmedAt.toISOString()
         : null,

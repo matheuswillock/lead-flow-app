@@ -7,7 +7,7 @@ import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { CheckCircle, Calendar, Video, Mail, BadgeCheck, Loader2 } from "lucide-react";
+import { CheckCircle, Calendar, CalendarClock, Video, Mail, BadgeCheck, Loader2 } from "lucide-react";
 import { Paperclip } from "@/components/ui/paperclip";
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
@@ -97,8 +97,9 @@ function LeadCardComponent({
         meetingPresenceConfirmed: lead.meetingPresenceConfirmed,
         isTransfer: lead.isTransfer,
     });
+    const needsReschedule = lead.needsReschedule === true;
     const showDestructivePulse =
-        lead.isLeadTimeBreached || isFollowUpOverdue;
+        lead.isLeadTimeBreached || isFollowUpOverdue || needsReschedule;
     const showCriticizedHighlight = lead.proposalReviewStatus === "criticized";
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
@@ -218,6 +219,20 @@ function LeadCardComponent({
                 </CardHeader>
             )}
             <CardContent className="flex flex-col gap-2">
+                {needsReschedule && (
+                    // SPEC 11 (DA9, B-E4): alerta legível sem cor (ícone + texto). A animação é um pulso
+                    // lento (ciclo de 2 s, bem abaixo do limite de 3 piscadas por segundo do WCAG 2.3.1)
+                    // e só roda para quem não pediu movimento reduzido.
+                    <Badge
+                        variant="destructive"
+                        className="w-fit motion-safe:animate-pulse"
+                        role="status"
+                        data-testid="lead-needs-reschedule"
+                    >
+                        <CalendarClock data-icon="inline-start" />
+                        Remarcar urgente
+                    </Badge>
+                )}
                 {isScheduled && lead.meetingDate && !lead.isTransfer && (
                     <div className="flex flex-wrap items-center gap-2">
                         {isPresenceConfirmed ? (
