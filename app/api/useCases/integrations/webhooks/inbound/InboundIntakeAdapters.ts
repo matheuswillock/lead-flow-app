@@ -1,11 +1,8 @@
 import { ActivityType, type Prisma } from "@prisma/client";
-import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
-import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 import { leadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { leadActivityRepository } from "@/app/api/infra/data/repositories/leadActivity/LeadActivityRepository";
 import { calendarAvailabilityRepository } from "@/app/api/infra/data/repositories/calendarAvailability/CalendarAvailabilityRepository";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
-import { studioWebhookConfigRepository } from "@/app/api/infra/data/repositories/studioWebhook/StudioWebhookConfigRepository";
 import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
@@ -27,6 +24,7 @@ import type { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLe
 import type { InboundV2Payload } from "@/lib/webhooks/inbound/v2/payload";
 import type { ProcessInboundWebhookEventDeps } from "./ProcessInboundWebhookEventUseCase";
 import type { ExistingContactLead } from "./InboundIntakePorts";
+import { inboundTeamAdapter } from "./InboundTeamAdapter";
 
 const SLOT_SUGGESTION_LIMIT = 5;
 const SLOT_SUGGESTION_DAYS = 7;
@@ -66,21 +64,7 @@ export function createInboundIntakeAdapters(): Omit<ProcessInboundWebhookEventDe
       },
     },
 
-    teams: {
-      async getTeam(teamId) {
-        const team = await studioWebhookConfigRepository.getTeamWithMaster(teamId);
-        if (!team?.master.supabaseId) return null;
-        return { teamId: team.id, managerProfileId: team.master.id, managerSupabaseId: team.master.supabaseId };
-      },
-      async isAccountAllowed(team) {
-        const access = await accountAccessDecisionUseCase.execute({
-          profileId: team.managerProfileId,
-          teamId: team.teamId,
-        });
-        const decision = access.result as AccountAccessDecision | null;
-        return access.isValid && decision?.state === "allowed";
-      },
-    },
+    teams: inboundTeamAdapter,
 
     contacts: {
       async findExistingContact(teamId, contact) {
