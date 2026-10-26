@@ -86,6 +86,17 @@ describe("TeamMeetingSlotReservationRepository.reserve — trava por closer em q
     expect(where).toMatchObject({ closerId: "closer-1" });
   });
 
+  it("a reunião do lead conta em qualquer status não terminal, não só `scheduled`", async () => {
+    await new TeamMeetingSlotReservationRepository().reserve(input);
+
+    const where = leadFindManyMock.mock.calls[0]?.[0].where as Where;
+    expect(where).not.toHaveProperty("status", "scheduled");
+    expect(where).toMatchObject({
+      deletedAt: null,
+      status: { notIn: ["contract_finalized", "opportunityLost", "disqualified", "operator_denied"] },
+    });
+  });
+
   it("closers diferentes no mesmo horário não se bloqueiam", async () => {
     const result = await new TeamMeetingSlotReservationRepository().reserve({
       ...(input as object),

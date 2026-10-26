@@ -1,5 +1,6 @@
 import { Prisma, TeamMeetingSlotReservationState } from "@prisma/client";
 import { prisma } from "../../prisma";
+import { MEETING_OCCUPANCY_LEAD_WHERE } from "@/app/api/domain/leadSchedule/meetingOccupancy";
 import type {
   CreateTeamMeetingSlotReservationInput,
   ITeamMeetingSlotReservationRepository,
@@ -64,8 +65,8 @@ export class TeamMeetingSlotReservationRepository implements ITeamMeetingSlotRes
 
       const conflictingLeads = await transaction.lead.findMany({
         where: {
+          ...MEETING_OCCUPANCY_LEAD_WHERE,
           closerId: input.closerId,
-          status: "scheduled",
           meetingDate: { gte: new Date(input.startsAt.getTime() - 60 * 60 * 1000), lt: input.endsAt },
           ...(input.leadId ? { NOT: { id: input.leadId } } : {}),
         },

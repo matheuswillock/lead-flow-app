@@ -1,4 +1,5 @@
 import { prisma } from "../../prisma";
+import { MEETING_OCCUPANCY_LEAD_WHERE } from "@/app/api/domain/leadSchedule/meetingOccupancy";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   CalendarAvailabilityCloserProfile,
@@ -92,11 +93,11 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
     dayStart: Date;
     dayEnd: Date;
   }): Promise<CalendarAvailabilityScheduledLead[]> {
+    // Ocupação é do closer, em qualquer time (SPEC 13/14): sem filtro de `teamId`.
     return prisma.lead.findMany({
       where: {
-        teamId: params.teamId,
+        ...MEETING_OCCUPANCY_LEAD_WHERE,
         closerId: { in: params.requestedCloserIds },
-        status: "scheduled",
         meetingDate: {
           gte: params.dayStart,
           lt: params.dayEnd,
@@ -119,7 +120,6 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
   }): Promise<CalendarAvailabilityReservation[]> {
     return prisma.teamMeetingSlotReservation.findMany({
       where: {
-        teamId: params.teamId,
         closerId: { in: params.requestedCloserIds },
         state: { in: ["reserved", "consumed"] },
         startsAt: { lt: params.rangeEnd },
