@@ -15,6 +15,12 @@ export type TeamWebhookSummary = {
   direction: TeamWebhookDirection;
   status: TeamWebhookStatus;
   name: string;
+  /** Versão do contrato de entrada (1 ou 2). */
+  contractVersion: number;
+  scopes: string[];
+  defaultAssigneeProfileIds: string[];
+  lastAssignedProfileId: string | null;
+  defaultMeetingLink: string | null;
   targetUrl: string | null;
   destinationPreset: TeamWebhookDestinationPreset | null;
   selectedEvents: TeamWebhookEventKey[];
@@ -59,6 +65,19 @@ export type CreateInboundWebhookPayload = {
   tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
+  /** Ausente = v1. */
+  contractVersion?: 2;
+  scopes?: Array<"leads_create" | "leads_schedule">;
+  defaultAssigneeProfileIds?: string[];
+  defaultMeetingLink?: string | null;
+};
+
+/** Membro do time para escolher SDRs padrão e avisar closers sem Google (SPEC 11, B-E1). */
+export type TeamMemberOption = {
+  profileId: string;
+  name: string;
+  functions: string[];
+  googleCalendarConnected: boolean;
 };
 
 export type CreateOutboundWebhookPayload = {
@@ -95,6 +114,7 @@ export interface ITeamWebhooksService {
     }
   ): Promise<{ items: TeamWebhookSummary[]; total: number; page: number; pageSize: number }>;
   getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  listTeamMembers(supabaseId: string, teamId: string): Promise<TeamMemberOption[]>;
   create(
     supabaseId: string,
     teamId: string,

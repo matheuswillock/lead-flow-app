@@ -6,6 +6,10 @@ export class InboundWebhookCreateService implements IInboundWebhookCreateService
   create(supabaseId: string, teamId: string, payload: CreateInboundWebhookPayload) {
     return teamWebhooksService.create(supabaseId, teamId, payload);
   }
+
+  listTeamMembers(supabaseId: string, teamId: string) {
+    return teamWebhooksService.listTeamMembers(supabaseId, teamId);
+  }
 }
 
 export const inboundWebhookCreateService = new InboundWebhookCreateService();

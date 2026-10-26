@@ -1,5 +1,6 @@
 import type {
   CreateInboundWebhookPayload,
+  TeamMemberOption,
   TeamWebhookSummary,
 } from "../../../../features/services/ITeamWebhooksService";
 
@@ -10,4 +11,5 @@ import type {
  */
 export interface IInboundWebhookCreateService {
   create(supabaseId: string, teamId: string, payload: CreateInboundWebhookPayload): Promise<TeamWebhookSummary>;
+  listTeamMembers(supabaseId: string, teamId: string): Promise<TeamMemberOption[]>;
 }
