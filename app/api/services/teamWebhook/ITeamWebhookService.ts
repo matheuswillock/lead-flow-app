@@ -14,6 +14,13 @@ export type TeamWebhookSummaryDto = {
   direction: TeamWebhookDirection;
   status: TeamWebhookStatus;
   name: string;
+  /** Versão do contrato de entrada (1 ou 2); só faz sentido para webhook de entrada. */
+  contractVersion: number;
+  /** SPEC 11 (v2): escopos do token, SDRs padrão em rodízio, último atendido e link de Meet padrão. */
+  scopes: string[];
+  defaultAssigneeProfileIds: string[];
+  lastAssignedProfileId: string | null;
+  defaultMeetingLink: string | null;
   targetUrl: string | null;
   destinationPreset: TeamWebhookDestinationPreset | null;
   selectedEvents: TeamWebhookEventKey[];
@@ -40,6 +47,14 @@ export type CreateInboundWebhookInput = {
   tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: StudioWebhookTokenExpiryMode;
+  /** Ausente = v1 (comportamento de sempre). */
+  contractVersion?: 1 | 2;
+  /** v2: `leads_create` (obrigatório) e `leads_schedule`. */
+  scopes?: Array<"leads_create" | "leads_schedule">;
+  /** v2: SDRs padrão em rodízio, na ordem. Obrigatório com pelo menos um. */
+  defaultAssigneeProfileIds?: string[];
+  /** v2: link de Meet (https) para reunião online de closer sem Google. */
+  defaultMeetingLink?: string | null;
 };
 
 export type CreateOutboundWebhookInput = {

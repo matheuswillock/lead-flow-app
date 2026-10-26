@@ -31,6 +31,11 @@ const CreateBodySchema = z
         .regex(/^[A-Za-z0-9_-]+$/)
         .optional(),
       expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]),
+      // SPEC 11: ausente = v1. As regras da v2 (token gerado, validade, SDRs, Meet) vivem no serviço.
+      contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+      scopes: z.array(z.enum(["leads_create", "leads_schedule"])).max(2).optional(),
+      defaultAssigneeProfileIds: z.array(z.string().uuid()).max(10).optional(),
+      defaultMeetingLink: z.string().trim().max(2048).nullish(),
     }),
     z.object({
       direction: z.literal("outbound"),

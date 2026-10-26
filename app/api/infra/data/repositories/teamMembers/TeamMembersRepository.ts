@@ -383,6 +383,35 @@ export class TeamMembersRepository implements ITeamMembersRepository {
       .sort((a, b) => (a.fullName ?? "").localeCompare(b.fullName ?? "", "pt-BR"));
   }
 
+  async findActiveSdrProfileIds(teamId: string, profileIds: string[]): Promise<string[]> {
+    if (profileIds.length === 0) return [];
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, profileId: { in: profileIds }, functions: { has: "SDR" }, profile: { deletedAt: null } },
+      select: { profileId: true },
+    });
+    return members.map((member) => member.profileId);
+  }
+
+  async findActiveClosersWithoutGoogle(
+    teamId: string
+  ): Promise<Array<{ profileId: string; fullName: string | null }>> {
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, functions: { has: "CLOSER" }, team: { deletedAt: null }, profile: { deletedAt: null } },
+      select: {
+        profileId: true,
+        profile: {
+          select: {
+            fullName: true,
+            googleConnection: { select: { refreshToken: true, revokedAt: true } },
+          },
+        },
+      },
+    });
+    return members
+      .filter((member) => !isGoogleConnectionActive(member.profile.googleConnection))
+      .map((member) => ({ profileId: member.profileId, fullName: member.profile.fullName }));
+  }
+
   async isActiveSdr(teamId: string, profileId: string): Promise<boolean> {
     const member = await prisma.teamMember.findFirst({
       where: { teamId, profileId, functions: { has: "SDR" }, profile: { deletedAt: null } },

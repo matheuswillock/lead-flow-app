@@ -7,6 +7,8 @@ import type {
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
 import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
+import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { teamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository";
 import type { TeamWebhookRow } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookRepository";
 import {
@@ -36,6 +38,8 @@ import type {
 } from "./ITeamWebhookService";
 
 const MAX_OUTBOUND_PER_TEAM = 20;
+const MAX_DEFAULT_ASSIGNEES = 10;
+const INBOUND_V2_SCOPES = ["leads_create", "leads_schedule"] as const;
 /** SPEC 10, W23: sem teto para entrada existia até aqui. */
 const MAX_INBOUND_PER_TEAM = 10;
 const NONE_TOKEN_HASH = hashTeamWebhookToken("__none__");
@@ -48,8 +52,10 @@ export class TeamWebhookService implements ITeamWebhookService {
     return { profileId: access.profileId, teamId: access.teamId };
   }
 
-  private buildInboundUrl(appUrl: string, teamId: string, token: string | null): string {
+  private buildInboundUrl(appUrl: string, teamId: string, token: string | null, version = 1): string {
     const base = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
+    // v2 (SPEC 11, DA1/DA3): o token vai no header Authorization, nunca na URL.
+    if (version === 2) return `${base}/api/webhooks/studio/v2/${teamId}`;
     if (!token) {
       return `${base}/api/webhooks/studio/${teamId}`;
     }
@@ -58,7 +64,9 @@ export class TeamWebhookService implements ITeamWebhookService {
 
   toSummary(row: TeamWebhookRow, appUrl: string, token?: string): TeamWebhookSummaryDto {
     let webhookUrl: string | null = null;
-    if (row.direction === "inbound") {
+    if (row.direction === "inbound" && row.contractVersion === 2) {
+      webhookUrl = this.buildInboundUrl(appUrl, row.teamId, null, 2);
+    } else if (row.direction === "inbound") {
       if (row.tokenHash === NONE_TOKEN_HASH || !row.tokenHash) {
         webhookUrl = this.buildInboundUrl(appUrl, row.teamId, null);
       } else if (token) {
@@ -73,6 +81,11 @@ export class TeamWebhookService implements ITeamWebhookService {
       direction: row.direction,
       status: row.status,
       name: row.name,
+      contractVersion: row.contractVersion,
+      scopes: row.scopes ?? [],
+      defaultAssigneeProfileIds: row.defaultAssigneeProfileIds ?? [],
+      lastAssignedProfileId: row.lastAssignedProfileId,
+      defaultMeetingLink: row.defaultMeetingLink,
       targetUrl: row.targetUrl,
       destinationPreset: row.destinationPreset,
       selectedEvents: row.selectedEvents,
@@ -203,6 +216,10 @@ export class TeamWebhookService implements ITeamWebhookService {
       throw new Error(`Limite de ${MAX_INBOUND_PER_TEAM} webhooks de entrada por time`);
     }
 
+    if (input.contractVersion === 2) {
+      return this.createInboundV2(access, input, appUrl);
+    }
+
     const tokenFields = this.resolveTokenFields(input);
     const row = await teamWebhookRepository.createWithCtx(this.ctx(access), {
       direction: "inbound",
@@ -218,6 +235,71 @@ export class TeamWebhookService implements ITeamWebhookService {
       ...this.toSummary(row, appUrl, tokenFields.token ?? undefined),
       token: tokenFields.token ?? undefined,
     };
+  }
+
+  /**
+   * Webhook de entrada v2 (SPEC 11). Regras: token só gerado (D22) e com validade (D20); escopo
+   * `leads_create` obrigatório (DA3); ao menos um SDR ativo do time, sem repetição (DA11); e, se algum
+   * closer não tem Google conectado, o link de Meet padrão passa a ser obrigatório (DA10).
+   */
+  private async createInboundV2(
+    access: TeamAccess,
+    input: CreateInboundWebhookInput,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { token?: string }> {
+    if (input.tokenMode === "manual") {
+      throw new Error("Na versão 2 só token gerado é aceito: não existe token manual.");
+    }
+    if (input.expiryMode === "indeterminate") {
+      throw new Error("Na versão 2 o token precisa de validade: escolha uma validade diferente de indeterminada.");
+    }
+
+    const scopes = input.scopes ?? ["leads_create"];
+    const unknownScope = scopes.find((scope) => !(INBOUND_V2_SCOPES as readonly string[]).includes(scope));
+    if (unknownScope) throw new Error(`Escopo desconhecido: ${unknownScope}.`);
+    if (!scopes.includes("leads_create")) throw new Error("O escopo leads_create é obrigatório.");
+
+    const assignees = input.defaultAssigneeProfileIds ?? [];
+    if (assignees.length === 0) throw new Error("Informe ao menos um SDR padrão para o rodízio de leads.");
+    if (assignees.length > MAX_DEFAULT_ASSIGNEES) {
+      throw new Error(`Informe no máximo ${MAX_DEFAULT_ASSIGNEES} SDRs padrão.`);
+    }
+    if (new Set(assignees).size !== assignees.length) throw new Error("Há SDR repetido na lista de SDRs padrão.");
+    const validSdrs = await teamMembersRepository.findActiveSdrProfileIds(access.teamId, assignees);
+    if (validSdrs.length !== assignees.length) {
+      throw new Error("Todos os SDRs padrão precisam ser SDRs ativos deste time.");
+    }
+
+    const closersWithoutGoogle = await teamMembersRepository.findActiveClosersWithoutGoogle(access.teamId);
+    const rawLink = input.defaultMeetingLink?.trim() ? input.defaultMeetingLink.trim() : null;
+    let defaultMeetingLink: string | null = null;
+    if (rawLink) {
+      const validated = validateMeetingLinkValue(rawLink, { required: true });
+      if (!validated.isValid) throw new Error(validated.error);
+      defaultMeetingLink = validated.normalized ?? rawLink;
+    } else if (closersWithoutGoogle.length > 0) {
+      const names = closersWithoutGoogle.map((closer) => closer.fullName ?? "Closer sem nome").join(", ");
+      throw new Error(
+        `Estes closers não têm conta Google conectada, então o sistema não consegue gerar o link do Google Meet para as reuniões online deles: ${names}. Informe um link de Meet padrão para usar nessas reuniões.`
+      );
+    }
+
+    const tokenFields = this.resolveTokenFields({ ...input, tokenMode: "auto" });
+    const row = await teamWebhookRepository.createWithCtx(this.ctx(access), {
+      direction: "inbound",
+      name: input.name.trim(),
+      contractVersion: 2,
+      scopes,
+      defaultAssigneeProfileIds: assignees,
+      defaultMeetingLink,
+      tokenHash: tokenFields.tokenHash,
+      tokenCipher: tokenFields.tokenCipher,
+      tokenPreview: tokenFields.tokenPreview,
+      expiryMode: tokenFields.expiryMode,
+      expiresAt: tokenFields.expiresAt,
+    });
+
+    return { ...this.toSummary(row, appUrl), token: tokenFields.token };
   }
 
   async update(

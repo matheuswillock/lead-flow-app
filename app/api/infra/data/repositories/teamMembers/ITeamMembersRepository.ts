@@ -150,6 +150,10 @@ export interface ITeamMembersRepository {
   ): Promise<TeamMemberGoogleConnectionStatus[]>;
   /** Closers ativos do time (função CLOSER, perfil não deletado), por nome — API de horários (SPEC 14). */
   findActiveClosers(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>>;
+  /** Quais dos `profileIds` são SDRs ativos do time (valida a lista de SDRs padrão do webhook v2). */
+  findActiveSdrProfileIds(teamId: string, profileIds: string[]): Promise<string[]>;
+  /** Closers ativos do time sem Google Calendar conectado (DA10: pede o link de Meet padrão). */
+  findActiveClosersWithoutGoogle(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>>;
   /** Membro do time com a função SDR e perfil não deletado (valida `assigned_to` do webhook v2). */
   isActiveSdr(teamId: string, profileId: string): Promise<boolean>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
