@@ -25,6 +25,17 @@ const CALENDAR_TERMINAL_STATUSES: LeadStatus[] = [
 const CALENDAR_LEAD_TIME_LOOKBACK_DAYS = 45;
 
 /**
+ * SPEC 11, D41: e-mail e CNPJ só são únicos por time entre leads NÃO deletados que ainda estão em
+ * aberto para o contato (sem status, nova oportunidade ou agendado). Espelha o predicado dos índices
+ * únicos parciais `corretor_studio_leads_teamId_{email,cnpj}_open_key`
+ * (supabase/migrations/20261026140200_lead-partial-unique-email-cnpj.sql). Se um mudar, o outro muda.
+ */
+const OPEN_UNIQUENESS_WHERE: Prisma.LeadWhereInput[] = [
+  { deletedAt: null },
+  { OR: [{ status: null }, { status: { in: ["new_opportunity", "scheduled"] } }] },
+];
+
+/**
  * Nomes de model do Prisma (DMMF) que têm FK declarada para `Lead` e que
  * `mergeLeadsInTransaction` MUST re-apontar do lead de origem pro lead alvo
  * antes do `tx.lead.delete(source)` — senão a FK apaga em silêncio
@@ -64,6 +75,7 @@ export const MERGE_TRANSFERRED_LEAD_RELATIONS = [
   "LeadTagAssignment",
   "LeadDocumentRequest",
   "TeamMeetingSlotReservation",
+  "LeadRescheduleAlert",
 ] as const;
 
 /**
@@ -1402,6 +1414,19 @@ export class LeadRepository implements ILeadRepository {
         where: { leadId: sourceLead.id },
         data: { leadId: targetLead.id },
       });
+      // SPEC 11 (DA9): o alerta "remarcar urgente" acompanha o lead sobrevivente. O flag
+      // `needsReschedule` do alvo passa a refletir os alertas ainda abertos que ele herdou.
+      await tx.leadRescheduleAlert.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      const openRescheduleAlerts = await tx.leadRescheduleAlert.count({
+        where: { leadId: targetLead.id, resolvedAt: null },
+      });
+      await tx.lead.update({
+        where: { id: targetLead.id },
+        data: { needsReschedule: openRescheduleAlerts > 0 },
+      });
 
       // `@@unique([leadId, tagId])`: transferir a tag de origem para o alvo
       // quebraria a constraint quando o alvo já tem a mesma tag. Regra: o
@@ -1528,6 +1553,7 @@ export class LeadRepository implements ILeadRepository {
       where: {
         teamId: input.teamId,
         cnpj: input.cnpj,
+        AND: OPEN_UNIQUENESS_WHERE,
         ...(input.excludeLeadId && { NOT: { id: input.excludeLeadId } }),
       },
       select: { id: true, leadCode: true, name: true },
@@ -1546,6 +1572,7 @@ export class LeadRepository implements ILeadRepository {
       where: {
         teamId: input.teamId,
         email: input.email,
+        AND: OPEN_UNIQUENESS_WHERE,
         ...(input.excludeLeadId && { NOT: { id: input.excludeLeadId } }),
       },
       select: { id: true, leadCode: true, name: true },

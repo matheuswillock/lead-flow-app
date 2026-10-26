@@ -20,6 +20,7 @@ const tx = {
   publicFormSubmission: { updateMany: manyMock() },
   leadDocumentRequest: { updateMany: manyMock() },
   teamMeetingSlotReservation: { updateMany: manyMock() },
+  leadRescheduleAlert: { updateMany: manyMock(), count: mock(async () => 0) },
   leadTagAssignment: {
     findMany: mock(async () => [] as Array<{ tagId: string }>),
     updateMany: manyMock(),
@@ -120,6 +121,25 @@ describe("LeadRepository.mergeLeadsInTransaction", () => {
     expect(tx.teamMeetingSlotReservation.updateMany).toHaveBeenCalledWith({
       where: { leadId: SOURCE_LEAD_ID },
       data: { leadId: TARGET_LEAD_ID },
+    })
+  })
+
+  it("transfere os alertas de remarcação do lead de origem e mantém needsReschedule coerente no alvo", async () => {
+    tx.leadRescheduleAlert.count.mockImplementationOnce(async () => 1)
+
+    const repo = new LeadRepository()
+    await repo.mergeLeadsInTransaction(baseInput())
+
+    expect(tx.leadRescheduleAlert.updateMany).toHaveBeenCalledWith({
+      where: { leadId: SOURCE_LEAD_ID },
+      data: { leadId: TARGET_LEAD_ID },
+    })
+    expect(tx.leadRescheduleAlert.count).toHaveBeenCalledWith({
+      where: { leadId: TARGET_LEAD_ID, resolvedAt: null },
+    })
+    expect(tx.lead.update).toHaveBeenCalledWith({
+      where: { id: TARGET_LEAD_ID },
+      data: { needsReschedule: true },
     })
   })
 
