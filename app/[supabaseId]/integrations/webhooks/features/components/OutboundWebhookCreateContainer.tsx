@@ -12,17 +12,32 @@ import { Label } from "@/components/ui/label";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { teamWebhooksService } from "../services/TeamWebhooksService";
-import type { TeamWebhookSummary } from "../services/ITeamWebhooksService";
+import type { CreateOutboundWebhookPayload, TeamWebhookSummary } from "../services/ITeamWebhooksService";
 import {
   WebhookOutboundConfigFields,
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
 import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 
-type Props = { supabaseId: string };
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — a chamada real de
+ * criação passa pelo Service page-local (`OutboundWebhookCreateService`),
+ * injetado via Hook/Context da rota, em vez deste componente compartilhado
+ * importar `teamWebhooksService` direto.
+ */
+type OutboundWebhookCreateServiceLike = {
+  create(supabaseId: string, teamId: string, payload: CreateOutboundWebhookPayload): Promise<TeamWebhookSummary>;
+};
 
-export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
+type Props = {
+  supabaseId: string;
+  /** SPEC 10, R10-5: caminhos vêm do Hook page-local (OutboundWebhookCreateHook), não hardcoded aqui. */
+  listPath: string;
+  buildDetailPath: (webhookId: string) => string;
+  service: OutboundWebhookCreateServiceLike;
+};
+
+export function OutboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
   const [values, setValues] = useState<WebhookOutboundFormValues>({
@@ -46,7 +61,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
     if (!activeTeam?.id || !canSubmit) return;
     setSaving(true);
     try {
-      const result = await teamWebhooksService.create(supabaseId, activeTeam.id, {
+      const result = await service.create(supabaseId, activeTeam.id, {
         direction: "outbound",
         name: values.name.trim(),
         targetUrl: values.targetUrl.trim(),
@@ -55,6 +70,8 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
         failureThreshold: values.failureThreshold,
       });
       toast.success("Webhook de saída criado");
+      // SPEC 20: o segredo HMAC só aparece nesta resposta; o redirecionamento
+      // para o detalhe fica atrás do botão da tela de revelação.
       setCreated(result);
     } catch (error) {
       toastUserError(error);
@@ -122,7 +139,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
           <Button
             className="max-lg:h-11"
             onClick={() => {
-              router.push(`/${supabaseId}/integrations/webhooks/outbound/${created.id}`);
+              router.push(buildDetailPath(created.id));
             }}
           >
             Ir para detalhes
@@ -136,7 +153,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
         <Button variant="ghost" size="sm" asChild className="w-fit px-0 max-lg:h-11">
-          <Link href={`/${supabaseId}/integrations/webhooks/outbound`}>
+          <Link href={listPath}>
             <ArrowLeft data-icon="inline-start" />
             Voltar
           </Link>
@@ -151,7 +168,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" asChild disabled={saving} className="max-lg:h-11">
-          <Link href={`/${supabaseId}/integrations/webhooks/outbound`}>Cancelar</Link>
+          <Link href={listPath}>Cancelar</Link>
         </Button>
         <Button onClick={onSubmit} disabled={!canSubmit} className="max-lg:h-11">
           {saving ? "Salvando..." : "Criar"}

@@ -1,69 +1,37 @@
-import { StudioWebhookTokenExpiryMode } from "@prisma/client";
+export type {
+  CreateStudioWebhookRequestLogInput,
+  ListLatestWebhookRequestLogsParams,
+  ListLatestWebhookRequestLogsResult,
+  StudioWebhookConfigSnapshot,
+  StudioWebhookRequestLogResultType,
+  StudioWebhookRequestLogSnapshot,
+  StudioWebhookTeamSnapshot,
+  UpsertStudioWebhookConfigInput,
+} from "@/app/api/infra/data/repositories/studioWebhook/IStudioWebhookConfigRepository";
 
-export type StudioWebhookTeamSnapshot = {
-  id: string;
-  masterId: string;
-  master: {
-    id: string;
-    supabaseId: string | null;
-  };
-};
+import type {
+  CreateStudioWebhookRequestLogInput,
+  ListLatestWebhookRequestLogsParams,
+  ListLatestWebhookRequestLogsResult,
+  StudioWebhookConfigSnapshot,
+  StudioWebhookTeamSnapshot,
+  UpsertStudioWebhookConfigInput,
+} from "@/app/api/infra/data/repositories/studioWebhook/IStudioWebhookConfigRepository";
 
-export type StudioWebhookConfigSnapshot = {
-  id: string;
-  teamId: string;
-  tokenHash: string;
-  tokenCipher: string | null;
-  tokenPreview: string;
-  expiryMode: StudioWebhookTokenExpiryMode;
-  expiresAt: Date | null;
-  lastUsedAt: Date | null;
-  updatedByProfileId: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type UpsertStudioWebhookConfigInput = {
-  teamId: string;
-  tokenHash: string;
-  tokenCipher: string | null;
-  tokenPreview: string;
-  expiryMode: StudioWebhookTokenExpiryMode;
-  expiresAt: Date | null;
-  updatedByProfileId: string;
-};
-
-export type StudioWebhookRequestLogResultType = "success" | "error";
-
-export type CreateStudioWebhookRequestLogInput = {
-  teamId: string;
-  method: string;
-  endpoint: string;
-  statusCode: number;
-  resultType: StudioWebhookRequestLogResultType;
-  requestPayload?: unknown;
-  responsePayload?: unknown;
-  errorMessage?: string | null;
-};
-
-export type StudioWebhookRequestLogSnapshot = {
-  id: string;
-  teamId: string;
-  method: string;
-  endpoint: string;
-  statusCode: number;
-  resultType: string;
-  requestPayload: unknown;
-  responsePayload: unknown;
-  errorMessage: string | null;
-  createdAt: Date;
-};
-
+/**
+ * R10-6 (revisão Opus, Protocolo 96) — os tipos agora moram no Repository
+ * (`IStudioWebhookConfigRepository`); esta interface só os reexporta para
+ * não quebrar o UseCase e os testes existentes que importam daqui.
+ */
 export interface IStudioWebhookIntegrationService {
   getTeamWithMaster(teamId: string): Promise<StudioWebhookTeamSnapshot | null>;
   getWebhookConfigByTeamId(teamId: string): Promise<StudioWebhookConfigSnapshot | null>;
   upsertWebhookConfig(input: UpsertStudioWebhookConfigInput): Promise<StudioWebhookConfigSnapshot>;
   touchWebhookLastUsed(teamId: string): Promise<void>;
   createWebhookRequestLog(input: CreateStudioWebhookRequestLogInput): Promise<void>;
-  listLatestWebhookRequestLogs(teamId: string, limit: number): Promise<StudioWebhookRequestLogSnapshot[]>;
+  /** SPEC 10, W32: paginação real (page/pageSize) — antes fixo nos 15 mais recentes. */
+  listLatestWebhookRequestLogs(
+    teamId: string,
+    params: ListLatestWebhookRequestLogsParams
+  ): Promise<ListLatestWebhookRequestLogsResult>;
 }

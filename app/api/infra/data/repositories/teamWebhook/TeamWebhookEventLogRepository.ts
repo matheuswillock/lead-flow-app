@@ -35,22 +35,46 @@ const LOG_SELECT = {
   createdAt: true,
 } as const;
 
+/** SPEC 10, DA6 (W7/W11): mesmo teto do legado (`StudioWebhookIntegrationService.ts:37`). */
+const TEAM_WEBHOOK_EVENT_LOG_RETENTION_LIMIT = 15;
+
 export class TeamWebhookEventLogRepository implements ITeamWebhookEventLogRepository {
   async create(input: CreateTeamWebhookEventLogInput): Promise<void> {
-    await prisma.teamWebhookEventLog.create({
-      data: {
-        teamId: input.teamId,
-        webhookId: input.webhookId,
-        direction: input.direction,
-        result: input.result,
-        eventKey: input.eventKey ?? null,
-        method: input.method ?? null,
-        endpoint: input.endpoint ?? null,
-        statusCode: input.statusCode ?? null,
-        requestPayload: toPrismaJsonValue(input.requestPayload),
-        responsePayload: toPrismaJsonValue(input.responsePayload),
-        errorMessage: input.errorMessage ?? null,
-      },
+    // DA6 (W11): sem poda, `TeamWebhookEventLog` cresce sem limite — a
+    // gravação e a poda por (teamId, webhookId) rodam na mesma transação,
+    // no mesmo padrão de `StudioWebhookIntegrationService.ts:114-147`.
+    await prisma.$transaction(async (tx) => {
+      await tx.teamWebhookEventLog.create({
+        data: {
+          teamId: input.teamId,
+          webhookId: input.webhookId,
+          direction: input.direction,
+          result: input.result,
+          eventKey: input.eventKey ?? null,
+          method: input.method ?? null,
+          endpoint: input.endpoint ?? null,
+          statusCode: input.statusCode ?? null,
+          requestPayload: toPrismaJsonValue(input.requestPayload),
+          responsePayload: toPrismaJsonValue(input.responsePayload),
+          errorMessage: input.errorMessage ?? null,
+        },
+      });
+
+      const logsToDelete = await tx.teamWebhookEventLog.findMany({
+        where: {
+          teamId: input.teamId,
+          webhookId: input.webhookId,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: TEAM_WEBHOOK_EVENT_LOG_RETENTION_LIMIT,
+        select: { id: true },
+      });
+
+      if (logsToDelete.length > 0) {
+        await tx.teamWebhookEventLog.deleteMany({
+          where: { id: { in: logsToDelete.map((log) => log.id) } },
+        });
+      }
     });
   }
 

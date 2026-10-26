@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Search } from "lucide-react";
+import { AlertCircle, ArrowLeft, Plus, RefreshCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +42,8 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   const isInbound = direction === "inbound";
   const title = isInbound ? "Webhooks de entrada" : "Webhooks de saída";
@@ -61,6 +64,10 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
     if (!activeTeam?.id) return;
     let cancelled = false;
     setLoading(true);
+    // SPEC 10, B-E2 (W15): erro de carregamento é um estado próprio, nunca
+    // indistinguível de "lista vazia" — por isso não some sozinho como um
+    // toast e some só quando a próxima tentativa (efeito ou retry) começa.
+    setLoadError(null);
     teamWebhooksService
       .list(supabaseId, activeTeam.id, { direction, page, pageSize, search: search || undefined })
       .then((result) => {
@@ -71,7 +78,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
       })
       .catch((error) => {
         if (!cancelled) {
-          toastUserError(error);
+          setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os webhooks");
         }
       })
       .finally(() => {
@@ -80,7 +87,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeTeam?.id, direction, page, pageSize, search, supabaseId]);
+  }, [activeTeam?.id, direction, page, pageSize, search, supabaseId, reloadToken]);
 
   const handleToggleStatus = async (item: TeamWebhookSummary) => {
     if (!activeTeam?.id || togglingId) return;
@@ -107,7 +114,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
     }
   };
 
-  if (isTeamLoading || (loading && items.length === 0 && !searchInput)) {
+  if (isTeamLoading || (loading && items.length === 0 && !searchInput && !loadError)) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Skeleton className="h-8 w-64" />
@@ -148,6 +155,25 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
         />
       </div>
 
+      {loadError ? (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Não foi possível carregar os webhooks</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3">
+            <p>{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              onClick={() => setReloadToken((current) => current + 1)}
+            >
+              <RefreshCcw data-icon="inline-start" />
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : (
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -219,6 +245,7 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
           }}
         />
       </div>
+      )}
     </div>
   );
 }

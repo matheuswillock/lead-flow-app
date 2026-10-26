@@ -1,32 +1,28 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useInboundWebhookDetail } from "./InboundWebhookDetailHook";
-import type { InboundWebhookDetailState } from "./InboundWebhookDetailTypes";
+import { useInboundWebhookDetailHook } from "./InboundWebhookDetailHook";
+import type { InboundWebhookDetailContextValue } from "./InboundWebhookDetailTypes";
 
-const InboundWebhookDetailContext = createContext<InboundWebhookDetailState | null>(null);
+const InboundWebhookDetailContext = createContext<InboundWebhookDetailContextValue | null>(null);
 
-export function InboundWebhookDetailProvider({
-  supabaseId,
-  webhookId,
-  children,
-}: {
+type ProviderProps = {
   supabaseId: string;
   webhookId: string;
   children: ReactNode;
-}) {
-  const value = useInboundWebhookDetail(supabaseId, webhookId);
+};
+
+export function InboundWebhookDetailProvider({ supabaseId, webhookId, children }: ProviderProps) {
+  const value = useInboundWebhookDetailHook(supabaseId, webhookId);
   return (
-    <InboundWebhookDetailContext.Provider value={value}>
-      {children}
-    </InboundWebhookDetailContext.Provider>
+    <InboundWebhookDetailContext.Provider value={value}>{children}</InboundWebhookDetailContext.Provider>
   );
 }
 
-export function useInboundWebhookDetailContext(): InboundWebhookDetailState {
-  const ctx = useContext(InboundWebhookDetailContext);
-  if (!ctx) {
+export function useInboundWebhookDetailContext(): InboundWebhookDetailContextValue {
+  const context = useContext(InboundWebhookDetailContext);
+  if (!context) {
     throw new Error("useInboundWebhookDetailContext must be used within InboundWebhookDetailProvider");
   }
-  return ctx;
+  return context;
 }

@@ -9,7 +9,9 @@ import { Field, FieldGroup } from "@/components/ui/field";
 
 export type WebhookInboundFormValues = {
   name: string;
-  tokenMode: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" ("Sem token") saiu da API e da UI de
+  // criação/edição.
+  tokenMode: "manual" | "auto";
   manualToken: string;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
 };
@@ -74,10 +76,6 @@ export function WebhookInboundConfigFields({
           <div className="flex items-center gap-2">
             <RadioGroupItem value="manual" id={`${idPrefix}-token-manual`} />
             <Label htmlFor={`${idPrefix}-token-manual`}>Token manual</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <RadioGroupItem value="none" id={`${idPrefix}-token-none`} />
-            <Label htmlFor={`${idPrefix}-token-none`}>Sem token</Label>
           </div>
         </RadioGroup>
       </Field>
