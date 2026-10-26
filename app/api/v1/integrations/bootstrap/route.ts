@@ -5,6 +5,10 @@ import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
+import {
+  consumePublicFormRateLimit,
+  publicFormRequestFingerprint,
+} from "@/lib/public-forms/rate-limit";
 
 const routePrefix = "[IntegrationBootstrapRoute][GET]";
 
@@ -57,6 +61,21 @@ export async function GET(request: NextRequest) {
     }
 
     const { teamId, supabaseId } = validation.data;
+
+    // SPEC 40 A-E1/R40-9 (V3): fora do cache do Next.js (`"use cache"`
+    // memoiza por `teamId`, então times diferentes não compartilham cota
+    // via cache) — sem isso, dava para varrer `teamId`s em série sem teto.
+    const rate = await consumePublicFormRateLimit(
+      `lead-form-bootstrap:${teamId}:${publicFormRequestFingerprint(request)}`,
+      { limit: 60, windowMs: 60_000 }
+    );
+    if (!rate.allowed) {
+      return NextResponse.json(
+        new Output(false, [], ["Recebemos muitos envios agora. Tente de novo em alguns minutos."], null),
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+      );
+    }
+
     const cachedOutput = await getCachedPublicFormBootstrap(teamId, supabaseId ?? null);
     const output = new Output(
       cachedOutput.isValid,
@@ -74,7 +93,6 @@ export async function GET(request: NextRequest) {
           healthPlans?: unknown[];
           closers?: unknown[];
           sdrs?: unknown[];
-          guestCandidates?: unknown[];
         }
       | null;
 
@@ -84,7 +102,6 @@ export async function GET(request: NextRequest) {
       healthPlansCount: result?.healthPlans?.length ?? 0,
       closersCount: result?.closers?.length ?? 0,
       sdrsCount: result?.sdrs?.length ?? 0,
-      guestCandidatesCount: result?.guestCandidates?.length ?? 0,
     });
 
     return NextResponse.json(output, { status: 200 });

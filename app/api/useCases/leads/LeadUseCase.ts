@@ -305,6 +305,9 @@ export class LeadUseCase implements ILeadUseCase {
     teamId?: string,
     creationActivityContext?: LeadCreationActivityContext
   ): Promise<Output> {
+    // SPEC 40 D25: declarado fora do `try` para o `catch` (resolução do
+    // `existingLeadId` na corrida de índice único) também enxergar.
+    let managerId: string | undefined;
     try {
       // Buscar informações do perfil através do ProfileUseCase
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
@@ -323,7 +326,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Time não encontrado"], null);
       }
 
-      const managerId = teamRecord.masterId;
+      managerId = teamRecord.masterId;
 
       if (typeof data.currentValue === "number" && data.currentValue > MAX_DECIMAL_VALUE) {
         return new Output(false, [], [`Valor atual deve ser menor que ${MAX_DECIMAL_LABEL}`], null);
@@ -351,7 +354,13 @@ export class LeadUseCase implements ILeadUseCase {
             false,
             [],
             [`Já existe um lead com este CNPJ neste time (${existingLead.leadCode ?? existingLead.name ?? existingLead.id})`],
-            null
+            // SPEC 40 R40-3: discriminador tipado — o formulário público
+            // (`PublicLeadFormUseCase.isDuplicateLeadOutcome`) usa este
+            // campo para neutralizar a resposta sem depender de casar texto
+            // de mensagem (frágil e já provado incompleto). `existingLeadId`
+            // (D25) deixa o chamador registrar atividade no lead certo sem
+            // repetir a busca.
+            { isDuplicateConflict: true, existingLeadId: existingLead.id }
           );
         }
       }
@@ -379,6 +388,9 @@ export class LeadUseCase implements ILeadUseCase {
             ["Possível lead duplicado neste time"],
             {
               requiresDuplicateConfirmation: true,
+              // SPEC 40 D25: mesmo propósito do `existingLeadId` do pre-check
+              // de CNPJ acima — primeiro candidato é quem recebe a atividade.
+              existingLeadId: duplicateCandidates[0]?.id ?? null,
               duplicateCandidates: duplicateCandidates.map((candidate) => ({
                 ...candidate,
                 createdAt: candidate.createdAt.toISOString(),
@@ -576,15 +588,42 @@ export class LeadUseCase implements ILeadUseCase {
         if (error.message.includes('Unique constraint') || error.message.includes('unique constraint')) {
           const normalizedError = error.message.toLowerCase();
 
+          // SPEC 40 D25: resolve qual lead já existia, pra quem chamou (o
+          // formulário público) poder registrar atividade nele. Best-effort
+          // — se a busca falhar ou não achar nada, a duplicata ainda é
+          // reportada corretamente, só sem o id.
+          let existingLeadId: string | null = null;
+          try {
+            if ((normalizedError.includes("teamid_email") || normalizedError.includes("email")) && data.email && teamId) {
+              // R40-17: escopo por teamId, não managerId — o índice único que
+              // falhou é (teamId, email). Um master com dois times pode ter
+              // lead com o mesmo e-mail em ambos; buscar por managerId podia
+              // devolver o lead do time errado e vazar dados da atividade
+              // de duplicata para o CRM de outro time.
+              const existing = await this.leadRepository.findEmailConflictInTeam({ teamId, email: data.email });
+              existingLeadId = existing?.id ?? null;
+            } else if ((normalizedError.includes("teamid_cnpj") || normalizedError.includes("cnpj")) && data.cnpj && teamId) {
+              const existing = await this.leadRepository.findCnpjConflictInTeam({ teamId, cnpj: data.cnpj.trim() });
+              existingLeadId = existing?.id ?? null;
+            }
+          } catch (lookupError) {
+            console.error("Erro ao resolver lead existente para atividade de duplicata:", lookupError);
+          }
+
+          // SPEC 40 R40-3: mesmo discriminador tipado do pre-check de CNPJ
+          // acima — corrida de índice único (ex.: lead na lixeira com o
+          // mesmo e-mail/CNPJ, D41 em aberto) cai aqui.
+          const duplicateResult = { isDuplicateConflict: true, existingLeadId };
+
           if (normalizedError.includes("teamid_email") || normalizedError.includes("email")) {
-            return new Output(false, [], ["Ja existe um lead com este e-mail"], null);
+            return new Output(false, [], ["Ja existe um lead com este e-mail"], duplicateResult);
           }
 
           if (normalizedError.includes("teamid_cnpj") || normalizedError.includes("cnpj")) {
-            return new Output(false, [], ["Ja existe um lead com este CNPJ"], null);
+            return new Output(false, [], ["Ja existe um lead com este CNPJ"], duplicateResult);
           }
 
-          return new Output(false, [], ["Ja existe um lead com estes dados unicos"], null);
+          return new Output(false, [], ["Ja existe um lead com estes dados unicos"], duplicateResult);
         }
         
         // Erro de validação
