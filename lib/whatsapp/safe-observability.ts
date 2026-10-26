@@ -1,3 +1,7 @@
+import { createLogger } from "@/lib/observability/logger"
+
+const logger = createLogger("whatsapp-provider")
+
 /**
  * WhatsApp provider failures routinely contain raw HTTP bodies.  Keep those
  * bodies out of application logs: they may contain a JID, phone, signed media
@@ -26,7 +30,7 @@ export function logWhatsAppProviderFailure(input: {
   status?: number
   error?: unknown
 }): void {
-  console.error("[WhatsAppProvider] request failed", {
+  logger.error("request failed", {
     operation: input.operation,
     correlationId: input.correlationId,
     ...(input.status ? { status: input.status } : {}),
@@ -35,7 +39,8 @@ export function logWhatsAppProviderFailure(input: {
 }
 
 export function logSafeWhatsAppError(scope: string, error: unknown, correlationId = crypto.randomUUID()): string {
-  console.error(scope, {
+  logger.error("provider error", {
+    scope,
     code: safeWhatsAppErrorCode(error),
     correlationId,
   })

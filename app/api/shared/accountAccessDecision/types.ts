@@ -1,0 +1,48 @@
+export type AccountAccessRestrictionReason =
+  | "banned"
+  | "past_due"
+  | "suspended"
+  | "canceled"
+  | "subscription_unavailable"
+
+export type AccountAccessDecision =
+  | {
+      state: "allowed"
+      /** Present only when access is granted by a temporary operational grace. */
+      temporaryAccessGranted?: true
+      temporaryAccessUntil?: string | null
+    }
+  | {
+      state: "read_only"
+      reason: AccountAccessRestrictionReason
+      temporaryAccessUntil?: string | null
+      isBillingOwner?: boolean
+    }
+  | {
+      state: "restricted"
+      reason: AccountAccessRestrictionReason
+      isBillingOwner?: boolean
+    }
+
+export type AccountAccessRecord = {
+  billingOwnerId: string
+  subscriptionStatus: string | null
+  subscriptionNextDueDate?: Date | null
+  hasPermanentSubscription: boolean
+  memberProActive?: boolean
+  memberProBlocked?: boolean
+  annualSubscriptionActive?: boolean
+  temporaryAccessGranted?: boolean
+  temporaryAccessUntil?: Date | null
+  temporaryAccessReason?: string | null
+  isBanned: boolean
+}
+
+export interface IAccountAccessDecisionRepository {
+  resolveAccount(input: {
+    profileId: string
+    teamId?: string | null
+  }): Promise<AccountAccessRecord | null>
+  resolveProfileId(supabaseId: string): Promise<string | null>
+  resolveTeamMasterProfileId?(teamId: string): Promise<string | null>
+}

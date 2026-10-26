@@ -168,7 +168,21 @@ export interface IProfileRepository {
     subscriptionId: string,
     account: AsaasAccountId
   ): Promise<Profile | null>;
+  findByAsaasCustomerIdAndAccount(
+    customerId: string,
+    account: AsaasAccountId
+  ): Promise<Profile | null>;
+  updateSubscriptionAfterCheckout(input: {
+    profileId: string;
+    subscriptionId: string;
+    account: AsaasAccountId;
+    cycle: string;
+    startDate: Date;
+    nextDueDate: Date;
+  }): Promise<void>;
   activateSubscription(profileId: string): Promise<void>;
+  /** Define o time ativo do perfil, após autorização resolvida no caso de uso. */
+  updateActiveTeamId(profileId: string, teamId: string): Promise<void>;
 }
 
 export type ProfileContact = Pick<Profile, "id" | "email" | "fullName">;

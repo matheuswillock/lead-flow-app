@@ -73,6 +73,7 @@ describe("IncrementalBillingService — criação de customer via gateway (E5)",
   beforeEach(() => {
     createCustomerMock.mockClear()
     updateAsaasCustomerIdMock.mockClear()
+    updateSubscriptionDataMock.mockClear()
     asaasFetchMock.mockClear()
     createCustomerMock.mockImplementation(async () => ({ id: "cus_gateway" }))
     asaasFetchMock.mockImplementation(async () => ({
@@ -104,6 +105,35 @@ describe("IncrementalBillingService — criação de customer via gateway (E5)",
       asaasFetchMock.mock.calls as unknown as Array<[string, RequestInit?]>
     ).filter(([url]) => url.includes("/customers"))
     expect(customerPostCalls).toHaveLength(0)
+
+    // Achado P1 PRRT_...CUk4: createAsaasSubscription só nasce na conta
+    // primary (DA1) — updateSubscriptionData precisa gravar essa conta
+    // junto do id, nunca deixar o writer implícito no default do schema.
+    expect(updateSubscriptionDataMock).toHaveBeenCalledWith(
+      "profile-master-1",
+      expect.objectContaining({ asaasSubscriptionId: "sub_new", asaasSubscriptionAccount: "primary" })
+    )
+  })
+
+  it("controle negativo: master com pointer legacy também recebe a NOVA assinatura gravada como primary (createAsaasSubscription nunca cria na legacy)", async () => {
+    const legacyMaster = {
+      ...baseMaster,
+      asaasCustomerId: "cus_legacy_1",
+      asaasCustomerAccount: "legacy" as const,
+    }
+    const service = new IncrementalBillingService()
+
+    await service.ensureOrSyncRecurringSubscription({
+      master: legacyMaster,
+      targetRecurringTotal: 100,
+      reason: "teste controle negativo",
+      defaultBillingType: "PIX",
+    })
+
+    expect(updateSubscriptionDataMock).toHaveBeenCalledWith(
+      "profile-master-1",
+      expect.objectContaining({ asaasSubscriptionId: "sub_new", asaasSubscriptionAccount: "primary" })
+    )
   })
 
   it("achado cursor[bot] (PR #1137, P1, round 12): master com customer legacy válido não envia o cus_ antigo para createAsaasSubscription (primary-only) — resolve par novo via gateway", async () => {

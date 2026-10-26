@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 mock.module("server-only", () => ({}))
 
 mock.module("@/lib/utils/app-url", () => ({
@@ -152,6 +159,23 @@ function fakeRepos(overrides: Record<string, any> = {}) {
   return { profileRepository, teamRepository, teamMembersRepository, pendingOperatorRepository, asaasCustomerGateway }
 }
 
+const billingPriceResolverMock = {
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+}
+
+function createUseCase(repositories: ReturnType<typeof fakeRepos>) {
+  return new CheckoutAsaasUseCase(
+    repositories.profileRepository,
+    repositories.teamRepository,
+    repositories.teamMembersRepository,
+    repositories.pendingOperatorRepository,
+    repositories.asaasCustomerGateway,
+    billingPriceResolverMock,
+  )
+}
+
 describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)", () => {
   beforeEach(() => {
     requestLog.length = 0
@@ -163,11 +187,13 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     }))
     generateLinkMock.mockClear()
     requestImplByAccount.primary = async (_url: string, method?: string) => {
-      if (method === "GET") return { value: 100, subscription: "sub_new_1" }
+      if (method === "GET") {
+        return { value: 100, subscription: "sub_new_1", cycle: "MONTHLY", billingType: "CREDIT_CARD" }
+      }
       return { id: "checkout_1" }
     }
     requestImplByAccount.legacy = async (_url: string, method?: string) => {
-      if (method === "GET") return { value: 100 }
+      if (method === "GET") return { value: 100, cycle: "MONTHLY", billingType: "CREDIT_CARD" }
       return {}
     }
   })
@@ -198,13 +224,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     const repos = fakeRepos({
       pendingOperatorRepository: { findByPaymentIdWithManager: findByPaymentIdWithManagerMock },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -217,13 +237,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     const repos = fakeRepos({
       pendingOperatorRepository: { findByPaymentIdWithManager: findByPaymentIdWithManagerMock },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     // Evento é da conta legacy, mas o checkoutSessionId só existe (por
     // colisão) na primary — sem filtro por conta, o findFirst do
@@ -237,13 +251,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
   it("T-40.13: processOperatorCheckoutPaid com sub legacy roteia GET/PUT pelo transporte legacy; operador é criado", async () => {
     const repos = fakeRepos()
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -285,13 +293,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         })),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -314,16 +316,10 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     })
     requestImplByAccount.legacy = async (_url: string, method?: string) => {
       if (method === "PUT") callOrder.push("put")
-      if (method === "GET") return { value: 100 }
+      if (method === "GET") return { value: 100, cycle: "MONTHLY", billingType: "CREDIT_CARD" }
       return {}
     }
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -341,13 +337,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         findByEmail: mock(async () => existingOperatorProfile),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -372,13 +362,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         findByEmail: mock(async () => unrelatedProfile),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -403,13 +387,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
       error: null,
     }))
     const repos = fakeRepos()
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -437,13 +415,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
       error: null,
     }))
     const repos = fakeRepos()
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -458,13 +430,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         findActiveByManagerAndEmail: mock(async () => ({ id: "pending-op-existing", createdAt: new Date() })),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
@@ -484,13 +450,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         })),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
@@ -509,13 +469,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         }),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
@@ -537,13 +491,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         deleteById: deleteByIdMock,
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
@@ -567,13 +515,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         }),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -582,13 +524,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
   it("achado cursor[bot] (PR #1137, P1, round 12): increment do Profile e marcador do PendingOperator delegados a um único write atômico (finalizeOperatorCreation)", async () => {
     const repos = fakeRepos()
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -632,13 +568,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
         })),
       },
     })
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
 
@@ -649,13 +579,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
   it("T-40.14: createOperatorCheckout com cus_ legacy não envia o ID antigo — resolve par novo via gateway", async () => {
     const repos = fakeRepos()
-    const useCase = new CheckoutAsaasUseCase(
-      repos.profileRepository,
-      repos.teamRepository,
-      repos.teamMembersRepository,
-      repos.pendingOperatorRepository,
-      repos.asaasCustomerGateway
-    )
+    const useCase = createUseCase(repos)
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,

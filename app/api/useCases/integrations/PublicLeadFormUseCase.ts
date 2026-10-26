@@ -1,25 +1,23 @@
 import { Output } from "@/lib/output";
 import { ActivityType, LeadStatus, UserFunction } from "@prisma/client";
-import { prisma } from "../../infra/data/prisma";
 import { LeadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { leadActivityRepository } from "../../infra/data/repositories/leadActivity/LeadActivityRepository";
+import { publicLeadFormRepository } from "../../infra/data/repositories/publicLeadForm/PublicLeadFormRepository";
+import type { IPublicLeadFormRepository, PublicLeadFormMemberRecord } from "../../infra/data/repositories/publicLeadForm/IPublicLeadFormRepository";
 import { RegisterNewUserProfile } from "../profiles/ProfileUseCase";
 import { LeadUseCase } from "../leads/LeadUseCase";
 import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
-import { getCalendarBusyIntervals } from "../../services/googleCalendar/GoogleCalendarService";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import type { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/requestPublicLeadForm";
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
-import { DEFAULT_TZ, formatLocalDateValue, getBusyMinutesRangeInDay, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
-import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates";
+import { calendarAvailabilityService } from "@/app/api/services/calendarAvailability/CalendarAvailabilityService";
 import { getPreScheduleSlotsPayload } from "../../services/preSchedule/PreScheduleSlotService";
 import { leadCustomFieldService } from "../../services/leadCustomField/LeadCustomFieldService";
 import { mapLeadCustomFieldDefinitionToDTO } from "../../infra/data/repositories/leadCustomField/ILeadCustomFieldRepository";
 import { validateLeadCustomFieldsPayload } from "@/lib/leadCustomFields/schema";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
-
-const SLOT_MINUTES = 30;
 
 // SPEC 40 DA2 (V8): a rota pública nunca confirma se o lead já existia.
 // Duplicata por telefone (`requiresDuplicateConfirmation`), e-mail ou CNPJ
@@ -53,12 +51,6 @@ const PUBLIC_LEAD_FORM_DUPLICATE_MESSAGE_PREFIXES = [
   "Ja existe um lead com estes dados unicos",
 ];
 
-const formatTimeSlot = (minutes: number) => {
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-};
-
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
 const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
@@ -72,23 +64,13 @@ type PublicIntegrationAccess = {
   timezone: string;
 };
 
-type TeamMemberSnapshot = {
-  profileId: string;
-  functions: UserFunction[];
-  profile: {
-    id: string;
-    fullName: string | null;
-    profileIconUrl: string | null;
-  };
-};
+type TeamMemberSnapshot = PublicLeadFormMemberRecord;
 
 export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
-  private async canCreateTransferLead(teamId: string): Promise<boolean> {
-    const transferRoutesCount = await prisma.teamTransferRoute.count({
-      where: { sourceTeamId: teamId },
-    });
+  constructor(private readonly repository: IPublicLeadFormRepository = publicLeadFormRepository) {}
 
-    return transferRoutesCount > 0;
+  private async canCreateTransferLead(teamId: string): Promise<boolean> {
+    return this.repository.hasTransferRoutes(teamId);
   }
 
   private async validateMemberFunctionForTeam(
@@ -97,14 +79,9 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     requiredFunction: UserFunction,
     invalidMessage: string
   ): Promise<Output | null> {
-    const member = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: { teamId, profileId },
-      },
-      select: { functions: true },
-    });
+    const functions = await this.repository.findMemberFunctions(teamId, profileId);
 
-    if (!member || !member.functions.includes(requiredFunction)) {
+    if (!functions || !functions.includes(requiredFunction)) {
       return new Output(false, [], [invalidMessage], null);
     }
 
@@ -133,21 +110,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     teamId: string,
     legacySupabaseId?: string
   ): Promise<{ access?: PublicIntegrationAccess; output?: Output }> {
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: {
-        id: true,
-        name: true,
-        masterId: true,
-        master: {
-          select: {
-            id: true,
-            supabaseId: true,
-            timezone: true,
-          },
-        },
-      },
-    });
+    const team = await this.repository.findTeamAccess(teamId);
 
     if (!team) {
       return {
@@ -159,10 +122,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     let actorSupabaseId = team.master.supabaseId;
 
     if (legacySupabaseId) {
-      const legacyProfile = await prisma.profile.findUnique({
-        where: { supabaseId: legacySupabaseId },
-        select: { id: true },
-      });
+      const legacyProfile = await this.repository.findProfileBySupabaseId(legacySupabaseId);
 
       if (!legacyProfile) {
         return { output: new Output(false, [], ["Usuário não encontrado"], null) };
@@ -170,15 +130,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       const hasAccess =
         legacyProfile.id === team.masterId ||
-        (await prisma.teamMember.findUnique({
-          where: {
-            teamId_profileId: {
-              teamId: team.id,
-              profileId: legacyProfile.id,
-            },
-          },
-          select: { id: true },
-        })) !== null;
+        await this.repository.isTeamMember(team.id, legacyProfile.id);
 
       if (!hasAccess) {
         return {
@@ -207,22 +159,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
   }
 
   private async listTeamMembersSnapshot(teamId: string): Promise<TeamMemberSnapshot[]> {
-    return prisma.teamMember.findMany({
-      where: {
-        teamId,
-      },
-      select: {
-        profileId: true,
-        functions: true,
-        profile: {
-          select: {
-            id: true,
-            fullName: true,
-            profileIconUrl: true,
-          },
-        },
-      },
-    });
+    return this.repository.listTeamMembers(teamId);
   }
 
   private mapMembersToAssignableOptions(members: TeamMemberSnapshot[]) {
@@ -480,10 +417,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       if (hasMeetingData && createdLead?.id) {
         try {
-          const sdrProfile = await prisma.profile.findUnique({
-            where: { id: data.assignedTo },
-            select: { email: true },
-          });
+          const sdrEmail = await this.repository.findProfileEmail(data.assignedTo);
 
           const scheduleOutput = await leadScheduleService.createSchedule({
             leadId: createdLead.id,
@@ -492,11 +426,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             leadStatus: LeadStatus.scheduled,
             leadManagerId: access.managerId,
             leadAssignedTo: data.assignedTo,
-            leadAssigneeEmail: sdrProfile?.email || null,
+            leadAssigneeEmail: sdrEmail,
             leadCurrentCloserId: null,
             leadCode: createdLead.leadCode || null,
             closerId: data.closerId!,
             teamId: access.teamId,
+            reservationSource: "public_form",
             meetingDate: data.meetingDate!,
             meetingTitle: data.meetingTitle!,
             meetingNotes: data.meetingNotes,
@@ -570,7 +505,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         await Promise.all([
         healthPlanService.listOptions(),
         this.listTeamMembersSnapshot(access.teamId),
-        prisma.teamTransferRoute.count({ where: { sourceTeamId: access.teamId } }),
+        this.repository.hasTransferRoutes(access.teamId),
         leadCustomFieldService.listActivePublicDefinitionsByTeamId(access.teamId),
       ]);
 
@@ -591,7 +526,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         closers,
         sdrs,
         timezone: access.timezone,
-        hasTransferTargets: transferRoutesCount > 0,
+        hasTransferTargets: transferRoutesCount,
         customFieldDefinitions: publicCustomFieldDefinitions.map(mapLeadCustomFieldDefinitionToDTO),
       });
     } catch (error) {
@@ -625,7 +560,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     closerId: string,
     date: string,
     legacySupabaseId?: string,
-    slotMinutes = SLOT_MINUTES,
+    _slotMinutes?: number,
   ): Promise<Output> {
     try {
       const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
@@ -637,123 +572,15 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         return new Output(false, [], ["Formato de data inválido. Use YYYY-MM-DD."], null);
       }
 
-      const resolvedSlotMinutes =
-        Number.isFinite(slotMinutes) && slotMinutes >= 5 && slotMinutes <= 480
-          ? Math.floor(slotMinutes)
-          : SLOT_MINUTES;
-
       const access = accessResult.access as PublicIntegrationAccess;
-      const closerValidationOutput = await this.validateCloserForTeam(access.teamId, closerId);
-      if (closerValidationOutput) {
-        return closerValidationOutput;
-      }
-
-      const closerProfile = await prisma.profile.findUnique({
-        where: { id: closerId },
-        select: {
-          id: true,
-          email: true,
-          googleConnection: {
-            select: {
-              accessToken: true,
-              refreshToken: true,
-              tokenExpiresAt: true,
-              revokedAt: true,
-            },
-          },
-          supabaseId: true,
-        },
+      const availability = await calendarAvailabilityService.getAvailability({
+        teamId: access.teamId,
+        requestedCloserIds: [closerId],
+        date,
+        userTimezone: access.timezone || DEFAULT_TZ,
       });
 
-      if (!closerProfile) {
-        return new Output(false, [], ["Closer não encontrado."], null);
-      }
-
-      const timezone = access.timezone || DEFAULT_TZ;
-      const { start: dayStart, end: dayEnd } = getDayRangeInTz(date, timezone);
-      const timeMin = dayStart.toISOString();
-      const timeMax = dayEnd.toISOString();
-
-      const internalLeads = await prisma.lead.findMany({
-        where: {
-          teamId: access.teamId,
-          closerId,
-          status: "scheduled",
-          meetingDate: {
-            gte: dayStart,
-            lt: dayEnd,
-          },
-        },
-        select: { meetingDate: true },
-      });
-
-      const internalBusy = internalLeads
-        .filter((lead) => !!lead.meetingDate)
-        .map((lead) => {
-          const start = lead.meetingDate as Date;
-          const end = new Date(start.getTime() + resolvedSlotMinutes * 60 * 1000);
-          return { start: start.toISOString(), end: end.toISOString() };
-        });
-
-      const now = new Date();
-      const todayKey = formatLocalDateValue(now, timezone);
-      const isToday = date === todayKey;
-      const nowMinutes = getMinutesInTz(now, timezone);
-
-      const slots = Array.from(
-        { length: Math.floor((24 * 60) / resolvedSlotMinutes) },
-        (_, index) => index * resolvedSlotMinutes,
-      );
-
-      const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
-      let busyIntervals: Array<{ start: string; end: string }> = [];
-      let source: "google" | "internal" = "internal";
-
-      if (canUseGoogleCalendar) {
-        try {
-          busyIntervals = await getCalendarBusyIntervals({
-            organizer: closerProfile as any,
-            timeMin,
-            timeMax,
-          });
-          source = "google";
-        } catch (error) {
-          console.warn(
-            "[PublicLeadFormUseCase] Falha ao buscar disponibilidade no Google Calendar, usando fallback interno.",
-            error
-          );
-          busyIntervals = internalBusy;
-        }
-      } else {
-        busyIntervals = internalBusy;
-      }
-
-      const availableTimes = slots
-        .filter((slotStart) => {
-          if (isToday && slotStart < nowMinutes) {
-            return false;
-          }
-
-          const slotEnd = slotStart + resolvedSlotMinutes;
-          return !busyIntervals.some((interval) => {
-            const startDate = new Date(interval.start);
-            const endDate = new Date(interval.end);
-
-            const busyRange = getBusyMinutesRangeInDay(
-              { start: startDate, end: endDate },
-              { start: dayStart, end: dayEnd },
-              timezone
-            );
-            if (!busyRange) {
-              return false;
-            }
-
-            return slotStart < busyRange.endMinutes && slotEnd > busyRange.startMinutes;
-          });
-        })
-        .map(formatTimeSlot);
-
-      return new Output(true, [], [], { availableTimes, source });
+      return new Output(true, [], [], availability);
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao buscar disponibilidade:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);

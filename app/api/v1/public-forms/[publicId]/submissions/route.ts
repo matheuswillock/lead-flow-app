@@ -4,6 +4,7 @@ import {
   type PublicFormSubmissionBackgroundJob,
 } from "@/app/api/useCases/publicForms/PublicFormSubmissionUseCase"
 import { Output } from "@/lib/output"
+import { publicFormAccountAccessUseCase } from "@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase"
 import { publicFormSubmissionSchema } from "@/lib/public-forms/validation"
 import {
   consumePublicFormRateLimit,
@@ -28,6 +29,9 @@ export async function POST(
   // acima e criaria lead do time B no domínio do time A.
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+  const accountAccess = await publicFormAccountAccessUseCase.execute(publicId)
+  if (!accountAccess.isValid) return NextResponse.json(accountAccess, { status: 403 })
+
   const rate = await consumePublicFormRateLimit(
     `submission:${publicId}:${publicFormRequestFingerprint(request)}`,
     { limit: 10, windowMs: 10 * 60_000 },
@@ -61,7 +65,8 @@ export async function POST(
     const hasValidationIssues = Boolean(
       (output.result as { validation?: unknown[] } | null)?.validation?.length,
     )
-    return NextResponse.json(output, { status: hasValidationIssues ? 422 : 400 })
+    const isSlotConflict = Boolean((output.result as { conflict?: boolean } | null)?.conflict)
+    return NextResponse.json(output, { status: isSlotConflict ? 409 : hasValidationIssues ? 422 : 400 })
   }
 
   const background = (output.result as { background?: PublicFormSubmissionBackgroundJob } | null)

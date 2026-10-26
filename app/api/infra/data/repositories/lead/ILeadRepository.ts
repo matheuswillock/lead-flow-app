@@ -29,6 +29,22 @@ export type LeadAuthorizationSnapshot = Pick<
   "id" | "teamId" | "status" | "closerId" | "assignedTo" | "isTransfer" | "meetingDate"
 >;
 
+export type LeadScheduleContext = Pick<
+  Lead,
+  | "id"
+  | "teamId"
+  | "name"
+  | "email"
+  | "status"
+  | "managerId"
+  | "assignedTo"
+  | "closerId"
+  | "meetingLink"
+  | "leadCode"
+  | "meetingType"
+  | "isTransfer"
+> & { assignee: { email: string } | null };
+
 
 /** Identificacao minima usada em mensagens de conflito de lead. */
 export type LeadConflictRef = Pick<Lead, "id" | "leadCode" | "name">;
@@ -49,6 +65,7 @@ export interface ILeadRepository {
   create(data: LeadCreateRepositoryInput): Promise<LeadRecord>;
   findById(id: string): Promise<LeadRecord | null>;
   findAuthorizationSnapshotById(id: string): Promise<LeadAuthorizationSnapshot | null>;
+  findScheduleContextById(id: string): Promise<LeadScheduleContext | null>;
   /** Lead do mesmo time com o CNPJ informado, ignorando opcionalmente um id. */
   findCnpjConflictInTeam(input: { teamId: string; cnpj: string; excludeLeadId?: string }): Promise<LeadConflictRef | null>;
   /**

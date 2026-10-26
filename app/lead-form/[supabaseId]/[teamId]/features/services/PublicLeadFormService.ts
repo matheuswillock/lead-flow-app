@@ -114,10 +114,16 @@ class PublicLeadFormService implements IPublicLeadFormService {
 
     if (!response.ok || !result?.isValid) {
       console.error("[PublicLeadFormService] Erro ao buscar slots de pré-agendamento:", result?.errorMessages);
-      return { occupiedSlots: [] };
+      return { occupiedSlots: [], slotMinutes: 30 };
     }
 
-    return { occupiedSlots: result.result?.occupiedSlots ?? [] };
+    return {
+      occupiedSlots: result.result?.occupiedSlots ?? [],
+      slotMinutes:
+        Number.isInteger(result.result?.slotMinutes) && result.result.slotMinutes > 0
+          ? result.result.slotMinutes
+          : 30,
+    };
   }
 
   async submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult> {

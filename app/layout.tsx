@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "./context/AuthContext"
 import { TimezoneProvider } from "./context/TimezoneContext"
 import { Toaster } from "sonner";
+import { ClientErrorReporter } from "@/components/client-error-reporter";
 import {
   getAbsoluteUrl,
   getMetadataBase,
@@ -71,6 +72,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthProvider>
               <TimezoneProvider>
                 {children}
+                <ClientErrorReporter />
                 <Toaster
                   position="top-center"
                   richColors

@@ -46,4 +46,5 @@ export type CreatedAsaasCustomer = {
 
 export interface IAsaasCustomerGateway {
   createCustomer(input: CreateAsaasCustomerInput): Promise<CreatedAsaasCustomer>
+  findCustomerByExternalReference?(externalReference: string): Promise<CreatedAsaasCustomer | null>
 }

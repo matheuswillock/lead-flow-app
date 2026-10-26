@@ -32,6 +32,8 @@ const updateDetailSchema = z.object({
   contractDueDate: z.string().nullable().optional(),
   soldPlan: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  contractFileUrl: z.string().nullable().optional(),
+  contractStoragePath: z.string().nullable().optional(),
   holder: holderSchema.nullable().optional(),
   dependents: z.array(dependentSchema).optional(),
 }).superRefine((data, ctx) => {

@@ -13,7 +13,7 @@ const HTML_ESCAPE_MAP: Record<string, string> = {
   "<": "&lt;",
   ">": "&gt;",
   '"': "&quot;",
-  "'": "&#039;",
+  "'": "&#39;",
 }
 
 /** Escapa `&`, `<`, `>`, `"` e `'` para uso seguro em texto ou atributo HTML. */

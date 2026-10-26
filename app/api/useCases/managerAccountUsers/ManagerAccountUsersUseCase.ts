@@ -5,6 +5,9 @@ import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { assertCardChoiceAllowedForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService";
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability";
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import { isManagerLikeRole } from "@/lib/roles";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import { getPaymentByAccountWithFallback } from "@/lib/billing/get-payment-by-account";
@@ -22,6 +25,8 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
+import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor";
 import type {
   AccountUserBillingCapacityPort,
   AccountUserNotificationPort,
@@ -96,6 +101,63 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
   private async getProfileLabel(profileId: string) {
     const profile = await this.repository.findProfileLabelById(profileId);
     return profile?.fullName || profile?.email || "Usuário";
+  }
+
+  private async recordAccountUserCreationAudit(args: {
+    actorProfileId: string;
+    managerId: string;
+    teamId: string;
+    role: UserRole;
+    profile: CreatedAccountUserRecords["profile"];
+    teamMemberRecord: CreatedAccountUserRecords["teamMemberRecord"];
+  }) {
+    const metadata = buildAuditActorMetadata(
+      { profileId: args.actorProfileId },
+      {
+        operation: "account_user_created",
+        managerId: args.managerId,
+        teamId: args.teamId,
+        role: args.role,
+      }
+    );
+
+    await auditLogWriter.logAudit({
+      entityType: "PROFILE",
+      entityId: args.profile.id,
+      action: "CREATE",
+      actorProfileId: args.actorProfileId,
+      before: null,
+      after: {
+        email: args.profile.email,
+        fullName: args.profile.fullName,
+        role: args.role,
+        isMaster: false,
+      },
+      metadata,
+    });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM_MEMBER",
+      entityId: args.teamMemberRecord.id,
+      action: "CREATE",
+      actorProfileId: args.actorProfileId,
+      before: null,
+      after: {
+        teamId: args.teamId,
+        profileId: args.profile.id,
+        role: args.teamMemberRecord.role,
+        functions: args.teamMemberRecord.functions,
+      },
+      metadata: buildAuditActorMetadata(
+        { profileId: args.actorProfileId },
+        {
+          operation: "team_member_added",
+          managerId: args.managerId,
+          teamId: args.teamId,
+          role: args.role,
+        }
+      ),
+    });
   }
 
   private async finalizeUserCreation(args: {
@@ -238,6 +300,22 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
   }
 
+  /** Cobrança incremental: barra só a NOVA escolha de cartão (assinante com cartão é isento). */
+  private async rejectUnavailableCardChoice(
+    billingType: unknown,
+    billingOwner: Parameters<typeof assertCardChoiceAllowedForMaster>[1],
+  ): Promise<ManagerAccountUsersResult | null> {
+    try {
+      await assertCardChoiceAllowedForMaster(billingType, billingOwner);
+      return null;
+    } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) {
+        return { output: markedUnavailableOutput(error), status: error.status };
+      }
+      throw error;
+    }
+  }
+
   async createAccountUser(params: CreateAccountUserParams): Promise<ManagerAccountUsersResult> {
     const { teamId, profileId, managerId, isMaster } = params.ctx;
     const validatedData = params.userData;
@@ -314,6 +392,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         profile,
         teamMemberRecord,
       });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
+        profile,
+        teamMemberRecord,
+      });
 
       return {
         output: new Output(true, ["Usuário criado com sucesso"], [], createdUser),
@@ -331,6 +417,14 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         teamName,
         userData: validatedData,
         delegatedPermissions,
+        profile,
+        teamMemberRecord,
+      });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
         profile,
         teamMemberRecord,
       });
@@ -366,12 +460,26 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
         profile,
         teamMemberRecord,
       });
+      await this.recordAccountUserCreationAudit({
+        actorProfileId: profileId,
+        managerId,
+        teamId,
+        role: recordsParams.role,
+        profile,
+        teamMemberRecord,
+      });
 
       return {
         output: new Output(true, ["Usuário criado com sucesso"], [], createdUser),
         status: 200,
       };
     }
+
+    const unavailableCardChoice = await this.rejectUnavailableCardChoice(
+      validatedData.billingType,
+      billingOwner,
+    );
+    if (unavailableCardChoice) return unavailableCardChoice;
 
     const payload = {
       name: validatedData.name,
@@ -614,6 +722,24 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       profileId: validatedData.profileId,
       role: (validatedData.role ?? "operator") as UserRole,
       functions: validatedData.functions ?? [],
+    });
+
+    await auditLogWriter.logAudit({
+      entityType: "TEAM_MEMBER",
+      entityId: newMember.id,
+      action: "CREATE",
+      actorProfileId: profileId,
+      before: null,
+      after: {
+        teamId,
+        profileId: validatedData.profileId,
+        role: newMember.role,
+        functions: newMember.functions,
+      },
+      metadata: buildAuditActorMetadata(
+        { profileId },
+        { operation: "team_member_associated", teamId, profileId: validatedData.profileId }
+      ),
     });
 
     try {

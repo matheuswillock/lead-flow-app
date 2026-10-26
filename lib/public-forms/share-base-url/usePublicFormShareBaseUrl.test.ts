@@ -16,6 +16,10 @@ function makeService(responses: Array<string | null>) {
   const calls: number[] = []
   let index = 0
   const service: IPublicFormShareBaseUrlClientService = {
+    async getFormDomain() {
+      const baseUrl = responses[Math.min(index, responses.length - 1)]
+      return { hostname: baseUrl ? new URL(baseUrl).hostname : null, isVerified: Boolean(baseUrl) }
+    },
     async getVerifiedFormDomainBaseUrl() {
       calls.push(index)
       const value = responses[Math.min(index, responses.length - 1)]
@@ -86,6 +90,9 @@ describe("resolvePublicFormShareBaseUrl", () => {
 
   it("falha de rede devolve null sem travar chamadas seguintes", async () => {
     const service: IPublicFormShareBaseUrlClientService = {
+      async getFormDomain() {
+        return { hostname: null, isVerified: false }
+      },
       async getVerifiedFormDomainBaseUrl() {
         throw new Error("network down")
       },

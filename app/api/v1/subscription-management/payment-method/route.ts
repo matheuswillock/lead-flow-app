@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,11 @@ export async function POST(request: NextRequest) {
         result: null
       };
       return NextResponse.json(unauthorizedResult, { status: 401 });
+    }
+
+    const accessDeniedResponse = await requireWritableAccountAccess(authenticatedSupabaseId);
+    if (accessDeniedResponse) {
+      return accessDeniedResponse;
     }
 
     const body = await request.json();

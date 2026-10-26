@@ -9,8 +9,10 @@ import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 export function usePublicFormView(
   publicId: string,
   initialSnapshot?: PublicFormSnapshot | null,
+  initialPublicationId?: string | null,
 ): PublicFormViewState {
   const [snapshot, setSnapshot] = useState<PublicFormViewState["snapshot"]>(initialSnapshot ?? null)
+  const [publicationId, setPublicationId] = useState<string | null>(initialPublicationId ?? null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(!initialSnapshot)
   const inFlightKeyRef = useRef<string | null>(null)
@@ -28,7 +30,8 @@ export function usePublicFormView(
     void publicFormViewService
       .getSnapshot(requestKey)
       .then((result) => {
-        setSnapshot(result)
+        setSnapshot(result.snapshot)
+        setPublicationId(result.publicationId)
         lastSuccessKeyRef.current = requestKey
       })
       .catch((fetchError: unknown) => {
@@ -40,5 +43,5 @@ export function usePublicFormView(
       })
   }, [publicId])
 
-  return { publicId, snapshot, error, isLoading }
+  return { publicId, publicationId, snapshot, error, isLoading }
 }

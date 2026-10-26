@@ -7,6 +7,7 @@ import {
   backofficeAccountUseCase,
 } from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
+import { googleConnectionEventUseCase, GoogleConnectionEventType, GoogleConnectionFlow } from "@/app/api/useCases/googleConnectionEvent/GoogleConnectionEventUseCase";
 
 const connectSchema = z.object({
   accessToken: z.string().min(1),
@@ -16,15 +17,20 @@ const connectSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID()
+  let profileId: string | null = null
   try {
     const accessResult = await getBackofficeAccess(request)
     if (accessResult.error) {
       return NextResponse.json(accessResult.error, { status: accessResult.status })
     }
 
+    profileId = accessResult.access.profileId
+    await googleConnectionEventUseCase.record({ eventType: GoogleConnectionEventType.STARTED, flow: GoogleConnectionFlow.BACKOFFICE, profileId, requestId })
     const body = await request.json().catch(() => null)
     const validation = connectSchema.safeParse(body)
     if (!validation.success) {
+      await googleConnectionEventUseCase.record({ eventType: GoogleConnectionEventType.FAILED, flow: GoogleConnectionFlow.BACKOFFICE, profileId, errorCategory: "validation", requestId })
       return NextResponse.json(
         new Output(
           false,
@@ -42,14 +48,18 @@ export async function POST(request: NextRequest) {
     )
 
     if (!output.isValid) {
+      await googleConnectionEventUseCase.record({ eventType: GoogleConnectionEventType.FAILED, flow: GoogleConnectionFlow.BACKOFFICE, profileId, errorCategory: "connection_rejected", requestId })
       const isConflict = output.errorMessages.includes(BACKOFFICE_GOOGLE_EMAIL_CONFLICT_MESSAGE)
       return NextResponse.json(output, { status: isConflict ? 409 : 400 })
     }
+
+    await googleConnectionEventUseCase.record({ eventType: GoogleConnectionEventType.SUCCEEDED, flow: GoogleConnectionFlow.BACKOFFICE, profileId, googleEmail: validation.data.email ?? null, requestId })
 
     return NextResponse.json(output, { status: 200 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
     console.error("[BackofficeGoogleConnectRoute][POST]", error)
+    await googleConnectionEventUseCase.record({ eventType: GoogleConnectionEventType.FAILED, flow: GoogleConnectionFlow.BACKOFFICE, profileId, errorCategory: "unexpected", requestId })
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }

@@ -61,6 +61,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   features: ActiveFeatureRecord[] = []
   userSubscriptions: ActiveUserSubscriptionRecord[] = []
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
+  temporaryBillingGrace = false
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
 
@@ -69,13 +70,18 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 
   async findOwnerProfile() {
-    return { hasPermanentSubscription: false, subscriptionStatus: "active" as const }
+    return {
+      hasPermanentSubscription: false,
+      subscriptionStatus: "active" as const,
+      subscriptionNextDueDate: null,
+    }
   }
 
   async findOwnerProfileSubscription() {
     return {
       hasPermanentSubscription: false,
       subscriptionStatus: "active" as const,
+      subscriptionNextDueDate: null,
       product: null,
     }
   }
@@ -83,6 +89,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   async listActiveUserSubscriptions(profileId: string) {
     if (profileId === MANAGER_ID) return this.ownerSubscriptions
     return this.userSubscriptions
+  }
+
+  async hasActiveTemporaryBillingGrace() {
+    return this.temporaryBillingGrace
   }
 
   async listActiveBetaGrantsForProfile() {
@@ -99,6 +109,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
 
   async findUserTypeAssignment(): Promise<OwnerUserTypeAssignment | null> {
     return null
+  }
+
+  async findTeamMasterId() {
+    return PROFILE_ID
   }
 }
 

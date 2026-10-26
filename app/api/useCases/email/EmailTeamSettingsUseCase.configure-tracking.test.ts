@@ -5,13 +5,13 @@ import type {
   IEmailTeamSettingsRepository,
 } from "@/app/api/infra/data/repositories/emailTeamSettings/IEmailTeamSettingsRepository"
 import type { IEmailTeamDomainEventRepository } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
+import type { ResendDomainSnapshot } from "@/app/api/infra/data/repositories/emailTeamDomainEvent/EmailTeamDomainEventRepository"
 import { assertResend } from "@/lib/email"
 import { EmailTeamSettingsUseCase } from "./EmailTeamSettingsUseCase"
 
 /**
- * Gate do click tracking por time (17/09): ligar exige domínio próprio
- * VERIFICADO com o CNAME de Tracking resolvendo; o domínio compartilhado da
- * plataforma nunca liga. `clickTracking` ausente preserva a escolha
+ * O click tracking fica disponível assim que um domínio próprio é conectado;
+ * o domínio compartilhado da plataforma nunca liga. `clickTracking` ausente preserva a escolha
  * persistida — a rota antiga descartava o campo, e é exatamente essa regressão
  * que estes testes travam.
  */
@@ -46,6 +46,7 @@ const domainsUpdateMock = mock(async (_payload: DomainsUpdatePayload) => ({
   data: null,
   error: null,
 }))
+const waitForTrackingConfirmationMock = mock(async (_delayMs: number) => {})
 
 function buildResend(): ReturnType<typeof assertResend> {
   return {
@@ -100,6 +101,7 @@ function buildUseCase(): EmailTeamSettingsUseCase {
     domainEvents: buildDomainEvents(),
     domainExistence: async () => "exists" as const,
     dnsProviderLookupService: { lookupDnsProvider: mock(async () => null) },
+    waitForTrackingConfirmation: waitForTrackingConfirmationMock,
   })
 }
 
@@ -125,6 +127,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
     domainsUpdateMock.mockClear()
     syncFromResendDomainMock.mockClear()
     findSettingsMock.mockClear()
+    waitForTrackingConfirmationMock.mockClear()
     findSettingsMock.mockImplementation(async () => settingsRecord())
     domainsGetMock.mockImplementation(async () => ({
       data: {
@@ -142,6 +145,47 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
   })
 
   it("liga o clique quando domínio verificado e CNAME de Tracking verificado", async () => {
+    domainsGetMock
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          name: "empresaxyz.com.br",
+          status: "verified",
+          region: "sa-east-1",
+          tracking_subdomain: "links",
+          open_tracking: true,
+          click_tracking: false,
+          records: VERIFIED_RECORDS,
+        },
+        error: null,
+      }))
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          name: "empresaxyz.com.br",
+          status: "verified",
+          region: "sa-east-1",
+          tracking_subdomain: "links",
+          open_tracking: true,
+          click_tracking: false,
+          records: VERIFIED_RECORDS,
+        },
+        error: null,
+      }))
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          name: "empresaxyz.com.br",
+          status: "verified",
+          region: "sa-east-1",
+          tracking_subdomain: "links",
+          open_tracking: true,
+          click_tracking: true,
+          records: VERIFIED_RECORDS,
+        },
+        error: null,
+      }))
+
     const output = await buildUseCase().configureDomainTracking(
       { trackingSubdomain: "links", openTracking: true, clickTracking: true },
       teamCtx
@@ -154,10 +198,26 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       openTracking: true,
       clickTracking: true,
     })
+    expect(waitForTrackingConfirmationMock).toHaveBeenCalledTimes(1)
   })
 
-  it("recusa ligar o clique com o CNAME de Tracking pendente — bloqueio com aviso", async () => {
-    domainsGetMock.mockImplementation(async () => ({
+  it("recusa sucesso quando o Resend não confirma a ativação do clique", async () => {
+    const output = await buildUseCase().configureDomainTracking(
+      { trackingSubdomain: "links", openTracking: true, clickTracking: true },
+      teamCtx
+    )
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages[0]).toContain("não confirmou")
+    expect(syncFromResendDomainMock).toHaveBeenCalledTimes(1)
+    const syncedSnapshot = (
+      syncFromResendDomainMock.mock.calls[0] as unknown as [string, ResendDomainSnapshot, Date]
+    )[1]
+    expect(syncedSnapshot.click_tracking).toBe(false)
+  })
+
+  it("liga o clique mesmo com o CNAME de Tracking pendente", async () => {
+    domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -174,19 +234,36 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       },
       error: null,
     }))
+    domainsGetMock.mockImplementation(async () => ({
+      data: {
+        id: "dom-1",
+        name: "empresaxyz.com.br",
+        status: "verified",
+        region: "sa-east-1",
+        tracking_subdomain: "links",
+        open_tracking: true,
+        click_tracking: true,
+        records: [
+          { record: "DKIM", status: "verified" },
+          { record: "SPF", status: "verified" },
+          { record: "Tracking", status: "pending" },
+        ],
+      },
+      error: null,
+    }))
 
     const output = await buildUseCase().configureDomainTracking(
       { trackingSubdomain: "links", openTracking: true, clickTracking: true },
       teamCtx
     )
 
-    expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toContain("Tracking")
-    expect(domainsUpdateMock).not.toHaveBeenCalled()
+    expect(output.isValid).toBe(true)
+    expect(domainsUpdateMock).toHaveBeenCalledTimes(1)
+    expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({ clickTracking: true })
   })
 
-  it("recusa ligar o clique com o domínio ainda não verificado", async () => {
-    domainsGetMock.mockImplementation(async () => ({
+  it("liga o clique com o domínio ainda não verificado", async () => {
+    domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -199,15 +276,28 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
       },
       error: null,
     }))
+    domainsGetMock.mockImplementation(async () => ({
+      data: {
+        id: "dom-1",
+        name: "empresaxyz.com.br",
+        status: "pending",
+        region: "sa-east-1",
+        tracking_subdomain: "links",
+        open_tracking: true,
+        click_tracking: true,
+        records: VERIFIED_RECORDS,
+      },
+      error: null,
+    }))
 
     const output = await buildUseCase().configureDomainTracking(
       { trackingSubdomain: "links", openTracking: true, clickTracking: true },
       teamCtx
     )
 
-    expect(output.isValid).toBe(false)
-    expect(output.errorMessages[0]).toContain("verificado")
-    expect(domainsUpdateMock).not.toHaveBeenCalled()
+    expect(output.isValid).toBe(true)
+    expect(domainsUpdateMock).toHaveBeenCalledTimes(1)
+    expect(domainsUpdateMock.mock.calls[0][0]).toMatchObject({ clickTracking: true })
   })
 
   it("NUNCA liga o clique para domínio da plataforma (guard explícito)", async () => {
@@ -229,6 +319,33 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
     findSettingsMock.mockImplementation(async () =>
       settingsRecord({ resendClickTracking: true })
     )
+    domainsGetMock
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          name: "empresaxyz.com.br",
+          status: "verified",
+          region: "sa-east-1",
+          tracking_subdomain: "links",
+          open_tracking: true,
+          click_tracking: false,
+          records: VERIFIED_RECORDS,
+        },
+        error: null,
+      }))
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          name: "empresaxyz.com.br",
+          status: "verified",
+          region: "sa-east-1",
+          tracking_subdomain: "links",
+          open_tracking: true,
+          click_tracking: true,
+          records: VERIFIED_RECORDS,
+        },
+        error: null,
+      }))
 
     const output = await buildUseCase().configureDomainTracking(
       { trackingSubdomain: "links", openTracking: true },
@@ -287,7 +404,7 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
     findSettingsMock.mockImplementation(async () =>
       settingsRecord({ resendClickTracking: true, resendDomainStatus: "pending" })
     )
-    domainsGetMock.mockImplementation(async () => ({
+    domainsGetMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "empresaxyz.com.br",
@@ -296,6 +413,19 @@ describe("EmailTeamSettingsUseCase.configureDomainTracking — clique por time",
         tracking_subdomain: "links",
         open_tracking: true,
         click_tracking: true,
+        records: [],
+      },
+      error: null,
+    }))
+    domainsGetMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        name: "empresaxyz.com.br",
+        status: "pending",
+        region: "sa-east-1",
+        tracking_subdomain: "links",
+        open_tracking: true,
+        click_tracking: false,
         records: [],
       },
       error: null,

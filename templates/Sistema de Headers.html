@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sistema de Headers · Corretor Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #EEEDF3;
+    font-family: 'Inter', sans-serif;
+    color: #1C1B22;
+    -webkit-font-smoothing: antialiased;
+    padding: 48px 24px 80px;
+  }
+
+  .page { max-width: 1080px; margin: 0 auto; }
+
+  /* ── Intro ── */
+  .intro { max-width: 720px; margin: 0 auto 44px; }
+  .eyebrow {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #ff6900; margin-bottom: 12px;
+  }
+  .intro h1 {
+    font-family: 'Poppins', sans-serif; font-weight: 700;
+    font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 16px;
+  }
+  .intro p {
+    font-size: 15px; line-height: 1.7; color: #55545F; text-wrap: pretty;
+  }
+  .intro .principle {
+    margin-top: 20px; padding: 16px 20px;
+    background: #fff; border: 1px solid #E2E1E8; border-left: 3px solid #ff6900;
+    border-radius: 10px; font-size: 14.5px; line-height: 1.6; color: #1C1B22;
+  }
+  .intro .principle strong { font-weight: 600; }
+
+  /* ── Tier grid ── */
+  .tiers { display: flex; flex-direction: column; gap: 28px; }
+
+  .tier {
+    display: grid; grid-template-columns: 460px 1fr; gap: 36px; align-items: center;
+    background: #fff; border: 1px solid #E2E1E8; border-radius: 20px;
+    padding: 28px; box-shadow: 0 14px 30px -22px rgba(40,40,80,.3);
+  }
+  @media (max-width: 900px) { .tier { grid-template-columns: 1fr; gap: 24px; } }
+
+  /* ── The notes panel ── */
+  .notes .tier-no {
+    font-family: 'Poppins', sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #A1A1AA; margin-bottom: 6px;
+  }
+  .notes h2 {
+    font-family: 'Poppins', sans-serif; font-size: 22px; font-weight: 700;
+    letter-spacing: -0.01em; margin-bottom: 6px; display: flex; align-items: center; gap: 10px;
+  }
+  .swatch { width: 16px; height: 16px; border-radius: 5px; flex-shrink: 0; }
+  .notes .meaning { font-size: 14px; color: #55545F; line-height: 1.6; margin-bottom: 16px; text-wrap: pretty; }
+  .notes .rationale {
+    font-size: 13px; color: #76757F; line-height: 1.6; margin-bottom: 18px;
+    padding-left: 14px; border-left: 2px solid #ECEBF0; font-style: italic;
+  }
+  .uses-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #A1A1AA; margin-bottom: 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 11px; color: #3D3C44; background: #F5F5F8; border: 1px solid #E6E5EC;
+    padding: 4px 9px; border-radius: 6px;
+  }
+
+  /* ── Email mock shell ── */
+  .mock {
+    width: 100%; max-width: 460px; border-radius: 16px; overflow: hidden;
+    border: 1px solid #E5E4EA; background: #fff;
+    box-shadow: 0 20px 40px -24px rgba(50,50,93,.4), 0 10px 20px -16px rgba(0,0,0,.12);
+  }
+  .mb { padding: 22px 24px 24px; }
+  .mb .h {
+    font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 17px;
+    letter-spacing: -0.01em; margin-bottom: 7px;
+  }
+  .mb .h .g {
+    background: linear-gradient(90deg,#ff6900,#cd6cdd);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .mb .t { font-size: 13px; color: #6E6D7A; line-height: 1.6; margin-bottom: 16px; }
+  .btn {
+    display: inline-block; color: #fff; text-decoration: none; padding: 11px 26px;
+    border-radius: 999px; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 600;
+  }
+
+  /* ── Header base ── */
+  .hd { padding: 28px 28px 24px; text-align: center; }
+  .brand { font-family: 'Poppins', sans-serif; font-weight: 600; letter-spacing: -0.01em; }
+  .tag { font-family: 'Inter', sans-serif; }
+  .glyph { display: block; }
+
+  /* logo disc (celebration) */
+  .disc {
+    width: 58px; height: 58px; border-radius: 50%; background: #fff; margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 18px rgba(0,0,0,.18), inset 0 0 0 4px rgba(255,255,255,.85);
+  }
+  .disc .glyph { width: 28px; height: 26px; color: #fa7d1e; }
+
+  /* small wordmark row */
+  .wm { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px; }
+  .wm .glyph { width: 18px; height: 17px; }
+  .wm .brand { font-size: 14px; }
+
+  /* intent icon (focal) */
+  .intent {
+    width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .intent svg { width: 26px; height: 26px; }
+  .kicker {
+    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px;
+  }
+  .htitle {
+    font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 18px;
+    letter-spacing: -0.01em; margin-top: 4px;
+  }
+
+  /* ===== TIER 1, Celebração ===== */
+  .t1 .hd { background: linear-gradient(135deg,#ff6900 0%,#e57082 48%,#cd6cdd 100%); }
+  .t1 .brand { color: #fff; font-size: 19px; }
+  .t1 .tag { color: rgba(255,255,255,.85); font-size: 12.5px; margin-top: 3px; }
+  .t1 .badge {
+    display: inline-block; margin-top: 13px; background: rgba(255,255,255,.18); color: #fff;
+    font-size: 10px; font-weight: 500; padding: 4px 12px; border-radius: 20px;
+    border: 1px solid rgba(255,255,255,.3); letter-spacing: .07em; text-transform: uppercase;
+  }
+
+  /* ===== TIER 2, Informativo ===== */
+  .t2 .hd { background: #fff; border-top: 3px solid transparent;
+            border-image: linear-gradient(90deg,#ff6900,#e57082,#cd6cdd) 1; }
+  .t2 .wm .glyph { color: #fa7d1e; }
+  .t2 .wm .brand { color: #1C1B22; }
+  .t2 .intent { background: rgba(255,105,0,.08); border: 1px solid rgba(255,105,0,.2); color: #ff6900; }
+  .t2 .kicker { color: #A1A1AA; }
+  .t2 .htitle { color: #1C1B22; }
+
+  /* ===== TIER 3, Ação & cobrança ===== */
+  .t3 .hd { background: linear-gradient(160deg,#F0931F 0%,#E07400 100%); }
+  .t3 .wm .glyph { color: #fff; }
+  .t3 .wm .brand { color: rgba(255,255,255,.92); }
+  .t3 .intent { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.32); color: #fff; }
+  .t3 .kicker { color: rgba(255,255,255,.82); }
+  .t3 .htitle { color: #fff; }
+
+  /* ===== TIER 4, Segurança ===== */
+  .t4 .hd { background: linear-gradient(160deg,#535AE6 0%,#3A3FC4 100%); }
+  .t4 .wm .glyph { color: #fff; }
+  .t4 .wm .brand { color: rgba(255,255,255,.92); }
+  .t4 .intent { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.32); color: #fff; }
+  .t4 .kicker { color: rgba(255,255,255,.82); }
+  .t4 .htitle { color: #fff; }
+
+  /* ===== TIER 5, Sério ===== */
+  .t5 .hd { background: #221B26; border-bottom: 2px solid #E23B4A; }
+  .t5 .wm .glyph { color: rgba(255,255,255,.9); }
+  .t5 .wm .brand { color: rgba(255,255,255,.85); }
+  .t5 .intent { background: rgba(226,59,74,.16); border: 1px solid rgba(226,59,74,.4); color: #FF8A95; }
+  .t5 .kicker { color: rgba(255,255,255,.55); }
+  .t5 .htitle { color: #fff; }
+
+  /* ===== TIER 6, Marketing ===== */
+  .t6 .hd { background: linear-gradient(135deg,#e57082 0%,#cd6cdd 100%); }
+  .t6 .wm .glyph { color: #fff; }
+  .t6 .wm .brand { color: rgba(255,255,255,.92); }
+  .t6 .intent { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.32); color: #fff; }
+  .t6 .kicker { color: rgba(255,255,255,.85); }
+  .t6 .htitle { color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- logo symbol -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cs" viewBox="90 140 322 285">
+    <path fill="currentColor" fill-rule="evenodd" d="M 291.25,157.68 Q 294.00,146.00 282.31,148.69 L 163.84,175.96 Q 146.30,180.00 138.38,187.88 L 136.62,189.62 Q 128.70,197.50 124.14,214.91 L 101.86,300.05 Q 96.80,319.40 111.92,332.49 L 125.79,344.51 Q 139.40,356.30 156.97,352.41 L 228.84,336.50 Q 234.70,335.20 236.51,329.48 L 252.30,279.60 L 348.10,257.60 L 326.40,336.00 L 226.21,361.90 Q 220.40,363.40 218.99,369.23 L 209.71,407.73 Q 206.90,419.40 218.59,416.69 L 319.60,393.30 Q 353.70,385.40 360.99,376.81 L 362.61,374.89 Q 369.90,366.30 379.33,332.59 L 400.61,256.56 Q 406.00,237.30 391.90,223.12 L 386.30,217.48 Q 372.20,203.30 352.67,207.61 L 274.86,224.81 Q 269.00,226.10 267.11,231.80 L 251.40,279.20 L 157.90,300.30 L 177.80,228.20 L 275.20,202.72 Q 281.00,201.20 282.38,195.36 Z"></path>
+  </symbol>
+</svg>
+
+<div class="page">
+
+  <div class="intro">
+    <div class="eyebrow">Proposta de direção</div>
+    <h1>Headers que comunicam a intenção</h1>
+    <p>Hoje todos os e-mails usam o mesmo gradiente arco-íris e mudam só o texto de um badge. O resultado: uma fatura vencida, uma redefinição de senha e um "bem-vindo" comemorativo chegam visualmente idênticos, e o tratamento mais forte da marca se desgasta em mensagens sérias.</p>
+    <div class="principle">
+      <strong>O princípio:</strong> a <strong>celebração</strong> coloca a marca em primeiro plano e reconquista o gradiente. <strong>Todos os outros</strong> colocam a intenção em primeiro plano, um ícone temático grande e um tom de cor que classifica a mensagem antes mesmo da leitura.
+    </div>
+  </div>
+
+  <div class="tiers">
+
+    <!-- ===== TIER 1 ===== -->
+    <div class="tier">
+      <div class="mock t1">
+        <div class="hd">
+          <div class="disc"><svg class="glyph"><use href="#cs"/></svg></div>
+          <div class="brand">Corretor Studio</div>
+          <div class="tag">Gestão inteligente de leads</div>
+          <span class="badge">Bem-vindo</span>
+        </div>
+        <div class="mb">
+          <div class="h">Bem-vindo, <span class="g">Maria</span>!</div>
+          <div class="t">Sua conta foi criada com sucesso. Agora você tem acesso completo à plataforma.</div>
+          <a class="btn" style="background:linear-gradient(135deg,#ff6900,#e57082,#cd6cdd)">Acessar plataforma →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 01</div>
+        <h2><span class="swatch" style="background:linear-gradient(135deg,#ff6900,#cd6cdd)"></span>Celebração</h2>
+        <p class="meaning">O gradiente arco-íris completo, o tratamento mais expressivo da marca, agora <strong>reservado</strong> a marcos positivos. A logo é o herói.</p>
+        <p class="rationale">Usado com parcimônia, o gradiente volta a significar "boa notícia".</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">welcome</span>
+          <span class="chip">subscription-confirmation</span>
+          <span class="chip">adhesion-completed</span>
+          <span class="chip">addon-confirmed</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TIER 2 ===== -->
+    <div class="tier">
+      <div class="mock t2">
+        <div class="hd">
+          <div class="wm"><svg class="glyph"><use href="#cs"/></svg><span class="brand">Corretor Studio</span></div>
+          <div class="intent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="8" r="3.2"/><path d="M3.4 19c.6-3.4 3-5.2 5.6-5.2s5 1.8 5.6 5.2"/><path d="M18 8v6M15 11h6"/>
+            </svg>
+          </div>
+          <div class="kicker">Novo lead</div>
+          <div class="htitle">Um novo lead chegou</div>
+        </div>
+        <div class="mb">
+          <div class="t">Um novo lead acabou de ser registrado. Veja os dados e inicie o atendimento.</div>
+          <a class="btn" style="background:linear-gradient(135deg,#ff6900,#e57082,#cd6cdd)">Ver no dashboard →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 02</div>
+        <h2><span class="swatch" style="background:#fff;border:1px solid #E2E1E8"></span>Informativo</h2>
+        <p class="meaning">Header claro com um fio de gradiente no topo (marca presente, discreta). O ícone de intenção é o foco; a logo recua para uma assinatura.</p>
+        <p class="rationale">Notificações do dia a dia: limpas, legíveis, sem "barulho".</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">lead-notification-new</span>
+          <span class="chip">meeting-invite</span>
+          <span class="chip">closer-schedule-notification</span>
+          <span class="chip">operator-invite</span>
+          <span class="chip">performance-export</span>
+          <span class="chip">backoffice-lead-schedule-*</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TIER 3 ===== -->
+    <div class="tier">
+      <div class="mock t3">
+        <div class="hd">
+          <div class="wm"><svg class="glyph"><use href="#cs"/></svg><span class="brand">Corretor Studio</span></div>
+          <div class="intent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 3h12a1 1 0 011 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8.5h6M9 12.5h6M9 16.5h3"/>
+            </svg>
+          </div>
+          <div class="kicker">Ação necessária</div>
+          <div class="htitle">Sua fatura está vencida</div>
+        </div>
+        <div class="mb">
+          <div class="t">Identificamos uma fatura em atraso. Regularize para evitar a suspensão do acesso.</div>
+          <a class="btn" style="background:#E07400">Visualizar fatura →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 03</div>
+        <h2><span class="swatch" style="background:#E07400"></span>Ação &amp; cobrança</h2>
+        <p class="meaning">Âmbar sólido, um único tom quente, não o arco-íris. Comunica "faça algo" com urgência, sem alarme.</p>
+        <p class="rationale">Cor única ≠ festa. O olho entende "atenção / pagamento" antes de ler.</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">master-invoice-status-notification</span>
+          <span class="chip">addon-pending-payment</span>
+          <span class="chip">pending-account-user-payment</span>
+          <span class="chip">backoffice-adhesion-checkout</span>
+          <span class="chip">lead-proposal-pending-urgent</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TIER 4 ===== -->
+    <div class="tier">
+      <div class="mock t4">
+        <div class="hd">
+          <div class="wm"><svg class="glyph"><use href="#cs"/></svg><span class="brand">Corretor Studio</span></div>
+          <div class="intent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="11" width="14" height="9.5" rx="2.2"/><path d="M8 11V8a4 4 0 018 0v3"/><path d="M12 15v2"/>
+            </svg>
+          </div>
+          <div class="kicker">Segurança da conta</div>
+          <div class="htitle">Redefina sua senha</div>
+        </div>
+        <div class="mb">
+          <div class="t">Recebemos uma solicitação para redefinir sua senha. O link expira em 1 hora.</div>
+          <a class="btn" style="background:#3A3FC4">Redefinir senha →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 04</div>
+        <h2><span class="swatch" style="background:#3A3FC4"></span>Segurança</h2>
+        <p class="meaning">Índigo focado (do token <em>precision-indigo</em> da marca) com um cadeado. Transmite confiança e seriedade técnica.</p>
+        <p class="rationale">Cor fria e distinta = "isto é sobre a segurança da sua conta", nunca confundido com cobrança.</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">password-reset</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TIER 5 ===== -->
+    <div class="tier">
+      <div class="mock t5">
+        <div class="hd">
+          <div class="wm"><svg class="glyph"><use href="#cs"/></svg><span class="brand">Corretor Studio</span></div>
+          <div class="intent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.5l9 16H3l9-16z"/><path d="M12 10v4.5M12 17.5v.01"/>
+            </svg>
+          </div>
+          <div class="kicker">Aviso importante</div>
+          <div class="htitle">Sua conta foi encerrada</div>
+        </div>
+        <div class="mb">
+          <div class="t">Informamos que sua conta foi encerrada e todos os dados removidos permanentemente.</div>
+          <a class="btn" style="background:#3D3C44">Falar com suporte →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 05</div>
+        <h2><span class="swatch" style="background:#221B26"></span>Sério</h2>
+        <p class="meaning">Header escuro e sóbrio, com um fio vermelho discreto. Gravidade pela <strong>contenção</strong>, não pelo grito.</p>
+        <p class="rationale">Ações irreversíveis merecem peso visual e respeito, sem inundar a tela de vermelho.</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">account-deletion-farewell</span>
+          <span class="chip">operator-access-removed</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TIER 6 ===== -->
+    <div class="tier">
+      <div class="mock t6">
+        <div class="hd">
+          <div class="wm"><svg class="glyph"><use href="#cs"/></svg><span class="brand">Corretor Studio</span></div>
+          <div class="intent">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 11l18-7-7 18-2.5-8L3 11z"/>
+            </svg>
+          </div>
+          <div class="kicker">Para corretores de alto padrão</div>
+          <div class="htitle">Profissionalize sua operação</div>
+        </div>
+        <div class="mb">
+          <div class="t">Prospecção, relacionamento e campanhas: a energia da marca aplicada onde ela converte.</div>
+          <a class="btn" style="background:linear-gradient(135deg,#e57082,#cd6cdd)">Falar no WhatsApp →</a>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="tier-no">Arquétipo 06</div>
+        <h2><span class="swatch" style="background:linear-gradient(135deg,#e57082,#cd6cdd)"></span>Marketing</h2>
+        <p class="meaning">Um gradiente rosé&#8594;pink, subconjunto quente do arco-íris, sem o laranja da celebração. Comunica energia e desejo, sem parecer um aviso de sistema.</p>
+        <p class="rationale">Distingue mensagens comerciais e de relacionamento das transacionais: a marca aparece com apelo, mas nunca se confunde com "boas notícias da conta".</p>
+        <div class="uses-label">Aplica-se a</div>
+        <div class="chips">
+          <span class="chip">abordagem-comercial-1</span>
+          <span class="chip">abordagem-comercial-2</span>
+          <span class="chip">abordagem-comercial-followup</span>
+          <span class="chip">promo-campaign</span>
+          <span class="chip">winback</span>
+          <span class="chip">product-announcement</span>
+          <span class="chip">convite-*</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

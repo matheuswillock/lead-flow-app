@@ -1,0 +1,33 @@
+---
+name: clean-code
+description: "Apply the Corretor Studio Clean Code and SOLID checklist before technical planning, implementation or refactoring."
+---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/clean-code.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
+
+# Clean Code
+
+Use this skill before technical planning, implementation, review or refactoring.
+
+## Checklist
+
+- Use pronounceable, searchable names that express business intent. Booleans read as questions such as `isValid`, `hasAccess` or `canEdit`.
+- A function does one thing at one abstraction level. Prefer a typed options object from three parameters onward and avoid boolean flags that switch behavior.
+- Keep side effects explicit. Functions named `get` or `is` do not mutate state.
+- Apply SRP: Route handles HTTP, UseCase orchestrates one business use case, Service holds complex domain logic, Repository owns persistence.
+- Apply DIP: UseCases depend on lean Service/Repository interfaces and never call Prisma or raw SQL directly.
+- Prefer composition or strategy when a variation would grow a conditional. Concrete implementations remain substitutable through their interfaces.
+- Remove duplicated business knowledge, not every repeated line. Do not create generic abstractions for hypothetical reuse.
+- Return descriptive errors through the project's `Output` contract where required. Never swallow exceptions silently.
+- Comments explain constraints or reasons, not what clearly named code already says.
+
+## Legacy exceptions
+
+Before planning or editing, check relevant allowlists in `.governance/ai-governance.config.json`. If a touched file contains a related Clean Code/SOLID exception, the same change must refactor the violation and remove the allowlist entry. If the requested scope cannot safely include that refactor, raise the conflict before coding.
+
+## Verification
+
+Review the result against this checklist. Then follow the targeted and final validation cadence in `agents.md`; automated checks do not replace judgment for naming, responsibility boundaries or premature abstraction.

@@ -48,11 +48,13 @@ function toPublishedSnapshot(publication: {
   id: string
   version: number
   snapshot: Prisma.JsonValue
+  teamId?: string
 }): PublicFormPublishedSnapshot {
   return {
     publicationId: publication.id,
     version: publication.version,
     snapshot: publication.snapshot,
+    teamId: publication.teamId,
   }
 }
 
@@ -590,6 +592,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     const form = await prisma.publicForm.findUnique({
       where: { publicId },
       select: {
+        teamId: true,
         status: true,
         publications: {
           where: { endedAt: null },
@@ -600,7 +603,7 @@ export class PublicFormsRepository implements IPublicFormsRepository {
       },
     })
     if (!form || form.status !== "published" || !form.publications[0]) return null
-    return toPublishedSnapshot(form.publications[0])
+    return toPublishedSnapshot({ ...form.publications[0], teamId: form.teamId })
   }
 
   async findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null> {
@@ -645,6 +648,13 @@ export class PublicFormsRepository implements IPublicFormsRepository {
   findLatestSessionSubmissionOnForm(formId: string, visitorSessionId: string) {
     return prisma.publicFormSubmission.findFirst({
       where: { formId, visitorSessionId },
+      orderBy: { updatedAt: "desc" },
+    })
+  }
+
+  findLatestSessionSubmissionForPublication(publicationId: string, visitorSessionId: string) {
+    return prisma.publicFormSubmission.findFirst({
+      where: { publicationId, visitorSessionId },
       orderBy: { updatedAt: "desc" },
     })
   }
@@ -1329,6 +1339,9 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    meetingSlotReservationId?: string | null
+    scheduledCloserId?: string | null
+    scheduledDurationMinutes?: number | null
     submitRequestedAt: Date
   }) {
     return prisma.publicFormSubmission.create({
@@ -1782,6 +1795,24 @@ export class PublicFormsRepository implements IPublicFormsRepository {
         completionStatus: "partial",
       },
       select: { id: true, eventId: true },
+    })
+  }
+
+  async attachMeetingSlotReservation(input: {
+    submissionId: string
+    reservationId: string
+    closerId: string
+    durationMinutes: number
+    startsAt: Date
+  }): Promise<void> {
+    await prisma.publicFormSubmission.update({
+      where: { id: input.submissionId },
+      data: {
+        meetingSlotReservationId: input.reservationId,
+        scheduledCloserId: input.closerId,
+        scheduledDurationMinutes: input.durationMinutes,
+        scheduledMeetingStartsAt: input.startsAt,
+      },
     })
   }
 

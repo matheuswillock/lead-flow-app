@@ -12,10 +12,9 @@ import type {
 } from "@/app/api/services/billing/IMemberProBillingService";
 import {
   buildMemberProContextFromAssignment,
+  resolveHasUnlimitedUsers,
   resolveMemberProBypass,
 } from "@/app/api/shared/billing/memberProBillingRules";
-import { createEmailService } from "@/lib/services/EmailService";
-import { getFullUrl } from "@/lib/utils/app-url";
 
 const syncLocks = new Map<string, Promise<void>>();
 
@@ -46,8 +45,12 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
       : { slug: "common", isActive: false, accessExpiresAt: null };
     return {
       ...base,
-      hasUnlimitedUsers:
-        owner?.hasUnlimitedUsers === true || owner?.hasPermanentSubscription === true,
+      hasUnlimitedUsers: resolveHasUnlimitedUsers({
+        hasUnlimitedUsersFlag: owner?.hasUnlimitedUsers,
+        billingCycle: owner?.subscriptionCycle,
+        memberProSlug: assignment?.slug,
+        memberProActive: base.isActive,
+      }),
     };
   }
 
@@ -133,43 +136,9 @@ export class MemberProBillingUseCase implements IMemberProBillingService {
     try {
       const now = new Date();
       const assignments = await this.repository.findExpiredMemberProAssignments(now);
-      const emailService = createEmailService();
-      const DAY_MS = 24 * 60 * 60 * 1000;
 
       for (const assignment of assignments) {
-        await this.repository.clearUnlimitedUsersUnlessAnnualAdhesion(assignment.profileId);
-        await this.syncUsageToSubscription(assignment.profileId, "member_pro_expiration");
-
-        const shouldNotify =
-          assignment.accessExpiresAt !== null &&
-          assignment.accessExpiresAt.getTime() >= now.getTime() - DAY_MS;
-
-        if (shouldNotify && assignment.email) {
-          const summary = await getBillingSummary(assignment.profileId);
-          const masterName = assignment.fullName || assignment.email;
-          const formattedTotal = new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-          }).format(summary.totalPrice);
-
-          await emailService
-            .sendEmailUntracked({
-              to: [assignment.email],
-              subject: "Member PRO encerrado — assinatura atualizada",
-              html: `
-                <p>Olá, ${masterName}.</p>
-                <p>Seu período Member PRO foi encerrado. Sua assinatura foi atualizada para refletir o uso atual da conta.</p>
-                <p><strong>Novo valor recorrente:</strong> ${formattedTotal}</p>
-                <p><a href="${getFullUrl("/subscription")}">Gerenciar assinatura</a></p>
-              `,
-            })
-            .catch((error: unknown) => {
-              console.error(
-                `[MemberProBillingUseCase] Falha ao enviar e-mail para ${assignment.profileId}:`,
-                error
-              );
-            });
-        }
+        await this.repository.expireMemberProAssignment(assignment.profileId, now);
       }
 
       return new Output(

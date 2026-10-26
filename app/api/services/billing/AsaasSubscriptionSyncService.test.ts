@@ -55,4 +55,45 @@ describe("AsaasSubscriptionSyncService.syncFromAsaas — roteamento por conta (T
 
     expect(createAsaasClientMock).toHaveBeenCalledWith("primary")
   })
+
+  // Achado P1 (chatgpt-codex-connector, thread PRRT_...CUk4): saveSyncData
+  // gravava asaasSubscriptionId sem a conta, deixando o upsert de
+  // ProfileSubscription cair no @default(primary) mesmo quando o
+  // ponteiro é legacy — a reconciliação de 30-E7 passa a procurar o sub_
+  // na conta errada.
+  it("propaga a conta resolvida para saveSyncData — nunca deixa o pointer sem conta (achado P1 PRRT_...CUk4)", async () => {
+    getSyncSnapshotMock.mockImplementationOnce(async () => ({
+      asaasSubscriptionId: "sub_legacy_1",
+      hasPermanentSubscription: false,
+      asaasSubscriptionAccount: "legacy",
+    }))
+
+    const service = new AsaasSubscriptionSyncService()
+    await service.syncFromAsaas("profile-1")
+
+    expect(saveSyncDataMock).toHaveBeenCalledWith(
+      "profile-1",
+      "sub_legacy_1",
+      "legacy",
+      expect.any(Object),
+    )
+  })
+
+  it("controle negativo: perfil primary continua gravando a conta primary (não regride o caminho comum)", async () => {
+    getSyncSnapshotMock.mockImplementationOnce(async () => ({
+      asaasSubscriptionId: "sub_primary_1",
+      hasPermanentSubscription: false,
+      asaasSubscriptionAccount: "primary",
+    }))
+
+    const service = new AsaasSubscriptionSyncService()
+    await service.syncFromAsaas("profile-2")
+
+    expect(saveSyncDataMock).toHaveBeenCalledWith(
+      "profile-2",
+      "sub_primary_1",
+      "primary",
+      expect.any(Object),
+    )
+  })
 })

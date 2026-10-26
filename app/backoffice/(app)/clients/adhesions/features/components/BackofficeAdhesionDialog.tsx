@@ -54,15 +54,9 @@ const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   semiannual: 6,
   annual: 12,
 }
-const CYCLE_DAYS: Record<BackofficeAdhesionBillingCycleKey, number> = {
-  monthly: 30,
-  quarterly: 90,
-  quadrimester: 120,
-  semiannual: 180,
-  annual: 365,
-}
-const MEMBER_PRO_MIN_DAYS = 1
-const MEMBER_PRO_MAX_DAYS = 365
+const MEMBER_PRO_ACCESS_DAYS = 100
+const MEMBER_PRO_MIN_DAYS = MEMBER_PRO_ACCESS_DAYS
+const MEMBER_PRO_MAX_DAYS = MEMBER_PRO_ACCESS_DAYS
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
 
 function parsePositiveInt(value: string): number | null {
@@ -105,6 +99,15 @@ function resolveChargeBillingType(
   billingType: BackofficeAdhesionFormValues["billingType"]
 ): "PIX" | "CREDIT_CARD" {
   return billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
+}
+
+function resolveShowCardOption(input: {
+  availableBillingTypes: BackofficeAdhesionOptions["availableBillingTypes"]
+  mode: "create" | "edit"
+  billingType: BackofficeAdhesionFormValues["billingType"]
+}): boolean {
+  if (input.availableBillingTypes?.includes("CREDIT_CARD")) return true
+  return input.mode === "edit" && input.billingType === "CREDIT_CARD"
 }
 
 const ROLE_LABELS: Record<BackofficeAdhesionAdditionalUser["role"], string> = {
@@ -321,6 +324,13 @@ export function BackofficeAdhesionDialog({
   const cardTotal = roundCurrency(cardPlanBaseTotal + extrasMonthly * cycleMonths)
   const pixTotal = roundCurrency(pixMonthlyTotal * cycleMonths)
   const chargeBillingType = resolveChargeBillingType(values.billingType)
+  // O cartão só é oferecido quando o servidor o libera; uma adesão que já era cartão mantém a
+  // opção para continuar representável na edição.
+  const showCardOption = resolveShowCardOption({
+    availableBillingTypes: options?.availableBillingTypes,
+    mode,
+    billingType: values.billingType,
+  })
   const chargeTotal = chargeBillingType === "PIX" ? pixTotal : cardTotal
   const baseChargeTotal =
     chargeBillingType === "PIX"
@@ -504,7 +514,7 @@ export function BackofficeAdhesionDialog({
       if (key === "cycle") {
         const cycle = value as BackofficeAdhesionBillingCycleKey
         if (current.userType === "member_pro") {
-          next.memberProAccessDays = String(CYCLE_DAYS[cycle])
+          next.memberProAccessDays = String(MEMBER_PRO_ACCESS_DAYS)
         }
         if (cycle === "annual" || current.userType === "member_pro") {
           next.hasUnlimitedUsers = true
@@ -512,7 +522,7 @@ export function BackofficeAdhesionDialog({
         next.externalInstallmentIndexes = []
       }
       if (key === "userType" && value === "member_pro") {
-        next.memberProAccessDays = String(CYCLE_DAYS[current.cycle])
+        next.memberProAccessDays = String(MEMBER_PRO_ACCESS_DAYS)
         next.hasUnlimitedUsers = true
       }
       if (key === "userType" && value !== "member_pro") {
@@ -1224,22 +1234,21 @@ export function BackofficeAdhesionDialog({
                 </div>
                 {isMemberPro && (
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="adhesion-member-pro-days">Validade do acesso (dias) *</Label>
+                    <Label htmlFor="adhesion-member-pro-days">Validade do acesso (dias)</Label>
                     <Input
                       id="adhesion-member-pro-days"
                       type="number"
-                      min={MEMBER_PRO_MIN_DAYS}
-                      max={MEMBER_PRO_MAX_DAYS}
-                      placeholder="Ex.: 30"
+                      min={MEMBER_PRO_ACCESS_DAYS}
+                      max={MEMBER_PRO_ACCESS_DAYS}
                       value={values.memberProAccessDays}
-                      onChange={(event) => updateValue("memberProAccessDays", event.target.value)}
-                      disabled={isSubmitting}
+                      readOnly
+                      disabled
                     />
                     <p className="text-sm text-muted-foreground">
-                      Calculado automaticamente pelo ciclo. Ajuste se necessário (entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias).
+                      Member PRO tem validade fixa de {MEMBER_PRO_ACCESS_DAYS} dias, independente do ciclo comercial.
                     </p>
                     {values.memberProAccessDays.length > 0 && !memberProAccessDaysValid && (
-                      <p className="text-sm text-destructive">Informe um número entre 1 e 365</p>
+                      <p className="text-sm text-destructive">A validade do Member PRO deve ser de {MEMBER_PRO_ACCESS_DAYS} dias</p>
                     )}
                   </div>
                 )}
@@ -1294,10 +1303,12 @@ export function BackofficeAdhesionDialog({
                     <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
                     <Label htmlFor="adhesion-billing-pix">PIX</Label>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
-                    <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
-                  </div>
+                  {showCardOption ? (
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
+                      <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
+                    </div>
+                  ) : null}
                   {mode === "edit" ? (
                     <div className="flex items-center gap-2">
                       <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />

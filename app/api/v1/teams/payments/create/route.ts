@@ -6,6 +6,7 @@ import {
 } from "@/app/api/v1/utils/teamAccess";
 import { createTeamCheckoutUseCase } from "@/app/api/useCases/teamCheckout/CreateTeamCheckoutUseCase";
 import { getClientIpFromRequest } from "@/lib/http/get-client-ip";
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard";
 import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
 
 const formatTeamName = (value: unknown) => (typeof value === "string" ? value.trim() : "");
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     if (!output.isValid) {
       const notFound = output.errorMessages.includes("Perfil não encontrado");
-      return NextResponse.json(output, { status: notFound ? 404 : 400 });
+      return NextResponse.json(output, { status: notFound ? 404 : failedOutputStatus(output) });
     }
 
     return NextResponse.json(output, { status: 201 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 
 // Achado Codex (PR #1137, P2): createPayment (retomada de cobrança já
 // existente) e updateBillingType consultavam o Asaas via asaas() — helper
@@ -99,7 +99,13 @@ describe("AddOnCheckoutUseCase.createPayment — retomada de cobrança existente
 })
 
 describe("AddOnCheckoutUseCase.updateBillingType — troca de forma de pagamento roteada por conta (C33)", () => {
+  const originalEnv = { ...process.env }
+
   beforeEach(() => {
+    // O roteamento por conta é ortogonal ao guard de cartão: aqui o cartão está liberado.
+    process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_test_card_on"
+    delete process.env.CARD_PAYMENTS_ENABLED
     requestLog.length = 0
     findByIdSimpleMock.mockClear()
     findByIdSimpleMock.mockImplementation(async () => ({ ...baseAction, payload: { billingType: "PIX" } }))
@@ -108,6 +114,10 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma de pagamento
     requestImplByAccount.primary = async () => {
       throw new Error("não deveria consultar a conta primary — o pagamento nasceu na legacy")
     }
+  })
+
+  afterEach(() => {
+    process.env = { ...originalEnv }
   })
 
   it("achado Codex (PR #1137, P2): cancelamento do pagamento pendente roteia GET/DELETE pela legacy", async () => {

@@ -1,5 +1,8 @@
 import prisma from "@/app/api/infra/data/prisma";
-import { resolveHasUnlimitedUsers } from "@/app/api/shared/billing/memberProBillingRules";
+import {
+  isActiveMemberProAssignment,
+  resolveHasUnlimitedUsers,
+} from "@/app/api/shared/billing/memberProBillingRules";
 import type {
   BillingSnapshot,
   IBillingRepository,
@@ -15,7 +18,17 @@ class PrismaBillingRepository implements IBillingRepository {
   async getBillingSnapshot(masterId: string): Promise<BillingSnapshot | null> {
     const master = await prisma.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true, hasUnlimitedUsers: true },
+      select: {
+        hasPermanentSubscription: true,
+        hasUnlimitedUsers: true,
+        userTypeAssignment: {
+          select: {
+            accessStartsAt: true,
+            accessExpiresAt: true,
+            userType: { select: { slug: true } },
+          },
+        },
+      },
     });
 
     if (!master) {
@@ -45,6 +58,14 @@ class PrismaBillingRepository implements IBillingRepository {
       hasUnlimitedUsers: resolveHasUnlimitedUsers({
         hasUnlimitedUsersFlag: master.hasUnlimitedUsers,
         hasPermanentSubscription: master.hasPermanentSubscription,
+        memberProSlug: master.userTypeAssignment?.userType.slug,
+        memberProActive: isActiveMemberProAssignment(master.userTypeAssignment
+          ? {
+              slug: master.userTypeAssignment.userType.slug,
+              accessStartsAt: master.userTypeAssignment.accessStartsAt,
+              accessExpiresAt: master.userTypeAssignment.accessExpiresAt,
+            }
+          : null),
       }),
       teamCount,
       distinctUserCount,
@@ -155,6 +176,7 @@ class PrismaBillingRepository implements IBillingRepository {
   ): Promise<void> {
     const subData = {
       asaasSubscriptionId: data.asaasSubscriptionId,
+      asaasSubscriptionAccount: data.asaasSubscriptionAccount,
       subscriptionNextDueDate: data.subscriptionNextDueDate,
       subscriptionCycle: data.subscriptionCycle,
     };

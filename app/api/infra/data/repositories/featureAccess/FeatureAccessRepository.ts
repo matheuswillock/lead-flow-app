@@ -56,12 +56,20 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
   }
 
-  async findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null> {
+  async findOwnerProfile(
+    ownerProfileId: string
+  ): Promise<Pick<
+    Profile,
+    "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+  > | null> {
     return prisma.profile.findUnique({
       where: { id: ownerProfileId },
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
+        // Fallback do degrau de inadimplência: o webhook do Asaas grava a due
+        // date aqui, não na ProfileSubscription — ver `resolveEffectiveNextDueDate`.
+        subscriptionNextDueDate: true,
       },
     })
   }
@@ -69,7 +77,10 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
   async findOwnerProfileSubscription(
     ownerProfileId: string
   ): Promise<
-    (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
+    (Pick<
+      ProfileSubscription,
+      "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+    > & {
       product: { featureSlugs: string[] } | null
     }) | null
   > {
@@ -78,6 +89,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       select: {
         hasPermanentSubscription: true,
         subscriptionStatus: true,
+        subscriptionNextDueDate: true,
         product: { select: { featureSlugs: true } },
       },
     })
@@ -97,6 +109,18 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         },
       },
     })
+  }
+
+  async hasActiveTemporaryBillingGrace(teamId: string): Promise<boolean> {
+    const grace = await prisma.billingAccessGrace.findFirst({
+      where: {
+        teamId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { id: true },
+    })
+    return Boolean(grace)
   }
 
   async listActiveBetaGrantsForProfile(
@@ -210,6 +234,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     const assignment = await prisma.profileUserTypeAssignment.findUnique({
       where: { profileId: ownerProfileId },
       select: {
+        accessStartsAt: true,
         accessExpiresAt: true,
         userType: { select: { slug: true } },
       },
@@ -218,8 +243,17 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
 
     return {
       slug: assignment.userType.slug,
+      accessStartsAt: assignment.accessStartsAt ? assignment.accessStartsAt.toISOString() : null,
       accessExpiresAt: assignment.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null,
     }
+  }
+
+  async findTeamMasterId(teamId: string): Promise<string | null> {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { masterId: true },
+    })
+    return team?.masterId ?? null
   }
 
   private isMissingAccessRulesTable(error: unknown): boolean {

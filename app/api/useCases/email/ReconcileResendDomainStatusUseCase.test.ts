@@ -321,11 +321,32 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       },
       error: null,
     }))
+    fetchDomainMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        status: "partially_failed",
+        region: "sa-east-1",
+        openTracking: false,
+        clickTracking: true,
+      },
+      error: null,
+    }))
+    fetchDomainMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        status: "partially_failed",
+        region: "sa-east-1",
+        openTracking: true,
+        clickTracking: false,
+      },
+      error: null,
+    }))
 
     const useCase = new ReconcileResendDomainStatusUseCase({
       domainEvents: buildRepository(),
       fetchDomain: fetchDomainMock,
       updateTracking: updateTrackingMock,
+      waitForTrackingConfirmation: async () => {},
     })
     const result = await useCase.execute()
 
@@ -353,14 +374,36 @@ describe("ReconcileResendDomainStatusUseCase", () => {
         resendClickTracking: true,
       }),
     ])
+    fetchDomainMock
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          status: "partially_failed",
+          region: "sa-east-1",
+          openTracking: true,
+          clickTracking: false,
+        },
+        error: null,
+      }))
+      .mockImplementationOnce(async () => ({
+        data: {
+          id: "dom-1",
+          status: "partially_failed",
+          region: "sa-east-1",
+          openTracking: true,
+          clickTracking: true,
+        },
+        error: null,
+      }))
     // Provedor com clique OFF (ex.: alguém desligou no painel) — o desejo do
     // time persiste e o cron reaplica.
     const useCase = new ReconcileResendDomainStatusUseCase({
       domainEvents: buildRepository(),
       fetchDomain: fetchDomainMock,
       updateTracking: updateTrackingMock,
+      waitForTrackingConfirmation: async () => {},
     })
-    await useCase.execute()
+    const result = await useCase.execute()
 
     expect(updateTrackingMock).toHaveBeenCalledTimes(1)
     expect(updateTrackingMock.mock.calls[0][0]).toEqual({
@@ -368,6 +411,31 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       openTracking: true,
       clickTracking: true,
     })
+    expect(result.isValid).toBe(true)
+    expect(result.result.trackingFixed).toBe(1)
+  })
+
+  it("marca erro quando o PATCH é aceito mas o provedor não confirma o tracking", async () => {
+    listConnectedDomainsMock.mockImplementation(async () => [
+      connectedDomain({
+        teamId: "team-1",
+        resendDomainId: "dom-1",
+        resendClickTracking: true,
+      }),
+    ])
+
+    const useCase = new ReconcileResendDomainStatusUseCase({
+      domainEvents: buildRepository(),
+      fetchDomain: fetchDomainMock,
+      updateTracking: updateTrackingMock,
+      waitForTrackingConfirmation: async () => {},
+    })
+    const result = await useCase.execute()
+
+    expect(result.isValid).toBe(false)
+    expect(result.result.trackingFixed).toBe(0)
+    expect(result.result.trackingErrors).toBe(1)
+    expect(syncFromResendDomainMock.mock.calls[0]![1].clickTracking).toBe(false)
   })
 
   it("domínio da plataforma nunca recebe clique ligado, mesmo com flag persistida", async () => {
@@ -380,7 +448,7 @@ describe("ReconcileResendDomainStatusUseCase", () => {
         resendClickTracking: true,
       }),
     ])
-    fetchDomainMock.mockImplementation(async () => ({
+    fetchDomainMock.mockImplementationOnce(async () => ({
       data: {
         id: "dom-1",
         name: "mail.corretorstudio.com",
@@ -391,11 +459,23 @@ describe("ReconcileResendDomainStatusUseCase", () => {
       },
       error: null,
     }))
+    fetchDomainMock.mockImplementationOnce(async () => ({
+      data: {
+        id: "dom-1",
+        name: "mail.corretorstudio.com",
+        status: "partially_failed",
+        region: "sa-east-1",
+        openTracking: true,
+        clickTracking: false,
+      },
+      error: null,
+    }))
 
     const useCase = new ReconcileResendDomainStatusUseCase({
       domainEvents: buildRepository(),
       fetchDomain: fetchDomainMock,
       updateTracking: updateTrackingMock,
+      waitForTrackingConfirmation: async () => {},
     })
     await useCase.execute()
 

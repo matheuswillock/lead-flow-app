@@ -1,7 +1,13 @@
 import { DEFAULT_TZ, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
 import { preScheduleSlotRepository } from "@/app/api/infra/data/repositories/preSchedule/PreScheduleSlotRepository"
+import { DEFAULT_MEETING_DURATION_MINUTES, isMeetingDurationMinutes } from "@/app/api/domain/teamScheduleSettings/meetingDuration"
 
 export const PRE_SCHEDULE_SLOT_MINUTES = 30
+
+async function getPreScheduleSlotMinutes(teamId: string): Promise<number> {
+  const configured = await preScheduleSlotRepository.findTeamMeetingDuration(teamId)
+  return isMeetingDurationMinutes(configured) ? configured : DEFAULT_MEETING_DURATION_MINUTES
+}
 
 export async function getPreScheduleSlotCapacity(teamId: string): Promise<number> {
   return preScheduleSlotRepository.countTransferRoutesBySourceTeam(teamId)
@@ -25,15 +31,15 @@ async function findTransferLeadsInDay(
 
 export function countSlotUsage(
   leads: Array<{ meetingDate: Date | null }>,
-  timezone: string
+  timezone: string,
+  slotMinutes = PRE_SCHEDULE_SLOT_MINUTES,
 ): Map<number, number> {
   const usage = new Map<number, number>()
 
   for (const lead of leads) {
     if (!lead.meetingDate) continue
     const minute =
-      Math.floor(getMinutesInTz(lead.meetingDate, timezone) / PRE_SCHEDULE_SLOT_MINUTES) *
-      PRE_SCHEDULE_SLOT_MINUTES
+      Math.floor(getMinutesInTz(lead.meetingDate, timezone) / slotMinutes) * slotMinutes
     usage.set(minute, (usage.get(minute) ?? 0) + 1)
   }
 
@@ -45,16 +51,20 @@ export async function getPreScheduleSlotUsage(
   dateParam: string,
   timezoneInput?: string,
   excludeLeadId?: string
-): Promise<{ usage: Map<number, number>; capacity: number; timezone: string }> {
+): Promise<{ usage: Map<number, number>; capacity: number; timezone: string; slotMinutes: number }> {
   const masterTimezone = await preScheduleSlotRepository.findTeamMasterTimezone(teamId)
   const timezone = resolveTimezone(timezoneInput ?? masterTimezone) || DEFAULT_TZ
-  const capacity = await getPreScheduleSlotCapacity(teamId)
+  const [capacity, slotMinutes] = await Promise.all([
+    getPreScheduleSlotCapacity(teamId),
+    getPreScheduleSlotMinutes(teamId),
+  ])
   const leads = await findTransferLeadsInDay(teamId, dateParam, timezone, excludeLeadId)
 
   return {
-    usage: countSlotUsage(leads, timezone),
+    usage: countSlotUsage(leads, timezone, slotMinutes),
     capacity,
     timezone,
+    slotMinutes,
   }
 }
 
@@ -75,15 +85,13 @@ export async function isPreScheduleSlotAvailable(
   excludeLeadId?: string
 ): Promise<{ available: boolean; capacity: number; usageAtSlot: number }> {
   const dateParam = meetingDate.toISOString().slice(0, 10)
-  const { usage, capacity, timezone } = await getPreScheduleSlotUsage(
+  const { usage, capacity, timezone, slotMinutes } = await getPreScheduleSlotUsage(
     teamId,
     dateParam,
     timezoneInput,
     excludeLeadId
   )
-  const minute =
-    Math.floor(getMinutesInTz(meetingDate, timezone) / PRE_SCHEDULE_SLOT_MINUTES) *
-    PRE_SCHEDULE_SLOT_MINUTES
+  const minute = Math.floor(getMinutesInTz(meetingDate, timezone) / slotMinutes) * slotMinutes
   const usageAtSlot = usage.get(minute) ?? 0
 
   return {
@@ -99,7 +107,7 @@ export async function getPreScheduleSlotsPayload(
   timezoneInput?: string,
   excludeLeadId?: string
 ) {
-  const { usage, capacity, timezone } = await getPreScheduleSlotUsage(
+  const { usage, capacity, timezone, slotMinutes } = await getPreScheduleSlotUsage(
     teamId,
     dateParam,
     timezoneInput,
@@ -109,5 +117,5 @@ export async function getPreScheduleSlotsPayload(
   const occupiedSlots = getFullyOccupiedSlots(usage, capacity)
   const slotUsage = Object.fromEntries(usage.entries())
 
-  return { occupiedSlots, slotCapacity: capacity, slotUsage, timezone }
+  return { occupiedSlots, slotCapacity: capacity, slotUsage, timezone, slotMinutes }
 }

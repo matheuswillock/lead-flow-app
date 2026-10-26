@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { teamStudioDomainRepository } from "@/app/api/infra/data/repositories/teamStudioDomain/TeamStudioDomainRepository"
 import {
   buildPublicFormPreviewSnapshot,
   mapPublicFormDraft,
@@ -41,7 +42,18 @@ function publicationErrors(form: Awaited<ReturnType<typeof publicFormsService.ge
   return validatePublicFormDraft(mapPublicFormDraft(form), { mode: "form" })
 }
 
+const STUDIO_DOMAIN_REQUIRED_MESSAGE =
+  "Configure e verifique o subdomínio studio antes de publicar."
+
+type StudioDomainStatusRepository = {
+  findByTeamId(teamId: string): Promise<{ status: string } | null>
+}
+
 export class PublicFormsUseCase {
+  constructor(
+    private readonly studioDomainRepository: StudioDomainStatusRepository = teamStudioDomainRepository,
+  ) {}
+
   async list(access: TeamAccess, filters: PublicFormListFilters) {
     const approvalPermission = await canApprove(access)
     if (!isManager(access) && !approvalPermission) {
@@ -170,6 +182,10 @@ export class PublicFormsUseCase {
     if (!isManager(access) && !(await canApprove(access))) {
       return new Output(false, [], ["Acesso negado"], null)
     }
+    const studioDomain = await this.studioDomainRepository.findByTeamId(access.teamId)
+    if (studioDomain?.status !== "verified") {
+      return new Output(false, [], [STUDIO_DOMAIN_REQUIRED_MESSAGE], null)
+    }
     const form = await publicFormsService.get(access.teamId, id)
     const errors = publicationErrors(form)
     if (errors.length > 0) return new Output(false, [], errors, null)
@@ -229,9 +245,14 @@ export class PublicFormsUseCase {
   async getPublic(publicId: string) {
     if (!isValidPublicFormId(publicId)) return new Output(false, [], ["Formulário indisponível"], null)
     const result = await publicFormsService.getPublic(publicId)
-    return result
-      ? new Output(true, [], [], result)
-      : new Output(false, [], ["Formulário indisponível"], null)
+    if (!result) return new Output(false, [], ["Formulário indisponível"], null)
+    const domain = result.teamId ? await teamStudioDomainRepository.findByTeamId(result.teamId) : null
+    return new Output(true, [], [], {
+      ...result,
+      tracking: domain
+        ? { headScripts: domain.headScripts, bodyStartScripts: domain.bodyStartScripts, bodyEndScripts: domain.bodyEndScripts }
+        : null,
+    })
   }
 
   async getAvailabilityContext(publicId: string) {

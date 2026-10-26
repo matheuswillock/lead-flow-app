@@ -1,0 +1,99 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import { useParams } from "next/navigation"
+import { useTeamContext } from "@/app/context/TeamContext"
+import { useUserContext } from "@/app/context/UserContext"
+import { toastUserError } from "@/lib/ui/to-user-toast-message"
+import type { LandingDomain, LandingPageListItem, LandingPagesState } from "./LandingPagesTypes"
+import { getLandingDomainApiUrl, getLandingPagesApiUrl } from "../services/LandingPagesService"
+
+type ApiOutput<T> = { isValid?: boolean; errorMessages?: string[]; result?: T }
+type LandingListResult = LandingPageListItem[]
+
+function getErrorMessage(output: ApiOutput<unknown>, fallback: string) {
+  return output.errorMessages?.[0] || fallback
+}
+
+export function useLandingPagesHook(): LandingPagesState {
+  const { supabaseId } = useParams<{ supabaseId: string }>()
+  const { activeTeamId } = useTeamContext()
+  const { user } = useUserContext()
+  const [items, setItems] = useState<LandingPageListItem[]>([])
+  const [domain, setDomain] = useState<LandingDomain | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const headers = useMemo(
+    () => ({
+      "x-supabase-user-id": user?.supabaseId ?? supabaseId,
+      "x-team-id": activeTeamId ?? "",
+    }),
+    [activeTeamId, supabaseId, user?.supabaseId],
+  )
+
+  const refresh = useCallback(async () => {
+    if (!activeTeamId) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      const [landingsResponse, domainResponse] = await Promise.all([
+        fetch(getLandingPagesApiUrl(activeTeamId), { headers }),
+        fetch(getLandingDomainApiUrl(activeTeamId), { headers }),
+      ])
+      const landingsOutput = (await landingsResponse.json()) as ApiOutput<LandingListResult>
+      const domainOutput = (await domainResponse.json()) as ApiOutput<{ studioDomain: LandingDomain | null }>
+      if (!landingsResponse.ok || landingsOutput.isValid === false) {
+        throw new Error(getErrorMessage(landingsOutput, "Não foi possível carregar as landing pages."))
+      }
+      setItems(landingsOutput.result ?? [])
+      setDomain(domainOutput.result?.studioDomain ?? null)
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Não foi possível carregar as landing pages."
+      setError(message)
+      setItems([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [activeTeamId, headers])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const runAction = useCallback(async (id: string, action: "publish" | "archive") => {
+    if (!activeTeamId) return false
+    try {
+      const response = await fetch(`${getLandingPagesApiUrl(activeTeamId)}/${id}?action=${action}`, {
+        method: "POST",
+        headers,
+      })
+      const output = (await response.json()) as ApiOutput<unknown>
+      if (!response.ok || output.isValid === false) throw new Error(getErrorMessage(output, "Não foi possível atualizar a landing page."))
+      toast.success(action === "publish" ? "Landing publicada" : "Landing arquivada")
+      await refresh()
+      return true
+    } catch (reason) {
+      toastUserError(reason)
+      return false
+    }
+  }, [activeTeamId, headers, refresh])
+
+  const deleteArchived = useCallback(async (id: string) => {
+    if (!activeTeamId) return false
+    try {
+      const response = await fetch(`${getLandingPagesApiUrl(activeTeamId)}/${id}`, { method: "DELETE", headers })
+      const output = (await response.json()) as ApiOutput<unknown>
+      if (!response.ok || output.isValid === false) throw new Error(getErrorMessage(output, "Não foi possível excluir a landing page."))
+      setItems((currentItems) => currentItems.filter((item) => item.id !== id))
+      toast.success("Landing page excluída")
+      return true
+    } catch (reason) {
+      toastUserError(reason)
+      return false
+    }
+  }, [activeTeamId, headers])
+
+  return { items, domain, isLoading, error, refresh, publish: (id) => runAction(id, "publish"), archive: (id) => runAction(id, "archive"), deleteArchived }
+}

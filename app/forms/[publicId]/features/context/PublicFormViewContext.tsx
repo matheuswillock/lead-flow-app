@@ -10,13 +10,15 @@ export function PublicFormViewProvider({
   publicId,
   children,
   initialSnapshot,
+  initialPublicationId,
 }: {
   publicId: string
   children: ReactNode
   /** Snapshot pré-carregado pelo Server Component — evita requisição visível no Network. */
   initialSnapshot?: import("@/lib/public-forms/types").PublicFormSnapshot | null
+  initialPublicationId?: string | null
 }) {
-  const value = usePublicFormView(publicId, initialSnapshot)
+  const value = usePublicFormView(publicId, initialSnapshot, initialPublicationId)
   return <PublicFormViewContext.Provider value={value}>{children}</PublicFormViewContext.Provider>
 }
 

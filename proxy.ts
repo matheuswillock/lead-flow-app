@@ -8,6 +8,7 @@ import {
   isLegacyTenantRoute,
   parseTenantPath,
   requiresAuth,
+  requiresSessionPage,
   requiresManagerRole,
 } from "@/lib/proxy/route-access"
 import { resolveProfileRoleForProxy } from "@/lib/proxy/resolve-profile-role"
@@ -25,6 +26,7 @@ import {
   getPlatformBaseUrl,
   isPathAllowedOnFormsHost,
 } from "@/lib/proxy/forms-host"
+import { isPathAllowedOnLandingHost } from "@/lib/proxy/landing-host"
 
 /** Prefixo público das chamadas client-side: /api/q/... */
 const SLUG_PREFIX = `/api/${API_CLIENT_SLUG}/`
@@ -76,6 +78,15 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
+    if (
+      pathname.startsWith("/conversation/") ||
+      pathname.startsWith("/conversao/") ||
+      pathname.startsWith("/api/q/conversation/") ||
+      pathname.startsWith("/api/q/conversao/")
+    ) {
+      return handleLandingHostRequest(request, pathname, isClientApiSlug)
+    }
+
     // Host de formulários (domínio do time ou host neutro de fallback):
     // serve SOMENTE /forms/* + APIs públicas do formulário. Sem query de
     // banco aqui — só host + path. A tenancy (form.teamId == domain.teamId)
@@ -138,6 +149,12 @@ export async function proxy(request: NextRequest) {
       const url = new URL(`/${user.id}/crm`, request.url)
       url.search = request.nextUrl.search
       return redirectWithSession(response, url)
+    }
+
+    if (requiresSessionPage(pathname) && !user) {
+      const signIn = new URL("/sign-in", request.url)
+      signIn.searchParams.set("next", pathname)
+      return redirectWithSession(response, signIn)
     }
 
     if (isPublicPageRoute(pathname)) {
@@ -322,6 +339,39 @@ function handleFormsHostRequest(
     rewriteResponse.headers.set("X-Content-Type-Options", "nosniff")
     rewriteResponse.headers.set("X-Robots-Tag", "noindex")
     return rewriteResponse
+  }
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+  response.headers.set("X-Robots-Tag", "noindex")
+  return response
+}
+
+function handleLandingHostRequest(
+  request: NextRequest,
+  pathname: string,
+  isClientApiSlug: boolean,
+): NextResponse {
+  if (!isPathAllowedOnLandingHost(pathname)) {
+    const platformBase = getPlatformBaseUrl()
+    if (!platformBase) return NextResponse.next()
+    const redirectUrl = new URL(pathname, platformBase)
+    redirectUrl.search = request.nextUrl.search
+    return NextResponse.redirect(redirectUrl, { status: 307 })
+  }
+
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete("x-supabase-user-id")
+
+  if (isClientApiSlug) {
+    const rest = pathname.slice(SLUG_PREFIX.length)
+    const rewrittenUrl = request.nextUrl.clone()
+    rewrittenUrl.pathname = REAL_API_PREFIX + rest
+    const response = NextResponse.rewrite(rewrittenUrl, {
+      request: { headers: requestHeaders },
+    })
+    response.headers.set("X-Content-Type-Options", "nosniff")
+    response.headers.set("X-Robots-Tag", "noindex")
+    return response
   }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })

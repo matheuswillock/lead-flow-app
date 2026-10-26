@@ -1,9 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>Relatório pronto · Corretor Studio</title>
 <!--
   Fluxo: Envio do relatório de performance por e-mail (com .zip anexado)
   Fonte: app/api/useCases/performance/PerformanceUseCase.ts → sendSalesPerformanceExportEmail
-  Assunto: Relatório de Performance ({{presetLabel}})
-  Variáveis: {{requesterName}}
+  Assunto: Relatório de Performance ({{{presetLabel}}})
+  Variáveis: {{{requesterName}}}, {{{presetLabel}}}, {{{currentYear}}}
 -->
-<p>Olá, {{requesterName}}.</p>
-<p>Seu relatório de performance foi gerado com sucesso.</p>
-<p>O arquivo zipado está anexado neste e-mail.</p>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:#F0EFF5;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F0EFF5;">Seu relatório de performance ({{{presetLabel}}}) está anexado a este e-mail.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F0EFF5;">
+    <tr>
+      <td align="center" style="padding:32px 12px;">
+        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+        <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff; border:1px solid #E5E4EA; border-radius:16px; overflow:hidden;">
+
+          <tr>
+            <td bgcolor="#ffffff" style="background-color:#ffffff; border-top:3px solid #ff6900; border-bottom:1px solid #EDEDF1; padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td align="center" style="padding-bottom:14px;">
+          <img src="https://wcnxwdcoambpfwxwubka.supabase.co/storage/v1/object/public/email-template-assets/f12782b1-df3b-4ed4-9efb-f915874bf83c/asset-1783703588900-w41ywg.png" width="27" height="24" alt="Corretor Studio" style="display:inline-block; vertical-align:middle; border:0; outline:none; text-decoration:none;" /><span style="display:inline-block; vertical-align:middle; margin-left:9px; font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:18px; color:#1C1B22;">Corretor Studio</span>
+        </td></tr><tr><td align="center" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:1.1px; text-transform:uppercase; color:#9A99A6;">Relatório pronto</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:30px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-weight:bold; font-size:22px; line-height:1.3; letter-spacing:-0.3px; color:#1C1B22; padding-bottom:10px; ">Seu relatório está pronto, <span style="color:#e57082;">{{{requesterName}}}</span>!</td></tr>
+<tr><td style="font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.65; color:#6E6D7A; padding-bottom:22px; ">O <strong style="color:#1C1B22;">relatório de performance</strong> foi gerado com sucesso. O arquivo compactado está anexado a este e-mail, basta baixá-lo para visualizar os dados.</td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr>
+        <td width="62" valign="middle" style="padding:14px 0 14px 16px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#EEEBFF" style="background-color:#EEEBFF; border:1px solid #D4CCFE; border-radius:10px; font-family:Arial, Helvetica, sans-serif; font-size:10px; font-weight:bold; letter-spacing:0.5px; color:#533AFD;">ZIP</td></tr></table></td>
+        <td valign="middle" style="padding:14px 10px;">
+          <div style="font-family:Arial, Helvetica, sans-serif; font-size:13.5px; font-weight:bold; color:#1C1B22; word-break:break-all;">performance_{{{presetLabel}}}.zip</div>
+          <div style="font-family:Arial, Helvetica, sans-serif; font-size:12px; color:#6E6D7A; padding-top:2px;">Arquivo compactado · anexo deste e-mail</div>
+        </td>
+        <td align="right" valign="middle" style="padding:14px 16px 14px 0;"><span style="display:inline-block; font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.5px; text-transform:uppercase; color:#00a87e; background-color:#E4F6EF; border:1px solid #B7E5D0; border-radius:999px; padding:4px 10px;">Pronto</span></td>
+      </tr></table></td></tr>
+<tr><td style="padding-bottom:22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #E5E4EA; border-radius:12px;"><tr><td style="padding:6px 18px;"><div style="font-family:Arial, Helvetica, sans-serif; font-size:11px; font-weight:bold; letter-spacing:0.9px; text-transform:uppercase; color:#1C1B22; padding:10px 0 2px;">Detalhes do relatório</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Período</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#e57082; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">{{{presetLabel}}}</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; border-bottom:1px solid #E5E4EA;">Formato</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; border-bottom:1px solid #E5E4EA;">ZIP</td>
+                </tr><tr>
+                  <td valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:12px; font-weight:bold; letter-spacing:0.4px; text-transform:uppercase; color:#6E6D7A; padding:11px 12px 11px 0; ">Solicitado por</td>
+                  <td align="right" valign="top" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:bold; color:#1C1B22; padding:11px 0; word-break:break-word; ">{{{requesterName}}}</td>
+                </tr></table></td></tr></table></td></tr>
+<tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7F7F9" style="background-color:#F7F7F9; border:1px solid #EDEDF1; border-radius:8px;"><tr><td style="padding:12px 14px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:1.55; color:#9A99A6;">Não conseguiu localizar o anexo? Verifique a pasta de spam ou solicite uma nova exportação na plataforma.</td></tr></table></td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#FAFAFC" style="background-color:#FAFAFC; border-top:1px solid #EDEDF1; padding:16px 32px; text-align:center;">
+              <p style="margin:0 0 4px; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">Este é um e-mail automático do Corretor Studio</p>
+              <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:11px; line-height:1.7; color:#9A99A6;">© {{{currentYear}}} Corretor Studio. Todos os direitos reservados.</p>
+            </td>
+          </tr>
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

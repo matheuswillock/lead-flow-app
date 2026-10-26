@@ -712,6 +712,8 @@ export class PortfolioService implements IPortfolioService {
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
         if (payload.startDateAt) finalizedPatch.startDateAt = new Date(payload.startDateAt);
         if (payload.notes !== undefined) finalizedPatch.notes = payload.notes;
+        if (payload.contractFileUrl !== undefined) finalizedPatch.contractFileUrl = payload.contractFileUrl;
+        if (payload.contractStoragePath !== undefined) finalizedPatch.contractStoragePath = payload.contractStoragePath;
         if (Object.keys(finalizedPatch).length > 0) {
           await tx.leadFinalized.update({ where: { id: finalized.id }, data: finalizedPatch });
         }

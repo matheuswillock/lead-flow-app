@@ -1,8 +1,19 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // T-20.9 de [[20 — Assinaturas — Backend]] E3 (C15 🔴/DA5).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
-const prismaMock = { profile: { findUnique: findUniqueMock, update: mock(async () => ({})) } }
+const prismaMock = {
+  profile: { findUnique: findUniqueMock, update: mock(async () => ({})) },
+  profileSubscription: { updateMany: mock(async () => ({})) },
+  $transaction: mock(async (callback: (transaction: unknown) => Promise<unknown>) => callback(prismaMock)),
+}
 mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
 
 const createSubscriptionMock = mock(async () => ({

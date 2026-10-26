@@ -13,6 +13,12 @@ describe("escapeHtml", () => {
     expect(escaped).toBe("&lt;a href=&quot;https://evil&quot;&gt;Confirme&lt;/a&gt;")
   })
 
+  test("neutraliza texto e atributos HTML", () => {
+    expect(escapeHtml(`<img src=x onerror='execute(1)'>`)).toBe(
+      "&lt;img src=x onerror=&#39;execute(1)&#39;&gt;"
+    )
+  })
+
   test("null e undefined viram string vazia", () => {
     expect(escapeHtml(null)).toBe("")
     expect(escapeHtml(undefined)).toBe("")

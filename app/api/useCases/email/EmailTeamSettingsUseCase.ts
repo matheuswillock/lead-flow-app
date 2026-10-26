@@ -12,7 +12,7 @@ import {
   isClickTrackingEligibleDomain,
   RESEND_TRACKING_POLICY,
 } from "@/lib/email/resend-domain-reconcile"
-import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
+import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
 import {
   isSelfInflictedTrackingConflict,
   isTrackingSubdomainConflict,
@@ -43,6 +43,7 @@ import {
   resendDomainTrackingInputFromSettings,
 } from "@/lib/email/campaign-dispatch-guards"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { teamStudioDomainUseCase } from "@/app/api/useCases/email/TeamStudioDomainUseCase"
 
 // A definição vive na camada de persistência (é o formato gravado na coluna Json);
 // reexportada aqui porque os consumidores históricos importam deste módulo.
@@ -180,6 +181,7 @@ export type EmailTeamSettingsDependencies = {
   domainExistence?: (name: string) => Promise<SendingDomainExistence>
   /** Mesma costura: o default resolve os nameservers por DoH, com cache de horas. */
   dnsProviderLookupService?: IDnsProviderLookupService
+  waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 }
 
 export class EmailTeamSettingsUseCase {
@@ -191,6 +193,7 @@ export class EmailTeamSettingsUseCase {
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly domainExistence: (name: string) => Promise<SendingDomainExistence>
   private readonly dnsProviderLookupService: IDnsProviderLookupService
+  private readonly waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 
   /**
    * Dependências por objeto nomeado, não por posição: quem só quer injetar o
@@ -208,6 +211,7 @@ export class EmailTeamSettingsUseCase {
     this.domainExistence = dependencies.domainExistence ?? checkSendingDomainExistence
     this.dnsProviderLookupService =
       dependencies.dnsProviderLookupService ?? new DnsProviderLookupService()
+    this.waitForTrackingConfirmation = dependencies.waitForTrackingConfirmation
   }
 
   private composeResult(
@@ -493,15 +497,12 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      // Click tracking fica desligado: ele reescreve todo href do template para
-      // o subdomínio de tracking, e esse redirecionador é penalizado pelo Safe
-      // Browsing ("link parece perigoso" no Gmail). O clique é medido no
-      // first-party, pelo `cs_el` carimbado na URL do formulário. O
-      // `trackingSubdomain` continua sendo criado porque o open tracking usa o
-      // mesmo CNAME.
+      // O tracking de cliques nasce ligado para novos domínios. O
+      // `trackingSubdomain` continua sendo criado porque o open tracking e os
+      // redirecionamentos de clique usam o mesmo CNAME.
       //
-      // O `create` acima já nasce com `clickTracking: false` — não há janela em
-      // que o redirecionador exista. Este update é reforço, e o erro dele é
+      // O `create` acima já nasce com a política de tracking desejada. Este
+      // update é reforço, e o erro dele é
       // verificado: sem isso, uma falha aqui deixaria o provedor divergente do
       // que gravamos no banco e a operação ainda reportaria sucesso.
       //
@@ -701,14 +702,8 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
-        // O gate de DNS abaixo lê `currentDomain.records`, que descreve o
-        // subdomínio de tracking ATUAL no Resend. Se este mesmo request troca o
-        // subdomínio, aquele snapshot é do hostname ANTIGO: o gate passaria com
-        // o CNAME velho e o clique seria ligado sobre um hostname ainda sem
-        // CNAME verificado — links quebrados no e-mail entregue. Trocar o
-        // subdomínio e ligar o clique são, por isso, duas operações: primeiro
-        // salva o subdomínio com o clique desligado, verifica o DNS novo,
-        // depois liga.
+        // A troca do subdomínio continua sendo uma operação separada para que
+        // o novo CNAME possa ser configurado sem alterar o tracking existente.
         if (!trackingAlreadyConfigured) {
           return new Output(
             false,
@@ -720,32 +715,7 @@ export class EmailTeamSettingsUseCase {
           )
         }
 
-        // Checkpoint: sem o CNAME de Tracking verificado o rewrite produziria
-        // links quebrados no e-mail entregue. `false` E `undefined` bloqueiam.
-        const trackingDnsVerified = deriveTrackingDnsVerified(currentDomain.records)
-        if (trackingDnsVerified !== true) {
-          return new Output(
-            false,
-            [],
-            [
-              `O registro DNS de Tracking (CNAME ${trackingSubdomain}.${settings.resendDomainName ?? "seu-dominio"}) ainda não está verificado no Resend. Verifique o DNS do domínio antes de ligar o rastreio de cliques.`,
-            ],
-            null
-          )
-        }
-
-        if (currentDomain.status !== "verified") {
-          return new Output(
-            false,
-            [],
-            [
-              "O domínio precisa estar verificado no Resend antes de ligar o rastreio de cliques.",
-            ],
-            null
-          )
-        }
       }
-
       const updatePayload: {
         id: string
         openTracking: boolean
@@ -780,18 +750,30 @@ export class EmailTeamSettingsUseCase {
         )
       }
 
-      const { data: domainData, error: getError } = await resend.domains.get(
-        settings.resendDomainId
-      )
-      if (getError || !domainData) {
+      const confirmation = await confirmResendDomainTracking({
+        desired: { openTracking: input.openTracking, clickTracking: desiredClickTracking },
+        fetchDomain: async () => {
+          const result = await resend.domains.get(settings.resendDomainId!)
+          return { data: result.data, error: result.error }
+        },
+        wait: this.waitForTrackingConfirmation,
+      })
+      const domainData = confirmation.snapshot
+      if (!domainData) {
         console.error(
           "[EmailTeamSettingsUseCase][configureDomainTracking] Resend get error",
-          getError
+          confirmation.error
         )
         return new Output(
           false,
           [],
-          [mapResendDomainError(getError?.message, "tracking", settings.resendDomainName ?? undefined)],
+          [
+            mapResendDomainError(
+              confirmation.error instanceof Error ? confirmation.error.message : undefined,
+              "tracking",
+              settings.resendDomainName ?? undefined
+            ),
+          ],
           null
         )
       }
@@ -842,6 +824,17 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (!confirmation.confirmed) {
+        return new Output(
+          false,
+          [],
+          [
+            "O Resend não confirmou a alteração das métricas de tracking. O estado atual foi sincronizado; tente novamente.",
+          ],
+          null
+        )
+      }
 
       const successMessage = trackingConflict
         ? "Subdomínio de tracking já existia no Resend. Status sincronizado — adicione o DNS de Tracking e re-verifique, se pendente."
@@ -912,6 +905,7 @@ export class EmailTeamSettingsUseCase {
           ? { fromName: PLATFORM_FROM_NAME, fromEmail: PLATFORM_FROM_EMAIL }
           : null
       )
+      await teamStudioDomainUseCase.disconnectForTeam(ctx.teamId)
 
       return new Output(true, ["Domínio removido com sucesso"], [], null)
     } catch (error) {
@@ -944,6 +938,10 @@ export class EmailTeamSettingsUseCase {
         domainData,
         new Date()
       )
+
+      if (synced.status === "verified" && domainData.name) {
+        await teamStudioDomainUseCase.ensureForEmailDomain(ctx.teamId, domainData.name)
+      }
 
       return new Output(true, ["Verificação iniciada"], [], {
         status: synced.status as ResendDomainStatus,

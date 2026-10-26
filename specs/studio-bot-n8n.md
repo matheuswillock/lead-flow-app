@@ -1020,7 +1020,7 @@ agora suprime eventos sem template aprovado antes de entregá-los ao N8N.
 
 - [x] `specs/studio-bot-n8n.md`
 - [x] Diagramas mermaid
-- [x] Cópia Obsidian em `docs/obsidian/`
+- [x] Nota no vault Obsidian: `Corretor studio/Bethânia.md`
 - [ ] Feature slug `studio-bot` — migration + seed (fase 1)
 
 ### Fase 1 — Infraestrutura e autenticação híbrida (backend)
@@ -1086,7 +1086,7 @@ agora suprime eventos sem template aprovado antes de entregá-los ao N8N.
 
 ## Open Questions
 
-- [ ] Caminho do vault Obsidian pessoal para sync além de `docs/obsidian/` no repo
+- [x] Vault Obsidian pessoal definido fora do repositório
 - [x] Provedor exato do canal em **produção**: Evolution API em v1 (alinhado ao stack); WhatsApp Cloud API como v1.1
 - [x] Hosting N8N em **dev local** — Docker Compose dedicado (`docker-compose.n8n.yml`), scripts `n8n:*`, opt-in em `bun dev -- n8n` (resolvido na SPEC)
 - [ ] Hosting N8N em **produção**: self-hosted vs cloud e URL base

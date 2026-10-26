@@ -62,7 +62,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils"
 import { RESEND_DOMAIN_TRACKING_REQUIRED_MESSAGE } from "@/lib/email/campaign-dispatch-guards"
 import { PLATFORM_FROM_EMAIL } from "@/lib/email/resolve-campaign-from"
-import { deriveTrackingDnsVerified } from "@/lib/email/resend-domain-records"
+import { isClickTrackingEligibleDomain } from "@/lib/email/resend-domain-reconcile"
 import {
   groupDnsRecordsBySection,
   isDnsRecordVerified,
@@ -76,6 +76,7 @@ import { DomainEventsTimeline } from "./DomainEventsTimeline"
 import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 import { SendDnsInstructionsDialog } from "./SendDnsInstructionsDialog"
 import { formatResendRegion } from "../utils/resend-region-labels"
+import { shouldShowDnsMissingAlerts } from "@/lib/email/domain-verification-visibility"
 
 const DEFAULT_TRACKING_SUBDOMAIN = "links"
 const TRACKING_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
@@ -365,10 +366,13 @@ export function CustomDomainCard() {
   const [trackingSubdomainInput, setTrackingSubdomainInput] = useState(DEFAULT_TRACKING_SUBDOMAIN)
   const [openTrackingDraft, setOpenTrackingDraft] = useState(true)
   const [clickTrackingDraft, setClickTrackingDraft] = useState(false)
+  const [verificationRequested, setVerificationRequested] = useState(false)
 
   useEffect(() => {
     if (domainName && domainRecords.length === 0) {
-      void handleLoadDomainRecords()
+      void handleLoadDomainRecords().catch((error) => {
+        console.error("[CustomDomainCard] Falha ao carregar registros DNS", error)
+      })
     }
   }, [domainName, domainRecords.length, handleLoadDomainRecords])
 
@@ -379,11 +383,19 @@ export function CustomDomainCard() {
     ? `${trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN}.${domainName}`
     : trackingSubdomainInput.trim() || DEFAULT_TRACKING_SUBDOMAIN
 
-  // Gate do rastreio de cliques (17/09): só libera com o domínio verificado E
-  // o CNAME de Tracking resolvendo — sem ele o rewrite quebraria os links do
-  // e-mail entregue. O backend aplica o mesmo gate; aqui é só UX antecipada.
-  const trackingDnsVerified = deriveTrackingDnsVerified(domainRecords) === true
-  const clickTrackingUnlockable = trackingDnsVerified && domainStatus === "verified"
+  // O tracking nasce habilitado quando um domínio próprio é adicionado. A
+  // verificação DNS confirma a entrega, mas não deve bloquear a configuração.
+  const clickTrackingUnlockable = isConnected && isClickTrackingEligibleDomain(domainName)
+  const showDnsMissingAlerts = shouldShowDnsMissingAlerts({
+    domainName,
+    domainEvents,
+    verificationRequested,
+  })
+
+  async function requestDomainVerification() {
+    setVerificationRequested(true)
+    await handleVerifyDomain()
+  }
 
   function openTrackingDialog() {
     setTrackingSubdomainInput(domainTrackingSubdomain?.trim() || DEFAULT_TRACKING_SUBDOMAIN)
@@ -406,11 +418,17 @@ export function CustomDomainCard() {
     const ok = await handleConfigureDomainTracking({
       trackingSubdomain: subdomain,
       openTracking: openTrackingDraft,
-      // Escolha do time (17/09). Com o gate travado o valor volta a `false` —
-      // o backend valida de novo (domínio verificado + CNAME de Tracking ok).
+      // Domínio próprio pode habilitar cliques antes da verificação DNS; o
+      // backend mantém o guard do domínio compartilhado da plataforma.
       clickTracking: clickTrackingUnlockable ? clickTrackingDraft : false,
     })
-    if (ok) setTrackingDialogOpen(false)
+    if (ok) {
+      setTrackingDialogOpen(false)
+      return
+    }
+
+    setOpenTrackingDraft(domainOpenTracking)
+    setClickTrackingDraft(domainClickTracking)
   }
 
   return (
@@ -476,7 +494,7 @@ export function CustomDomainCard() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     disabled={verifyingDomain || loadingRecords}
-                    onClick={() => void handleVerifyDomain()}
+                    onClick={() => void requestDomainVerification()}
                   >
                     <Clock data-icon="inline-start" />
                     {verifyLabel}
@@ -621,7 +639,7 @@ export function CustomDomainCard() {
               <Button
                 type="button"
                 className="max-lg:h-11"
-                onClick={() => void handleVerifyDomain()}
+                onClick={() => void requestDomainVerification()}
                 disabled={verifyingDomain || loadingRecords}
               >
                 {verifyingDomain ? (
@@ -671,7 +689,7 @@ export function CustomDomainCard() {
                       <p className="font-[family-name:var(--font-poppins)] text-sm font-semibold text-foreground">
                         {SECTION_TITLES[section.key]}
                       </p>
-                      {pendingAlert && awaitingRecords.length > 0 ? (
+                      {pendingAlert && awaitingRecords.length > 0 && showDnsMissingAlerts ? (
                         <Alert variant="destructive">
                           <AlertCircle className="size-4" />
                           <AlertTitle>{pendingAlert.title}</AlertTitle>
@@ -682,7 +700,7 @@ export function CustomDomainCard() {
                               variant="outline"
                               size="sm"
                               className="max-lg:h-11"
-                              onClick={() => void handleVerifyDomain()}
+                              onClick={() => void requestDomainVerification()}
                               disabled={verifyingDomain || loadingRecords}
                             >
                               {verifyingDomain ? (
@@ -852,16 +870,14 @@ export function CustomDomainCard() {
 
                   {clickTrackingUnlockable ? (
                     <FieldDescription>
-                      Os cliques do provedor passam pelo filtro de robôs
-                      (scanners corporativos não contam) e convivem com a
-                      medição feita no próprio formulário.
+                      O rastreio de cliques fica disponível assim que o domínio
+                      é adicionado. A verificação DNS confirma o funcionamento
+                      do endereço personalizado.
                     </FieldDescription>
                   ) : (
                     <FieldDescription>
-                      O rastreio de cliques fica disponível quando o domínio
-                      estiver verificado e o registro DNS de Tracking (CNAME{" "}
-                      <span className="font-mono text-xs">{trackingPreviewHost}</span>)
-                      estiver resolvendo. Verifique o DNS e tente de novo.
+                      O rastreio de cliques fica disponível somente para um
+                      domínio próprio conectado.
                     </FieldDescription>
                   )}
                 </FieldGroup>

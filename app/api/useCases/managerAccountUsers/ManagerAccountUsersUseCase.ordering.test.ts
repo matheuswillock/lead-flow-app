@@ -32,6 +32,10 @@ mock.module("@/lib/supabase/email-auth-link", () => ({
   buildSetPasswordEmailAuthLink: () => "https://example.test/set-password?token=abc",
 }))
 
+mock.module("@/app/api/useCases/audit/AuditLogWriter", () => ({
+  auditLogWriter: { logAudit: async () => {} },
+}))
+
 mock.module("@/lib/supabase/server", () => ({
   createSupabaseAdmin: () => {
     eventos.push("supabase:createAdmin")

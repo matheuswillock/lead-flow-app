@@ -74,7 +74,18 @@ export function PublicAdhesionProvider({
       if (isSubmitting) return
       setIsSubmitting(true)
       try {
-        const response = await service.createCheckout(token, input)
+        // PIX da adesão cobrado pelo provider (Abacate) tem endpoint próprio; o resto segue o checkout padrão.
+        const useProviderPix =
+          details?.pixProvider === "ABACATE_PAY" && input.billingType === "PIX"
+        const response = useProviderPix
+          ? await service.createPixCheckout(token, {
+              fullName: input.fullName,
+              email: input.email,
+              phone: input.phone,
+              cpfCnpj: input.cpfCnpj,
+              idempotencyKey: `adhesion-pix:${crypto.randomUUID()}`,
+            })
+          : await service.createCheckout(token, input)
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][submitCheckout]", err)
@@ -83,7 +94,7 @@ export function PublicAdhesionProvider({
         setIsSubmitting(false)
       }
     },
-    [isSubmitting, service, token]
+    [details?.pixProvider, isSubmitting, service, token]
   )
 
   const refreshPaymentStatus = useCallback(

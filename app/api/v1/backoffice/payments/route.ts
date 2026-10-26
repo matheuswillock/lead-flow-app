@@ -5,6 +5,7 @@ import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManag
 import { BackofficePaymentUseCase } from "@/app/api/useCases/backoffice/BackofficePaymentUseCase"
 import { BackofficePaymentRepository } from "@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository"
 import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 function makeUseCase() {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const useCase = makeUseCase()
     const output = await useCase.createPayment(body, result.access.profileId)
-    return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
+    return NextResponse.json(output, { status: output.isValid ? 201 : failedOutputStatus(output) })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error)
     console.error("[BackofficePaymentsRoute][POST]", error)

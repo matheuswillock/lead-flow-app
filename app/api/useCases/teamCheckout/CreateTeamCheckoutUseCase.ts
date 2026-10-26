@@ -2,6 +2,9 @@ import type { UserFunction, UserRole } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { emailService } from "@/lib/services/EmailService"
 import { getFullUrl } from "@/lib/utils/app-url"
+import { assertCardChoiceAllowedForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService"
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService"
@@ -26,7 +29,8 @@ export interface CreateTeamCheckoutInput {
 export class CreateTeamCheckoutUseCase {
   constructor(
     private readonly repository: ITeamCheckoutRepository = teamCheckoutRepository,
-    private readonly billingService: IIncrementalBillingService = incrementalBillingService
+    private readonly billingService: IIncrementalBillingService = incrementalBillingService,
+    private readonly assertCardChoiceAllowed: typeof assertCardChoiceAllowedForMaster = assertCardChoiceAllowedForMaster
   ) {}
 
   async execute(input: CreateTeamCheckoutInput): Promise<Output> {
@@ -39,6 +43,8 @@ export class CreateTeamCheckoutUseCase {
       if (!requester || !master) {
         return new Output(false, [], ["Perfil não encontrado"], null)
       }
+
+      await this.assertCardChoiceAllowed(input.billingType, master)
 
       if (master.hasPermanentSubscription) {
         return await this.createTeamWithoutCharge(input, requester, master)
@@ -111,6 +117,7 @@ export class CreateTeamCheckoutUseCase {
         { pendingActionId: pendingAction.id, checkoutUrl }
       )
     } catch (error: unknown) {
+      if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error)
       console.error("[CreateTeamCheckoutUseCase][execute] Erro:", error)
       const message = error instanceof Error ? error.message : "Erro ao criar pagamento"
       return new Output(false, [], [message], null)

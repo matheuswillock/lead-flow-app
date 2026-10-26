@@ -31,6 +31,14 @@ export class OutboundWebhookDetailService implements IOutboundWebhookDetailServi
   testDelivery(supabaseId: string, teamId: string, id: string) {
     return teamWebhooksService.testDelivery(supabaseId, teamId, id);
   }
+
+  rotateSigningSecret(supabaseId: string, teamId: string, id: string) {
+    return teamWebhooksService.rotateSigningSecret(supabaseId, teamId, id);
+  }
+
+  resendLog(supabaseId: string, teamId: string, webhookId: string, logId: string) {
+    return teamWebhooksService.resendLog(supabaseId, teamId, webhookId, logId);
+  }
 }
 
 export const outboundWebhookDetailService = new OutboundWebhookDetailService();

@@ -14,7 +14,7 @@ O projeto usa dois sistemas paralelos de sincronização, ambos com **fonte can�
 | Sistema | Fonte canônica | Adapters gerados | Comando |
 |---|---|---|---|
 | **Governança** | `agents.md` | `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc` | `bun run governance:sync` |
-| **Skills** | `.claude/skills/*.md` | `.cursor/skills/*.mdc`, `.github/prompts/*.prompt.md` | `bun run skills:sync` |
+| **Skills compartilhadas** | `.claude/skills/*.md` | Targets declarados para Cursor, Copilot, Codex e Manus | `bun run skills:sync` |
 
 > **NUNCA editar os adapters gerados diretamente.** Toda mudança parte da fonte canônica.
 
@@ -25,10 +25,10 @@ O projeto usa dois sistemas paralelos de sincronização, ambos com **fonte can�
 | Agente | Arquivo de governança | Arquivo de skills | Formato |
 |---|---|---|---|
 | **Claude Code** | `CLAUDE.md` | `.claude/skills/*.md` | Markdown puro |
-| **Codex (OpenAI)** | `AGENTS.md` | via `.github/prompts/` | Markdown puro |
+| **Codex (OpenAI)** | `AGENTS.md` | `.agents/skills/<nome>/SKILL.md` | Markdown puro |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | `.github/prompts/*.prompt.md` | frontmatter `mode: agent` |
 | **Cursor** | `.cursor/rules/lead-flow-agents.mdc` | `.cursor/skills/*.mdc` | frontmatter MDC |
-| **Manus AI** | `agents.md` (lê diretamente) | `skills/*.md` (lê diretamente) | Markdown puro |
+| **Manus AI** | `agents.md` (lê diretamente) | `skills/<nome>/SKILL.md` | Markdown puro |
 
 ---
 
@@ -67,6 +67,7 @@ Formato obrigatório de cada skill:
 ```markdown
 ---
 description: Descrição curta da skill (usada como título nos adapters)
+targets: claude,cursor,copilot,codex,manus
 ---
 
 [Conteúdo da skill em Markdown]
@@ -75,7 +76,8 @@ description: Descrição curta da skill (usada como título nos adapters)
 Para **adicionar uma nova skill**:
 1. Criar `.claude/skills/<nome>.md` com frontmatter `description`.
 2. Rodar `bun run skills:sync` para gerar os adapters.
-3. Verificar que os adapters foram criados em `.cursor/skills/` e `.github/prompts/`.
+3. Declarar `targets` quando a skill também precisar de adapters Codex/Manus.
+4. Verificar todos os adapters declarados.
 
 Para **skills exclusivas do Manus AI** (que usam `manus-mcp-cli` ou ferramentas nativas):
 - Manter em `skills/<nome>/SKILL.md` (diretório raiz de skills do Manus).
@@ -114,6 +116,8 @@ bun run skills:sync
 Adapters atualizados:
 - `.cursor/skills/<nome>.mdc` — Cursor
 - `.github/prompts/<nome>.prompt.md` — GitHub Copilot
+- `.agents/skills/<nome>/SKILL.md` — Codex, quando `targets` incluir `codex`
+- `skills/<nome>/SKILL.md` — Manus, quando `targets` incluir `manus`
 
 #### Sincronizar ambos (quando agents.md e skills mudaram juntos)
 
@@ -170,7 +174,7 @@ docs(skills): add/update <nome-da-skill> skill
 | Arquivo | Tipo | Editável? |
 |---|---|---|
 | `AGENTS.md` | Governança | Gerado — editar `agents.md` |
-| `.github/prompts/*.prompt.md` | Skills | Gerado — editar `.claude/skills/` |
+| `.agents/skills/<nome>/SKILL.md` | Skill compartilhada | Gerado quando declarado em `targets` |
 
 ### GitHub Copilot
 
@@ -192,7 +196,7 @@ docs(skills): add/update <nome-da-skill> skill
 | Arquivo | Tipo | Editável? |
 |---|---|---|
 | `agents.md` | Governança | Fonte canônica |
-| `skills/<nome>/SKILL.md` | Skills exclusivas | Fonte canônica |
+| `skills/<nome>/SKILL.md` | Skill compartilhada ou exclusiva | Gerado quando declarado em `targets`; exclusiva continua local |
 | `skills-lock.json` | Registro de skills | Atualizar ao adicionar skills |
 
 ---
@@ -218,7 +222,7 @@ Kinds suportados: `"copilot"`, `"cursor"`, `"claude"`, `"codex"`, `"github"`.
 
 ## Regras críticas (MUST)
 
-- **Nunca** editar adapters gerados (`CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `.cursor/skills/*.mdc`, `.github/prompts/*.prompt.md`).
+- **Nunca** editar adapters gerados (`CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `.cursor/skills/*.mdc`, `.github/prompts/*.prompt.md` e SKILL.md gerado por target).
 - **Sempre** rodar `bun run governance:check` antes de commitar qualquer mudança em `agents.md`.
 - **Sempre** rodar `bun run governance:sync` após editar `agents.md`.
 - **Sempre** rodar `bun run skills:sync` após editar `.claude/skills/*.md`.

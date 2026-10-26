@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { EmailOtpType } from '@supabase/supabase-js'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
+import { AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL } from '@/lib/supabase/email-auth-link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +11,34 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Lock, Mail, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react'
 import { API_CLIENT_BASE } from "@/lib/route-map";
+
+type PendingEmailAuth = {
+  tokenHash: string
+  type: 'invite' | 'recovery'
+}
+
+type SupabaseBrowserClient = NonNullable<ReturnType<typeof createSupabaseBrowser>>
+
+type PasswordResetTelemetryEvent =
+  | 'page_opened'
+  | 'verification_started'
+  | 'token_verified'
+  | 'token_rejected'
+  | 'password_updated'
+  | 'password_update_failed'
+
+async function readAccessToken(supabase: {
+  auth: { getSession?: () => Promise<{ data: { session: { access_token: string } | null } }> }
+}): Promise<string | null> {
+  try {
+    const result = await supabase.auth.getSession?.()
+    return result?.data.session?.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
+const PASSWORD_RESET_TELEMETRY_ENDPOINT = `${API_CLIENT_BASE}/auth/password-reset/telemetry`
 
 function SetPasswordContent() {
   const router = useRouter()
@@ -26,7 +54,33 @@ function SetPasswordContent() {
   const [email, setEmail] = useState<string | null>(null)
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null)
   const [isTokenError, setIsTokenError] = useState(false)
-  const verifiedTokenRef = useRef<string | null>(null)
+  const [pendingEmailAuth, setPendingEmailAuth] = useState<PendingEmailAuth | null>(null)
+  const [isConfirmingToken, setIsConfirmingToken] = useState(false)
+  const handledAuthTokenRef = useRef<string | null>(null)
+  const pageOpenedFlowIdRef = useRef<string | null>(null)
+
+  const flowId = searchParams.get('flowId') ?? searchParams.get('flow_id')
+
+  const recordTelemetry = useCallback((eventType: PasswordResetTelemetryEvent, accessToken?: string | null) => {
+    if (!flowId) return
+    if (eventType === 'page_opened' && pageOpenedFlowIdRef.current === flowId) return
+
+    if (eventType === 'page_opened') {
+      pageOpenedFlowIdRef.current = flowId
+    }
+
+    void fetch(PASSWORD_RESET_TELEMETRY_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify({ flowId, eventType }),
+      credentials: 'omit',
+      keepalive: true,
+      referrerPolicy: 'no-referrer',
+    }).catch(() => undefined)
+  }, [flowId])
 
   const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
     let strength = 0
@@ -42,7 +96,33 @@ function SetPasswordContent() {
     return 'strong'
   }
 
+  const resumeExistingSession = useCallback(async (supabase: SupabaseBrowserClient): Promise<boolean> => {
+    const { data, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      console.info('❌ Erro ao recuperar sessão existente:', sessionError.message)
+      return false
+    }
+
+    if (!data.session) {
+      return false
+    }
+
+    setEmail(data.session.user?.email ?? null)
+    setError(null)
+    setIsTokenError(false)
+    setIsInitializing(false)
+
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState(null, '', '/set-password')
+    }
+
+    return true
+  }, [])
+
   useEffect(() => {
+    recordTelemetry('page_opened')
+
     // Verificar e estabelecer sessão com o token da URL
     const initializeSession = async () => {
       if (typeof window === 'undefined') return;
@@ -56,65 +136,19 @@ function SetPasswordContent() {
         return
       }
 
-      const resumeExistingSession = async (): Promise<boolean> => {
-        const { data, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          console.info('❌ Erro ao recuperar sessão existente:', sessionError.message)
-          return false
-        }
-
-        if (!data.session) {
-          return false
-        }
-
-        setEmail(data.session.user?.email ?? null)
-        setError(null)
-        setIsTokenError(false)
-        setIsInitializing(false)
-
-        if (window.location.search || window.location.hash) {
-          window.history.replaceState(null, '', '/set-password')
-        }
-
-        return true
-      }
-
       const tokenHash = searchParams.get('token_hash')
       const queryType = searchParams.get('type')
 
       if (tokenHash && (queryType === 'invite' || queryType === 'recovery')) {
-        if (verifiedTokenRef.current === tokenHash) return
-        verifiedTokenRef.current = tokenHash
+        // NÃO validar o token aqui: scanners de e-mail (ex.: Safe Links do
+        // Microsoft 365) carregam a página, executam este efeito e consomem o
+        // token de uso único antes de o usuário clicar. A validação acontece
+        // apenas em handleConfirmEmailAuth, após ação explícita do usuário.
+        if (handledAuthTokenRef.current === tokenHash) return
+        handledAuthTokenRef.current = tokenHash
 
-        try {
-          const { data, error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: queryType as EmailOtpType,
-          })
-
-          if (verifyError || !data.session) {
-            console.error('❌ Erro ao validar token do e-mail:', verifyError)
-
-            if (await resumeExistingSession()) {
-              return
-            }
-
-            setError('Este link já foi usado ou expirou. Solicite um novo link de acesso.')
-            setIsTokenError(true)
-            setIsInitializing(false)
-            return
-          }
-
-          setEmail(data.session.user?.email ?? null)
-          window.history.replaceState(null, '', '/set-password')
-          setIsInitializing(false)
-        } catch (err) {
-          console.error('❌ Erro ao validar token do e-mail:', err)
-          setError('Erro inesperado ao processar o link. Tente novamente.')
-          setIsTokenError(true)
-          setIsInitializing(false)
-        }
+        setPendingEmailAuth({ tokenHash, type: queryType })
+        setIsInitializing(false)
         return
       }
       
@@ -122,7 +156,7 @@ function SetPasswordContent() {
       console.info('🔍 Hash completo:', hash);
       
       if (!hash) {
-        if (await resumeExistingSession()) {
+        if (await resumeExistingSession(supabase)) {
           return
         }
 
@@ -145,7 +179,7 @@ function SetPasswordContent() {
           code: hashErrorCode,
         });
 
-        if (await resumeExistingSession()) {
+        if (await resumeExistingSession(supabase)) {
           return
         }
 
@@ -162,7 +196,7 @@ function SetPasswordContent() {
       console.info('🔐 Token encontrado:', { accessToken: !!accessToken, type });
 
       if (!accessToken || (type !== 'invite' && type !== 'recovery')) {
-        if (await resumeExistingSession()) {
+        if (await resumeExistingSession(supabase)) {
           return
         }
 
@@ -211,7 +245,60 @@ function SetPasswordContent() {
     };
 
     initializeSession();
-  }, [router, searchParams]);
+  }, [recordTelemetry, router, searchParams, resumeExistingSession]);
+
+  const handleConfirmEmailAuth = async () => {
+    if (!pendingEmailAuth || isConfirmingToken) return
+
+    recordTelemetry('verification_started')
+    const supabase = createSupabaseBrowser()
+
+    if (!supabase) {
+      recordTelemetry('token_rejected')
+      setError('Erro ao conectar com o sistema de autenticação')
+      setIsTokenError(true)
+      setPendingEmailAuth(null)
+      return
+    }
+
+    setIsConfirmingToken(true)
+    setError(null)
+
+    try {
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        token_hash: pendingEmailAuth.tokenHash,
+        type: pendingEmailAuth.type,
+      })
+
+      if (verifyError || !data.session) {
+        console.error('❌ Erro ao validar token do e-mail:', verifyError)
+        recordTelemetry('token_rejected')
+
+        if (await resumeExistingSession(supabase)) {
+          setPendingEmailAuth(null)
+          return
+        }
+
+        setError('Este link já foi usado ou expirou. Solicite um novo link de acesso.')
+        setIsTokenError(true)
+        setPendingEmailAuth(null)
+        return
+      }
+
+      setEmail(data.session.user?.email ?? null)
+      recordTelemetry('token_verified', data.session.access_token)
+      window.history.replaceState(null, '', '/set-password')
+      setPendingEmailAuth(null)
+    } catch (err) {
+      console.error('❌ Erro ao validar token do e-mail:', err)
+      recordTelemetry('token_rejected')
+      setError('Erro inesperado ao processar o link. Tente novamente.')
+      setIsTokenError(true)
+      setPendingEmailAuth(null)
+    } finally {
+      setIsConfirmingToken(false)
+    }
+  }
 
   const validatePassword = (pwd: string): string | null => {
     if (pwd.length < 8) {
@@ -314,11 +401,13 @@ function SetPasswordContent() {
     }
 
     setIsLoading(true)
+    let passwordUpdated = false
 
     try {
       const supabase = createSupabaseBrowser()
       
       if (!supabase) {
+        recordTelemetry('password_update_failed')
         setError('Erro ao conectar com o sistema de autenticação')
         return
       }
@@ -330,11 +419,15 @@ function SetPasswordContent() {
 
       if (updateError) {
         console.error('Erro ao definir senha:', updateError)
+        recordTelemetry('password_update_failed', await readAccessToken(supabase))
         const friendlyMessage = translateSupabaseError(updateError.message)
         setError(friendlyMessage)
         setIsLoading(false)
         return
       }
+
+      passwordUpdated = true
+      recordTelemetry('password_updated', await readAccessToken(supabase))
 
       // Buscar perfil do usuário para redirecionar corretamente
       const { data: { user } } = await supabase.auth.getUser()
@@ -358,6 +451,9 @@ function SetPasswordContent() {
       }
     } catch (err) {
       console.error('Erro ao definir senha:', err)
+      if (!passwordUpdated) {
+        recordTelemetry('password_update_failed')
+      }
       setError('Erro inesperado ao definir senha')
     } finally {
       setIsLoading(false)
@@ -426,6 +522,42 @@ function SetPasswordContent() {
               Aguarde enquanto validamos seu acesso.
             </CardDescription>
           </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  // Token de e-mail presente: exigir clique explícito antes de consumir o token
+  if (pendingEmailAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+              <ShieldCheck className="w-6 h-6 text-primary" />
+            </div>
+            <CardTitle className="text-2xl">
+              {pendingEmailAuth.type === 'invite' ? 'Ative sua conta' : 'Redefinir senha'}
+            </CardTitle>
+            <CardDescription>
+              {pendingEmailAuth.type === 'invite'
+                ? 'Confirme para validar seu convite e criar sua senha de acesso.'
+                : 'Confirme para validar o link e criar uma nova senha de acesso.'}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex flex-col gap-3">
+            <Button
+              type="button"
+              className="w-full"
+              onClick={handleConfirmEmailAuth}
+              disabled={isConfirmingToken}
+            >
+              {isConfirmingToken ? 'Validando link...' : 'Continuar'}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              O link é válido por {AUTH_SET_PASSWORD_LINK_EXPIRY_LABEL}. Se você não reconhece esta solicitação, ignore esta página.
+            </p>
+          </CardFooter>
         </Card>
       </div>
     )
@@ -588,6 +720,9 @@ function SetPasswordContent() {
     </div>
   )
 }
+
+// Exportado para testes de regressão do gate de token (app/set-password/page.test.tsx)
+export { SetPasswordContent }
 
 export default function SetPasswordPage() {
   return (

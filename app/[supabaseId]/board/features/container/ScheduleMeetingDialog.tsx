@@ -47,9 +47,14 @@ import {
   formatIntimezone,
   formatLocalDateValue,
   formatLocalTimeValue,
+  getMinutesInTz,
   parseDateKeyAndTimeToUtc,
 } from "@/lib/dates";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import {
+  isLeadEmailRequiredForMeetingType,
+  isLeadEmailValidForMeetingType,
+} from "@/lib/lead-schedule/email-requirement";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -143,6 +148,7 @@ export function ScheduleMeetingDialog({
   const [shareUrl, setShareUrl] = useState("");
   const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
   const [occupiedPreSlots, setOccupiedPreSlots] = useState<number[]>([]);
+  const [preScheduleSlotMinutes, setPreScheduleSlotMinutes] = useState(30);
   const [preSlotsLoading, setPreSlotsLoading] = useState(false);
   const fallbackMembers = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
   const members = teamMembersFromApi.length > 0 ? teamMembersFromApi : fallbackMembers;
@@ -177,6 +183,8 @@ export function ScheduleMeetingDialog({
     [meetingLink, requiresManualMeetingLink, isOnlineMeeting, lead.meetingLink]
   );
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  const isLeadEmailRequired = isLeadEmailRequiredForMeetingType(meetingType);
+  const isLeadEmailValid = isLeadEmailValidForMeetingType(meetingType, leadEmailDraft);
   const isPreSchedule = !!lead.isTransfer;
   const meetingDateKey = isValidDate(meetingDate) && meetingDate ? formatLocalDateValue(meetingDate, SCHEDULE_TIMEZONE) : null;
   const availableTimes = useMemo(
@@ -196,14 +204,16 @@ export function ScheduleMeetingDialog({
     ? (() => {
         const slotTime = formatLocalTimeValue(meetingDate, SCHEDULE_TIMEZONE);
         const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-        const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-        return occupiedPreSlots.includes(utcMins);
+        const localMins =
+          Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+          preScheduleSlotMinutes;
+        return occupiedPreSlots.includes(localMins);
       })()
     : false;
   const canSubmit = isPreSchedule
     ? isValidDate(meetingDate) && !isPreScheduleSlotOccupied
     : !!closerId &&
-      isValidEmail(leadEmailDraft) &&
+      isLeadEmailValid &&
       isValidDate(meetingDate) &&
       meetingTitle.trim().length > 0 &&
       availableTimes.length > 0 &&
@@ -379,6 +389,7 @@ export function ScheduleMeetingDialog({
   useEffect(() => {
     if (!isPreSchedule || !open || !activeTeamId || !supabaseId || !meetingDateKey) {
       setOccupiedPreSlots([]);
+      setPreScheduleSlotMinutes(30);
       return;
     }
     let isMounted = true;
@@ -395,10 +406,18 @@ export function ScheduleMeetingDialog({
         const slots: number[] = Array.isArray(result?.result?.occupiedSlots)
           ? result.result.occupiedSlots
           : [];
+        const slotMinutes =
+          Number.isInteger(result?.result?.slotMinutes) && result.result.slotMinutes > 0
+            ? result.result.slotMinutes
+            : 30;
         setOccupiedPreSlots(slots);
+        setPreScheduleSlotMinutes(slotMinutes);
       })
       .catch(() => {
-        if (isMounted) setOccupiedPreSlots([]);
+        if (isMounted) {
+          setOccupiedPreSlots([]);
+          setPreScheduleSlotMinutes(30);
+        }
       })
       .finally(() => {
         if (isMounted) setPreSlotsLoading(false);
@@ -409,17 +428,26 @@ export function ScheduleMeetingDialog({
   const preScheduleAvailableTimes = useMemo(() => {
     if (!isPreSchedule || !isValidDate(meetingDate) || !meetingDateKey) return undefined;
     const allSlots: string[] = [];
-    for (let mins = 7 * 60; mins <= 20 * 60; mins += 30) {
+    for (let mins = 7 * 60; mins <= 20 * 60; mins += preScheduleSlotMinutes) {
       const hh = String(Math.floor(mins / 60)).padStart(2, "0");
       const mm = String(mins % 60).padStart(2, "0");
       allSlots.push(`${hh}:${mm}`);
     }
     return allSlots.filter((slotTime) => {
       const slotDate = parseDateKeyAndTimeToUtc(meetingDateKey, slotTime, SCHEDULE_TIMEZONE);
-      const utcMins = slotDate.getUTCHours() * 60 + Math.floor(slotDate.getUTCMinutes() / 30) * 30;
-      return !occupiedPreSlots.includes(utcMins);
+      const localMins =
+        Math.floor(getMinutesInTz(slotDate, SCHEDULE_TIMEZONE) / preScheduleSlotMinutes) *
+        preScheduleSlotMinutes;
+      return !occupiedPreSlots.includes(localMins);
     });
-  }, [isPreSchedule, meetingDate, meetingDateKey, occupiedPreSlots, SCHEDULE_TIMEZONE]);
+  }, [
+    isPreSchedule,
+    meetingDate,
+    meetingDateKey,
+    occupiedPreSlots,
+    preScheduleSlotMinutes,
+    SCHEDULE_TIMEZONE,
+  ]);
 
   const addExtraGuests = (values: string[]) => {
     const normalized = values
@@ -500,7 +528,7 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reunião");
       return;
     }
-    if (!isPreSchedule && !isValidEmail(leadEmailDraft)) {
+    if (!isPreSchedule && !isLeadEmailValid) {
       toast.error("Informe um e-mail válido para o lead.");
       return;
     }
@@ -533,7 +561,7 @@ export function ScheduleMeetingDialog({
             "x-team-id": activeTeamId || "",
           },
           body: JSON.stringify({
-            email: normalizedLeadEmail,
+            email: normalizedLeadEmail || null,
           }),
         });
 
@@ -817,11 +845,13 @@ export function ScheduleMeetingDialog({
                   placeholder="lead@exemplo.com"
                   value={leadEmailDraft}
                   onChange={(event) => setLeadEmailDraft(event.target.value)}
-                  required
+                  required={isLeadEmailRequired}
                 />
-                {!isValidEmail(leadEmailDraft) && (
+                {!isLeadEmailValid && (
                   <p className="text-xs text-muted-foreground">
-                    Informe um e-mail válido para concluir o agendamento.
+                    {isLeadEmailRequired
+                      ? "Informe um e-mail válido para concluir o agendamento."
+                      : "E-mail opcional. Se informado, será usado para enviar os detalhes da agenda."}
                   </p>
                 )}
               </div>

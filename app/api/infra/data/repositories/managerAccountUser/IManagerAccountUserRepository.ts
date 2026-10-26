@@ -37,6 +37,7 @@ export interface CreatedAccountUserRecords {
     profileIconUrl: string | null;
   };
   teamMemberRecord: {
+    id: string;
     role: UserRole;
     functions: UserFunction[];
     createdAt: Date;

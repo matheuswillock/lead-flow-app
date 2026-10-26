@@ -37,6 +37,7 @@ export class TeamCheckoutRepository implements ITeamCheckoutRepository {
         complement: true,
         asaasCustomerId: true,
         asaasSubscriptionId: true,
+        asaasSubscriptionAccount: true,
         subscriptionStatus: true,
         subscriptionNextDueDate: true,
         subscriptionEndDate: true,

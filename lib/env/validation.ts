@@ -87,6 +87,9 @@ export const envSchema = z.object({
     .describe('Supabase bucket name for support request image attachments'),
 
   // Database PostgreSQL
+  SUPABASE_LANDING_PAGE_ASSETS_BUCKET: nonEmptyString
+    .default('landing-page-assets')
+    .describe('Supabase bucket name for landing page assets'),
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),
   POSTGRES_PASSWORD: nonEmptyString.describe('PostgreSQL password'),
   POSTGRES_HOST: nonEmptyString.describe('PostgreSQL host'),
@@ -166,6 +169,11 @@ export const envSchema = z.object({
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
   NEXT_PUBLIC_ENCRYPTION_KEY: hexKeySchema.describe('Client-side encryption key'),
+  PASSWORD_RESET_AUDIT_IP_HASH_SECRET: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Optional HMAC secret for password-reset audit IP hashes'),
 
   // Integrations (Meta / WhatsApp)
   INTEGRATIONS_ENCRYPTION_KEY: nonEmptyString

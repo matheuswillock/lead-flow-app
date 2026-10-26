@@ -1,7 +1,18 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
+mock.module("@/lib/billing/resolvePrice", () => ({
+  resolvePrice: mock(async ({ featureSlug }: { featureSlug?: string }) =>
+    featureSlug === "crm" ? 40 : 19.9,
+  ),
+  toBillingCycle: (cycle: string | undefined) => (cycle ? "monthly" : null),
+}))
+
 // T-20.18 e T-20.19 de [[20 — Assinaturas — Backend]] E6 (C23/DA5/DA2).
-const getSubscriptionMock = mock(async () => ({ value: 79.9 }) as any)
+const getSubscriptionMock = mock(async () => ({
+  value: 79.9,
+  cycle: "MONTHLY",
+  billingType: "PIX",
+}) as any)
 const updateSubscriptionMock = mock(async () => ({}) as any)
 mock.module("@/app/api/services/AsaasSubscription/AsaasSubscriptionService", () => ({
   AsaasSubscriptionService: {
@@ -54,7 +65,11 @@ describe("ManagerUserUseCase.deleteOperatorWithSubscriptionUpdate — sem falha 
   beforeEach(() => {
     getSubscriptionMock.mockClear()
     updateSubscriptionMock.mockClear()
-    getSubscriptionMock.mockImplementation(async () => ({ value: 79.9 }))
+    getSubscriptionMock.mockImplementation(async () => ({
+      value: 79.9,
+      cycle: "MONTHLY",
+      billingType: "PIX",
+    }))
     updateSubscriptionMock.mockImplementation(async () => ({}))
   })
 

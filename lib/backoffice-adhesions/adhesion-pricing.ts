@@ -49,6 +49,55 @@ export interface BackofficeAdhesionPricing {
   maxCardInstallments: number
 }
 
+export type AdhesionChargeMethod = "PIX" | "CREDIT_CARD"
+
+export interface AdhesionChargeAmount {
+  method: AdhesionChargeMethod
+  monthlyAmount: number
+  totalAmount: number
+  maxInstallments: number
+}
+
+/**
+ * Valores do método pedido. Os campos "genéricos" de `BackofficeAdhesionPricing`
+ * (`monthlyTotalAmount`, `totalAmount`, `maxInstallments`) são SEMPRE os de cartão;
+ * com o cartão desligado, quem cobra deve ler daqui, nunca deles. PIX é à vista.
+ */
+export function resolveChargeAmountByMethod(
+  pricing: Pick<
+    BackofficeAdhesionPricing,
+    | "pixMonthlyTotalAmount"
+    | "pixTotalAmount"
+    | "creditCardMonthlyTotalAmount"
+    | "creditCardTotalAmount"
+    | "maxCardInstallments"
+  >,
+  method: AdhesionChargeMethod
+): AdhesionChargeAmount {
+  if (method === "PIX") {
+    return {
+      method,
+      monthlyAmount: pricing.pixMonthlyTotalAmount,
+      totalAmount: pricing.pixTotalAmount,
+      maxInstallments: 1,
+    }
+  }
+  return {
+    method,
+    monthlyAmount: pricing.creditCardMonthlyTotalAmount,
+    totalAmount: pricing.creditCardTotalAmount,
+    maxInstallments: pricing.maxCardInstallments,
+  }
+}
+
+/** Método efetivo: o preferido quando ofertado; senão PIX (única alternativa possível). */
+export function resolveEffectiveChargeMethod(
+  preferred: AdhesionChargeMethod | null | undefined,
+  availableBillingTypes: readonly AdhesionChargeMethod[]
+): AdhesionChargeMethod {
+  return preferred && availableBillingTypes.includes(preferred) ? preferred : "PIX"
+}
+
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2))
 }

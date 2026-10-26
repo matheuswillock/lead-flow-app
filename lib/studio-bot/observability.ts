@@ -1,3 +1,5 @@
+import { createLogger } from "@/lib/observability/logger";
+
 export type StudioBotObservabilityContext = {
   flowId?: string | null;
   step?: string | null;
@@ -9,10 +11,9 @@ export function logStudioBotFlow(
   ctx: StudioBotObservabilityContext,
   message: string
 ): void {
-  console.info(`[${scope}]`, {
+  createLogger(scope).info(message, {
     flowId: ctx.flowId ?? null,
     step: ctx.step ?? null,
     errorCode: ctx.errorCode ?? null,
-    message,
   });
 }

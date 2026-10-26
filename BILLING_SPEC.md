@@ -75,6 +75,15 @@ Migrar **todas** as assinaturas/preços/capacidades System A → modelo novo. Dr
 Canônico: `ProfileSubscription` + `BackofficeUserSubscription` + `ProfileSubscriptionCapacity` + `ProfileUserTypeAssignment`.  
 Profile: identidade + `asaasCustomerId`; campos de assinatura espelhados **descontinuados** pós-cutover. Nenhum fluxo novo faz dual-write “legacy compatibility”.
 
+### D15 — Criação por catálogo e migração no vencimento (2026-10-12)
+
+- Toda criação de checkout/assinatura resolve produto, ciclo, método e valor em `BackofficeProductPaymentRule`; R$ 59,90 não é preço válido do CRM vigente.
+- Sem produto informado, o fallback é o produto CRM ativo marcado `isDefault`, ciclo mensal e cartão de crédito. PIX usa a regra PIX correspondente; ausência de regra bloqueia a operação.
+- O checkout inicial usa cobrança `DETACHED`; o webhook cria a recorrência somente após confirmação, revalida o valor do catálogo e usa `externalReference` determinística para retries.
+- Migração de conta não cria cobrança ou assinatura primary antes do vencimento. O estado permanece `awaiting_due_date`/`requires_card_reauth` até checkout e autorização explícitos.
+- A assinatura primary prematura deve ser inativada junto com qualquer cobrança pendente vinculada; os IDs permanecem apenas no ledger/auditoria.
+- A conta legacy não recebe novas cobranças. A assinatura primary só é criada no vencimento, com quote revalidado e `externalReference` idempotente.
+
 ---
 
 ## Estágios de implementação

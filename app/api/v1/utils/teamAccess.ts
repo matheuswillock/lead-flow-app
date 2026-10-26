@@ -5,8 +5,9 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
-import { getAccountAccessStatus } from "@/lib/account/getAccountAccessStatus";
 import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
+import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -21,15 +22,30 @@ export type TeamAccess = {
   canTransferAccountLeads: boolean;
   canViewAllTeams: boolean;
   userTimezone: string;
+  accountAccessDecision?: AccountAccessDecision;
+  accountAccessMode?: "full" | "read_only";
   teamMember: {
     role: UserRole;
     functions: UserFunction[];
   };
 };
 
+export type TeamAccessOptions = {
+  /** Rotas que precisam gravar mesmo com a conta em somente leitura (ex.: preferências de notificação). */
+  allowReadOnlyWrites?: boolean;
+};
+
 export type TeamAccessResult =
   | { access: TeamAccess; error?: never; status?: never }
   | { access?: never; error: Output; status: number };
+
+const READ_ONLY_WRITE_BLOCK_MESSAGE =
+  "A conta está em modo somente leitura até a regularização do pagamento.";
+const READ_ONLY_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function isReadOnlyWriteBlocked(request: NextRequest, options: TeamAccessOptions): boolean {
+  return !options.allowReadOnlyWrites && !READ_ONLY_SAFE_METHODS.has(request.method.toUpperCase());
+}
 
 const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
   return prisma.profile.findUnique({
@@ -91,7 +107,48 @@ const resolveTeamForSponsorAccess = cache(async (teamId: string) => {
   });
 });
 
-export async function getTeamAccess(request: NextRequest): Promise<TeamAccessResult> {
+async function resolveTeamAccountAccess(
+  profileId: string,
+  teamId: string,
+  blockReadOnlyWrites: boolean,
+): Promise<{
+  decision: AccountAccessDecision | null;
+  denied: TeamAccessResult | null;
+}> {
+  const output = await accountAccessDecisionUseCase.execute({ profileId, teamId });
+  const decision = output.result as AccountAccessDecision | null;
+  if (output.isValid && decision && decision.state !== "restricted") {
+    // Falha fechado: em somente leitura toda mutação é negada aqui, na borda central,
+    // sem depender de cada rota lembrar de chamar isTeamWriteBlockedByBilling.
+    if (decision.state === "read_only" && blockReadOnlyWrites) {
+      return {
+        decision,
+        denied: { error: new Output(false, [], [READ_ONLY_WRITE_BLOCK_MESSAGE], null), status: 403 },
+      };
+    }
+    return { decision, denied: null };
+  }
+
+  const message = decision?.state === "restricted" && decision.reason === "banned"
+    ? ACCOUNT_MASTER_BANNED_MESSAGE
+    : decision?.state === "restricted" && decision.isBillingOwner
+      ? "O acesso desta conta está pausado. Entre em contato com o time de assinaturas."
+      : "O acesso desta conta está pausado. Avise o administrador desta conta para que ele entre em contato com o time de assinaturas.";
+
+  return {
+    decision,
+    denied: {
+      error: new Output(false, [], [message], null),
+      status: 403,
+    },
+  };
+}
+
+export async function getTeamAccess(
+  request: NextRequest,
+  options: TeamAccessOptions = {},
+): Promise<TeamAccessResult> {
+  const blockReadOnlyWrites = isReadOnlyWriteBlocked(request, options);
   const supabaseId = request.headers.get("x-supabase-user-id");
   if (!supabaseId) {
     return {
@@ -150,24 +207,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     }
 
     const accountMasterId = teamForSponsor.masterId;
-    const accountAccess = await getAccountAccessStatus(accountMasterId);
-    if (!accountAccess.subscriptionActive) {
-      return {
-        error: new Output(
-          false,
-          [],
-          ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
-          null
-        ),
-        status: 403,
-      };
-    }
-
-    if (accountAccess.banned) {
-      return {
-        error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
-        status: 403,
-      };
+    const accountAccess = await resolveTeamAccountAccess(profile.id, teamId, blockReadOnlyWrites);
+    if (accountAccess.denied) {
+      return accountAccess.denied;
     }
 
     return {
@@ -184,6 +226,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         canTransferAccountLeads: false,
         canViewAllTeams: false,
         userTimezone: resolveTimezone(profile.timezone),
+        accountAccessDecision: accountAccess.decision ?? undefined,
+        accountAccessMode: accountAccess.decision?.state === "read_only" ? "read_only" : "full",
         teamMember: {
           role: "backoffice" as UserRole,
           functions: [] as UserFunction[],
@@ -193,25 +237,9 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   }
 
   const accountMasterId = teamMember.team.masterId;
-  const accountAccess = await getAccountAccessStatus(accountMasterId);
-
-  if (!accountAccess.subscriptionActive) {
-    return {
-      error: new Output(
-        false,
-        [],
-        ["A assinatura desta conta está inativa. Entre em contato com o administrador."],
-        null
-      ),
-      status: 403,
-    };
-  }
-
-  if (accountAccess.banned) {
-    return {
-      error: new Output(false, [], [ACCOUNT_MASTER_BANNED_MESSAGE], null),
-      status: 403,
-    };
+  const accountAccess = await resolveTeamAccountAccess(profile.id, teamId, blockReadOnlyWrites);
+  if (accountAccess.denied) {
+    return accountAccess.denied;
   }
 
   const resolvedCanViewAllTeams =
@@ -236,6 +264,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         teamMember.canTransferAccountLeads === true,
       canViewAllTeams: resolvedCanViewAllTeams,
       userTimezone: resolveTimezone(profile.timezone),
+      accountAccessDecision: accountAccess.decision ?? undefined,
+      accountAccessMode: accountAccess.decision?.state === "read_only" ? "read_only" : "full",
       teamMember,
     },
   };
@@ -271,4 +301,14 @@ export function hasDelegatedTeamManagementAccess(access: TeamAccess) {
 
 export function hasDelegatedLeadTransferAccess(access: TeamAccess) {
   return access.isMaster || access.canTransferAccountLeads;
+}
+
+export function isTeamWriteBlockedByBilling(access: TeamAccess): boolean {
+  return access.accountAccessMode === "read_only";
+}
+
+export function getBillingWriteBlockMessage(access: TeamAccess): string | null {
+  return isTeamWriteBlockedByBilling(access)
+    ? READ_ONLY_WRITE_BLOCK_MESSAGE
+    : null;
 }

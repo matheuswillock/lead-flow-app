@@ -9,6 +9,7 @@ import {
   consumePublicFormRateLimit,
   publicFormRequestFingerprint,
 } from "@/lib/public-forms/rate-limit";
+import { rejectRestrictedPublicFormTeam } from "@/app/api/v1/public-forms/publicFormAccess"
 
 const routePrefix = "[IntegrationBootstrapRoute][GET]";
 
@@ -75,6 +76,9 @@ export async function GET(request: NextRequest) {
         { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
       );
     }
+
+    const restricted = await rejectRestrictedPublicFormTeam(teamId)
+    if (restricted) return restricted
 
     const cachedOutput = await getCachedPublicFormBootstrap(teamId, supabaseId ?? null);
     const output = new Output(

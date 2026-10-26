@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { Archive, BarChart3, Copy, Ellipsis, FileText, Plus, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
@@ -81,6 +82,10 @@ import { FormRankingPanel } from "../components/FormRankingPanel"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { metricEventMatchesQuestion } from "@/lib/public-forms/metric-event-aggregation";
 import { usePublicFormShareBaseUrl } from "@/lib/public-forms/share-base-url/usePublicFormShareBaseUrl"
+import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { canRequestPublicFormApproval } from "@/lib/public-forms/approval-actions"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const statusLabel = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" }
 const approvalLabel = {
@@ -95,11 +100,14 @@ type Member = { profileId: string; name: string; functions: string[] }
 export function PublicFormsContainer() {
   const params = useParams<{ supabaseId: string }>()
   const forms = usePublicForms()
+  const { hasAccess } = useFeatureAccess()
+  const canManageLandingPages = hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)
   // Domínio de formulários VERIFICADO do time ATIVO (Frente C): copiar
   // link/iframe usa o mesmo host que o disparo de campanha vai usar. O teamId
   // entra na chave do cache — sem ele, trocar de time devolvia o domínio do
   // time anterior e gerava link que a guarda de tenancy responde 404.
   const shareBaseUrl = usePublicFormShareBaseUrl(forms.ids?.teamId ?? null)
+  const formDomain = usePublicFormDomainStatus(forms.ids?.teamId ?? null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [analyticsId, setAnalyticsId] = useState<string | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<PublicFormListItem | null>(null)
@@ -150,6 +158,13 @@ export function PublicFormsContainer() {
                 Criar formulário
               </Link>
             </Button>
+            {canManageLandingPages ? (
+              <Button asChild variant="outline">
+                <Link href={`/${params.supabaseId}/landing-pages/new`}>
+                  Criar landing de cotação
+                </Link>
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -398,7 +413,7 @@ export function PublicFormsContainer() {
                             </DropdownMenuItem>
                           </>
                         ) : null}
-                        {forms.capabilities.canEdit && item.status !== "archived" && item.status !== "published" ? (
+                        {canRequestPublicFormApproval({ canEdit: forms.capabilities.canEdit, approvalRequired: forms.approvalRequired, status: item.status }) ? (
                           <DropdownMenuItem
                             onClick={() => void forms.action(item.id, "submit-approval")}
                           >
@@ -406,9 +421,29 @@ export function PublicFormsContainer() {
                           </DropdownMenuItem>
                         ) : null}
                         {(forms.capabilities.canEdit || forms.capabilities.canApprove) && item.status !== "archived" ? (
-                          <DropdownMenuItem onClick={() => void forms.action(item.id, "publish")}>
-                            Publicar
-                          </DropdownMenuItem>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="block">
+                                  <DropdownMenuItem
+                                    disabled={!formDomain.isVerified}
+                                    onClick={() => {
+                                      if (formDomain.isVerified) void forms.action(item.id, "publish")
+                                    }}
+                                  >
+                                    Publicar
+                                  </DropdownMenuItem>
+                                </span>
+                              </TooltipTrigger>
+                              {!formDomain.isVerified ? (
+                                <TooltipContent>
+                                  <Link href={`/${params.supabaseId}/email/configuracoes`}>
+                                    Configure e verifique o subdomínio dos formulários para publicar.
+                                  </Link>
+                                </TooltipContent>
+                              ) : null}
+                            </Tooltip>
+                          </TooltipProvider>
                         ) : forms.capabilities.canEdit ? (
                           <DropdownMenuItem onClick={() => void forms.action(item.id, "restore")}>
                             Restaurar para rascunho

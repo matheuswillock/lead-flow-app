@@ -1,6 +1,9 @@
 import { NextResponse, connection } from "next/server";
 import { healthUseCase } from "@/app/api/useCases/health/HealthUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
+import { createLogger } from "@/lib/observability/logger";
+
+const logger = createLogger("health");
 
 /**
  * Health check de infraestrutura, consumido pelo smoke test pós-deploy do
@@ -29,7 +32,7 @@ export async function GET() {
     );
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
-    console.error("[HealthRoute][GET]", error);
+    logger.error("database unreachable", { error });
 
     return NextResponse.json(
       { status: "error", database: "unreachable" },

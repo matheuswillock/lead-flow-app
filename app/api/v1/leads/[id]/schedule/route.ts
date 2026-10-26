@@ -1,23 +1,11 @@
-import { cacheLife, cacheTag } from "next/cache";
-import { cacheTags } from "@/lib/cache/cacheTags";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/app/api/infra/data/prisma";
-import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
-import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService";
+import { leadScheduleUseCase } from "@/app/api/useCases/leads/LeadScheduleUseCase";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
-import { isPreScheduleSlotAvailable } from "@/app/api/services/preSchedule/PreScheduleSlotService";
-import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-
-async function getCachedLeadSchedule(leadId: string) {
-  "use cache";
-  cacheTag(cacheTags.leadSchedules(leadId));
-  cacheLife({ stale: 30, revalidate: 60 });
-  return leadScheduleRepository.findByLeadId(leadId);
-}
+import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
 
 const scheduleSchema = z.object({
   date: z.string().datetime().optional(),
@@ -26,263 +14,69 @@ const scheduleSchema = z.object({
   meetingLink: z.string().optional(),
   meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
-  extraGuests: z.array(z.string().email("Email inválido")).optional(),
+  extraGuests: z.array(z.string().trim().email("Email inválido").max(254, "Email inválido")).max(10, "Informe no máximo 10 convidados extras.").optional(),
   transitionStatusToScheduled: z.boolean().optional(),
   confirmNoShowSchedule: z.boolean().optional(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const teamAccess = await getTeamAccess(request);
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
-    }
-    if (!hasLeadAccess(teamAccess.access.teamMember)) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
-
-    const body = await request.json();
-    const validation = scheduleSchema.safeParse(body);
-    if (!validation.success) {
-      const output = new Output(
-        false,
-        [],
-        validation.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
-        null
-      );
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    const { id: leadId } = await params;
-    if (!leadId) {
-      const output = new Output(false, [], ["ID do lead é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    const {
-      date,
-      meetingTitle,
-      notes,
-      meetingLink,
-      meetingType,
-      closerId,
-      extraGuests,
-      transitionStatusToScheduled,
-      confirmNoShowSchedule,
-    } = validation.data;
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-      include: {
-        assignee: {
-          select: { email: true },
-        },
-      },
-    });
-
-    if (!lead || lead.teamId !== teamAccess.access.teamId) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
-
-    const resolvedMeetingTypeForRequest =
-      meetingType ??
-      ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
-        ? lead.meetingType
-        : null);
-    const isOnlineMeetingForRequest = (resolvedMeetingTypeForRequest ?? "online") === "online";
-
-    // SPEC 13 (Agenda na Criação de Lead), A-E1c — a validação precisa vir depois
-    // de `existingSchedule` para não quebrar uma reunião já gravada com link
-    // `http:` só porque outro campo (data, closer, título…) mudou nesta chamada.
-    // Achado da revisão final (R13-8, mesma raiz do backoffice): o link não é
-    // usado fora de reunião online, então não pode travar telefone/WhatsApp.
-    const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
-      required: false,
-      allowLegacyHttp:
-        !isOnlineMeetingForRequest ||
-        (!!meetingLink && meetingLink === existingSchedule?.meetingLink),
-    });
-
-    if (!meetingLinkValidation.isValid) {
-      const output = new Output(false, [], [meetingLinkValidation.error], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    if (lead.isTransfer === true) {
-      if (!date) {
-        const output = new Output(false, [], ["Data do pré-agendamento é obrigatória."], null);
-        return NextResponse.json(output, { status: 400 });
-      }
-
-      const meetingDate = new Date(date);
-      if (Number.isNaN(meetingDate.getTime())) {
-        const output = new Output(false, [], ["Data do pré-agendamento inválida."], null);
-        return NextResponse.json(output, { status: 400 });
-      }
-
-      if (lead.teamId) {
-        const slotCheck = await isPreScheduleSlotAvailable(
-          lead.teamId,
-          meetingDate,
-          undefined,
-          leadId
-        );
-        if (!slotCheck.available) {
-          const output = new Output(false, [], ["Este horário de pré-agendamento já está lotado."], null);
-          return NextResponse.json(output, { status: 400 });
-        }
-      }
-
-      const resolvedMeetingTitle = meetingTitle?.trim() || `Estudo Plano de Saúde: ${lead.name}`;
-      const resolvedMeetingType =
-        meetingType ??
-        ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
-          ? lead.meetingType
-          : "online");
-
-      const [preSchedule] = await prisma.$transaction([
-        prisma.leadsSchedule.upsert({
-          where: { leadId },
-          create: {
-            leadId,
-            date: meetingDate,
-            meetingTitle: resolvedMeetingTitle,
-            notes,
-            meetingLink: null,
-            meetingType: resolvedMeetingType,
-            extraGuests: extraGuests ?? [],
-            publicShareTokenHash: null,
-            publicShareExpiresAt: null,
-          },
-          update: {
-            date: meetingDate,
-            meetingTitle: resolvedMeetingTitle,
-            notes,
-            meetingLink: null,
-            meetingType: resolvedMeetingType,
-            extraGuests: extraGuests ?? [],
-            publicShareTokenHash: null,
-            publicShareExpiresAt: null,
-          },
-        }),
-        prisma.lead.update({
-          where: { id: leadId },
-          data: {
-            meetingDate,
-            meetingTitle: resolvedMeetingTitle,
-            meetingNotes: notes || null,
-            meetingLink: null,
-            meetingType: resolvedMeetingType,
-          },
-        }),
-      ]);
-
-      invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
-      const output = new Output(true, ["Pré-agendamento salvo com sucesso"], [], {
-        ...preSchedule,
-        status: lead.status,
-      });
-      return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
-    }
-
-    const resolvedCloserId = closerId || lead.closerId;
-    if (!resolvedCloserId) {
-      const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    if (!lead.status) {
-      const output = new Output(
-        false,
-        [],
-        ["Finalize o lead antes de agendar uma reunião completa."],
-        null
-      );
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    const result = await leadScheduleService.createSchedule({
-      leadId: lead.id,
-      leadName: lead.name,
-      leadEmail: lead.email ?? null,
-      leadStatus: lead.status,
-      leadManagerId: lead.managerId,
-      leadAssignedTo: lead.assignedTo ?? null,
-      leadAssigneeEmail: lead.assignee?.email ?? null,
-      leadCurrentCloserId: lead.closerId ?? null,
-      leadMeetingLink: lead.meetingLink ?? null,
-      leadCode: lead.leadCode ?? null,
-      closerId: resolvedCloserId,
-      teamId: teamAccess.access.teamId,
-      meetingDate: date,
-      meetingTitle: meetingTitle || "",
-      meetingNotes: notes,
-      meetingLink: meetingLinkValidation.normalized,
-      meetingType: resolvedMeetingTypeForRequest,
-      extraGuests,
-      createdByProfileId: teamAccess.access.profileId,
-      transitionStatusToScheduled,
-      confirmNoShowSchedule,
-    });
-
-    if (!result.isValid) {
-      return NextResponse.json(result, { status: 400 });
-    }
-
-    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
-    return NextResponse.json(result, { status: existingSchedule ? 200 : 201 });
-  } catch (error) {
-    rethrowIfPrerenderInterrupted(error);
-    console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);
-    const output = new Output(false, [], ["Erro interno do servidor"], null);
-    return NextResponse.json(output, { status: 500 });
-  }
+function denied() {
+  return NextResponse.json(
+    new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null),
+    { status: 403 },
+  );
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const teamAccess = await getTeamAccess(request);
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
-    }
-    if (!hasLeadAccess(teamAccess.access.teamMember)) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
+    if (teamAccess.error) return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    if (!hasLeadAccess(teamAccess.access.teamMember)) return denied();
 
+    const parsed = scheduleSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        new Output(false, [], parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`), null),
+        { status: 400 },
+      );
+    }
     const { id: leadId } = await params;
-    if (!leadId) {
-      const output = new Output(false, [], ["ID do lead é obrigatório"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
+    if (!leadId) return NextResponse.json(new Output(false, [], ["ID do lead é obrigatório"], null), { status: 400 });
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { id: true, teamId: true },
+    const link = validateMeetingLinkValue(parsed.data.meetingLink, { required: false });
+    if (!link.isValid) return NextResponse.json(new Output(false, [], [link.error], null), { status: 400 });
+
+    const output = await leadScheduleUseCase.execute({
+      leadId,
+      access: teamAccess.access,
+      ...parsed.data,
+      meetingLink: link.normalized,
     });
-
-    if (!lead || lead.teamId !== teamAccess.access.teamId) {
-      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
-      return NextResponse.json(output, { status: 404 });
+    if (!output.isValid) {
+      const conflict = output.errorMessages.includes("Este horário não está mais disponível.");
+      return NextResponse.json(output, { status: conflict ? 409 : 400 });
     }
-
-    const schedules = await getCachedLeadSchedule(leadId);
-
-    const output = new Output(true, [], [], schedules);
+    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
-    console.error("[LeadScheduleRoute][GET] Erro ao buscar agendamentos:", error);
-    const output = new Output(false, [], ["Erro interno do servidor"], null);
-    return NextResponse.json(output, { status: 500 });
+    console.error("[LeadScheduleRoute][POST]", error);
+    return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    if (!hasLeadAccess(teamAccess.access.teamMember)) return denied();
+    const { id: leadId } = await params;
+    if (!leadId) return NextResponse.json(new Output(false, [], ["ID do lead é obrigatório"], null), { status: 400 });
+
+    const output = await leadScheduleUseCase.get(leadId, teamAccess.access);
+    return NextResponse.json(output, { status: output.isValid ? 200 : 404 });
+  } catch (error) {
+    rethrowIfPrerenderInterrupted(error);
+    console.error("[LeadScheduleRoute][GET]", error);
+    return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
   }
 }

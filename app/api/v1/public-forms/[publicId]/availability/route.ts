@@ -5,6 +5,7 @@ import { parseDateKeyAndTimeToUtc } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
 import { rejectPublicFormRequestOnForeignHost } from "@/lib/public-forms/public-form-host-tenancy-guard"
+import { rejectRestrictedPublicForm } from "@/app/api/v1/public-forms/publicFormAccess"
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +16,9 @@ export async function GET(
   const { publicId } = await params
   const foreignHost = await rejectPublicFormRequestOnForeignHost(request, publicId)
   if (foreignHost) return foreignHost
+
+  const restricted = await rejectRestrictedPublicForm(publicId)
+  if (restricted) return restricted
 
   const date = request.nextUrl.searchParams.get("date")
   if (!date) {
@@ -35,16 +39,17 @@ export async function GET(
   }
 
   const slotMap = new Map<string, { time: string; startsAt: string }>()
+  let durationMinutes: number | null = null
   for (const closerId of current.snapshot.eligibleCloserIds) {
     const output = await publicLeadFormUseCase.getCloserAvailability(
       current.teamId,
       closerId,
       date,
       undefined,
-      current.snapshot.meetingDurationMinutes,
     )
     if (!output.isValid) continue
-    const result = output.result as { availableTimes?: string[] }
+    const result = output.result as { availableTimes?: string[]; durationMinutes?: number }
+    durationMinutes = result.durationMinutes ?? durationMinutes
     for (const time of result.availableTimes ?? []) {
       if (slotMap.has(time)) continue
       slotMap.set(time, {
@@ -55,5 +60,5 @@ export async function GET(
   }
 
   const availableSlots = Array.from(slotMap.values()).sort((a, b) => a.time.localeCompare(b.time))
-  return NextResponse.json(new Output(true, [], [], { availableSlots }))
+  return NextResponse.json(new Output(true, [], [], { availableSlots, durationMinutes }))
 }

@@ -1,0 +1,37 @@
+[
+  {
+    "key": "fantasma:cus_000198146904",
+    "action": "remove_ghost_customer",
+    "reason": "Customer sem e-mail e sem referência local; remoção autorizada"
+  },
+  {
+    "key": "fantasma:cus_000173791335",
+    "action": "reconcile_existing_customer",
+    "reason": "Customer corresponde ao master corretorasanfer; preservar histórico"
+  },
+  {
+    "key": "fantasma:cus_000173679639",
+    "action": "reconcile_existing_customer",
+    "reason": "Customer corresponde ao perfil de Matheus; preservar histórico"
+  },
+  {
+    "key": "fantasma:cus_000157593664",
+    "action": "remove_ghost_customer",
+    "reason": "Customer cheffia sem referência local; remoção autorizada"
+  },
+  {
+    "key": "fantasma:cus_000157567888",
+    "action": "remove_ghost_customer",
+    "reason": "Customer cheffia duplicado sem referência local; remoção autorizada"
+  },
+  {
+    "key": "fantasma:cus_000157230175",
+    "action": "remove_ghost_customer",
+    "reason": "Customer cheffia duplicado sem referência local; remoção autorizada"
+  },
+  {
+    "key": "fantasma:cus_000156510291",
+    "action": "reconcile_existing_customer",
+    "reason": "Customer corresponde ao perfil de Matheus; preservar histórico"
+  }
+]

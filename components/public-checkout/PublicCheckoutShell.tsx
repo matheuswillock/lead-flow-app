@@ -7,17 +7,22 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { getProviderBranding, type CheckoutPaymentProvider } from "./providerBranding"
 
 export function PublicCheckoutShell({
   children,
   issuedLabel,
   issuedValue,
+  provider,
 }: {
   children: ReactNode
   issuedLabel?: string
   issuedValue?: string
+  /** `undefined` = padrão legado (Asaas); `null` = provider ainda não resolvido (sem marca). */
+  provider?: CheckoutPaymentProvider | null
 }) {
   const { theme, setTheme } = useTheme()
+  const branding = provider === null ? null : getProviderBranding(provider)
 
   return (
     <main className="min-h-dvh w-full bg-background">
@@ -40,7 +45,7 @@ export function PublicCheckoutShell({
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-primary-foreground hover:bg-primary-foreground/10"
+                className="text-primary-foreground hover:bg-primary-foreground/10 max-lg:size-11"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 aria-label="Alternar tema"
               >
@@ -56,15 +61,19 @@ export function PublicCheckoutShell({
             {children}
 
             <footer className="mt-auto flex flex-col items-center justify-center gap-3 pb-2 text-center text-xs text-muted-foreground">
-              <div className="flex items-center justify-center gap-2">
-                <span className="pt-2">Ambiente seguro &middot;</span>
-                <Image
-                  src="/asaas-pagamentos-logo.svg"
-                  alt="Asaas Pagamentos"
-                  width={72}
-                  height={16}
-                  className="h-4 w-auto"
-                />
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                <span className={cn(branding?.logoUrl && "pt-2")}>Ambiente seguro &middot;</span>
+                {branding?.logoUrl ? (
+                  <Image
+                    src={branding.logoUrl}
+                    alt={branding.logoAlt ?? branding.label}
+                    width={72}
+                    height={16}
+                    className="h-4 w-auto"
+                  />
+                ) : branding ? (
+                  <span className="font-medium text-foreground">{branding.label}</span>
+                ) : null}
               </div>
               <div>
                 {(issuedLabel || "Emitido por Corretor Studio")}:{" "}

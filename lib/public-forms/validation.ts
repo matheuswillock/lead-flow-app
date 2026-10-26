@@ -269,6 +269,7 @@ export const publicFormSettingsSchema = z
 
 export const publicFormSubmissionSchema = z.object({
   requestKey: z.string().min(8).max(200),
+  publicationId: uuid.optional(),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   schemaVersion: z.literal(1).optional(),
@@ -281,6 +282,7 @@ export const publicFormSubmissionSchema = z.object({
 
 export const publicFormProgressSchema = z.object({
   visitorSessionId: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/),
+  publicationId: uuid.optional(),
   answers: z.array(z.object({ questionId: uuid, value: z.unknown() })).max(200),
   origin: z.record(z.string(), z.unknown()).default({}),
   lastQuestionId: uuid.optional(),

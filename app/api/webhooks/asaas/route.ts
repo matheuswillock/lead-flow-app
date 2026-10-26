@@ -11,6 +11,7 @@ import { publishAsaasWebhookEvent } from "@/lib/queues/asaas-webhook-events";
 import { publishWithRetry } from "@/lib/queues/publish-with-retry";
 import { BILLING_RATE_LIMIT_DEFAULTS, consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit";
 import { resolveAsaasWebhookAccount } from "./resolveAsaasWebhookAccount";
+import { reportAsaasWebhookAuthRejected } from "./asaasWebhookAuthFailureAlert";
 import {
   resolveAsaasWebhookEventId,
   type AsaasWebhookBody,
@@ -51,11 +52,10 @@ export async function POST(request: NextRequest) {
       if (limited) return limited;
 
       console.error("[AsaasWebhookRoute][POST] Token não fornecido");
-      // E7 (C36): observabilidade mínima do 401 em série — sintoma
-      // precursor da fila pausada pelo Asaas (15 falhas consecutivas).
-      Sentry.captureMessage("[AsaasWebhookRoute] Token não fornecido", {
-        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
-      });
+      // E7 (C36/T-30.24): observabilidade do 401 em série — sintoma
+      // precursor da fila pausada pelo Asaas — com escalação de
+      // severidade quando N ocorrências acontecem na mesma janela.
+      await reportAsaasWebhookAuthRejected({ reason: "missing_token", receivedToken: null });
       return NextResponse.json(
         { error: "Unauthorized: Token não fornecido" },
         { status: 401 }
@@ -71,9 +71,10 @@ export async function POST(request: NextRequest) {
       if (limited) return limited;
 
       console.error("[AsaasWebhookRoute][POST] Token inválido");
-      // E7 (C36): idem — ver comentário acima.
-      Sentry.captureMessage("[AsaasWebhookRoute] Token inválido", {
-        tags: { route: "AsaasWebhookRoute", phase: "auth-rejected" },
+      // E7 (C36/T-30.24): idem — ver comentário acima.
+      await reportAsaasWebhookAuthRejected({
+        reason: "invalid_token",
+        receivedToken,
       });
       return NextResponse.json(
         { error: "Unauthorized: Token inválido" },

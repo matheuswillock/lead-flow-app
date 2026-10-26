@@ -6,7 +6,7 @@ import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 export const UpdateLeadRequestSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").optional(),
-  email: z.string().email("Email deve ser válido").nullish().transform(val => val || undefined),
+  email: z.string().email("Email deve ser válido").nullable().optional(),
   phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").nullish().transform(val => val || undefined),
   cnpj: z
     .string()

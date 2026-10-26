@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { toast } from "sonner"
+
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type {
@@ -14,6 +17,10 @@ import type {
   PublicCheckoutPayerPrefill,
   PublicCheckoutStep,
 } from "./publicCheckoutTypes"
+import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
+import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
+import { isPixExpired } from "./pixExpiry"
+import type { CheckoutPaymentProvider } from "./providerBranding"
 import { PublicCheckoutPaymentStep } from "./PublicCheckoutPaymentStep"
 import { PublicCheckoutShell } from "./PublicCheckoutShell"
 import { PublicCheckoutSummaryStep } from "./PublicCheckoutSummaryStep"
@@ -43,7 +50,24 @@ export function PublicCheckoutFlow({
   prefill,
   onSubmit,
   onRefreshStatus,
+  pixOnly = false,
+  availableMethods,
+  successDescription = "Verifique seu e-mail para os proximos passos.",
+  provider,
+  canRegeneratePix = false,
 }: {
+  /**
+   * Métodos que o checkout pode oferecer. Ausente = somente PIX (falha fechada): o cartão
+   * só aparece quando o servidor o declara disponível.
+   */
+  availableMethods?: AvailableBillingTypes
+  /** `undefined` = Asaas (legado); `null` = ainda não resolvido (rodapé sem marca). */
+  provider?: CheckoutPaymentProvider | null
+  /** Quando true, PIX/tentativa expirados oferecem "Gerar novo PIX" reaproveitando os dados do pagador. */
+  canRegeneratePix?: boolean
+  /** Legado: PIX sem coleta de endereço. Implica `availableMethods = ["PIX"]`. */
+  pixOnly?: boolean
+  successDescription?: string
   attemptStorageKey: string
   attemptDurationMs?: number
   details: PublicCheckoutDetails | null
@@ -57,9 +81,12 @@ export function PublicCheckoutFlow({
   onRefreshStatus?: (options?: { sync?: boolean }) => Promise<void>
 }) {
   const [step, setStep] = useState<PublicCheckoutStep>("summary")
+  const [selectedBillingType, setSelectedBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX")
   const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null)
   const [now, setNow] = useState(Date.now())
   const previousErrorRef = useRef<string | null>(null)
+  const lastInputRef = useRef<PublicCheckoutPaymentInput | null>(null)
+  const [isRegeneratingPix, setIsRegeneratingPix] = useState(false)
 
   const expiresAt = useMemo(() => {
     if (!attemptStartedAt) return null
@@ -68,6 +95,18 @@ export function PublicCheckoutFlow({
 
   const remainingMs = expiresAt ? expiresAt - now : null
   const isExpired = remainingMs != null && remainingMs <= 0
+
+  const methods = useMemo(
+    () => resolveCheckoutMethods({ availableMethods, pixOnly }),
+    // A identidade do array muda a cada render do pai; a chave estável evita reexecutar o efeito.
+    [availableMethods?.join(","), pixOnly]
+  )
+  const cardOffered = methods.includes("CREDIT_CARD")
+  const canChooseMethod = cardOffered && methods.includes("PIX")
+
+  useEffect(() => {
+    setSelectedBillingType(pickBillingType(details?.presetBillingType, methods))
+  }, [details?.presetBillingType, methods])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -128,8 +167,37 @@ export function PublicCheckoutFlow({
 
   const countdownLabel = remainingMs == null ? "00:00" : formatCountdown(remainingMs)
 
+  const isPixExpiredNow =
+    canRegeneratePix && payment?.status === "pending" && isPixExpired(payment.pix?.expirationDate, now)
+
+  async function handleSubmit(input: PublicCheckoutPaymentInput) {
+    lastInputRef.current = input
+    await onSubmit(input)
+  }
+
+  async function handleRegeneratePix() {
+    const input = lastInputRef.current
+    if (isRegeneratingPix) return
+    setIsRegeneratingPix(true)
+    try {
+      if (input) await onSubmit(input)
+      const start = Date.now()
+      window.sessionStorage.setItem(attemptStorageKey, String(start))
+      setAttemptStartedAt(start)
+      setNow(start)
+      setStep("payment")
+    } catch (regenerateError) {
+      toast.error(
+        regenerateError instanceof Error ? regenerateError.message : "Não foi possível gerar um novo PIX."
+      )
+    } finally {
+      setIsRegeneratingPix(false)
+    }
+  }
+
   return (
     <PublicCheckoutShell
+      provider={provider}
       issuedLabel={details?.issuedLabel}
       issuedValue={details?.issuedValue || getNowDateKey()}
     >
@@ -139,7 +207,7 @@ export function PublicCheckoutFlow({
           <span className="font-medium">{countdownLabel}</span>
         </Badge>
         {details ? (
-          <Badge variant="outline">{details.presetBillingType === "PIX" ? "PIX" : "Cartao"}</Badge>
+          <Badge variant="outline">{selectedBillingType === "PIX" ? "PIX" : "Cartao"}</Badge>
         ) : null}
       </div>
 
@@ -169,24 +237,66 @@ export function PublicCheckoutFlow({
       ) : null}
 
       {!isLoading && details && step === "payment" ? (
-        <PublicCheckoutPaymentStep
-          details={details}
-          billingType={details.presetBillingType}
-          prefill={prefill}
-          maxInstallments={maxInstallments}
-          isSubmitting={isSubmitting}
-          payment={payment}
-          onSubmit={onSubmit}
-          onRefreshStatus={onRefreshStatus}
-        />
+        <>
+          {canChooseMethod ? (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            {methods.map((method) => {
+              const price = details.billingTypePrices[method]
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  disabled={Boolean(payment) || isSubmitting || price == null}
+                  onClick={() => setSelectedBillingType(method)}
+                  className={cn("rounded-lg border p-3 text-left", selectedBillingType === method && "border-primary ring-2 ring-primary/20")}
+                >
+                  <div className="text-sm font-medium">{method === "PIX" ? "PIX" : "Cartão de crédito"}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price.total)}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          ) : null}
+          <PublicCheckoutPaymentStep
+            pixOnly={pixOnly}
+            availableMethods={methods}
+            details={details}
+            billingType={selectedBillingType}
+            prefill={prefill}
+            maxInstallments={selectedBillingType === "PIX" ? 1 : maxInstallments}
+            isSubmitting={isSubmitting}
+            payment={payment}
+            onSubmit={handleSubmit}
+            onRefreshStatus={onRefreshStatus}
+            isPixExpired={isPixExpiredNow}
+            isRegeneratingPix={isRegeneratingPix}
+            onRegeneratePix={canRegeneratePix ? handleRegeneratePix : undefined}
+          />
+        </>
       ) : null}
 
       {!isLoading && step === "expired" ? (
         <Alert>
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>Tempo expirado</AlertTitle>
-          <AlertDescription>
-            O link expirou. Solicite um novo checkout com o suporte.
+          <AlertDescription className="flex flex-col gap-3">
+            {canRegeneratePix ? (
+              <>
+                <span>O tempo para pagar este PIX acabou. Gere um novo PIX para concluir a compra.</span>
+                <Button
+                  type="button"
+                  className="w-fit max-lg:min-h-11"
+                  onClick={handleRegeneratePix}
+                  disabled={isRegeneratingPix}
+                >
+                  {isRegeneratingPix ? "Gerando..." : "Gerar novo PIX"}
+                </Button>
+              </>
+            ) : (
+              "O link expirou. Solicite um novo checkout com o suporte."
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -197,7 +307,7 @@ export function PublicCheckoutFlow({
             <CheckCircle2 aria-hidden="true" />
           </div>
           <div className="text-lg font-semibold text-foreground">Pagamento confirmado</div>
-          <div className="text-sm text-muted-foreground">Verifique seu e-mail para os proximos passos.</div>
+          <div className="text-sm text-muted-foreground">{successDescription}</div>
         </div>
       ) : null}
     </PublicCheckoutShell>

@@ -31,6 +31,7 @@ import {
   Database,
   Zap,
   Mail,
+  PanelsTopLeft,
 } from "lucide-react"
 
 import {
@@ -155,6 +156,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
     { title: "Descadastro", url: `/${supabaseId}/email/descadastro`, icon: Mail, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_UNSUBSCRIBE },
     { title: "Configurações", url: `/${supabaseId}/email/configuracoes`, icon: Settings, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_SETTINGS },
+    { title: "Landing pages", url: `/${supabaseId}/landing-pages`, icon: PanelsTopLeft, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_LANDING_PAGES },
   ];
 
   const whatsAppItems: SidebarItem[] = [
@@ -382,6 +384,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 isOwnAccount: team.isOwnAccount,
                 isAccessible: team.isAccessible,
                 isAssociateAccount: team.isAssociateAccount,
+                isPending: team.isPending,
               }))}
               activeTeamId={activeTeamId}
               onChange={setActiveTeamId}
@@ -474,7 +477,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
               </SidebarGroup>
             )}
             {(isManager || isTeamMaster || isCloser) &&
-              hasAccess(FEATURE_SLUGS.EMAIL) &&
+              (hasAccess(FEATURE_SLUGS.EMAIL) || hasAccess(FEATURE_SLUGS.EMAIL_LANDING_PAGES)) &&
               visibleEmailItems.length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel

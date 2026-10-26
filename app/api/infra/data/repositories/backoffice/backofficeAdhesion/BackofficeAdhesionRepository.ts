@@ -315,9 +315,16 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     id: string,
     data: UpdateBackofficeAdhesionCheckoutInput
   ): Promise<BackofficeAdhesionWithRelations> {
+    const { quoteSnapshot, ...checkoutData } = data
+    const updateData: Prisma.BackofficeAdhesionUncheckedUpdateInput = {
+      ...checkoutData,
+      ...(quoteSnapshot !== undefined
+        ? { quoteSnapshot: quoteSnapshot as Prisma.InputJsonValue }
+        : {}),
+    }
     return prisma.backofficeAdhesion.update({
       where: { id },
-      data,
+      data: updateData,
       include: backofficeAdhesionInclude,
     })
   }

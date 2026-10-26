@@ -1,8 +1,10 @@
 import { Output } from "@/lib/output";
 import { asaasFetch, asaasApi, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { toBillingCycle } from "@/lib/billing/resolvePrice";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
 import type { UserRole } from "@prisma/client";
@@ -23,6 +25,20 @@ import {
   asaasCustomerGateway as defaultAsaasCustomerGateway,
 } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
+import {
+  billingPriceResolver as defaultBillingPriceResolver,
+} from "@/app/api/services/billingPricing/BillingPriceResolver"
+import type {
+  BillingPriceCycle,
+  BillingPriceMethod,
+  IBillingPriceResolver,
+} from "@/app/api/shared/billing/billingPriceTypes"
+import {
+  billingCheckoutIntentRepository as defaultBillingCheckoutIntentRepository,
+} from "@/app/api/infra/data/repositories/billingCheckoutIntent/BillingCheckoutIntentRepository"
+import type { IBillingCheckoutIntentRepository } from "@/app/api/infra/data/repositories/billingCheckoutIntent/IBillingCheckoutIntentRepository"
+import { BillingCheckoutIntentService } from "@/app/api/services/billingCheckoutIntent/BillingCheckoutIntentService"
+import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
 
 // Mesmo TTL de AddOnCheckoutUseCase.ts (T-40.x) — checkout hospedado do
 // Asaas expira depois disso.
@@ -55,6 +71,8 @@ export interface CreateCheckoutData {
   city?: string;
   state?: string;
   billingType?: 'CREDIT_CARD' | 'PIX' | 'BOLETO';
+  productId?: string;
+  billingCycle?: BillingPriceCycle;
 }
 
 export interface CreateOperatorCheckoutData {
@@ -94,7 +112,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
     private readonly teamRepository: ITeamRepository = defaultTeamRepository,
     private readonly teamMembersRepository: ITeamMembersRepository = defaultTeamMembersRepository,
     private readonly pendingOperatorRepository: IPendingOperatorRepository = defaultPendingOperatorRepository,
-    private readonly asaasCustomerGateway: IAsaasCustomerGateway = defaultAsaasCustomerGateway
+    private readonly asaasCustomerGateway: IAsaasCustomerGateway = defaultAsaasCustomerGateway,
+    private readonly billingPriceResolver: IBillingPriceResolver = defaultBillingPriceResolver,
+    private readonly billingCheckoutIntentRepository: IBillingCheckoutIntentRepository = defaultBillingCheckoutIntentRepository,
   ) {}
 
   /**
@@ -194,6 +214,18 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
+      const billingType: BillingPriceMethod = data.billingType ?? "CREDIT_CARD"
+      const billingCycle = data.billingCycle ?? "monthly"
+      const checkoutValue = await this.billingPriceResolver.resolvePrice({
+        featureSlug: "crm",
+        productId: data.productId,
+        cycle: billingCycle,
+        method: billingType,
+      })
+      if (checkoutValue == null) {
+        return new Output(false, [], ["Preço do produto e ciclo não estão disponíveis no catálogo"], null)
+      }
+
       // 2. Criar Asaas Checkout com assinatura recorrente
       // nextDueDate = data da PRIMEIRA cobrança (hoje, para cobrar no ato)
       // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
@@ -215,7 +247,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // ⚠️ LIMITAÇÃO ASAAS: chargeTypes RECURRENT só funciona com CREDIT_CARD
       // Para PIX/Boleto com assinatura, usamos DETACHED e criamos
       // subscription via webhook após o primeiro pagamento.
-      const billingTypes = ['CREDIT_CARD'];
+      const billingTypes = [billingType];
       const chargeTypes = ['DETACHED'];
 
       console.info('💳 [createSubscriptionCheckout] Configuração:', {
@@ -232,7 +264,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           {
             name: 'Plano Professional',
             description: 'Sistema completo de gestão de leads com pipeline Kanban, analytics em tempo real e gestão de equipe.',
-            value: 59.90,
+            value: checkoutValue,
             quantity: 1,
           }
         ],
@@ -525,6 +557,15 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         endDate: endDateStr,
       });
 
+      const operatorPrice = await this.billingPriceResolver.resolvePrice({
+        featureSlug: "extra-user",
+        cycle: "monthly",
+        method: "CREDIT_CARD",
+      })
+      if (operatorPrice == null) {
+        return new Output(false, [], ["Preço de usuário adicional indisponível no catálogo"], null)
+      }
+
       const checkoutData: any = {
         customer: operatorCheckoutCustomerId,
         billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
@@ -539,7 +580,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           {
             name: 'Licença Operador',
             description: `Acesso completo à plataforma - ${data.operatorData.email}`,
-            value: 19.90,
+            value: operatorPrice,
             quantity: 1,
           }
         ],
@@ -711,11 +752,22 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           { method: 'GET' }
         );
 
-        const newValue = oldSubscription.value + 19.90;
+        const billingCycle = toBillingCycle(oldSubscription.cycle);
+        const operatorPrice = billingCycle
+          ? await this.billingPriceResolver.resolvePrice({
+              featureSlug: "extra-user",
+              cycle: billingCycle,
+              method: oldSubscription.billingType,
+            })
+          : null;
+        if (operatorPrice == null) {
+          throw new Error("Preço de usuário adicional indisponível no catálogo");
+        }
+        const newValue = oldSubscription.value + operatorPrice;
         console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
           oldValue: oldSubscription.value,
           newValue,
-          increment: 19.90
+          increment: operatorPrice
         });
 
         try {
@@ -988,6 +1040,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
    * errado numa colisão de sub_ entre as duas contas.
    */
   async processCheckoutPaid(checkoutId: string, account: AsaasAccountId): Promise<Output> {
+    let claimedIntentId: string | null = null
     try {
       console.info('💰 [processCheckoutPaid] Processando pagamento de checkout:', { checkoutId, account });
 
@@ -999,21 +1052,62 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         `${asaasClient.endpoints.payments}/${checkoutId}`,
         { method: 'GET' }
       );
-
-      if (!payment.subscription) {
-        return new Output(
-          false,
-          [],
-          ['Cobrança não está vinculada a uma assinatura'],
-          null
-        );
+      if (payment.status && !['RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED', 'APPROVED', 'PAID'].includes(payment.status)) {
+        return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
       }
 
-      // Buscar profile pela assinatura (C33: filtrado pela conta do evento)
-      const profile = await this.profileRepository.findByAsaasSubscriptionIdAndAccount(
-        payment.subscription,
-        account
-      );
+      const externalReference = typeof payment.externalReference === "string" ? payment.externalReference : null
+      const isBillingIntentPayment = BillingCheckoutIntentService.isIntentExternalReference(externalReference)
+      const intent = isBillingIntentPayment && externalReference
+        ? await this.billingCheckoutIntentRepository.findByExternalReference(externalReference, account)
+        : null
+
+      if (isBillingIntentPayment && !intent) {
+        return new Output(false, [], ["Intenção de checkout não encontrada"], null)
+      }
+      if (!payment.subscription && !intent) {
+        return new Output(false, [], ["Pagamento detached sem intenção autorizada"], null)
+      }
+      if (intent && intent.status === "subscription_created" && intent.subscriptionId) {
+        return new Output(true, ["Pagamento já processado"], [], { subscriptionId: intent.subscriptionId })
+      }
+      if (intent && intent.status === "subscription_creating") {
+        return new Output(true, ["Pagamento já está em processamento"], [], null)
+      }
+      if (intent) {
+        const quoteSnapshot =
+          intent.quoteSnapshot && typeof intent.quoteSnapshot === "object" && !Array.isArray(intent.quoteSnapshot)
+            ? intent.quoteSnapshot as Record<string, unknown>
+            : null
+        if (!quoteSnapshot || !intent.quoteHash || hashBillingQuote(quoteSnapshot) !== intent.quoteHash) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "quote_integrity_invalid")
+          return new Output(false, [], ["Integridade do quote do checkout inválida"], null)
+        }
+        if (payment.customer !== intent.asaasCustomerId) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "customer_divergent")
+          return new Output(false, [], ["Pagamento não corresponde ao customer autorizado"], null)
+        }
+        if (intent.expiresAt.getTime() <= Date.now()) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "quote_expired")
+          return new Output(false, [], ["Quote do checkout expirado"], null)
+        }
+        const expectedAmount = intent.amount == null ? null : Number(intent.amount.toString())
+        const expectedBillingType = intent.billingType
+        if (
+          expectedAmount == null ||
+          Math.abs(Number(payment.value) - expectedAmount) > 0.005 ||
+          payment.billingType !== expectedBillingType
+        ) {
+          await this.billingCheckoutIntentRepository.markManualReconciliation(intent.id, "payment_quote_divergent")
+          return new Output(false, [], ["Pagamento divergente do quote autorizado"], null)
+        }
+      }
+
+      const profile = intent
+        ? await this.profileRepository.findById(intent.profileId)
+        : payment.subscription
+          ? await this.profileRepository.findByAsaasSubscriptionIdAndAccount(payment.subscription, account)
+          : await this.profileRepository.findByAsaasCustomerIdAndAccount(payment.customer, account);
 
       if (!profile) {
         return new Output(
@@ -1024,8 +1118,46 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         );
       }
 
+      if (intent) {
+        const claimed = await this.billingCheckoutIntentRepository.claimSubscriptionCreation(intent.id)
+        if (!claimed) {
+          const current = await this.billingCheckoutIntentRepository.findByExternalReference(intent.externalReference, account)
+          if (current?.status === "subscription_created" && current.subscriptionId) {
+            return new Output(true, ["Pagamento já processado"], [], { subscriptionId: current.subscriptionId })
+          }
+          return new Output(true, ["Pagamento já está em processamento"], [], null)
+        }
+        claimedIntentId = intent.id
+      }
+
+      let subscriptionId = payment.subscription as string | undefined;
+      if (!subscriptionId) {
+        subscriptionId = await this.createSubscriptionAfterDetachedCheckout(
+          payment,
+          profile,
+          account,
+          intent
+            ? {
+                amount: Number(intent.amount),
+                billingType: intent.billingType ?? "",
+                externalReference: `${intent.externalReference}:subscription`,
+              }
+            : undefined,
+        );
+        await this.profileRepository.updateSubscriptionAfterCheckout({
+          profileId: profile.id,
+          subscriptionId,
+          account,
+          cycle: "MONTHLY",
+          startDate: new Date(),
+          nextDueDate: addMonthsInTz(new Date(), 1, resolveTimezone(profile.timezone)),
+        });
+      }
+
       // Atualizar status da assinatura para ativa
       await this.profileRepository.activateSubscription(profile.id);
+
+      if (intent) await this.billingCheckoutIntentRepository.markSubscriptionCreated(intent.id, subscriptionId)
 
       invalidateAccountAccessStatusCache({ accountMasterId: profile.id });
 
@@ -1058,6 +1190,14 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
     } catch (error: any) {
       console.error('❌ [processCheckoutPaid] Erro:', error);
 
+      if (claimedIntentId) {
+        try {
+          await this.billingCheckoutIntentRepository.releaseSubscriptionCreation(claimedIntentId)
+        } catch (releaseError) {
+          console.error('❌ [processCheckoutPaid] Falha ao liberar claim da assinatura:', releaseError)
+        }
+      }
+
       return new Output(
         false,
         [],
@@ -1065,6 +1205,65 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         null
       );
     }
+  }
+
+  private async createSubscriptionAfterDetachedCheckout(
+    payment: { id: string; customer: string; value?: number; billingType?: string; externalReference?: string },
+    profile: { id: string; timezone?: string | null },
+    account: AsaasAccountId,
+    quote?: { amount: number; billingType: string; externalReference: string },
+  ): Promise<string> {
+    const method: BillingPriceMethod = payment.billingType === "PIX" ? "PIX" : "CREDIT_CARD";
+    const expectedValue = quote?.amount ?? await this.billingPriceResolver.resolvePrice({
+      featureSlug: "crm",
+      cycle: "monthly",
+      method,
+    });
+    if (expectedValue == null || payment.value == null || Math.abs(Number(payment.value) - expectedValue) > 0.005) {
+      throw new Error("Pagamento confirmado com preço divergente do catálogo");
+    }
+
+    const externalReference = quote?.externalReference ?? `checkout:${payment.id}:crm-subscription`;
+    const client = createAsaasClient(account);
+    const existingResponse = await client.request(
+      `${client.endpoints.subscriptions}?externalReference=${encodeURIComponent(externalReference)}`,
+      { method: "GET" },
+    );
+    const existingSubscriptions = Array.isArray(existingResponse?.data) ? existingResponse.data : [];
+    if (existingSubscriptions.length > 1) {
+      throw new Error("Mais de uma assinatura foi encontrada para o checkout confirmado");
+    }
+    const existing = existingSubscriptions[0];
+    if (existing) {
+      if (
+        existing.customer !== payment.customer ||
+        existing.status !== "ACTIVE" ||
+        Math.abs(Number(existing.value) - expectedValue) > 0.005 ||
+        existing.cycle !== "MONTHLY"
+      ) {
+        throw new Error("Assinatura do checkout reconciliada com dados divergentes");
+      }
+      return existing.id;
+    }
+
+    const nextDueDate = addMonthsInTz(new Date(), 1, resolveTimezone(profile.timezone));
+    const created = await AsaasSubscriptionService.createSubscription({
+      customer: payment.customer,
+      billingType: method,
+      value: expectedValue,
+      cycle: "MONTHLY",
+      nextDueDate: formatIntimezone(nextDueDate, "yyyy-MM-dd", resolveTimezone(profile.timezone)),
+      externalReference,
+    }, account);
+    if (
+      created.data.customer !== payment.customer ||
+      created.data.status !== "ACTIVE" ||
+      Math.abs(Number(created.data.value) - expectedValue) > 0.005 ||
+      created.data.cycle !== "MONTHLY"
+    ) {
+      throw new Error("Assinatura criada para o checkout retornou dados divergentes");
+    }
+    return created.subscriptionId;
   }
 }
 

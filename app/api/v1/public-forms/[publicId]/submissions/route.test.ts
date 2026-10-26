@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 const acceptMock = mock(async () => new Output(true, [], [], null))
 const queueForBackgroundProcessingMock = mock(async () => {})
 const consumePublicFormRateLimitMock = mock(async () => ({ allowed: true, retryAfterSeconds: 0 }))
+const publicFormAccountAccessMock = mock(async () => new Output(true, [], [], null))
 
 let lastAfterPromise: Promise<unknown> = Promise.resolve()
 
@@ -37,6 +38,10 @@ mock.module("@/app/api/useCases/publicForms/PublicFormSubmissionUseCase", () => 
 mock.module("@/lib/public-forms/rate-limit", () => ({
   consumePublicFormRateLimit: consumePublicFormRateLimitMock,
   publicFormRequestFingerprint: () => "fp-1",
+}))
+
+mock.module("@/app/api/useCases/publicForms/PublicFormAccountAccessUseCase", () => ({
+  publicFormAccountAccessUseCase: { execute: publicFormAccountAccessMock },
 }))
 
 /**
@@ -90,6 +95,8 @@ function resetMocks() {
   queueForBackgroundProcessingMock.mockResolvedValue(undefined)
   consumePublicFormRateLimitMock.mockReset()
   consumePublicFormRateLimitMock.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 })
+  publicFormAccountAccessMock.mockReset()
+  publicFormAccountAccessMock.mockResolvedValue(new Output(true, [], [], null))
   foreignHostGuardMock.mockReset()
   foreignHostGuardMock.mockResolvedValue(null)
 }
@@ -165,6 +172,15 @@ describe("Public form submissions route — guard de origem (T-F6.2)", () => {
 })
 
 describe("Public form submissions route (PR2.3)", () => {
+  it("conta inadimplente → 403 sem aceitar ou enfileirar submissão", async () => {
+    resetMocks()
+    publicFormAccountAccessMock.mockResolvedValue(new Output(false, [], ["O acesso desta conta está pausado"], null))
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({ publicId: "pub-1" }) })
+    expect(response.status).toBe(403)
+    expect(acceptMock).not.toHaveBeenCalled()
+    expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
+  })
+
   it("fluxo feliz: after() delega ao UseCase.queueForBackgroundProcessing", async () => {
     resetMocks()
 
@@ -203,6 +219,20 @@ describe("Public form submissions route (PR2.3)", () => {
       params: Promise.resolve({ publicId: "pub-1" }),
     })
     expect(response.status).toBe(400)
+    expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
+  })
+
+  it("slot ocupado → 409, sem enfileirar", async () => {
+    resetMocks()
+    acceptMock.mockResolvedValue(
+      new Output(false, [], ["O horário selecionado não está mais disponível"], { conflict: true }),
+    )
+
+    const response = await POST(makeRequest(VALID_BODY), {
+      params: Promise.resolve({ publicId: "pub-1" }),
+    })
+
+    expect(response.status).toBe(409)
     expect(queueForBackgroundProcessingMock).not.toHaveBeenCalled()
   })
 })

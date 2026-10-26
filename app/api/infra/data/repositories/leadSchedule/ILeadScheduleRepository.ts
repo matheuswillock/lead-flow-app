@@ -58,6 +58,11 @@ export interface UpsertTransferPreScheduleDTO {
   meetingTitle: string;
   notes: string | null;
   meetingType: string;
+  extraGuests?: string[];
+}
+
+export interface SaveTransferPreScheduleDTO extends UpsertTransferPreScheduleDTO {
+  meetingTitle: string;
 }
 
 export interface ILeadScheduleRepository {
@@ -71,6 +76,7 @@ export interface ILeadScheduleRepository {
    * Sempre zera link e compartilhamento publico, que nao sobrevivem a troca de time.
    */
   upsertTransferPreSchedule(data: UpsertTransferPreScheduleDTO): Promise<void>;
+  saveTransferPreSchedule(data: SaveTransferPreScheduleDTO): Promise<LeadsSchedule>;
 
   /**
    * Busca registros de agendamentos por leadId

@@ -7026,6 +7026,42 @@
                   "response": []
                 },
                 {
+                  "name": "GET /api/v1/teams/{{teamId}}/schedule-settings",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      { "key": "x-supabase-user-id", "value": "{{supabaseId}}", "type": "text" },
+                      { "key": "x-team-id", "value": "{{teamId}}", "type": "text" }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/schedule-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "schedule-settings"]
+                    },
+                    "description": "Master ou manager: consulta a duração fixa das reuniões do time."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PUT /api/v1/teams/{{teamId}}/schedule-settings",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      { "key": "Content-Type", "value": "application/json", "type": "text" },
+                      { "key": "x-supabase-user-id", "value": "{{supabaseId}}", "type": "text" },
+                      { "key": "x-team-id", "value": "{{teamId}}", "type": "text" }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/schedule-settings",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "v1", "teams", "{{teamId}}", "schedule-settings"]
+                    },
+                    "body": { "mode": "raw", "raw": "{\"durationMinutes\":45}" },
+                    "description": "Master ou manager: define duração entre 5 e 60 minutos, em intervalos de 5."
+                  },
+                  "response": []
+                },
+                {
                   "name": "GET /api/v1/teams/{{teamId}}/automations",
                   "request": {
                     "method": "GET",
@@ -7246,6 +7282,34 @@
                       ]
                     },
                     "description": "Cron: avalia leads ociosos para automações"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/cron/reconcile-meeting-slot-reservations",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{cronSecret}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/cron/reconcile-meeting-slot-reservations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "cron",
+                        "reconcile-meeting-slot-reservations"
+                      ]
+                    },
+                    "description": "Cron: reconcilia reservas de slots de reunião com o evento externo (consome a reserva quando a agenda local já referencia o evento)"
                   },
                   "response": []
                 },
@@ -10172,6 +10236,36 @@
               }
             },
             {
+              "name": "POST Public Adhesion Pix (Abacate)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"12345678909\",\n  \"idempotencyKey\": \"adhesion-pix-{{$guid}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}/pix",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}",
+                    "pix"
+                  ]
+                },
+                "description": "Gera o PIX transparente da adesão pelo provider de pagamento (Abacate). O token define a adesão e o valor; a chave de idempotência vale por adesão. Adesões com parcelas pendentes no Asaas usam o checkout padrão. Limitado por IP (429)."
+              }
+            },
+            {
               "name": "GET Public Adhesion Payment Status",
               "request": {
                 "method": "GET",
@@ -10320,6 +10414,87 @@
                 },
                 "description": "E6/G2 (SPEC 50): gera a cobrança da diferença sempre na conta Asaas nova (DA6) e envia e-mail nosso (Resend) com o link de pagamento — nunca notificação do Asaas. Exige ordem em `draft` com preço avulso resolvido (não `pending`). Exige manager (`requireManagerAccess`)."
               }
+            }
+          ]
+        },
+        {
+          "name": "Payment Provider (Phase 3)",
+          "item": [
+            {
+              "name": "POST Refund Payment Attempt (Manager)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Solicitação aprovada pelo financeiro\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/payment-provider/attempts/:attemptId/refund",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "payment-provider",
+                    "attempts",
+                    ":attemptId",
+                    "refund"
+                  ],
+                  "variable": [
+                    {
+                      "key": "attemptId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Solicita refund integral de uma tentativa ABACATE_PAY. Requer acesso de manager no backoffice; operação idempotente para tentativa já reembolsada."
+              },
+              "response": []
+            },
+            {
+              "name": "GET Payment Provider Maintenance (DEV Cron)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{cronSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payment-provider/cron/maintenance?limit=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payment-provider",
+                    "cron",
+                    "maintenance"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "50"
+                    }
+                  ]
+                },
+                "description": "Worker manual/autorizado para reconciliar tentativas UNKNOWN e aplicar créditos de e-mail confirmados. A Fase 3 rejeita ambiente PRODUCTION; não está agendado no vercel.json."
+              },
+              "response": []
             }
           ]
         },
@@ -17861,6 +18036,27 @@
           "response": []
         },
         {
+          "name": "GET Payment Methods Availability (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payment-methods/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payment-methods",
+                "availability"
+              ]
+            },
+            "description": "Público. Retorna { card, reason, availableBillingTypes } (['PIX'] ou ['PIX','CREDIT_CARD']). Cache-Control curto (30s). CREDIT_CARD em rotas de checkout com cartão desligado responde 422 PAYMENT_METHOD_UNAVAILABLE."
+          },
+          "response": []
+        },
+        {
           "name": "GET Platform Checkout Detalhes",
           "request": {
             "method": "GET",
@@ -17885,6 +18081,50 @@
               ]
             },
             "description": "Reabre checkout genérico sem duplicar cobrança."
+          },
+          "response": []
+        },
+        {
+          "name": "POST Payment Provider (PIX/Card)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "phase3-{{$timestamp}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"PIX\",\n  \"customer\": {\n    \"name\": \"Joao Silva\",\n    \"email\": \"joao@example.com\",\n    \"taxId\": \"12345678901\",\n    \"cellphone\": \"11999999999\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payment-provider-payment/:purchaseId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payment-provider-payment",
+                ":purchaseId"
+              ],
+              "variable": [
+                {
+                  "key": "purchaseId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Inicia cobrança Phase 3 no provider roteado. Em DEV, aceita PIX ou cartão tokenizado; nunca enviar PAN/CVV. Exige Idempotency-Key e x-supabase-user-id."
           },
           "response": []
         },

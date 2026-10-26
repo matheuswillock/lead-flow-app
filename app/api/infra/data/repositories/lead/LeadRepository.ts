@@ -1,4 +1,4 @@
-import { ILeadRepository, type LeadAuthorizationSnapshot, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
+import { ILeadRepository, type LeadAuthorizationSnapshot, type LeadCreateRepositoryInput, type LeadDuplicateCandidateRecord, type LeadMergeTransactionInput, type LeadRecord, type LeadScheduleContext, type LeadUpdateRepositoryInput, type TransferToTeamSanitization } from "./ILeadRepository";
 import { ActivityType, Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
@@ -63,6 +63,7 @@ export const MERGE_TRANSFERRED_LEAD_RELATIONS = [
   "LeadCustomFieldValue",
   "LeadTagAssignment",
   "LeadDocumentRequest",
+  "TeamMeetingSlotReservation",
 ] as const;
 
 /**
@@ -135,6 +136,7 @@ const CRM_LEAD_LIST_SELECT = {
   referenceHospital: true,
   currentTreatment: true,
   meetingDate: true,
+  meetingDurationMinutes: true,
   meetingTitle: true,
   meetingNotes: true,
   meetingLink: true,
@@ -313,6 +315,27 @@ export class LeadRepository implements ILeadRepository {
             attachments: true,
           },
         },
+      },
+    });
+  }
+
+  async findScheduleContextById(id: string): Promise<LeadScheduleContext | null> {
+    return prisma.lead.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        teamId: true,
+        name: true,
+        email: true,
+        status: true,
+        managerId: true,
+        assignedTo: true,
+        closerId: true,
+        meetingLink: true,
+        leadCode: true,
+        meetingType: true,
+        isTransfer: true,
+        assignee: { select: { email: true } },
       },
     });
   }
@@ -1368,6 +1391,13 @@ export class LeadRepository implements ILeadRepository {
         data: { leadId: targetLead.id },
       });
       await tx.leadDocumentRequest.updateMany({
+        where: { leadId: sourceLead.id },
+        data: { leadId: targetLead.id },
+      });
+      // SetNull na FK: sem este updateMany, o delete do lead de origem zera
+      // leadId e a reserva do slot bloqueado perde o vínculo com o lead
+      // sobrevivente (mesma classe do bug da submissão pública acima).
+      await tx.teamMeetingSlotReservation.updateMany({
         where: { leadId: sourceLead.id },
         data: { leadId: targetLead.id },
       });

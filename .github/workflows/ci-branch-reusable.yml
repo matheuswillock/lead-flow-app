@@ -50,13 +50,13 @@ permissions:
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
-  NODE_OPTIONS: --max-old-space-size=5120
+  NODE_OPTIONS: --max-old-space-size=8192
 
 jobs:
   validate-branch:
     name: Validate branch prefix
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
     steps:
@@ -66,7 +66,11 @@ jobs:
           BRANCH_PREFIXES: ${{ inputs.branch-prefixes }}
         run: |
           set -euo pipefail
-          ref="${GITHUB_REF#refs/heads/}"
+          ref="${GITHUB_REF_NAME:-${GITHUB_HEAD_REF:-}}"
+          if [[ -z "$ref" ]]; then
+            full_ref="${GITHUB_REF:-}"
+            ref="${full_ref#refs/heads/}"
+          fi
           IFS=',' read -ra prefixes <<< "$BRANCH_PREFIXES"
           for raw in "${prefixes[@]}"; do
             prefix="${raw// /}"
@@ -88,11 +92,8 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # 12min (era 8): mesmo teto do `ci-light` de `ci-main.yml`/`ci-develop.yml` —
-    # ver o incidente de 16/09 comentado lá. A VPS é de 2 vCPU e o tempo do job
-    # varia com quantos pipelines disputam a máquina.
-    timeout-minutes: 12
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
@@ -103,7 +104,7 @@ jobs:
       spellcheck-result: ${{ steps.ci-light-checks.outputs['spellcheck-result'] }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -130,7 +131,7 @@ jobs:
       check-result: ${{ steps.resolve-typecheck.outputs.result }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -139,7 +140,7 @@ jobs:
         id: typecheck
         continue-on-error: true
         env:
-          NODE_OPTIONS: "--max-old-space-size=5120"
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run typecheck
 
       - name: Resolve Typecheck
@@ -172,18 +173,18 @@ jobs:
       check-result: ${{ steps.resolve-build.outputs.result }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .next/cache
           key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
@@ -231,34 +232,19 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    # `ci-light` no needs: CI Light e E2E disputam os 2 vCPU da VPS (cada um em
-    # um runner da MESMA máquina) — medido em 10-11/09/2026, unit test do CI
-    # Light estourou timeout de 5s com E2E ao lado, mesmo sob `nice -n 19`
-    # (runs 34501366334 e 34594117712). O needs serializa intra-run SEM o
-    # risco de um concurrency group compartilhado: por padrão, "any existing
-    # pending job or workflow in the same concurrency group will be canceled"
-    # (docs.github.com/en/actions/using-jobs/using-concurrency) — um group
-    # CI-Light+E2E cancelaria o CI Light pendente de um PR alheio.
-    # O `!cancelled()` preserva o desenho do Quality Gate: CI Light REPROVAR
-    # não pode virar E2E "skipped" — cada check dá o próprio veredito.
-    needs: [validate-branch, ci-light]
+    # CI Light e E2E usam VMs hospedadas independentes. Eles começam juntos,
+    # e o Quality Gate continua aguardando ambos antes de aprovar a branch.
+    needs: validate-branch
     if: >-
       ${{
         !cancelled() &&
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # A VPS tem 2 vCPU / 7,8 Gi e 2+ runners na mesma máquina — o E2E completo
-    # (Postgres :55322 + build Next com heap de 5 Gi + Chromium) não comporta
-    # duas execuções simultâneas nem porta/nome compartilhados. Este grupo
-    # serializa TODO E2E na VPS (mesmo grupo em ci-develop/ci-main).
-    # `cancel-in-progress: false`: execução em andamento nunca é derrubada.
-    concurrency:
-      group: e2e-postgres-vps
-      cancel-in-progress: false
-    # 45min (era 30 no ubuntu-latest de 4 vCPU): build + suíte em 2 vCPU.
-    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    # Cada VM tem Docker e porta 55322 próprios, portanto execuções de branches
+    # diferentes podem rodar simultaneamente sem fila global ou colisões.
+    timeout-minutes: 30
     # Aqui a distinção é a mais crítica dos três: o upload do relatório roda
     # DEPOIS do teste. Um upload que falha deixa o job vermelho com o E2E tendo
     # passado, e ler só `needs.e2e.result` reportaria "E2E reprovou".
@@ -266,15 +252,15 @@ jobs:
       check-result: ${{ steps.resolve-e2e.outputs.result }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Contexto do runner
         run: echo "runner=$(hostname)/$(whoami) nproc=$(nproc) $(free -h | awk '/^Mem:/{print "mem_disp=" $7}') $(df -h / | awk 'NR==2 {print "disco_livre=" $4}')"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -284,16 +270,26 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/run-e2e-playwright
         with:
-          include-slow: 'false'
+          include-slow: "false"
           asaas-sandbox-api-key: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
 
       - name: Resolve E2E
         id: resolve-e2e
         if: always()
         run: |
+          set -euo pipefail
           outcome="${{ steps.playwright.outcome }}"
           echo "result=${outcome}" >> "$GITHUB_OUTPUT"
-          [[ "$outcome" == "success" ]] || exit 1
+          if [[ "$outcome" != "success" ]]; then
+            echo "::error title=E2E failed::The E2E action failed. Check the E2E stage marker above and download the playwright-report artifact."
+            {
+              echo "## E2E result"
+              echo "The E2E action finished with outcome: \`$outcome\`."
+              echo "The failing stage is reported by the composite action above."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "E2E passed: integration tests, build and Playwright completed successfully."
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
@@ -312,7 +308,7 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     needs:
       - validate-branch
@@ -412,7 +408,7 @@ jobs:
               # Um job reprovado nunca passa no gate, mesmo que todo output lido
               # esteja verde — pode ter morrido depois do último output.
               if [[ "$CI_LIGHT_RESULT" == "failure" ]]; then
-                echo "::error::CI Light (VPS): job terminou em falha. Se todos os checks acima aparecem verdes, ele morreu em um passo posterior — comece pelo log do job."
+                echo "::error::CI Light: job terminou em falha. Se todos os checks acima aparecem verdes, ele morreu em um passo posterior — comece pelo log do job."
                 failed=1
               fi
               ;;
@@ -420,8 +416,8 @@ jobs:
               # cancelled / skipped / vazio: o job não chegou a produzir veredito
               # nenhum. Reportar cada output individualmente aqui só geraria
               # ruído apontando para código íntegro.
-              assert_job "CI Light (VPS)" "$CI_LIGHT_RESULT" || failed=1
-              echo "::notice::Os checks de lint, governança, testes e spellcheck NÃO foram executados. Não há reprovação de código a corrigir aqui — comece pelo log do job CI Light (VPS)."
+              assert_job "CI Light" "$CI_LIGHT_RESULT" || failed=1
+              echo "::notice::Os checks de lint, governança, testes e spellcheck NÃO foram executados. Não há reprovação de código a corrigir aqui — comece pelo log do job CI Light."
               ;;
           esac
 
@@ -473,7 +469,7 @@ jobs:
         needs.validate-branch.outputs.allowed == 'true' &&
         (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]'))
       }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
       - validate-branch
@@ -484,7 +480,7 @@ jobs:
       - e2e
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

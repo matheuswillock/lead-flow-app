@@ -1,0 +1,176 @@
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
+import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
+import {
+  createAbacatePayProvider,
+  createPaymentProviderRouter,
+  resolvePaymentProviderEnvironment,
+} from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary"
+import type { Prisma } from "@prisma/client"
+import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
+
+const QUOTE_TTL_MS = 10 * 60 * 1000
+const SESSION_TTL_MS = 30 * 60 * 1000
+const ROUTE_VERSION = "BILLING-GRACE-PHASE-5"
+
+
+export class BillingGracePaymentService implements IBillingGracePaymentService {
+  async getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {
+    const account = await billingGracePaymentRepository.findAccountContext(supabaseId)
+    if (!account) throw new Error("Somente o master pode regularizar esta conta")
+
+    const summary = buildAccountSummary(account)
+    const amountCents = Math.round(summary.totalPrice * 100)
+    if (!Number.isSafeInteger(amountCents) || amountCents < 100) {
+      throw new Error("Não foi possível calcular o valor da regularização")
+    }
+
+    const expiresAt = new Date(Date.now() + QUOTE_TTL_MS)
+    return {
+      cycle: "one-time",
+      amountCents,
+      expiresAt: expiresAt.toISOString(),
+      method: "PIX",
+    }
+  }
+
+  async createPixPayment(input: { supabaseId: string; idempotencyKey: string }) {
+    // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
+    // nem devolver o pagamento (e o PIX) de outra conta.
+    const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
+    if (!account) throw new Error("Somente o master pode regularizar esta conta")
+
+    const existing = await billingGracePaymentRepository.findByIdempotencyKey({
+      accountId: account.accountId,
+      idempotencyKey: input.idempotencyKey,
+    })
+    if (existing) return existing
+
+    // Seleciona o provider antes de persistir: provider indisponível não deixa linha órfã.
+    const environment = resolvePaymentProviderEnvironment()
+    const selected = await createPaymentProviderRouter(environment).select({
+      environment,
+      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+    })
+
+    const summary = buildAccountSummary(account)
+    const amountCents = Math.round(summary.totalPrice * 100)
+    const payment = await billingGracePaymentRepository.create({
+      accountId: account.accountId,
+      teamId: account.teamId,
+      subscriptionId: account.subscriptionId,
+      cycle: "one-time",
+      amountCents,
+      effectivePriceCents: amountCents,
+      provider: "ABACATE_PAY",
+      providerEnvironment: environment,
+      idempotencyKey: input.idempotencyKey,
+      quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
+    })
+
+    const provider = createAbacatePayProvider(environment)
+    // A unicidade das tentativas do provider é global: derivar a chave do pagamento
+    // (único) evita colisão entre contas que enviem a mesma chave de cliente.
+    const providerIdempotencyKey = `billing-grace-payment:${payment.id}`
+    const session = await paymentProviderSessionRepository.createSession({
+      tenantId: account.teamId ?? account.accountId,
+      ownerType: "BILLING_GRACE_PAYMENT",
+      ownerId: payment.id,
+      idempotencyKey: providerIdempotencyKey,
+      provider: selected.provider,
+      environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
+      route: "NEW_ROUTER",
+      routeVersion: ROUTE_VERSION,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    })
+    const attempt = await paymentProviderSessionRepository.createAttempt({
+      sessionId: session.id,
+      tenantId: account.teamId ?? account.accountId,
+      ownerType: "BILLING_GRACE_PAYMENT",
+      ownerId: payment.id,
+      now: new Date(),
+      attemptNumber: 1,
+      idempotencyKey: providerIdempotencyKey,
+      requestFingerprint: JSON.stringify({ amountCents, method: "PIX", accountId: account.accountId }),
+      provider: selected.provider,
+      environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
+    })
+    const leased = await paymentProviderSessionRepository.acquireAttemptLease({
+      attemptId: attempt.id,
+      tenantId: account.teamId ?? account.accountId,
+      ownerType: "BILLING_GRACE_PAYMENT",
+      ownerId: payment.id,
+      purpose: "PAYMENT",
+      now: new Date(),
+      ttlMs: 60_000,
+    })
+    const outcome = await provider.createPixPayment({
+      amountInCents: amountCents,
+      customer: {
+        name: account.name,
+        email: account.email,
+        taxId: account.taxId,
+        cellphone: account.cellphone,
+      },
+      externalReference: `${payment.id}:${attempt.id}`,
+      metadata: { paymentId: payment.id, attemptId: attempt.id },
+    })
+    const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
+      attemptId: leased.id,
+      tenantId: account.teamId ?? account.accountId,
+      ownerType: "BILLING_GRACE_PAYMENT",
+      ownerId: payment.id,
+      lease: leased.lease,
+      now: new Date(),
+      status: outcome.status,
+      expectedStatus: "CREATED",
+      operation: "PAYMENT",
+      externalId: "externalId" in outcome ? outcome.externalId : null,
+      ...(outcome.status === "PENDING" && "pix" in outcome
+        ? { paymentInstructions: outcome.pix }
+        : {}),
+    })
+    return billingGracePaymentRepository.attachProviderAttempt({
+      id: payment.id,
+      providerSessionId: session.id,
+      providerAttemptId: updated.id,
+      providerExternalId: updated.externalId,
+      ...(updated.paymentInstructions
+        ? { paymentInstructions: updated.paymentInstructions as Prisma.InputJsonValue }
+        : {}),
+    })
+  }
+
+  async getPayment(input: { id: string; supabaseId: string }) {
+    const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
+    if (!account) throw new Error("Somente o master pode consultar esta regularização")
+    const payment = await billingGracePaymentRepository.findByIdForAccount(input.id, account.accountId)
+    if (!payment) throw new Error("Regularização não encontrada")
+    return payment
+  }
+}
+
+function buildAccountSummary(account: {
+  accountId: string
+  hasUnlimitedUsers: boolean
+  hasPermanentSubscription: boolean
+  teamCount: number
+  distinctUserCount: number
+  totalUsersIncludingMaster: number
+}) {
+  return buildBillingSummary(account.accountId, {
+    hasUnlimitedUsers: account.hasUnlimitedUsers,
+    hasPermanentSubscription: account.hasPermanentSubscription,
+    teamCount: account.teamCount,
+    distinctUserCount: account.distinctUserCount,
+    totalUsersIncludingMaster: account.totalUsersIncludingMaster,
+    includedExtraTeams: 0,
+    includedExtraUsers: 0,
+    manualAdjustmentExtraTeams: 0,
+    manualAdjustmentExtraUsers: 0,
+  })
+}
+
+export const billingGracePaymentService = new BillingGracePaymentService()

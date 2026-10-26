@@ -16,9 +16,59 @@ CLOSER CLOSER
     
 
 
+        password_reset_flow_status {
+            requested requested
+link_generated link_generated
+email_sent email_sent
+verification_pending verification_pending
+token_verified token_verified
+completed completed
+expired expired
+invalidated invalidated
+failed failed
+        }
+    
+
+
+        password_reset_event_type {
+            requested requested
+link_generated link_generated
+email_sent email_sent
+email_failed email_failed
+email_delivered email_delivered
+email_opened email_opened
+email_clicked email_clicked
+page_opened page_opened
+verification_started verification_started
+token_verified token_verified
+token_rejected token_rejected
+password_updated password_updated
+password_update_failed password_update_failed
+expired expired
+invalidated invalidated
+failed failed
+        }
+    
+
+
         MeetingHeald {
             yes yes
 no no
+        }
+    
+
+
+        TeamMeetingSlotReservationSource {
+            internal internal
+public_form public_form
+        }
+    
+
+
+        TeamMeetingSlotReservationState {
+            reserved reserved
+consumed consumed
+released released
         }
     
 
@@ -155,9 +205,135 @@ failed failed
     
 
 
+        payment_provider_event_inbox_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+tombstoned tombstoned
+        }
+    
+
+
+        payment_provider_event_outbox_status {
+            pending pending
+processing processing
+delivered delivered
+failed failed
+dead_letter dead_letter
+        }
+    
+
+
+        payment_provider_key {
+            ASAAS ASAAS
+ABACATE_PAY ABACATE_PAY
+        }
+    
+
+
+        payment_provider_environment {
+            DEV DEV
+PRODUCTION PRODUCTION
+        }
+    
+
+
+        payment_provider_rollout_state {
+            DISABLED DISABLED
+SANDBOX_VALIDATED SANDBOX_VALIDATED
+APPROVED APPROVED
+ACTIVE ACTIVE
+        }
+    
+
+
+        payment_provider_health_status {
+            UNKNOWN UNKNOWN
+HEALTHY HEALTHY
+UNHEALTHY UNHEALTHY
+        }
+    
+
+
+        payment_provider_route {
+            NEW_ROUTER NEW_ROUTER
+LEGACY_ASAAS LEGACY_ASAAS
+        }
+    
+
+
+        payment_provider_identity_type {
+            CUSTOMER CUSTOMER
+PAYMENT PAYMENT
+SUBSCRIPTION SUBSCRIPTION
+CHECKOUT CHECKOUT
+SESSION SESSION
+        }
+    
+
+
+        payment_provider_migration_gate_status {
+            PENDING PENDING
+ACTIVE ACTIVE
+REVOKED REVOKED
+EXPIRED EXPIRED
+        }
+    
+
+
+        payment_provider_session_status {
+            OPEN OPEN
+COMPLETED COMPLETED
+FAILED FAILED
+EXPIRED EXPIRED
+CANCELED CANCELED
+        }
+    
+
+
+        payment_provider_attempt_status {
+            CREATED CREATED
+PENDING PENDING
+CONFIRMED CONFIRMED
+FAILED FAILED
+REFUNDED REFUNDED
+DISPUTED DISPUTED
+EXPIRED EXPIRED
+CANCELED CANCELED
+UNKNOWN UNKNOWN
+        }
+    
+
+
         asaas_account {
             primary primary
 legacy legacy
+        }
+    
+
+
+        asaas_account_migration_status {
+            pending pending
+customer_created customer_created
+awaiting_due_date awaiting_due_date
+subscription_created subscription_created
+legacy_removed legacy_removed
+paused_awaiting_card paused_awaiting_card
+initial_payment_confirmed initial_payment_confirmed
+legacy_deactivated legacy_deactivated
+done done
+requires_card_reauth requires_card_reauth
+failed failed
+        }
+    
+
+
+        asaas_card_reauthorization_attempt_status {
+            processing processing
+confirmed confirmed
+declined declined
+unknown unknown
         }
     
 
@@ -675,6 +851,8 @@ AUTOMATION_RULE AUTOMATION_RULE
 WEBHOOK_AUTO_PAUSED WEBHOOK_AUTO_PAUSED
 LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
 LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
+STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
+STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
         }
     
 
@@ -710,6 +888,7 @@ lead_assigned lead_assigned
 appointment_created appointment_created
 appointment_reminder appointment_reminder
 activity_created activity_created
+landing_analytics_event landing_analytics_event
         }
     
 
@@ -944,6 +1123,22 @@ ROLE_CHANGE ROLE_CHANGE
     
 
 
+        GoogleConnectionEventType {
+            STARTED STARTED
+SUCCEEDED SUCCEEDED
+FAILED FAILED
+        }
+    
+
+
+        GoogleConnectionFlow {
+            LOGIN LOGIN
+ACCOUNT ACCOUNT
+BACKOFFICE BACKOFFICE
+        }
+    
+
+
         LeadCustomFieldType {
             text text
 number number
@@ -1030,6 +1225,31 @@ approved approved
             pending pending
 verified verified
 failed failed
+        }
+    
+
+
+        team_landing_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
+        team_studio_domain_status {
+            pending pending
+verified verified
+failed failed
+        }
+    
+
+
+        team_studio_dns_audit_status {
+            verified verified
+pending pending
+failed failed
+inconclusive inconclusive
         }
     
 
@@ -1439,6 +1659,14 @@ archived archived
     
 
 
+        landing_page_status {
+            draft draft
+published published
+archived archived
+        }
+    
+
+
         PublicFormApprovalStatus {
             draft draft
 pending_approval pending_approval
@@ -1619,6 +1847,39 @@ completed completed
     }
   
 
+  "password_reset_flows" {
+    String id "🗝️"
+    String recipientEmail 
+    String dispatchId "❓"
+    String resendEmailId "❓"
+    PasswordResetFlowStatus status 
+    String ipHash "❓"
+    String userAgent "❓"
+    String originScreen "❓"
+    DateTime requestedAt 
+    DateTime linkGeneratedAt "❓"
+    DateTime emailSentAt "❓"
+    DateTime tokenVerifiedAt "❓"
+    DateTime completedAt "❓"
+    DateTime expiresAt "❓"
+    String failureCode "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "password_reset_events" {
+    String id "🗝️"
+    PasswordResetEventType type 
+    DateTime occurredAt 
+    String requestId "❓"
+    String failureCode "❓"
+    String ipHash "❓"
+    String userAgent "❓"
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_health_plan_options" {
     String id "🗝️"
     String name 
@@ -1725,6 +1986,45 @@ completed completed
     }
   
 
+  "billing_access_graces" {
+    String id "🗝️"
+    String reason 
+    DateTime expiresAt "❓"
+    Boolean isActive 
+    String grantedByProfileId "❓"
+    DateTime grantedAt 
+    DateTime resolvedAt "❓"
+    String resolvedReason "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "billing_grace_payments" {
+    String id "🗝️"
+    String account_id 
+    String team_id "❓"
+    String subscription_id "❓"
+    String cycle 
+    Int amount_cents 
+    Int effective_price_cents 
+    String status 
+    String provider 
+    String provider_environment 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    String idempotency_key 
+    Json payment_instructions "❓"
+    DateTime quote_expires_at "❓"
+    DateTime confirmed_at "❓"
+    DateTime completed_at "❓"
+    String failure_reason "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_operational_access_grants" {
     String id "🗝️"
     BackofficeOperationalCapability capability 
@@ -1772,6 +2072,7 @@ completed completed
     String cpfCnpj "❓"
     String notes "❓"
     String asaasCustomerId "❓"
+    AsaasAccount asaasAccount 
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
@@ -1906,6 +2207,9 @@ completed completed
     String pixQrCode "❓"
     String pixPayload "❓"
     DateTime paidAt "❓"
+    Json quote_snapshot "❓"
+    String quote_hash "❓"
+    DateTime quote_created_at "❓"
     DateTime overdueAt "❓"
     DateTime canceledAt "❓"
     String createdProfileId "❓"
@@ -1920,6 +2224,30 @@ completed completed
     Json installmentLedger 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_adhesion_payments" {
+    String id "🗝️"
+    String adhesion_id 
+    Int amount_cents 
+    String status 
+    String provider 
+    String provider_environment 
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
+    String idempotency_key 
+    String payer_name 
+    String payer_email 
+    String payer_tax_id 
+    String payer_cellphone 
+    Json payment_instructions "❓"
+    DateTime confirmed_at "❓"
+    DateTime completed_at "❓"
+    String failure_reason "❓"
+    DateTime created_at 
+    DateTime updated_at 
     }
   
 
@@ -2184,6 +2512,7 @@ completed completed
     String referenceHospital "❓"
     String currentTreatment "❓"
     DateTime meetingDate "❓"
+    Int meeting_duration_minutes "❓"
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
@@ -2234,6 +2563,21 @@ completed completed
     }
   
 
+  "google_connection_events" {
+    String id "🗝️"
+    DateTime createdAt 
+    GoogleConnectionEventType eventType 
+    GoogleConnectionFlow flow 
+    String supabaseUserId "❓"
+    String googleEmail "❓"
+    String errorCode "❓"
+    String errorCategory "❓"
+    String requestId "❓"
+    String dedupeKey "❓"
+    Json metadata "❓"
+    }
+  
+
   "corretor_studio_audit_logs" {
     String id "🗝️"
     AuditEntityType entityType 
@@ -2273,6 +2617,7 @@ completed completed
   "corretor_studio_leads_schedule" {
     String id "🗝️"
     DateTime date 
+    Int meeting_duration_minutes "❓"
     Int noShowCount 
     String meetingTitle "❓"
     String notes "❓"
@@ -2402,6 +2747,7 @@ completed completed
     String id "🗝️"
     String name 
     Boolean isDefault 
+    Int meeting_duration_minutes 
     DateTime deletedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
@@ -3238,6 +3584,7 @@ completed completed
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
     String asaasSubscriptionId "❓"
+    AsaasAccount asaasSubscriptionAccount 
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
@@ -3265,12 +3612,115 @@ completed completed
     }
   
 
+  "billing_checkout_intents" {
+    String id "🗝️"
+    String asaasCustomerId 
+    AsaasAccount asaasAccount 
+    String productSlug 
+    String productId "❓"
+    String cycle 
+    String billingType "❓"
+    Decimal amount "❓"
+    Json quoteSnapshot "❓"
+    String quoteHash "❓"
+    String externalReference 
+    String tokenHash 
+    String tokenPreview 
+    String checkoutId "❓"
+    String checkoutUrl "❓"
+    String status 
+    DateTime expiresAt 
+    DateTime paidAt "❓"
+    String subscriptionId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "corretor_studio_subscription_state_snapshots" {
     String id "🗝️"
     String profileId 
     DateTime capturedAt 
     String schemaVersion 
     Json payload 
+    }
+  
+
+  "corretor_studio_asaas_account_migrations" {
+    String id "🗝️"
+    String profile_id 
+    String client_name 
+    String client_email 
+    String legacy_customer_id 
+    String legacy_subscription_id "❓"
+    String primary_customer_id "❓"
+    String primary_subscription_id "❓"
+    String primary_payment_id "❓"
+    String billing_type "❓"
+    String cycle "❓"
+    Decimal value "❓"
+    DateTime next_due_date "❓"
+    Boolean notifications_disabled 
+    String anomaly_notes "❓"
+    AsaasAccountMigrationStatus status 
+    Int attempt_count 
+    String last_error "❓"
+    DateTime migrated_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    Json quote_snapshot "❓"
+    String quote_hash "❓"
+    DateTime legacy_removed_at "❓"
+    DateTime reauthorization_requested_at "❓"
+    DateTime reauthorization_completed_at "❓"
+    AsaasAccountMigrationStatus resume_status "❓"
+    String failure_step "❓"
+    String failure_code "❓"
+    String lease_owner "❓"
+    DateTime lease_expires_at "❓"
+    }
+  
+
+  "corretor_studio_asaas_migration_execution_manifests" {
+    String id "🗝️"
+    String migration_id 
+    Boolean approved 
+    String approved_by 
+    String value_mode 
+    String inventory_hash 
+    DateTime gate_run_at 
+    DateTime valid_until 
+    Json gate_evidence 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "corretor_studio_asaas_card_reauthorizations" {
+    String id "🗝️"
+    String migration_id 
+    String token_hash 
+    DateTime expires_at 
+    DateTime used_at "❓"
+    Int attempt_count 
+    String last_error "❓"
+    String processing_owner "❓"
+    DateTime processing_expires_at "❓"
+    DateTime last_attempt_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "corretor_studio_asaas_card_reauthorization_attempts" {
+    String id "🗝️"
+    String reauthorization_id 
+    String master_profile_id 
+    String attempt_reference 
+    AsaasCardReauthorizationAttemptStatus status 
+    String failure_code "❓"
+    DateTime created_at 
+    DateTime completed_at "❓"
     }
   
 
@@ -3328,6 +3778,42 @@ completed completed
     String id "🗝️"
     String hostname 
     TeamFormDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_studio_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamStudioDomainStatus status 
+    String vercelDomainId "❓"
+    DateTime verifiedAt "❓"
+    DateTime lastCheckedAt "❓"
+    TeamStudioDnsAuditStatus dnsAuditStatus "❓"
+    Boolean dnsMisconfigured "❓"
+    String dnsReasonCode "❓"
+    String dnsReason "❓"
+    String recommendedCNAME "❓"
+    DateTime lastDnsAuditAt "❓"
+    DateTime lastDnsAttemptAt "❓"
+    String lastDnsFingerprint "❓"
+    String lastDnsNotifiedFingerprint "❓"
+    String headScripts "❓"
+    String bodyStartScripts "❓"
+    String bodyEndScripts "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_landing_domains" {
+    String id "🗝️"
+    String hostname 
+    TeamLandingDomainStatus status 
     String vercelDomainId "❓"
     DateTime verifiedAt "❓"
     DateTime lastCheckedAt "❓"
@@ -4044,6 +4530,159 @@ completed completed
     }
   
 
+  "payment_provider_event_dedupe" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    DateTime tombstone_until 
+    DateTime created_at 
+    }
+  
+
+  "payment_provider_event_inbox" {
+    String id "🗝️"
+    String dedupe_key 
+    String provider_key 
+    String environment 
+    String external_account_context 
+    String event_id 
+    String payload_hash 
+    String raw_payload 
+    Json payload 
+    String normalized_event "❓"
+    String claim_token 
+    PaymentProviderEventInboxStatus status 
+    Int attempt_count 
+    String error_message "❓"
+    DateTime received_at 
+    DateTime processed_at "❓"
+    DateTime tombstone_until "❓"
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_event_outbox" {
+    String id "🗝️"
+    String inbox_id 
+    String event_type 
+    String raw_payload 
+    Json payload 
+    PaymentProviderEventOutboxStatus status 
+    Int attempt_count 
+    DateTime next_attempt_at 
+    DateTime leased_until "❓"
+    DateTime terminal_at "❓"
+    String error_message "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_configs" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    Boolean enabled 
+    Boolean is_default 
+    String external_account_context 
+    PaymentProviderRolloutState rollout_state 
+    Boolean kill_switch 
+    Int config_revision 
+    PaymentProviderHealthStatus health_status 
+    DateTime last_health_check_at "❓"
+    String last_error_code "❓"
+    String last_error_message "❓"
+    String public_key_fingerprint "❓"
+    String logo_url "❓"
+    String logo_alt_text "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_identities" {
+    String id "🗝️"
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String external_id 
+    PaymentProviderIdentityType identity_type 
+    String owner_type 
+    String owner_id 
+    String tenant_id 
+    PaymentProviderRoute route 
+    String route_version 
+    Int binding_revision 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_migration_gates" {
+    String id "🗝️"
+    PaymentProviderRoute source_route 
+    PaymentProviderRoute target_route 
+    String version 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    String authorized_by_profile_id 
+    PaymentProviderMigrationGateStatus status 
+    DateTime expires_at 
+    DateTime activated_at "❓"
+    DateTime revoked_at "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_sessions" {
+    String id "🗝️"
+    String tenant_id 
+    String owner_type 
+    String owner_id 
+    String idempotency_key 
+    PaymentProviderEnvironment environment 
+    PaymentProviderKey provider_key 
+    String external_account_context 
+    PaymentProviderRoute route 
+    String route_version 
+    PaymentProviderSessionStatus status 
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    DateTime expires_at 
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_attempts" {
+    String id "🗝️"
+    String session_id 
+    Int attempt_number 
+    String idempotency_key 
+    String request_fingerprint 
+    PaymentProviderKey provider_key 
+    PaymentProviderEnvironment environment 
+    String external_account_context 
+    PaymentProviderAttemptStatus status 
+    String external_id "❓"
+    String reconciliation_reference "❓"
+    String lease_token "❓"
+    DateTime lease_until "❓"
+    Int fence_version 
+    String unknown_reason "❓"
+    String last_event_claim_token "❓"
+    Json payment_instructions "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
   "backoffice_bot_host_settings" {
     String id "🗝️"
     String agentBaseUrl "❓"
@@ -4131,6 +4770,48 @@ completed completed
     DateTime reviewedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_landing_pages" {
+    String id "🗝️"
+    String publicId 
+    String name 
+    LandingPageStatus status 
+    String templateSlug 
+    Json content 
+    Json offer 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_landing_page_publications" {
+    String id "🗝️"
+    Int version 
+    Json snapshot 
+    DateTime publishedAt 
+    DateTime endedAt "❓"
+    }
+  
+
+  "corretor_studio_landing_analytics_events" {
+    String id "🗝️"
+    String formId "❓"
+    String eventId 
+    String eventType 
+    Int schemaVersion 
+    String templateSlug 
+    String visitorSessionId 
+    String campaignId "❓"
+    String emailLogId "❓"
+    Json attribution 
+    Json metadata 
+    String ipHash "❓"
+    String userAgent "❓"
+    String referrer "❓"
+    DateTime occurredAt 
+    DateTime createdAt 
     }
   
 
@@ -4223,6 +4904,28 @@ completed completed
     String lastDispatchError "❓"
     String thankYouPageId "❓"
     DateTime scheduledMeetingStartsAt "❓"
+    String meeting_slot_reservation_id "❓"
+    String scheduled_closer_id "❓"
+    Int scheduled_duration_minutes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_meeting_slot_reservations" {
+    String id "🗝️"
+    String closerId 
+    DateTime startsAt 
+    DateTime endsAt 
+    Int durationMinutes 
+    TeamMeetingSlotReservationSource source 
+    TeamMeetingSlotReservationState state 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    Int recovery_attempts 
+    String last_recovery_error "❓"
+    DateTime consumedAt "❓"
+    DateTime releasedAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4383,6 +5086,10 @@ completed completed
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "sponsorMaster"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "deletedByProfile"
+    "password_reset_flows" |o--|| "PasswordResetFlowStatus" : "enum:status"
+    "password_reset_flows" }o--|o corretor_studio_profiles : "profile"
+    "password_reset_events" |o--|| "PasswordResetEventType" : "enum:type"
+    "password_reset_events" }o--|| password_reset_flows : "flow"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
@@ -4407,6 +5114,7 @@ completed completed
     "backoffice_authorized_sponsors" |o--|| corretor_studio_profiles : "profile"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "grantedBy"
     "backoffice_authorized_sponsors" }o--|o corretor_studio_profiles : "revokedBy"
+    "billing_access_graces" }o--|| corretor_studio_teams : "team"
     "backoffice_operational_access_grants" |o--|| "BackofficeOperationalCapability" : "enum:capability"
     "backoffice_operational_access_grants" }o--|o corretor_studio_profiles : "profile"
     "backoffice_operational_access_grants" }o--|o corretor_studio_teams : "team"
@@ -4416,6 +5124,7 @@ completed completed
     "backoffice_team_email_limit_grants" }o--|| corretor_studio_profiles : "grantedBy"
     "backoffice_team_email_limit_grants" }o--|o corretor_studio_profiles : "revokedBy"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
+    "backoffice_clients" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" |o--|| "AsaasAccount" : "enum:asaasAccount"
     "backoffice_payments" }o--|| backoffice_clients : "client"
@@ -4444,6 +5153,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
+    "backoffice_adhesion_payments" }o--|| backoffice_adhesions : "adhesion"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
@@ -4499,6 +5209,9 @@ completed completed
     "corretor_studio_lead_activities" }o--|o corretor_studio_profiles : "author"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_lead_activities : "activity"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_profiles : "profile"
+    "google_connection_events" |o--|| "GoogleConnectionEventType" : "enum:eventType"
+    "google_connection_events" |o--|| "GoogleConnectionFlow" : "enum:flow"
+    "google_connection_events" }o--|o corretor_studio_profiles : "profile"
     "corretor_studio_audit_logs" |o--|| "AuditEntityType" : "enum:entityType"
     "corretor_studio_audit_logs" |o--|| "AuditAction" : "enum:action"
     "corretor_studio_audit_logs" }o--|o corretor_studio_profiles : "actor"
@@ -4721,6 +5434,7 @@ completed completed
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "corretor_studio_profile_subscriptions" |o--|| "AsaasAccount" : "enum:asaasSubscriptionAccount"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
@@ -4729,12 +5443,25 @@ completed completed
     "corretor_studio_subscription_change_logs" |o--|o "SubscriptionLifecycleEvent" : "enum:eventType"
     "corretor_studio_subscription_change_logs" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_subscription_change_logs" }o--|o corretor_studio_profiles : "actor"
+    "billing_checkout_intents" |o--|| "AsaasAccount" : "enum:asaasAccount"
+    "billing_checkout_intents" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_asaas_account_migrations" |o--|| "AsaasAccountMigrationStatus" : "enum:status"
+    "corretor_studio_asaas_account_migrations" |o--|o "AsaasAccountMigrationStatus" : "enum:resume_status"
+    "corretor_studio_asaas_migration_execution_manifests" |o--|| corretor_studio_asaas_account_migrations : "migration"
+    "corretor_studio_asaas_card_reauthorizations" |o--|| corretor_studio_asaas_account_migrations : "migration"
+    "corretor_studio_asaas_card_reauthorization_attempts" |o--|| "AsaasCardReauthorizationAttemptStatus" : "enum:status"
+    "corretor_studio_asaas_card_reauthorization_attempts" }o--|| corretor_studio_asaas_card_reauthorizations : "reauthorization"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| "EmailSendingHealthStatus" : "enum:sendingHealthStatus"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
     "corretor_studio_email_team_domain_events" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_form_domains" |o--|| "TeamFormDomainStatus" : "enum:status"
     "corretor_studio_team_form_domains" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_studio_domains" |o--|| "TeamStudioDomainStatus" : "enum:status"
+    "corretor_studio_team_studio_domains" |o--|o "TeamStudioDnsAuditStatus" : "enum:dnsAuditStatus"
+    "corretor_studio_team_studio_domains" |o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_landing_domains" |o--|| "TeamLandingDomainStatus" : "enum:status"
+    "corretor_studio_team_landing_domains" |o--|| corretor_studio_teams : "team"
     "email_team_senders" }o--|| corretor_studio_teams : "team"
     "email_team_variables" |o--|| "EmailVariableValueSource" : "enum:valueSource"
     "email_team_variables" }o--|| corretor_studio_teams : "team"
@@ -4883,6 +5610,30 @@ completed completed
     "backoffice_bot_ai_daily_usage" |o--|| "BackofficeBotAiCapability" : "enum:capability"
     "asaas_webhook_events" |o--|| "AsaasWebhookEventStatus" : "enum:status"
     "asaas_webhook_events" |o--|| "AsaasAccount" : "enum:account"
+    "payment_provider_event_inbox" |o--|| "PaymentProviderEventInboxStatus" : "enum:status"
+    "payment_provider_event_outbox" |o--|| "PaymentProviderEventOutboxStatus" : "enum:status"
+    "payment_provider_event_outbox" }o--|| payment_provider_event_inbox : "inbox"
+    "payment_provider_configs" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
+    "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"
+    "payment_provider_identities" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:source_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderRoute" : "enum:target_route"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_migration_gates" |o--|| "PaymentProviderMigrationGateStatus" : "enum:status"
+    "payment_provider_migration_gates" }o--|| corretor_studio_profiles : "authorizedBy"
+    "payment_provider_sessions" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_sessions" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_sessions" |o--|| "PaymentProviderRoute" : "enum:route"
+    "payment_provider_sessions" |o--|| "PaymentProviderSessionStatus" : "enum:status"
+    "payment_provider_attempts" |o--|| "PaymentProviderKey" : "enum:provider_key"
+    "payment_provider_attempts" |o--|| "PaymentProviderEnvironment" : "enum:environment"
+    "payment_provider_attempts" |o--|| "PaymentProviderAttemptStatus" : "enum:status"
+    "payment_provider_attempts" }o--|| payment_provider_sessions : "session"
     "backoffice_bot_host_settings" |o--|| "BackofficeBotHostApplyStatus" : "enum:lastApplyStatus"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobType" : "enum:type"
     "backoffice_bot_host_ops_jobs" |o--|| "BackofficeBotHostOpsJobStatus" : "enum:status"
@@ -4896,6 +5647,15 @@ completed completed
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "assignedSdr"
     "corretor_studio_public_forms" }o--|o corretor_studio_profiles : "reviewer"
     "corretor_studio_public_forms" }o--|o backoffice_users : "managedByBackofficeUser"
+    "corretor_studio_landing_pages" |o--|| "LandingPageStatus" : "enum:status"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_public_forms : "publicForm"
+    "corretor_studio_landing_pages" }o--|| corretor_studio_profiles : "createdBy"
+    "corretor_studio_landing_page_publications" }o--|| corretor_studio_landing_pages : "landingPage"
+    "corretor_studio_landing_page_publications" }o--|| corretor_studio_profiles : "publishedBy"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_landing_pages : "landingPage"
+    "corretor_studio_landing_analytics_events" }o--|| corretor_studio_landing_page_publications : "publication"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_eligible_closers" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_public_form_questions" |o--|| "PublicFormQuestionType" : "enum:type"
@@ -4916,6 +5676,11 @@ completed completed
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_forms : "form"
     "corretor_studio_public_form_submissions" }o--|| corretor_studio_public_form_publications : "publication"
     "corretor_studio_public_form_submissions" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_team_meeting_slot_reservations" |o--|| "TeamMeetingSlotReservationSource" : "enum:source"
+    "corretor_studio_team_meeting_slot_reservations" |o--|| "TeamMeetingSlotReservationState" : "enum:state"
+    "corretor_studio_team_meeting_slot_reservations" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_meeting_slot_reservations" }o--|o corretor_studio_leads : "lead"
+    "corretor_studio_team_meeting_slot_reservations" }o--|o corretor_studio_public_form_submissions : "publicFormSubmission"
     "corretor_studio_public_form_answers" }o--|| corretor_studio_public_form_submissions : "submission"
     "corretor_studio_public_form_answers" }o--|o corretor_studio_public_form_questions : "question"
     "corretor_studio_public_form_metric_events" |o--|| "PublicFormMetricType" : "enum:eventType"

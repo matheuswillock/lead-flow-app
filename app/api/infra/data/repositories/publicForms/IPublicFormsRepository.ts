@@ -158,6 +158,7 @@ export type PublicFormPublishedSnapshot = {
   publicationId: string
   version: number
   snapshot: Prisma.JsonValue
+  teamId?: string
 }
 
 export type PublicFormSubmissionContext = {
@@ -280,6 +281,10 @@ export interface IPublicFormsRepository {
   ): Promise<PublicFormPublishedSnapshot | null>
   findLatestSessionSubmissionOnForm(
     formId: string,
+    visitorSessionId: string,
+  ): Promise<PublicFormSubmission | null>
+  findLatestSessionSubmissionForPublication(
+    publicationId: string,
     visitorSessionId: string,
   ): Promise<PublicFormSubmission | null>
   attachLeadIdToSessionSubmission(
@@ -411,6 +416,9 @@ export interface IPublicFormsRepository {
     completionStatus?: import("@prisma/client").PublicFormCompletionStatus
     thankYouPageId?: string | null
     scheduledMeetingStartsAt?: Date | null
+    meetingSlotReservationId?: string | null
+    scheduledCloserId?: string | null
+    scheduledDurationMinutes?: number | null
     submitRequestedAt: Date
   }): Promise<PublicFormSubmission>
   upsertProgressSubmission(data: {
@@ -479,9 +487,19 @@ export interface IPublicFormsRepository {
       visitorSessionId?: string | null
       thankYouPageId?: string | null
       scheduledMeetingStartsAt?: Date | null
+      meetingSlotReservationId?: string | null
+      scheduledCloserId?: string | null
+      scheduledDurationMinutes?: number | null
       submitRequestedAt: Date
     },
   ): Promise<{ id: string; eventId: string | null }>
+  attachMeetingSlotReservation(input: {
+    submissionId: string
+    reservationId: string
+    closerId: string
+    durationMinutes: number
+    startsAt: Date
+  }): Promise<void>
   /**
    * Devolve os eventos que **de fato** foram persistidos (review #1058). O lote
    * de entrada pode encolher: se o gate C anexou o lead no meio da corrida, o

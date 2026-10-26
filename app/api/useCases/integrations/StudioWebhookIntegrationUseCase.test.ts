@@ -10,6 +10,11 @@ const createLeadMock = mock(async () =>
 
 const listInboundByTeamIdMock = mock(async (): Promise<unknown[]> => []);
 const touchUsageMock = mock(async () => {});
+const accountAccessMock = mock(async () => new Output(true, [], [], { state: "allowed" }));
+
+mock.module("@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase", () => ({
+  accountAccessDecisionUseCase: { execute: accountAccessMock },
+}));
 
 mock.module("@/app/api/useCases/leads/leadUseCaseFactory", () => ({
   leadUseCase: {
@@ -110,6 +115,15 @@ function makeInboundNoTokenRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe("StudioWebhookIntegrationUseCase.processWebhookLead (D2)", () => {
+  it("conta inadimplente não cria lead", async () => {
+    accountAccessMock.mockResolvedValueOnce(new Output(true, [], [], { state: "restricted", reason: "past_due" }));
+    createLeadMock.mockClear();
+    const { service } = makeService();
+    const output = await new StudioWebhookIntegrationUseCase(service).processWebhookLead(makeInput());
+    expect(output.isValid).toBe(false);
+    expect(createLeadMock).not.toHaveBeenCalled();
+  });
+
   it("cria o lead via leadUseCase.createLead com originChannel e confirmDuplicate", async () => {
     createLeadMock.mockClear();
     touchUsageMock.mockClear();

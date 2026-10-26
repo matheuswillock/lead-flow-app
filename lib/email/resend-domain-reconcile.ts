@@ -18,7 +18,7 @@ export function isResendDomainStatusInSync(
  *   em `corretorstudio.com.br` e `mail.libercorretora.com.br` que apagou as
  *   aberturas desses domínios do funil sem aviso (caso C6 da auditoria).
  * - Clique passa a ser POR TIME (`EmailTeamSettings.resendClickTracking`),
- *   com default OFF em domínio recém-conectado. A alegação de 01/09 de que o
+ *   com default ON em domínio recém-conectado. A alegação de 01/09 de que o
  *   rewrite "quebra o cs_el" nunca foi medida; os cliques do provedor agora
  *   passam pelo classificador de origem (scanner vira bot/scanner) e convivem
  *   com o clique first-party do formulário (`cs_el`).
@@ -28,8 +28,8 @@ export function isResendDomainStatusInSync(
  */
 export const RESEND_TRACKING_POLICY = {
   openTracking: true,
-  /** Default para domínio recém-conectado; opt-in por time depois. */
-  defaultClickTracking: false,
+  /** Default para domínio recém-conectado; domínios existentes preservam o valor salvo. */
+  defaultClickTracking: true,
 } as const
 
 /**

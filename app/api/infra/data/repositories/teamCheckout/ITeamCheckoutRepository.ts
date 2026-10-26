@@ -21,6 +21,7 @@ export interface TeamCheckoutMasterProfile {
   complement: string | null
   asaasCustomerId: string | null
   asaasSubscriptionId: string | null
+  asaasSubscriptionAccount?: string
   subscriptionStatus: SubscriptionStatus | null
   subscriptionNextDueDate: Date | null
   subscriptionEndDate: Date | null

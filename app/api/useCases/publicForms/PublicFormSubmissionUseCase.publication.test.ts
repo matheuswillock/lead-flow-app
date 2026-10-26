@@ -5,6 +5,7 @@ mock.module("server-only", () => ({}))
 mock.module("@/lib/env/server", () => ({}))
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {},
+  default: {},
   withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 
@@ -76,7 +77,16 @@ const findPublicationById = mock(
       snapshot: PublicFormSnapshot
     } | null,
 )
-const findLatestSessionSubmissionOnForm = mock(async () => null)
+const findLatestSessionSubmissionOnForm = mock(
+  async () =>
+    null as {
+      id: string
+      publicationId: string
+      status: string
+      leadId: string | null
+      origin: Record<string, unknown>
+    } | null,
+)
 const findPublicationContainingQuestions = mock(
   async () =>
     null as {
@@ -252,6 +262,120 @@ describe("PublicFormSubmissionUseCase.accept publicação da sessão", () => {
     expect(createSubmission).toHaveBeenCalledTimes(1)
     const createArg = createSubmission.mock.calls[0] as unknown as [{ publicationId: string }]
     expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
+  })
+
+  it("aceita a publicação pinada quando o formulário foi arquivado", async () => {
+    const pinnedSnapshot = makeSnapshot([{ id: "q-new" }], 1)
+    getPublic.mockResolvedValueOnce(null as never)
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      snapshot: pinnedSnapshot,
+    })
+
+    const output = await useCase.accept(
+      PUBLIC_ID,
+      { requestKey: "req-archived", answers: [{ questionId: "q-new", value: "Ana" }], origin: {} },
+      PREVIOUS_PUBLICATION_ID,
+    )
+
+    expect(output.isValid).toBe(true)
+    const createArg = createSubmission.mock.calls[0] as unknown as [{ publicationId: string }]
+    expect(createArg[0].publicationId).toBe(PREVIOUS_PUBLICATION_ID)
+  })
+
+  it("valida e grava a tela atual quando a sessão pertence à publicação anterior", async () => {
+    const previousSnapshot = {
+      ...makeSnapshot([{ id: "q-age" }, { id: "q-phone-old" }], 1),
+      questions: [
+        {
+          id: "q-age",
+          type: "text",
+          title: "Nova pergunta",
+          required: true,
+          scoreWeight: 0,
+          options: [],
+          position: 0,
+          mappingKey: "name",
+        },
+        {
+          id: "q-phone-old",
+          type: "phone",
+          title: "tel",
+          required: false,
+          scoreWeight: 0,
+          options: [],
+          position: 1,
+          mappingKey: "phone",
+        },
+      ],
+    } as PublicFormSnapshot
+    const currentSnapshot = {
+      ...makeSnapshot([{ id: "q-name" }, { id: "q-phone" }, { id: "q-email" }], 2),
+      questions: [
+        {
+          id: "q-name",
+          type: "text",
+          title: "Nome",
+          required: true,
+          scoreWeight: 0,
+          options: [],
+          position: 0,
+          mappingKey: "name",
+        },
+        {
+          id: "q-phone",
+          type: "phone",
+          title: "WhatsApp",
+          required: true,
+          scoreWeight: 0,
+          options: [],
+          position: 1,
+          mappingKey: "phone",
+        },
+        {
+          id: "q-email",
+          type: "email",
+          title: "E-mail",
+          required: true,
+          scoreWeight: 0,
+          options: [],
+          position: 2,
+          mappingKey: "email",
+        },
+      ],
+    } as PublicFormSnapshot
+    getPublic.mockResolvedValueOnce({
+      publicationId: CURRENT_PUBLICATION_ID,
+      snapshot: currentSnapshot,
+    })
+    findLatestSessionSubmissionOnForm.mockResolvedValueOnce({
+      id: "sub-session-old",
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      status: "processing",
+      leadId: null,
+      origin: {},
+    })
+    findPublicationById.mockResolvedValueOnce({
+      publicationId: PREVIOUS_PUBLICATION_ID,
+      snapshot: previousSnapshot,
+    })
+
+    const output = await useCase.accept(PUBLIC_ID, {
+      requestKey: "req-republished",
+      answers: [
+        { questionId: "q-name", value: "Bruno Marcelino" },
+        { questionId: "q-phone", value: "+5511939534668" },
+        { questionId: "q-email", value: "bruno@example.com" },
+      ],
+      origin: {},
+      visitorSessionId: "session-1",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(output.errorMessages).toEqual([])
+    const createArg = createSubmission.mock.calls[0] as unknown as [{ publicationId: string }]
+    expect(createArg[0].publicationId).toBe(CURRENT_PUBLICATION_ID)
+    expect(findProgressSubmission).toHaveBeenCalledWith(CURRENT_PUBLICATION_ID, "session-1")
   })
 
   // T-F0.2 — DA6: "aceita" é fato gravado no POST, antes de qualquer

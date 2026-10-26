@@ -4,6 +4,7 @@ import {
   isResendDomainSnapshotInSync,
   resolveResendTrackingPolicyDrift,
 } from "@/lib/email/resend-domain-reconcile"
+import { confirmResendDomainTracking } from "@/lib/email/confirm-resend-domain-tracking"
 import {
   emailTeamDomainEventRepository,
   type ConnectedResendDomainRow,
@@ -54,6 +55,7 @@ export type ReconcileResendDomainStatusDependencies = {
   domainEvents?: IEmailTeamDomainEventRepository
   fetchDomain?: ResendDomainFetcher
   updateTracking?: ResendDomainTrackingUpdater
+  waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 }
 
 /** Placar de uma execução. Local, nunca campo de instância — ver `execute`. */
@@ -63,11 +65,13 @@ export class ReconcileResendDomainStatusUseCase {
   private readonly domainEvents: IEmailTeamDomainEventRepository
   private readonly fetchDomain: ResendDomainFetcher
   private readonly updateTracking: ResendDomainTrackingUpdater
+  private readonly waitForTrackingConfirmation?: (delayMs: number) => Promise<void>
 
   constructor(dependencies: ReconcileResendDomainStatusDependencies = {}) {
     this.domainEvents = dependencies.domainEvents ?? emailTeamDomainEventRepository
     this.fetchDomain = dependencies.fetchDomain ?? defaultFetchResendDomain
     this.updateTracking = dependencies.updateTracking ?? defaultUpdateResendDomainTracking
+    this.waitForTrackingConfirmation = dependencies.waitForTrackingConfirmation
   }
 
   async execute(): Promise<Output> {
@@ -226,8 +230,28 @@ export class ReconcileResendDomainStatusUseCase {
       return remote
     }
 
+    const confirmation = await confirmResendDomainTracking({
+      desired: { openTracking: drift.openTracking, clickTracking: drift.clickTracking },
+      fetchDomain: async () => {
+        const result = await this.fetchDomain(team.resendDomainId)
+        return { data: result.data, error: result.error }
+      },
+      wait: this.waitForTrackingConfirmation,
+    })
+
+    if (!confirmation.confirmed || !confirmation.snapshot) {
+      tracking.errors += 1
+      console.error("[ReconcileResendDomainStatusUseCase] Resend não confirmou política de tracking", {
+        teamId: team.teamId,
+        resendDomainId: team.resendDomainId,
+        domainName: team.resendDomainName,
+        error: confirmation.error,
+      })
+      return confirmation.snapshot ?? remote
+    }
+
     tracking.fixed += 1
-    console.info("[ReconcileResendDomainStatusUseCase] Política de tracking aplicada", {
+    console.info("[ReconcileResendDomainStatusUseCase] Política de tracking confirmada", {
       teamId: team.teamId,
       resendDomainId: team.resendDomainId,
       domainName: team.resendDomainName,
@@ -235,13 +259,7 @@ export class ReconcileResendDomainStatusUseCase {
       clickTracking: drift.clickTracking,
     })
 
-    return {
-      ...remote,
-      openTracking: drift.openTracking,
-      clickTracking: drift.clickTracking,
-      open_tracking: drift.openTracking,
-      click_tracking: drift.clickTracking,
-    }
+    return confirmation.snapshot
   }
 }
 

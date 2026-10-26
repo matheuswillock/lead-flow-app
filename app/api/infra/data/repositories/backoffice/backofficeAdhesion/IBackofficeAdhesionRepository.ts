@@ -122,6 +122,9 @@ export interface UpdateBackofficeAdhesionCheckoutInput {
   bankSlipUrl?: string | null
   pixQrCode?: string | null
   pixPayload?: string | null
+  quoteSnapshot?: unknown
+  quoteHash?: string | null
+  quoteCreatedAt?: Date | null
 }
 
 export interface MarkBackofficeAdhesionExternalPaidInput {

@@ -4,6 +4,7 @@ import type { ITeamFormDomainRepository } from "@/app/api/infra/data/repositorie
 import { teamFormDomainRepository } from "@/app/api/infra/data/repositories/teamFormDomain/TeamFormDomainRepository"
 import type { IVercelDomainsGateway } from "@/app/api/services/vercelDomains/IVercelDomainsGateway"
 import { vercelDomainsGateway } from "@/app/api/services/vercelDomains/VercelDomainsGateway"
+import { resolveRecommendedVercelCname } from "@/app/api/services/vercelDomains/resolveRecommendedVercelCname"
 import { CustomDomainDnsInstructionsMailService } from "@/app/api/services/email/CustomDomainDnsInstructionsMailService"
 import type { ICustomDomainDnsInstructionsMailService } from "@/app/api/services/email/ICustomDomainDnsInstructionsMailService"
 import { getEmailService } from "@/lib/services/EmailService"
@@ -63,13 +64,17 @@ export class SendFormDomainDnsInstructionsUseCase {
         return new Output(false, [], ["Nenhum domínio de formulários conectado"], null)
       }
 
-      const projectDomain = this.vercelGateway.isConfigured()
-        ? await this.vercelGateway.getProjectDomain(domain.hostname)
-        : null
+      const [projectDomain, cnameTarget] = this.vercelGateway.isConfigured()
+        ? await Promise.all([
+            this.vercelGateway.getProjectDomain(domain.hostname),
+            resolveRecommendedVercelCname(this.vercelGateway, domain.hostname),
+          ])
+        : [null, null]
 
       const records = buildFormDomainDnsRecords({
         hostname: domain.hostname,
         apexName: projectDomain?.ok ? projectDomain.data.apexName : null,
+        cnameTarget,
         verificationChallenges: projectDomain?.ok ? projectDomain.data.verification : null,
         verified: domain.status === "verified",
       })

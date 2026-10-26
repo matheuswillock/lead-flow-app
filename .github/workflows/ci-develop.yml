@@ -34,17 +34,14 @@ permissions:
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
-  NODE_OPTIONS: --max-old-space-size=5120
+  NODE_OPTIONS: --max-old-space-size=8192
 
 jobs:
   ci-light:
     name: CI Light (VPS)
     if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # 12min (era 8): mesmo teto do `ci-light` de `ci-main.yml` — ver o incidente
-    # de 16/09 comentado lá. A VPS é de 2 vCPU e o tempo do job varia com quantos
-    # pipelines disputam a máquina.
-    timeout-minutes: 12
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       governance-sync: ${{ steps.ci-light-checks.outputs['governance-sync'] }}
       governance-check: ${{ steps.ci-light-checks.outputs['governance-check'] }}
@@ -55,7 +52,7 @@ jobs:
       spellcheck-result: ${{ steps.ci-light-checks.outputs['spellcheck-result'] }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -71,14 +68,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
 
       - name: Typecheck
         env:
-          NODE_OPTIONS: "--max-old-space-size=5120"
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run typecheck
 
   build:
@@ -89,18 +86,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .next/cache
           key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ github.sha }}
@@ -124,30 +121,18 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
-    # `ci-light` no needs: CI Light e E2E disputam os 2 vCPU da VPS; o needs
-    # serializa intra-run sem o risco de cancelamento de pendentes que um
-    # concurrency group compartilhado teria ("any existing pending job or
-    # workflow in the same concurrency group will be canceled" — docs GitHub).
-    # `!cancelled()`: CI Light reprovar não pode virar E2E "skipped".
-    needs: ci-light
-    if: ${{ !cancelled() && github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
-    # Serializa TODO E2E na VPS (mesmo grupo em ci-branch-reusable/ci-main):
-    # 2 vCPU / 7,8 Gi não comportam dois E2E simultâneos, e a porta 55322 do
-    # Postgres é fixa (scripts/seed-e2e.ts + .env.test.example).
-    concurrency:
-      group: e2e-postgres-vps
-      cancel-in-progress: false
-    # 45min (era 30 no ubuntu-latest de 4 vCPU): build + suíte em 2 vCPU.
-    timeout-minutes: 45
+    if: ${{ github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
+    runs-on: ubuntu-latest
+    # VM isolada: E2E pode rodar em paralelo ao CI Light e a outros workflows.
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Setup Bun & deps
         uses: ./.github/actions/setup-bun-deps
@@ -155,7 +140,7 @@ jobs:
       - name: Playwright E2E
         uses: ./.github/actions/run-e2e-playwright
         with:
-          include-slow: 'true'
+          include-slow: "true"
           asaas-sandbox-api-key: ${{ secrets.ASAAS_SANDBOX_API_KEY }}
 
       - name: Upload Playwright report
@@ -170,7 +155,7 @@ jobs:
   quality-gate:
     name: Quality Gate
     if: ${{ always() && github.ref_name == 'develop' && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
-    runs-on: [self-hosted, linux, x64, lead-flow-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     needs:
       - ci-light
@@ -225,7 +210,7 @@ jobs:
       has_pending: ${{ steps.detect.outputs.has_pending }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -237,7 +222,7 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun-deps
         with:
-          install: 'false'
+          install: "false"
 
       - name: Detect Migration Status
         id: detect
@@ -279,7 +264,7 @@ jobs:
       - migration-check
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -324,16 +309,16 @@ jobs:
       has_code_changes: ${{ steps.bump.outputs.has_code_changes }}
     steps:
       - name: Checkout validated commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Determine version bump (main/release aware)
         id: bump
@@ -470,16 +455,16 @@ jobs:
       - version-bump
     steps:
       - name: Checkout validated commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Configure git
         run: |
@@ -817,7 +802,7 @@ jobs:
           echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Migration check: ${{ needs['migration-check'].result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Pending migrations: ${{ needs['migration-check'].outputs.has_pending }}" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps['release-pr'].outputs['skip-reason'] }}" ]; then
-            echo "- Blocked: ${{ steps['release-pr'].outputs['skip-reason'] }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n '${{ steps['release-pr'].outputs['skip-reason'] }}' ]; then
+            echo '- Blocked: ${{ steps['release-pr'].outputs['skip-reason'] }}' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "- PR: ${{ steps['release-pr'].outputs['pr-url'] || 'not created' }}" >> $GITHUB_STEP_SUMMARY

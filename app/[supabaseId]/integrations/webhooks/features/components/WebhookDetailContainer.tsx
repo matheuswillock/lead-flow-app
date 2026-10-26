@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Copy, Eye, KeyRound, RefreshCcw, TriangleAlert } from "lucide-react";
+import { AlertCircle, ArrowLeft, Copy, KeyRound, RefreshCcw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,14 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,17 +21,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { formatIntimezone } from "@/lib/dates";
+import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type {
   TeamWebhookDirection,
   TeamWebhookLogItem,
@@ -57,13 +42,14 @@ import {
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
 import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
+import { WebhookLogsPanel } from "./WebhookLogsPanel";
 
 /**
  * SPEC 10, R10-5 (revisão Opus, decisão do owner) — as chamadas de rede
  * passam pelo Service page-local (`InboundWebhookDetailService` /
- * `OutboundWebhookDetailService`), injetado via Hook/Context da rota. Este
- * componente compartilhado não importa `teamWebhooksService` diretamente
- * — a mesma interface estrutural serve para as duas direções.
+ * `OutboundWebhookDetailService`), injetado via Hook/Context da rota. A mesma
+ * interface estrutural serve para as duas direções. Sem `service`, o
+ * componente usa `teamWebhooksService` (uso direto e testes do painel de logs).
  */
 type WebhookDetailServiceLike = {
   getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
@@ -90,6 +76,13 @@ type WebhookDetailServiceLike = {
     teamId: string,
     id: string
   ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+  rotateSigningSecret(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  resendLog(
+    supabaseId: string,
+    teamId: string,
+    webhookId: string,
+    logId: string
+  ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
 };
 
 type Props = {
@@ -98,7 +91,7 @@ type Props = {
   direction: TeamWebhookDirection;
   /** SPEC 10, R10-5: caminho de volta à lista, derivado pelo Hook page-local. */
   listPath: string;
-  service: WebhookDetailServiceLike;
+  service?: WebhookDetailServiceLike;
 };
 
 // SPEC 10, DA4/A-E4: "none" saiu da UI de edição — um webhook histórico
@@ -152,32 +145,6 @@ function buildInboundUpdatePayload(
   return Object.keys(payload).length > 0 ? payload : null;
 }
 
-/**
- * R10-15 (revisão Opus, sugestão) — o Sheet e a tabela mostravam
- * `log.result` cru ("success"/"rejected"/"failure"), em inglês.
- */
-const LOG_RESULT_LABEL: Record<string, string> = {
-  success: "Sucesso",
-  rejected: "Rejeitado",
-  failure: "Falha",
-};
-
-function formatLogResultLabel(result: string): string {
-  return LOG_RESULT_LABEL[result] ?? result;
-}
-
-/** SPEC 10, B-E3: mesmo formatador usado no widget legado (StudioWebhookIntegration.tsx). */
-function formatLogPayloadForDetails(payload: unknown): string {
-  if (typeof payload === "string") return payload;
-  if (typeof payload === "undefined" || payload === null) return "null";
-
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch {
-    return JSON.stringify({ serializationError: "unserializable_payload" }, null, 2);
-  }
-}
-
 function buildOutboundUpdatePayload(
   draft: WebhookOutboundFormValues,
   initial: WebhookOutboundFormValues
@@ -199,7 +166,13 @@ function buildOutboundUpdatePayload(
   return Object.keys(payload).length > 0 ? payload : null;
 }
 
-export function WebhookDetailContainer({ supabaseId, webhookId, direction, listPath, service }: Props) {
+export function WebhookDetailContainer({
+  supabaseId,
+  webhookId,
+  direction,
+  listPath,
+  service = teamWebhooksService,
+}: Props) {
   const { activeTeam } = useTeamContext();
   const { tz } = useTimezone();
   const [webhook, setWebhook] = useState<TeamWebhookSummary | null>(null);
@@ -209,10 +182,15 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
   const [outboundInitial, setOutboundInitial] = useState<WebhookOutboundFormValues | null>(null);
   const [logs, setLogs] = useState<TeamWebhookLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsRefreshing, setLogsRefreshing] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [logsPage, setLogsPage] = useState(1);
   const [logsTotal, setLogsTotal] = useState(0);
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [resendingLogId, setResendingLogId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("config");
   const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
   const [rotatingSecret, setRotatingSecret] = useState(false);
   const [revealedSigningSecret, setRevealedSigningSecret] = useState<string | null>(null);
@@ -220,7 +198,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
   const [confirmingRotateSecret, setConfirmingRotateSecret] = useState(false);
   const [showSignatureGuide, setShowSignatureGuide] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedLogForDetail, setSelectedLogForDetail] = useState<TeamWebhookLogItem | null>(null);
+  const logsRequestIdRef = useRef(0);
 
 
   const applyWebhookToDraft = useCallback((detail: TeamWebhookSummary) => {
@@ -240,7 +218,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const loadConfiguration = useCallback(async () => {
     if (!activeTeam?.id) return;
     setLoading(true);
     // SPEC 10, B-E2 (W14): erro de carregamento é um estado próprio, nunca
@@ -249,27 +227,73 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
     // tela trava em skeleton quando a API falha.
     setLoadError(null);
     try {
-      const [detail, logResult] = await Promise.all([
-        service.getById(supabaseId, activeTeam.id, webhookId),
-        service.listLogs(supabaseId, activeTeam.id, webhookId, {
-          page: logsPage,
-          pageSize: 20,
-        }),
-      ]);
+      const detail = await service.getById(supabaseId, activeTeam.id, webhookId);
       applyWebhookToDraft(detail);
-      setLogs(logResult.items);
-      setLogsTotal(logResult.total);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Não foi possível carregar este webhook");
       toastUserError(error);
     } finally {
       setLoading(false);
     }
-  }, [activeTeam?.id, applyWebhookToDraft, logsPage, service, supabaseId, webhookId]);
+  }, [activeTeam?.id, applyWebhookToDraft, service, supabaseId, webhookId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadConfiguration();
+  }, [loadConfiguration]);
+
+  const fetchLogsPage = useCallback(async (page: number) => {
+    if (!activeTeam?.id) return null;
+    const requestId = ++logsRequestIdRef.current;
+    const result = await service.listLogs(supabaseId, activeTeam.id, webhookId, {
+      page,
+      pageSize: 20,
+    });
+    if (requestId !== logsRequestIdRef.current) return null;
+    setLogs(result.items);
+    setLogsTotal(result.total);
+    setSelectedLogId((current) =>
+      current && result.items.some((log: TeamWebhookLogItem) => log.id === current)
+        ? current
+        : (result.items[0]?.id ?? null)
+    );
+    return result;
+  }, [activeTeam?.id, service, supabaseId, webhookId]);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      await fetchLogsPage(logsPage);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [fetchLogsPage, logsPage]);
+
+  const refreshLogs = useCallback(async () => {
+    setLogsRefreshing(true);
+    try {
+      await fetchLogsPage(logsPage);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setLogsRefreshing(false);
+    }
+  }, [fetchLogsPage, logsPage]);
+
+  useEffect(() => {
+    if (activeTab !== "logs") return;
+
+    void loadLogs();
+    const intervalId = window.setInterval(() => {
+      void refreshLogs();
+    }, 10_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      logsRequestIdRef.current += 1;
+    };
+  }, [activeTab, loadLogs, refreshLogs]);
 
   const updatePayload = useMemo(() => {
     if (direction === "inbound" && inboundDraft && inboundInitial) {
@@ -324,7 +348,8 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
       await service.testDelivery(supabaseId, activeTeam.id, webhookId);
       toast.success("Envio de teste concluído");
       setLogsPage(1);
-      await load();
+      const result = await fetchLogsPage(1);
+      setSelectedLogId(result?.items[0]?.id ?? null);
     } catch (error) {
       toastUserError(error);
     } finally {
@@ -336,7 +361,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
     if (!activeTeam?.id || rotatingSecret) return;
     setRotatingSecret(true);
     try {
-      const updated = await teamWebhooksService.rotateSigningSecret(
+      const updated = await service.rotateSigningSecret(
         supabaseId,
         activeTeam.id,
         webhookId
@@ -353,6 +378,31 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
       toastUserError(error);
     } finally {
       setRotatingSecret(false);
+    }
+  };
+
+  const runResend = async (log: TeamWebhookLogItem) => {
+    if (!activeTeam?.id || resendingLogId) return;
+    setResendingLogId(log.id);
+    try {
+      const result = await service.resendLog(
+        supabaseId,
+        activeTeam.id,
+        webhookId,
+        log.id
+      );
+      if (result.ok) {
+        toast.success("Webhook reenviado com sucesso");
+      } else {
+        toast.error(result.errorMessage ?? "O reenvio foi registrado com falha");
+      }
+      setLogsPage(1);
+      const refreshed = await fetchLogsPage(1);
+      setSelectedLogId(refreshed?.items[0]?.id ?? null);
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setResendingLogId(null);
     }
   };
 
@@ -427,7 +477,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
-          <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Button variant="ghost" size="sm" asChild className="min-h-11 w-fit px-0">
             <Link href={listPath}>
               <ArrowLeft data-icon="inline-start" />
               Voltar
@@ -448,6 +498,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
           {webhook.status === "active" ? (
             <Button
               variant="outline"
+              className="min-h-11"
               onClick={() =>
                 direction === "outbound"
                   ? setConfirmingDeactivate(true)
@@ -464,20 +515,27 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
             </Button>
           ) : null}
           {direction === "outbound" ? (
-            <Button variant="secondary" onClick={runTest} disabled={actionPending}>
+            <Button variant="secondary" className="min-h-11" onClick={runTest} disabled={actionPending}>
               Testar envio
             </Button>
           ) : null}
-          <Button variant="ghost" size="icon" onClick={() => void load()} disabled={actionPending}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11"
+            onClick={() => void loadConfiguration()}
+            disabled={actionPending}
+            aria-label="Atualizar webhook"
+          >
             <RefreshCcw />
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="config">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
+          <TabsTrigger value="config" className="min-h-11">Configuração</TabsTrigger>
+          <TabsTrigger value="logs" className="min-h-11">Logs</TabsTrigger>
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
@@ -550,66 +608,19 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="logs" className="pt-4">
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Quando</TableHead>
-                  <TableHead>Resultado</TableHead>
-                  <TableHead>HTTP</TableHead>
-                  <TableHead>Erro</TableHead>
-                  <TableHead className="text-right">Detalhes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      Nenhum log ainda.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        {formatIntimezone(new Date(log.createdAt), "dd/MM/yyyy HH:mm", tz)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            log.result === "success"
-                              ? "default"
-                              : log.result === "rejected"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {formatLogResultLabel(log.result)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{log.statusCode ?? "—"}</TableCell>
-                      <TableCell className="max-w-[280px] truncate text-muted-foreground">
-                        {log.errorMessage ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="max-lg:h-11"
-                          onClick={() => setSelectedLogForDetail(log)}
-                        >
-                          <Eye data-icon="inline-start" />
-                          Ver detalhes
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        <TabsContent value="logs" className="min-w-0 pt-4">
+          <WebhookLogsPanel
+            logs={logs}
+            selectedLogId={selectedLogId}
+            timezone={tz}
+            isLoading={logsLoading}
+            isRefreshing={logsRefreshing}
+            resendingLogId={resendingLogId}
+            canResend={direction === "outbound" && webhook.status !== "disabled"}
+            onSelect={setSelectedLogId}
+            onRefresh={() => void refreshLogs()}
+            onResend={(log) => void runResend(log)}
+          />
           <div className="mt-3 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Página {logsPage} · {logsTotal} registro(s)
@@ -618,6 +629,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-11"
                 disabled={logsPage <= 1 || actionPending}
                 onClick={() => setLogsPage((p) => Math.max(1, p - 1))}
               >
@@ -626,6 +638,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-11"
                 disabled={logsPage * 20 >= logsTotal || actionPending}
                 onClick={() => setLogsPage((p) => p + 1)}
               >
@@ -774,75 +787,6 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction, listP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* SPEC 10, B-E3 (W17): payload de request/response e erro completo —
-          já mascarados pela API (A-E6). Sem "ver original": a tela nunca
-          reverte a máscara. */}
-      <Sheet open={Boolean(selectedLogForDetail)} onOpenChange={(open) => !open && setSelectedLogForDetail(null)}>
-        <SheetContent className="flex w-full flex-col gap-0 sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle>Detalhe do log</SheetTitle>
-            <SheetDescription>
-              {selectedLogForDetail
-                ? formatIntimezone(new Date(selectedLogForDetail.createdAt), "dd/MM/yyyy HH:mm:ss", tz)
-                : null}
-            </SheetDescription>
-          </SheetHeader>
-          {selectedLogForDetail ? (
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={
-                    selectedLogForDetail.result === "success"
-                      ? "default"
-                      : selectedLogForDetail.result === "rejected"
-                        ? "secondary"
-                        : "destructive"
-                  }
-                >
-                  {formatLogResultLabel(selectedLogForDetail.result)}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {selectedLogForDetail.method ?? "—"} · HTTP {selectedLogForDetail.statusCode ?? "—"}
-                </span>
-              </div>
-
-              {selectedLogForDetail.endpoint ? (
-                <p className="break-all text-sm text-muted-foreground">{selectedLogForDetail.endpoint}</p>
-              ) : null}
-
-              {selectedLogForDetail.errorMessage ? (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{selectedLogForDetail.errorMessage}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              <div className="flex flex-col gap-2">
-                <p className="text-sm font-semibold text-foreground">Payload da requisição</p>
-                {selectedLogForDetail.requestPayload ? (
-                  <pre className="max-h-[280px] overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
-                    {formatLogPayloadForDetails(selectedLogForDetail.requestPayload)}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Sem dados de requisição.</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-sm font-semibold text-foreground">Payload da resposta</p>
-                {selectedLogForDetail.responsePayload ? (
-                  <pre className="max-h-[280px] overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
-                    {formatLogPayloadForDetails(selectedLogForDetail.responsePayload)}
-                  </pre>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Sem dados de resposta.</p>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

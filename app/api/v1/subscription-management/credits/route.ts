@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionManagementUseCase } from "@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase";
 import { Output } from "@/lib/output";
+import { failedOutputStatus } from "@/lib/payment-methods/route-guard";
+import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
 
 export async function POST(request: NextRequest) {
   const supabaseId = request.headers.get("x-supabase-user-id");
@@ -9,8 +11,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(output, { status: 401 });
   }
 
+  const accessDeniedResponse = await requireWritableAccountAccess(supabaseId);
+  if (accessDeniedResponse) {
+    return accessDeniedResponse;
+  }
+
   const output = await subscriptionManagementUseCase.updateCredits(supabaseId, await request.json());
-  const status = output.isValid ? 200 : output.errorMessages[0] === "Apenas o master pode atualizar créditos" ? 403 : 400;
+  const status = output.isValid
+    ? 200
+    : output.errorMessages[0] === "Apenas o master pode atualizar créditos"
+      ? 403
+      : failedOutputStatus(output);
 
   return NextResponse.json(output, { status });
 }

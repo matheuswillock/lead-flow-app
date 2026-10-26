@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import prisma from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import { rejectUnavailableBillingTypeForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService";
 import { emailService } from "@/lib/services/EmailService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -70,6 +71,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const unavailableMethod = await rejectUnavailableBillingTypeForMaster(billingType, manager);
+    if (unavailableMethod) return unavailableMethod;
 
     const isExternalSubscription = !manager.asaasSubscriptionId;
     const subscriptionEnd = manager.subscriptionEndDate ?? manager.subscriptionNextDueDate;

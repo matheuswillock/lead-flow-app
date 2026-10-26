@@ -124,6 +124,12 @@ export interface ITeamWebhooksService {
     id: string
   ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
   rotateSigningSecret(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  resendLog(
+    supabaseId: string,
+    teamId: string,
+    webhookId: string,
+    logId: string
+  ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
 }
 
 export const WEBHOOK_EVENT_OPTIONS: Array<{ value: TeamWebhookEventKey; label: string }> = [

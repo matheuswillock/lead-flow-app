@@ -3,7 +3,10 @@ description: "Create and edit Obsidian Flavored Markdown with wikilinks, embeds,
 alwaysApply: false
 ---
 
-<!-- SOURCE: obsidian@obsidian-skills plugin — obsidian/1.0.1/skills/obsidian-markdown/SKILL.md -->
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/obsidian-markdown/SKILL.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
 
 # Obsidian Flavored Markdown Skill
 

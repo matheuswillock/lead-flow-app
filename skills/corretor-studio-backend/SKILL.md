@@ -24,7 +24,7 @@ Antes de qualquer implementação, ler:
 
 | Fonte | O que extrai |
 |---|---|
-| `.github/instructions/project-context.instructions.md` | Stack, schema, domínios existentes |
+| `.github/instructions/project-context.instructions.md` | Índice de fontes canônicas e stack estável |
 | `app/api/useCases/` | UseCases similares ao domínio da feature |
 | `app/api/services/` | Services similares |
 | `app/api/v1/` | Routes existentes para referência de padrão HTTP |

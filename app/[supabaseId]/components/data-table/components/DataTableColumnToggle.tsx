@@ -20,7 +20,7 @@ export function DataTableColumnToggle<TData>({ table, config }: DataTableColumnT
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" className="max-lg:h-11!">
           {config.label} <ChevronDown className="ml-2 h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

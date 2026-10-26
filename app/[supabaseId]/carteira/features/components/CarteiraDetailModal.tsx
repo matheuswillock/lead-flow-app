@@ -545,6 +545,8 @@ export function CarteiraDetailModal({
                       label="Data de nascimento"
                       showTime={false}
                       disablePastDates={false}
+                      fromYear={1920}
+                      toYear={new Date().getFullYear()}
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -649,6 +651,8 @@ export function CarteiraDetailModal({
                             label="Nascimento"
                             showTime={false}
                             disablePastDates={false}
+                            fromYear={1920}
+                            toYear={new Date().getFullYear()}
                           />
                         </div>
                         <div className="flex flex-col gap-1.5">

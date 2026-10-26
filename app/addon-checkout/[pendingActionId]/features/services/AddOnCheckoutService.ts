@@ -1,12 +1,73 @@
 import type { AddOnCheckoutData, AddOnCheckoutSubmitInput, PaymentStatus } from "../context/AddOnCheckoutTypes";
 import type { IAddOnCheckoutService } from "./IAddOnCheckoutService";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { ApiRequestError } from "@/lib/http/api-request-error";
+import {
+  mapStartedPixPaymentToPaymentData,
+  rememberPixExpiry,
+  resolvePixIdempotencyKey,
+  type KeyValueStorage,
+  type PlatformPixPaymentData,
+  type StartedPixPaymentResult,
+} from "../utils/platformPixPayment";
 import {
   mapPlatformPurchaseToCheckoutData,
   type PlatformCheckoutApiResult,
 } from "../utils/mapPlatformPurchaseToCheckoutData";
 
-class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
+const memoryFallbackStorage = createMemoryStorage()
+
+function createMemoryStorage(): KeyValueStorage {
+  const data = new Map<string, string>()
+  return {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, value),
+  }
+}
+
+function getBrowserSessionStorage(): KeyValueStorage {
+  try {
+    return window.sessionStorage
+  } catch {
+    return memoryFallbackStorage
+  }
+}
+
+export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
+  constructor(
+    private readonly getStorage: () => KeyValueStorage = getBrowserSessionStorage,
+    private readonly createId: () => string = () => crypto.randomUUID()
+  ) {}
+
+  async createPlatformPixPayment(
+    purchaseId: string,
+    input: AddOnCheckoutSubmitInput
+  ): Promise<PlatformPixPaymentData> {
+    const storage = this.getStorage()
+    const idempotencyKey = resolvePixIdempotencyKey(storage, purchaseId, Date.now(), this.createId)
+    const response = await fetch(`${API_CLIENT_BASE}/payment-provider-payment/${purchaseId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({
+        method: "PIX",
+        customer: {
+          name: input.fullName,
+          email: input.email,
+          taxId: input.cpfCnpj,
+          cellphone: input.phone,
+        },
+      }),
+    })
+    const result = await response.json()
+    if (!response.ok || !result.isValid) {
+      throw new ApiRequestError(result.errorMessages?.[0] || "Erro ao gerar o PIX", response.status)
+    }
+
+    const paymentData = mapStartedPixPaymentToPaymentData(result.result as StartedPixPaymentResult)
+    rememberPixExpiry(storage, purchaseId, paymentData.pix.expirationDate)
+    return paymentData
+  }
+
   private async tryFetchPlatformCheckout(
     checkoutId: string
   ): Promise<AddOnCheckoutData | null> {
@@ -38,6 +99,18 @@ class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
       ...(result.result as AddOnCheckoutData),
       checkoutSource: "pending_action",
     };
+  }
+
+  async updateBillingType(pendingActionId: string, billingType: "PIX" | "CREDIT_CARD"): Promise<void> {
+    const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/billing-type`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billingType }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.isValid) {
+      throw new Error(result.errorMessages?.[0] || "Erro ao atualizar forma de pagamento");
+    }
   }
 
   async createPayment(pendingActionId: string, input: AddOnCheckoutSubmitInput): Promise<any> {

@@ -29,6 +29,7 @@ import {
   resolveLeadOriginFilter,
   type LeadOriginFilterValue,
 } from "@/lib/leads/origin-filter";
+import { leadMatchesSearch } from "@/lib/leads/lead-search";
 
 // Referência estável — evita recriar `loadLeads` (e a instabilidade em cascata
 // no efeito que o dispara) a cada render quando externalFilters está ausente.
@@ -818,10 +819,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       }
 
       // Filtro por query (nome ou data)
-      const matchesQuery = !q || 
-        lead.name.toLowerCase().includes(q) || 
-        lead.leadCode.toLowerCase().includes(q) ||
-        formatDate(lead.createdAt, tz).includes(q);
+      const matchesQuery = leadMatchesSearch(lead, q, formatDate(lead.createdAt, tz));
       
       // Filtro por status
       const matchesStatus =

@@ -29,6 +29,7 @@ export interface ActiveUserSubscriptionRecord {
 
 export interface OwnerUserTypeAssignment {
   slug: string
+  accessStartsAt: string | null
   accessExpiresAt: string | null
 }
 
@@ -60,15 +61,25 @@ export interface EmailBetaAccessContext {
 
 export interface IFeatureAccessRepository {
   listActiveFeatures(): Promise<ActiveFeatureRecord[]>
-  findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
+  findOwnerProfile(
+    ownerProfileId: string
+  ): Promise<Pick<
+    Profile,
+    "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+  > | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
-    (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
+    (Pick<
+      ProfileSubscription,
+      "hasPermanentSubscription" | "subscriptionStatus" | "subscriptionNextDueDate"
+    > & {
       product: { featureSlugs: string[] } | null
     }) | null
   >
   listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]>
+  hasActiveTemporaryBillingGrace(teamId: string): Promise<boolean>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
   findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
+  findTeamMasterId(teamId: string): Promise<string | null>
 }

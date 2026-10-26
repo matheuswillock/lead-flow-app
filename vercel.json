@@ -232,6 +232,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/v1/billing/cron/asaas-dual-account-reconciliation",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/v1/backoffice/cron/provision-live-campaign",
       "schedule": "0 16 * * 4"
     },
@@ -258,6 +262,14 @@
     {
       "path": "/api/v1/billing/cron/overdue-reminder",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/v1/billing/cron/asaas-card-reauthorization-reminder",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/v1/billing/cron/asaas-due-date-cutover",
+      "schedule": "15 12 * * *"
     },
     {
       "path": "/api/v1/notifications/cron/studio-bot-ai-rollup",
@@ -322,6 +334,14 @@
     {
       "path": "/api/v1/queues/cron/mark-stale-cron-executions",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/payment-provider/cron/maintenance",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/studio/cron/reconcile-dns",
+      "schedule": "0 11,23 * * *"
     }
   ]
 }

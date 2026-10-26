@@ -28,6 +28,7 @@ type TeamSwitcherTeam = {
   isOwnAccount?: boolean
   isAccessible?: boolean
   isAssociateAccount?: boolean
+  isPending?: boolean
 }
 
 export function TeamSwitcher({
@@ -48,14 +49,9 @@ export function TeamSwitcher({
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
 
-  const accessibleTeams = React.useMemo(
-    () => teams.filter((team) => team.isAccessible !== false),
-    [teams]
-  )
-
   const activeTeam = React.useMemo(
-    () => accessibleTeams.find((team) => team.id === activeTeamId) || accessibleTeams[0],
-    [accessibleTeams, activeTeamId]
+    () => teams.find((team) => team.id === activeTeamId) || teams.find((team) => !team.isPending),
+    [teams, activeTeamId]
   )
 
   const filteredTeams = React.useMemo(() => {
@@ -116,7 +112,7 @@ export function TeamSwitcher({
   }
 
   const handleSelectTeam = (team: TeamSwitcherTeam) => {
-    if (team.isAccessible === false) {
+    if (team.isPending) {
       return
     }
     onChange(team.id)
@@ -177,7 +173,7 @@ export function TeamSwitcher({
               groupedTeams.map(([groupLabel, groupTeams]) => (
                 <CommandGroup key={groupLabel} heading={groupLabel}>
                   {groupTeams.map((team) => {
-                    const disabled = team.isAccessible === false
+                    const disabled = team.isPending === true
                     return (
                       <CommandItem
                         key={team.id}
@@ -201,7 +197,7 @@ export function TeamSwitcher({
                           ) : null}
                           {disabled ? (
                             <Badge variant="outline" className="mt-1 w-fit">
-                              Assinatura inativa
+                              Acesso pausado
                             </Badge>
                           ) : null}
                         </div>

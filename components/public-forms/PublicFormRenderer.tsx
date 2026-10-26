@@ -39,14 +39,16 @@ import {
 } from "@/lib/public-forms/phone-field"
 import { resolvePublicFormAutocompleteAttrs } from "@/lib/public-forms/autocomplete"
 import {
-  resolvePrefilledFieldIds,
+  applyPrefillToVisibleQuestions,
   retainPrefilledFieldsWithAnswers,
   withoutPrefilledField,
+  type PublicFormPrefillResult,
 } from "@/lib/public-forms/prefill-indicator"
 import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldIndicator"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
 import { API_CLIENT_BASE } from "@/lib/route-map"
+import { dispatchLandingFormAnalytics } from "@/lib/landing-analytics/client"
 import type { SimulationResult } from "@/lib/public-forms/simulation"
 import { runHealthPlanSimulation } from "@/lib/public-forms/simulation"
 import type {
@@ -75,6 +77,7 @@ type SchedulingAnswer = {
 type Props = {
   snapshot: PublicFormSnapshot
   publicId?: string
+  publicationId?: string
   preview?: boolean
   className?: string
 }
@@ -145,7 +148,13 @@ function runSuccessAction(action: PublicFormSuccessAction) {
   }
 }
 
-export function PublicFormRenderer({ snapshot, publicId, preview = false, className }: Props) {
+export function PublicFormRenderer({
+  snapshot,
+  publicId,
+  publicationId,
+  preview = false,
+  className,
+}: Props) {
   const [started, setStarted] = useState(false)
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
@@ -153,6 +162,8 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
   // prefill de `cs_el` — dirige o indicador visível no campo (Sparkles +
   // tooltip). Some assim que o visitante edita o campo (ver `onChange`).
   const [prefilledFieldIds, setPrefilledFieldIds] = useState<Set<string>>(new Set())
+  const editedQuestionIds = useRef<Set<string>>(new Set())
+  const [campaignPrefill, setCampaignPrefill] = useState<PublicFormPrefillResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [done, setDone] = useState(false)
@@ -260,30 +271,33 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       .then((res) => res.json())
       .then((data: { isValid?: boolean; result?: { name: string | null; email: string | null } }) => {
         if (!data?.isValid || !data?.result) return
-        const { name, email } = data.result
-        setAnswers((current) => {
-          const prefilledIds = resolvePrefilledFieldIds({
-            questions: snapshot.questions,
-            prefill: { name, email },
-            currentAnswers: current,
-          })
-          if (prefilledIds.size > 0) {
-            setPrefilledFieldIds((currentIds) => new Set([...currentIds, ...prefilledIds]))
-          }
-          const next = { ...current }
-          for (const question of snapshot.questions) {
-            if (question.mappingKey === "name" && name && !current[question.id]) {
-              next[question.id] = name
-            }
-            if (question.mappingKey === "email" && email && !current[question.id]) {
-              next[question.id] = email
-            }
-          }
-          return next
-        })
+        setCampaignPrefill(data.result)
       })
       .catch(() => {})
-  }, [preview, publicId, snapshot.questions])
+  }, [preview, publicId])
+
+  useEffect(() => {
+    if (!started || !campaignPrefill || !pageQuestionsKey) return
+    const visibleQuestions = pageQuestionsKey
+      .split("\0")
+      .map((questionId) => snapshot.questions.find((question) => question.id === questionId))
+      .filter((question): question is PublicQuestion => Boolean(question))
+
+    setAnswers((currentAnswers) => {
+      const applied = applyPrefillToVisibleQuestions({
+        visibleQuestions,
+        prefill: campaignPrefill,
+        currentAnswers,
+        editedQuestionIds: editedQuestionIds.current,
+      })
+      if (applied.prefilledFieldIds.size === 0) return currentAnswers
+
+      setPrefilledFieldIds((currentIds) =>
+        new Set([...currentIds, ...applied.prefilledFieldIds]),
+      )
+      return applied.answers
+    })
+  }, [campaignPrefill, pageQuestionsKey, snapshot.questions, started])
 
   const sendWithOutbox = useCallback(
     async (kind: PublicFormBrowserOutboxKind, endpoint: string, body: Record<string, unknown>) => {
@@ -378,6 +392,26 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         ...(journey?.validationCodes?.length
           ? { validationCodes: journey.validationCodes }
           : {}),
+      }
+      const landingEventType =
+        eventType === "form_started"
+          ? "landing.form_start"
+          : eventType === "question_viewed" || eventType === "page_viewed"
+            ? "landing.form_step_view"
+            : eventType === "form_validation_failed"
+              ? "landing.form_validation_failure"
+              : eventType === "form_submit_attempted"
+                ? "landing.form_submit_attempt"
+                : undefined
+      if (landingEventType) {
+        dispatchLandingFormAnalytics({
+          eventType: landingEventType,
+          formId: publicId,
+          ...(questionId ? { questionId } : {}),
+          ...(journey?.pageId ? { pageId: journey.pageId } : {}),
+          ...(journey?.pageIndex !== undefined ? { pageIndex: journey.pageIndex } : {}),
+          ...(journey?.validationCodes ? { validationCodes: journey.validationCodes } : {}),
+        })
       }
       const url = `${API_CLIENT_BASE}/public-forms/${publicId}/events`
       void sendWithOutbox("behavior", url, body)
@@ -475,6 +509,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
     if (preview || !publicId || !session) return
     await sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
         visitorSessionId: session,
+        ...(publicationId ? { publicationId } : {}),
         answers: pageAnswers,
         origin: getOrigin(),
         schemaVersion: 1,
@@ -482,7 +517,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         occurredAt: new Date().toISOString(),
         trigger: "page_flush",
     })
-  }, [pageAnswers, preview, publicId, sendWithOutbox, session])
+  }, [pageAnswers, preview, publicId, publicationId, sendWithOutbox, session])
 
   const sendBlurProgress = useCallback(
     (questionId: string, value: unknown, trigger: "blur" | "change" = "blur") => {
@@ -490,6 +525,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
       void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
           visitorSessionId: session,
+          ...(publicationId ? { publicationId } : {}),
           answers: [{ questionId, value }],
           origin: getOrigin(),
           schemaVersion: 1,
@@ -504,8 +540,14 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
       if (question && question.type === "phone") {
         setError(getPhoneFieldInlineError(value))
       }
+      dispatchLandingFormAnalytics({
+        eventType: "landing.form_answer_change",
+        formId: publicId,
+        questionId,
+        answerPresent: value !== undefined && value !== null && value !== "",
+      })
     },
-    [preview, publicId, sendWithOutbox, session, snapshot.questions],
+    [preview, publicId, publicationId, sendWithOutbox, session, snapshot.questions],
   )
 
   function start() {
@@ -637,6 +679,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         `${API_CLIENT_BASE}/public-forms/${publicId}/submissions`,
         {
           requestKey: buildPublicFormSubmitRequestKey(session, getOrigin().emailLogId),
+          ...(publicationId ? { publicationId } : {}),
           answers: answerList,
           origin: getOrigin(),
           visitorSessionId: session,
@@ -654,6 +697,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
         throw new Error(output.errorMessages?.join("; ") || "Não foi possível enviar")
       }
       setDone(true)
+      dispatchLandingFormAnalytics({ eventType: "landing.form_submitted", formId: publicId })
     } catch (submitError) {
       submitLockRef.current = false
       setError(
@@ -999,6 +1043,7 @@ export function PublicFormRenderer({ snapshot, publicId, preview = false, classN
                         question={item}
                         value={answers[item.id]}
                         onChange={(value) => {
+                          editedQuestionIds.current.add(item.id)
                           setAnswers((current) => {
                             if (!isLeadNameQuestion(item)) {
                               return { ...current, [item.id]: value }

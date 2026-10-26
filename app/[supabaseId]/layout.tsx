@@ -12,6 +12,7 @@ import { WebPushConsentPrompt } from "./notifications/features/components/WebPus
 import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
 import { getAuthenticatedLayoutBootstrapData } from "@/lib/bootstrap/getAuthenticatedLayoutBootstrapData"
 import { CampaignDispatchRealtimeProvider } from "./email/campanhas/features/context/CampaignDispatchRealtimeContext"
+import { AccountAccessGate } from "./components/AccountAccessGate"
 
 export const metadata: Metadata = NO_INDEX_METADATA
 
@@ -36,16 +37,22 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   const bootstrap = await getAuthenticatedLayoutBootstrapData(supabaseId)
 
   return (
-    <UserProvider
+    <TeamProvider
       supabaseId={supabaseId}
-      initialUser={bootstrap?.user ?? null}
-      initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? null}
-      initialUserRole={bootstrap?.userRole ?? null}
+      profileId={bootstrap?.user.id ?? null}
+      initialTeams={bootstrap?.teams ?? null}
+      initialActiveTeamId={bootstrap?.activeTeamId ?? null}
+      initialAccountAccessDecision={bootstrap?.accountAccessDecision ?? null}
     >
-      <TeamProvider
+      <UserProvider
         supabaseId={supabaseId}
-        initialTeams={bootstrap?.teams ?? null}
-        initialActiveTeamId={bootstrap?.activeTeamId ?? null}
+        initialUser={bootstrap?.user ?? null}
+        initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? null}
+        initialUserRole={bootstrap?.userRole ?? null}
+      >
+      <AccountAccessGate
+        decision={bootstrap?.accountAccessDecision}
+        decisionResolved={bootstrap !== null}
       >
         <FeatureAccessProvider initialAccess={bootstrap?.featureAccess ?? null}>
           <OperationalAccessProvider initialAccess={bootstrap?.operationalAccess ?? null}>
@@ -62,7 +69,8 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
             </NotificationsProvider>
           </OperationalAccessProvider>
         </FeatureAccessProvider>
-      </TeamProvider>
-    </UserProvider>
+      </AccountAccessGate>
+      </UserProvider>
+    </TeamProvider>
   )
 }

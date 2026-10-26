@@ -1,87 +1,89 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
+import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { Output } from "@/lib/output"
+import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
+import type { EmailCreditPlan } from "@prisma/client"
+import { ValidarEmailCreditosUseCase } from "./ValidarEmailCreditosUseCase"
 
-// T-40.1/T-40.2 de [[40 — Checkout, Adesões e Add-ons — Backend]] (E1/C17):
-// os IDs de checkout hospedado de créditos saem do hardcode, sem fallback.
+const access = {
+  supabaseId: "sb-1",
+  teamId: "team-1",
+  profileId: "profile-1",
+  profileEmail: "dono@example.test",
+} as TeamAccess
 
-const findByEmailMock = mock(async (_email: string) => ({ id: "profile-1" }) as any)
-const notifyMock = mock(async () => ({ success: true }))
+type SubscribeCall = [EmailCreditPlan, TeamAccess, "PIX" | "CREDIT_CARD"]
 
-mock.module("@/app/api/infra/data/repositories/profile/ProfileRepository", () => ({
-  profileRepository: { findByEmail: findByEmailMock },
-}))
+const subscribeMock = mock(
+  async (..._args: SubscribeCall) =>
+    new Output(true, [], [], {
+      checkoutId: "purchase-1",
+      checkoutUrl: "https://app.test/addon-checkout/purchase-1",
+    }),
+)
+const notifyMock = mock(async (_payload: unknown) => ({ success: true }))
 
-mock.module("@/app/api/services/slackEmailCredits/SlackEmailCreditsService", () => ({
-  slackEmailCreditsService: { notify: notifyMock },
-}))
+function buildUseCase() {
+  return new ValidarEmailCreditosUseCase(
+    { subscribe: subscribeMock } as never,
+    { notify: notifyMock } as never,
+  )
+}
 
-mock.module("@/lib/asaas", () => ({
-  getAsaasCheckoutBaseUrl: () => "https://sandbox.asaas.com",
-}))
-
-const { ValidarEmailCreditosUseCase } = await import("./ValidarEmailCreditosUseCase")
-
-const ORIGINAL_ENV = { ...process.env }
-
-describe("ValidarEmailCreditosUseCase — checkout hospedado sai do hardcode (E1)", () => {
+describe("ValidarEmailCreditosUseCase — compra para o usuário autenticado", () => {
   beforeEach(() => {
-    findByEmailMock.mockClear()
+    subscribeMock.mockClear()
     notifyMock.mockClear()
-    delete process.env.ASAAS_CREDIT_CHECKOUT_ID_25K
-    delete process.env.ASAAS_CREDIT_CHECKOUT_ID_50K
   })
 
-  afterEach(() => {
-    process.env = { ...ORIGINAL_ENV }
+  it("25k cria a compra do plano upgrade em PIX para o time autenticado e devolve o checkout interno", async () => {
+    const output = await buildUseCase().execute({ plan: "25k", access })
+
+    expect(output.isValid).toBe(true)
+    expect(subscribeMock).toHaveBeenCalledWith("upgrade", access, "PIX")
+    expect(output.result).toEqual({
+      checkoutUrl: "https://app.test/addon-checkout/purchase-1",
+      plan: "25k",
+    })
   })
 
-  it("T-40.1: env ausente → Output inválido com mensagem operacional; nenhum ID literal usado como fallback", async () => {
-    const useCase = new ValidarEmailCreditosUseCase()
+  it("50k cria a compra do plano business", async () => {
+    await buildUseCase().execute({ plan: "50k", access })
 
-    const output = await useCase.execute({ email: "cliente@example.test", plan: "25k" })
+    expect(subscribeMock).toHaveBeenCalledWith("business", access, "PIX")
+  })
+
+  it("plano inválido não cria compra", async () => {
+    const output = await buildUseCase().execute({ plan: "10k" as never, access })
 
     expect(output.isValid).toBe(false)
-    expect(output.errorMessages.length).toBeGreaterThan(0)
-    // sem fallback: nem o profile foi consultado nem o Slack foi notificado
-    expect(findByEmailMock).not.toHaveBeenCalled()
+    expect(subscribeMock).not.toHaveBeenCalled()
+  })
+
+  it("falha ao criar a compra propaga o erro e não notifica o Slack", async () => {
+    subscribeMock.mockResolvedValueOnce(new Output(false, [], ["Sem acesso"], null))
+
+    const output = await buildUseCase().execute({ plan: "25k", access })
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Sem acesso"])
     expect(notifyMock).not.toHaveBeenCalled()
   })
 
-  it("T-40.2: checkoutUrl monta de getAsaasCheckoutBaseUrl() + /c/ + env; IDs legados não existem em app/**", async () => {
-    process.env.ASAAS_CREDIT_CHECKOUT_ID_25K = "cus_env_25k"
-    process.env.ASAAS_CREDIT_CHECKOUT_ID_50K = "cus_env_50k"
+  it("notifica o Slack só com dados do profile autenticado", async () => {
+    await buildUseCase().execute({ plan: "25k", access })
 
-    const useCase = new ValidarEmailCreditosUseCase()
-    const output = await useCase.execute({ email: "cliente@example.test", plan: "25k" })
+    expect(notifyMock).toHaveBeenCalledWith({
+      email: "dono@example.test",
+      plan: "25k",
+      profileId: "profile-1",
+    })
+  })
+
+  it("falha do Slack não derruba a compra", async () => {
+    notifyMock.mockResolvedValueOnce({ success: false, error: "slack off" } as never)
+
+    const output = await buildUseCase().execute({ plan: "25k", access })
 
     expect(output.isValid).toBe(true)
-    expect((output.result as { checkoutUrl: string }).checkoutUrl).toBe(
-      "https://sandbox.asaas.com/c/cus_env_25k"
-    )
-
-    const legacyIds = ["7t6pqaxdfc0yyc65", "g8wl8a5xrn009icv"]
-    const appRoot = join(import.meta.dir, "..", "..", "..", "..")
-    const offenders: string[] = []
-
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir)) {
-        if (entry === "node_modules" || entry === ".next" || entry.startsWith(".")) continue
-        const fullPath = join(dir, entry)
-        const stat = statSync(fullPath)
-        if (stat.isDirectory()) {
-          walk(fullPath)
-        } else if (/\.(ts|tsx)$/.test(entry) && !entry.endsWith(".test.ts")) {
-          const content = readFileSync(fullPath, "utf-8")
-          if (legacyIds.some((id) => content.includes(id))) {
-            offenders.push(fullPath)
-          }
-        }
-      }
-    }
-
-    walk(join(appRoot, "app"))
-
-    expect(offenders).toEqual([])
   })
 })

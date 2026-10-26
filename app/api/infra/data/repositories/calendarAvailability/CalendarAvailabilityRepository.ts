@@ -3,16 +3,28 @@ import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   CalendarAvailabilityCloserProfile,
   CalendarAvailabilityExcludedLead,
+  CalendarAvailabilityReservation,
   CalendarAvailabilityScheduledLead,
   ICalendarAvailabilityRepository,
 } from "./ICalendarAvailabilityRepository";
 
 export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepository {
+  async findMeetingDuration(teamId: string): Promise<number | null> {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { meetingDurationMinutes: true },
+    });
+    return team?.meetingDurationMinutes ?? null;
+  }
+
   async findTeamMemberProfileIds(teamId: string, requestedCloserIds: string[]): Promise<string[]> {
     const teamMembers = await prisma.teamMember.findMany({
       where: {
         teamId,
         profileId: { in: requestedCloserIds },
+        functions: { has: "CLOSER" },
+        team: { deletedAt: null },
+        profile: { deletedAt: null },
       },
       select: { profileId: true },
     });
@@ -93,7 +105,28 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
       select: {
         meetingDate: true,
         closerId: true,
+        meetingDurationMinutes: true,
       },
+    });
+  }
+
+  async findActiveReservations(params: {
+    teamId: string;
+    requestedCloserIds: string[];
+    rangeStart: Date;
+    rangeEnd: Date;
+    excludeLeadId?: string;
+  }): Promise<CalendarAvailabilityReservation[]> {
+    return prisma.teamMeetingSlotReservation.findMany({
+      where: {
+        teamId: params.teamId,
+        closerId: { in: params.requestedCloserIds },
+        state: { in: ["reserved", "consumed"] },
+        startsAt: { lt: params.rangeEnd },
+        endsAt: { gt: params.rangeStart },
+        ...(params.excludeLeadId ? { NOT: { leadId: params.excludeLeadId } } : {}),
+      },
+      select: { closerId: true, startsAt: true, endsAt: true },
     });
   }
 }

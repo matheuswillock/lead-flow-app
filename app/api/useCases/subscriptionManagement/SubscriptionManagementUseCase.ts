@@ -6,6 +6,12 @@ import { subscriptionCreditService } from "@/app/api/services/billing/Subscripti
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { getFullUrl } from "@/lib/utils/app-url";
+import {
+  assertCardChoiceAllowedForMaster,
+  resolveAvailableBillingTypesForMaster,
+} from "@/app/api/services/billing/ExistingCardSubscriberService";
+import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability";
+import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import type { 
@@ -38,6 +44,7 @@ interface AsaasPaymentItem {
 
 type ProfileSubscriptionSnapshot = {
   asaasSubscriptionId: string | null;
+  asaasSubscriptionAccount: AsaasAccountId;
   subscriptionStatus: string | null;
   subscriptionPlan: string | null;
   subscriptionStartDate: Date | null;
@@ -132,6 +139,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           subscriptionCycle: true,
           hasPermanentSubscription: true,
           subscriptionLastSyncedAt: true,
+          asaasSubscriptionAccount: true,
         },
       });
     } catch (error) {
@@ -148,6 +156,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          asaasSubscriptionAccount: true,
         },
       });
     }
@@ -259,6 +268,9 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         return new Output(false, [], ["Assinaturas vitalícias não precisam de gestão de créditos"], null);
       }
 
+      // Cobrança incremental: quem já tem cartão na assinatura mantém o cartão (token existente).
+      await assertCardChoiceAllowedForMaster(input.billingType, owner);
+
       const currentSummary = await getBillingSummary(owner.id);
       if (resource === "user" && currentSummary.hasUnlimitedUsers) {
         return new Output(
@@ -328,6 +340,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         amount: totalCharge,
       });
     } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error);
       console.error("[SubscriptionManagementUseCase][updateCredits]", error);
       return new Output(false, [], ["Erro ao atualizar créditos"], null);
     }
@@ -388,12 +401,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Calcular valor com base na nova regra (Times + usuários distinct) sempre que possível.
-      // Se não for possível (ex.: masterId ausente), fazemos fallback para regra antiga.
-      const basePrice = 59.9;
-      const extraTeamPrice = 29.9;
-      const extraUserPrice = 19.9;
-
       let billingSummary: any | null = null;
       try {
         billingSummary = await getBillingSummary(masterIdForBilling);
@@ -414,15 +421,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         },
       });
 
-      const legacyTeamCount = await prisma.team.count({
-        where: { masterId: legacyMasterId },
-      });
-
-      const legacyBillableTeams = Math.max(0, legacyTeamCount - 1);
-      const legacyTotal =
-        basePrice +
-        legacyBillableTeams * extraTeamPrice +
-        actualOperatorCount * extraUserPrice;
       const subscriptionPlan = profileSubscription?.subscriptionPlan ?? profile.subscriptionPlan;
       const subscriptionStatus = profileSubscription?.subscriptionStatus ?? profile.subscriptionStatus;
       const subscriptionCycle = profileSubscription?.subscriptionCycle ?? profile.subscriptionCycle ?? "MONTHLY";
@@ -439,7 +437,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           ? 0
           : subscriptionPlan === "free_trial"
             ? 0
-            : billingSummary?.totalPrice ?? Number(legacyTotal.toFixed(2));
+            : billingSummary?.totalPrice ?? null;
 
       if (!hasPermanentSubscription && shouldSync(lastSyncedAt)) {
         void asaasSubscriptionSyncService.syncFromAsaas(masterIdForBilling).catch((syncError) => {
@@ -447,8 +445,15 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         });
       }
 
+      const availableBillingTypes = await resolveAvailableBillingTypesForMaster({
+        asaasSubscriptionId,
+        asaasSubscriptionAccount:
+          profileSubscription?.asaasSubscriptionAccount ?? profile.asaasSubscriptionAccount,
+      });
+
       // Formatar dados da assinatura
       const subscriptionData = {
+        availableBillingTypes,
         id: asaasSubscriptionId || 'permanent-subscription',
         subscriptionAsaasId: asaasSubscriptionId || 'permanent-subscription',
         status: hasPermanentSubscription ? 'active' : (subscriptionStatus || 'active'),
@@ -473,10 +478,6 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         billingSummary: billingSummary
           ? {
               ...billingSummary,
-              // Garantir preços e arredondamento consistente no frontend
-              basePrice,
-              extraTeamsPrice: Number((billingSummary.billableTeams * extraTeamPrice).toFixed(2)),
-              extraUsersPrice: Number((billingSummary.billableUsers * extraUserPrice).toFixed(2)),
               totalPrice: Number(Number(billingSummary.totalPrice).toFixed(2)),
             }
           : null,

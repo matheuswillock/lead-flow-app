@@ -277,6 +277,8 @@ export interface UpdateCarteiraDetailPayload {
   contractDueDate?: string | null;
   soldPlan?: string | null;
   notes?: string | null;
+  contractFileUrl?: string | null;
+  contractStoragePath?: string | null;
   holder?: {
     name: string;
     razaoSocial?: string | null;

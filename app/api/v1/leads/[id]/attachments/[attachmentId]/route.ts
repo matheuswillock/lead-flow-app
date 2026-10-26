@@ -59,9 +59,13 @@ export async function DELETE(
         { status: 403 }
       );
     }
-    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
+    if (
+      membership.role === "operator" &&
+      !membership.functions?.includes("SDR") &&
+      !membership.functions?.includes("CLOSER")
+    ) {
       return NextResponse.json(
-        new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null),
+        new Output(false, [], ["Acesso negado: função SDR ou CLOSER necessária para visualizar leads."], null),
         { status: 403 }
       );
     }

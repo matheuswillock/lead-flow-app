@@ -3,6 +3,7 @@ import {
   buildDefaultOutputFilename,
   buildInventoryReport,
   dedupePaymentsById,
+  dedupeSubscriptionsById,
   parseInventoryArgs,
   summarizeCustomers,
   summarizePayments,
@@ -133,6 +134,22 @@ describe("dedupePaymentsById", () => {
     const merged = dedupePaymentsById([shared], [shared, onlyOverdue])
     expect(merged).toHaveLength(2)
     expect(merged.map((p) => p.id).sort()).toEqual(["p1", "p2"])
+  })
+})
+
+describe("dedupeSubscriptionsById", () => {
+  it("une a listagem padrão e a listagem INACTIVE sem duplicar assinaturas", () => {
+    const active: AsaasSubscription = {
+      id: "sub_active",
+      customer: "cus_1",
+      billingType: "CREDIT_CARD",
+      status: "ACTIVE",
+      value: 59.9,
+      nextDueDate: "2026-10-01",
+      cycle: "MONTHLY",
+    }
+    const inactive: AsaasSubscription = { ...active, status: "INACTIVE" }
+    expect(dedupeSubscriptionsById([active], [inactive])).toEqual([inactive])
   })
 })
 

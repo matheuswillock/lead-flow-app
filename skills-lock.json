@@ -11,7 +11,7 @@
       "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/ai-agents-sync/SKILL.md",
-      "computedHash": "5abb594d1cf1897bba64a799d995f0dc1913f8159ea957db9f2b86d806a2501e"
+      "computedHash": "3064cb0795ee0a7348fa8c9a6d58728fcb121fd7f1e35fbd6fc0e37aa08c5cb6"
     },
     "build-mcp-app": {
       "source": "anthropics/claude-plugins-official",
@@ -61,11 +61,17 @@
       "skillPath": "skills/caveman-stats/SKILL.md",
       "computedHash": "331f720e2fa97b68cacdae44384878071e8cac6013479edea68f4c8eca308852"
     },
+    "clean-code": {
+      "source": "./local",
+      "sourceType": "local",
+      "skillPath": "skills/clean-code/SKILL.md",
+      "computedHash": "5a050a1dd2d57d6d5cd9325c81d4669c388cb1b2ab7715eb67bdd76f124364c8"
+    },
     "corretor-studio-backend": {
       "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-backend/SKILL.md",
-      "computedHash": "653fb4bd7b12b8c941b72b3e57402607559fe25b5535fc9c8f9fc705f644a6ea"
+      "computedHash": "db6ac4c1196497a2374eba0fe29fc221d52dcf937ffcd26b657b90a0f0f8163b"
     },
     "corretor-studio-design": {
       "source": "./local",
@@ -77,7 +83,13 @@
       "source": "./local",
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-frontend/SKILL.md",
-      "computedHash": "b19d2641b52fcd655a5a23a54da7b9fd1b13ca9d5d1545b8b9edc7c3aa6f89d4"
+      "computedHash": "75f33348a9ad6ed22bbe9cfa13ef6f123c154a10fc4af36a3a26189a9826ea58"
+    },
+    "dark-mode-design": {
+      "source": "owl-listener/designer-skills",
+      "sourceType": "github",
+      "skillPath": "ui-design/skills/dark-mode-design/SKILL.md",
+      "computedHash": "1389e4e63cfd7ffcc7bd363d9ab3556935c76107f9cf595451a4730438e701cf"
     },
     "email-best-practices": {
       "source": "resend/resend-skills",
@@ -89,7 +101,7 @@
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
-      "computedHash": "e237e1c1c8dfe6c74fb24502669219a846d25834b1a104fdf865f2830a48cf49"
+      "computedHash": "2b16bd26632e294094da7e6d2352dce4c1efec66d3b90c88f0e059b28e2d6e04"
     },
     "mcp-builder": {
       "source": "anthropics/skills",
@@ -125,7 +137,7 @@
       "source": "./local",
       "sourceType": "local",
       "skillPath": ".agents/skills/project-context-doc/SKILL.md",
-      "computedHash": "84b101a717a94e49237575f00cf51c7ca870b7366eeb4350314132d4e35b3cbb"
+      "computedHash": "f0417b6e27852efa30184e231b1d21a62009789d7fe0df523813a4c869273c3c"
     },
     "react-email": {
       "source": "resend/react-email",
@@ -168,6 +180,24 @@
       "sourceType": "github",
       "skillPath": "skills/supabase-server/SKILL.md",
       "computedHash": "9200bfa8369cbba7055a914a5587e4dfed2147d3037cd655b9b95faf8aef8724"
+    },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/systematic-debugging/SKILL.md",
+      "computedHash": "276fb0aadb002ab930cc2a56de89e16995a2e3e70b33587652bf0a5fb123148d"
+    },
+    "tailwindcss-responsive-darkmode": {
+      "source": "josiahsiegel/claude-plugin-marketplace",
+      "sourceType": "github",
+      "skillPath": "plugins/tailwindcss-master/skills/tailwindcss-responsive-darkmode/SKILL.md",
+      "computedHash": "f1314c098117940943199b4346181f26b18a6ffb101f087c455d4e3a01b77c9e"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "computedHash": "daf55026f456af104a72fa43247f7bcec89e5127316dc5b1b8d675d6a9d8ce94"
     },
     "visual-feature-planner": {
       "source": "./local",

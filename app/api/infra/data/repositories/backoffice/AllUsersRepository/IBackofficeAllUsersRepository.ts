@@ -31,6 +31,7 @@ export interface BackofficeSponsorMasterOption {
 
 export interface BackofficeUpsertUserTypeAssignmentInput {
   userType: "common" | "member_pro" | "associate" | "guest"
+  accessStartsAt?: Date | null
   accessExpiresAt: Date | null
   assignedByProfileId: string | null
 }

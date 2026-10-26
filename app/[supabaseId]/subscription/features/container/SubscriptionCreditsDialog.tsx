@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { toastUserError } from '@/lib/ui/to-user-toast-message';
+import { coerceBillingType } from '@/lib/payment-methods/availability-client';
+import { useAvailableBillingTypes } from '@/lib/payment-methods/useAvailableBillingTypes';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -11,6 +13,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Separator } from '@/components/ui/separator';
 import type { SubscriptionData, UpdateSubscriptionCreditsDTO } from '../types/subscription.types';
 import { formatCurrency } from './subscription-format';
+import { resolveCreditUnitPrice } from '../utils/subscription-billing-breakdown';
+import { isCreditQuantityInvalid, parseCreditQuantityInput } from '../utils/subscription-credit-quantity';
 
 interface SubscriptionCreditsDialogProps {
   open: boolean;
@@ -28,18 +32,36 @@ export function SubscriptionCreditsDialog({
   const hasUnlimitedUsers = subscription.billingSummary?.hasUnlimitedUsers === true;
   const [action, setAction] = useState<'add' | 'remove'>('add');
   const [resource, setResource] = useState<'user' | 'team'>(hasUnlimitedUsers ? 'team' : 'user');
-  const [billingType, setBillingType] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  const { availableMethods, cardOffered } = useAvailableBillingTypes(open);
+  const [requestedBillingType, setBillingType] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  // Cartão indisponível nunca é enviado: o método efetivo cai para PIX.
+  const billingType = coerceBillingType(requestedBillingType, availableMethods);
   const [quantity, setQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const summary = subscription.billingSummary;
   const maxRemovable = resource === 'team' ? summary?.removableTeamSlots ?? 0 : summary?.removableUserSlots ?? 0;
-  const unitPrice = resource === 'team' ? 29.9 : 19.9;
-  const quantityIsInvalid = quantity < 1 || (action === 'remove' && quantity > maxRemovable);
+  // Taxa marginal real do backend: `extraPrice / billableQuantity` é
+  // exatamente `BILLING_PRICES.extraTeam`/`extraUser`. Dividir pela
+  // quantidade CONTRATADA inflava a estimativa quando o uso real passava dos
+  // créditos comprados (achado P1 do Codex no PR #1199).
+  const unitPrice = resolveCreditUnitPrice({
+    resource,
+    billableQuantity: resource === 'team' ? summary?.billableTeams ?? 0 : summary?.billableUsers ?? 0,
+    extraPrice: resource === 'team' ? summary?.extraTeamsPrice : summary?.extraUsersPrice,
+    onFallback: (kind, fallback) =>
+      console.error(
+        `[SubscriptionCreditsDialog] billingSummary sem taxa derivável para "${kind}" — usando fallback local ${fallback}`
+      ),
+  });
+  const quantityIsInvalid = isCreditQuantityInvalid({ quantity, action, maxRemovable });
 
   const impactText = useMemo(() => {
     if (hasUnlimitedUsers && resource === 'user') {
       return 'Plano anual com usuários ilimitados: não é necessário gerenciar créditos de usuários.';
+    }
+    if (!Number.isInteger(quantity)) {
+      return 'Informe uma quantidade válida.';
     }
     const label = resource === 'team' ? 'times' : 'usuários';
     if (action === 'remove') {
@@ -113,8 +135,8 @@ export function SubscriptionCreditsDialog({
                   type="number"
                   min={1}
                   max={action === 'remove' ? maxRemovable : undefined}
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
+                  value={Number.isNaN(quantity) ? '' : quantity}
+                  onChange={(event) => setQuantity(parseCreditQuantityInput(event.target.value))}
                   aria-invalid={quantityIsInvalid}
                 />
               </div>
@@ -128,7 +150,7 @@ export function SubscriptionCreditsDialog({
                     <SelectContent>
                       <SelectGroup>
                         <SelectItem value="PIX">PIX</SelectItem>
-                        <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>
+                        {cardOffered && <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -142,7 +164,7 @@ export function SubscriptionCreditsDialog({
             <div className="rounded-md border bg-surface-1 p-4 text-sm">
               <div className="flex flex-col gap-2">
                 <span className="font-medium">{impactText}</span>
-                {action === 'add' && (
+                {action === 'add' && Number.isInteger(quantity) && (
                   <span className="text-muted-foreground">
                     Impacto mensal estimado: {formatCurrency(quantity * unitPrice)}
                   </span>
@@ -158,10 +180,10 @@ export function SubscriptionCreditsDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+          <Button variant="outline" className="max-lg:h-11" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={isSubmitting || quantityIsInvalid}>
+          <Button className="max-lg:h-11" onClick={() => void handleSubmit()} disabled={isSubmitting || quantityIsInvalid}>
             {isSubmitting ? 'Processando...' : action === 'add' ? 'Ir para checkout' : 'Remover créditos'}
           </Button>
         </DialogFooter>

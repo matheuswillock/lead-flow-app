@@ -30,6 +30,6 @@ export interface CreatePaymentFormData {
 
 export interface IBackofficePaymentsService {
   list(clientId?: string): Promise<BackofficePaymentItem[]>
-  create(data: CreatePaymentFormData): Promise<{ isValid: boolean; errorMessages: string[]; result?: BackofficePaymentItem }>
+  create(data: CreatePaymentFormData): Promise<BackofficePaymentItem>
   listClients(): Promise<BackofficeClientItem[]>
 }

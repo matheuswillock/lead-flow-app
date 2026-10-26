@@ -34,6 +34,7 @@ import {
   resolveLeadOriginFilter,
   type LeadOriginFilterValue,
 } from "@/lib/leads/origin-filter";
+import { leadMatchesSearch } from "@/lib/leads/lead-search";
 import type { CustomFieldFilterInput } from "@/lib/leadCustomFields/customFieldQuery";
 import {
   createLeadTimeRulesVersion,
@@ -1558,10 +1559,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const inQuery = (l: Lead) =>
-      !q ||
-      l.name.toLowerCase().includes(q) ||
-      l.leadCode.toLowerCase().includes(q) ||
-      formatDate(l.createdAt, tz).includes(q);
+      leadMatchesSearch(l, q, formatDate(l.createdAt, tz));
     const inResponsible = (l: Lead) =>
       assignedUsers.length === 0 || (l.assignedTo ? assignedUsers.includes(l.assignedTo) : false);
     const inCloser = (l: Lead) =>

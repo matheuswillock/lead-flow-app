@@ -123,7 +123,7 @@ export function classifyFormsHost(
  * redireciona para o host da plataforma.
  */
 export function isPathAllowedOnFormsHost(pathname: string): boolean {
-  if (pathname.startsWith("/forms/")) return true
+  if (pathname.startsWith("/forms/") || pathname.startsWith("/conversao/")) return true
   if (pathname.startsWith("/_next/")) return true
   if (pathname === "/favicon.ico" || pathname === "/robots.txt") return true
   return ALLOWED_FORMS_HOST_API_PATTERN.test(pathname)

@@ -51,6 +51,7 @@ import {
   buildDefaultOutputFilename,
   buildInventoryReport,
   dedupePaymentsById,
+  dedupeSubscriptionsById,
   parseInventoryArgs,
   type InventoryReport,
 } from "./lib/asaasAccountInventoryLogic"
@@ -124,25 +125,22 @@ async function main() {
 
   logInfo(`[inventory] iniciando  conta=${args.account}  reconcile=${args.reconcile}`)
 
-  const [customers, subscriptions, pendingPayments, overduePayments, creditCardPayments, webhooks] =
+  const [customers, subscriptions, inactiveSubscriptions, pendingPayments, overduePayments, creditCardPayments, webhooks] =
     await Promise.all([
       fetchAllPages<AsaasCustomer>(gateway, "/customers"),
       fetchAllPages<AsaasSubscription>(gateway, "/subscriptions"),
+      // A API não inclui de forma consistente assinaturas INACTIVE na
+      // listagem padrão. A consulta explícita evita classificar ponteiros
+      // locais válidos como ORFAO e protege contra exclusão indevida.
+      fetchAllPages<AsaasSubscription>(gateway, "/subscriptions?status=INACTIVE"),
       fetchAllPages<AsaasPayment>(gateway, "/payments?status=PENDING"),
       fetchAllPages<AsaasPayment>(gateway, "/payments?status=OVERDUE"),
       fetchAllPages<AsaasPayment>(gateway, "/payments?billingType=CREDIT_CARD"),
       fetchAllPages<AsaasWebhookConfig>(gateway, "/webhooks"),
     ])
 
-  const report = buildInventoryReport({
-    account: args.account,
-    customers,
-    subscriptions,
-    pendingPayments,
-    overduePayments,
-    creditCardPayments,
-    webhooks,
-  })
+  let inventorySubscriptions = dedupeSubscriptionsById(subscriptions, inactiveSubscriptions)
+  let report: InventoryReport
 
   if (args.reconcile) {
     logInfo("[inventory] reconciliando com o banco...")
@@ -152,18 +150,54 @@ async function main() {
       repository.listSubscriptionPointers(args.account),
     ])
 
+    const knownSubscriptionIds = new Set(inventorySubscriptions.map((subscription) => subscription.id))
+    const missingSubscriptionIds = dbSubscriptionPointers
+      .map((pointer) => pointer.asaasSubscriptionId)
+      .filter((id) => !knownSubscriptionIds.has(id))
+    if (missingSubscriptionIds.length > 0 && gateway.fetchOne) {
+      const recoveredSubscriptions = await Promise.all(
+        missingSubscriptionIds.map((id) => gateway.fetchOne!<AsaasSubscription>(`/subscriptions/${id}`))
+      )
+      inventorySubscriptions = dedupeSubscriptionsById(
+        inventorySubscriptions,
+        recoveredSubscriptions.filter((subscription): subscription is AsaasSubscription => subscription !== null)
+      )
+      logInfo(
+        `[inventory] ponteiros de assinatura sondados individualmente: ${missingSubscriptionIds.length}; recuperados: ${recoveredSubscriptions.filter(Boolean).length}`
+      )
+    }
+
     const ownerSpreadsheet = args.spreadsheet ? loadOwnerSpreadsheet(args.spreadsheet) : undefined
     if (args.spreadsheet) {
       logInfo(`[inventory] planilha do owner carregada: ${ownerSpreadsheet!.length} pagantes`)
     }
 
+    report = buildInventoryReport({
+      account: args.account,
+      customers,
+      subscriptions: inventorySubscriptions,
+      pendingPayments,
+      overduePayments,
+      creditCardPayments,
+      webhooks,
+    })
     report.reconciliation = reconcileInventory({
       asaasCustomers: customers,
-      asaasSubscriptions: subscriptions,
+      asaasSubscriptions: inventorySubscriptions,
       asaasPayments: dedupePaymentsById(pendingPayments, overduePayments, creditCardPayments),
       dbCustomerPointers,
       dbSubscriptionPointers,
       ownerSpreadsheet,
+    })
+  } else {
+    report = buildInventoryReport({
+      account: args.account,
+      customers,
+      subscriptions: inventorySubscriptions,
+      pendingPayments,
+      overduePayments,
+      creditCardPayments,
+      webhooks,
     })
   }
 
