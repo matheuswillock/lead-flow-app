@@ -90,7 +90,7 @@ type Props = {
   webhookId: string;
   direction: TeamWebhookDirection;
   /** SPEC 10, R10-5: caminho de volta à lista, derivado pelo Hook page-local. */
-  listPath: string;
+  listPath?: string;
   service?: WebhookDetailServiceLike;
 };
 
@@ -170,7 +170,7 @@ export function WebhookDetailContainer({
   supabaseId,
   webhookId,
   direction,
-  listPath,
+  listPath = `/${supabaseId}/integrations/webhooks/${direction}`,
   service = teamWebhooksService,
 }: Props) {
   const { activeTeam } = useTeamContext();
@@ -463,7 +463,7 @@ export function WebhookDetailContainer({
           <AlertTitle>Não foi possível carregar este webhook</AlertTitle>
           <AlertDescription className="flex flex-col gap-3">
             <p>{loadError ?? "Tente novamente em instantes."}</p>
-            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => void load()}>
+            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => void loadConfiguration()}>
               <RefreshCcw data-icon="inline-start" />
               Tentar novamente
             </Button>

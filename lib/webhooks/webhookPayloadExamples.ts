@@ -3,6 +3,7 @@ import {
   wrapOutboundPayloadForPreset,
   type OutboundWebhookEnvelope,
 } from "./webhookPayloadPresets";
+import { WEBHOOK_EVENT_VERSION } from "./webhookSigningSecurity";
 
 const EXAMPLE_EVENT_DATA: Record<TeamWebhookEventKey, Record<string, unknown>> = {
   lead_created: {
@@ -67,6 +68,7 @@ export function buildOutboundPayloadExample(
   const envelope: OutboundWebhookEnvelope = {
     id: "evt_exemplo",
     type: eventKey,
+    version: WEBHOOK_EVENT_VERSION,
     created_at: "2026-09-24T12:00:00.000Z",
     team_id: "team_exemplo",
     data: {

@@ -1,6 +1,7 @@
 /**
- * app/[supabaseId]/integrations/page.tsx — seção "Corretor Studio Pixel"
- * (RadarPixelIntegration.tsx).
+ * app/[supabaseId]/integrations/pixel/page.tsx — "Corretor Studio Pixel"
+ * (RadarPixelIntegration.tsx). Desde a SPEC 15 (hub de Integrações) o Pixel
+ * tem página própria; `/integrations` virou só o hub.
  *
  * Cobertura (SPEC 30 — Pixel, T-30.2):
  * - Página de Integrações carrega sem erro (heading visível).
@@ -134,7 +135,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
   test("carrega sem erro e mostra o heading", async ({ page }) => {
     await arrangeMasterTeamWithRadar();
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "Integrações" })).toBeVisible();
   });
@@ -145,7 +146,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
     const { teamId, profile } = await arrangeMasterTeamWithRadar();
     await arrangePixelConfig({ teamId, profileId: profile.id, allowedOrigins: [] });
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
     const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
     await expect(pixelTrigger).toBeVisible({ timeout: 20_000 });
@@ -172,7 +173,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
       allowedOrigins: ["https://exemplo.com"],
     });
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
     const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
     await expect(pixelTrigger).toBeVisible({ timeout: 20_000 });
@@ -212,7 +213,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
     const consoleErrors: string[] = [];
     page.on("pageerror", (error) => consoleErrors.push(error.message));
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
     const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
     await pixelTrigger.click();
@@ -252,7 +253,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
     const { teamId, profile } = await arrangeMasterTeamWithRadar();
     await arrangePixelConfig({ teamId, profileId: profile.id, allowedOrigins: [] });
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Integrações" })).toBeVisible();
 
     const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });

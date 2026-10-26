@@ -85,11 +85,28 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 
   async findOwnerProfile() {
-    return { hasPermanentSubscription: false, subscriptionStatus: "active" as const }
+    return {
+      hasPermanentSubscription: false,
+      subscriptionStatus: "active" as const,
+      subscriptionNextDueDate: null,
+    }
   }
 
   async findOwnerProfileSubscription() {
-    return { hasPermanentSubscription: false, subscriptionStatus: "active" as const, product: null }
+    return {
+      hasPermanentSubscription: false,
+      subscriptionStatus: "active" as const,
+      subscriptionNextDueDate: null,
+      product: null,
+    }
+  }
+
+  async hasActiveTemporaryBillingGrace() {
+    return false
+  }
+
+  async findTeamMasterId() {
+    return null
   }
 
   async listActiveUserSubscriptions(): Promise<ActiveUserSubscriptionRecord[]> {

@@ -152,6 +152,7 @@ describe("ProcessWebhookOutboxUseCase", () => {
           failureStreak: 0,
           failureThreshold: 5,
           updatedByProfileId: "profile-1",
+          signingSecretCipher: VALID_SIGNING_SECRET_CIPHER,
         }),
         resetFailureStreak,
       } as never,
@@ -175,7 +176,10 @@ describe("ProcessWebhookOutboxUseCase", () => {
     );
   });
 
-  it("registra a falha, incrementa o contador e agenda nova tentativa", async () => {
+  // SPEC 20 (DA3/W13): o contador é por EVENTO. Uma falha com tentativas
+  // restantes só registra o log e agenda a nova tentativa; o incremento
+  // acontece quando o evento esgota as tentativas (ver T-20.4 abaixo).
+  it("registra a falha e agenda nova tentativa sem incrementar o contador do webhook", async () => {
     const row = makeClaimRow("outbox-failure");
     const markFailed = mock(
       async (_id: string, _attemptCount: number, _nextAttemptAt: Date | null, _error: string) => {}
@@ -204,6 +208,7 @@ describe("ProcessWebhookOutboxUseCase", () => {
           failureStreak: 0,
           failureThreshold: 5,
           updatedByProfileId: "profile-1",
+          signingSecretCipher: VALID_SIGNING_SECRET_CIPHER,
         }),
         incrementFailureStreak,
       } as never,
@@ -220,7 +225,7 @@ describe("ProcessWebhookOutboxUseCase", () => {
 
     await useCase.execute();
 
-    expect(incrementFailureStreak).toHaveBeenCalledWith("webhook-1");
+    expect(incrementFailureStreak).not.toHaveBeenCalled();
     expect(createLog).toHaveBeenCalledWith(
       expect.objectContaining({
         result: "failure",
