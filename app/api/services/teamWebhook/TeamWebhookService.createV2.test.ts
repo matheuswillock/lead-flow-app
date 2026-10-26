@@ -169,7 +169,7 @@ describe("TeamWebhookService.create — webhook de entrada v2", () => {
   });
 
   it("link de Meet padrão só aceita https (nada de http ou javascript:)", async () => {
-    for (const link of ["http://meet.google.com/abc", "javascript:alert(1)", "meet.google.com/abc"]) {
+    for (const link of ["http://meet.google.com/abc", "javascript:void(0)", "meet.google.com/abc"]) {
       await expect(
         new TeamWebhookService().create(access, { ...base, defaultMeetingLink: link }, "https://app.test"),
       ).rejects.toThrow();
