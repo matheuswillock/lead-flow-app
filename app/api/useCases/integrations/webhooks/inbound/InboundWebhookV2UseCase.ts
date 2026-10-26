@@ -4,6 +4,7 @@ import type { ITeamWebhookInboundEventRepository } from "@/app/api/infra/data/re
 import { teamWebhookInboundEventRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookInboundEventRepository";
 import type { ITeamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookRepository";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
+import { Output } from "@/lib/output";
 import { isStudioWebhookTokenExpired, safeStudioWebhookTokenEquals } from "@/lib/webhooks/studioWebhookSecurity";
 import type { IInboundTeamPort } from "./InboundIntakePorts";
 import { inboundTeamAdapter } from "./InboundTeamAdapter";
@@ -37,7 +38,13 @@ export type InboundWebhookV2Deps = {
 export class InboundWebhookV2UseCase {
   constructor(private readonly deps: InboundWebhookV2Deps) {}
 
-  async authenticate(input: { teamId: string; token: string }): Promise<InboundV2AuthResult> {
+  /** `result` é um `InboundV2AuthResult`; `isValid` só quando `status === "ok"`. */
+  async authenticate(input: { teamId: string; token: string }): Promise<Output> {
+    const result = await this.resolveAuthentication(input);
+    return new Output(result.status === "ok", [], result.status === "ok" ? [] : [result.status], result);
+  }
+
+  private async resolveAuthentication(input: { teamId: string; token: string }): Promise<InboundV2AuthResult> {
     const candidates = await this.deps.webhooks.listInboundByTeamId(input.teamId);
     const matched = candidates.find(
       (candidate) => candidate.tokenHash !== null && safeStudioWebhookTokenEquals(input.token, candidate.tokenHash),
@@ -67,14 +74,14 @@ export class InboundWebhookV2UseCase {
     return { status: "ok", webhook: { id: matched.id, teamId: matched.teamId, scopes: matched.scopes ?? [] } };
   }
 
-  /** Grava o evento (idempotente) e devolve o id que o integrador vai ver como `event_id`. */
+  /** Grava o evento (idempotente); `result` é um `InboundV2ReceiveResult` (o `event_id` do integrador). */
   async receive(input: {
     webhook: { id: string; teamId: string };
     rawBody: string;
     payload: Prisma.InputJsonValue;
     idempotencyKey: string | null;
-  }): Promise<InboundV2ReceiveResult> {
-    return this.deps.events.receive({
+  }): Promise<Output> {
+    const received: InboundV2ReceiveResult = await this.deps.events.receive({
       webhookId: input.webhook.id,
       teamId: input.webhook.teamId,
       contractVersion: 2,
@@ -82,6 +89,7 @@ export class InboundWebhookV2UseCase {
       requestHash: createHash("sha256").update(input.rawBody).digest("hex"),
       payload: input.payload,
     });
+    return new Output(true, [], [], received);
   }
 }
 

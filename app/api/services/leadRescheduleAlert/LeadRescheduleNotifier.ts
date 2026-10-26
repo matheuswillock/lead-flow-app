@@ -1,4 +1,7 @@
-import { prisma } from "@/app/api/infra/data/prisma";
+import {
+  leadRescheduleNotificationRepository,
+  type ILeadRescheduleNotificationStore,
+} from "@/app/api/infra/data/repositories/leadRescheduleAlert/LeadRescheduleNotificationRepository";
 import { invalidateNotificationsCache } from "@/lib/cache/invalidation";
 
 /** Motivo do alerta em linguagem clara, para a mensagem da notificação. */
@@ -21,29 +24,9 @@ export type LeadRescheduleNotificationInput = {
   recipientProfileIds: Array<string | null | undefined>;
 };
 
-export type LeadRescheduleNotificationRow = {
-  recipientProfileId: string;
-  teamId: string;
-  type: "LEAD_NEEDS_RESCHEDULE";
-  message: string;
-  metadata: Record<string, string | null>;
-};
-
-export interface ILeadRescheduleNotificationStore {
-  createMany(rows: LeadRescheduleNotificationRow[]): Promise<{ count: number }>;
-}
-
-const prismaStore: ILeadRescheduleNotificationStore = {
-  createMany: (rows) =>
-    prisma.notification.createMany({
-      data: rows.map((row) => ({ ...row })),
-      skipDuplicates: false,
-    }),
-};
-
 export class LeadRescheduleNotifier {
   constructor(
-    private readonly store: ILeadRescheduleNotificationStore = prismaStore,
+    private readonly store: ILeadRescheduleNotificationStore = leadRescheduleNotificationRepository,
     private readonly invalidate: (input: { recipientProfileIds: string[] }) => void = invalidateNotificationsCache,
   ) {}
 

@@ -3,6 +3,7 @@ import type {
   InboundEventRow,
   ITeamWebhookInboundEventRepository,
 } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookInboundEventRepository";
+import { Output } from "@/lib/output";
 import { computeWebhookOutboxNextAttemptAt } from "@/lib/webhooks/webhookOutboxBackoff";
 import { parseInboundV2Payload, type InboundV2Payload } from "@/lib/webhooks/inbound/v2/payload";
 import {
@@ -66,7 +67,8 @@ export class ProcessInboundWebhookEventUseCase {
     this.now = deps.now ?? (() => new Date());
   }
 
-  async execute(row: InboundEventRow): Promise<void> {
+  /** `isValid` é falso só quando o evento volta para retry; o desfecho de negócio vai em `result`. */
+  async execute(row: InboundEventRow): Promise<Output> {
     try {
       const webhook = await this.deps.webhooks.getWebhook(row.webhookId);
       const outcome = await this.decide(row, webhook);
@@ -76,8 +78,10 @@ export class ProcessInboundWebhookEventUseCase {
         result: outcome.result as Prisma.InputJsonValue,
       });
       await this.writeLog(row, outcome);
+      return new Output(true, ["Evento processado"], [], { resultCode: outcome.resultCode, leadId: outcome.leadId });
     } catch (error) {
       await this.failForRetry(row, error);
+      return new Output(false, [], [error instanceof Error ? error.message : "Erro ao processar o evento"], null);
     }
   }
 

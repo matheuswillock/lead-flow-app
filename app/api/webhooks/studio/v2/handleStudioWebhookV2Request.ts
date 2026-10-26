@@ -13,7 +13,10 @@ import {
 } from "@/lib/webhooks/inbound-rate-limit";
 import { INBOUND_VERSION_MISMATCH_CODE } from "@/lib/webhooks/inbound/contractVersions";
 import { inboundWebhookV2UseCase } from "@/app/api/useCases/integrations/webhooks/inbound/InboundWebhookV2UseCase";
-import type { InboundV2AuthResult } from "@/app/api/useCases/integrations/webhooks/inbound/InboundWebhookV2UseCase";
+import type {
+  InboundV2AuthResult,
+  InboundV2ReceiveResult,
+} from "@/app/api/useCases/integrations/webhooks/inbound/InboundWebhookV2UseCase";
 
 const TeamIdSchema = z.string().uuid();
 
@@ -125,7 +128,7 @@ export async function handleStudioWebhookV2Request(
     return error(401, "unauthorized", "Token ausente ou inválido.");
   }
 
-  const auth = await deps.useCase.authenticate({ teamId, token });
+  const auth = (await deps.useCase.authenticate({ teamId, token })).result as InboundV2AuthResult;
   if (auth.status === "unauthorized") {
     const limit = await consumeInboundRateLimit(
       buildInboundWebhookBadTokenKey(teamId, ip),
@@ -165,12 +168,14 @@ export async function handleStudioWebhookV2Request(
     return error(400, "invalid_idempotency_key", "A chave de idempotência pode ter no máximo 255 caracteres.");
   }
 
-  const received = await deps.useCase.receive({
-    webhook: auth.webhook,
-    rawBody,
-    payload: payload as Prisma.InputJsonValue,
-    idempotencyKey: idempotency.key,
-  });
+  const received = (
+    await deps.useCase.receive({
+      webhook: auth.webhook,
+      rawBody,
+      payload: payload as Prisma.InputJsonValue,
+      idempotencyKey: idempotency.key,
+    })
+  ).result as InboundV2ReceiveResult;
 
   // Replay da mesma chave: devolve o mesmo event_id e não processa de novo.
   if (received.created) {

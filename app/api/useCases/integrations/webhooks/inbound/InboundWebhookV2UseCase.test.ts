@@ -56,19 +56,18 @@ function build(options: { rows?: WebhookRow[]; teamFound?: boolean; accountAllow
 describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
   it("token válido de webhook v2 com escopo leads_create: ok", async () => {
     const { useCase } = build();
-    expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+    expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
       status: "ok",
       webhook: { id: "webhook-1", teamId: "team-1", scopes: ["leads_create", "leads_schedule"] },
     });
   });
 
   it("token errado, time sem webhook ou webhook sem token: 401 idêntico", async () => {
-    const wrong = await build().useCase.authenticate({ teamId: "team-1", token: "outro-token" });
-    const noWebhook = await build({ rows: [] }).useCase.authenticate({ teamId: "team-1", token: TOKEN });
-    const noToken = await build({ rows: [webhookRow({ tokenHash: null })] }).useCase.authenticate({
-      teamId: "team-1",
-      token: TOKEN,
-    });
+    const wrong = (await build().useCase.authenticate({ teamId: "team-1", token: "outro-token" })).result;
+    const noWebhook = (await build({ rows: [] }).useCase.authenticate({ teamId: "team-1", token: TOKEN })).result;
+    const noToken = (
+      await build({ rows: [webhookRow({ tokenHash: null })] }).useCase.authenticate({ teamId: "team-1", token: TOKEN })
+    ).result;
     expect(wrong).toEqual({ status: "unauthorized" });
     expect(noWebhook).toEqual({ status: "unauthorized" });
     expect(noToken).toEqual({ status: "unauthorized" });
@@ -76,7 +75,7 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
 
   it("T-11.2: webhook v1 chamado pela rota v2 é version_mismatch", async () => {
     const { useCase } = build({ rows: [webhookRow({ contractVersion: 1 })] });
-    expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+    expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
       status: "version_mismatch",
       webhookId: "webhook-1",
     });
@@ -85,7 +84,7 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
   it("webhook pausado ou desativado: 403 webhook_inactive", async () => {
     for (const status of ["paused", "disabled"] as const) {
       const { useCase } = build({ rows: [webhookRow({ status })] });
-      expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+      expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
         status: "forbidden",
         reason: "webhook_inactive",
         webhookId: "webhook-1",
@@ -95,7 +94,7 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
 
   it("token vencido: token_expired", async () => {
     const { useCase } = build({ rows: [webhookRow({ expiresAt: new Date("2020-01-01T00:00:00.000Z") })] });
-    expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+    expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
       status: "token_expired",
       webhookId: "webhook-1",
     });
@@ -103,7 +102,7 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
 
   it("T-11.5: sem o escopo leads_create é 403 missing_scope", async () => {
     const { useCase } = build({ rows: [webhookRow({ scopes: ["leads_schedule"] })] });
-    expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+    expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
       status: "forbidden",
       reason: "missing_scope",
       webhookId: "webhook-1",
@@ -112,7 +111,7 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
 
   it("conta pausada, suspensa ou em somente leitura: 403 account_restricted", async () => {
     const { useCase } = build({ accountAllowed: false });
-    expect(await useCase.authenticate({ teamId: "team-1", token: TOKEN })).toEqual({
+    expect((await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result).toEqual({
       status: "forbidden",
       reason: "account_restricted",
       webhookId: "webhook-1",
@@ -122,22 +121,23 @@ describe("InboundWebhookV2UseCase.authenticate (DA1, DA3)", () => {
   it("escolhe o webhook pelo token quando o time tem mais de um", async () => {
     const other = webhookRow({ id: "webhook-2", tokenHash: hashStudioWebhookToken("outro-token-bem-longo-para-teste-0123456789") });
     const { useCase } = build({ rows: [other, webhookRow()] });
-    const result = await useCase.authenticate({ teamId: "team-1", token: TOKEN });
-    expect(result.status === "ok" && result.webhook.id).toBe("webhook-1");
+    const result = (await useCase.authenticate({ teamId: "team-1", token: TOKEN })).result as { status: string; webhook?: { id: string } };
+    expect(result.status === "ok" && result.webhook?.id).toBe("webhook-1");
   });
 });
 
 describe("InboundWebhookV2UseCase.receive (DA4, DA5)", () => {
   it("grava o evento v2 com o hash do corpo e a chave de idempotência", async () => {
     const { useCase, receive } = build();
-    const result = await useCase.receive({
+    const output = await useCase.receive({
       webhook: { id: "webhook-1", teamId: "team-1" },
       rawBody: '{"lead":{"name":"Maria"}}',
       payload: { lead: { name: "Maria" } },
       idempotencyKey: "evento-123",
     });
 
-    expect(result).toEqual({ eventId: "event-1", created: true, idempotencyKeyReused: false });
+    expect(output.isValid).toBe(true);
+    expect(output.result).toEqual({ eventId: "event-1", created: true, idempotencyKeyReused: false });
     expect(receive.mock.calls[0]?.[0]).toMatchObject({
       webhookId: "webhook-1",
       teamId: "team-1",

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
+import { Output } from "@/lib/output";
 
 type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
@@ -37,13 +38,15 @@ const { handleStudioWebhookV2Request } = await import("./handleStudioWebhookV2Re
 
 const TEAM_ID = "5b1e0ef3-4e8f-4d0b-9b6a-1e2d3c4b5a69";
 
-type AuthResult = Awaited<ReturnType<(typeof import("@/app/api/useCases/integrations/webhooks/inbound/InboundWebhookV2UseCase"))["inboundWebhookV2UseCase"]["authenticate"]>>;
+type AuthResult = import("@/app/api/useCases/integrations/webhooks/inbound/InboundWebhookV2UseCase").InboundV2AuthResult;
 
 let authResult: AuthResult = { status: "ok", webhook: { id: "webhook-1", teamId: TEAM_ID, scopes: ["leads_create"] } };
 let receiveResult = { eventId: "event-1", created: true, idempotencyKeyReused: false };
 
-const authenticate = mock(async (_input: { teamId: string; token: string }) => authResult);
-const receive = mock(async (_input: Record<string, unknown>) => receiveResult);
+const authenticate = mock(
+  async (_input: { teamId: string; token: string }) => new Output(authResult.status === "ok", [], [], authResult),
+);
+const receive = mock(async (_input: Record<string, unknown>) => new Output(true, [], [], receiveResult));
 const process = mock(async (_eventId: string) => undefined);
 const scheduled: Array<() => Promise<void>> = [];
 
