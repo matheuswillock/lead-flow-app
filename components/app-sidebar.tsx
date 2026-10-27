@@ -198,14 +198,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const integrationsItems: SidebarItem[] = [
     {
       title: "Catálogo de API",
-      url: `/${supabaseId}/integrations`,
+      url: `/${supabaseId}/integrations/api-catalog`,
       icon: Code2,
-      status: "comingSoon",
-      forceStatusBadge: true,
-      // Aponta pro hub (não existe página própria ainda), mas só fica
-      // "ativo" quando o pathname é exatamente o hub — sem isso, ficava
-      // marcado junto com Webhooks/Pixel em qualquer subpágina (R15-8).
-      matchExact: true,
       lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION],
     },
     {

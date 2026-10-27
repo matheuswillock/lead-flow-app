@@ -16,7 +16,7 @@
  * - Responsividade mobile-first (360/375, sem overflow horizontal).
  */
 
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
@@ -39,6 +39,19 @@ async function dismissWhatsNewModal(context: BrowserContext) {
     },
     { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID },
   );
+}
+
+/**
+ * A página hidrata depois do `domcontentloaded`; um clique nesse intervalo se perde e o acordeão não abre.
+ * Reclica até o gatilho ficar expandido, como um usuário que clica de novo.
+ */
+async function openPixelCard(page: Page) {
+  const trigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
+  await expect(trigger).toBeVisible({ timeout: 20_000 });
+  await expect(async () => {
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 const PIXEL_PUBLIC_TOKEN = "e2e2000000000000000000000000000000pixel30";
@@ -137,7 +150,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("heading", { name: "Integrações" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pixel", level: 1 })).toBeVisible();
   });
 
   test("T-30.2: pixel sem domínios mostra aviso de origem aberta e leva ao campo de domínios", async ({
@@ -148,9 +161,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
-    const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
-    await expect(pixelTrigger).toBeVisible({ timeout: 20_000 });
-    await pixelTrigger.click();
+    await openPixelCard(page);
 
     const warning = page.getByTestId("pixel-open-origin-warning");
     await expect(warning).toBeVisible({ timeout: 15_000 });
@@ -175,9 +186,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
-    const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
-    await expect(pixelTrigger).toBeVisible({ timeout: 20_000 });
-    await pixelTrigger.click();
+    await openPixelCard(page);
 
     // Aguarda a configuração carregar (o textarea de origens é o sinal de
     // que o GET terminou) antes de assertar a ausência do aviso.
@@ -215,8 +224,7 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
 
-    const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
-    await pixelTrigger.click();
+    await openPixelCard(page);
 
     const lastHit = page.getByText("Último hit registrado:");
     await expect(lastHit).toBeVisible({ timeout: 15_000 });
@@ -254,11 +262,9 @@ test.describe("app/[supabaseId]/integrations — Corretor Studio Pixel", () => {
     await arrangePixelConfig({ teamId, profileId: profile.id, allowedOrigins: [] });
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Integrações" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pixel", level: 1 })).toBeVisible();
 
-    const pixelTrigger = page.getByRole("button", { name: /Corretor Studio Pixel/ });
-    await expect(pixelTrigger).toBeVisible({ timeout: 20_000 });
-    await pixelTrigger.click();
+    await openPixelCard(page);
     await expect(page.getByTestId("pixel-open-origin-warning")).toBeVisible({ timeout: 15_000 });
 
     await runResponsiveChecks(page, { touchTargets: { selector: PIXEL_SECTION_TOUCH_TARGETS } });

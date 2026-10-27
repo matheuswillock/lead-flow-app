@@ -193,19 +193,17 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
       timeout: 30_000,
     });
 
-    await page.getByRole("button", { name: "Ver detalhes" }).click();
+    // A UI entregue mostra o detalhe do log num painel inline ao selecionar a linha (o Sheet "Detalhe do
+    // log" da SPEC 10 B-E3 ainda não existe). O texto de erro só aparece no painel, não na tabela.
+    await page.locator("tr[role='button']").first().click();
 
-    // Escopado ao painel: o mesmo texto de erro também aparece truncado na célula
-    // da tabela por trás (só corte visual via CSS, o nó continua no DOM). O painel
-    // é o Sheet de detalhe do log da SPEC 10 (B-E3), que cobre entrada e saída.
-    const detailDialog = page.getByRole("dialog", { name: "Detalhe do log" });
-    await expect(detailDialog).toBeVisible();
-    await expect(detailDialog.getByText("HTTP 503")).toBeVisible();
+    await expect(page.getByText("Conteúdo da requisição")).toBeVisible();
+    await expect(page.getByText("503", { exact: true })).toBeVisible();
     await expect(
-      detailDialog.getByText("Timeout ao entregar webhook: o destino não respondeu em 10000ms")
+      page.getByText("Timeout ao entregar webhook: o destino não respondeu em 10000ms")
     ).toBeVisible();
-    await expect(detailDialog.getByText('"lead-e2e-1"')).toBeVisible();
-    await expect(detailDialog.getByText('"error": "upstream unavailable"')).toBeVisible();
+    await expect(page.getByText('"lead-e2e-1"')).toBeVisible();
+    await expect(page.getByText('"error": "upstream unavailable"')).toBeVisible();
 
     await getPrisma().teamWebhook.delete({ where: { id: webhook.id } });
   });

@@ -225,11 +225,11 @@ function LeadCardComponent({
                     // e só roda para quem não pediu movimento reduzido.
                     <Badge
                         variant="destructive"
-                        className="w-fit motion-safe:animate-pulse"
+                        className="w-fit gap-1.5 motion-safe:animate-pulse"
                         role="status"
                         data-testid="lead-needs-reschedule"
                     >
-                        <CalendarClock data-icon="inline-start" />
+                        <CalendarClock className="size-3.5 shrink-0" aria-hidden="true" />
                         Remarcar urgente
                     </Badge>
                 )}

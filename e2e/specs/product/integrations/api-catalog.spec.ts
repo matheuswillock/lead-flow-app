@@ -13,6 +13,7 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { WHATS_NEW_VERSION } from "../../../../components/whats-new-modal";
 import { injectE2eAuthCookie } from "../../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../../support/db";
@@ -39,6 +40,13 @@ test.describe("app/[supabaseId]/integrations/api-catalog", () => {
 
   test.beforeEach(async ({ context }) => {
     await injectE2eAuthCookie(context);
+    // O modal "Novidades" intercepta cliques; pré-marcar como visto equivale a um usuário que já o fechou.
+    await context.addInitScript(
+      ({ version, supabaseId }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true");
+      },
+      { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID },
+    );
     await clearActivation();
   });
 

@@ -12,11 +12,12 @@
  * - Sem overflow horizontal em 360px.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
 import { runResponsiveChecks } from "../../support/responsive";
+import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal";
 
 async function grantFeatureBeta(profileId: string, slug: "integration" | "radar") {
   const prisma = getPrisma();
@@ -69,6 +70,17 @@ function isGenericResourceLoadMessage(message: string): boolean {
   return message.startsWith("Failed to load resource:") || message.startsWith("Refused to execute script");
 }
 
+/**
+ * O hub hidrata depois do `domcontentloaded` (esqueleto → cards); um clique nesse intervalo se perde.
+ * Repete o clique até a navegação acontecer, como um usuário que clica de novo.
+ */
+async function clickUntilNavigated(page: Page, linkName: RegExp, urlPattern: RegExp) {
+  await expect(async () => {
+    await page.locator("main").getByRole("link", { name: linkName }).click();
+    await expect(page).toHaveURL(urlPattern, { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 test.describe("app/[supabaseId]/integrations", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -81,9 +93,12 @@ test.describe("app/[supabaseId]/integrations", () => {
     await grantFeatureBeta(profile.id, "integration");
     await grantFeatureBeta(profile.id, "radar");
     // Evita o dialog de novidades interceptar cliques na primeira carga.
-    await context.addInitScript((supabaseId: string) => {
-      window.localStorage.setItem(`whats-new:seen:v1:${supabaseId}`, "true");
-    }, E2E_MASTER_SUPABASE_ID);
+    await context.addInitScript(
+      ({ version, supabaseId }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true");
+      },
+      { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID },
+    );
   });
 
   test.afterAll(async () => {
@@ -123,24 +138,21 @@ test.describe("app/[supabaseId]/integrations", () => {
   test("Catálogo de API navega para a página própria do catálogo", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await page.locator("main").getByRole("link", { name: /Catálogo de API/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog$`));
+    await clickUntilNavigated(page, /Catálogo de API/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog$`));
     await expect(page.getByRole("heading", { name: "Catálogo de API", exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
   test("Webhooks navega para a página de entrada de webhooks", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await page.locator("main").getByRole("link", { name: /Webhooks/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks$`));
+    await clickUntilNavigated(page, /Webhooks/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks$`));
     await expect(page.getByRole("heading", { name: "Webhooks" })).toBeVisible({ timeout: 30_000 });
   });
 
   test("Pixel navega para a página própria do Pixel", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await page.locator("main").getByRole("link", { name: /Pixel/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel$`));
+    await clickUntilNavigated(page, /Pixel/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel$`));
     await expect(page.getByRole("heading", { name: "Pixel", exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
