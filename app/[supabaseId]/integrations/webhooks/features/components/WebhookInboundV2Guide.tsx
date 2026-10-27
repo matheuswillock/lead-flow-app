@@ -24,6 +24,7 @@ import {
   buildCurlCreate,
   buildCurlSchedule,
 } from "./inboundV2Guide";
+import { OPENAPI_PATH, RESULT_CODES, WEBHOOK_V2_SCHEMA_PATH } from "@/lib/webhooks/inbound/v2/contractDocs";
 
 type Props = {
   webhookUrl: string | null;
@@ -177,6 +178,50 @@ export function WebhookInboundV2Guide({ webhookUrl, apiCatalogHref }: Props) {
             </TableBody>
           </Table>
         </div>
+      </Section>
+
+      <Section id="guide-results" title="Resultado de cada evento (aba Logs)">
+        <p className="max-w-prose text-sm text-muted-foreground">
+          A chamada só confirma o recebimento. O desfecho de cada evento aparece na aba Logs com um destes códigos,
+          que não mudam de nome.
+        </p>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Código</TableHead>
+                <TableHead>O que significa</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {RESULT_CODES.map((entry) => (
+                <TableRow key={entry.code}>
+                  <TableCell className="font-mono text-xs">{entry.code}</TableCell>
+                  <TableCell className="whitespace-normal text-sm text-muted-foreground">{entry.description}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Section>
+
+      <Section id="guide-machine" title="Contrato para sistemas e IA">
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Os dois arquivos abaixo são públicos e não trazem dado do seu time. Importe o OpenAPI no Postman, no
+          Swagger ou em um agente de IA para gerar a integração.
+        </p>
+        <ul className="flex flex-col gap-2 text-sm">
+          <li>
+            <Link href={OPENAPI_PATH} target="_blank" className="underline underline-offset-4">
+              OpenAPI 3.1 (webhook v2 e horários disponíveis)
+            </Link>
+          </li>
+          <li>
+            <Link href={WEBHOOK_V2_SCHEMA_PATH} target="_blank" className="underline underline-offset-4">
+              JSON Schema do evento
+            </Link>
+          </li>
+        </ul>
       </Section>
 
       <Section id="guide-responses" title="Respostas da chamada">

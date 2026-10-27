@@ -39,7 +39,7 @@ const scheduleSchema = z.object({
   guests: z.array(z.string().trim().max(254).email()).max(3).optional(),
 });
 
-const payloadSchema = z.object({
+export const inboundV2PayloadSchema = z.object({
   external_id: optionalText(255),
   lead: z.object({
     name: requiredText(200),
@@ -121,7 +121,7 @@ export function parseInboundV2Payload(input: unknown): ParseInboundV2PayloadResu
     return { ok: false, issues: [{ path: "", message: "o corpo deve ser um objeto JSON" }] };
   }
 
-  const parsed = payloadSchema.safeParse(input);
+  const parsed = inboundV2PayloadSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,

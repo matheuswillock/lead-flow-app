@@ -31,7 +31,7 @@ const RESPONSES: Array<{ status: string; meaning: string }> = [
   { status: "200", meaning: "Consulta feita." },
   { status: "400", meaning: "invalid_date (formato errado) ou date_out_of_range (data no passado ou a mais de 180 dias)." },
   { status: "401", meaning: "Token ausente ou inválido." },
-  { status: "403", meaning: "resource_inactive: o recurso está desativado para o time." },
+  { status: "403", meaning: "resource_inactive (recurso desativado para o time), feature_unavailable (o time não tem acesso à API de integrações) ou account_restricted (acesso da conta pausado)." },
   { status: "429", meaning: "rate_limited: 30 consultas por minuto por token. Espere o tempo do header Retry-After." },
 ];
 
@@ -67,6 +67,13 @@ export function AvailabilityGuide({ webhooksHref }: Props) {
         <li>Um closer sem horário livre aparece com <code>slots: []</code>.</li>
         <li>Um horário livre na consulta pode ser ocupado antes do envio. Nesse caso o lead entra como nova oportunidade, com o selo &quot;Remarcar urgente&quot; no CRM.</li>
         <li>Chamada de servidor para servidor, sempre por HTTPS. O token nunca vai na URL nem no navegador.</li>
+        <li>
+          O contrato completo está em{" "}
+          <Link href="/api/studio/v1/openapi.json" target="_blank" className="underline underline-offset-4">
+            OpenAPI 3.1
+          </Link>
+          , público e sem dado do time, para importar no Postman ou em um agente de IA.
+        </li>
       </ul>
 
       <div className="flex flex-col gap-2">

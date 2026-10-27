@@ -7,6 +7,22 @@
   },
   "variable": [
     {
+      "key": "studioTeamId",
+      "value": ""
+    },
+    {
+      "key": "webhookToken",
+      "value": ""
+    },
+    {
+      "key": "availabilityToken",
+      "value": ""
+    },
+    {
+      "key": "closerId",
+      "value": ""
+    },
+    {
       "key": "baseUrl",
       "value": "http://localhost:3000",
       "type": "string",
@@ -8006,6 +8022,170 @@
             "description": "Retorna slots de 30min ocupados por leads de transferência (isTransfer=true, closerId=null) para um time e data. Usado pelo formulário público para checar conflitos de pré-agendamento."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "API Studio (parceiros): Webhook v2 e Horários",
+      "description": "Contrato público para integrações servidor a servidor (SPEC 11 e SPEC 14). Não usa sessão: cada chamada leva o token do webhook ou o token do recurso de horários. Variáveis: studioTeamId, webhookToken, availabilityToken, closerId. O resultado de cada evento aparece nos logs do webhook no app.",
+      "item": [
+        {
+          "name": "Webhook v2: lead sem agendamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webhookToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "evento-123"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/{{studioTeamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "{{studioTeamId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"evento-123\",\n  \"lead\": {\n    \"name\": \"Maria Souza\",\n    \"phone\": \"+5511999998888\",\n    \"email\": \"maria@exemplo.com\",\n    \"notes\": \"Pediu retorno à tarde\"\n  },\n  \"source\": \"youpop\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Responde 202 com event_id. Reenviar com a mesma Idempotency-Key devolve o mesmo event_id."
+          }
+        },
+        {
+          "name": "Webhook v2: lead com agendamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webhookToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "evento-124"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/{{studioTeamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "{{studioTeamId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"evento-124\",\n  \"lead\": {\n    \"name\": \"Maria Souza\",\n    \"phone\": \"+5511999998888\",\n    \"email\": \"maria@exemplo.com\"\n  },\n  \"schedule\": {\n    \"closer\": {\n      \"profile_id\": \"{{closerId}}\"\n    },\n    \"starts_at\": \"2026-11-03T14:00:00-03:00\",\n    \"type\": \"call\",\n    \"title\": \"Apresentação do plano\"\n  },\n  \"source\": \"youpop\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Consulte antes os horários livres. A duração da reunião é a configurada no time; duration_minutes é ignorado. Horário ocupado vira lead como nova oportunidade com alerta de remarcação."
+          }
+        },
+        {
+          "name": "Horários disponíveis (por dia)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{availabilityToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/studio/v1/availability?date=2026-11-03",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "studio",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-11-03"
+                }
+              ]
+            },
+            "description": "Horários livres de todos os closers do time, 24 h do dia, no fuso do time. Limite de 30 consultas por minuto por token."
+          }
+        },
+        {
+          "name": "OpenAPI 3.1 (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/studio/v1/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "studio",
+                "v1",
+                "openapi.json"
+              ]
+            },
+            "description": "Contrato legível por máquina, sem dado de time. Importe no Postman, no Swagger ou em um agente de IA."
+          }
+        },
+        {
+          "name": "JSON Schema do evento v2 (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/schema",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "schema"
+              ]
+            },
+            "description": "JSON Schema do corpo do evento, gerado do mesmo Zod que valida o webhook."
+          }
         }
       ]
     },

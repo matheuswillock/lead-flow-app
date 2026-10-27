@@ -1,3 +1,5 @@
+import { CREATE_EXAMPLE as CREATE_BODY, SCHEDULE_EXAMPLE as SCHEDULE_BODY } from "@/lib/webhooks/inbound/v2/contractDocs";
+
 /**
  * Conteúdo do guia do webhook de entrada v2 (SPEC 11). Fica separado do JSX para o teste validar os
  * exemplos contra o parser real (`parseInboundV2Payload`) e os códigos contra `INBOUND_RESULT_CODES`.
@@ -74,7 +76,7 @@ export const HTTP_RESPONSES: HttpRow[] = [
   },
   {
     status: "400",
-    meaning: "JSON mal formado, time inválido ou URL de outra versão do webhook.",
+    meaning: "JSON mal formado (invalid_json), time inválido (invalid_team), Idempotency-Key longa demais (invalid_idempotency_key) ou URL de outra versão do webhook (version_mismatch).",
     action: "Corrigir o corpo ou a URL antes de reenviar.",
   },
   {
@@ -129,20 +131,4 @@ export function buildCurlAvailability(origin: string): string {
   ].join("\n");
 }
 
-export const CREATE_BODY = {
-  external_id: "evento-123",
-  lead: { name: "Maria Souza", phone: "+5511999998888", email: "maria@exemplo.com", notes: "Pediu retorno à tarde" },
-  source: "youpop",
-};
-
-export const SCHEDULE_BODY = {
-  external_id: "evento-124",
-  lead: { name: "Maria Souza", phone: "+5511999998888", email: "maria@exemplo.com" },
-  schedule: {
-    closer: { profile_id: "UUID_DO_CLOSER" },
-    starts_at: "2026-11-03T14:00:00-03:00",
-    type: "call",
-    title: "Apresentação do plano",
-  },
-  source: "youpop",
-};
+export { CREATE_BODY, SCHEDULE_BODY };

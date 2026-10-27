@@ -10,6 +10,7 @@
  * - Detalhe do webhook v2: a aba "Guia" mostra a URL do próprio webhook nos exemplos, só o placeholder do
  *   token e avisa que a duração vem do time.
  * - Catálogo de API: o guia explica a ordem de uso, o exemplo de resposta e a tabela de respostas.
+ * - Contrato legível por máquina: OpenAPI 3.1 e JSON Schema públicos, sem token, e os códigos de resultado no guia.
  * - Sem overflow horizontal em 360/375 no guia do webhook.
  */
 
@@ -119,6 +120,31 @@ test.describe("guias de integração no app", () => {
     await openGuideTab(page);
     await expect(page.getByTestId("inbound-v2-guide")).toBeVisible();
     await runResponsiveChecks(page, { touchTargets: { selector: '[data-testid="inbound-v2-guide"] button, [data-testid="inbound-v2-guide"] a' } });
+  });
+
+  test("contrato público: OpenAPI e JSON Schema respondem sem token e descrevem os dois endpoints", async ({ request }) => {
+    const openapi = await request.get("/api/studio/v1/openapi.json");
+    expect(openapi.status()).toBe(200);
+    const doc = await openapi.json();
+    expect(doc.openapi).toBe("3.1.0");
+    expect(Object.keys(doc.paths)).toEqual(["/api/webhooks/studio/v2/{teamId}", "/api/studio/v1/availability"]);
+    expect(JSON.stringify(doc)).not.toContain("duration_minutes\":{");
+
+    const schema = await request.get("/api/webhooks/studio/v2/schema");
+    expect(schema.status()).toBe(200);
+    const json = await schema.json();
+    expect(json.required).toEqual(["lead"]);
+    expect(json.properties.lead.required).toEqual(["name", "phone"]);
+    expect(json.properties.schedule.properties.starts_at.description).toContain("RFC 3339");
+  });
+
+  test("a aba Guia lista os códigos de resultado e os links do contrato", async ({ page }) => {
+    await openGuideTab(page);
+    const guide = page.getByTestId("inbound-v2-guide");
+    await expect(guide.getByRole("heading", { name: "Resultado de cada evento (aba Logs)" })).toBeVisible();
+    await expect(guide.getByRole("cell", { name: "schedule_conflict_flagged", exact: true })).toBeVisible();
+    await expect(guide.getByRole("link", { name: /OpenAPI 3.1/ })).toHaveAttribute("href", "/api/studio/v1/openapi.json");
+    await expect(guide.getByRole("link", { name: "JSON Schema do evento" })).toHaveAttribute("href", "/api/webhooks/studio/v2/schema");
   });
 
   test("catálogo de API: o guia mostra a ordem de uso, o exemplo de resposta e as respostas", async ({ page }) => {
