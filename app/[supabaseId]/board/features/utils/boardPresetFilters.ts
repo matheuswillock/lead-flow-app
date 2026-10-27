@@ -16,6 +16,7 @@ export type BoardFiltersState = {
   statusFilter: ColumnKey[];
   closerFilter: string[];
   onlyMeetingsHeld: boolean;
+  onlyNeedsReschedule: boolean;
   onlyTransfer: boolean;
   originFilter: LeadOriginFilterValue | "";
   periodStart: string;
@@ -30,6 +31,7 @@ export const DEFAULT_BOARD_FILTERS: BoardFiltersState = {
   statusFilter: [],
   closerFilter: [],
   onlyMeetingsHeld: false,
+  onlyNeedsReschedule: false,
   onlyTransfer: false,
   originFilter: "",
   periodStart: "",
@@ -49,6 +51,7 @@ export function normalizeBoardPresetFilters(raw: unknown): BoardFiltersState {
     statusFilter: Array.isArray(data.statusFilter) ? (data.statusFilter as ColumnKey[]) : [],
     closerFilter: Array.isArray(data.closerFilter) ? data.closerFilter : [],
     onlyMeetingsHeld: data.onlyMeetingsHeld === true,
+    onlyNeedsReschedule: data.onlyNeedsReschedule === true,
     onlyTransfer: resolveLeadOriginFilter(data.originFilter, data.onlyTransfer === true) === "transfer",
     originFilter: resolveLeadOriginFilter(data.originFilter, data.onlyTransfer === true),
     periodStart: typeof data.periodStart === "string" ? data.periodStart : "",
@@ -69,6 +72,7 @@ function normalizeForComparison(filters: BoardFiltersState): BoardFiltersState {
     periodStart: filters.periodStart || "",
     periodEnd: filters.periodEnd || "",
     onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
+    onlyNeedsReschedule: filters.onlyNeedsReschedule === true,
     onlyTransfer: filters.onlyTransfer === true,
     originFilter: resolveLeadOriginFilter(filters.originFilter, filters.onlyTransfer),
     customFieldFilters: sortCustomFieldFiltersForComparison(
@@ -96,6 +100,7 @@ export function boardPresetDescriptionLabel(filters: BoardFiltersState) {
     );
   }
   if (filters.onlyMeetingsHeld) parts.push("Reuniões realizadas");
+  if (filters.onlyNeedsReschedule) parts.push("Precisa remarcar");
   const originLabel = leadOriginFilterLabel(filters.originFilter);
   if (originLabel) parts.push(`Origem: ${originLabel}`);
   else if (filters.onlyTransfer) parts.push("Transferência");

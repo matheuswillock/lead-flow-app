@@ -9,6 +9,7 @@ import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWeb
 import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
 import { webhookHttpDeliveryService } from "@/app/api/services/teamWebhook/WebhookHttpDeliveryService";
 import { wrapOutboundPayloadForPreset } from "@/lib/webhooks/webhookPayloadPresets";
+import { decryptWebhookSigningSecret } from "@/lib/webhooks/webhookSigningSecurity";
 import {
   computeWebhookOutboxNextAttemptAt,
   shouldRetryWebhookOutbox,
@@ -114,11 +115,57 @@ export class ProcessWebhookOutboxUseCase {
       const envelope = row.payload as unknown as OutboundWebhookEnvelope;
       const preset: TeamWebhookDestinationPreset = webhook.destinationPreset ?? "generic";
       const body = wrapOutboundPayloadForPreset(preset, envelope);
+      const signingSecret = webhook.signingSecretCipher
+        ? decryptWebhookSigningSecret(webhook.signingSecretCipher)
+        : null;
+
+      if (!signingSecret) {
+        // Achado de code review (Codex, PR #1220), reafirmado após medir o tamanho real
+        // do caso (auditoria 09/09, reconfirmada 22/09: 0 webhooks de saída cadastrados
+        // em produção — `select count(*) ... where direction = 'outbound'`): sem
+        // segredo, seja porque a cifra nunca foi gravada (a migration desta feature só
+        // cria as colunas vazias; `TeamWebhookService.create()`/`rotateSigningSecret()`
+        // sempre gera uma) seja porque está ilegível (bug de configuração real, chave de
+        // cifra do servidor trocada), a entrega NUNCA sai sem assinatura em silêncio.
+        // Como o caso "cifra ausente" não tem instância real em produção hoje, o caminho
+        // simples basta: bloqueia de imediato, loga, conta para o auto-pause — do mesmo
+        // jeito que um webhook sem URL de destino. Não há maquinário especial de
+        // backoff/streak para este caso; ver `scripts/backfill-outbound-webhook-signing-secrets.ts`
+        // para o backfill defensivo de qualquer linha que viesse a existir sem segredo.
+        const errorMessage = webhook.signingSecretCipher
+          ? "Segredo de assinatura ilegível — entrega bloqueada por segurança"
+          : "Segredo de assinatura não configurado — entrega bloqueada por segurança";
+        await this.eventLogRepository.create({
+          teamId: row.teamId,
+          webhookId: row.webhookId,
+          direction: "outbound",
+          result: "failure",
+          eventKey: row.eventKey,
+          method: "POST",
+          endpoint: webhook.targetUrl,
+          statusCode: null,
+          requestPayload: body,
+          responsePayload: null,
+          errorMessage,
+        });
+
+        const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+        let wasPausedForBadSecret = false;
+        if (updated.failureStreak >= updated.failureThreshold) {
+          await this.webhookRepository.markPausedByFailures(row.webhookId);
+          await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
+          await this.notifyAutoPaused(webhook);
+          wasPausedForBadSecret = true;
+        }
+        await this.outboxRepository.markFailed(row.id, row.attemptCount + 1, null, errorMessage);
+        return wasPausedForBadSecret ? "paused" : "failed";
+      }
 
       const result = await this.deliveryService.deliver({
         targetUrl: webhook.targetUrl,
         preset,
         body,
+        signingSecret,
       });
 
       await this.eventLogRepository.create({
@@ -142,19 +189,22 @@ export class ProcessWebhookOutboxUseCase {
       }
 
       const attemptCount = row.attemptCount + 1;
-      const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+      const willRetry = shouldRetryWebhookOutbox(attemptCount);
+      const nextAttemptAt = willRetry ? computeWebhookOutboxNextAttemptAt(attemptCount) : null;
 
+      // DA3/W13 — o contador de falha é por EVENTO, não por tentativa HTTP: só
+      // incrementa quando este evento já esgotou as TEAM_WEBHOOK_OUTBOX_MAX_ATTEMPTS
+      // tentativas (nextAttemptAt nulo, o outbox vira dead-letter para esta linha).
       let wasPaused = false;
-      if (updated.failureStreak >= updated.failureThreshold) {
-        await this.webhookRepository.markPausedByFailures(row.webhookId);
-        await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
-        await this.notifyAutoPaused(webhook);
-        wasPaused = true;
+      if (!willRetry) {
+        const updated = await this.webhookRepository.incrementFailureStreak(row.webhookId);
+        if (updated.failureStreak >= updated.failureThreshold) {
+          await this.webhookRepository.markPausedByFailures(row.webhookId);
+          await this.outboxRepository.cancelPendingForWebhook(row.webhookId);
+          await this.notifyAutoPaused(webhook);
+          wasPaused = true;
+        }
       }
-
-      const nextAttemptAt = shouldRetryWebhookOutbox(attemptCount)
-        ? computeWebhookOutboxNextAttemptAt(attemptCount)
-        : null;
 
       await this.outboxRepository.markFailed(
         row.id,

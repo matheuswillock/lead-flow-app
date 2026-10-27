@@ -1,4 +1,5 @@
 import { prisma } from "../../prisma";
+import { MEETING_OCCUPANCY_LEAD_WHERE } from "@/app/api/domain/leadSchedule/meetingOccupancy";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   CalendarAvailabilityCloserProfile,
@@ -86,17 +87,38 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
     });
   }
 
+  async findConflictingLeadId(params: { closerId: string; startsAt: Date; endsAt: Date }): Promise<string | null> {
+    const candidates = await prisma.lead.findMany({
+      where: {
+        ...MEETING_OCCUPANCY_LEAD_WHERE,
+        closerId: params.closerId,
+        // Reunião que começou até 1h antes ainda pode estar em andamento (duração máxima 60 min).
+        meetingDate: { gte: new Date(params.startsAt.getTime() - 60 * 60 * 1000), lt: params.endsAt },
+      },
+      select: { id: true, meetingDate: true, meetingDurationMinutes: true },
+      orderBy: { meetingDate: "asc" },
+    });
+
+    const conflict = candidates.find((lead) => {
+      if (!lead.meetingDate) return false;
+      const duration = lead.meetingDurationMinutes ?? 30;
+      const leadEndsAt = lead.meetingDate.getTime() + duration * 60 * 1000;
+      return lead.meetingDate.getTime() < params.endsAt.getTime() && leadEndsAt > params.startsAt.getTime();
+    });
+    return conflict?.id ?? null;
+  }
+
   async findScheduledLeadsForDay(params: {
     teamId: string;
     requestedCloserIds: string[];
     dayStart: Date;
     dayEnd: Date;
   }): Promise<CalendarAvailabilityScheduledLead[]> {
+    // Ocupação é do closer, em qualquer time (SPEC 13/14): sem filtro de `teamId`.
     return prisma.lead.findMany({
       where: {
-        teamId: params.teamId,
+        ...MEETING_OCCUPANCY_LEAD_WHERE,
         closerId: { in: params.requestedCloserIds },
-        status: "scheduled",
         meetingDate: {
           gte: params.dayStart,
           lt: params.dayEnd,
@@ -119,7 +141,6 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
   }): Promise<CalendarAvailabilityReservation[]> {
     return prisma.teamMeetingSlotReservation.findMany({
       where: {
-        teamId: params.teamId,
         closerId: { in: params.requestedCloserIds },
         state: { in: ["reserved", "consumed"] },
         startsAt: { lt: params.rangeEnd },

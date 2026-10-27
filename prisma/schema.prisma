@@ -868,6 +868,7 @@ enum NotificationType {
   LEAD_DOCUMENT_REQUEST_COMPLETED
   STUDIO_DOMAIN_DNS_ACTION_REQUIRED
   STUDIO_DOMAIN_DNS_RECOVERED
+  LEAD_NEEDS_RESCHEDULE
 
   @@map("notification_type")
 }
@@ -924,6 +925,22 @@ enum TeamWebhookOutboxStatus {
   cancelled
 
   @@map("team_webhook_outbox_status")
+}
+
+enum TeamWebhookInboundEventStatus {
+  pending
+  processing
+  processed
+  failed
+
+  @@map("team_webhook_inbound_event_status")
+}
+
+enum TeamApiResourceStatus {
+  active
+  inactive
+
+  @@map("team_api_resource_status")
 }
 
 enum TeamAutomationTriggerType {
@@ -2465,6 +2482,11 @@ model Lead {
   contractDueDate DateTime? @db.Timestamptz(6) // Data de vigência do contrato
   soldPlan        String?   @db.Text // Plano vendido
 
+  /// SPEC 11 (DA9): webhook v2 pediu um horário que o closer não tinha livre. O
+  /// lead nasce nova oportunidade, sem reunião, e fica sinalizado até alguém
+  /// agendar. Os detalhes ficam em `LeadRescheduleAlert`.
+  needsReschedule Boolean @default(false)
+
   // Indicação / Referral
   isReferral     Boolean? @default(false)
   referrerLeadId String?  @db.Uuid
@@ -2506,6 +2528,7 @@ model Lead {
 
   publicFormSubmissions   PublicFormSubmission[]
   meetingSlotReservations TeamMeetingSlotReservation[]
+  rescheduleAlerts        LeadRescheduleAlert[]
   // WhatsApp relations
   whatsappConversations   WhatsAppConversation[]
   whatsappMessages        WhatsAppMessage[]
@@ -2514,9 +2537,13 @@ model Lead {
   tagAssignments   LeadTagAssignment[]
   documentRequests LeadDocumentRequest[]
 
-  // Unique per tenant
-  @@unique([teamId, email])
-  @@unique([teamId, cnpj])
+  // Unicidade por tenant (e-mail e CNPJ) NÃO é modelada aqui: vive em índices únicos
+  // PARCIAIS escritos à mão (supabase/migrations/*_lead-partial-unique-email-cnpj.sql),
+  // válidos só entre leads não deletados em `new_opportunity`/`scheduled`/sem status
+  // (SPEC 11, D41). O Prisma não modela índice parcial: um `db:migrate:from-prisma`
+  // futuro vai propor DROP desses índices; remova essas linhas do SQL gerado.
+  @@index([teamId, email])
+  @@index([teamId, cnpj])
   @@index([teamId])
   @@index([assignedTo])
   @@index([closerId])
@@ -2950,6 +2977,10 @@ model Team {
   teamWebhooks               TeamWebhook[]
   teamWebhookEventLogs       TeamWebhookEventLog[]
   teamWebhookOutbox          TeamWebhookOutbox[]
+  teamWebhookInboundEvents   TeamWebhookInboundEvent[]
+  leadRescheduleAlerts       LeadRescheduleAlert[]
+  teamApiResourceActivations TeamApiResourceActivation[]
+  teamApiRequestLogs         TeamApiRequestLog[]
   landingAnalyticsEvents     LandingAnalyticsEvent[]
   filterPresets              TeamFilterPreset[]
   statusRules                TeamStatusRule[]
@@ -3247,6 +3278,21 @@ model TeamWebhook {
   direction          TeamWebhookDirection
   status             TeamWebhookStatus             @default(active)
   name               String                        @db.Text
+  /// Versão do contrato de entrada (SPEC 10, DA7). Só faz sentido para
+  /// direction=inbound; nasce em 1 para todo webhook existente (backfill) e
+  /// para todo webhook novo até a v2 ([[11]]) escolher 2. Sem coluna de
+  /// versão na tabela legada `TeamStudioWebhookConfig` — decisão do owner.
+  contractVersion    Int                           @default(1)
+  /// SPEC 11 (DA3): escopos do token de um webhook v2 (`leads_create`,
+  /// `leads_schedule`). A v1 ignora; nasce com `leads_create`.
+  scopes             String[]                      @default(["leads_create"])
+  /// SPEC 11 (DA11): SDRs padrão em rodízio (ordem importa) e ponteiro do último
+  /// atendido. Obrigatório na v2; vazio na v1.
+  defaultAssigneeProfileIds String[]               @default([]) @db.Uuid
+  lastAssignedProfileId     String?                @db.Uuid
+  /// SPEC 11 (DA10): link de Meet padrão (https) para reunião online de closer
+  /// sem Google conectado.
+  defaultMeetingLink        String?                @db.Text
   targetUrl          String?                       @db.Text
   destinationPreset  TeamWebhookDestinationPreset?
   selectedEvents     TeamWebhookEventKey[]         @default([])
@@ -3257,6 +3303,8 @@ model TeamWebhook {
   tokenHash          String?                       @db.Text
   tokenCipher        String?                       @db.Text
   tokenPreview       String?                       @db.Text
+  signingSecretCipher  String?                     @db.Text
+  signingSecretPreview String?                     @db.Text
   expiryMode         StudioWebhookTokenExpiryMode?
   expiresAt          DateTime?                     @db.Timestamptz(6)
   lastUsedAt         DateTime?                     @db.Timestamptz(6)
@@ -3268,8 +3316,9 @@ model TeamWebhook {
 
   team      Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   updatedBy Profile               @relation("TeamWebhookUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
-  eventLogs TeamWebhookEventLog[]
-  outbox    TeamWebhookOutbox[]
+  eventLogs     TeamWebhookEventLog[]
+  outbox        TeamWebhookOutbox[]
+  inboundEvents TeamWebhookInboundEvent[]
 
   @@index([teamId, direction, status])
   @@index([teamId, direction, createdAt(sort: Desc)])
@@ -3300,6 +3349,113 @@ model TeamWebhookEventLog {
   @@index([teamId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("corretor_studio_team_webhook_event_logs")
+}
+
+/// SPEC 11 (DA4/DA5): evento recebido pelo webhook de entrada v2. Gravado de
+/// forma síncrona antes do 202; processado depois (`after()` e cron de retry).
+/// A unique `(webhookId, idempotencyKey)` é a garantia de idempotência.
+model TeamWebhookInboundEvent {
+  id                   String                        @id @default(uuid()) @db.Uuid
+  webhookId            String                        @db.Uuid
+  teamId               String                        @db.Uuid
+  contractVersion      Int
+  idempotencyKey       String?                       @db.VarChar(255)
+  /// SHA-256 do corpo bruto: detecta a mesma chave com corpo diferente.
+  requestHash          String                        @db.Text
+  payload              Json
+  status               TeamWebhookInboundEventStatus @default(pending)
+  attemptCount         Int                           @default(0)
+  nextAttemptAt        DateTime                      @default(now()) @db.Timestamptz(6)
+  lockedAt             DateTime?                     @db.Timestamptz(6)
+  /// Código estável do desfecho (`processed`, `lead_merged`, ...).
+  resultCode           String?                       @db.Text
+  leadId               String?                       @db.Uuid
+  /// Detalhes do resultado (campos ignorados, motivo). Nunca o payload bruto.
+  result               Json?
+  idempotencyKeyReused Boolean                       @default(false)
+  lastError            String?                       @db.Text
+  receivedAt           DateTime                      @default(now()) @db.Timestamptz(6)
+  processedAt          DateTime?                     @db.Timestamptz(6)
+
+  team    Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  webhook TeamWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@unique([webhookId, idempotencyKey])
+  @@index([status, nextAttemptAt])
+  @@index([webhookId, receivedAt(sort: Desc)])
+  @@index([teamId, receivedAt(sort: Desc)])
+  @@map("corretor_studio_team_webhook_inbound_events")
+}
+
+/// SPEC 11 (DA9): alerta "remarcar urgente" de um lead criado pelo webhook v2
+/// cujo horário pedido não estava livre. `resolvedAt` preenche sozinho quando o
+/// lead é agendado pelo CRM.
+model LeadRescheduleAlert {
+  id                String    @id @default(uuid()) @db.Uuid
+  teamId            String    @db.Uuid
+  leadId            String    @db.Uuid
+  /// `schedule_conflict`, `closer_without_google`, `online_without_email`, ...
+  reasonCode        String    @db.Text
+  requestedStartsAt DateTime? @db.Timestamptz(6)
+  requestedCloserId String?   @db.Uuid
+  conflictingLeadId String?   @db.Uuid
+  /// Até 5 próximos horários livres do closer pedido: [{ startsAt, endsAt }].
+  suggestedSlots    Json      @default("[]")
+  /// `TeamWebhookInboundEvent.id` de origem.
+  sourceEventId     String?   @db.Uuid
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt        DateTime? @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, resolvedAt])
+  @@index([teamId, resolvedAt, createdAt(sort: Desc)])
+  @@map("corretor_studio_lead_reschedule_alerts")
+}
+
+/// SPEC 14 (DA1/DA2): ativação de um recurso da API Studio por time. Um token por
+/// recurso; só o hash é guardado (o token é mostrado uma vez). O time vem do
+/// token, nunca da URL.
+model TeamApiResourceActivation {
+  id                   String                @id @default(uuid()) @db.Uuid
+  teamId               String                @db.Uuid
+  resourceSlug         String                @db.Text
+  status               TeamApiResourceStatus @default(active)
+  tokenHash            String                @unique @db.Text
+  tokenPreview         String                @db.Text
+  config               Json                  @default("{}")
+  expiresAt            DateTime?             @db.Timestamptz(6)
+  lastUsedAt           DateTime?             @db.Timestamptz(6)
+  activatedByProfileId String                @db.Uuid
+  updatedByProfileId   String                @db.Uuid
+  createdAt            DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, resourceSlug])
+  @@map("corretor_studio_team_api_resource_activations")
+}
+
+/// SPEC 14 A-E4: uma linha por requisição a um recurso da API Studio que resolveu uma ativação.
+/// Só metadados (nunca token, IP ou dado de lead). Retenção de 30 dias.
+model TeamApiRequestLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  teamId        String   @db.Uuid
+  resourceSlug  String   @db.Text
+  activationId  String?  @db.Uuid
+  statusCode    Int
+  errorCode     String?  @db.Text
+  requestedDate String?  @db.VarChar(32)
+  durationMs    Int?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, resourceSlug, createdAt(sort: Desc)], map: "corretor_studio_team_api_request_logs_team_slug_created_idx")
+  @@index([createdAt], map: "corretor_studio_team_api_request_logs_createdAt_idx")
+  @@map("corretor_studio_team_api_request_logs")
 }
 
 model TeamWebhookOutbox {
@@ -5679,6 +5835,22 @@ model BillingRateLimitWindow {
   @@id([key, windowStart])
   @@index([windowStart])
   @@map("billing_rate_limit_windows")
+}
+
+/// Rate limit atômico do webhook de entrada (SPEC 10, DA3,
+/// lib/webhooks/inbound-rate-limit.ts) — chave livre (IP, teamId,
+/// webhookId), sem FK. Tabela própria: não reaproveita a do Pixel (domínio
+/// diferente, sem retenção) nem a de billing (retenção mais curta).
+model InboundWebhookRateLimitWindow {
+  key         String   @db.Text
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+  @@map("webhooks_inbound_rate_limit_windows")
 }
 
 model WhatsAppAutoResponseRule {

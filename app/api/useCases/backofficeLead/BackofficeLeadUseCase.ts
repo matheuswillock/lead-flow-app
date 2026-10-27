@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
 import { normalizeLeadPhoneDigits } from "@/lib/masks"
 import { Output } from "@/lib/output"
+import { normalizeBackofficeMeetingLink } from "./normalizeBackofficeMeetingLink"
 import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import {
   backofficeLeadScheduleService,
@@ -360,7 +361,11 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       }
 
       const closerBackofficeUserId = trimOrNull(data.closerBackofficeUserId)
-      const normalizedMeetingLink = trimOrNull(data.meetingLink)
+      const meetingLinkResult = normalizeBackofficeMeetingLink(data.meetingLink)
+      if (!meetingLinkResult.isValid) {
+        return new Output(false, [], [meetingLinkResult.errorMessage], null)
+      }
+      const normalizedMeetingLink = meetingLinkResult.value
       const meetingTypeResult = normalizeMeetingType(data.meetingType)
       if (!meetingTypeResult.isValid) {
         return new Output(false, [], [meetingTypeResult.errorMessage], null)
@@ -530,10 +535,15 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       const finalMeetingDate = parsedMeetingDate.isProvided
         ? parsedMeetingDate.value
         : existing.meetingDate
-      const finalMeetingLink =
-        data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
-      let normalizedMeetingLinkForUpdate =
-        data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const meetingLinkResult =
+        data.meetingLink !== undefined
+          ? normalizeBackofficeMeetingLink(data.meetingLink, existing.meetingLink)
+          : undefined
+      if (meetingLinkResult && !meetingLinkResult.isValid) {
+        return new Output(false, [], [meetingLinkResult.errorMessage], null)
+      }
+      const finalMeetingLink = meetingLinkResult ? meetingLinkResult.value : existing.meetingLink
+      let normalizedMeetingLinkForUpdate = meetingLinkResult ? meetingLinkResult.value : undefined
       const meetingTypeResult = normalizeMeetingType(
         data.meetingType !== undefined ? data.meetingType : existing.meetingType
       )
@@ -688,10 +698,15 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data?.meetingNotes !== undefined
           ? trimOrNull(data.meetingNotes)
           : existing.meetingNotes
-      const finalMeetingLink =
-        data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
-      let normalizedMeetingLinkForStatus =
-        data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const meetingLinkResult =
+        data?.meetingLink !== undefined
+          ? normalizeBackofficeMeetingLink(data.meetingLink, existing.meetingLink)
+          : undefined
+      if (meetingLinkResult && !meetingLinkResult.isValid) {
+        return new Output(false, [], [meetingLinkResult.errorMessage], null)
+      }
+      const finalMeetingLink = meetingLinkResult ? meetingLinkResult.value : existing.meetingLink
+      let normalizedMeetingLinkForStatus = meetingLinkResult ? meetingLinkResult.value : undefined
       const meetingTypeResult = normalizeMeetingType(
         data?.meetingType !== undefined ? data.meetingType : existing.meetingType
       )

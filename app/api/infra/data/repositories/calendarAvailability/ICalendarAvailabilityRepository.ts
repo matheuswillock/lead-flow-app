@@ -31,6 +31,8 @@ export type CalendarAvailabilityReservation = {
 };
 
 export interface ICalendarAvailabilityRepository {
+  /** Lead do closer (em qualquer time) cuja reunião sobrepõe `[startsAt, endsAt)`; `null` se livre. */
+  findConflictingLeadId(params: { closerId: string; startsAt: Date; endsAt: Date }): Promise<string | null>;
   findMeetingDuration(teamId: string): Promise<number | null>;
   findTeamMemberProfileIds(teamId: string, requestedCloserIds: string[]): Promise<string[]>;
   findCloserProfiles(requestedCloserIds: string[]): Promise<CalendarAvailabilityCloserProfile[]>;

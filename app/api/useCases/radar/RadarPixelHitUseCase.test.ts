@@ -88,6 +88,53 @@ describe("RadarPixelHitUseCase", () => {
     expect(appendEventIfNew).toHaveBeenCalledTimes(1)
   })
 
+  // Regressão (SPEC 30, DA1/W27): allowlist vazia continua aceitando
+  // qualquer origem, inclusive sem `Origin` no request. `originRestrictionActive`
+  // (RadarPixelService) é só sinalização — não pode se tornar bloqueio aqui.
+  it("allowlist vazia aceita origem ausente (isOriginAllowed inalterado)", async () => {
+    findPixelConfigByPublicToken.mockImplementation(async () => ({
+      teamId: "team-1",
+      allowedOrigins: [],
+    }))
+    const useCase = new RadarPixelHitUseCase({ publish })
+    const result = await useCase.execute({ ...hitInput, origin: null })
+    expect(result.isValid).toBe(true)
+    expect((result.result as { status: string }).status).toBe("ok")
+  })
+
+  it("allowlist vazia aceita qualquer origem informada (isOriginAllowed inalterado)", async () => {
+    findPixelConfigByPublicToken.mockImplementation(async () => ({
+      teamId: "team-1",
+      allowedOrigins: [],
+    }))
+    const useCase = new RadarPixelHitUseCase({ publish })
+    const result = await useCase.execute({ ...hitInput, origin: "https://qualquer-site.com" })
+    expect(result.isValid).toBe(true)
+    expect((result.result as { status: string }).status).toBe("ok")
+  })
+
+  it("allowlist com uma origem rejeita origem diferente", async () => {
+    findPixelConfigByPublicToken.mockImplementation(async () => ({
+      teamId: "team-1",
+      allowedOrigins: ["https://permitido.com"],
+    }))
+    const useCase = new RadarPixelHitUseCase({ publish })
+    const result = await useCase.execute({ ...hitInput, origin: "https://outro-site.com" })
+    expect(result.isValid).toBe(false)
+    expect((result.result as { status: string }).status).toBe("origin_not_allowed")
+  })
+
+  it("allowlist com uma origem aceita a mesma origem", async () => {
+    findPixelConfigByPublicToken.mockImplementation(async () => ({
+      teamId: "team-1",
+      allowedOrigins: ["https://permitido.com"],
+    }))
+    const useCase = new RadarPixelHitUseCase({ publish })
+    const result = await useCase.execute({ ...hitInput, origin: "https://permitido.com" })
+    expect(result.isValid).toBe(true)
+    expect((result.result as { status: string }).status).toBe("ok")
+  })
+
   it("persistQueuedHit escreve o evento", async () => {
     const useCase = new RadarPixelHitUseCase({ publish })
     const payload: RadarPixelEventPayload = {

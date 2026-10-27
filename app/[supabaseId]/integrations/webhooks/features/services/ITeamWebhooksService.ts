@@ -15,6 +15,12 @@ export type TeamWebhookSummary = {
   direction: TeamWebhookDirection;
   status: TeamWebhookStatus;
   name: string;
+  /** Versão do contrato de entrada (1 ou 2). */
+  contractVersion: number;
+  scopes: string[];
+  defaultAssigneeProfileIds: string[];
+  lastAssignedProfileId: string | null;
+  defaultMeetingLink: string | null;
   targetUrl: string | null;
   destinationPreset: TeamWebhookDestinationPreset | null;
   selectedEvents: TeamWebhookEventKey[];
@@ -26,12 +32,14 @@ export type TeamWebhookSummary = {
   pausedAt: string | null;
   pauseReason: string | null;
   tokenPreview: string | null;
+  signingSecretPreview: string | null;
   expiryMode: "hours_24" | "months_6" | "indeterminate" | null;
   expiresAt: string | null;
   webhookUrl: string | null;
   createdAt: string;
   updatedAt: string;
   token?: string;
+  signingSecret?: string;
 };
 
 export type TeamWebhookLogItem = {
@@ -53,9 +61,23 @@ export type TeamWebhookLogItem = {
 export type CreateInboundWebhookPayload = {
   direction: "inbound";
   name: string;
-  tokenMode: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
+  /** Ausente = v1. */
+  contractVersion?: 2;
+  scopes?: Array<"leads_create" | "leads_schedule">;
+  defaultAssigneeProfileIds?: string[];
+  defaultMeetingLink?: string | null;
+};
+
+/** Membro do time para escolher SDRs padrão e avisar closers sem Google (SPEC 11, B-E1). */
+export type TeamMemberOption = {
+  profileId: string;
+  name: string;
+  functions: string[];
+  googleCalendarConnected: boolean;
 };
 
 export type CreateOutboundWebhookPayload = {
@@ -73,7 +95,8 @@ export type UpdateTeamWebhookPayload = {
   destinationPreset?: TeamWebhookDestinationPreset;
   selectedEvents?: TeamWebhookEventKey[];
   failureThreshold?: number;
-  tokenMode?: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode?: "manual" | "auto";
   manualToken?: string;
   expiryMode?: "hours_24" | "months_6" | "indeterminate";
 };
@@ -91,6 +114,7 @@ export interface ITeamWebhooksService {
     }
   ): Promise<{ items: TeamWebhookSummary[]; total: number; page: number; pageSize: number }>;
   getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  listTeamMembers(supabaseId: string, teamId: string): Promise<TeamMemberOption[]>;
   create(
     supabaseId: string,
     teamId: string,
@@ -119,6 +143,7 @@ export interface ITeamWebhooksService {
     teamId: string,
     id: string
   ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+  rotateSigningSecret(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
   resendLog(
     supabaseId: string,
     teamId: string,

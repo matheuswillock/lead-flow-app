@@ -14,6 +14,13 @@ export type TeamWebhookSummaryDto = {
   direction: TeamWebhookDirection;
   status: TeamWebhookStatus;
   name: string;
+  /** Versão do contrato de entrada (1 ou 2); só faz sentido para webhook de entrada. */
+  contractVersion: number;
+  /** SPEC 11 (v2): escopos do token, SDRs padrão em rodízio, último atendido e link de Meet padrão. */
+  scopes: string[];
+  defaultAssigneeProfileIds: string[];
+  lastAssignedProfileId: string | null;
+  defaultMeetingLink: string | null;
   targetUrl: string | null;
   destinationPreset: TeamWebhookDestinationPreset | null;
   selectedEvents: TeamWebhookEventKey[];
@@ -25,6 +32,7 @@ export type TeamWebhookSummaryDto = {
   pausedAt: string | null;
   pauseReason: string | null;
   tokenPreview: string | null;
+  signingSecretPreview: string | null;
   expiryMode: StudioWebhookTokenExpiryMode | null;
   expiresAt: string | null;
   webhookUrl: string | null;
@@ -35,9 +43,18 @@ export type TeamWebhookSummaryDto = {
 export type CreateInboundWebhookInput = {
   direction: "inbound";
   name: string;
-  tokenMode: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode: "manual" | "auto";
   manualToken?: string;
   expiryMode: StudioWebhookTokenExpiryMode;
+  /** Ausente = v1 (comportamento de sempre). */
+  contractVersion?: 1 | 2;
+  /** v2: `leads_create` (obrigatório) e `leads_schedule`. */
+  scopes?: Array<"leads_create" | "leads_schedule">;
+  /** v2: SDRs padrão em rodízio, na ordem. Obrigatório com pelo menos um. */
+  defaultAssigneeProfileIds?: string[];
+  /** v2: link de Meet (https) para reunião online de closer sem Google. */
+  defaultMeetingLink?: string | null;
 };
 
 export type CreateOutboundWebhookInput = {
@@ -55,7 +72,8 @@ export type UpdateTeamWebhookInput = {
   destinationPreset?: TeamWebhookDestinationPreset;
   selectedEvents?: TeamWebhookEventKey[];
   failureThreshold?: number;
-  tokenMode?: "manual" | "auto" | "none";
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+  tokenMode?: "manual" | "auto";
   manualToken?: string;
   expiryMode?: StudioWebhookTokenExpiryMode;
 };
@@ -81,13 +99,18 @@ export interface ITeamWebhookService {
     access: TeamAccess,
     input: CreateInboundWebhookInput | CreateOutboundWebhookInput,
     appUrl: string
-  ): Promise<TeamWebhookSummaryDto & { token?: string }>;
+  ): Promise<TeamWebhookSummaryDto & { token?: string; signingSecret?: string }>;
   update(
     access: TeamAccess,
     id: string,
     input: UpdateTeamWebhookInput,
     appUrl: string
   ): Promise<TeamWebhookSummaryDto & { token?: string }>;
+  rotateSigningSecret(
+    access: TeamAccess,
+    id: string,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { signingSecret: string }>;
   changeStatus(
     access: TeamAccess,
     id: string,

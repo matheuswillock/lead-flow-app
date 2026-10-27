@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LeadStatus, MeetingHeald, LeadOriginChannel } from "@prisma/client";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 import { isValidCNPJ, sanitizeDocumentDigits } from "@/lib/masks";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 /**
  * Public HTTP DTO for POST /api/v1/leads.
@@ -36,7 +37,17 @@ export const CreateLeadRequestSchema = z.object({
   meetingDate: z.string().datetime().nullish().transform(val => val || undefined),
   meetingTitle: z.string().nullish().transform(val => val || undefined),
   meetingNotes: z.string().nullish().transform(val => val || undefined),
-  meetingLink: z.string().url("Link da reunião inválido").nullish().transform(val => val || undefined),
+  // SPEC 13 (Agenda na Criação de Lead), A-E1d — usa a mesma validação de
+  // lib/validations/meetingLink.ts (DA8: só https) em vez de z.string().url(),
+  // que aceitava http:.
+  meetingLink: z
+    .string()
+    .refine(
+      (val) => validateMeetingLinkValue(val, { required: true }).isValid,
+      "Link da reunião inválido (use https)"
+    )
+    .nullish()
+    .transform(val => val || undefined),
   // Allow null to align with update flow (unchecked clears the flag).
   meetingHeald: z.nativeEnum(MeetingHeald).nullable().optional(),
   notes: z.string().nullish().transform(val => val || undefined),

@@ -198,6 +198,10 @@ runs:
           echo "APP_ENV=test"
           echo "E2E_TEST_MODE=true"
           echo "E2E_INCLUDE_SLOW=${INCLUDE_SLOW}"
+          # O servidor E2E inicia com NODE_ENV=production. Nesse modo a cifra
+          # de segredos de webhook não usa o fallback de desenvolvimento e
+          # precisa de uma chave explícita para criar webhooks de saída.
+          echo "STUDIO_WEBHOOK_TOKEN_SECRET=e2e-studio-webhook-token-secret"
           echo "ASAAS_ENV=sandbox"
           echo "ASAAS_URL=https://sandbox.asaas.com"
           echo "ASAAS_URL_sandbox=https://sandbox.asaas.com"

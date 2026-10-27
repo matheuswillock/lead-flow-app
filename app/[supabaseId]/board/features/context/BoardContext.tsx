@@ -136,6 +136,8 @@ interface IBoardContextState {
   setQuery: (query: string) => void;
   onlyMeetingsHeld: boolean;
   setOnlyMeetingsHeld: (value: boolean) => void;
+  onlyNeedsReschedule: boolean;
+  setOnlyNeedsReschedule: (value: boolean) => void;
   onlyTransfer: boolean;
   setOnlyTransfer: (value: boolean) => void;
   originFilter: LeadOriginFilterValue | "";
@@ -286,6 +288,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [onlyTransfer, setOnlyTransfer] = useState(false);
   const [originFilter, setOriginFilterState] = useState<LeadOriginFilterValue | "">("");
   const [onlyDraft, setOnlyDraft] = useState(false);
+  const [onlyNeedsReschedule, setOnlyNeedsReschedule] = useState(false);
 
   const setOriginFilter = useCallback((value: LeadOriginFilterValue | "") => {
     setOriginFilterState(value);
@@ -352,6 +355,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setOriginFilterState(resolvedOrigin);
     setOnlyTransfer(resolvedOrigin === "transfer" || externalFilters.onlyTransfer);
     setOnlyDraft(externalFilters.onlyDraft);
+    setOnlyNeedsReschedule(externalFilters.onlyNeedsReschedule === true);
     setCustomFieldFilters(externalFilters.customFieldFilters);
     setCustomFieldSort(externalFilters.customFieldSort);
   }, [externalFilters]);
@@ -1565,6 +1569,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const inCloser = (l: Lead) =>
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
+    const inNeedsReschedule = (l: Lead) => !onlyNeedsReschedule || l.needsReschedule === true;
     const activeOrigin = resolveLeadOriginFilter(originFilter, onlyTransfer);
     const inOrigin = (l: Lead) =>
       leadMatchesOriginFilter(
@@ -1610,6 +1615,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inResponsible(l) &&
               inCloser(l) &&
               inMeetingsHeld(l) &&
+              inNeedsReschedule(l) &&
               inOrigin(l) &&
               inDraft(l) &&
               inPeriod(l) &&
@@ -1625,6 +1631,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     assignedUsers,
     closerFilter,
     onlyMeetingsHeld,
+    onlyNeedsReschedule,
     onlyTransfer,
     originFilter,
     onlyDraft,
@@ -1657,6 +1664,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setQuery,
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
+      onlyNeedsReschedule,
+      setOnlyNeedsReschedule,
       onlyTransfer,
       onlyDraft,
       setOnlyTransfer,
@@ -1724,6 +1733,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       isLoading,
       query,
       onlyMeetingsHeld,
+      onlyNeedsReschedule,
       onlyTransfer,
       onlyDraft,
       originFilter,

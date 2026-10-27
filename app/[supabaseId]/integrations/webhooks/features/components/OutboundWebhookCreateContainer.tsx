@@ -3,20 +3,41 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Field, FieldGroup } from "@/components/ui/field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { teamWebhooksService } from "../services/TeamWebhooksService";
+import type { CreateOutboundWebhookPayload, TeamWebhookSummary } from "../services/ITeamWebhooksService";
 import {
   WebhookOutboundConfigFields,
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
+import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 
-type Props = { supabaseId: string };
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — a chamada real de
+ * criação passa pelo Service page-local (`OutboundWebhookCreateService`),
+ * injetado via Hook/Context da rota, em vez deste componente compartilhado
+ * importar `teamWebhooksService` direto.
+ */
+type OutboundWebhookCreateServiceLike = {
+  create(supabaseId: string, teamId: string, payload: CreateOutboundWebhookPayload): Promise<TeamWebhookSummary>;
+};
 
-export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
+type Props = {
+  supabaseId: string;
+  /** SPEC 10, R10-5: caminhos vêm do Hook page-local (OutboundWebhookCreateHook), não hardcoded aqui. */
+  listPath: string;
+  buildDetailPath: (webhookId: string) => string;
+  service: OutboundWebhookCreateServiceLike;
+};
+
+export function OutboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
   const [values, setValues] = useState<WebhookOutboundFormValues>({
@@ -27,6 +48,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
     failureThreshold: 10,
   });
   const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<TeamWebhookSummary | null>(null);
 
   const canSubmit =
     Boolean(activeTeam?.id) &&
@@ -39,7 +61,7 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
     if (!activeTeam?.id || !canSubmit) return;
     setSaving(true);
     try {
-      const created = await teamWebhooksService.create(supabaseId, activeTeam.id, {
+      const result = await service.create(supabaseId, activeTeam.id, {
         direction: "outbound",
         name: values.name.trim(),
         targetUrl: values.targetUrl.trim(),
@@ -48,7 +70,9 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
         failureThreshold: values.failureThreshold,
       });
       toast.success("Webhook de saída criado");
-      router.push(`/${supabaseId}/integrations/webhooks/outbound/${created.id}`);
+      // SPEC 20: o segredo HMAC só aparece nesta resposta; o redirecionamento
+      // para o detalhe fica atrás do botão da tela de revelação.
+      setCreated(result);
     } catch (error) {
       toastUserError(error);
     } finally {
@@ -56,11 +80,80 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
     }
   };
 
+  const copySecret = async () => {
+    if (!created?.signingSecret) return;
+    try {
+      await navigator.clipboard.writeText(created.signingSecret);
+      toast.success("Segredo copiado");
+    } catch {
+      toast.error("Não foi possível copiar o segredo");
+    }
+  };
+
+  if (created) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-semibold">Webhook de saída criado</h1>
+          <p className="text-sm text-muted-foreground">
+            Copie o segredo de assinatura agora. Depois desta tela ele não será exibido
+            novamente — só o preview fica disponível no detalhe do webhook.
+          </p>
+        </div>
+
+        {created.signingSecret ? (
+          <FieldGroup>
+            <Field>
+              <Label htmlFor="created-signing-secret">Segredo de assinatura (HMAC)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="created-signing-secret"
+                  readOnly
+                  value={created.signingSecret}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="max-lg:h-11"
+                  onClick={() => void copySecret()}
+                >
+                  <Copy data-icon="inline-start" />
+                  Copiar
+                </Button>
+              </div>
+            </Field>
+          </FieldGroup>
+        ) : (
+          <Alert variant="destructive">
+            <AlertDescription>
+              O segredo de assinatura não pôde ser gerado. Rotacione o segredo no detalhe do
+              webhook antes de confiar nas entregas.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <WebhookSignatureVerificationGuide />
+
+        <div className="flex justify-end gap-2">
+          <Button
+            className="max-lg:h-11"
+            onClick={() => {
+              router.push(buildDetailPath(created.id));
+            }}
+          >
+            Ir para detalhes
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
-        <Button variant="ghost" size="sm" asChild className="w-fit px-0">
-          <Link href={`/${supabaseId}/integrations/webhooks/outbound`}>
+        <Button variant="ghost" size="sm" asChild className="w-fit px-0 max-lg:h-11">
+          <Link href={listPath}>
             <ArrowLeft data-icon="inline-start" />
             Voltar
           </Link>
@@ -74,10 +167,10 @@ export function OutboundWebhookCreateContainer({ supabaseId }: Props) {
       />
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" asChild disabled={saving}>
-          <Link href={`/${supabaseId}/integrations/webhooks/outbound`}>Cancelar</Link>
+        <Button variant="outline" asChild disabled={saving} className="max-lg:h-11">
+          <Link href={listPath}>Cancelar</Link>
         </Button>
-        <Button onClick={onSubmit} disabled={!canSubmit}>
+        <Button onClick={onSubmit} disabled={!canSubmit} className="max-lg:h-11">
           {saving ? "Salvando..." : "Criar"}
         </Button>
       </div>

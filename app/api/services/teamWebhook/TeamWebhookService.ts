@@ -7,6 +7,8 @@ import type {
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
 import { teamWebhookEventLogRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookEventLogRepository";
+import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { teamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository";
 import type { TeamWebhookRow } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookRepository";
 import {
@@ -16,6 +18,13 @@ import {
   generateTeamWebhookToken,
   hashTeamWebhookToken,
 } from "@/lib/webhooks/teamWebhookSecurity";
+import {
+  buildWebhookSigningSecretPreview,
+  decryptWebhookSigningSecret,
+  encryptWebhookSigningSecret,
+  generateWebhookSigningSecret,
+  WEBHOOK_EVENT_VERSION,
+} from "@/lib/webhooks/webhookSigningSecurity";
 import { assertSafeWebhookTargetUrlResolved } from "@/lib/webhooks/ssrfUrlGuard";
 import { wrapOutboundPayloadForPreset } from "@/lib/webhooks/webhookPayloadPresets";
 import { webhookHttpDeliveryService } from "./WebhookHttpDeliveryService";
@@ -29,6 +38,10 @@ import type {
 } from "./ITeamWebhookService";
 
 const MAX_OUTBOUND_PER_TEAM = 20;
+const MAX_DEFAULT_ASSIGNEES = 10;
+const INBOUND_V2_SCOPES = ["leads_create", "leads_schedule"] as const;
+/** SPEC 10, W23: sem teto para entrada existia até aqui. */
+const MAX_INBOUND_PER_TEAM = 10;
 const NONE_TOKEN_HASH = hashTeamWebhookToken("__none__");
 
 const toIso = (value: Date | null | undefined): string | null =>
@@ -39,8 +52,10 @@ export class TeamWebhookService implements ITeamWebhookService {
     return { profileId: access.profileId, teamId: access.teamId };
   }
 
-  private buildInboundUrl(appUrl: string, teamId: string, token: string | null): string {
+  private buildInboundUrl(appUrl: string, teamId: string, token: string | null, version = 1): string {
     const base = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
+    // v2 (SPEC 11, DA1/DA3): o token vai no header Authorization, nunca na URL.
+    if (version === 2) return `${base}/api/webhooks/studio/v2/${teamId}`;
     if (!token) {
       return `${base}/api/webhooks/studio/${teamId}`;
     }
@@ -49,7 +64,9 @@ export class TeamWebhookService implements ITeamWebhookService {
 
   toSummary(row: TeamWebhookRow, appUrl: string, token?: string): TeamWebhookSummaryDto {
     let webhookUrl: string | null = null;
-    if (row.direction === "inbound") {
+    if (row.direction === "inbound" && row.contractVersion === 2) {
+      webhookUrl = this.buildInboundUrl(appUrl, row.teamId, null, 2);
+    } else if (row.direction === "inbound") {
       if (row.tokenHash === NONE_TOKEN_HASH || !row.tokenHash) {
         webhookUrl = this.buildInboundUrl(appUrl, row.teamId, null);
       } else if (token) {
@@ -64,6 +81,11 @@ export class TeamWebhookService implements ITeamWebhookService {
       direction: row.direction,
       status: row.status,
       name: row.name,
+      contractVersion: row.contractVersion,
+      scopes: row.scopes ?? [],
+      defaultAssigneeProfileIds: row.defaultAssigneeProfileIds ?? [],
+      lastAssignedProfileId: row.lastAssignedProfileId,
+      defaultMeetingLink: row.defaultMeetingLink,
       targetUrl: row.targetUrl,
       destinationPreset: row.destinationPreset,
       selectedEvents: row.selectedEvents,
@@ -75,6 +97,7 @@ export class TeamWebhookService implements ITeamWebhookService {
       pausedAt: toIso(row.pausedAt),
       pauseReason: row.pauseReason,
       tokenPreview: row.tokenPreview,
+      signingSecretPreview: row.signingSecretPreview,
       expiryMode: row.expiryMode,
       expiresAt: toIso(row.expiresAt),
       webhookUrl,
@@ -108,22 +131,15 @@ export class TeamWebhookService implements ITeamWebhookService {
     return row ? this.toSummary(row, appUrl) : null;
   }
 
+  // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição — sem branch
+  // para esse modo aqui. `NONE_TOKEN_HASH` continua existindo só para o
+  // `toSummary` reconhecer webhooks históricos nesse modo na LEITURA (0
+  // medidos em produção em 21/09, mas o dado pode existir).
   private resolveTokenFields(input: {
-    tokenMode: "manual" | "auto" | "none";
+    tokenMode: "manual" | "auto";
     manualToken?: string;
     expiryMode: StudioWebhookTokenExpiryMode;
   }) {
-    if (input.tokenMode === "none") {
-      return {
-        token: null as string | null,
-        tokenHash: NONE_TOKEN_HASH,
-        tokenCipher: null as string | null,
-        tokenPreview: "sem-token",
-        expiryMode: input.expiryMode,
-        expiresAt: computeTeamWebhookTokenExpiry(input.expiryMode),
-      };
-    }
-
     if (input.tokenMode === "manual") {
       const manual = input.manualToken?.trim() ?? "";
       if (manual.length < 8) {
@@ -155,7 +171,7 @@ export class TeamWebhookService implements ITeamWebhookService {
     access: TeamAccess,
     input: CreateInboundWebhookInput | CreateOutboundWebhookInput,
     appUrl: string
-  ) {
+  ): Promise<TeamWebhookSummaryDto & { token?: string; signingSecret?: string }> {
     if (input.direction === "outbound") {
       const count = await teamWebhookRepository.countOutboundWithCtx(this.ctx(access));
       if (count >= MAX_OUTBOUND_PER_TEAM) {
@@ -171,6 +187,16 @@ export class TeamWebhookService implements ITeamWebhookService {
         throw new Error(guard.reason);
       }
 
+      const signingSecret = generateWebhookSigningSecret();
+      const signingSecretCipher = encryptWebhookSigningSecret(signingSecret);
+      if (!signingSecretCipher) {
+        // R20-6: sem chave de cifra configurada, a entrega sairia sem assinatura em
+        // silêncio — melhor falhar a criação do que gerar um webhook que nunca assina.
+        throw new Error(
+          "Não foi possível gerar o segredo de assinatura. Verifique a configuração de cifra do servidor."
+        );
+      }
+
       const row = await teamWebhookRepository.createWithCtx(this.ctx(access), {
         direction: "outbound",
         name: input.name.trim(),
@@ -178,9 +204,20 @@ export class TeamWebhookService implements ITeamWebhookService {
         destinationPreset: input.destinationPreset,
         selectedEvents: input.selectedEvents,
         failureThreshold: input.failureThreshold ?? 10,
+        signingSecretCipher,
+        signingSecretPreview: buildWebhookSigningSecretPreview(signingSecret),
       });
 
-      return this.toSummary(row, appUrl);
+      return { ...this.toSummary(row, appUrl), signingSecret };
+    }
+
+    const inboundCount = await teamWebhookRepository.countInboundWithCtx(this.ctx(access));
+    if (inboundCount >= MAX_INBOUND_PER_TEAM) {
+      throw new Error(`Limite de ${MAX_INBOUND_PER_TEAM} webhooks de entrada por time`);
+    }
+
+    if (input.contractVersion === 2) {
+      return this.createInboundV2(access, input, appUrl);
     }
 
     const tokenFields = this.resolveTokenFields(input);
@@ -198,6 +235,71 @@ export class TeamWebhookService implements ITeamWebhookService {
       ...this.toSummary(row, appUrl, tokenFields.token ?? undefined),
       token: tokenFields.token ?? undefined,
     };
+  }
+
+  /**
+   * Webhook de entrada v2 (SPEC 11). Regras: token só gerado (D22) e com validade (D20); escopo
+   * `leads_create` obrigatório (DA3); ao menos um SDR ativo do time, sem repetição (DA11); e, se algum
+   * closer não tem Google conectado, o link de Meet padrão passa a ser obrigatório (DA10).
+   */
+  private async createInboundV2(
+    access: TeamAccess,
+    input: CreateInboundWebhookInput,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { token?: string }> {
+    if (input.tokenMode === "manual") {
+      throw new Error("Na versão 2 só token gerado é aceito: não existe token manual.");
+    }
+    if (input.expiryMode === "indeterminate") {
+      throw new Error("Na versão 2 o token precisa de validade: escolha uma validade diferente de indeterminada.");
+    }
+
+    const scopes = input.scopes ?? ["leads_create"];
+    const unknownScope = scopes.find((scope) => !(INBOUND_V2_SCOPES as readonly string[]).includes(scope));
+    if (unknownScope) throw new Error(`Escopo desconhecido: ${unknownScope}.`);
+    if (!scopes.includes("leads_create")) throw new Error("O escopo leads_create é obrigatório.");
+
+    const assignees = input.defaultAssigneeProfileIds ?? [];
+    if (assignees.length === 0) throw new Error("Informe ao menos um SDR padrão para o rodízio de leads.");
+    if (assignees.length > MAX_DEFAULT_ASSIGNEES) {
+      throw new Error(`Informe no máximo ${MAX_DEFAULT_ASSIGNEES} SDRs padrão.`);
+    }
+    if (new Set(assignees).size !== assignees.length) throw new Error("Há SDR repetido na lista de SDRs padrão.");
+    const validSdrs = await teamMembersRepository.findActiveSdrProfileIds(access.teamId, assignees);
+    if (validSdrs.length !== assignees.length) {
+      throw new Error("Todos os SDRs padrão precisam ser SDRs ativos deste time.");
+    }
+
+    const closersWithoutGoogle = await teamMembersRepository.findActiveClosersWithoutGoogle(access.teamId);
+    const rawLink = input.defaultMeetingLink?.trim() ? input.defaultMeetingLink.trim() : null;
+    let defaultMeetingLink: string | null = null;
+    if (rawLink) {
+      const validated = validateMeetingLinkValue(rawLink, { required: true });
+      if (!validated.isValid) throw new Error(validated.error);
+      defaultMeetingLink = validated.normalized ?? rawLink;
+    } else if (closersWithoutGoogle.length > 0) {
+      const names = closersWithoutGoogle.map((closer) => closer.fullName ?? "Closer sem nome").join(", ");
+      throw new Error(
+        `Estes closers não têm conta Google conectada, então o sistema não consegue gerar o link do Google Meet para as reuniões online deles: ${names}. Informe um link de Meet padrão para usar nessas reuniões.`
+      );
+    }
+
+    const tokenFields = this.resolveTokenFields({ ...input, tokenMode: "auto" });
+    const row = await teamWebhookRepository.createWithCtx(this.ctx(access), {
+      direction: "inbound",
+      name: input.name.trim(),
+      contractVersion: 2,
+      scopes,
+      defaultAssigneeProfileIds: assignees,
+      defaultMeetingLink,
+      tokenHash: tokenFields.tokenHash,
+      tokenCipher: tokenFields.tokenCipher,
+      tokenPreview: tokenFields.tokenPreview,
+      expiryMode: tokenFields.expiryMode,
+      expiresAt: tokenFields.expiresAt,
+    });
+
+    return { ...this.toSummary(row, appUrl), token: tokenFields.token };
   }
 
   async update(
@@ -270,6 +372,36 @@ export class TeamWebhookService implements ITeamWebhookService {
       ...this.toSummary(row, appUrl, tokenFields?.token ?? undefined),
       token: tokenFields?.token ?? undefined,
     };
+  }
+
+  async rotateSigningSecret(
+    access: TeamAccess,
+    id: string,
+    appUrl: string
+  ): Promise<TeamWebhookSummaryDto & { signingSecret: string }> {
+    const existing = await teamWebhookRepository.findByIdWithCtx(this.ctx(access), id);
+    if (!existing) {
+      throw new Error("Webhook não encontrado");
+    }
+    if (existing.direction !== "outbound") {
+      throw new Error("Segredo de assinatura disponível apenas para webhooks de saída");
+    }
+
+    const signingSecret = generateWebhookSigningSecret();
+    const signingSecretCipher = encryptWebhookSigningSecret(signingSecret);
+    if (!signingSecretCipher) {
+      // R20-6: mesma regra do create — nunca persistir uma rotação sem cifra válida.
+      throw new Error(
+        "Não foi possível gerar o segredo de assinatura. Verifique a configuração de cifra do servidor."
+      );
+    }
+
+    const row = await teamWebhookRepository.updateWithCtx(this.ctx(access), id, {
+      signingSecretCipher,
+      signingSecretPreview: buildWebhookSigningSecretPreview(signingSecret),
+    });
+
+    return { ...this.toSummary(row, appUrl), signingSecret };
   }
 
   async changeStatus(
@@ -353,6 +485,7 @@ export class TeamWebhookService implements ITeamWebhookService {
     const envelope = {
       id: `evt_test_${Date.now()}`,
       type: "webhook_test" as const,
+      version: WEBHOOK_EVENT_VERSION,
       created_at: new Date().toISOString(),
       team_id: access.teamId,
       data: {
@@ -368,10 +501,39 @@ export class TeamWebhookService implements ITeamWebhookService {
       envelope as unknown as Parameters<typeof wrapOutboundPayloadForPreset>[1]
     );
 
+    // R20-9: `existing` já veio com signingSecretCipher via TEAM_WEBHOOK_SELECT —
+    // não precisa de uma segunda leitura (findForDelivery) só para o mesmo campo.
+    const signingSecret = decryptWebhookSigningSecret(existing.signingSecretCipher);
+
+    if (!signingSecret) {
+      // Achado de code review (Codex, PR #1220): sem segredo — cifra ausente ou
+      // ilegível — nunca testar (nem entregar) sem assinatura em silêncio. Mesma
+      // regra do cron em ProcessWebhookOutboxUseCase.
+      const errorMessage = existing.signingSecretCipher
+        ? "Segredo de assinatura ilegível — teste bloqueado por segurança"
+        : "Segredo de assinatura não configurado — teste bloqueado por segurança";
+      await teamWebhookEventLogRepository.create({
+        teamId: access.teamId,
+        webhookId: existing.id,
+        direction: "outbound",
+        result: "failure",
+        eventKey: null,
+        method: "POST",
+        endpoint: existing.targetUrl,
+        statusCode: null,
+        requestPayload: body,
+        responsePayload: null,
+        errorMessage,
+      });
+      await teamWebhookRepository.touchUsage(existing.id, false);
+      return { ok: false, statusCode: null, errorMessage };
+    }
+
     const result = await webhookHttpDeliveryService.deliver({
       targetUrl: existing.targetUrl,
       preset: existing.destinationPreset ?? "generic",
       body,
+      signingSecret,
     });
 
     await teamWebhookEventLogRepository.create({

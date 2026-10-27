@@ -50,7 +50,7 @@ export function GlobalLoading() {
         <div className="flex-1 p-6 space-y-6 overflow-auto">
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-4">
-              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+              <Loader2 className="h-12 w-12 animate-spin motion-reduce:animate-none text-primary mx-auto" />
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Carregando...</h3>
                 <p className="text-sm text-muted-foreground">
@@ -73,7 +73,7 @@ export function PageLoading() {
   return (
     <div className="flex items-center justify-center h-[60vh]">
       <div className="text-center space-y-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+        <Loader2 className="h-12 w-12 animate-spin motion-reduce:animate-none text-primary mx-auto" />
         <div className="space-y-2">
           <h3 className="text-lg font-semibold">Carregando...</h3>
           <p className="text-sm text-muted-foreground">

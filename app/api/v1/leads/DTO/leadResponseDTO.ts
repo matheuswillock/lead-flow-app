@@ -29,6 +29,8 @@ export interface LeadResponseDTO {
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;
   meetingPresenceConfirmed: boolean;
+  /** Webhook v2 pediu um horário que não estava livre: o card mostra "Remarcar urgente" até agendar. */
+  needsReschedule: boolean;
   meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
   originChannel: LeadOriginChannel | null;

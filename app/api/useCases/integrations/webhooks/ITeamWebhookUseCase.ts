@@ -32,6 +32,7 @@ export interface ITeamWebhookUseCase {
     input: UpdateTeamWebhookInput,
     appUrl: string
   ): Promise<Output>;
+  rotateSigningSecret(access: TeamAccess, id: string, appUrl: string): Promise<Output>;
   changeStatus(
     access: TeamAccess,
     id: string,

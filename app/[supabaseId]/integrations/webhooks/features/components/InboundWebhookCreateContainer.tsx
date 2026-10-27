@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
@@ -10,45 +10,88 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Field, FieldGroup } from "@/components/ui/field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTeamContext } from "@/app/context/TeamContext";
-import { teamWebhooksService } from "../services/TeamWebhooksService";
-import type { TeamWebhookSummary } from "../services/ITeamWebhooksService";
+import type {
+  CreateInboundWebhookPayload,
+  TeamMemberOption,
+  TeamWebhookSummary,
+} from "../services/ITeamWebhooksService";
+import { WebhookInboundConfigFields } from "./WebhookInboundConfigFields";
+import { WebhookInboundV2Fields } from "./WebhookInboundV2Fields";
 import {
-  WebhookInboundConfigFields,
-  type WebhookInboundFormValues,
-} from "./WebhookInboundConfigFields";
+  buildInboundCreatePayload,
+  INITIAL_INBOUND_CREATE_FORM,
+  validateInboundCreateForm,
+  type InboundCreateFormState,
+} from "./inboundWebhookCreateForm";
 
-type Props = { supabaseId: string };
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — a chamada real de
+ * criação passa pelo Service page-local (`InboundWebhookCreateService`),
+ * injetado via Hook/Context da rota, em vez deste componente compartilhado
+ * importar `teamWebhooksService` direto.
+ */
+type InboundWebhookCreateServiceLike = {
+  create(supabaseId: string, teamId: string, payload: CreateInboundWebhookPayload): Promise<TeamWebhookSummary>;
+  listTeamMembers(supabaseId: string, teamId: string): Promise<TeamMemberOption[]>;
+};
 
-export function InboundWebhookCreateContainer({ supabaseId }: Props) {
+type Props = {
+  supabaseId: string;
+  /** SPEC 10, R10-5: caminhos vêm do Hook page-local (InboundWebhookCreateHook), não hardcoded aqui. */
+  listPath: string;
+  buildDetailPath: (webhookId: string) => string;
+  service: InboundWebhookCreateServiceLike;
+  /** Nome sugerido ao criar um v2 a partir de um v1 (query `from_name` da tela de detalhe). */
+  initialName?: string;
+};
+
+export function InboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service, initialName }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
-  const [values, setValues] = useState<WebhookInboundFormValues>({
-    name: "Webhook Genérico de Leads",
-    tokenMode: "auto",
-    manualToken: "",
-    expiryMode: "indeterminate",
-  });
+  const [form, setForm] = useState<InboundCreateFormState>(() =>
+    initialName?.trim()
+      ? { ...INITIAL_INBOUND_CREATE_FORM, base: { ...INITIAL_INBOUND_CREATE_FORM.base, name: initialName.trim() } }
+      : INITIAL_INBOUND_CREATE_FORM,
+  );
+  const [members, setMembers] = useState<TeamMemberOption[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<TeamWebhookSummary | null>(null);
 
-  const canSubmit =
-    Boolean(activeTeam?.id) &&
-    values.name.trim().length > 0 &&
-    (values.tokenMode !== "manual" || values.manualToken.trim().length >= 8) &&
-    !saving;
+  const teamId = activeTeam?.id;
+  useEffect(() => {
+    if (!teamId) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    service
+      .listTeamMembers(supabaseId, teamId)
+      .then((list) => {
+        if (!cancelled) setMembers(list);
+      })
+      .catch((error) => {
+        if (!cancelled) toastUserError(error);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [service, supabaseId, teamId]);
+
+  const validation = validateInboundCreateForm(form, members);
+  // Com a lista de membros ainda carregando não dá para saber se falta Google: não libera o envio.
+  const canSubmit = Boolean(teamId) && validation.ok && !saving && (form.version === 1 || !membersLoading);
+
+  const patchForm = (patch: Partial<InboundCreateFormState>) => setForm((current) => ({ ...current, ...patch }));
 
   const onSubmit = async () => {
-    if (!activeTeam?.id || !canSubmit) return;
+    if (!teamId || !canSubmit) return;
     setSaving(true);
     try {
-      const result = await teamWebhooksService.create(supabaseId, activeTeam.id, {
-        direction: "inbound",
-        name: values.name.trim(),
-        tokenMode: values.tokenMode,
-        manualToken: values.tokenMode === "manual" ? values.manualToken.trim() : undefined,
-        expiryMode: values.expiryMode,
-      });
+      const result = await service.create(supabaseId, teamId, buildInboundCreatePayload(form));
       toast.success("Webhook de entrada criado");
       setCreated(result);
     } catch (error) {
@@ -76,6 +119,12 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
             Copie a URL (e o token, se houver) agora. Depois desta tela o token completo não será
             exibido novamente.
           </p>
+          {created.contractVersion === 2 ? (
+            <p className="text-sm text-muted-foreground">
+              Versão 2: o token vai no header <code>Authorization: Bearer</code>, nunca na URL. O webhook responde só
+              que recebeu o evento; o resultado de cada um aparece nos logs deste webhook.
+            </p>
+          ) : null}
         </div>
 
         <FieldGroup>
@@ -119,7 +168,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
         <div className="flex justify-end gap-2">
           <Button
             onClick={() => {
-              router.push(`/${supabaseId}/integrations/webhooks/inbound/${created.id}`);
+              router.push(buildDetailPath(created.id));
             }}
           >
             Ir para detalhes
@@ -133,7 +182,7 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
         <Button variant="ghost" size="sm" asChild className="w-fit px-0">
-          <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>
+          <Link href={listPath}>
             <ArrowLeft data-icon="inline-start" />
             Voltar
           </Link>
@@ -141,14 +190,69 @@ export function InboundWebhookCreateContainer({ supabaseId }: Props) {
         <h1 className="text-2xl font-semibold">Novo webhook de entrada</h1>
       </div>
 
-      <WebhookInboundConfigFields
-        values={values}
-        onChange={(patch) => setValues((current) => ({ ...current, ...patch }))}
-      />
+      <FieldGroup>
+        <Field>
+          <Label>Versão do contrato</Label>
+          <RadioGroup
+            value={String(form.version)}
+            onValueChange={(value) => patchForm({ version: value === "1" ? 1 : 2 })}
+            className="gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="2" id="inbound-version-2" />
+              <Label htmlFor="inbound-version-2">Versão 2 (recomendada): token no header, agenda e rodízio de SDR</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="1" id="inbound-version-1" />
+              <Label htmlFor="inbound-version-1">Versão 1 (legada): token na URL, só cria o lead</Label>
+            </div>
+          </RadioGroup>
+        </Field>
+      </FieldGroup>
+
+      {form.version === 1 ? (
+        <WebhookInboundConfigFields values={form.base} onChange={(patch) => patchForm({ base: { ...form.base, ...patch } })} />
+      ) : (
+        <>
+          <FieldGroup>
+            <Field>
+              <Label htmlFor="inbound-v2-name">Nome</Label>
+              <Input
+                id="inbound-v2-name"
+                value={form.base.name}
+                maxLength={120}
+                onChange={(event) => patchForm({ base: { ...form.base, name: event.target.value } })}
+              />
+            </Field>
+            <Field>
+              <Label>Validade do token</Label>
+              <RadioGroup
+                value={form.base.expiryMode}
+                onValueChange={(value) =>
+                  patchForm({ base: { ...form.base, expiryMode: value as InboundCreateFormState["base"]["expiryMode"] } })
+                }
+                className="gap-3"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="months_6" id="inbound-v2-exp-6" />
+                  <Label htmlFor="inbound-v2-exp-6">6 meses</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="hours_24" id="inbound-v2-exp-24" />
+                  <Label htmlFor="inbound-v2-exp-24">24 horas (só para teste)</Label>
+                </div>
+              </RadioGroup>
+            </Field>
+          </FieldGroup>
+          <WebhookInboundV2Fields state={form} members={members} membersLoading={membersLoading} onChange={patchForm} />
+        </>
+      )}
+
+      {!validation.ok ? <p className="text-sm text-muted-foreground">{validation.reason}</p> : null}
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" asChild disabled={saving}>
-          <Link href={`/${supabaseId}/integrations/webhooks/inbound`}>Cancelar</Link>
+          <Link href={listPath}>Cancelar</Link>
         </Button>
         <Button onClick={onSubmit} disabled={!canSubmit}>
           {saving ? "Salvando..." : "Criar"}

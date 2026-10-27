@@ -3,6 +3,7 @@ import type { Prisma, TeamWebhookEventKey } from "@prisma/client";
 import * as Sentry from "@sentry/nextjs";
 import { teamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookRepository";
 import { teamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookOutboxRepository";
+import { WEBHOOK_EVENT_VERSION } from "@/lib/webhooks/webhookSigningSecurity";
 import type { ITeamWebhookRepository } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookRepository";
 import type { ITeamWebhookOutboxRepository } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookOutboxRepository";
 
@@ -49,6 +50,7 @@ export class OutboundEventPublisher implements IOutboundEventPublisher {
       const envelope = {
         id: `evt_${randomUUID()}`,
         type: event.eventKey,
+        version: WEBHOOK_EVENT_VERSION,
         created_at: occurredAt,
         team_id: event.teamId,
         data: {

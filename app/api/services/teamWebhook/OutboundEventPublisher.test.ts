@@ -69,4 +69,26 @@ describe("OutboundEventPublisher", () => {
       failedWebhooks: 1,
     });
   });
+
+  test("T-20.3: enfileira o envelope com version: 1 (campo aditivo)", async () => {
+    const enqueue = mock(async (_input: { payload: Record<string, unknown> }) => {});
+    const publisher = new OutboundEventPublisher(
+      { findActiveOutboundForEvent: async () => [{ id: "webhook-1" }] } as never,
+      { enqueue } as never
+    );
+
+    await publisher.publish(event);
+
+    const envelope = enqueue.mock.calls[0]?.[0].payload as {
+      id: string;
+      type: string;
+      version: number;
+      team_id: string;
+    };
+    expect(envelope.version).toBe(1);
+    // Campos existentes continuam presentes: version é aditivo, não substitui nada.
+    expect(envelope.id).toMatch(/^evt_/);
+    expect(envelope.type).toBe("lead_created");
+    expect(envelope.team_id).toBe("team-1");
+  });
 });

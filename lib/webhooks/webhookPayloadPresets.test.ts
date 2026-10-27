@@ -4,6 +4,7 @@ import { wrapOutboundPayloadForPreset } from "./webhookPayloadPresets";
 const envelope = {
   id: "evt_1",
   type: "lead_created" as const,
+  version: 1 as const,
   created_at: "2026-07-27T15:00:00.000Z",
   team_id: "team-1",
   data: { lead: { id: "l1", name: "Ana" } },

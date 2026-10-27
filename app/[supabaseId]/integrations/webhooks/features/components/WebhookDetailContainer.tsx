@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy, RefreshCcw } from "lucide-react";
+import { AlertCircle, ArrowLeft, Copy, KeyRound, RefreshCcw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -26,6 +28,8 @@ import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type {
   TeamWebhookDirection,
   TeamWebhookLogItem,
+  TeamMemberOption,
+  TeamWebhookLogResult,
   TeamWebhookSummary,
   UpdateTeamWebhookPayload,
 } from "../services/ITeamWebhooksService";
@@ -38,16 +42,65 @@ import {
   WebhookOutboundConfigFields,
   type WebhookOutboundFormValues,
 } from "./WebhookOutboundConfigFields";
+import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 import { WebhookLogsPanel } from "./WebhookLogsPanel";
+import { WebhookInboundV2Guide } from "./WebhookInboundV2Guide";
+import { WebhookInboundV2Overview } from "./WebhookInboundV2Overview";
+
+/**
+ * SPEC 10, R10-5 (revisão Opus, decisão do owner) — as chamadas de rede
+ * passam pelo Service page-local (`InboundWebhookDetailService` /
+ * `OutboundWebhookDetailService`), injetado via Hook/Context da rota. A mesma
+ * interface estrutural serve para as duas direções. Sem `service`, o
+ * componente usa `teamWebhooksService` (uso direto e testes do painel de logs).
+ */
+type WebhookDetailServiceLike = {
+  getById(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  update(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    payload: UpdateTeamWebhookPayload
+  ): Promise<TeamWebhookSummary>;
+  changeStatus(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    body: { status: "active" | "disabled" } | { action: "reactivate" }
+  ): Promise<TeamWebhookSummary>;
+  listLogs(
+    supabaseId: string,
+    teamId: string,
+    id: string,
+    params: { page?: number; pageSize?: number; result?: TeamWebhookLogResult }
+  ): Promise<{ items: TeamWebhookLogItem[]; total: number; page: number; pageSize: number }>;
+  testDelivery(
+    supabaseId: string,
+    teamId: string,
+    id: string
+  ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+  rotateSigningSecret(supabaseId: string, teamId: string, id: string): Promise<TeamWebhookSummary>;
+  resendLog(
+    supabaseId: string,
+    teamId: string,
+    webhookId: string,
+    logId: string
+  ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }>;
+};
 
 type Props = {
   supabaseId: string;
   webhookId: string;
   direction: TeamWebhookDirection;
+  /** SPEC 10, R10-5: caminho de volta à lista, derivado pelo Hook page-local. */
+  listPath?: string;
+  service?: WebhookDetailServiceLike;
 };
 
-function inferInboundTokenMode(webhook: TeamWebhookSummary): WebhookInboundFormValues["tokenMode"] {
-  if (webhook.tokenPreview === "sem-token") return "none";
+// SPEC 10, DA4/A-E4: "none" saiu da UI de edição — um webhook histórico
+// nesse modo (0 medidos em produção em 21/09) abre o formulário em "auto"
+// como valor de edição; salvar (rotacionar) sempre gera um token real.
+function inferInboundTokenMode(_webhook: TeamWebhookSummary): WebhookInboundFormValues["tokenMode"] {
   return "auto";
 }
 
@@ -116,7 +169,13 @@ function buildOutboundUpdatePayload(
   return Object.keys(payload).length > 0 ? payload : null;
 }
 
-export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Props) {
+export function WebhookDetailContainer({
+  supabaseId,
+  webhookId,
+  direction,
+  listPath = `/${supabaseId}/integrations/webhooks/${direction}`,
+  service = teamWebhooksService,
+}: Props) {
   const { activeTeam } = useTeamContext();
   const { tz } = useTimezone();
   const [webhook, setWebhook] = useState<TeamWebhookSummary | null>(null);
@@ -136,9 +195,16 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const [resendingLogId, setResendingLogId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("config");
   const [rotatedToken, setRotatedToken] = useState<{ url: string; token?: string } | null>(null);
+  const [rotatingSecret, setRotatingSecret] = useState(false);
+  const [revealedSigningSecret, setRevealedSigningSecret] = useState<string | null>(null);
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
+  const [confirmingRotateSecret, setConfirmingRotateSecret] = useState(false);
+  const [showSignatureGuide, setShowSignatureGuide] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [members, setMembers] = useState<TeamMemberOption[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const logsRequestIdRef = useRef(0);
 
-  const listPath = `/${supabaseId}/integrations/webhooks/${direction}`;
 
   const applyWebhookToDraft = useCallback((detail: TeamWebhookSummary) => {
     setWebhook(detail);
@@ -160,24 +226,53 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
   const loadConfiguration = useCallback(async () => {
     if (!activeTeam?.id) return;
     setLoading(true);
+    // SPEC 10, B-E2 (W14): erro de carregamento é um estado próprio, nunca
+    // um skeleton que trava para sempre porque `webhook` nunca chega a
+    // existir. Controle negativo: voltar ao `if (loading || !webhook)` e a
+    // tela trava em skeleton quando a API falha.
+    setLoadError(null);
     try {
-      const detail = await teamWebhooksService.getById(supabaseId, activeTeam.id, webhookId);
+      const detail = await service.getById(supabaseId, activeTeam.id, webhookId);
       applyWebhookToDraft(detail);
     } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Não foi possível carregar este webhook");
       toastUserError(error);
     } finally {
       setLoading(false);
     }
-  }, [activeTeam?.id, applyWebhookToDraft, supabaseId, webhookId]);
+  }, [activeTeam?.id, applyWebhookToDraft, service, supabaseId, webhookId]);
 
   useEffect(() => {
     void loadConfiguration();
   }, [loadConfiguration]);
 
+  const needsMembers = direction === "inbound" && webhook?.contractVersion === 2;
+  useEffect(() => {
+    const teamId = activeTeam?.id;
+    if (!needsMembers || !teamId) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    teamWebhooksService
+      .listTeamMembers(supabaseId, teamId)
+      .then((list) => {
+        if (!cancelled) setMembers(list);
+      })
+      .catch(() => {
+        // O resumo continua útil sem os nomes: mostra "Fora do time" e o rodízio por posição.
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTeam?.id, needsMembers, supabaseId]);
+
   const fetchLogsPage = useCallback(async (page: number) => {
     if (!activeTeam?.id) return null;
     const requestId = ++logsRequestIdRef.current;
-    const result = await teamWebhooksService.listLogs(supabaseId, activeTeam.id, webhookId, {
+    const result = await service.listLogs(supabaseId, activeTeam.id, webhookId, {
       page,
       pageSize: 20,
     });
@@ -190,7 +285,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
         : (result.items[0]?.id ?? null)
     );
     return result;
-  }, [activeTeam?.id, supabaseId, webhookId]);
+  }, [activeTeam?.id, service, supabaseId, webhookId]);
 
   const loadLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -259,7 +354,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || actionPending) return;
     setActionPending(true);
     try {
-      const updated = await teamWebhooksService.changeStatus(
+      const updated = await service.changeStatus(
         supabaseId,
         activeTeam.id,
         webhookId,
@@ -278,7 +373,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || actionPending) return;
     setActionPending(true);
     try {
-      await teamWebhooksService.testDelivery(supabaseId, activeTeam.id, webhookId);
+      await service.testDelivery(supabaseId, activeTeam.id, webhookId);
       toast.success("Envio de teste concluído");
       setLogsPage(1);
       const result = await fetchLogsPage(1);
@@ -290,11 +385,35 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   };
 
+  const runRotateSigningSecret = async () => {
+    if (!activeTeam?.id || rotatingSecret) return;
+    setRotatingSecret(true);
+    try {
+      const updated = await service.rotateSigningSecret(
+        supabaseId,
+        activeTeam.id,
+        webhookId
+      );
+      // Achado da 2ª revisão final (Opus): rotacionar o segredo só muda
+      // signingSecretCipher/signingSecretPreview no servidor — usar applyWebhookToDraft
+      // aqui reconstruía outboundDraft/outboundInitial a partir da resposta e descartava
+      // em silêncio qualquer edição de nome/URL/eventos que o gestor ainda não salvou.
+      // setWebhook basta: signingSecretPreview vem de `webhook`, não do draft.
+      setWebhook(updated);
+      setRevealedSigningSecret(updated.signingSecret ?? null);
+      toast.success("Segredo de assinatura rotacionado");
+    } catch (error) {
+      toastUserError(error);
+    } finally {
+      setRotatingSecret(false);
+    }
+  };
+
   const runResend = async (log: TeamWebhookLogItem) => {
     if (!activeTeam?.id || resendingLogId) return;
     setResendingLogId(log.id);
     try {
-      const result = await teamWebhooksService.resendLog(
+      const result = await service.resendLog(
         supabaseId,
         activeTeam.id,
         webhookId,
@@ -319,7 +438,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     if (!activeTeam?.id || !updatePayload || !canSave) return;
     setSaving(true);
     try {
-      const updated = await teamWebhooksService.update(
+      const updated = await service.update(
         supabaseId,
         activeTeam.id,
         webhookId,
@@ -349,7 +468,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
     }
   };
 
-  if (loading || !webhook) {
+  if (loading) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Skeleton className="h-8 w-72" />
@@ -357,6 +476,32 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
       </div>
     );
   }
+
+  if (!webhook) {
+    return (
+      <div className="flex flex-col gap-4 p-6">
+        <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+          <Link href={listPath}>
+            <ArrowLeft data-icon="inline-start" />
+            Voltar
+          </Link>
+        </Button>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Não foi possível carregar este webhook</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3">
+            <p>{loadError ?? "Tente novamente em instantes."}</p>
+            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => void loadConfiguration()}>
+              <RefreshCcw data-icon="inline-start" />
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  const showInboundV2Guide = direction === "inbound" && webhook.contractVersion === 2;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -384,7 +529,11 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             <Button
               variant="outline"
               className="min-h-11"
-              onClick={() => runStatus({ status: "disabled" })}
+              onClick={() =>
+                direction === "outbound"
+                  ? setConfirmingDeactivate(true)
+                  : runStatus({ status: "disabled" })
+              }
               disabled={actionPending}
             >
               Desativar
@@ -417,9 +566,20 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
         <TabsList>
           <TabsTrigger value="config" className="min-h-11">Configuração</TabsTrigger>
           <TabsTrigger value="logs" className="min-h-11">Logs</TabsTrigger>
+          {showInboundV2Guide ? <TabsTrigger value="guide" className="min-h-11">Guia</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
+            {direction === "inbound" ? (
+              <div className="mb-6">
+                <WebhookInboundV2Overview
+                  webhook={webhook}
+                  members={members}
+                  membersLoading={membersLoading}
+                  inboundListPath={listPath}
+                />
+              </div>
+            ) : null}
             {direction === "inbound" && inboundDraft ? (
               <WebhookInboundConfigFields
                 idPrefix="detail-inbound"
@@ -443,6 +603,43 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
                 <p className="mt-4 text-sm text-muted-foreground">
                   Falhas consecutivas: {webhook.failureStreak}/{webhook.failureThreshold}
                 </p>
+
+                <div className="mt-6 flex flex-col gap-3 rounded-lg border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <Label>Segredo de assinatura (HMAC)</Label>
+                      <p className="font-mono text-sm text-muted-foreground">
+                        {webhook.signingSecretPreview ?? "não configurado"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmingRotateSecret(true)}
+                      disabled={rotatingSecret || actionPending}
+                    >
+                      <KeyRound data-icon="inline-start" />
+                      {rotatingSecret ? "Rotacionando..." : "Rotacionar segredo"}
+                    </Button>
+                  </div>
+                  {!webhook.signingSecretPreview ? (
+                    <p className="flex items-start gap-2 text-sm text-destructive">
+                      <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                      Sem segredo configurado, as entregas deste webhook falham e não são
+                      reenviadas. Rotacione um segredo para retomar o envio.
+                    </p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit px-0"
+                    onClick={() => setShowSignatureGuide((current) => !current)}
+                  >
+                    {showSignatureGuide ? "Ocultar guia de verificação" : "Ver guia de verificação"}
+                  </Button>
+                  {showSignatureGuide ? <WebhookSignatureVerificationGuide /> : null}
+                </div>
               </>
             ) : null}
             <div className="mt-6 flex justify-end">
@@ -461,6 +658,7 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             isRefreshing={logsRefreshing}
             resendingLogId={resendingLogId}
             canResend={direction === "outbound" && webhook.status !== "disabled"}
+            supabaseId={supabaseId}
             onSelect={setSelectedLogId}
             onRefresh={() => void refreshLogs()}
             onResend={(log) => void runResend(log)}
@@ -491,6 +689,14 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
             </div>
           </div>
         </TabsContent>
+        {showInboundV2Guide ? (
+          <TabsContent value="guide" className="min-w-0 pt-4">
+            <WebhookInboundV2Guide
+              webhookUrl={webhook.webhookUrl}
+              apiCatalogHref={`/${supabaseId}/integrations/api-catalog`}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <AlertDialog open={Boolean(rotatedToken)} onOpenChange={(open) => !open && setRotatedToken(null)}>
@@ -535,6 +741,99 @@ export function WebhookDetailContainer({ supabaseId, webhookId, direction }: Pro
           </div>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setRotatedToken(null)}>Entendi</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(revealedSigningSecret)}
+        onOpenChange={(open) => !open && setRevealedSigningSecret(null)}
+      >
+        <AlertDialogContent className="max-h-[90vh] flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Segredo de assinatura atualizado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Copie o segredo agora e atualize o verificador no destino. Depois desta tela ele
+              não será exibido novamente — o segredo anterior para de validar assinaturas
+              imediatamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rotated-signing-secret">Segredo de assinatura (HMAC)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="rotated-signing-secret"
+                  readOnly
+                  value={revealedSigningSecret ?? ""}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="max-lg:size-11"
+                  aria-label="Copiar segredo de assinatura"
+                  onClick={() => revealedSigningSecret && void copyValue(revealedSigningSecret)}
+                >
+                  <Copy />
+                </Button>
+              </div>
+            </div>
+            <WebhookSignatureVerificationGuide />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setRevealedSigningSecret(null)}>
+              Entendi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmingDeactivate} onOpenChange={setConfirmingDeactivate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desativar este webhook?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O webhook é desativado, não excluído: nenhum evento novo é entregue, mas os logs
+              de entrega e o histórico continuam disponíveis nesta tela. Você pode reativá-lo a
+              qualquer momento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmingDeactivate(false);
+                void runStatus({ status: "disabled" });
+              }}
+            >
+              Desativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmingRotateSecret} onOpenChange={setConfirmingRotateSecret}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotacionar o segredo de assinatura?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O segredo atual para de validar assinaturas imediatamente, sem período de
+              graça. Toda entrega feita com o segredo anterior passa a ser rejeitada pelo
+              destino até você atualizar o verificador com o novo segredo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmingRotateSecret(false);
+                void runRotateSigningSecret();
+              }}
+            >
+              Rotacionar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

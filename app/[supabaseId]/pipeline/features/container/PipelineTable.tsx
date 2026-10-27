@@ -101,6 +101,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    onlyNeedsReschedule,
+    setOnlyNeedsReschedule,
     tableColumnVisibility,
     setTableColumnVisibility,
     tableColumnOrder,
@@ -405,7 +407,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     }
   };
 
-  const isFiltered = table.getState().columnFilters.length > 0 || onlyMeetingsHeld;
+  const isFiltered = table.getState().columnFilters.length > 0 || onlyMeetingsHeld || onlyNeedsReschedule;
 
   if (isLoading) {
     return (
@@ -479,6 +481,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
               }
               meetingHeld={onlyMeetingsHeld}
               onToggleMeetingHeld={setOnlyMeetingsHeld}
+              needsReschedule={onlyNeedsReschedule}
+              onToggleNeedsReschedule={setOnlyNeedsReschedule}
             />
           )}
           {assignedToColumn && responsibleOptions.length > 0 && (

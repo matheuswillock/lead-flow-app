@@ -22,7 +22,8 @@ const CreateBodySchema = z
     z.object({
       direction: z.literal("inbound"),
       name: z.string().trim().min(1).max(120),
-      tokenMode: z.enum(["manual", "auto", "none"]),
+      // SPEC 10, DA4/A-E4: "none" saiu da API de criação/edição.
+      tokenMode: z.enum(["manual", "auto"]),
       manualToken: z
         .string()
         .min(8)
@@ -30,6 +31,11 @@ const CreateBodySchema = z
         .regex(/^[A-Za-z0-9_-]+$/)
         .optional(),
       expiryMode: z.enum(["hours_24", "months_6", "indeterminate"]),
+      // SPEC 11: ausente = v1. As regras da v2 (token gerado, validade, SDRs, Meet) vivem no serviço.
+      contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+      scopes: z.array(z.enum(["leads_create", "leads_schedule"])).max(2).optional(),
+      defaultAssigneeProfileIds: z.array(z.string().uuid()).max(10).optional(),
+      defaultMeetingLink: z.string().trim().max(2048).nullish(),
     }),
     z.object({
       direction: z.literal("outbound"),

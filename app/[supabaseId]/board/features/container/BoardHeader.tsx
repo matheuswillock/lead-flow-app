@@ -71,6 +71,8 @@ export default function BoardHeader({
     setCustomFieldSort,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    onlyNeedsReschedule,
+    setOnlyNeedsReschedule,
     onlyTransfer,
     setOnlyTransfer,
     originFilter,
@@ -120,6 +122,7 @@ export default function BoardHeader({
       statusFilter,
       closerFilter,
       onlyMeetingsHeld,
+      onlyNeedsReschedule,
       onlyTransfer,
       originFilter,
       periodStart,
@@ -133,6 +136,7 @@ export default function BoardHeader({
       customFieldFilters,
       customFieldSort,
       onlyMeetingsHeld,
+      onlyNeedsReschedule,
       onlyTransfer,
       originFilter,
       periodEnd,
@@ -154,6 +158,7 @@ export default function BoardHeader({
     setStatusFilter(filters.statusFilter);
     setCloserFilter(filters.closerFilter);
     setOnlyMeetingsHeld(filters.onlyMeetingsHeld);
+    setOnlyNeedsReschedule(filters.onlyNeedsReschedule);
     setOriginFilter(filters.originFilter);
     setOnlyTransfer(filters.originFilter === "transfer" || filters.onlyTransfer);
     setPeriodStart(filters.periodStart);
@@ -220,6 +225,7 @@ export default function BoardHeader({
     statusFilter.length > 0 ||
     closerFilter.length > 0 ||
     onlyMeetingsHeld ||
+    onlyNeedsReschedule ||
     Boolean(originFilter) ||
     onlyTransfer ||
     Boolean(periodStart) ||
@@ -339,6 +345,8 @@ export default function BoardHeader({
             onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
             meetingHeld={onlyMeetingsHeld}
             onToggleMeetingHeld={setOnlyMeetingsHeld}
+            needsReschedule={onlyNeedsReschedule}
+            onToggleNeedsReschedule={setOnlyNeedsReschedule}
           />
           <LeadsSingleFilter
             title="Origem"

@@ -2,6 +2,7 @@ import type {
   CreateInboundWebhookPayload,
   CreateOutboundWebhookPayload,
   ITeamWebhooksService,
+  TeamMemberOption,
   TeamWebhookDirection,
   TeamWebhookLogResult,
   TeamWebhookStatus,
@@ -56,6 +57,25 @@ class TeamWebhooksService implements ITeamWebhooksService {
       throw new Error(this.extractErrorMessage(output, "Não foi possível listar webhooks"));
     }
     return output.result;
+  }
+
+  /** Membros do time com função e estado do Google (escolha de SDRs padrão e aviso de closers sem Google). */
+  async listTeamMembers(supabaseId: string, teamId: string): Promise<TeamMemberOption[]> {
+    const response = await fetch(`${API_CLIENT_BASE}/teams/${encodeURIComponent(teamId)}/members`, {
+      method: "GET",
+      headers: this.headers(supabaseId, teamId),
+    });
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível carregar os membros do time"));
+    }
+    const members = Array.isArray(output.result) ? output.result : (output.result?.members ?? []);
+    return (members as Array<Record<string, unknown>>).map((member) => ({
+      profileId: String(member.profileId ?? member.id),
+      name: String(member.name ?? member.fullName ?? "Usuário"),
+      functions: Array.isArray(member.functions) ? (member.functions as string[]) : [],
+      googleCalendarConnected: member.googleCalendarConnected === true,
+    }));
   }
 
   async getById(supabaseId: string, teamId: string, id: string) {
@@ -156,6 +176,21 @@ class TeamWebhooksService implements ITeamWebhooksService {
       throw new Error(this.extractErrorMessage(output, "Falha no envio de teste"));
     }
     return output.result;
+  }
+
+  async rotateSigningSecret(supabaseId: string, teamId: string, id: string) {
+    const response = await fetch(
+      `${API_CLIENT_BASE}/integrations/webhooks/${id}/signing-secret`,
+      {
+        method: "POST",
+        headers: this.headers(supabaseId, teamId),
+      }
+    );
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível rotacionar o segredo"));
+    }
+    return output.result as TeamWebhookSummary;
   }
 
   async resendLog(supabaseId: string, teamId: string, webhookId: string, logId: string) {

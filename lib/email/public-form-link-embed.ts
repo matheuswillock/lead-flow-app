@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape-html"
+
 export function buildPublicFormLinkEmailSnippet({
   formName,
   formUrl,
@@ -34,13 +36,4 @@ export function buildPublicFormLinkEmailSnippet({
     </td>
   </tr>
 </table>`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
 }

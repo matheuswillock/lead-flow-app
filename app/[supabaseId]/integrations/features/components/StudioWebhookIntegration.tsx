@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CircleAlert, Copy, FileText, Info, RefreshCcw, Save, Webhook } from "lucide-react";
+import { CircleAlert, Copy, FileText, Info, RefreshCcw, Save, Settings2, ShieldAlert, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -30,10 +40,11 @@ const expiryModeLabel: Record<"hours_24" | "months_6" | "indeterminate", string>
   indeterminate: "Indeterminado",
 };
 
-const tokenModeLabel: Record<"manual" | "auto" | "none", string> = {
+// SPEC 10, DA4/A-E4: "Sem token" saiu da UI de criação/edição — o backend
+// não aceita mais esse modo, então o formulário não o oferece.
+const tokenModeLabel: Record<"manual" | "auto", string> = {
   manual: "Token manual",
   auto: "Token automático",
-  none: "Sem token",
 };
 
 type WebhookStatusBadgeConfig = {
@@ -182,6 +193,7 @@ export function StudioWebhookIntegration() {
     studioWebhookTokenMode,
     studioWebhookManualToken,
     studioWebhookExpiryMode,
+    studioWebhookRotationDialogOpen,
     studioWebhookGeneratedUrl,
     studioWebhookLoading,
     studioWebhookSaving,
@@ -194,7 +206,9 @@ export function StudioWebhookIntegration() {
     setStudioWebhookExpiryMode,
     setSelectedStudioWebhookLogId,
     loadStudioWebhookLogs,
-    saveStudioWebhookConfig,
+    requestSaveStudioWebhookConfig,
+    confirmStudioWebhookRotation,
+    cancelStudioWebhookRotation,
     copyStudioWebhookUrl,
     copyStudioWebhookContract,
   } = useIntegrationsContext();
@@ -261,24 +275,41 @@ export function StudioWebhookIntegration() {
         className="w-full space-y-4"
       >
         <AccordionItem value="studio-webhook-settings" className="border-b-0">
-          <AccordionTrigger className="py-0 hover:no-underline">
-            <div className="flex items-start gap-3 pr-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Webhook className="h-5 w-5 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold">Webhook Genérico de Leads</h3>
-                  <Badge variant={webhookStatusBadge.variant}>{webhookStatusBadge.label}</Badge>
-                  {webhookExpiryBadge ? <Badge variant={webhookExpiryBadge.variant}>{webhookExpiryBadge.label}</Badge> : null}
+          <div className="flex items-start gap-3">
+            <AccordionTrigger className="flex-1 py-0 hover:no-underline">
+              <div className="flex items-start gap-3 pr-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <Webhook className="h-5 w-5 text-primary" />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Configure um endpoint para receber leads de ferramentas como Make, n8n ou qualquer integração HTTP
-                  POST.
-                </p>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold">Webhook Genérico de Leads</h3>
+                    <Badge variant={webhookStatusBadge.variant}>{webhookStatusBadge.label}</Badge>
+                    {webhookExpiryBadge ? <Badge variant={webhookExpiryBadge.variant}>{webhookExpiryBadge.label}</Badge> : null}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Configure um endpoint para receber leads de ferramentas como Make, n8n ou qualquer integração HTTP
+                    POST.
+                  </p>
+                </div>
               </div>
-            </div>
-          </AccordionTrigger>
+            </AccordionTrigger>
+
+            {/* SPEC 10, B-E1/W16: fora do AccordionTrigger — clicar aqui não
+                fecha o formulário, ao contrário do header/badge. Abre o
+                formulário num clique só quando ainda não há configuração. */}
+            {!studioWebhookLoading && !hasExistingConfig && activeTeamId ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-4 shrink-0"
+                onClick={() => setOpenedAccordionItem("studio-webhook-settings")}
+              >
+                <Settings2 data-icon="inline-start" />
+                Configurar agora
+              </Button>
+            ) : null}
+          </div>
 
           <div className="mt-4 space-y-2">
             <Label htmlFor="studio-webhook-url">URL do webhook</Label>
@@ -337,7 +368,7 @@ export function StudioWebhookIntegration() {
                     </div>
                     <RadioGroup
                       value={studioWebhookTokenMode}
-                      onValueChange={(value: "manual" | "auto" | "none") => setStudioWebhookTokenMode(value)}
+                      onValueChange={(value: "manual" | "auto") => setStudioWebhookTokenMode(value)}
                       className="grid gap-2"
                       disabled={studioWebhookSaving}
                     >
@@ -362,17 +393,6 @@ export function StudioWebhookIntegration() {
                           disabled={studioWebhookSaving}
                         />
                         <span>{tokenModeLabel.manual}</span>
-                      </label>
-                      <label
-                        htmlFor="studio-webhook-token-none"
-                        className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
-                      >
-                        <RadioGroupItem
-                          id="studio-webhook-token-none"
-                          value="none"
-                          disabled={studioWebhookSaving}
-                        />
-                        <span>{tokenModeLabel.none}</span>
                       </label>
                     </RadioGroup>
                   </div>
@@ -455,14 +475,42 @@ export function StudioWebhookIntegration() {
                   </div>
                 ) : null}
 
-                <Button onClick={saveStudioWebhookConfig} disabled={!canSaveWebhookConfig}>
+                <Button onClick={requestSaveStudioWebhookConfig} disabled={!canSaveWebhookConfig}>
                   <Save className="h-4 w-4 mr-2" />
                   {studioWebhookSaving
                     ? "Salvando..."
-                    : hasExistingConfig && studioWebhookTokenMode !== "none"
-                      ? "Salvar / Regenerar Token"
+                    : hasExistingConfig
+                      ? "Rotacionar token"
                       : "Salvar Configuração do Webhook"}
                 </Button>
+
+                {/* SPEC 10, B-E1 (DA1, T-10.20): rotacionar com configuração
+                    existente exige confirmação explícita — cancelar mantém
+                    o token atual intacto. */}
+                <AlertDialog
+                  open={studioWebhookRotationDialogOpen}
+                  onOpenChange={(open) => !open && cancelStudioWebhookRotation()}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <ShieldAlert className="h-5 w-5 text-semantic-warning" />
+                        Rotacionar o token do webhook?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        O token atual deste webhook para de funcionar assim que você confirmar. Qualquer
+                        integração externa configurada com o token antigo (Make, n8n, Zapier ou outra) vai
+                        precisar ser atualizada com o novo token para continuar recebendo leads.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={cancelStudioWebhookRotation}>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={confirmStudioWebhookRotation}>
+                        Rotacionar token
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ) : null}
 

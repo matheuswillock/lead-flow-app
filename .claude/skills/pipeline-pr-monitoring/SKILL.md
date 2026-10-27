@@ -1,0 +1,51 @@
+---
+name: pipeline-pr-monitoring
+description: "Monitor the CI pipeline and pull request of the lead-flow-app after an authorized commit and push, fix failures, answer PR review comments and stop when everything is green, never merging. Use whenever the user asks to monitor, watch or follow a pipeline, run or PR (monitore a pipeline, acompanhe o PR, lance o agente de monitoramento, suba e monitore), or asks to commit and push and then check the CI, even if they do not name this skill."
+targets: claude,cursor,copilot,codex,manus
+alwaysApply: false
+---
+
+# Pipeline and PR monitoring
+
+Run this loop after a commit and push the user has authorized. It ends when the pipeline is green and every actionable PR comment has been answered. It never ends with a merge: merging stays a manual decision of the owner.
+
+This workflow is agent-neutral. It names commands, not tools of a specific agent, so Claude Code, Codex, OpenCode, Cursor, Copilot and Manus follow it the same way: use whatever your environment offers to run a command in the background and to poll it.
+
+## Before you start
+
+- Confirm the push really happened (`git status`, `git log origin/<branch>..HEAD` empty). Never pipe `git push` through `tail` or `head`: the pipe hides the exit code and a rejected push looks like a success.
+- Never push to `main`, `develop` or `release/*`, and never switch branches while a push is running (the pre-push hook reads the working tree).
+- Check what is in the commit. Unrelated working-tree changes stay out unless the user explicitly confirmed them.
+- `gh` may exist only on the host. If `which gh` fails in the sandbox, run it through `flatpak-spawn --host bash -lc '<cmd>'`.
+
+## The pull request opens by itself
+
+Feature and bugfix branches do not get a manual PR. The CI workflow has an `Open PR to develop` job that creates it once the branch is on `origin`.
+
+- Do not run `gh pr create`. Wait for the job, then read the number with `gh pr list --head <branch>` or `gh run view <run-id> --json jobs`.
+- "Wait for the PR to open" means polling the run, not opening it.
+- A fix to the pipeline itself (YAML, scripts) must also be committed and pushed so the workflow can be corrected.
+
+## The loop
+
+1. **Find the run** for the pushed commit: `gh run list --branch <branch> --limit 3 --json databaseId,headSha,status,conclusion`. Match `headSha` to your commit so you do not watch an older run.
+2. **Wait for it** without blocking the session: run the watch in the background (`gh run watch <id> --exit-status`) or poll with a short script that exits when the status changes. Do not sleep in the foreground.
+3. **If it fails**, read the failing job (`gh run view <id> --log-failed`) and decide what the failure is before touching anything:
+   - Real defect (typecheck, lint, governance, unit test, E2E assertion): reproduce it locally with the narrowest command, fix the cause, commit, push, and go back to step 1.
+   - Infrastructure noise: a job `cancelled` with no steps while another run was queued, a runner shown as offline although its service is active, a build killed with exit 137 while several runs were building, or a known flaky shared-data E2E. Re-run the whole run (not only the failed jobs) when the queue is empty, and say in the report that it was infrastructure.
+   - Do not weaken a test, an allowlist or a check to get green. If the only way to green is to loosen a gate, stop and ask.
+4. **When the pipeline is green**, wait for the PR (previous section), then read everything reviewers and bots wrote: `gh pr view <n> --comments`, plus the review comments with `gh api repos/{owner}/{repo}/pulls/<n>/comments` and `.../reviews`.
+5. **Handle each comment.** Fix what is actionable and in scope, reply in the thread saying what changed (or why it did not), commit, push, and return to step 1 because the fix starts a new run. Comments that need a product decision go to the user instead of being guessed.
+6. **Stop** when the last run is green and no actionable comment is left unanswered.
+
+Stop earlier and report if the same failure survives three fix attempts, if a fix would need a remote database change, or if the failure is outside the branch (for example a broken base branch). Looping further burns time and hides the real blocker.
+
+## Hard limits
+
+- Never merge, never enable auto-merge, never approve your own PR.
+- Never apply migrations, seeds or configuration to a shared or remote database. Migrations reach the remote only through the pipeline after the merge, with explicit owner authorization.
+- Do not force-push. Corrections go as new commits.
+
+## Final report
+
+Close with a short summary: branch and PR number, the final run and its result, each failure found (cause, fix, commit), each comment answered, anything that was infrastructure, and what is still waiting for the owner (usually the merge). State plainly what was not verified.
