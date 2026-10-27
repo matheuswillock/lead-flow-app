@@ -20,6 +20,7 @@ import { WHATS_NEW_VERSION } from "../../../../components/whats-new-modal";
 import { injectE2eAuthCookie } from "../../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../../support/db";
+import { acquireTeamWebhooksLock, releaseTeamWebhooksLock } from "../../../support/team-webhooks-lock";
 import { runResponsiveChecks } from "../../../support/responsive";
 
 const WEBHOOK_NAME = "E2E Guia v2";
@@ -52,6 +53,8 @@ test.describe("guias de integração no app", () => {
   test.setTimeout(90_000);
 
   test.beforeAll(async () => {
+    test.setTimeout(11 * 60_000);
+    await acquireTeamWebhooksLock();
     const profile = await findE2eMasterProfile();
     if (!profile?.activeTeamId) throw new Error("Seed E2E sem time ativo — rode `bun run db:seed:e2e`");
     ctx.teamId = profile.activeTeamId;
@@ -69,6 +72,7 @@ test.describe("guias de integração no app", () => {
   });
 
   test.afterAll(async () => {
+    releaseTeamWebhooksLock();
     await cleanup();
     await disconnectPrisma();
   });

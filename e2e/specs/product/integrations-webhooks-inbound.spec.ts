@@ -25,6 +25,7 @@ import { expect, test } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
+import { acquireTeamWebhooksLock, releaseTeamWebhooksLock } from "../../support/team-webhooks-lock";
 import { runResponsiveChecks } from "../../support/responsive";
 
 const WEBHOOK_ID = "e2e10000-0000-4000-8000-000000000101";
@@ -103,6 +104,8 @@ async function cleanup(): Promise<void> {
 }
 
 test.describe("app/[supabaseId]/integrations/webhooks/inbound", () => {
+  // Uma spec do grupo de webhooks por vez (lock) e todos os testes dela no mesmo worker.
+  test.describe.configure({ mode: "serial" });
   test.beforeEach(async ({ context }) => {
     await injectE2eAuthCookie(context);
     // Suprime o modal "Novidades" (não relacionado a esta SPEC) para não
@@ -113,7 +116,14 @@ test.describe("app/[supabaseId]/integrations/webhooks/inbound", () => {
     await seedInboundWebhook();
   });
 
+  // Esta spec conta ou cria webhooks no time E2E compartilhado; roda uma por vez com as demais do grupo.
+  test.beforeAll(async () => {
+    test.setTimeout(11 * 60_000);
+    await acquireTeamWebhooksLock();
+  });
+
   test.afterAll(async () => {
+    releaseTeamWebhooksLock();
     await cleanup();
     await disconnectPrisma();
   });

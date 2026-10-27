@@ -20,6 +20,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../../support/db";
+import { acquireTeamWebhooksLock, releaseTeamWebhooksLock } from "../../../support/team-webhooks-lock";
 import { runResponsiveChecks } from "../../../support/responsive";
 import { WHATS_NEW_VERSION } from "../../../../components/whats-new-modal";
 
@@ -78,6 +79,8 @@ test.describe("webhook v2 + API Studio — ponta a ponta", () => {
   test.setTimeout(120_000);
 
   test.beforeAll(async () => {
+    test.setTimeout(11 * 60_000);
+    await acquireTeamWebhooksLock();
     const profile = await findE2eMasterProfile();
     if (!profile?.activeTeamId) throw new Error("Seed E2E sem time ativo — rode `bun run db:seed:e2e`");
     ctx.teamId = profile.activeTeamId;
@@ -96,6 +99,7 @@ test.describe("webhook v2 + API Studio — ponta a ponta", () => {
   });
 
   test.afterAll(async () => {
+    releaseTeamWebhooksLock();
     await cleanup();
     await disconnectPrisma();
   });
@@ -216,11 +220,11 @@ test.describe("webhook v2 + API Studio — ponta a ponta", () => {
       await expect(logsTab).toHaveAttribute("aria-selected", "true", { timeout: 1_500 });
     }).toPass({ timeout: 30_000 });
 
-    const conflictRow = page.getByRole("button", { name: /Horário ocupado: remarcar/ }).first();
+    const conflictRow = page.getByRole("row").filter({ hasText: "Horário ocupado: remarcar" }).first();
     await expect(conflictRow).toBeVisible({ timeout: 30_000 });
-    await conflictRow.click();
+    await conflictRow.getByRole("button", { name: "Ver detalhes" }).click();
 
-    const outcome = page.getByTestId("inbound-log-outcome");
+    const outcome = page.getByRole("dialog").getByTestId("inbound-log-outcome");
     await expect(outcome).toContainText("Remarcar urgente");
     await expect(outcome).toContainText("schedule_conflict_flagged");
     await expect(outcome.getByRole("link", { name: "Abrir lead no CRM" })).toHaveAttribute("href", /\/crm\?leadCode=/);

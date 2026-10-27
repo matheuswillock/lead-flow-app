@@ -46,6 +46,12 @@ test.describe("app/lead-form/[supabaseId] (público)", () => {
     })
     profileId = profile.id
 
+    // O formulário público só aceita time cujo master está com a conta ativa (decisão de acesso da conta);
+    // sem assinatura o bootstrap responde 403 "O acesso desta conta está pausado".
+    await prisma.profileSubscription.create({
+      data: { profileId: profile.id, hasPermanentSubscription: true, subscriptionStatus: "active" },
+    })
+
     const team = await prisma.team.create({
       data: { name: "Spec 40 E2E Team", masterId: profile.id },
     })
@@ -80,6 +86,8 @@ test.describe("app/lead-form/[supabaseId] (público)", () => {
       await prisma.teamMember.deleteMany({ where: { teamId } })
       await prisma.team.deleteMany({ where: { id: teamId } })
     }
+    // Mesma guarda do bloco acima: `profileId` indefinido apagaria a tabela inteira.
+    if (profileId) await prisma.profileSubscription.deleteMany({ where: { profileId } })
     await prisma.profile.deleteMany({ where: { email: FIXTURE_EMAIL } })
     await disconnectPrisma()
   })

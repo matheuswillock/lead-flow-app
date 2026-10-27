@@ -1,11 +1,13 @@
 "use client"
 
 import { CalendarClock, CircleAlert, ExternalLink, RefreshCcw, RotateCcw } from "lucide-react"
+import { useState, type KeyboardEvent } from "react"
 import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -88,6 +90,10 @@ export function WebhookLogsPanel({
   onResend,
 }: WebhookLogsPanelProps) {
   const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null
+  // Webhook de entrada (SPEC 10 B-E3): o detalhe de cada evento abre num Sheet, sem painel lateral.
+  const isInbound = logs[0]?.direction === "inbound"
+  const [detailLogId, setDetailLogId] = useState<string | null>(null)
+  const detailLog = logs.find((log) => log.id === detailLogId) ?? null
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -112,7 +118,7 @@ export function WebhookLogsPanel({
           </Button>
         </div>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className={cn("grid min-w-0 gap-4", !isInbound && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]")}>
           <div className="min-w-0 rounded-md border">
             <div className="border-b px-3 py-2">
               <p className="text-sm font-semibold">Entregas</p>
@@ -169,17 +175,21 @@ export function WebhookLogsPanel({
                       return (
                         <TableRow
                           key={log.id}
-                          role="button"
-                          tabIndex={0}
-                          className={cn("cursor-pointer", isSelected && "bg-muted/60")}
-                          onClick={() => onSelect(log.id)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault()
-                              onSelect(log.id)
-                            }
-                          }}
+                          {...(isInbound
+                            ? {}
+                            : {
+                                role: "button",
+                                tabIndex: 0,
+                                className: cn("cursor-pointer", isSelected && "bg-muted/60"),
+                                onClick: () => onSelect(log.id),
+                                onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+                                  if (event.target !== event.currentTarget) return
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault()
+                                    onSelect(log.id)
+                                  }
+                                },
+                              })}
                         >
                           <TableCell className="min-w-0">
                             <div className="flex min-w-0 flex-col gap-1">
@@ -196,6 +206,20 @@ export function WebhookLogsPanel({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
+                            {log.direction === "inbound" ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="min-h-11"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setDetailLogId(log.id)
+                                }}
+                              >
+                                Ver detalhes
+                              </Button>
+                            ) : (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -220,6 +244,7 @@ export function WebhookLogsPanel({
                               </TooltipTrigger>
                               <TooltipContent>{resendLabel}</TooltipContent>
                             </Tooltip>
+                            )}
                           </TableCell>
                         </TableRow>
                       )
@@ -230,6 +255,7 @@ export function WebhookLogsPanel({
             </ScrollArea>
           </div>
 
+          {isInbound ? null : (
           <div className="min-w-0 rounded-md border">
             <div className="border-b px-3 py-2">
               <p className="text-sm font-semibold">Detalhes</p>
@@ -243,8 +269,6 @@ export function WebhookLogsPanel({
                       {selectedLog.endpoint ?? "Endpoint não registrado"}
                     </p>
                   </div>
-
-                  <InboundOutcomeNotice log={selectedLog} supabaseId={supabaseId} />
 
                   <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                     <div className="flex flex-col gap-1">
@@ -299,9 +323,67 @@ export function WebhookLogsPanel({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
+      <LogDetailSheet
+        log={detailLog}
+        timezone={timezone}
+        supabaseId={supabaseId}
+        onClose={() => setDetailLogId(null)}
+      />
     </TooltipProvider>
+  )
+}
+
+/** Detalhe de um evento recebido (SPEC 10 B-E3): payload já mascarado pela API, ou o estado "sem dados". */
+function LogDetailSheet({
+  log,
+  timezone,
+  supabaseId,
+  onClose,
+}: {
+  log: TeamWebhookLogItem | null
+  timezone: string
+  supabaseId?: string
+  onClose: () => void
+}) {
+  return (
+    <Sheet open={log !== null} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>Detalhe do log</SheetTitle>
+          <SheetDescription>
+            {log ? formatLogDate(log.createdAt, timezone) : null}
+          </SheetDescription>
+        </SheetHeader>
+        {log ? (
+          <div className="flex min-w-0 flex-col gap-4 px-4 pb-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={resultConfig[log.result].variant}>{resultConfig[log.result].label}</Badge>
+              {log.statusCode ? <span className="text-sm text-muted-foreground">HTTP {log.statusCode}</span> : null}
+            </div>
+            <InboundOutcomeNotice log={log} supabaseId={supabaseId} />
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="text-sm font-semibold">Payload da requisição</p>
+              {log.requestPayload === null || log.requestPayload === undefined ? (
+                <p className="text-sm text-muted-foreground">Sem dados de requisição.</p>
+              ) : (
+                <pre className="max-h-[320px] max-w-full overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                  {formatPayload(log.requestPayload)}
+                </pre>
+              )}
+            </div>
+            {log.errorMessage ? (
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription>{log.errorMessage}</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   )
 }
 

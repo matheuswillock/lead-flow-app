@@ -12,11 +12,12 @@
  * SPEC 10 e não está coberto aqui.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { WHATS_NEW_VERSION } from "@/components/whats-new-modal";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
+import { acquireTeamWebhooksLock, releaseTeamWebhooksLock } from "../../support/team-webhooks-lock";
 import { runResponsiveChecks } from "../../support/responsive";
 
 const WEBHOOK_NAME_PREFIX = "E2E Webhook Saída";
@@ -36,7 +37,23 @@ async function cleanupE2eOutboundWebhooks(): Promise<void> {
   });
 }
 
+/**
+ * O formulário hidrata depois do `domcontentloaded`: um `fill` nesse intervalo se perde e o botão "Criar"
+ * fica desabilitado. Repete o preenchimento até o botão habilitar, como um usuário que digita de novo.
+ */
+async function fillAndSubmitOutboundForm(page: Page, webhookName: string): Promise<void> {
+  const createButton = page.getByRole("button", { name: "Criar" });
+  await expect(async () => {
+    await page.getByLabel("Nome").fill(webhookName);
+    await page.getByLabel("URL de destino (HTTPS)").fill("https://example.com/e2e-webhook");
+    await expect(createButton).toBeEnabled({ timeout: 1_500 });
+  }).toPass({ timeout: 30_000 });
+  await createButton.click();
+}
+
 test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
+  // Uma spec do grupo de webhooks por vez (lock) e todos os testes dela no mesmo worker.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ context }) => {
@@ -58,7 +75,14 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
     await cleanupE2eOutboundWebhooks();
   });
 
+  // Esta spec conta ou cria webhooks no time E2E compartilhado; roda uma por vez com as demais do grupo.
+  test.beforeAll(async () => {
+    test.setTimeout(11 * 60_000);
+    await acquireTeamWebhooksLock();
+  });
+
   test.afterAll(async () => {
+    releaseTeamWebhooksLock();
     await disconnectPrisma();
   });
 
@@ -74,9 +98,7 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
       timeout: 30_000,
     });
 
-    await page.getByLabel("Nome").fill(webhookName);
-    await page.getByLabel("URL de destino (HTTPS)").fill("https://example.com/e2e-webhook");
-    await page.getByRole("button", { name: "Criar" }).click();
+    await fillAndSubmitOutboundForm(page, webhookName);
 
     await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({
       timeout: 30_000,
@@ -129,9 +151,7 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
     await expect(page.getByRole("heading", { name: "Novo webhook de saída" })).toBeVisible({
       timeout: 30_000,
     });
-    await page.getByLabel("Nome").fill(webhookName);
-    await page.getByLabel("URL de destino (HTTPS)").fill("https://example.com/e2e-webhook");
-    await page.getByRole("button", { name: "Criar" }).click();
+    await fillAndSubmitOutboundForm(page, webhookName);
 
     await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({
       timeout: 30_000,
