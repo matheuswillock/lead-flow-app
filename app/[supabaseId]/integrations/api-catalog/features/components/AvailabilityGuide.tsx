@@ -45,7 +45,7 @@ export function AvailabilityGuide({ webhooksHref }: Props) {
         Como usar
       </h2>
 
-      <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
+      <ol className="flex max-w-prose list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
         <li>Ative o recurso e guarde o token em um cofre. Ele só aparece uma vez.</li>
         <li>
           Consulte o dia desejado: <code>GET {AVAILABILITY_PATH}?date=AAAA-MM-DD</code> com o header{" "}
@@ -60,7 +60,7 @@ export function AvailabilityGuide({ webhooksHref }: Props) {
         </li>
       </ol>
 
-      <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
+      <ul className="flex max-w-prose list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
         <li>A data vai de hoje até 180 dias à frente. Para hoje, só aparecem horários a partir de 5 minutos depois da consulta.</li>
         <li>Os horários cobrem as 24 horas do dia, no fuso do time. Cada horário dura o tempo de reunião configurado no time (padrão de 30 minutos). Se o seu sistema atende só em horário comercial, filtre os horários por lá.</li>
         <li>A agenda do closer é uma só, mesmo que ele participe de mais de um time: reuniões em qualquer time ocupam o horário.</li>

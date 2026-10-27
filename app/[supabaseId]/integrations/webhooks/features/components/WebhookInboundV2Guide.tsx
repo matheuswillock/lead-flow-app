@@ -83,14 +83,14 @@ export function WebhookInboundV2Guide({ webhookUrl, apiCatalogHref }: Props) {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8" data-testid="inbound-v2-guide">
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-semibold">Como integrar</h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-prose text-sm text-muted-foreground">
           O sistema de vocês envia cada lead como um evento para este webhook. O Corretor Studio responde só que
           recebeu e processa em seguida; o resultado aparece na aba Logs.
         </p>
       </div>
 
       <Section id="guide-steps" title="Passo a passo">
-        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
+        <ol className="flex max-w-prose list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
           <li>Copie a URL deste webhook e o token (mostrado uma única vez, na criação ou ao gerar um novo).</li>
           <li>Envie um evento de teste sem agendamento e confira o lead no CRM e o evento na aba Logs.</li>
           <li>
@@ -125,7 +125,7 @@ export function WebhookInboundV2Guide({ webhookUrl, apiCatalogHref }: Props) {
       </Section>
 
       <Section id="guide-schedule" title="Lead com agendamento">
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-prose text-sm text-muted-foreground">
           Consulte antes os horários livres no{" "}
           <Link href={apiCatalogHref} className="underline underline-offset-4">
             Catálogo de API
@@ -200,11 +200,11 @@ export function WebhookInboundV2Guide({ webhookUrl, apiCatalogHref }: Props) {
             </TableBody>
           </Table>
         </div>
-        <p className="text-sm text-muted-foreground">{PROCESSING_NOTE}</p>
+        <p className="max-w-prose text-sm text-muted-foreground">{PROCESSING_NOTE}</p>
       </Section>
 
       <Section id="guide-security" title="Cuidados">
-        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
+        <ul className="flex max-w-prose list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
           {SECURITY_NOTES.map((note) => (
             <li key={note}>{note}</li>
           ))}
