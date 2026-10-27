@@ -1,6 +1,7 @@
 "use client";
 
-import { Code, Copy, Radio, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { useRef } from "react";
+import { Code, Copy, Radio, RefreshCcw, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -55,7 +56,7 @@ function PixelHitLogRow({ log, isSelected, onSelect }: { log: RadarPixelHitLogIt
         {log.origin ?? "—"}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-        {formatIntimezone(new Date(log.createdAt), tz, "dd/MM/yyyy HH:mm")}
+        {formatIntimezone(new Date(log.createdAt), "dd/MM/yyyy HH:mm", tz)}
       </TableCell>
     </TableRow>
   );
@@ -78,11 +79,30 @@ export function RadarPixelIntegration() {
     copyRadarPixelSnippet,
     loadRadarPixelHitLogs,
   } = useIntegrationsContext();
+  const { tz } = useTimezone();
 
   const selectedLog = radarPixelHitLogs.find((l) => l.id === selectedRadarPixelHitLogId) ?? null;
+  const originsInputRef = useRef<HTMLTextAreaElement>(null);
+  // W27 (SPEC 30, DA1): allowlist vazia continua aceitando qualquer origem —
+  // isso não muda. O aviso só sinaliza a ausência de restrição para o time,
+  // ele nunca bloqueia o pixel nem o aceite de hits.
+  const showOpenOriginWarning =
+    !radarPixelLoading && !!radarPixelConfig?.configured && !radarPixelConfig.originRestrictionActive;
+
+  function focusOriginsInput() {
+    // `focus({ preventScroll: true })` porque o scroll é feito abaixo,
+    // condicionado a `prefers-reduced-motion` — sem isso o foco já rolaria
+    // a tela sozinho, ignorando a preferência do usuário.
+    originsInputRef.current?.focus({ preventScroll: true });
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    originsInputRef.current?.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "center",
+    });
+  }
 
   return (
-    <Accordion type="single" collapsible className="w-full">
+    <Accordion type="single" collapsible className="w-full" data-testid="radar-pixel-integration">
       <AccordionItem value="setup">
         <AccordionTrigger className="gap-2">
           <div className="flex items-center gap-2">
@@ -108,6 +128,29 @@ export function RadarPixelIntegration() {
             </div>
           ) : (
             <div className="flex flex-col gap-4">
+              {showOpenOriginWarning && (
+                <Alert
+                  data-testid="pixel-open-origin-warning"
+                  className="border-semantic-warning/30 bg-semantic-warning-surface text-foreground"
+                >
+                  <ShieldAlert data-icon="inline-start" className="text-semantic-warning" />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <AlertDescription>
+                      Qualquer site pode disparar este pixel. Adicione domínios permitidos para restringir.
+                    </AlertDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 max-lg:h-11"
+                      onClick={focusOriginsInput}
+                    >
+                      Adicionar domínios
+                    </Button>
+                  </div>
+                </Alert>
+              )}
+
               <div className="flex flex-col gap-2">
                 <Label htmlFor="pixel-origins">
                   Origens permitidas
@@ -115,6 +158,7 @@ export function RadarPixelIntegration() {
                 </Label>
                 <Textarea
                   id="pixel-origins"
+                  ref={originsInputRef}
                   rows={4}
                   placeholder={"https://seusite.com\nhttps://blog.seusite.com"}
                   value={radarPixelAllowedOriginsInput}
@@ -131,6 +175,7 @@ export function RadarPixelIntegration() {
                   onClick={saveRadarPixelConfig}
                   disabled={radarPixelSaving || radarPixelDeleting}
                   size="sm"
+                  className="max-lg:h-11"
                 >
                   <Save />
                   {radarPixelSaving ? "Salvando…" : radarPixelConfig?.configured ? "Atualizar pixel" : "Ativar pixel"}
@@ -141,6 +186,7 @@ export function RadarPixelIntegration() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="max-lg:h-11"
                       onClick={copyRadarPixelSnippet}
                       disabled={radarPixelSaving || radarPixelDeleting}
                     >
@@ -153,6 +199,7 @@ export function RadarPixelIntegration() {
                         <Button
                           variant="destructive"
                           size="sm"
+                          className="max-lg:h-11"
                           disabled={radarPixelDeleting || radarPixelSaving}
                         >
                           <Trash2 />
@@ -194,7 +241,7 @@ export function RadarPixelIntegration() {
               {radarPixelConfig?.lastUsedAt && (
                 <p className="text-xs text-muted-foreground">
                   Último hit registrado:{" "}
-                  {new Date(radarPixelConfig.lastUsedAt).toLocaleString("pt-BR")}
+                  {formatIntimezone(new Date(radarPixelConfig.lastUsedAt), "dd/MM/yyyy HH:mm", tz)}
                 </p>
               )}
             </div>

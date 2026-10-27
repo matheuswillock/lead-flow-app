@@ -6,6 +6,7 @@ import type { IWebhookHttpDeliveryService } from "@/app/api/services/teamWebhook
 import { webhookHttpDeliveryService } from "@/app/api/services/teamWebhook/WebhookHttpDeliveryService"
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { Output } from "@/lib/output"
+import { decryptWebhookSigningSecret } from "@/lib/webhooks/webhookSigningSecurity"
 
 export class ResendWebhookLogUseCase {
   constructor(
@@ -48,10 +49,39 @@ export class ResendWebhookLogUseCase {
       return new Output(false, [], ["Este registro não possui payload para reenvio"], null)
     }
 
+    // SPEC 20: nenhuma entrega sai sem assinatura — mesma regra do teste de envio
+    // e do cron do outbox. Cifra ausente ou ilegível bloqueia o reenvio.
+    const signingSecret = decryptWebhookSigningSecret(webhook.signingSecretCipher)
+    if (!signingSecret) {
+      const errorMessage = webhook.signingSecretCipher
+        ? "Segredo de assinatura ilegível — reenvio bloqueado por segurança"
+        : "Segredo de assinatura não configurado — reenvio bloqueado por segurança"
+      await this.eventLogRepository.create({
+        teamId: access.teamId,
+        webhookId,
+        direction: "outbound",
+        result: "failure",
+        eventKey: originalLog.eventKey,
+        method: "POST",
+        endpoint: webhook.targetUrl,
+        statusCode: null,
+        requestPayload: originalLog.requestPayload,
+        responsePayload: null,
+        errorMessage,
+      })
+      await this.webhookRepository.touchUsage(webhookId, false)
+      return new Output(true, ["Tentativa de reenvio registrada"], [], {
+        ok: false,
+        statusCode: null,
+        errorMessage,
+      })
+    }
+
     const result = await this.deliveryService.deliver({
       targetUrl: webhook.targetUrl,
       preset: webhook.destinationPreset ?? "generic",
       body: originalLog.requestPayload,
+      signingSecret,
     })
 
     await this.eventLogRepository.create({

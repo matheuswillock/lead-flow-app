@@ -1,8 +1,11 @@
-import type { RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIntegrationsService";
+import type { RadarPixelConfigData, RadarPixelHitLogItem, StudioWebhookLogItem } from "../services/IIntegrationsService";
 
 export interface IntegrationsState {
   supabaseId: string;
   leadFormUrl: string;
+  // SPEC 40 B-E2 (W25): destino real por trás do link curto `leadFormUrl`,
+  // mostrado como texto de apoio na tela de Integrações.
+  leadFormFullUrl: string;
   activeTeamId: string | null;
   studioWebhookConfig: {
     configured: boolean;
@@ -15,8 +18,14 @@ export interface IntegrationsState {
     webhookUrl: string;
     webhookUrlTemplate: string;
   } | null;
-  studioWebhookTokenMode: "manual" | "auto" | "none";
+  studioWebhookTokenMode: "manual" | "auto";
   studioWebhookManualToken: string;
+  /**
+   * SPEC 10, DA1/A-E1 (T-10.20) — controla o AlertDialog de confirmação de
+   * rotação. Aberto quando o usuário clica "Rotacionar token" com
+   * configuração existente; salvar só acontece na confirmação.
+   */
+  studioWebhookRotationDialogOpen: boolean;
   studioWebhookExpiryMode: "hours_24" | "months_6" | "indeterminate";
   studioWebhookGeneratedUrl: string;
   integrationsBootstrapLoading: boolean;
@@ -26,13 +35,7 @@ export interface IntegrationsState {
   studioWebhookLogsLoading: boolean;
   selectedStudioWebhookLogId: string | null;
   studioWebhookContractJson: string;
-  radarPixelConfig: {
-    configured: boolean;
-    publicToken: string | null;
-    allowedOrigins: string[];
-    lastUsedAt: string | null;
-    pixelSnippet: string | null;
-  } | null;
+  radarPixelConfig: RadarPixelConfigData | null;
   radarPixelAllowedOriginsInput: string;
   radarPixelLoading: boolean;
   radarPixelSaving: boolean;
@@ -46,11 +49,14 @@ export interface IntegrationsActions {
   copyLeadFormUrl: () => void;
   loadStudioWebhookConfig: () => Promise<void>;
   loadStudioWebhookLogs: (options?: { force?: boolean }) => Promise<void>;
-  setStudioWebhookTokenMode: (mode: "manual" | "auto" | "none") => void;
+  setStudioWebhookTokenMode: (mode: "manual" | "auto") => void;
   setStudioWebhookManualToken: (token: string) => void;
   setStudioWebhookExpiryMode: (mode: "hours_24" | "months_6" | "indeterminate") => void;
   setSelectedStudioWebhookLogId: (logId: string | null) => void;
-  saveStudioWebhookConfig: () => void;
+  /** SPEC 10, B-E1: decide sozinho se salva direto ou abre a confirmação de rotação. */
+  requestSaveStudioWebhookConfig: () => void;
+  confirmStudioWebhookRotation: () => void;
+  cancelStudioWebhookRotation: () => void;
   copyStudioWebhookUrl: () => void;
   copyStudioWebhookContract: () => void;
   loadRadarPixelConfig: () => Promise<void>;

@@ -49,6 +49,7 @@ import {
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
 import { formatDocumentInput, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink"
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
@@ -92,7 +93,34 @@ function isValidCpfOrCnpj(value: string): boolean {
   return isValidCnpj(digits)
 }
 
-const leadFormSchema = z
+/**
+ * SPEC 13 (Agenda na Criação de Lead), A-E1d — achado da revisão (R13d-4):
+ * diferente do `leadFormSchema` do produto, este formulário REENVIA o link
+ * no submit (`nullIfEmpty(values.meetingLink)`) e o exibe como `<a href>`.
+ * Por isso usa a mesma validação de lib/validations/meetingLink.ts (DA8: só
+ * https) em vez de `z.string().url()`, que aceitava `javascript:` e `http:`.
+ * O `http:` legado (carry-over da A-E1c) só passa quando o valor é
+ * exatamente o link já gravado no lead (`persistedMeetingLink`) — senão um
+ * lead antigo ficaria com o formulário inteiro travado sem o usuário ter
+ * tocado no link.
+ */
+function validateLeadFormMeetingLink(params: {
+  meetingLink: string
+  persistedMeetingLink: string
+}) {
+  return validateMeetingLinkValue(params.meetingLink, {
+    required: false,
+    allowLegacyHttp:
+      !!params.meetingLink && params.meetingLink === params.persistedMeetingLink,
+  })
+}
+
+/** Só vira `<a href>` o que tem esquema http/https (defesa contra valor legado). */
+function isMeetingLinkSafeHref(meetingLink: string): boolean {
+  return validateMeetingLinkValue(meetingLink, { allowLegacyHttp: true }).isValid
+}
+
+export const leadFormSchema = z
   .object({
     name: z.string().trim().min(2, "Informe ao menos 2 caracteres."),
     email: z
@@ -131,6 +159,8 @@ const leadFormSchema = z
     meetingTitle: z.string().trim(),
     meetingNotes: z.string().trim(),
     meetingLink: z.string().trim(),
+    // Link já gravado no lead, só para comparação (nunca vai no payload).
+    persistedMeetingLink: z.string(),
     meetingType: z.enum(["online", "call", "whatsapp"]),
     meetingExtraGuests: z.array(z.string().email()),
     qualificationLeadOrganization: z.string().trim(),
@@ -154,6 +184,16 @@ const leadFormSchema = z
       })
     }
 
+    // Fora do `status === "scheduled"`: o link é persistido em qualquer status.
+    const meetingLinkValidation = validateLeadFormMeetingLink(data)
+    if (!meetingLinkValidation.isValid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["meetingLink"],
+        message: meetingLinkValidation.error,
+      })
+    }
+
     if (data.status !== "scheduled") return
 
     if (!data.meetingDate) {
@@ -161,14 +201,6 @@ const leadFormSchema = z
         code: z.ZodIssueCode.custom,
         path: ["meetingDate"],
         message: "Data de agendamento é obrigatória.",
-      })
-    }
-
-    if (data.meetingLink && !z.string().url().safeParse(data.meetingLink).success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["meetingLink"],
-        message: "Informe um link válido.",
       })
     }
   })
@@ -188,6 +220,7 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   meetingTitle: "",
   meetingNotes: "",
   meetingLink: "",
+  persistedMeetingLink: "",
   meetingType: "online",
   meetingExtraGuests: [],
   qualificationLeadOrganization: "",
@@ -211,6 +244,7 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingTitle: lead.meetingTitle ?? "",
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
+    persistedMeetingLink: lead.meetingLink ?? "",
     meetingType:
       lead.meetingType === "call" || lead.meetingType === "whatsapp"
         ? lead.meetingType
@@ -867,14 +901,23 @@ export function BackofficeLeadFormDialog() {
                         {watchedValues.meetingLink ? (
                           <div className="grid gap-1">
                             <span className="text-muted-foreground">Link</span>
-                            <a
-                              href={watchedValues.meetingLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="break-all text-primary underline-offset-2 hover:underline"
-                            >
-                              {watchedValues.meetingLink}
-                            </a>
+                            {isMeetingLinkSafeHref(watchedValues.meetingLink) ? (
+                              <a
+                                href={watchedValues.meetingLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="break-all text-primary underline-offset-2 hover:underline"
+                              >
+                                {watchedValues.meetingLink}
+                              </a>
+                            ) : (
+                              <span className="break-all">{watchedValues.meetingLink}</span>
+                            )}
+                            {form.formState.errors.meetingLink?.message ? (
+                              <span className="text-xs text-destructive">
+                                {form.formState.errors.meetingLink.message} Reagende para trocar o link.
+                              </span>
+                            ) : null}
                           </div>
                         ) : null}
                         {isEdit && selectedLead ? (

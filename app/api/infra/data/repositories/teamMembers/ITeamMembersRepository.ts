@@ -104,6 +104,17 @@ export interface TeamMemberNotificationRecipient {
   profile: { email: string; fullName: string | null; supabaseId: string | null } | null;
 }
 
+/**
+ * SPEC 13 (Agenda na Criação de Lead), A-E3 — status de conexão Google por
+ * e-mail, para `participantDispatch.ts` classificar quem recebe convite via
+ * Google Calendar e quem recebe por e-mail (Resend). Não trafega o
+ * `refreshToken` de verdade fora do repositório — só o booleano derivado.
+ */
+export interface TeamMemberGoogleConnectionStatus {
+  email: string;
+  googleCalendarConnected: boolean;
+}
+
 export interface ITeamMembersRepository {
   findRequesterProfile(supabaseId: string): Promise<TeamMembersRequesterProfile | null>;
   findTeam(teamId: string): Promise<TeamMembersTeam | null>;
@@ -132,6 +143,19 @@ export interface ITeamMembersRepository {
     teamId: string;
     profileIds: string[];
   }): Promise<Array<{ profileId: string }>>;
+  /** Status de conexão Google dos membros do time cujo e-mail está em `emails` (case-insensitive). */
+  findGoogleConnectionStatusByEmails(
+    teamId: string,
+    emails: string[]
+  ): Promise<TeamMemberGoogleConnectionStatus[]>;
+  /** Closers ativos do time (função CLOSER, perfil não deletado), por nome — API de horários (SPEC 14). */
+  findActiveClosers(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>>;
+  /** Quais dos `profileIds` são SDRs ativos do time (valida a lista de SDRs padrão do webhook v2). */
+  findActiveSdrProfileIds(teamId: string, profileIds: string[]): Promise<string[]>;
+  /** Closers ativos do time sem Google Calendar conectado (DA10: pede o link de Meet padrão). */
+  findActiveClosersWithoutGoogle(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>>;
+  /** Membro do time com a função SDR e perfil não deletado (valida `assigned_to` do webhook v2). */
+  isActiveSdr(teamId: string, profileId: string): Promise<boolean>;
   canManageTeamMembers(requesterProfileId: string, teamMasterId: string): Promise<boolean>;
   findMembers(teamId: string): Promise<TeamMembersListItem[]>;
   findMasterAccountTeamMembers(masterId: string): Promise<Array<{ profileId: string; profile: TeamMembersProfileOption }>>;

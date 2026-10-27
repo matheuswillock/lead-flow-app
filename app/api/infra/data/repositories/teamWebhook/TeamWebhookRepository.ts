@@ -5,6 +5,7 @@ import type {
   TeamWebhookStatus,
 } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { pickNextAssignee } from "@/lib/webhooks/inbound/v2/roundRobin";
 import type {
   CreateTeamWebhookData,
   ITeamWebhookRepository,
@@ -61,6 +62,13 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
     });
   }
 
+  async findInboundById(webhookId: string): Promise<TeamWebhookRow | null> {
+    return prisma.teamWebhook.findFirst({
+      where: { id: webhookId, direction: "inbound" },
+      select: TEAM_WEBHOOK_SELECT,
+    });
+  }
+
   async listInboundByTeamId(teamId: string): Promise<TeamWebhookRow[]> {
     return prisma.teamWebhook.findMany({
       where: { teamId, direction: "inbound" },
@@ -79,6 +87,13 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         direction: data.direction,
         status: data.status ?? "active",
         name: data.name,
+        // SPEC 11: sem estes campos o banco aplica os defaults (v1, escopo leads_create, sem SDRs).
+        ...(data.contractVersion !== undefined && { contractVersion: data.contractVersion }),
+        ...(data.scopes !== undefined && { scopes: data.scopes }),
+        ...(data.defaultAssigneeProfileIds !== undefined && {
+          defaultAssigneeProfileIds: data.defaultAssigneeProfileIds,
+        }),
+        defaultMeetingLink: data.defaultMeetingLink ?? null,
         targetUrl: data.targetUrl ?? null,
         destinationPreset: data.destinationPreset ?? null,
         selectedEvents: data.selectedEvents ?? [],
@@ -86,6 +101,8 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         tokenHash: data.tokenHash ?? null,
         tokenCipher: data.tokenCipher ?? null,
         tokenPreview: data.tokenPreview ?? null,
+        signingSecretCipher: data.signingSecretCipher ?? null,
+        signingSecretPreview: data.signingSecretPreview ?? null,
         expiryMode: data.expiryMode ?? null,
         expiresAt: data.expiresAt ?? null,
         updatedByProfileId: ctx.profileId,
@@ -106,6 +123,47 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         updatedByProfileId: ctx.profileId,
       },
       select: TEAM_WEBHOOK_SELECT,
+    });
+  }
+
+  async claimNextRoundRobinAssignee(
+    webhookId: string
+  ): Promise<{ assigneeProfileId: string | null; listConfigured: boolean }> {
+    return prisma.$transaction(async (tx) => {
+      // FOR UPDATE: eventos simultâneos do mesmo webhook se enfileiram aqui, então a leitura do
+      // ponteiro e a sua escrita nunca se intercalam (dez eventos para três SDRs = 4, 3 e 3).
+      const rows = await tx.$queryRaw<
+        Array<{ teamId: string; defaultAssigneeProfileIds: string[] | null; lastAssignedProfileId: string | null }>
+      >`
+        SELECT "teamId", "defaultAssigneeProfileIds", "lastAssignedProfileId"
+        FROM corretor_studio_team_webhooks
+        WHERE id = ${webhookId}::uuid
+        FOR UPDATE
+      `;
+      const row = rows[0];
+      const ordered = row?.defaultAssigneeProfileIds ?? [];
+      if (!row || ordered.length === 0) return { assigneeProfileId: null, listConfigured: false };
+
+      const validMembers = await tx.teamMember.findMany({
+        where: {
+          teamId: row.teamId,
+          profileId: { in: ordered },
+          functions: { has: "SDR" },
+          profile: { deletedAt: null },
+        },
+        select: { profileId: true },
+      });
+
+      const next = pickNextAssignee({
+        ordered,
+        lastAssignedId: row.lastAssignedProfileId,
+        validIds: new Set(validMembers.map((member) => member.profileId)),
+      });
+
+      if (next) {
+        await tx.teamWebhook.update({ where: { id: webhookId }, data: { lastAssignedProfileId: next } });
+      }
+      return { assigneeProfileId: next, listConfigured: true };
     });
   }
 
@@ -134,6 +192,12 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
   async countOutboundWithCtx(ctx: TeamWebhookTeamContext): Promise<number> {
     return prisma.teamWebhook.count({
       where: { teamId: ctx.teamId, direction: "outbound" },
+    });
+  }
+
+  async countInboundWithCtx(ctx: TeamWebhookTeamContext): Promise<number> {
+    return prisma.teamWebhook.count({
+      where: { teamId: ctx.teamId, direction: "inbound" },
     });
   }
 
@@ -239,6 +303,7 @@ export class TeamWebhookRepository implements ITeamWebhookRepository {
         destinationPreset: true,
         failureStreak: true,
         failureThreshold: true,
+        signingSecretCipher: true,
         updatedByProfileId: true,
       },
     });

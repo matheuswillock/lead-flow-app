@@ -38,3 +38,11 @@ Use a spec relevante localmente quando a suíte completa não for necessária du
 - Capture o exit code antes de filtrar output; pipelines com `head` podem mascarar OOM ou falha.
 - Neutralize variáveis de ambiente nos testes com mocks quando não forem parte do comportamento.
 - Para setup local do Playwright e autenticação E2E, leia `.governance/ai/playwright-runbook.md` somente quando necessário.
+
+## Correção de bug (regressão obrigatória)
+
+1. Escreva a spec de regressão antes do fix e rode-a contra o código sem correção: ela precisa falhar pelo motivo do bug (use `git stash` apenas dos arquivos de produção).
+2. Reproduza o cenário no app renderizado com `browser-harness` e registre o sinal de falha (estado do DOM, URL, rede).
+3. Aplique o fix; a mesma spec e o mesmo cenário no `browser-harness` ficam verdes. Em bug de UI, rode também a auditoria `impeccable`.
+4. Rode Playwright com `node node_modules/@playwright/test/cli.js` (sob Bun a spec pode falhar ao compilar) e aponte `E2E_BASE_URL` para um `next dev` da árvore atual; confira com `ps` que o servidor da porta não é um `next start` antigo.
+5. Server action com `redirect()`: no cliente ela chega como exceção `NEXT_REDIRECT`; não trate como falha nem reabilite o formulário. Mocke a action em E2E com `x-action-redirect` e corpo `0:{"a":"$@1","f":"","b":"e2e"}\n1:null`.

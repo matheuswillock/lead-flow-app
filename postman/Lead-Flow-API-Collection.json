@@ -7,6 +7,22 @@
   },
   "variable": [
     {
+      "key": "studioTeamId",
+      "value": ""
+    },
+    {
+      "key": "webhookToken",
+      "value": ""
+    },
+    {
+      "key": "availabilityToken",
+      "value": ""
+    },
+    {
+      "key": "closerId",
+      "value": ""
+    },
+    {
       "key": "baseUrl",
       "value": "http://localhost:3000",
       "type": "string",
@@ -8004,6 +8020,330 @@
               ]
             },
             "description": "Retorna slots de 30min ocupados por leads de transferência (isTransfer=true, closerId=null) para um time e data. Usado pelo formulário público para checar conflitos de pré-agendamento."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "API Studio (parceiros): Webhook v2 e Horários",
+      "description": "Contrato público para integrações servidor a servidor (SPEC 11 e SPEC 14). Não usa sessão: cada chamada leva o token do webhook ou o token do recurso de horários. Variáveis: studioTeamId, webhookToken, availabilityToken, closerId. O resultado de cada evento aparece nos logs do webhook no app.",
+      "item": [
+        {
+          "name": "Webhook v2: lead sem agendamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webhookToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "evento-123"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/{{studioTeamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "{{studioTeamId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"evento-123\",\n  \"lead\": {\n    \"name\": \"Maria Souza\",\n    \"phone\": \"+5511999998888\",\n    \"email\": \"maria@exemplo.com\",\n    \"notes\": \"Pediu retorno à tarde\"\n  },\n  \"source\": \"youpop\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Responde 202 com event_id. Reenviar com a mesma Idempotency-Key devolve o mesmo event_id."
+          }
+        },
+        {
+          "name": "Webhook v2: lead com agendamento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{webhookToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "evento-124"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/{{studioTeamId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "{{studioTeamId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"evento-124\",\n  \"lead\": {\n    \"name\": \"Maria Souza\",\n    \"phone\": \"+5511999998888\",\n    \"email\": \"maria@exemplo.com\"\n  },\n  \"schedule\": {\n    \"closer\": {\n      \"profile_id\": \"{{closerId}}\"\n    },\n    \"starts_at\": \"2026-11-03T14:00:00-03:00\",\n    \"type\": \"call\",\n    \"title\": \"Apresentação do plano\"\n  },\n  \"source\": \"youpop\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Consulte antes os horários livres. A duração da reunião é a configurada no time; duration_minutes é ignorado. Horário ocupado vira lead como nova oportunidade com alerta de remarcação."
+          }
+        },
+        {
+          "name": "Horários disponíveis (por dia)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{availabilityToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/studio/v1/availability?date=2026-11-03",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "studio",
+                "v1",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-11-03"
+                }
+              ]
+            },
+            "description": "Horários livres de todos os closers do time, 24 h do dia, no fuso do time. Limite de 30 consultas por minuto por token."
+          }
+        },
+        {
+          "name": "OpenAPI 3.1 (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/studio/v1/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "studio",
+                "v1",
+                "openapi.json"
+              ]
+            },
+            "description": "Contrato legível por máquina, sem dado de time. Importe no Postman, no Swagger ou em um agente de IA."
+          }
+        },
+        {
+          "name": "JSON Schema do evento v2 (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/studio/v2/schema",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "studio",
+                "v2",
+                "schema"
+              ]
+            },
+            "description": "JSON Schema do corpo do evento, gerado do mesmo Zod que valida o webhook."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks (Saída)",
+      "description": "CRUD e ciclo de vida do webhook de saída (TeamWebhook direction=outbound). SPEC 20 — Webhooks de Saída. Toda entrega HTTP para o destino do cliente leva os headers X-Corretor-Studio-Signature (sha256=<hmac> sobre timestamp + \".\" + corpo bruto, com o segredo do webhook), X-Corretor-Studio-Timestamp (o destino deve rejeitar timestamp com mais de 5 minutos) e X-Corretor-Studio-Event-Version (hoje sempre \"1\"). O segredo de assinatura é mostrado em texto puro só na criação e na rotação — depois disso só o preview fica disponível.",
+      "item": [
+        {
+          "name": "List Outbound Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks?direction=outbound&page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks"],
+              "query": [
+                { "key": "direction", "value": "outbound" },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Lista os webhooks de saída do time ativo. Apenas manager."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Outbound Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direction\": \"outbound\",\n  \"name\": \"Meu CRM externo\",\n  \"targetUrl\": \"https://example.com/hook\",\n  \"destinationPreset\": \"generic\",\n  \"selectedEvents\": [\"lead_created\"],\n  \"failureThreshold\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks"]
+            },
+            "description": "Cria um webhook de saída. A resposta traz `signingSecret` (texto puro) UMA ÚNICA VEZ — o cliente deve copiá-lo na hora, o backend só guarda a cifra e o preview a partir daqui."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Outbound Webhook By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            },
+            "description": "Detalhe do webhook. `signingSecretPreview` vem sempre; o segredo completo nunca é devolvido aqui."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Outbound Webhook",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selectedEvents\": [\"lead_created\", \"lead_status_changed\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rotate Signing Secret",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/signing-secret",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "signing-secret"]
+            },
+            "description": "Gera um novo segredo de assinatura HMAC e invalida o anterior imediatamente (sem período de graça). A resposta traz `signingSecret` em texto puro uma única vez — atualize o verificador no destino antes de rotacionar em produção."
+          },
+          "response": []
+        },
+        {
+          "name": "Test Delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "test"]
+            },
+            "description": "Envia um evento de teste assinado com o mesmo segredo do webhook real."
+          },
+          "response": []
+        },
+        {
+          "name": "List Delivery Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}/logs?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}", "logs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Payload enviado, status HTTP, corpo da resposta e erro completo de cada entrega. O payload de saída não é mascarado — o time é dono do dado e do destino (D4)."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Webhook (DELETE = disable, não apaga)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "x-supabase-user-id", "value": "{{supabaseId}}" },
+              { "key": "x-team-id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/webhooks/{{webhookId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "webhooks", "{{webhookId}}"]
+            },
+            "description": "IMPORTANTE (W20): apesar do verbo HTTP, este endpoint NÃO apaga o webhook. Ele só muda o status para `disabled` (soft-disable) — a linha, os logs de entrega e o histórico continuam no banco, e o webhook pode ser reativado depois via `POST /status` com `{\"status\":\"active\"}`. Use este endpoint quando a tela oferecer \"Excluir\"; o efeito real é desativar."
           },
           "response": []
         }

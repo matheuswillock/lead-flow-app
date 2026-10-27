@@ -1,6 +1,13 @@
 import { describe, expect, mock, test } from "bun:test"
 import type { TeamWebhookEventLogRow } from "@/app/api/infra/data/repositories/teamWebhook/ITeamWebhookEventLogRepository"
+import { encryptWebhookSigningSecret } from "@/lib/webhooks/webhookSigningSecurity"
 import { ResendWebhookLogUseCase } from "./ResendWebhookLogUseCase"
+
+const SIGNING_SECRET = "test-secret-for-resend-fixture-0123456789"
+const SIGNING_SECRET_CIPHER = encryptWebhookSigningSecret(SIGNING_SECRET)
+if (!SIGNING_SECRET_CIPHER) {
+  throw new Error("Não foi possível gerar a cifra fixture para os testes de reenvio")
+}
 
 const access = {
   profileId: "profile-1",
@@ -15,6 +22,7 @@ const webhook = {
   name: "Leads",
   targetUrl: "https://current.example.com/events",
   destinationPreset: "generic",
+  signingSecretCipher: SIGNING_SECRET_CIPHER as string | null,
 }
 
 const originalLog: TeamWebhookEventLogRow = {
@@ -71,6 +79,7 @@ describe("ResendWebhookLogUseCase", () => {
       targetUrl: "https://current.example.com/events",
       preset: "generic",
       body: originalLog.requestPayload,
+      signingSecret: SIGNING_SECRET,
     })
     expect(dependencies.eventLogRepository.create).toHaveBeenCalledWith({
       teamId: "team-1",
@@ -186,5 +195,36 @@ describe("ResendWebhookLogUseCase", () => {
     expect(output.isValid).toBe(false)
     expect(output.errorMessages).toEqual(["Este registro não possui payload para reenvio"])
     expect(dependencies.deliveryService.deliver).not.toHaveBeenCalled()
+  })
+  // SPEC 20: nenhuma entrega sai sem assinatura, nem o reenvio de um log.
+  test("bloqueia o reenvio quando o webhook não tem segredo de assinatura", async () => {
+    const dependencies = createDependencies()
+    dependencies.webhookRepository.findByIdWithCtx.mockResolvedValueOnce({
+      ...webhook,
+      signingSecretCipher: null,
+    })
+    const useCase = new ResendWebhookLogUseCase(
+      dependencies.webhookRepository as never,
+      dependencies.eventLogRepository as never,
+      dependencies.deliveryService as never,
+    )
+
+    const output = await useCase.execute(access, "webhook-1", "log-1")
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toEqual({
+      ok: false,
+      statusCode: null,
+      errorMessage: "Segredo de assinatura não configurado — reenvio bloqueado por segurança",
+    })
+    expect(dependencies.deliveryService.deliver).not.toHaveBeenCalled()
+    expect(dependencies.eventLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        result: "failure",
+        statusCode: null,
+        errorMessage: "Segredo de assinatura não configurado — reenvio bloqueado por segurança",
+      }),
+    )
+    expect(dependencies.webhookRepository.touchUsage).toHaveBeenCalledWith("webhook-1", false)
   })
 })

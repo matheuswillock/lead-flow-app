@@ -9,6 +9,28 @@ import type {
 
 const PIXEL_HIT_LOGS_LIMIT = 15
 
+type PixelConfigRecord = {
+  publicToken: string
+  allowedOrigins: string[]
+  lastUsedAt: Date | null
+}
+
+/**
+ * Único ponto que decide `originRestrictionActive` (W27, SPEC 30, DA1).
+ * `getConfig` e `saveConfig` chamam este mapper em vez de repetir a
+ * expressão — evita que uma delas fique defasada numa mudança futura.
+ */
+function toConfigResult(config: PixelConfigRecord, appUrl: string): RadarPixelConfigResult {
+  return {
+    configured: true,
+    publicToken: config.publicToken,
+    allowedOrigins: config.allowedOrigins,
+    originRestrictionActive: config.allowedOrigins.length > 0,
+    lastUsedAt: config.lastUsedAt?.toISOString() ?? null,
+    pixelSnippet: buildPixelSnippet(appUrl, config.publicToken),
+  }
+}
+
 function buildPixelSnippet(appUrl: string, publicToken: string): string {
   const hitUrl = `${appUrl}/api/v1/public-pixel/${publicToken}/hit`
   return `<script>
@@ -27,16 +49,17 @@ class RadarPixelService implements IRadarPixelService {
     const config = await radarRepository.findPixelConfigByTeamId(teamId)
 
     if (!config) {
-      return { configured: false, publicToken: null, allowedOrigins: [], lastUsedAt: null, pixelSnippet: null }
+      return {
+        configured: false,
+        publicToken: null,
+        allowedOrigins: [],
+        originRestrictionActive: false,
+        lastUsedAt: null,
+        pixelSnippet: null,
+      }
     }
 
-    return {
-      configured: true,
-      publicToken: config.publicToken,
-      allowedOrigins: config.allowedOrigins,
-      lastUsedAt: config.lastUsedAt?.toISOString() ?? null,
-      pixelSnippet: buildPixelSnippet(appUrl, config.publicToken),
-    }
+    return toConfigResult(config, appUrl)
   }
 
   async saveConfig(
@@ -52,13 +75,7 @@ class RadarPixelService implements IRadarPixelService {
       allowedOrigins: payload.allowedOrigins,
     })
 
-    return {
-      configured: true,
-      publicToken: config.publicToken,
-      allowedOrigins: config.allowedOrigins,
-      lastUsedAt: config.lastUsedAt?.toISOString() ?? null,
-      pixelSnippet: buildPixelSnippet(appUrl, config.publicToken),
-    }
+    return toConfigResult(config, appUrl)
   }
 
   async deleteConfig(teamId: string): Promise<void> {

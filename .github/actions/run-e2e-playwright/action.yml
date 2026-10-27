@@ -11,6 +11,10 @@ inputs:
     description: Chave Asaas sandbox (nunca produção). Placeholder se vazio.
     required: false
     default: ""
+  github-token:
+    description: Token usado só para autenticar o pull no ghcr.io (limite de taxa maior que o anônimo).
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: composite
@@ -43,8 +47,20 @@ runs:
           -o Acquire::https::Timeout=15
         sudo apt-get install -y postgresql-client
 
+    # Cache do tar da imagem: evita o pull (e o rate limit do ghcr.io) nos runs
+    # seguintes. A chave carrega a tag da imagem, então trocar a versão invalida.
+    - name: Cache supabase/postgres image
+      uses: actions/cache@v5
+      with:
+        path: ${{ runner.temp }}/e2e-postgres-image.tar
+        key: e2e-postgres-image-${{ runner.os }}-17.6.1.149
+
     - name: Start supabase/postgres
       shell: bash
+      env:
+        GHCR_TOKEN: ${{ inputs.github-token }}
+        GHCR_ACTOR: ${{ github.actor }}
+        E2E_PG_IMAGE_TAR: ${{ runner.temp }}/e2e-postgres-image.tar
       # O nome único evita colisão com containers órfãos em retries. A porta
       # permanece fixa em 55322 porque scripts/seed-e2e.ts,
       # scripts/lib/local-stack.ts e .env.test.example dependem dela. Nos
@@ -66,6 +82,52 @@ runs:
         # para novas conexões e repete o start se ela ainda assim estiver ocupada.
         sudo sysctl -w net.ipv4.ip_local_reserved_ports=55322 >/dev/null 2>&1 || true
 
+        # O ghcr.io respondeu `toomanyrequests` em 22/10/2026 (runs 39830851161 e
+        # 39838499413), até com 6 tentativas e backoff. Ordem: tar em cache →
+        # pull autenticado (limite maior que o anônimo) → pull anônimo. O login
+        # usa um DOCKER_CONFIG temporário para não gravar credencial no runner
+        # persistente (VPS).
+        E2E_PG_IMAGE="ghcr.io/supabase/postgres:17.6.1.149"
+        if [ -s "${E2E_PG_IMAGE_TAR}" ] && docker load -i "${E2E_PG_IMAGE_TAR}"; then
+          echo "Imagem ${E2E_PG_IMAGE} carregada do cache."
+        else
+          rm -f "${E2E_PG_IMAGE_TAR}"
+          export DOCKER_CONFIG="${RUNNER_TEMP}/docker-config-ghcr"
+          mkdir -p "${DOCKER_CONFIG}"
+          if [ -n "${GHCR_TOKEN:-}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_ACTOR:-github-actions}" --password-stdin \
+              || echo "Login no ghcr.io falhou; seguindo com pull anônimo."
+          fi
+          # 429 do ghcr.io persistiu por mais de uma hora em 22/10/2026 (medido
+          # também fora do CI). A mesma tag existe no Docker Hub: alterna entre as
+          # duas origens e re-etiqueta para o nome ghcr usado pelo `docker run`.
+          E2E_PG_FALLBACK_IMAGE="docker.io/supabase/postgres:17.6.1.149"
+          pulled=""
+          pull_delay=10
+          for pull_attempt in 1 2 3 4 5 6; do
+            if docker pull "${E2E_PG_IMAGE}"; then
+              pulled="ghcr"
+              break
+            fi
+            echo "Pull de ${E2E_PG_IMAGE} falhou (tentativa ${pull_attempt}/6); tentando ${E2E_PG_FALLBACK_IMAGE}."
+            if docker pull "${E2E_PG_FALLBACK_IMAGE}"; then
+              docker tag "${E2E_PG_FALLBACK_IMAGE}" "${E2E_PG_IMAGE}"
+              pulled="dockerhub"
+              break
+            fi
+            if [ "${pull_attempt}" = "6" ]; then
+              echo "::error::Não foi possível baixar a imagem do Postgres E2E (ghcr.io e Docker Hub) após 6 tentativas."
+              exit 1
+            fi
+            echo "Nova tentativa em ${pull_delay}s."
+            sleep "${pull_delay}"
+            pull_delay=$((pull_delay * 2))
+          done
+          echo "Imagem do Postgres E2E obtida via ${pulled}."
+          docker save "${E2E_PG_IMAGE}" -o "${E2E_PG_IMAGE_TAR}" || rm -f "${E2E_PG_IMAGE_TAR}"
+          unset DOCKER_CONFIG
+        fi
+
         start_postgres() {
           docker run -d --name "${E2E_PG_CONTAINER}" \
             -e POSTGRES_PASSWORD=postgres \
@@ -73,7 +135,7 @@ runs:
             -p 55322:5432 \
             -v "$PWD/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro" \
             -v "$PWD/docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro" \
-            ghcr.io/supabase/postgres:17.6.1.149 \
+            "${E2E_PG_IMAGE}" \
             postgres \
             -c listen_addresses=* \
             -c wal_level=logical \
@@ -136,6 +198,10 @@ runs:
           echo "APP_ENV=test"
           echo "E2E_TEST_MODE=true"
           echo "E2E_INCLUDE_SLOW=${INCLUDE_SLOW}"
+          # O servidor E2E inicia com NODE_ENV=production. Nesse modo a cifra
+          # de segredos de webhook não usa o fallback de desenvolvimento e
+          # precisa de uma chave explícita para criar webhooks de saída.
+          echo "STUDIO_WEBHOOK_TOKEN_SECRET=e2e-studio-webhook-token-secret"
           echo "ASAAS_ENV=sandbox"
           echo "ASAAS_URL=https://sandbox.asaas.com"
           echo "ASAAS_URL_sandbox=https://sandbox.asaas.com"

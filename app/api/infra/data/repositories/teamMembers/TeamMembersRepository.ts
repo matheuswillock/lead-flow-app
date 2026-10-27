@@ -1,9 +1,11 @@
 import type { UserRole } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   ITeamMembersRepository,
   ProfileTeamMembership,
+  TeamMemberGoogleConnectionStatus,
   TeamMembersEligibleProfile,
   TeamMembersListItem,
   TeamMembersProfileOption,
@@ -371,11 +373,106 @@ export class TeamMembersRepository implements ITeamMembersRepository {
     });
   }
 
+  async findActiveClosers(teamId: string): Promise<Array<{ profileId: string; fullName: string | null }>> {
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, functions: { has: "CLOSER" }, team: { deletedAt: null }, profile: { deletedAt: null } },
+      select: { profileId: true, profile: { select: { fullName: true } } },
+    });
+    return members
+      .map((member) => ({ profileId: member.profileId, fullName: member.profile.fullName }))
+      .sort((a, b) => (a.fullName ?? "").localeCompare(b.fullName ?? "", "pt-BR"));
+  }
+
+  async findActiveSdrProfileIds(teamId: string, profileIds: string[]): Promise<string[]> {
+    if (profileIds.length === 0) return [];
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, profileId: { in: profileIds }, functions: { has: "SDR" }, profile: { deletedAt: null } },
+      select: { profileId: true },
+    });
+    return members.map((member) => member.profileId);
+  }
+
+  async findActiveClosersWithoutGoogle(
+    teamId: string
+  ): Promise<Array<{ profileId: string; fullName: string | null }>> {
+    const members = await prisma.teamMember.findMany({
+      where: { teamId, functions: { has: "CLOSER" }, team: { deletedAt: null }, profile: { deletedAt: null } },
+      select: {
+        profileId: true,
+        profile: {
+          select: {
+            fullName: true,
+            googleConnection: { select: { refreshToken: true, revokedAt: true } },
+          },
+        },
+      },
+    });
+    return members
+      .filter((member) => !isGoogleConnectionActive(member.profile.googleConnection))
+      .map((member) => ({ profileId: member.profileId, fullName: member.profile.fullName }));
+  }
+
+  async isActiveSdr(teamId: string, profileId: string): Promise<boolean> {
+    const member = await prisma.teamMember.findFirst({
+      where: { teamId, profileId, functions: { has: "SDR" }, profile: { deletedAt: null } },
+      select: { id: true },
+    });
+    return member !== null;
+  }
+
   async findTransferAuthorization(teamId: string, profileId: string) {
     return await prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId } },
       select: { role: true, canTransferAccountLeads: true },
     });
+  }
+
+  /**
+   * SPEC 13 (Agenda na Criação de Lead), A-E3 — extraído de
+   * `participantDispatch.ts`, que fazia essa mesma consulta direto com
+   * `prisma.teamMember.findMany` (violação de `nonRepositoryDatabaseAccessAllowlist`,
+   * DA9). O booleano derivado (`isGoogleConnectionActive`) já basta para
+   * quem chama decidir o canal — o `refreshToken` cru não sai do repositório.
+   */
+  async findGoogleConnectionStatusByEmails(
+    teamId: string,
+    emails: string[]
+  ): Promise<TeamMemberGoogleConnectionStatus[]> {
+    if (emails.length === 0) return [];
+
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+        profile: {
+          email: {
+            in: emails,
+            mode: "insensitive",
+          },
+        },
+      },
+      select: {
+        profile: {
+          select: {
+            email: true,
+            googleConnection: {
+              select: {
+                refreshToken: true,
+                revokedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return teamMembers
+      .filter((member): member is typeof member & { profile: { email: string } } =>
+        Boolean(member.profile.email)
+      )
+      .map((member) => ({
+        email: member.profile.email,
+        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+      }));
   }
 }
 

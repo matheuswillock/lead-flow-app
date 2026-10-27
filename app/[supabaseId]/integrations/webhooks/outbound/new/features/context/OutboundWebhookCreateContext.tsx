@@ -1,30 +1,27 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useOutboundWebhookCreate } from "./OutboundWebhookCreateHook";
-import type { OutboundWebhookCreateState } from "./OutboundWebhookCreateTypes";
+import { useOutboundWebhookCreateHook } from "./OutboundWebhookCreateHook";
+import type { OutboundWebhookCreateContextValue } from "./OutboundWebhookCreateTypes";
 
-const OutboundWebhookCreateContext = createContext<OutboundWebhookCreateState | null>(null);
+const OutboundWebhookCreateContext = createContext<OutboundWebhookCreateContextValue | null>(null);
 
-export function OutboundWebhookCreateProvider({
-  supabaseId,
-  children,
-}: {
+type ProviderProps = {
   supabaseId: string;
   children: ReactNode;
-}) {
-  const value = useOutboundWebhookCreate(supabaseId);
+};
+
+export function OutboundWebhookCreateProvider({ supabaseId, children }: ProviderProps) {
+  const value = useOutboundWebhookCreateHook(supabaseId);
   return (
-    <OutboundWebhookCreateContext.Provider value={value}>
-      {children}
-    </OutboundWebhookCreateContext.Provider>
+    <OutboundWebhookCreateContext.Provider value={value}>{children}</OutboundWebhookCreateContext.Provider>
   );
 }
 
-export function useOutboundWebhookCreateContext(): OutboundWebhookCreateState {
-  const ctx = useContext(OutboundWebhookCreateContext);
-  if (!ctx) {
+export function useOutboundWebhookCreateContext(): OutboundWebhookCreateContextValue {
+  const context = useContext(OutboundWebhookCreateContext);
+  if (!context) {
     throw new Error("useOutboundWebhookCreateContext must be used within OutboundWebhookCreateProvider");
   }
-  return ctx;
+  return context;
 }

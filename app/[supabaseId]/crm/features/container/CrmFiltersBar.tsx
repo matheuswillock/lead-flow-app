@@ -93,6 +93,7 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
     onlyTransfer: originFilter === "transfer",
     originFilter,
     onlyDraft: filters.onlyDraft === true,
+    onlyNeedsReschedule: filters.onlyNeedsReschedule === true,
     customFieldFilters: sortCustomFieldFiltersForComparison(filters.customFieldFilters) as CrmFiltersState["customFieldFilters"],
     customFieldSort: filters.customFieldSort ?? null,
   };
@@ -233,6 +234,7 @@ export function CrmFiltersBar() {
     if (originLabel) parts.push(`Origem: ${originLabel}`);
     else if (queryJson.onlyTransfer) parts.push("Transferência");
     if (queryJson.onlyDraft) parts.push("Rascunhos");
+    if (queryJson.onlyNeedsReschedule) parts.push("Precisa remarcar");
     if (queryJson.customFieldFilters.length) {
       parts.push(`Campos personalizados: ${queryJson.customFieldFilters.length}`);
     }
@@ -261,6 +263,8 @@ export function CrmFiltersBar() {
         }
         draft={crmFilters.onlyDraft}
         onToggleDraft={(value) => setCrmFilter("onlyDraft", value)}
+        needsReschedule={crmFilters.onlyNeedsReschedule}
+        onToggleNeedsReschedule={(value) => setCrmFilter("onlyNeedsReschedule", value)}
       />
       <LeadsSingleFilter
         title="Origem"

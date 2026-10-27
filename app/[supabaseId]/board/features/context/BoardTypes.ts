@@ -23,6 +23,7 @@ export type Lead = {
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;
   meetingPresenceConfirmed: boolean;
+  needsReschedule: boolean;
   meetingPresenceConfirmedAt: string | null;
   isTransfer: boolean;
   originChannel: LeadOriginChannel | null;

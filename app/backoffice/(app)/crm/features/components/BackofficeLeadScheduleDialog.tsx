@@ -42,6 +42,25 @@ import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const DEFAULT_MEETING_TITLE = "Demonstração Corretor Studio"
 
+/**
+ * SPEC 13 (Agenda na Criação de Lead), A-E1c — achado da revisão final
+ * (R13-8): o link não é usado (nem exibido) fora de reunião online, então um
+ * valor herdado do lead (possivelmente `http:` legado) não pode ser reenviado
+ * quando o tipo é telefone/WhatsApp — o servidor recusaria a atualização
+ * inteira sem o usuário conseguir corrigir um campo que ele nem viu.
+ *
+ * Chamar só depois de confirmar que a validação do link passou (o handler de
+ * submit já bloqueia antes disso quando `isOnlineMeeting` é `true`).
+ */
+export function resolveMeetingLinkForSubmit(params: {
+  isOnlineMeeting: boolean
+  link: string
+  normalizedMeetingLink?: string
+}): string | null {
+  if (!params.isOnlineMeeting) return null
+  return params.normalizedMeetingLink ?? (params.link.trim() || null)
+}
+
 export interface BackofficeLeadScheduleDialogLead {
   id?: string | null
   name: string
@@ -206,9 +225,18 @@ export function BackofficeLeadScheduleDialog({
 
   const requiresManualMeetingLink =
     isOnlineMeeting && !!selectedCloser && !selectedCloser.googleCalendarConnected
-  const linkValidation = validateMeetingLinkValue(link, {
-    required: requiresManualMeetingLink,
-  })
+  // SPEC 13 (Agenda na Criação de Lead), A-E1c — o link só é exibido e relevante
+  // para reunião online (ver o `isOnlineMeeting ? ... : null` mais abaixo); não
+  // pode travar o envio de um agendamento por telefone/WhatsApp cujo `link`
+  // herdado do lead (possivelmente `http:` legado) nem aparece na tela. Quando
+  // é online e o valor não foi tocado pelo usuário, o `http:` legado continua
+  // aceito (não pode quebrar reunião já gravada).
+  const linkValidation = isOnlineMeeting
+    ? validateMeetingLinkValue(link, {
+        required: requiresManualMeetingLink,
+        allowLegacyHttp: !!link && link === (lead?.meetingLink ?? ""),
+      })
+    : { isValid: true as const, normalized: undefined }
   const leadEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail.trim())
   const canSubmit =
     Boolean(meetingDate && closerId && linkValidation.isValid && leadEmailValid) &&
@@ -272,7 +300,11 @@ export function BackofficeLeadScheduleDialog({
         closerBackofficeUserId: closerId,
         meetingTitle: title.trim() || null,
         meetingNotes: notes.trim() || null,
-        meetingLink: linkValidation.normalized ?? (link.trim() || null),
+        meetingLink: resolveMeetingLinkForSubmit({
+          isOnlineMeeting,
+          link,
+          normalizedMeetingLink: linkValidation.normalized,
+        }),
         meetingType,
         leadEmail: leadEmail.trim() || null,
         extraGuests,

@@ -110,6 +110,8 @@ interface IPipelineContextState {
   setOriginFilter: (value: LeadOriginFilterValue | "") => void;
   onlyDraft: boolean;
   setOnlyDraft: (value: boolean) => void;
+  onlyNeedsReschedule: boolean;
+  setOnlyNeedsReschedule: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
   filtered: Lead[]; // Leads filtrados
   periodStart: string; 
@@ -213,6 +215,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [onlyTransfer, setOnlyTransfer] = useState(false);
   const [originFilter, setOriginFilterState] = useState<LeadOriginFilterValue | "">("");
   const [onlyDraft, setOnlyDraft] = useState(false);
+  const [onlyNeedsReschedule, setOnlyNeedsReschedule] = useState(false);
 
   const setOriginFilter = useCallback((value: LeadOriginFilterValue | "") => {
     setOriginFilterState(value);
@@ -807,6 +810,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     );
     const activeDraft =
       externalFilters !== undefined ? externalFilters.onlyDraft : onlyDraft;
+    const activeNeedsReschedule =
+      externalFilters !== undefined ? externalFilters.onlyNeedsReschedule === true : onlyNeedsReschedule;
 
     const q = activeQuery.trim().toLowerCase();
     
@@ -859,6 +864,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       }
 
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
+      const matchesNeedsReschedule = !activeNeedsReschedule || lead.needsReschedule === true;
       const matchesOrigin = leadMatchesOriginFilter(
         {
           originChannel: lead.originChannel,
@@ -874,12 +880,13 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesResponsible &&
         matchesCloser &&
         matchesMeetingsHeld &&
+        matchesNeedsReschedule &&
         matchesOrigin &&
         matchesPeriod &&
         matchesScheduledPeriod
       );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, originFilter, onlyDraft, periodStart, periodEnd, tz]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, onlyTransfer, originFilter, onlyDraft, onlyNeedsReschedule, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -904,6 +911,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOriginFilter,
     onlyDraft,
     setOnlyDraft,
+    onlyNeedsReschedule,
+    setOnlyNeedsReschedule,
     allLeads,
     filtered,
     periodStart,

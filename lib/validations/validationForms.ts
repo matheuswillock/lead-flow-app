@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidCNPJ } from "@/lib/masks";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 export const loginFormSchema = z.object({
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
@@ -181,7 +182,28 @@ export const leadFormSchema = z.object({
   meetingDate: z.string().min(0).optional(),
   meetingTitle: z.string().min(0).optional(),
   meetingNotes: z.string().min(0).optional(),
-  meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
+  // SPEC 13 (Agenda na Criação de Lead), A-E1d — usa a mesma validação de
+  // lib/validations/meetingLink.ts (DA8: só https) em vez de z.string().url(),
+  // que aceitava http:. Achado da revisão (R13d-1): este campo só existe no
+  // form para EXIBIR o link já gravado (LeadDialog carrega
+  // `currentLead.meetingLink` em `defaultValues`; `transformToCreateRequest`/
+  // `transformToUpdateRequest` sempre mandam `meetingLink: undefined` — o
+  // valor nunca volta ao backend por aqui). Sem `allowLegacyHttp`, um lead
+  // com reunião já gravada com link `http:` (carry-over legado da A-E1c)
+  // ficava com o formulário inteiro inválido — bloqueando edição de
+  // QUALQUER outro campo (nome, telefone, notas), mesmo sem tocar no link.
+  // `allowLegacyHttp: true` aqui é seguro porque este campo nunca é
+  // reenviado como escrita: continua recusando esquemas perigosos
+  // (`javascript:`, etc.) via `new URL(...).protocol`, só deixa de exigir
+  // `https:` para o valor que já veio persistido.
+  meetingLink: z
+    .string()
+    .refine(
+      (val) => validateMeetingLinkValue(val, { required: false, allowLegacyHttp: true }).isValid,
+      "Link da reuniao invalido (use https)"
+    )
+    .optional()
+    .or(z.literal("")),
   // Allow null so UI can explicitly clear the "reuniao realizada" flag.
   meetingHeald: z.enum(["yes", "no"]).nullable().optional(),
   isTransfer: z.boolean().optional(),

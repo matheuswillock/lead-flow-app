@@ -853,6 +853,7 @@ LEAD_DOCUMENT_UPLOADED LEAD_DOCUMENT_UPLOADED
 LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
 STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
 STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
+LEAD_NEEDS_RESCHEDULE LEAD_NEEDS_RESCHEDULE
         }
     
 
@@ -907,6 +908,22 @@ processing processing
 delivered delivered
 failed failed
 cancelled cancelled
+        }
+    
+
+
+        team_webhook_inbound_event_status {
+            pending pending
+processing processing
+processed processed
+failed failed
+        }
+    
+
+
+        team_api_resource_status {
+            active active
+inactive inactive
         }
     
 
@@ -2531,6 +2548,7 @@ completed completed
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
     String soldPlan "❓"
+    Boolean needsReschedule 
     Boolean isReferral "❓"
     String referrerName "❓"
     String referrerPhone "❓"
@@ -2882,6 +2900,11 @@ completed completed
     TeamWebhookDirection direction 
     TeamWebhookStatus status 
     String name 
+    Int contractVersion 
+    String scopes 
+    String defaultAssigneeProfileIds 
+    String lastAssignedProfileId "❓"
+    String defaultMeetingLink "❓"
     String targetUrl "❓"
     TeamWebhookDestinationPreset destinationPreset "❓"
     TeamWebhookEventKey selectedEvents 
@@ -2892,6 +2915,8 @@ completed completed
     String tokenHash "❓"
     String tokenCipher "❓"
     String tokenPreview "❓"
+    String signingSecretCipher "❓"
+    String signingSecretPreview "❓"
     StudioWebhookTokenExpiryMode expiryMode "❓"
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
@@ -2913,6 +2938,67 @@ completed completed
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
+    DateTime createdAt 
+    }
+  
+
+  "corretor_studio_team_webhook_inbound_events" {
+    String id "🗝️"
+    Int contractVersion 
+    String idempotencyKey "❓"
+    String requestHash 
+    Json payload 
+    TeamWebhookInboundEventStatus status 
+    Int attemptCount 
+    DateTime nextAttemptAt 
+    DateTime lockedAt "❓"
+    String resultCode "❓"
+    String leadId "❓"
+    Json result "❓"
+    Boolean idempotencyKeyReused 
+    String lastError "❓"
+    DateTime receivedAt 
+    DateTime processedAt "❓"
+    }
+  
+
+  "corretor_studio_lead_reschedule_alerts" {
+    String id "🗝️"
+    String reasonCode 
+    DateTime requestedStartsAt "❓"
+    String requestedCloserId "❓"
+    String conflictingLeadId "❓"
+    Json suggestedSlots 
+    String sourceEventId "❓"
+    DateTime createdAt 
+    DateTime resolvedAt "❓"
+    }
+  
+
+  "corretor_studio_team_api_resource_activations" {
+    String id "🗝️"
+    String resourceSlug 
+    TeamApiResourceStatus status 
+    String tokenHash 
+    String tokenPreview 
+    Json config 
+    DateTime expiresAt "❓"
+    DateTime lastUsedAt "❓"
+    String activatedByProfileId 
+    String updatedByProfileId 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_api_request_logs" {
+    String id "🗝️"
+    String resourceSlug 
+    String activationId "❓"
+    Int statusCode 
+    String errorCode "❓"
+    String requestedDate "❓"
+    Int durationMs "❓"
     DateTime createdAt 
     }
   
@@ -4127,6 +4213,15 @@ completed completed
     }
   
 
+  "webhooks_inbound_rate_limit_windows" {
+    String key "🗝️"
+    DateTime windowStart "🗝️"
+    Int count 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "whatsapp_auto_response_rules" {
     String id "🗝️"
     WhatsAppAutoResponseRuleType type 
@@ -5279,6 +5374,14 @@ completed completed
     "corretor_studio_team_webhook_event_logs" |o--|o "TeamWebhookEventKey" : "enum:eventKey"
     "corretor_studio_team_webhook_event_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhook_event_logs" }o--|| corretor_studio_team_webhooks : "webhook"
+    "corretor_studio_team_webhook_inbound_events" |o--|| "TeamWebhookInboundEventStatus" : "enum:status"
+    "corretor_studio_team_webhook_inbound_events" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_webhook_inbound_events" }o--|| corretor_studio_team_webhooks : "webhook"
+    "corretor_studio_lead_reschedule_alerts" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_lead_reschedule_alerts" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_team_api_resource_activations" |o--|| "TeamApiResourceStatus" : "enum:status"
+    "corretor_studio_team_api_resource_activations" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_api_request_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookEventKey" : "enum:eventKey"
     "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookOutboxStatus" : "enum:status"
     "corretor_studio_team_webhook_outbox" }o--|| corretor_studio_teams : "team"

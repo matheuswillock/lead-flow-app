@@ -38,6 +38,8 @@ interface LeadsStatusFilterProps {
   onToggleTransfer?: (value: boolean) => void;
   draft?: boolean;
   onToggleDraft?: (value: boolean) => void;
+  needsReschedule?: boolean;
+  onToggleNeedsReschedule?: (value: boolean) => void;
 }
 
 export function LeadsStatusFilter({
@@ -51,6 +53,8 @@ export function LeadsStatusFilter({
   onToggleTransfer,
   draft = false,
   onToggleDraft,
+  needsReschedule = false,
+  onToggleNeedsReschedule,
 }: LeadsStatusFilterProps) {
   const selectedSet = React.useMemo(
     () => new Set(selectedStatuses),
@@ -70,8 +74,11 @@ export function LeadsStatusFilter({
     if (draft) {
       labels.unshift("Rascunhos");
     }
+    if (needsReschedule) {
+      labels.unshift("Precisa remarcar");
+    }
     return labels;
-  }, [draft, meetingHeld, selectedSet, statusOptions, transfer]);
+  }, [draft, meetingHeld, needsReschedule, selectedSet, statusOptions, transfer]);
 
   const hasSelections = selectedLabels.length > 0;
 
@@ -139,7 +146,7 @@ export function LeadsStatusFilter({
           <CommandInput placeholder={title} />
           <CommandList>
             <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-            {(onToggleMeetingHeld || onToggleTransfer || onToggleDraft) && (
+            {(onToggleMeetingHeld || onToggleTransfer || onToggleDraft || onToggleNeedsReschedule) && (
               <>
                 <CommandGroup>
                   {onToggleMeetingHeld && (
@@ -189,6 +196,21 @@ export function LeadsStatusFilter({
                         <Check className="h-4 w-4" />
                       </div>
                       <span>Somente rascunhos</span>
+                    </CommandItem>
+                  )}
+                  {onToggleNeedsReschedule && (
+                    <CommandItem onSelect={() => onToggleNeedsReschedule(!needsReschedule)}>
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          needsReschedule
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <span>Precisa remarcar</span>
                     </CommandItem>
                   )}
                 </CommandGroup>
