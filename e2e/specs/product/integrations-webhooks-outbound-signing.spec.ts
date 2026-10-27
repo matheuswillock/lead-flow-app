@@ -12,7 +12,7 @@
  * SPEC 10 e não está coberto aqui.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 import { WHATS_NEW_VERSION } from "@/components/whats-new-modal";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
@@ -41,14 +41,21 @@ async function cleanupE2eOutboundWebhooks(): Promise<void> {
  * O formulário hidrata depois do `domcontentloaded`: um `fill` nesse intervalo se perde e o botão "Criar"
  * fica desabilitado. Repete o preenchimento até o botão habilitar, como um usuário que digita de novo.
  */
-async function fillAndSubmitOutboundForm(page: Page, webhookName: string): Promise<void> {
+/** Devolve a resposta da criação (ou `null` se nenhuma chamada saiu), para o diagnóstico de falha. */
+async function fillAndSubmitOutboundForm(page: Page, webhookName: string): Promise<Promise<Response | null>> {
   const createButton = page.getByRole("button", { name: "Criar" });
   await expect(async () => {
     await page.getByLabel("Nome").fill(webhookName);
     await page.getByLabel("URL de destino (HTTPS)").fill("https://example.com/e2e-webhook");
     await expect(createButton).toBeEnabled({ timeout: 1_500 });
   }).toPass({ timeout: 30_000 });
+  const creation = page
+    .waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/integrations/webhooks"), {
+      timeout: 30_000,
+    })
+    .catch(() => null);
   await createButton.click();
+  return creation;
 }
 
 /**
@@ -56,15 +63,19 @@ async function fillAndSubmitOutboundForm(page: Page, webhookName: string): Promi
  * mensagem do erro: sem isso a CI só diz "heading não encontrado" e a causa (DNS do destino, cifra do
  * segredo, limite do time) fica invisível.
  */
-async function expectOutboundCreated(page: Page): Promise<void> {
+async function expectOutboundCreated(page: Page, creation: Promise<Response | null>): Promise<void> {
   try {
     await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({ timeout: 30_000 });
   } catch (error) {
+    const response = await creation;
+    const apiAnswer = response
+      ? `POST ${response.status()}: ${(await response.text().catch(() => "")).slice(0, 400)}`
+      : "nenhuma chamada de criação saiu";
     const notices = [
       ...(await page.locator("[data-sonner-toast]").allInnerTexts()),
       ...(await page.getByRole("alert").allInnerTexts()),
     ].filter(Boolean);
-    throw new Error(`A criação do webhook de saída não concluiu. Avisos na tela: ${JSON.stringify(notices)}\n${String(error)}`);
+    throw new Error(`A criação do webhook de saída não concluiu. Resposta da API: ${apiAnswer}. Avisos na tela: ${JSON.stringify(notices)}\n${String(error)}`);
   }
 }
 
@@ -115,9 +126,9 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
       timeout: 30_000,
     });
 
-    await fillAndSubmitOutboundForm(page, webhookName);
+    const creation = await fillAndSubmitOutboundForm(page, webhookName);
 
-    await expectOutboundCreated(page);
+    await expectOutboundCreated(page, creation);
 
     // O segredo aparece em texto puro, uma única vez, num input somente leitura.
     const secretInput = page.getByLabel("Segredo de assinatura (HMAC)");
@@ -166,9 +177,9 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
     await expect(page.getByRole("heading", { name: "Novo webhook de saída" })).toBeVisible({
       timeout: 30_000,
     });
-    await fillAndSubmitOutboundForm(page, webhookName);
+    const creation = await fillAndSubmitOutboundForm(page, webhookName);
 
-    await expectOutboundCreated(page);
+    await expectOutboundCreated(page, creation);
     await runResponsiveChecks(page);
   });
 
