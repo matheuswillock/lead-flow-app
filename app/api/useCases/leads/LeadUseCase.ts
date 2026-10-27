@@ -41,6 +41,7 @@ import { isManagerLikeRole } from "@/lib/roles";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isLostStatus } from "@/lib/leadImport/normalizers";
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern";
+import { describeOpenLeadDuplicateError } from "@/lib/leads/lead-duplicate-error";
 import { isPreScheduleSlotAvailable } from "../../services/preSchedule/PreScheduleSlotService";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
@@ -1786,10 +1787,11 @@ export class LeadUseCase implements ILeadUseCase {
       );
     } catch (error) {
       console.error("Erro ao atualizar status do lead:", error);
+      const duplicateMessage = describeOpenLeadDuplicateError(error);
       return new Output(
         false,
         [],
-        ["Erro interno do servidor ao atualizar status do lead"],
+        [duplicateMessage ?? "Erro interno do servidor ao atualizar status do lead"],
         {
           transition: {
             allowed: false,

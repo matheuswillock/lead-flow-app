@@ -300,6 +300,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/v1/teams/cron/reconcile-meeting-slot-reservations",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/v1/email/cron/reconcile-resend-domain-status",
       "schedule": "0 */6 * * *"
     },

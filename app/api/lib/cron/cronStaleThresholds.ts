@@ -106,6 +106,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "webhook-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   // Declara `maxDuration = 60` na rota (SPEC 11, A-E4): cada evento pode criar reunião no Google.
   "webhook-inbound-events-retry": 60,
+  "team-meeting-slot-reservations-reconcile": 60,
   "whatsapp-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
 }
 
