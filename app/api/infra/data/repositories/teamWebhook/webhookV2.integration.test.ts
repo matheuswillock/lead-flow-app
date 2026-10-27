@@ -34,6 +34,7 @@ let webhooks: typeof import("./TeamWebhookRepository").teamWebhookRepository;
 let reservations: typeof import("../teamMeetingSlotReservation/TeamMeetingSlotReservationRepository").teamMeetingSlotReservationRepository;
 let alertRepo: typeof import("../leadRescheduleAlert/LeadRescheduleAlertRepository").leadRescheduleAlertRepository;
 let activations: typeof import("../teamApiResource/TeamApiResourceActivationRepository").teamApiResourceActivationRepository;
+let requestLogs: typeof import("../teamApiRequestLog/TeamApiRequestLogRepository").teamApiRequestLogRepository;
 
 if (RUN_INTEGRATION) {
   assertLocalDatabase();
@@ -47,6 +48,7 @@ if (RUN_INTEGRATION) {
   ({ teamApiResourceActivationRepository: activations } = await import(
     "../teamApiResource/TeamApiResourceActivationRepository"
   ));
+  ({ teamApiRequestLogRepository: requestLogs } = await import("../teamApiRequestLog/TeamApiRequestLogRepository"));
 }
 
 const describeIntegration = RUN_INTEGRATION ? describe : describe.skip;
@@ -136,6 +138,7 @@ describeIntegration("webhook v2 — Postgres real", () => {
     await prisma.teamMeetingSlotReservation.deleteMany({ where: { teamId: { in: created.teamIds } } });
     await prisma.lead.deleteMany({ where: { id: { in: created.leadIds } } });
     await prisma.teamWebhookInboundEvent.deleteMany({ where: { teamId: { in: created.teamIds } } });
+    await prisma.teamApiRequestLog.deleteMany({ where: { teamId: { in: created.teamIds } } });
     await prisma.teamApiResourceActivation.deleteMany({ where: { teamId: { in: created.teamIds } } });
     await prisma.teamWebhook.deleteMany({ where: { teamId: { in: created.teamIds } } });
     await prisma.teamMember.deleteMany({ where: { teamId: { in: created.teamIds } } });
@@ -392,6 +395,54 @@ describeIntegration("webhook v2 — Postgres real", () => {
       await expect(
         activations.upsertActivation({ teamId: fx.teamB, resourceSlug: "availability", tokenHash: hash, tokenPreview: "p", profileId: fx.managerId }),
       ).rejects.toMatchObject({ code: "P2002" });
+    });
+  });
+
+  describe("SPEC 14 A-E4 — log de uso da API de horários", () => {
+    const entry = (overrides: Partial<Parameters<typeof requestLogs.record>[0]> = {}) => ({
+      teamId: fx.teamA,
+      resourceSlug: "availability",
+      activationId: randomUUID(),
+      statusCode: 200,
+      errorCode: null,
+      requestedDate: "2026-11-03",
+      durationMs: 25,
+      ...overrides,
+    });
+
+    it("lista as consultas do time, da mais recente para a mais antiga, sem vazar para outro time", async () => {
+      await requestLogs.record(entry({ requestedDate: "2026-11-01" }));
+      await requestLogs.record(entry({ requestedDate: "2026-11-02", statusCode: 400, errorCode: "invalid_date" }));
+      await requestLogs.record(entry({ teamId: fx.teamB, requestedDate: "2026-12-31" }));
+
+      const rows = await requestLogs.listRecent(fx.teamA, "availability", 10);
+
+      expect(rows.map((row) => row.requestedDate)).toEqual(["2026-11-02", "2026-11-01"]);
+      expect(rows[0]).toMatchObject({ statusCode: 400, errorCode: "invalid_date" });
+      expect(Object.keys(rows[0]!).sort()).toEqual(["createdAt", "durationMs", "errorCode", "id", "requestedDate", "statusCode"]);
+    });
+
+    it("respeita o limite pedido e trunca o texto de data livre", async () => {
+      await requestLogs.record(entry({ requestedDate: "x".repeat(200) }));
+
+      const [latest] = await requestLogs.listRecent(fx.teamA, "availability", 1);
+
+      expect(latest?.requestedDate?.length).toBe(32);
+    });
+
+    it("a retenção apaga só o que é mais antigo que o corte", async () => {
+      await requestLogs.record(entry({ requestedDate: "antigo" }));
+      await prisma.teamApiRequestLog.updateMany({
+        where: { teamId: fx.teamA, requestedDate: "antigo" },
+        data: { createdAt: new Date(Date.now() - 40 * 86_400_000) },
+      });
+
+      const purged = await requestLogs.purgeOlderThan(new Date(Date.now() - 30 * 86_400_000));
+      const remaining = await requestLogs.listRecent(fx.teamA, "availability", 50);
+
+      expect(purged).toBeGreaterThanOrEqual(1);
+      expect(remaining.some((row) => row.requestedDate === "antigo")).toBe(false);
+      expect(remaining.length).toBeGreaterThan(0);
     });
   });
 });

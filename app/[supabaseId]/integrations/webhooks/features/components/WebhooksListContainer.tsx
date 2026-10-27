@@ -22,6 +22,7 @@ import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates";
 import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type { TeamWebhookDirection, TeamWebhookSummary } from "../services/ITeamWebhooksService";
+import { Badge } from "@/components/ui/badge";
 import { WebhookStatusBadge } from "./WebhookStatusBadge";
 import { WebhookListPlayPauseButton } from "./WebhookListPlayPauseButton";
 import { WebhooksTablePagination } from "./WebhooksTablePagination";
@@ -202,7 +203,16 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
             ) : (
               items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{item.name}</span>
+                      {item.direction === "inbound" ? (
+                        <Badge variant={item.contractVersion === 2 ? "default" : "secondary"}>
+                          {item.contractVersion === 2 ? "v2" : "v1"}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <WebhookStatusBadge status={item.status} />
                   </TableCell>

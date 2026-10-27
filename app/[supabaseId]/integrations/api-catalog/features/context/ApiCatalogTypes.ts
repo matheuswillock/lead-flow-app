@@ -1,4 +1,4 @@
-import type { ApiResourceActivation } from "../services/IApiResourcesService";
+import type { ApiResourceActivation, ApiResourceUsageItem } from "../services/IApiResourcesService";
 
 export type ApiCatalogState = {
   supabaseId: string;
@@ -12,4 +12,9 @@ export type ApiCatalogState = {
   toggleStatus: () => Promise<void>;
   dismissToken: () => void;
   reload: () => Promise<void>;
+  /** Últimas consultas do parceiro ao recurso (SPEC 14, A-E4). */
+  usage: ApiResourceUsageItem[];
+  usageLoading: boolean;
+  usageError: string | null;
+  reloadUsage: () => Promise<void>;
 };

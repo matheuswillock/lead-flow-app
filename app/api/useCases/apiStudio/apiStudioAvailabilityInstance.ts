@@ -2,6 +2,7 @@ import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { consumeInboundRateLimit } from "@/lib/webhooks/inbound-rate-limit";
 import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates";
 import { teamApiResourceActivationRepository } from "@/app/api/infra/data/repositories/teamApiResource/TeamApiResourceActivationRepository";
+import { teamApiRequestLogRepository } from "@/app/api/infra/data/repositories/teamApiRequestLog/TeamApiRequestLogRepository";
 import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { calendarAvailabilityService } from "@/app/api/services/calendarAvailability/CalendarAvailabilityService";
@@ -40,5 +41,6 @@ export const apiStudioAvailabilityUseCase = new ApiStudioAvailabilityUseCase({
       return { durationMinutes: result.durationMinutes, perCloser: result.perCloser };
     },
   },
+  requestLog: teamApiRequestLogRepository,
   limiter: { consume: consumeInboundRateLimit },
 });

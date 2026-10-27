@@ -28,6 +28,7 @@ import { teamWebhooksService } from "../services/TeamWebhooksService";
 import type {
   TeamWebhookDirection,
   TeamWebhookLogItem,
+  TeamMemberOption,
   TeamWebhookLogResult,
   TeamWebhookSummary,
   UpdateTeamWebhookPayload,
@@ -44,6 +45,7 @@ import {
 import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 import { WebhookLogsPanel } from "./WebhookLogsPanel";
 import { WebhookInboundV2Guide } from "./WebhookInboundV2Guide";
+import { WebhookInboundV2Overview } from "./WebhookInboundV2Overview";
 
 /**
  * SPEC 10, R10-5 (revisão Opus, decisão do owner) — as chamadas de rede
@@ -199,6 +201,8 @@ export function WebhookDetailContainer({
   const [confirmingRotateSecret, setConfirmingRotateSecret] = useState(false);
   const [showSignatureGuide, setShowSignatureGuide] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [members, setMembers] = useState<TeamMemberOption[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const logsRequestIdRef = useRef(0);
 
 
@@ -241,6 +245,29 @@ export function WebhookDetailContainer({
   useEffect(() => {
     void loadConfiguration();
   }, [loadConfiguration]);
+
+  const needsMembers = direction === "inbound" && webhook?.contractVersion === 2;
+  useEffect(() => {
+    const teamId = activeTeam?.id;
+    if (!needsMembers || !teamId) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    teamWebhooksService
+      .listTeamMembers(supabaseId, teamId)
+      .then((list) => {
+        if (!cancelled) setMembers(list);
+      })
+      .catch(() => {
+        // O resumo continua útil sem os nomes: mostra "Fora do time" e o rodízio por posição.
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTeam?.id, needsMembers, supabaseId]);
 
   const fetchLogsPage = useCallback(async (page: number) => {
     if (!activeTeam?.id) return null;
@@ -543,6 +570,16 @@ export function WebhookDetailContainer({
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
+            {direction === "inbound" ? (
+              <div className="mb-6">
+                <WebhookInboundV2Overview
+                  webhook={webhook}
+                  members={members}
+                  membersLoading={membersLoading}
+                  inboundListPath={listPath}
+                />
+              </div>
+            ) : null}
             {direction === "inbound" && inboundDraft ? (
               <WebhookInboundConfigFields
                 idPrefix="detail-inbound"
@@ -621,6 +658,7 @@ export function WebhookDetailContainer({
             isRefreshing={logsRefreshing}
             resendingLogId={resendingLogId}
             canResend={direction === "outbound" && webhook.status !== "disabled"}
+            supabaseId={supabaseId}
             onSelect={setSelectedLogId}
             onRefresh={() => void refreshLogs()}
             onResend={(log) => void runResend(log)}

@@ -2991,6 +2991,18 @@ completed completed
     }
   
 
+  "corretor_studio_team_api_request_logs" {
+    String id "🗝️"
+    String resourceSlug 
+    String activationId "❓"
+    Int statusCode 
+    String errorCode "❓"
+    String requestedDate "❓"
+    Int durationMs "❓"
+    DateTime createdAt 
+    }
+  
+
   "corretor_studio_team_webhook_outbox" {
     String id "🗝️"
     TeamWebhookEventKey eventKey 
@@ -5369,6 +5381,7 @@ completed completed
     "corretor_studio_lead_reschedule_alerts" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_team_api_resource_activations" |o--|| "TeamApiResourceStatus" : "enum:status"
     "corretor_studio_team_api_resource_activations" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_team_api_request_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookEventKey" : "enum:eventKey"
     "corretor_studio_team_webhook_outbox" |o--|| "TeamWebhookOutboxStatus" : "enum:status"
     "corretor_studio_team_webhook_outbox" }o--|| corretor_studio_teams : "team"

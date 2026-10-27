@@ -43,12 +43,18 @@ type Props = {
   listPath: string;
   buildDetailPath: (webhookId: string) => string;
   service: InboundWebhookCreateServiceLike;
+  /** Nome sugerido ao criar um v2 a partir de um v1 (query `from_name` da tela de detalhe). */
+  initialName?: string;
 };
 
-export function InboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service }: Props) {
+export function InboundWebhookCreateContainer({ supabaseId, listPath, buildDetailPath, service, initialName }: Props) {
   const router = useRouter();
   const { activeTeam } = useTeamContext();
-  const [form, setForm] = useState<InboundCreateFormState>(INITIAL_INBOUND_CREATE_FORM);
+  const [form, setForm] = useState<InboundCreateFormState>(() =>
+    initialName?.trim()
+      ? { ...INITIAL_INBOUND_CREATE_FORM, base: { ...INITIAL_INBOUND_CREATE_FORM.base, name: initialName.trim() } }
+      : INITIAL_INBOUND_CREATE_FORM,
+  );
   const [members, setMembers] = useState<TeamMemberOption[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [saving, setSaving] = useState(false);

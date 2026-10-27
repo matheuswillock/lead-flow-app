@@ -1,4 +1,5 @@
 import type { ITeamApiResourceActivationRepository } from "@/app/api/infra/data/repositories/teamApiResource/ITeamApiResourceActivationRepository";
+import type { ITeamApiRequestLogRepository } from "@/app/api/infra/data/repositories/teamApiRequestLog/ITeamApiRequestLogRepository";
 import { Output } from "@/lib/output";
 import {
   buildApiResourceTokenPreview,
@@ -13,7 +14,10 @@ type Actor = { profileId: string; teamId: string; role: string };
 export type ApiResourceActivationDeps = {
   activations: ITeamApiResourceActivationRepository;
   features: { hasIntegrationFeature(teamId: string): Promise<boolean> };
+  requestLogs?: Pick<ITeamApiRequestLogRepository, "listRecent">;
 };
+
+export const API_USAGE_LIST_LIMIT = 20;
 
 /**
  * Gestão da ativação de um recurso da API Studio por time (SPEC 14, A-E1): ativar gera o token (mostrado
@@ -29,6 +33,23 @@ export class ApiResourceActivationUseCase {
     if (denied) return denied;
     const activation = await this.deps.activations.findByTeamAndSlug(actor.teamId, slug);
     return new Output(true, [], [], { resource: getApiStudioResource(slug), activation });
+  }
+
+  /** Últimas consultas ao recurso (SPEC 14, A-E4). Só metadados: nunca token, hash nem dado de lead. */
+  async usage(actor: Actor, slug: string): Promise<Output> {
+    const denied = await this.guard(actor, slug);
+    if (denied) return denied;
+    const rows = (await this.deps.requestLogs?.listRecent(actor.teamId, slug, API_USAGE_LIST_LIMIT)) ?? [];
+    return new Output(true, [], [], {
+      items: rows.map((row) => ({
+        id: row.id,
+        statusCode: row.statusCode,
+        errorCode: row.errorCode,
+        requestedDate: row.requestedDate,
+        durationMs: row.durationMs,
+        createdAt: row.createdAt.toISOString(),
+      })),
+    });
   }
 
   /** Ativa e gera o token; chamar de novo troca o token (o anterior deixa de valer). */

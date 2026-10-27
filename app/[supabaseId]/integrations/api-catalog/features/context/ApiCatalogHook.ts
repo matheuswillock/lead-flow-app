@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
 import { apiResourcesService } from "../services/ApiResourcesService";
-import type { ApiResourceActivation } from "../services/IApiResourcesService";
+import type { ApiResourceActivation, ApiResourceUsageItem } from "../services/IApiResourcesService";
 import type { ApiCatalogState } from "./ApiCatalogTypes";
 
 /** Slug do único recurso da primeira entrega (SPEC 14): horários disponíveis. */
@@ -19,6 +19,9 @@ export function useApiCatalog(supabaseId: string): ApiCatalogState {
   const [activation, setActivation] = useState<ApiResourceActivation | null>(null);
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [usage, setUsage] = useState<ApiResourceUsageItem[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!teamId) return;
@@ -37,6 +40,29 @@ export function useApiCatalog(supabaseId: string): ApiCatalogState {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const reloadUsage = useCallback(async () => {
+    if (!teamId) return;
+    setUsageLoading(true);
+    setUsageError(null);
+    try {
+      setUsage(await apiResourcesService.usage(supabaseId, teamId, AVAILABILITY_RESOURCE_SLUG));
+    } catch (failure) {
+      setUsageError(failure instanceof Error ? failure.message : "Não foi possível carregar as últimas consultas");
+    } finally {
+      setUsageLoading(false);
+    }
+  }, [supabaseId, teamId]);
+
+  // Só busca o uso quando o recurso foi ativado; a chave estável evita refetch a cada renderização.
+  const activationId = activation?.id ?? null;
+  useEffect(() => {
+    if (!activationId) {
+      setUsage([]);
+      return;
+    }
+    void reloadUsage();
+  }, [activationId, reloadUsage]);
 
   const activate = useCallback(async () => {
     if (!teamId || pending) return;
@@ -78,5 +104,9 @@ export function useApiCatalog(supabaseId: string): ApiCatalogState {
     toggleStatus,
     dismissToken: () => setRevealedToken(null),
     reload,
+    usage,
+    usageLoading,
+    usageError,
+    reloadUsage,
   };
 }

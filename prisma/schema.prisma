@@ -2980,6 +2980,7 @@ model Team {
   teamWebhookInboundEvents   TeamWebhookInboundEvent[]
   leadRescheduleAlerts       LeadRescheduleAlert[]
   teamApiResourceActivations TeamApiResourceActivation[]
+  teamApiRequestLogs         TeamApiRequestLog[]
   landingAnalyticsEvents     LandingAnalyticsEvent[]
   filterPresets              TeamFilterPreset[]
   statusRules                TeamStatusRule[]
@@ -3435,6 +3436,26 @@ model TeamApiResourceActivation {
 
   @@unique([teamId, resourceSlug])
   @@map("corretor_studio_team_api_resource_activations")
+}
+
+/// SPEC 14 A-E4: uma linha por requisição a um recurso da API Studio que resolveu uma ativação.
+/// Só metadados (nunca token, IP ou dado de lead). Retenção de 30 dias.
+model TeamApiRequestLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  teamId        String   @db.Uuid
+  resourceSlug  String   @db.Text
+  activationId  String?  @db.Uuid
+  statusCode    Int
+  errorCode     String?  @db.Text
+  requestedDate String?  @db.VarChar(32)
+  durationMs    Int?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, resourceSlug, createdAt(sort: Desc)], map: "corretor_studio_team_api_request_logs_team_slug_created_idx")
+  @@index([createdAt], map: "corretor_studio_team_api_request_logs_createdAt_idx")
+  @@map("corretor_studio_team_api_request_logs")
 }
 
 model TeamWebhookOutbox {

@@ -12,6 +12,8 @@
  * - Lead sem agendamento: 202 + event_id, processado em background; mesma Idempotency-Key devolve o mesmo event_id.
  * - Lead com agendamento: o lead entra `scheduled` e o horário some da API de disponibilidade.
  * - Segundo lead no mesmo horário do mesmo closer: entra como `new_opportunity` com `needsReschedule`, e o quadro mostra "Remarcar urgente".
+ * - T-11.24: a aba Logs mostra o resultado em linguagem clara, o selo e o link para o lead.
+ * - Filtro "Precisa remarcar" no quadro.
  */
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
@@ -203,6 +205,42 @@ test.describe("webhook v2 + API Studio — ponta a ponta", () => {
     const badge = page.getByTestId("lead-needs-reschedule").first();
     await expect(badge).toBeVisible({ timeout: 60_000 });
     await expect(badge).toContainText("Remarcar urgente");
+  });
+
+  test("T-11.24: a aba Logs mostra o resultado do evento em conflito e o link para o lead", async ({ page }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/inbound/${ctx.webhookId}`, { waitUntil: "domcontentloaded" });
+    const logsTab = page.getByRole("tab", { name: "Logs" });
+    // Cliques logo após `domcontentloaded` podem ser perdidos antes da hidratação.
+    await expect(async () => {
+      await logsTab.click();
+      await expect(logsTab).toHaveAttribute("aria-selected", "true", { timeout: 1_500 });
+    }).toPass({ timeout: 30_000 });
+
+    const conflictRow = page.getByRole("button", { name: /Horário ocupado: remarcar/ }).first();
+    await expect(conflictRow).toBeVisible({ timeout: 30_000 });
+    await conflictRow.click();
+
+    const outcome = page.getByTestId("inbound-log-outcome");
+    await expect(outcome).toContainText("Remarcar urgente");
+    await expect(outcome).toContainText("schedule_conflict_flagged");
+    await expect(outcome.getByRole("link", { name: "Abrir lead no CRM" })).toHaveAttribute("href", /\/crm\?leadCode=/);
+  });
+
+  test("filtro \"Precisa remarcar\" no quadro deixa só o lead que perdeu o horário", async ({ page }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/board`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText(`${LEAD_NAME_PREFIX}Perde Horário`).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(`${LEAD_NAME_PREFIX}Ganha Horário`).first()).toBeVisible();
+
+    const statusFilter = page.getByRole("button", { name: /^Status/ }).first();
+    await expect(async () => {
+      await statusFilter.click();
+      await expect(page.getByRole("option", { name: "Precisa remarcar" })).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 30_000 });
+    await page.getByRole("option", { name: "Precisa remarcar" }).click();
+
+    await expect(page.getByText(`${LEAD_NAME_PREFIX}Perde Horário`).first()).toBeVisible();
+    await expect(page.getByText(`${LEAD_NAME_PREFIX}Ganha Horário`)).toHaveCount(0);
+    await expect(page.getByTestId("lead-needs-reschedule").first()).toBeVisible();
   });
 
   test("responsivo: board com o selo \"Remarcar urgente\" sem overflow em 360/375, touch targets e reduced-motion", async ({ page }) => {

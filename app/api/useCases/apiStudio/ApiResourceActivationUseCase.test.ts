@@ -5,6 +5,10 @@ import { ApiResourceActivationUseCase } from "./ApiResourceActivationUseCase";
 const manager = { profileId: "profile-1", teamId: "team-1", role: "manager" };
 
 function build(options: { feature?: boolean; setStatusResult?: object | null } = {}) {
+  const listRecent = mock(async (_teamId: string, _slug: string, _limit: number) => [
+    { id: "r1", statusCode: 200, errorCode: null, requestedDate: "2026-11-03", durationMs: 41, createdAt: new Date("2026-11-02T15:00:00.000Z") },
+    { id: "r2", statusCode: 400, errorCode: "invalid_date", requestedDate: "ontem", durationMs: 3, createdAt: new Date("2026-11-02T14:00:00.000Z") },
+  ]);
   const upsertActivation = mock(async (input: Record<string, unknown>) => ({ id: "a1", ...input, tokenHash: undefined }));
   const findByTeamAndSlug = mock(async () => ({ id: "a1", status: "active", tokenPreview: "cs_avail_…abcd" }) as never);
   const setStatus = mock(async () =>
@@ -13,8 +17,9 @@ function build(options: { feature?: boolean; setStatusResult?: object | null } =
   const useCase = new ApiResourceActivationUseCase({
     activations: { findByTokenHash: async () => null, findByTeamAndSlug, upsertActivation: upsertActivation as never, setStatus, touchLastUsed: async () => undefined },
     features: { hasIntegrationFeature: async () => options.feature ?? true },
+    requestLogs: { listRecent },
   });
-  return { useCase, upsertActivation, findByTeamAndSlug, setStatus };
+  return { useCase, upsertActivation, findByTeamAndSlug, setStatus, listRecent };
 }
 
 describe("ApiResourceActivationUseCase (SPEC 14, A-E1)", () => {
@@ -74,5 +79,27 @@ describe("ApiResourceActivationUseCase (SPEC 14, A-E1)", () => {
     const missing = await build({ setStatusResult: null }).useCase.setStatus(manager, "availability", "inactive");
     expect(missing.isValid).toBe(false);
     expect(missing.errorMessages[0]).toContain("ainda não foi ativado");
+  });
+});
+
+describe("ApiResourceActivationUseCase.usage (SPEC 14, A-E4, T-14.16)", () => {
+  it("devolve as últimas consultas do time, só com metadados", async () => {
+    const { useCase, listRecent } = build();
+    const output = await useCase.usage(manager, "availability");
+
+    expect(listRecent).toHaveBeenCalledWith("team-1", "availability", 20);
+    const { items } = output.result as { items: Array<Record<string, unknown>> };
+    expect(items).toHaveLength(2);
+    expect(Object.keys(items[0]!).sort()).toEqual(["createdAt", "durationMs", "errorCode", "id", "requestedDate", "statusCode"]);
+    expect(items[0]!.createdAt).toBe("2026-11-02T15:00:00.000Z");
+    expect(JSON.stringify(output.result)).not.toMatch(/cs_avail_|tokenHash/);
+  });
+
+  it("só manager de time com a feature vê o uso, e só de recurso que existe", async () => {
+    const operator = await build().useCase.usage({ ...manager, role: "operator" }, "availability");
+    const noFeature = await build({ feature: false }).useCase.usage(manager, "availability");
+    const unknown = await build().useCase.usage(manager, "inexistente");
+
+    expect([operator.isValid, noFeature.isValid, unknown.isValid]).toEqual([false, false, false]);
   });
 });

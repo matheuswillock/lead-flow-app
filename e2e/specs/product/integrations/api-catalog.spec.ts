@@ -9,6 +9,7 @@
  * - Ativar mostra o token (prefixo cs_avail_) e o exemplo de chamada uma vez só; depois de dispensar
  *   (ou recarregar) só o preview aparece.
  * - Desativar e reativar mantêm o mesmo token; "Gerar novo token" troca o token.
+ * - A-E4: as consultas do parceiro aparecem em "Últimas consultas" (data, dia consultado e resposta), sem token.
  * - Sem overflow horizontal em 360px.
  */
 
@@ -31,6 +32,7 @@ async function resolveE2eTeamId(): Promise<string> {
 
 async function clearActivation(): Promise<void> {
   const teamId = await resolveE2eTeamId();
+  await getPrisma().teamApiRequestLog.deleteMany({ where: { teamId, resourceSlug: "availability" } });
   await getPrisma().teamApiResourceActivation.deleteMany({ where: { teamId, resourceSlug: "availability" } });
 }
 
@@ -90,6 +92,31 @@ test.describe("app/[supabaseId]/integrations/api-catalog", () => {
     await page.getByRole("button", { name: "Gerar novo token" }).click();
     const second = await page.getByLabel("Token do recurso").inputValue();
     expect(second).not.toBe(first);
+  });
+
+  test("A-E4: a consulta do parceiro e o erro aparecem em Últimas consultas, sem o token", async ({ page, request }) => {
+    await page.goto(PAGE_PATH, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Ativar e gerar token" }).click();
+    const token = await page.getByLabel("Token do recurso").inputValue();
+    await page.getByRole("button", { name: "Já copiei o token" }).click();
+
+    const usage = page.getByTestId("availability-usage");
+    await expect(usage.getByText("Nenhuma consulta ainda.")).toBeVisible({ timeout: 30_000 });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const ok = await request.get(`/api/studio/v1/availability?date=${today}`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(ok.status()).toBe(200);
+    const bad = await request.get("/api/studio/v1/availability?date=ontem", { headers: { Authorization: `Bearer ${token}` } });
+    expect(bad.status()).toBe(400);
+    // Token inválido não identifica time e não pode aparecer no log de ninguém.
+    const unknown = await request.get(`/api/studio/v1/availability?date=${today}`, { headers: { Authorization: "Bearer cs_avail_invalido" } });
+    expect(unknown.status()).toBe(401);
+
+    await usage.getByRole("button", { name: "Atualizar" }).click();
+    await expect(usage.getByRole("row")).toHaveCount(3, { timeout: 30_000 }); // cabeçalho + 2 consultas
+    await expect(usage.getByText("Data em formato inválido")).toBeVisible();
+    await expect(usage.getByRole("cell", { name: today })).toBeVisible();
+    expect(await usage.innerText()).not.toContain(token);
   });
 
   test("responsivo: sem overflow em 360/375, touch targets e reduced-motion", async ({ page }) => {

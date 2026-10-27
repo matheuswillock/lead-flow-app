@@ -1,3 +1,4 @@
+import { teamApiRequestLogRepository } from "@/app/api/infra/data/repositories/teamApiRequestLog/TeamApiRequestLogRepository";
 import { teamWebhookInboundEventRepository } from "@/app/api/infra/data/repositories/teamWebhook/TeamWebhookInboundEventRepository";
 import { processClaimedInboundWebhookEvents } from "./processInboundWebhookEventById";
 import { RetryInboundWebhookEventsUseCase } from "./RetryInboundWebhookEventsUseCase";
@@ -5,4 +6,5 @@ import { RetryInboundWebhookEventsUseCase } from "./RetryInboundWebhookEventsUse
 export const retryInboundWebhookEventsUseCase = new RetryInboundWebhookEventsUseCase({
   events: teamWebhookInboundEventRepository,
   processBatch: processClaimedInboundWebhookEvents,
+  apiRequestLogs: teamApiRequestLogRepository,
 });

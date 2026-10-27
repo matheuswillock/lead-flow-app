@@ -1,5 +1,10 @@
 import { API_CLIENT_BASE } from "@/lib/route-map";
-import type { ApiResourceActivation, ApiResourceState, IApiResourcesService } from "./IApiResourcesService";
+import type {
+  ApiResourceActivation,
+  ApiResourceState,
+  ApiResourceUsageItem,
+  IApiResourcesService,
+} from "./IApiResourcesService";
 
 class ApiResourcesService implements IApiResourcesService {
   private headers(supabaseId: string, teamId: string): HeadersInit {
@@ -25,6 +30,18 @@ class ApiResourcesService implements IApiResourcesService {
       "Não foi possível carregar o recurso",
     );
     return { activation: result.activation };
+  }
+
+  async usage(supabaseId: string, teamId: string, slug: string): Promise<ApiResourceUsageItem[]> {
+    const response = await fetch(`${API_CLIENT_BASE}/integrations/api-resources/${encodeURIComponent(slug)}/usage`, {
+      method: "GET",
+      headers: this.headers(supabaseId, teamId),
+    });
+    const result = await this.unwrap<{ items: ApiResourceUsageItem[] }>(
+      response,
+      "Não foi possível carregar as últimas consultas",
+    );
+    return result.items;
   }
 
   async activate(supabaseId: string, teamId: string, slug: string) {

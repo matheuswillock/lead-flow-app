@@ -1,6 +1,7 @@
 "use client"
 
-import { CircleAlert, RefreshCcw, RotateCcw } from "lucide-react"
+import { CalendarClock, CircleAlert, ExternalLink, RefreshCcw, RotateCcw } from "lucide-react"
+import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ import { formatIntimezone } from "@/lib/dates"
 import { cn } from "@/lib/utils"
 import type { TeamWebhookLogItem } from "../services/ITeamWebhooksService"
 import { WEBHOOK_EVENT_OPTIONS } from "../services/ITeamWebhooksService"
+import { readInboundLogOutcome, shortEventId } from "./inboundLogResult"
 
 type WebhookLogsPanelProps = {
   logs: TeamWebhookLogItem[]
@@ -28,6 +30,8 @@ type WebhookLogsPanelProps = {
   isRefreshing: boolean
   resendingLogId: string | null
   canResend: boolean
+  /** Com o id do usuário, o detalhe de um evento v2 linka o lead no CRM. */
+  supabaseId?: string
   onSelect: (logId: string) => void
   onRefresh: () => void
   onResend: (log: TeamWebhookLogItem) => void
@@ -51,6 +55,13 @@ function formatPayload(payload: unknown): string {
   }
 }
 
+function rowSuffix(log: TeamWebhookLogItem): string {
+  const outcome = readInboundLogOutcome(log.responsePayload)
+  if (!outcome) return ""
+  const id = shortEventId(outcome.eventId)
+  return `${id ? ` · evento ${id}` : ""}${outcome.replay ? " · reenvio" : ""}`
+}
+
 function formatLogDate(value: string, timezone: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "-"
@@ -58,6 +69,8 @@ function formatLogDate(value: string, timezone: string): string {
 }
 
 function eventLabel(log: TeamWebhookLogItem): string {
+  const outcome = readInboundLogOutcome(log.responsePayload)
+  if (outcome) return outcome.label
   return log.eventKey ? (eventLabels.get(log.eventKey) ?? log.eventKey) : "Teste de envio"
 }
 
@@ -69,6 +82,7 @@ export function WebhookLogsPanel({
   isRefreshing,
   resendingLogId,
   canResend,
+  supabaseId,
   onSelect,
   onRefresh,
   onResend,
@@ -172,6 +186,7 @@ export function WebhookLogsPanel({
                               <p className="truncate font-medium">{eventLabel(log)}</p>
                               <p className="text-xs text-muted-foreground">
                                 {formatLogDate(log.createdAt, timezone)}
+                                {rowSuffix(log)}
                               </p>
                             </div>
                           </TableCell>
@@ -220,7 +235,7 @@ export function WebhookLogsPanel({
               <p className="text-sm font-semibold">Detalhes</p>
             </div>
             {selectedLog ? (
-              <ScrollArea className="h-[360px] p-4">
+              <ScrollArea className="h-[360px] p-4" viewportClassName="[&>div]:!block">
                 <div className="flex min-w-0 flex-col gap-4 pr-4">
                   <div className="flex flex-col gap-1">
                     <p className="text-sm font-semibold">{eventLabel(selectedLog)}</p>
@@ -228,6 +243,8 @@ export function WebhookLogsPanel({
                       {selectedLog.endpoint ?? "Endpoint não registrado"}
                     </p>
                   </div>
+
+                  <InboundOutcomeNotice log={selectedLog} supabaseId={supabaseId} />
 
                   <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                     <div className="flex flex-col gap-1">
@@ -285,5 +302,41 @@ export function WebhookLogsPanel({
         </div>
       </div>
     </TooltipProvider>
+  )
+}
+
+function InboundOutcomeNotice({ log, supabaseId }: { log: TeamWebhookLogItem; supabaseId?: string }) {
+  const outcome = readInboundLogOutcome(log.responsePayload)
+  if (!outcome) return null
+  const leadHref =
+    supabaseId && outcome.leadCode ? `/${supabaseId}/crm?leadCode=${encodeURIComponent(outcome.leadCode)}` : null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3" data-testid="inbound-log-outcome">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold">{outcome.label}</p>
+        {outcome.needsReschedule ? (
+          <Badge variant="destructive" className="gap-1">
+            <CalendarClock className="size-3.5" aria-hidden="true" />
+            Remarcar urgente
+          </Badge>
+        ) : null}
+        {outcome.replay ? <Badge variant="outline">Reenvio da mesma chave</Badge> : null}
+      </div>
+      <p className="text-sm text-muted-foreground">{outcome.description}</p>
+      <p className="break-all font-mono text-xs text-muted-foreground">
+        {outcome.resultCode}
+        {outcome.eventId ? ` · ${outcome.eventId}` : ""}
+      </p>
+      {leadHref ? (
+        <Link
+          href={leadHref}
+          className="inline-flex min-h-11 w-fit items-center gap-1 text-sm underline underline-offset-4"
+        >
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+          Abrir lead no CRM
+        </Link>
+      ) : null}
+    </div>
   )
 }

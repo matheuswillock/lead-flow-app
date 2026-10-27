@@ -97,3 +97,25 @@ describe("ordem das migrations do webhook v2", () => {
     expect(idx(INDEX_MIGRATION)).toBeGreaterThan(idx(TABLES_MIGRATION));
   });
 });
+
+describe("migration do log de uso da API Studio (SPEC 14, A-E4)", () => {
+  const sql = read("20261027134327_team-api-request-logs.sql");
+  const table = "corretor_studio_team_api_request_logs";
+
+  it("RLS ligado, sem acesso anon/authenticated e política só service_role", () => {
+    expect(sql).toContain(`ALTER TABLE "public"."${table}" ENABLE ROW LEVEL SECURITY;`);
+    expect(sql).toContain(`REVOKE ALL ON TABLE "public"."${table}" FROM PUBLIC, anon, authenticated;`);
+    expect(sql).toContain(`GRANT ALL ON TABLE "public"."${table}" TO service_role;`);
+    expect(sql).toMatch(new RegExp(`CREATE POLICY "${table}_service_role_only"[\\s\\S]*?FOR ALL TO service_role`));
+  });
+
+  it("nunca guarda token, hash de token nem IP", () => {
+    expect(sql).not.toMatch(/"(token|tokenHash|ip|ipAddress)"/i);
+  });
+
+  it("indexa a listagem por time e a retenção por data", () => {
+    expect(sql).toContain('("teamId", "resourceSlug", "createdAt" DESC)');
+    expect(sql).toContain('("createdAt");');
+  });
+});
+

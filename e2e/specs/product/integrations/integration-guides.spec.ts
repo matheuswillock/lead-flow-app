@@ -10,6 +10,7 @@
  * - Detalhe do webhook v2: a aba "Guia" mostra a URL do próprio webhook nos exemplos, só o placeholder do
  *   token e avisa que a duração vem do time.
  * - Catálogo de API: o guia explica a ordem de uso, o exemplo de resposta e a tabela de respostas.
+ * - Detalhe do webhook: versão, permissões e SDR do rodízio no v2; sem troca de versão no v1 (T-11.23).
  * - Contrato legível por máquina: OpenAPI 3.1 e JSON Schema públicos, sem token, e os códigos de resultado no guia.
  * - Sem overflow horizontal em 360/375 no guia do webhook.
  */
@@ -22,6 +23,7 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../../supp
 import { runResponsiveChecks } from "../../../support/responsive";
 
 const WEBHOOK_NAME = "E2E Guia v2";
+const V1_NAME = "E2E Guia v1";
 
 type Ctx = { teamId: string; webhookId: string };
 const ctx: Ctx = { teamId: "", webhookId: "" };
@@ -29,7 +31,7 @@ const ctx: Ctx = { teamId: "", webhookId: "" };
 async function cleanup(): Promise<void> {
   if (!ctx.teamId) return;
   const prisma = getPrisma();
-  const hooks = await prisma.teamWebhook.findMany({ where: { teamId: ctx.teamId, name: WEBHOOK_NAME }, select: { id: true } });
+  const hooks = await prisma.teamWebhook.findMany({ where: { teamId: ctx.teamId, name: { in: [WEBHOOK_NAME, V1_NAME] } }, select: { id: true } });
   const ids = hooks.map((hook) => hook.id);
   await prisma.teamWebhookInboundEvent.deleteMany({ where: { webhookId: { in: ids } } });
   await prisma.teamWebhook.deleteMany({ where: { id: { in: ids } } });
@@ -136,6 +138,40 @@ test.describe("guias de integração no app", () => {
     expect(json.required).toEqual(["lead"]);
     expect(json.properties.lead.required).toEqual(["name", "phone"]);
     expect(json.properties.schedule.properties.starts_at.description).toContain("RFC 3339");
+  });
+
+  test("detalhe do v2 mostra versão, permissões e o SDR do rodízio; a lista marca v2", async ({ page }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/inbound/${ctx.webhookId}`, { waitUntil: "domcontentloaded" });
+    const overview = page.getByTestId("inbound-overview");
+    await expect(overview).toBeVisible({ timeout: 30_000 });
+    await expect(overview).toContainText("Versão 2");
+    await expect(overview).toContainText("Criar leads");
+    await expect(overview).toContainText("Agendar reuniões");
+    await expect(overview.getByText("Próximo lead")).toBeVisible({ timeout: 30_000 });
+    await expect(overview.getByRole("link", { name: /Criar webhook v2/ })).toHaveCount(0);
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/inbound`, { waitUntil: "domcontentloaded" });
+    const row = page.getByRole("row", { name: new RegExp(WEBHOOK_NAME) });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await expect(row.getByText("v2", { exact: true })).toBeVisible();
+  });
+
+  test("T-11.23: o detalhe de um v1 não oferece troca de versão, só criar um v2 a partir dele", async ({ page, context }) => {
+    const response = await context.request.post("/api/v1/integrations/webhooks", {
+      data: { direction: "inbound", name: V1_NAME, tokenMode: "auto", expiryMode: "months_6" },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    const v1Id = (await response.json()).result.id as string;
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/inbound/${v1Id}`, { waitUntil: "domcontentloaded" });
+    const overview = page.getByTestId("inbound-overview");
+    await expect(overview).toContainText("Versão 1 (descontinuada)", { timeout: 30_000 });
+    await expect(page.getByRole("tab", { name: "Guia" })).toHaveCount(0);
+    const createV2 = overview.getByRole("link", { name: /Criar webhook v2 a partir deste/ });
+    await expect(createV2).toHaveAttribute("href", /\/inbound\/new\?from_name=/);
+
+    await createV2.click();
+    await expect(page.locator("#inbound-v2-name")).toHaveValue(`${V1_NAME} (v2)`, { timeout: 30_000 });
   });
 
   test("a aba Guia lista os códigos de resultado e os links do contrato", async ({ page }) => {

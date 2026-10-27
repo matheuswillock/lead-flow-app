@@ -13,6 +13,7 @@ import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates";
 import { useApiCatalogContext } from "../context/ApiCatalogContext";
 import { AvailabilityGuide } from "../components/AvailabilityGuide";
+import { AvailabilityUsage } from "../components/AvailabilityUsage";
 
 const AVAILABILITY_PATH = "/api/studio/v1/availability";
 
@@ -34,7 +35,7 @@ async function copy(value: string, label: string) {
 }
 
 export function ApiCatalogContainer() {
-  const { supabaseId, loading, error, activation, revealedToken, pending, activate, toggleStatus, dismissToken, reload } =
+  const { supabaseId, loading, error, activation, revealedToken, pending, activate, toggleStatus, dismissToken, reload, usage, usageLoading, usageError, reloadUsage } =
     useApiCatalogContext();
   const { tz } = useTimezone();
   const origin = typeof window === "undefined" ? "" : window.location.origin;
@@ -181,6 +182,16 @@ export function ApiCatalogContainer() {
           </p>
         ) : null}
       </section>
+
+      {activation ? (
+        <AvailabilityUsage
+          items={usage}
+          loading={usageLoading}
+          error={usageError}
+          timezone={tz}
+          onReload={() => void reloadUsage()}
+        />
+      ) : null}
 
       <AvailabilityGuide webhooksHref={`/${supabaseId}/integrations/webhooks`} />
     </div>

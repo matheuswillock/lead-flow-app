@@ -32,6 +32,7 @@ function build(
     closers?: typeof closers;
     perCloser?: Record<string, string[]>;
     durationMinutes?: number;
+    recordError?: Error;
   } = {},
 ) {
   const findByTokenHash = mock(async (_hash: string) =>
@@ -47,6 +48,9 @@ function build(
   const consume = mock(async (_key: string, _options: { limit: number; windowMs: number }) =>
     overrides.limiter ?? { allowed: true, retryAfterSeconds: 0 },
   );
+  const record = mock(async (_input: { teamId: string; statusCode: number; errorCode: string | null; requestedDate: string | null }) => {
+    if (overrides.recordError) throw overrides.recordError;
+  });
   const useCase = new ApiStudioAvailabilityUseCase({
     now: () => NOW,
     activations: { findByTokenHash, touchLastUsed },
@@ -54,9 +58,10 @@ function build(
     teams: { isAccountAllowed: async () => overrides.account ?? true, getTimezone: async () => TZ },
     closers: { listActiveClosers: async () => overrides.closers ?? closers },
     availability: { getDay },
+    requestLog: { record },
     limiter: { consume },
   });
-  return { useCase, findByTokenHash, getDay, consume, touchLastUsed };
+  return { useCase, findByTokenHash, getDay, consume, touchLastUsed, record };
 }
 
 const run = async (fake: ReturnType<typeof build>, date: string | null = "2026-11-03", token = TOKEN) =>
@@ -192,3 +197,51 @@ describe("API de horários — resposta (contrato do guia)", () => {
     expect(fake.touchLastUsed).toHaveBeenCalledWith("activation-1", NOW);
   });
 });
+
+describe("API de horários — log de uso (SPEC 14, A-E4, T-14.16)", () => {
+  it("grava 200 com o dia consultado e sem nenhum token", async () => {
+    const fake = build();
+    await run(fake, "2026-11-03");
+
+    const logged = fake.record.mock.calls[0]?.[0];
+    expect(logged).toMatchObject({ teamId: "team-1", resourceSlug: "availability", statusCode: 200, errorCode: null, requestedDate: "2026-11-03" });
+    expect(JSON.stringify(logged)).not.toContain(TOKEN);
+    expect(JSON.stringify(logged)).not.toContain(hashApiResourceToken(TOKEN));
+  });
+
+  it("grava os erros que já identificaram o time (data inválida, 403, 429)", async () => {
+    const invalidDate = build();
+    await run(invalidDate, "ontem");
+    const inactive = build({ activation: { id: "a", teamId: "team-1", resourceSlug: "availability", status: "inactive" } });
+    await run(inactive);
+    const limited = build({ limiter: { allowed: false, retryAfterSeconds: 9 } });
+    await run(limited);
+
+    expect(invalidDate.record.mock.calls[0]?.[0]).toMatchObject({ statusCode: 400, errorCode: "invalid_date", requestedDate: "ontem" });
+    expect(inactive.record.mock.calls[0]?.[0]).toMatchObject({ statusCode: 403, errorCode: "resource_inactive" });
+    expect(limited.record.mock.calls[0]?.[0]).toMatchObject({ statusCode: 429, errorCode: "rate_limited" });
+  });
+
+  it("não grava quando o token não identifica nenhuma ativação (evita inundar a tabela)", async () => {
+    const unknown = build({ activation: null });
+    const otherResource = build({ activation: { id: "a", teamId: "team-1", resourceSlug: "outro-recurso", status: "active" } });
+    await run(unknown);
+    await run(otherResource);
+
+    expect(unknown.record).not.toHaveBeenCalled();
+    expect(otherResource.record).not.toHaveBeenCalled();
+  });
+
+  it("falha ao gravar o log não muda a resposta do parceiro", async () => {
+    const original = console.error;
+    console.error = () => undefined;
+    try {
+      const fake = build({ recordError: new Error("banco indisponível") });
+      const result = await run(fake);
+      expect(result.kind).toBe("ok");
+    } finally {
+      console.error = original;
+    }
+  });
+});
+

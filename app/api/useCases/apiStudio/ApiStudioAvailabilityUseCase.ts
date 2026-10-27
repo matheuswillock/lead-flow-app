@@ -1,4 +1,5 @@
 import type { ITeamApiResourceActivationRepository } from "@/app/api/infra/data/repositories/teamApiResource/ITeamApiResourceActivationRepository";
+import type { ITeamApiRequestLogRepository } from "@/app/api/infra/data/repositories/teamApiRequestLog/ITeamApiRequestLogRepository";
 import { Output } from "@/lib/output";
 import { API_STUDIO_RESOURCES, hashApiResourceToken } from "@/lib/api-studio/resources";
 import { addDaysInTz, formatIntimezone, formatLocalDateValue, getDayRangeInTz } from "@/lib/dates";
@@ -38,6 +39,8 @@ export type AvailabilityApiBody = {
 
 export type AvailabilityApiResult = { kind: "ok"; body: AvailabilityApiBody } | AvailabilityApiError;
 
+type ResolvedActivation = { id: string; teamId: string };
+
 export type ApiStudioAvailabilityDeps = {
   activations: Pick<ITeamApiResourceActivationRepository, "findByTokenHash" | "touchLastUsed">;
   features: { hasIntegrationFeature(teamId: string): Promise<boolean> };
@@ -54,6 +57,8 @@ export type ApiStudioAvailabilityDeps = {
       timezone: string;
     }): Promise<{ durationMinutes: number; perCloser: Record<string, string[]> }>;
   };
+  /** Log de uso por requisição (SPEC 14, A-E4). Opcional: falhar ou faltar nunca muda a resposta. */
+  requestLog?: Pick<ITeamApiRequestLogRepository, "record">;
   limiter: { consume(key: string, options: { limit: number; windowMs: number }): Promise<{ allowed: boolean; retryAfterSeconds: number }> };
   now?: () => Date;
 };
@@ -73,7 +78,14 @@ export class ApiStudioAvailabilityUseCase {
 
   /** `result` é um `AvailabilityApiResult`; `isValid` só no sucesso. */
   async execute(input: { token: string; date: string | null }): Promise<Output> {
-    const result = await this.resolve(input);
+    const startedAt = this.now().getTime();
+    const resolved: { activation: ResolvedActivation | null } = { activation: null };
+    const result = await this.resolve(input, (activation) => {
+      resolved.activation = activation;
+    });
+    if (resolved.activation) {
+      await this.recordRequest(resolved.activation, input.date, result, this.now().getTime() - startedAt);
+    }
     return new Output(result.kind === "ok", [], result.kind === "ok" ? [] : [result.code], result);
   }
 
@@ -86,12 +98,40 @@ export class ApiStudioAvailabilityUseCase {
     return { kind: "error", status, code, message, retryAfterSeconds };
   }
 
-  private async resolve(input: { token: string; date: string | null }): Promise<AvailabilityApiResult> {
+  /** Falhar no log é observabilidade perdida, não erro do parceiro: nunca muda a resposta. */
+  private async recordRequest(
+    activation: ResolvedActivation,
+    requestedDate: string | null,
+    result: AvailabilityApiResult,
+    durationMs: number,
+  ): Promise<void> {
+    if (!this.deps.requestLog) return;
+    try {
+      await this.deps.requestLog.record({
+        teamId: activation.teamId,
+        resourceSlug: API_STUDIO_RESOURCES.availability.slug,
+        activationId: activation.id,
+        statusCode: result.kind === "ok" ? 200 : result.status,
+        errorCode: result.kind === "ok" ? null : result.code,
+        requestedDate,
+        durationMs,
+      });
+    } catch (error) {
+      console.error("[ApiStudioAvailabilityUseCase] Falha ao gravar o log de uso:", error);
+    }
+  }
+
+  private async resolve(
+    input: { token: string; date: string | null },
+    onActivation: (activation: ResolvedActivation) => void,
+  ): Promise<AvailabilityApiResult> {
     // Token de outro recurso, inexistente ou revogado: 401 idêntico, sem confirmar que o token existe.
     const activation = await this.deps.activations.findByTokenHash(hashApiResourceToken(input.token));
     if (!activation || activation.resourceSlug !== API_STUDIO_RESOURCES.availability.slug) {
       return this.fail(401, "unauthorized", "Token ausente ou inválido.");
     }
+    // Daqui em diante a chamada pertence a um time e entra no log de uso; token inválido (acima) não entra.
+    onActivation({ id: activation.id, teamId: activation.teamId });
     if (activation.status !== "active") {
       return this.fail(403, "resource_inactive", "A API de horários está desativada para este time.");
     }

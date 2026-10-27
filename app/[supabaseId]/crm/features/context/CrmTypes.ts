@@ -21,6 +21,7 @@ export interface CrmFiltersState {
   onlyTransfer: boolean;
   originFilter: LeadOriginFilterValue | "";
   onlyDraft: boolean;
+  onlyNeedsReschedule: boolean;
   customFieldFilters: CustomFieldFilterState[];
   customFieldSort: CustomFieldSortState | null;
 }
@@ -38,6 +39,7 @@ export const DEFAULT_CRM_FILTERS: CrmFiltersState = {
   onlyTransfer: false,
   originFilter: "",
   onlyDraft: false,
+  onlyNeedsReschedule: false,
   customFieldFilters: [],
   customFieldSort: null,
 };
@@ -55,6 +57,7 @@ export const isCrmFiltersEmpty = (filters: CrmFiltersState): boolean =>
   !filters.onlyTransfer &&
   !filters.originFilter &&
   !filters.onlyDraft &&
+  !filters.onlyNeedsReschedule &&
   filters.customFieldFilters.length === 0 &&
   !filters.customFieldSort;
 

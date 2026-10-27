@@ -37,6 +37,8 @@ type ScheduleOutcome = {
 type Outcome = {
   resultCode: InboundResultCode;
   leadId: string | null;
+  /** Código público do lead, usado pelo link do CRM na aba Logs. */
+  leadCode?: string | null;
   result: Record<string, unknown>;
 };
 
@@ -117,6 +119,7 @@ export class ProcessInboundWebhookEventUseCase {
       return {
         resultCode: INBOUND_RESULT_CODES.duplicateScheduledLead,
         leadId: existing.id,
+        leadCode: existing.leadCode,
         result: { ignoredFields },
       };
     }
@@ -146,7 +149,7 @@ export class ProcessInboundWebhookEventUseCase {
       if (scheduled.resultCode) resultCode = scheduled.resultCode;
     }
 
-    return { resultCode, leadId: base.lead.id, result };
+    return { resultCode, leadId: base.lead.id, leadCode: base.lead.leadCode, result };
   }
 
   private async mergeIntoExisting(
@@ -349,6 +352,7 @@ export class ProcessInboundWebhookEventUseCase {
           event_id: row.id,
           result_code: outcome.resultCode,
           lead_id: outcome.leadId,
+          lead_code: outcome.leadCode ?? null,
           idempotency_key_reused: row.idempotencyKeyReused,
           ...outcome.result,
         } as Prisma.InputJsonValue,
