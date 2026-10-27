@@ -3,6 +3,7 @@
 import { Code2, Radio, Webhook } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IntegrationEntryCard } from "../components/IntegrationEntryCard";
+import { IntegrationFlowChecklist, buildIntegrationFlowSteps } from "../components/IntegrationFlowChecklist";
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
 import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
@@ -101,6 +102,8 @@ export function IntegrationsContainer() {
           href={pixelLocked ? undefined : pixelHref}
         />
       </div>
+
+      <IntegrationFlowChecklist steps={buildIntegrationFlowSteps({ supabaseId, webhooksLocked, apiCatalogLocked })} />
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Outras integrações</h2>

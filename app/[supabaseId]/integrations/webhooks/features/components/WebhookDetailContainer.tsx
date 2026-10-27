@@ -43,6 +43,7 @@ import {
 } from "./WebhookOutboundConfigFields";
 import { WebhookSignatureVerificationGuide } from "./WebhookSignatureVerificationGuide";
 import { WebhookLogsPanel } from "./WebhookLogsPanel";
+import { WebhookInboundV2Guide } from "./WebhookInboundV2Guide";
 
 /**
  * SPEC 10, R10-5 (revisão Opus, decisão do owner) — as chamadas de rede
@@ -473,6 +474,8 @@ export function WebhookDetailContainer({
     );
   }
 
+  const showInboundV2Guide = direction === "inbound" && webhook.contractVersion === 2;
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -536,6 +539,7 @@ export function WebhookDetailContainer({
         <TabsList>
           <TabsTrigger value="config" className="min-h-11">Configuração</TabsTrigger>
           <TabsTrigger value="logs" className="min-h-11">Logs</TabsTrigger>
+          {showInboundV2Guide ? <TabsTrigger value="guide" className="min-h-11">Guia</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="config" className="flex flex-col gap-4 pt-4">
           <div className="mx-auto w-full max-w-2xl">
@@ -647,6 +651,14 @@ export function WebhookDetailContainer({
             </div>
           </div>
         </TabsContent>
+        {showInboundV2Guide ? (
+          <TabsContent value="guide" className="min-w-0 pt-4">
+            <WebhookInboundV2Guide
+              webhookUrl={webhook.webhookUrl}
+              apiCatalogHref={`/${supabaseId}/integrations/api-catalog`}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <AlertDialog open={Boolean(rotatedToken)} onOpenChange={(open) => !open && setRotatedToken(null)}>

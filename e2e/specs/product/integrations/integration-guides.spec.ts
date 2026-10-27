@@ -1,0 +1,134 @@
+/**
+ * app/[supabaseId]/integrations/page.tsx
+ * app/[supabaseId]/integrations/api-catalog/page.tsx
+ * app/[supabaseId]/integrations/webhooks/inbound/[id]/page.tsx
+ *
+ * Guias de uso da integração (webhook v2 + API Studio) dentro do app, para o time logado.
+ *
+ * Cobertura:
+ * - Hub: o passo a passo "Como colocar uma integração para funcionar" lista 5 passos com link.
+ * - Detalhe do webhook v2: a aba "Guia" mostra a URL do próprio webhook nos exemplos, só o placeholder do
+ *   token e avisa que a duração vem do time.
+ * - Catálogo de API: o guia explica a ordem de uso, o exemplo de resposta e a tabela de respostas.
+ * - Sem overflow horizontal em 360/375 no guia do webhook.
+ */
+
+import { expect, test } from "@playwright/test";
+import { WHATS_NEW_VERSION } from "../../../../components/whats-new-modal";
+import { injectE2eAuthCookie } from "../../../fixtures/auth";
+import { E2E_MASTER_SUPABASE_ID } from "../../../support/e2e-ids";
+import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../../support/db";
+import { runResponsiveChecks } from "../../../support/responsive";
+
+const WEBHOOK_NAME = "E2E Guia v2";
+
+type Ctx = { teamId: string; webhookId: string };
+const ctx: Ctx = { teamId: "", webhookId: "" };
+
+async function cleanup(): Promise<void> {
+  if (!ctx.teamId) return;
+  const prisma = getPrisma();
+  const hooks = await prisma.teamWebhook.findMany({ where: { teamId: ctx.teamId, name: WEBHOOK_NAME }, select: { id: true } });
+  const ids = hooks.map((hook) => hook.id);
+  await prisma.teamWebhookInboundEvent.deleteMany({ where: { webhookId: { in: ids } } });
+  await prisma.teamWebhook.deleteMany({ where: { id: { in: ids } } });
+}
+
+async function openGuideTab(page: import("@playwright/test").Page) {
+  await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/inbound/${ctx.webhookId}`, { waitUntil: "domcontentloaded" });
+  const guideTab = page.getByRole("tab", { name: "Guia" });
+  // Cliques logo após `domcontentloaded` podem ser perdidos antes da hidratação.
+  await expect(async () => {
+    await guideTab.click();
+    await expect(guideTab).toHaveAttribute("aria-selected", "true", { timeout: 1_500 });
+  }).toPass({ timeout: 30_000 });
+}
+
+test.describe("guias de integração no app", () => {
+  test.describe.configure({ mode: "serial" });
+  test.setTimeout(90_000);
+
+  test.beforeAll(async () => {
+    const profile = await findE2eMasterProfile();
+    if (!profile?.activeTeamId) throw new Error("Seed E2E sem time ativo — rode `bun run db:seed:e2e`");
+    ctx.teamId = profile.activeTeamId;
+    await cleanup();
+  });
+
+  test.beforeEach(async ({ context }) => {
+    await injectE2eAuthCookie(context);
+    await context.addInitScript(
+      ({ version, supabaseId }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true");
+      },
+      { version: WHATS_NEW_VERSION, supabaseId: E2E_MASTER_SUPABASE_ID },
+    );
+  });
+
+  test.afterAll(async () => {
+    await cleanup();
+    await disconnectPrisma();
+  });
+
+  test("hub: o passo a passo lista 5 passos com link", async ({ page }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    const flow = page.getByTestId("integration-flow");
+    await expect(flow).toBeVisible({ timeout: 30_000 });
+    await expect(flow.getByRole("listitem")).toHaveCount(5);
+    await expect(flow.getByRole("link", { name: "Abrir Catálogo de API" })).toHaveAttribute(
+      "href",
+      `/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog`,
+    );
+  });
+
+  test("detalhe do webhook v2: a aba Guia mostra a URL do webhook, só o placeholder do token e a duração do time", async ({ page, context }) => {
+    const profile = await findE2eMasterProfile();
+    const response = await context.request.post("/api/v1/integrations/webhooks", {
+      data: {
+        direction: "inbound",
+        name: WEBHOOK_NAME,
+        tokenMode: "auto",
+        expiryMode: "months_6",
+        contractVersion: 2,
+        scopes: ["leads_create", "leads_schedule"],
+        defaultAssigneeProfileIds: [profile!.id],
+        defaultMeetingLink: "https://meet.google.com/e2e-guia-link",
+      },
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    const body = (await response.json()).result;
+    ctx.webhookId = body.id;
+
+    await openGuideTab(page);
+
+    const guide = page.getByTestId("inbound-v2-guide");
+    await expect(guide).toBeVisible();
+    const createExample = guide.getByLabel("Exemplo sem agendamento");
+    await expect(createExample).toContainText(`/api/webhooks/studio/v2/${ctx.teamId}`);
+    await expect(createExample).toContainText("Bearer SEU_TOKEN_DO_WEBHOOK");
+    await expect(createExample).not.toContainText(body.token);
+    await expect(guide.getByLabel("Exemplo com agendamento")).not.toContainText("duration_minutes");
+    await expect(guide.getByText(/configurada no time/)).toBeVisible();
+    await expect(guide.getByRole("link", { name: "Catálogo de API" }).first()).toHaveAttribute(
+      "href",
+      `/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog`,
+    );
+  });
+
+  test("responsivo: o guia do webhook v2 não gera overflow em 360/375", async ({ page }) => {
+    await openGuideTab(page);
+    await expect(page.getByTestId("inbound-v2-guide")).toBeVisible();
+    await runResponsiveChecks(page, { touchTargets: { selector: '[data-testid="inbound-v2-guide"] button, [data-testid="inbound-v2-guide"] a' } });
+  });
+
+  test("catálogo de API: o guia mostra a ordem de uso, o exemplo de resposta e as respostas", async ({ page }) => {
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Como usar" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel("Exemplo de resposta")).toContainText("slot_minutes");
+    await expect(page.getByText("date_out_of_range")).toBeVisible();
+    await expect(page.getByRole("link", { name: "webhook v2" })).toHaveAttribute(
+      "href",
+      `/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks`,
+    );
+  });
+});

@@ -123,7 +123,7 @@ test.describe("app/[supabaseId]/integrations", () => {
     const main = page.locator("main");
 
     await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(main.getByText("Catálogo de API")).toBeVisible();
+    await expect(main.getByText("Catálogo de API", { exact: true })).toBeVisible();
     await expect(main.getByText("Webhooks", { exact: true })).toBeVisible();
     await expect(main.getByText("Pixel", { exact: true })).toBeVisible();
     await expect(main.getByText("Horários disponíveis")).toBeVisible();
@@ -138,21 +138,21 @@ test.describe("app/[supabaseId]/integrations", () => {
   test("Catálogo de API navega para a página própria do catálogo", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await clickUntilNavigated(page, /Catálogo de API/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog$`));
+    await clickUntilNavigated(page, /^Catálogo de API/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/api-catalog$`));
     await expect(page.getByRole("heading", { name: "Catálogo de API", exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
   test("Webhooks navega para a página de entrada de webhooks", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await clickUntilNavigated(page, /Webhooks/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks$`));
+    await clickUntilNavigated(page, /^Webhooks/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks$`));
     await expect(page.getByRole("heading", { name: "Webhooks" })).toBeVisible({ timeout: 30_000 });
   });
 
   test("Pixel navega para a página própria do Pixel", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await clickUntilNavigated(page, /Pixel/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel$`));
+    await clickUntilNavigated(page, /^Pixel/, new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/pixel$`));
     await expect(page.getByRole("heading", { name: "Pixel", exact: true })).toBeVisible({ timeout: 30_000 });
   });
 

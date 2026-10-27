@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates";
 import { useApiCatalogContext } from "../context/ApiCatalogContext";
+import { AvailabilityGuide } from "../components/AvailabilityGuide";
 
 const AVAILABILITY_PATH = "/api/studio/v1/availability";
 
@@ -181,22 +182,7 @@ export function ApiCatalogContainer() {
         ) : null}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-lg border p-5" aria-labelledby="availability-docs">
-        <h2 id="availability-docs" className="text-lg font-semibold">
-          Como usar
-        </h2>
-        <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
-          <li>
-            <code>GET {AVAILABILITY_PATH}?date=AAAA-MM-DD</code> com o header <code>Authorization: Bearer &lt;token&gt;</code>.
-          </li>
-          <li>A data vai de hoje até 180 dias à frente. Os horários vêm com fuso, nas 24 horas do dia, no tamanho da reunião configurado no time.</li>
-          <li>Limite de 30 consultas por minuto por token. Acima disso a resposta é 429 com <code>Retry-After</code>.</li>
-          <li>
-            Use o <code>closer_id</code> e um <code>starts_at</code> da resposta em <code>schedule</code> ao enviar o
-            lead pelo webhook v2.
-          </li>
-        </ul>
-      </section>
+      <AvailabilityGuide webhooksHref={`/${supabaseId}/integrations/webhooks`} />
     </div>
   );
 }
