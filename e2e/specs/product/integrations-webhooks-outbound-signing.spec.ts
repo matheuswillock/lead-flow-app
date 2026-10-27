@@ -51,6 +51,23 @@ async function fillAndSubmitOutboundForm(page: Page, webhookName: string): Promi
   await createButton.click();
 }
 
+/**
+ * Espera a tela "Webhook de saída criado". Se a criação falhar, o aviso do servidor (toast ou alerta) vai na
+ * mensagem do erro: sem isso a CI só diz "heading não encontrado" e a causa (DNS do destino, cifra do
+ * segredo, limite do time) fica invisível.
+ */
+async function expectOutboundCreated(page: Page): Promise<void> {
+  try {
+    await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({ timeout: 30_000 });
+  } catch (error) {
+    const notices = [
+      ...(await page.locator("[data-sonner-toast]").allInnerTexts()),
+      ...(await page.getByRole("alert").allInnerTexts()),
+    ].filter(Boolean);
+    throw new Error(`A criação do webhook de saída não concluiu. Avisos na tela: ${JSON.stringify(notices)}\n${String(error)}`);
+  }
+}
+
 test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
   // Uma spec do grupo de webhooks por vez (lock) e todos os testes dela no mesmo worker.
   test.describe.configure({ mode: "serial" });
@@ -100,9 +117,7 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
 
     await fillAndSubmitOutboundForm(page, webhookName);
 
-    await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expectOutboundCreated(page);
 
     // O segredo aparece em texto puro, uma única vez, num input somente leitura.
     const secretInput = page.getByLabel("Segredo de assinatura (HMAC)");
@@ -153,9 +168,7 @@ test.describe("app/[supabaseId]/integrations/webhooks/outbound", () => {
     });
     await fillAndSubmitOutboundForm(page, webhookName);
 
-    await expect(page.getByRole("heading", { name: "Webhook de saída criado" })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expectOutboundCreated(page);
     await runResponsiveChecks(page);
   });
 

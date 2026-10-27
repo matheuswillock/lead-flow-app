@@ -25,6 +25,7 @@
 import { randomUUID } from "node:crypto"
 import { expect, test } from "@playwright/test"
 import { disconnectPrisma, getPrisma } from "../../support/db"
+import { isGenericResourceLoadMessage, isKnownNoiseUrl } from "../../support/known-env-noise"
 import { runResponsiveChecks } from "../../support/responsive"
 
 const FIXTURE_EMAIL = `spec40.lead-form.${randomUUID()}@example.com`
@@ -94,8 +95,14 @@ test.describe("app/lead-form/[supabaseId] (público)", () => {
 
   test("carrega sem erro, bootstrap não expõe e-mail de membro (DA3/T-40.5)", async ({ page }) => {
     const consoleErrors: string[] = []
+    const unexpectedFailedResponses: string[] = []
     page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text())
+      if (message.type() === "error" && !isGenericResourceLoadMessage(message.text())) consoleErrors.push(message.text())
+    })
+    page.on("response", (response) => {
+      if (response.status() >= 400 && !isKnownNoiseUrl(response.url())) {
+        unexpectedFailedResponses.push(`${response.status()} ${response.url()}`)
+      }
     })
 
     const bootstrapResponse = page.waitForResponse((response) =>
@@ -112,6 +119,7 @@ test.describe("app/lead-form/[supabaseId] (público)", () => {
 
     await expect(page.getByRole("heading", { name: "Dados do Lead" })).toBeVisible()
     expect(consoleErrors).toEqual([])
+    expect(unexpectedFailedResponses, `Respostas >= 400 não esperadas: ${unexpectedFailedResponses.join(" | ")}`).toEqual([])
   })
 
   test("telefone já existente no time recebe a MESMA confirmação de um lead novo (T-40.9)", async ({
