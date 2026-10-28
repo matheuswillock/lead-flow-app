@@ -4674,6 +4674,7 @@ completed completed
     String external_account_context 
     PaymentProviderRolloutState rollout_state 
     Boolean kill_switch 
+    Boolean card_enabled 
     Int config_revision 
     PaymentProviderHealthStatus health_status 
     DateTime last_health_check_at "❓"

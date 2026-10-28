@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { PlatformCheckoutUseCase } from "./PlatformCheckoutUseCase"
 import { isMethodUnavailableOutput } from "@/lib/payment-methods/route-guard"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 
 const originalEnv = { ...process.env }
 
@@ -36,12 +37,16 @@ function makeRepo() {
 }
 
 describe("PlatformCheckoutUseCase — cartão desligado", () => {
+  let restoreConfig: () => void
+
   beforeEach(() => {
+    restoreConfig = stubCardEnabledConfig(false)
     process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
     delete process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY
     delete process.env.CARD_PAYMENTS_ENABLED
   })
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 
@@ -66,7 +71,19 @@ describe("PlatformCheckoutUseCase — cartão desligado", () => {
     expect(create).not.toHaveBeenCalled()
   })
 
-  it("chave pública presente libera o cartão", async () => {
+  it("chave pública presente mas cartão desligado no backoffice -> barra", async () => {
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+    const { repo, create } = makeRepo()
+
+    const output = await new PlatformCheckoutUseCase(repo).createCheckout({ ...baseInput, billingType: "CREDIT_CARD" })
+
+    expect(isMethodUnavailableOutput(output)).toBe(true)
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it("chave pública presente e cartão ligado no backoffice libera o cartão", async () => {
+    restoreConfig()
+    restoreConfig = stubCardEnabledConfig(true)
     process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
     const { repo, create } = makeRepo()
 

@@ -5,10 +5,16 @@ import type {
 } from "@/lib/payment-provider/routing-config"
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
 
+export type PaymentProviderConfigActor = {
+  readonly profileId: string
+  readonly backofficeUserId: string | null
+}
+
 export type PaymentProviderConfigUseCaseInput = {
   readonly environment: PaymentProviderEnvironment
   readonly provider?: PaymentProviderKey
   readonly patch?: ProviderRoutingConfigPatch
+  readonly actor?: PaymentProviderConfigActor
 }
 
 export interface IPaymentProviderConfigUseCase {

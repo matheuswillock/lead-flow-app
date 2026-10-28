@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
 import type { AsaasAccountId } from "@/lib/asaas"
 import type {
+  BackofficeAdhesionLeadRelation,
   BackofficeAdhesionOptions,
   BackofficeAdhesionWithRelations,
   BackofficeAdhesionInvoiceSource,
@@ -12,6 +13,7 @@ import type {
   ListBackofficeAdhesionsInput,
   ListBackofficeAdhesionsResult,
   MarkBackofficeAdhesionExternalPaidInput,
+  SelfCheckoutLeadContact,
   UpdateBackofficeAdhesionCheckoutInput,
   UpdateBackofficeAdhesionInput,
 } from "./IBackofficeAdhesionRepository"
@@ -54,6 +56,9 @@ const backofficeAdhesionInclude = {
     select: backofficeAdhesionUserSelect,
   },
 } satisfies Prisma.BackofficeAdhesionInclude
+
+/** Marca os leads que nasceram do auto-checkout; é o que separa o reaproveitamento do lead de operador. */
+export const SELF_CHECKOUT_LEAD_NOTES = "auto-checkout"
 
 const eligibleLeadStatuses = ["new_opportunity", "scheduled", "no_show", "new_adhesion"] as const
 
@@ -386,6 +391,20 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
 
     return profile?.id ?? null
+  }
+
+  async createSelfCheckoutLead(input: SelfCheckoutLeadContact): Promise<BackofficeAdhesionLeadRelation> {
+    return prisma.backofficeLead.create({
+      data: {
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        origin: "landing_page",
+        notes: SELF_CHECKOUT_LEAD_NOTES,
+        createdByProfileId: null,
+      },
+      select: backofficeAdhesionLeadSelect,
+    })
   }
 
   async createPaidManagerProfile(

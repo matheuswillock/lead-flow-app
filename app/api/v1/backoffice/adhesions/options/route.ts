@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     if (output.isValid && output.result) {
       output.result = {
         ...output.result,
-        availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+        availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
       }
     }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })

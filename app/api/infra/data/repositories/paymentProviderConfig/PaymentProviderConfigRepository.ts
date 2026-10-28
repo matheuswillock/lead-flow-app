@@ -22,6 +22,7 @@ const configSelect = {
   externalAccountContext: true,
   rolloutState: true,
   killSwitch: true,
+  cardEnabled: true,
   configRevision: true,
   healthStatus: true,
 } as const
@@ -95,6 +96,7 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
           externalAccountContext: next.externalAccountContext,
           rolloutState: next.rolloutState,
           killSwitch: next.killSwitch,
+          cardEnabled: next.cardEnabled,
           configRevision: next.revision,
           healthStatus: next.healthStatus,
         },
@@ -117,6 +119,7 @@ function toRoutingConfigRecord(record: {
   externalAccountContext: string
   rolloutState: string
   killSwitch: boolean
+  cardEnabled: boolean
   configRevision: number
   healthStatus: string
 }): ProviderRoutingConfigRecord {
@@ -128,6 +131,7 @@ function toRoutingConfigRecord(record: {
     externalAccountContext: record.externalAccountContext,
     rolloutState: record.rolloutState as ProviderRoutingConfigRecord["rolloutState"],
     killSwitch: record.killSwitch,
+    cardEnabled: record.cardEnabled,
     revision: record.configRevision,
     healthStatus: record.healthStatus as ProviderRoutingConfigRecord["healthStatus"],
   }

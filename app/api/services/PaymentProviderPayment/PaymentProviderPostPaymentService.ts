@@ -36,8 +36,9 @@ export class PaymentProviderPostPaymentService {
         status: "REFUNDED",
       }
     }
-    if (input.attempt.status !== "CONFIRMED" && input.attempt.status !== "DISPUTED") {
-      throw new Error("Somente pagamentos confirmados ou disputados podem ser reembolsados")
+    // Disputa nunca reembolsa pelo sistema (decisão 17): a operação resolve com o provedor.
+    if (input.attempt.status !== "CONFIRMED") {
+      throw new Error("Somente pagamentos confirmados podem ser reembolsados")
     }
     if (!input.attempt.externalId) throw new Error("Pagamento sem ID externo")
 

@@ -177,6 +177,13 @@ export interface BackofficeAdhesionOptions {
   sponsorOptions: Array<{ id: string; fullName: string | null; email: string | null }>
 }
 
+/** Dados de contato do lead que entra pelo auto-checkout público do CRM. */
+export interface SelfCheckoutLeadContact {
+  name: string
+  email: string
+  phone: string
+}
+
 export interface BackofficeAdhesionInvoiceSource {
   id: string
   productName: string | null
@@ -243,6 +250,8 @@ export interface IBackofficeAdhesionRepository {
     data: { createdProfileId: string; createdSupabaseId: string }
   ): Promise<BackofficeAdhesionWithRelations>
   findProfileIdByEmail(email: string): Promise<string | null>
+  /** Sempre cria um lead novo (origem landing_page); nunca reaproveita o de outra pessoa pelo e-mail. */
+  createSelfCheckoutLead(input: SelfCheckoutLeadContact): Promise<BackofficeAdhesionLeadRelation>
   createPaidManagerProfile(
     data: CreateBackofficeAdhesionManagerProfileInput
   ): Promise<{ profileId: string; supabaseId: string }>

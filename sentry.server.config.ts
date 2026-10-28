@@ -5,6 +5,10 @@
 import * as Sentry from "@sentry/nextjs";
 import { isSentryEnabled } from "@/lib/sentry/is-sentry-enabled";
 import { applyWebhookTokenRedaction } from "@/lib/sentry/webhookTokenRedaction";
+import {
+  scrubWebhookSecretFromBreadcrumb,
+  scrubWebhookSecretFromEvent,
+} from "@/lib/observability/scrubWebhookSecret";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -23,8 +27,12 @@ Sentry.init({
   // SPEC 10, A-E5 (DA5, V7): token do webhook de entrada não pode aparecer
   // em evento do Sentry — reescreve a URL, os spans e os breadcrumbs antes
   // do envio. Não depende de desligar sendDefaultPii para o app inteiro.
-  beforeSend: (event) => applyWebhookTokenRedaction(event),
-  beforeSendTransaction: (event) => applyWebhookTokenRedaction(event),
+  beforeSend: (event) => scrubWebhookSecretFromEvent(applyWebhookTokenRedaction(event)),
+  beforeSendTransaction: (event) => scrubWebhookSecretFromEvent(applyWebhookTokenRedaction(event)),
+
+  // Webhook de pagamento (Abacate): `?webhookSecret=` é a credencial e não pode virar
+  // breadcrumb nem evento. Ver lib/observability/scrubWebhookSecret.ts.
+  beforeBreadcrumb: scrubWebhookSecretFromBreadcrumb,
 
   integrations: [
     Sentry.consoleLoggingIntegration({ levels: ["log", "info", "warn", "error", "debug"] }),
