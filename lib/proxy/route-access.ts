@@ -20,6 +20,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/agendamento",
   "/backoffice-agendamento",
   "/addon-checkout",
+  "/checkout",
   "/sentry-example-page",
   "/documentos",
 ] as const
