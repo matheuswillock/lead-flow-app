@@ -1,28 +1,33 @@
-import { execFileSync } from "node:child_process"
 import { appendFileSync } from "node:fs"
-import { parseRollingReleaseOutput, redactSecret, waitForRollingRelease } from "./wait-rolling-release"
+import {
+  buildRollingReleaseUrl,
+  parseRollingReleaseOutput,
+  redactSecret,
+  waitForRollingRelease,
+} from "./wait-rolling-release"
 
 const deployUrl = process.env.DEPLOY_URL ?? ""
 const token = process.env.VERCEL_TOKEN ?? ""
-if (!deployUrl || !token) {
-  console.error("::error::DEPLOY_URL e VERCEL_TOKEN são obrigatórios")
+const projectId = process.env.VERCEL_PROJECT_ID ?? ""
+if (!deployUrl || !token || !projectId) {
+  console.error("::error::DEPLOY_URL, VERCEL_TOKEN e VERCEL_PROJECT_ID são obrigatórios")
   process.exit(1)
 }
 
-// O token segue só pelo ambiente (a CLI lê VERCEL_TOKEN): em argv ele apareceria
-// na mensagem de erro do execFileSync e, daí, no log e no step summary.
-function fetchRollingReleaseOutput(): string {
-  try {
-    return execFileSync("npx", ["--yes", "vercel@56.3.2", "rolling-release", "fetch", "--non-interactive"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    })
-  } catch (error) {
-    const { status, stderr } = error as { status?: number | null; stderr?: Buffer | string }
-    const tail = String(stderr ?? "").trim().split("\n").slice(-3).join(" | ")
-    throw new Error(redactSecret(`vercel rolling-release fetch saiu com ${status ?? "?"}: ${tail}`, token))
+const endpoint = buildRollingReleaseUrl({ projectId, teamId: process.env.VERCEL_ORG_ID || undefined })
+
+// A API REST devolve JSON; a CLI `vercel rolling-release fetch` só imprime texto para humanos e o parser nunca
+// achava o JSON. O token vai só no header e a mensagem de erro passa por `redactSecret` antes de ir ao log.
+async function fetchRollingReleaseOutput(): Promise<string> {
+  const response = await fetch(endpoint, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await response.text()
+  if (!response.ok) {
+    throw new Error(redactSecret(`API da Vercel respondeu ${response.status}: ${body.slice(0, 200)}`, token))
   }
+  return body
 }
 
 const verdict = await waitForRollingRelease(
@@ -32,7 +37,7 @@ const verdict = await waitForRollingRelease(
     intervalMs: Number(process.env.INTERVAL_SECONDS ?? 20) * 1000,
   },
   {
-    fetchRelease: async () => parseRollingReleaseOutput(fetchRollingReleaseOutput()),
+    fetchRelease: async () => parseRollingReleaseOutput(await fetchRollingReleaseOutput()),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
     log: (message) => console.info(redactSecret(message, token)),
