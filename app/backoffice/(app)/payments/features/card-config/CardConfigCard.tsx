@@ -135,6 +135,7 @@ export function CardConfigCard() {
                       id={switchId}
                       checked={config?.cardEnabled ?? false}
                       disabled={!config || !canManage || saving[environment]}
+                      className="max-lg:h-12 max-lg:w-12 max-lg:px-1.5 max-lg:py-3.5 max-lg:[background-clip:content-box]"
                       onCheckedChange={(checked) => handleCheckedChange(environment, checked)}
                       aria-label={`Cartão de crédito em ${label.title}`}
                     />

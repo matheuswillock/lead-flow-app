@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { createHash } from "node:crypto"
 import { Output } from "@/lib/output"
 import type { ISelfCheckoutUseCase } from "@/app/api/useCases/selfCheckout/ISelfCheckoutUseCase"
@@ -38,7 +38,12 @@ async function json(response: Response) {
   return (await response.json()) as Output
 }
 
+let originalAppUrl: string | undefined
+
 beforeEach(() => {
+  // A CI não carrega .env: sem a URL da aplicação o guard de origem libera tudo.
+  originalAppUrl = env.NEXT_PUBLIC_APP_URL
+  env.NEXT_PUBLIC_APP_URL = "https://app.example.com"
   env.VERCEL = "1"
   env.NODE_ENV = "production"
   create.mockClear()
@@ -46,6 +51,11 @@ beforeEach(() => {
   getOptions.mockClear()
   consumeRateLimit.mockClear()
   consumeRateLimit.mockImplementation(async () => ({ allowed: true, retryAfterSeconds: 1 }))
+})
+
+afterEach(() => {
+  if (originalAppUrl === undefined) delete env.NEXT_PUBLIC_APP_URL
+  else env.NEXT_PUBLIC_APP_URL = originalAppUrl
 })
 
 describe("POST /api/v1/public-self-checkout", () => {

@@ -150,8 +150,13 @@ function makeHarness(options: { product?: ReturnType<typeof buildCrmProduct> | n
 }
 
 let checkoutEmail: ReturnType<typeof spyOn>
+const env = process.env as Record<string, string | undefined>
+let originalAppUrl: string | undefined
 
 beforeEach(() => {
+  // A CI não carrega .env: create() monta a URL do checkout com getFullUrl.
+  originalAppUrl = env.NEXT_PUBLIC_APP_URL
+  env.NEXT_PUBLIC_APP_URL = "https://app.example.com"
   tokenValidation = { status: "valid", adhesionId: "adhesion-1", adhesionStatus: "pending" }
   checkoutEmail = spyOn(
     Object.getPrototypeOf(createEmailService()),
@@ -160,6 +165,8 @@ beforeEach(() => {
 })
 afterEach(() => {
   checkoutEmail.mockRestore()
+  if (originalAppUrl === undefined) delete env.NEXT_PUBLIC_APP_URL
+  else env.NEXT_PUBLIC_APP_URL = originalAppUrl
 })
 
 describe("BackofficeAdhesionService.getSelfCheckoutOptions", () => {
