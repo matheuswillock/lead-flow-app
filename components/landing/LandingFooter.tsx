@@ -105,6 +105,7 @@ export function LandingFooter() {
             <p>
               © {currentYear} Corretor Studio. Todos os direitos reservados.
             </p>
+            <p>Studio Marketing e Tecnologia LTDA — CNPJ 68.647.473/0001-19</p>
             <p className="inline-flex flex-wrap items-center gap-1.5">
               Developing with
               <Heart
