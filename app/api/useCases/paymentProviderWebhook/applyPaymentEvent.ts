@@ -54,12 +54,14 @@ export type ApplyPaymentEventInput = {
   readonly claimToken: string
 }
 
-type VerifiedPayment = { readonly amountInCents: number }
+/** `null` quando nem a consulta nem o evento trazem valor; quem liquida decide com o valor esperado. */
+type VerifiedPayment = { readonly amountInCents: number | null }
 
 /**
  * Aplica um evento do provider à tentativa e ao owner. Sem chave pública o HMAC do webhook não
  * é verificável, então todo evento que confirma pagamento é reconsultado no provider com a nossa
- * API key antes de qualquer mutação: só `PAID` com o valor esperado passa.
+ * API key antes de qualquer mutação: só `PAID` passa. O `check` do Abacate não devolve o valor
+ * (só id, status e expiresAt), então o status é a prova e o valor é conferido só se vier dos dois lados.
  */
 export function createApplyPaymentEvent(deps: ApplyPaymentEventDependencies) {
   return async function applyPaymentEvent(input: ApplyPaymentEventInput): Promise<void> {
@@ -163,14 +165,14 @@ async function verifyConfirmation(
   if (queried.status !== "CONFIRMED") {
     throw rejectConfirmation(deps, event, attempt, externalId, queried, "STATUS_NOT_PAID")
   }
-  if (queried.amountInCents === null) {
-    throw new PaymentProviderError("REMOTE_REQUEST_FAILED", "Valor do pagamento não verificável", true)
-  }
-  // A tentativa guarda o valor só no provider; o valor consultado é a referência e o do evento é conferido contra ele.
-  if (event.amountInCents !== null && event.amountInCents !== queried.amountInCents) {
+  if (
+    queried.amountInCents !== null &&
+    event.amountInCents !== null &&
+    event.amountInCents !== queried.amountInCents
+  ) {
     throw rejectConfirmation(deps, event, attempt, externalId, queried, "AMOUNT_MISMATCH")
   }
-  return { amountInCents: queried.amountInCents }
+  return { amountInCents: queried.amountInCents ?? event.amountInCents }
 }
 
 async function queryPayment(

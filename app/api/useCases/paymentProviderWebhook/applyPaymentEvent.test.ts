@@ -264,12 +264,46 @@ describe("createApplyPaymentEvent - confirmação reconsultada no provider", () 
     expect(harness.calls).toEqual(["getStatus:charge-1:PIX"])
   })
 
-  it("gera erro retentável quando o pago veio sem valor verificável", async () => {
-    const harness = createHarness({ status: statusResult({ amountInCents: null }) })
+  // GET /v2/transparents/check devolve só id, status e expiresAt (capturado na API sandbox em
+  // 2026-10-28): o valor não vem na consulta, então PAID é a prova e o valor do evento é o usado.
+  it("formato real do check (sem valor): confirma com PAID e liquida o owner com o valor do evento", async () => {
+    const harness = createHarness({
+      attempt: makeAttempt({ ownerType: "BACKOFFICE_ADHESION" }),
+      status: statusResult({ amountInCents: null }),
+    })
+
+    await run(harness, makeEvent({ amountInCents: 9900 }))
+
+    expect(harness.calls).toContain("applyEventWithClaim:CONFIRMED")
+    expect(harness.settleInputs).toEqual([
+      {
+        ownerType: "BACKOFFICE_ADHESION",
+        ownerId: "purchase-1",
+        externalId: "charge-1",
+        amountInCents: 9900,
+        paidAt: new Date("2026-10-27T12:00:00.000Z"),
+      },
+    ])
+  })
+
+  it("confirma mesmo quando nem o check nem o evento trazem valor: quem liquida decide com o valor esperado", async () => {
+    const harness = createHarness({
+      attempt: makeAttempt({ ownerType: "BACKOFFICE_ADHESION" }),
+      status: statusResult({ amountInCents: null }),
+    })
+
+    await run(harness, makeEvent({ amountInCents: null }))
+
+    expect(harness.calls).toContain("applyEventWithClaim:CONFIRMED")
+    expect(harness.settleInputs[0]).toMatchObject({ amountInCents: null })
+  })
+
+  it("sem valor no check, status que não é PAID continua rejeitado sem nenhuma mutação", async () => {
+    const harness = createHarness({ status: statusResult({ status: "EXPIRED", amountInCents: null }) })
 
     const error = await captureError(run(harness, makeEvent()))
 
-    expect((error as PaymentProviderError).retryable).toBe(true)
+    expect((error as PaymentProviderError).code).toBe("WEBHOOK_INVALID")
     expect(harness.calls).toEqual(["getStatus:charge-1:PIX"])
   })
 
