@@ -56,9 +56,10 @@ export async function rejectUnavailableBillingTypeForMaster(
 }
 
 /** Tipos de cobrança que esta conta pode escolher (inclui cartão para assinante com cartão). */
-export function resolveAvailableBillingTypesForMaster(
+export async function resolveAvailableBillingTypesForMaster(
   master: CardSubscriberCandidate | null | undefined,
   fetchCardInfo: FetchSubscriptionCardInfo = fetchAsaasSubscriptionCardInfo,
 ): Promise<AvailableBillingTypes> {
-  return resolveBillingTypesForAccount(master, fetchCardInfo, resolveCardAvailability().availableBillingTypes)
+  const { availableBillingTypes } = await resolveCardAvailability()
+  return resolveBillingTypesForAccount(master, fetchCardInfo, availableBillingTypes)
 }

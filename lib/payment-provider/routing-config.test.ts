@@ -13,6 +13,7 @@ const existing: ProviderRoutingConfigRecord = {
   externalAccountContext: "abacate-production",
   rolloutState: "DISABLED",
   killSwitch: false,
+  cardEnabled: false,
   revision: 1,
   healthStatus: "UNKNOWN",
 }
@@ -91,6 +92,35 @@ describe("provider routing config", () => {
       enabled: true,
       rolloutState: "ACTIVE",
       killSwitch: true,
+      revision: 2,
+    })
+  })
+
+  it("liga o cartão incrementando a revisão e preservando os demais campos", () => {
+    const next = applyProviderRoutingConfigPatch(existing, {
+      cardEnabled: true,
+      expectedRevision: 1,
+    })
+
+    expect(next).toEqual({ ...existing, cardEnabled: true, revision: 2 })
+  })
+
+  it("mantém o cartão desligado quando o patch não menciona cardEnabled", () => {
+    const next = applyProviderRoutingConfigPatch(existing, { enabled: true, expectedRevision: 1 })
+
+    expect(next.cardEnabled).toBe(false)
+  })
+
+  it("desliga o cartão sem mexer no kill switch nem no rollout", () => {
+    const next = applyProviderRoutingConfigPatch(
+      { ...existing, cardEnabled: true, rolloutState: "APPROVED" },
+      { cardEnabled: false, expectedRevision: 1 },
+    )
+
+    expect(next).toMatchObject({
+      cardEnabled: false,
+      killSwitch: false,
+      rolloutState: "APPROVED",
       revision: 2,
     })
   })

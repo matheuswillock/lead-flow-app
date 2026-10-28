@@ -60,7 +60,7 @@ export class BillingCheckoutIntentService {
       productSlug: intent.productSlug,
       cycle: intent.cycle,
       prices: { PIX: pixPrice, CREDIT_CARD: cardPrice },
-      availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
       expiresAt: intent.expiresAt.toISOString(),
       checkoutCreated: intent.status === "checkout_created",
     }
@@ -68,7 +68,7 @@ export class BillingCheckoutIntentService {
 
   async createCheckout(token: string, billingType: string) {
     if (!isBillingType(billingType)) throw new Error("Forma de pagamento inválida")
-    assertBillingTypeAllowed(billingType)
+    await assertBillingTypeAllowed(billingType)
     let intent = await this.repository.findByTokenHash(hashBillingCheckoutToken(token))
     if (!intent) throw new Error("Link de pagamento inválido")
     assertActiveIntent(intent)

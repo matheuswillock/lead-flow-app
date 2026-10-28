@@ -13,6 +13,7 @@ mock.module("@/app/api/services/AsaasCustomer/AsaasCustomerService", () => ({
 mock.module("@/lib/billing/resolvePrice", () => ({ resolvePrice: mock(async () => 100) }))
 
 const { POST } = await import("./route")
+const { stubCardEnabledConfig } = await import("@/test/support/card-enabled-config")
 
 const originalEnv = { ...process.env }
 
@@ -56,11 +57,28 @@ describe("POST /payments/create-card — cartão desligado", () => {
     expect(asaasFetchMock).not.toHaveBeenCalled()
   })
 
+  it("a chave pública sozinha não libera o cartão: a flag do backoffice também precisa estar ligada", async () => {
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+    const restore = stubCardEnabledConfig(false)
+    try {
+      const response = await POST(makeRequest())
+
+      expect(response.status).toBe(422)
+      expect(asaasFetchMock).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
   it("com o cartão liberado segue o fluxo normal (perfil inexistente -> 404)", async () => {
     process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+    const restore = stubCardEnabledConfig(true)
+    try {
+      const response = await POST(makeRequest())
 
-    const response = await POST(makeRequest())
-
-    expect(response.status).toBe(404)
+      expect(response.status).toBe(404)
+    } finally {
+      restore()
+    }
   })
 })

@@ -6,6 +6,7 @@ mock.module("@/lib/asaas", () => ({
   asaasApi: { payments: "payments", pixQrCode: (id: string) => `pix/${id}` },
 }))
 
+const { stubCardEnabledConfig } = await import("@/test/support/card-enabled-config")
 const { BackofficePaymentUseCase } = await import("./BackofficePaymentUseCase")
 const { isMethodUnavailableOutput } = await import("@/lib/payment-methods/route-guard")
 
@@ -18,13 +19,17 @@ function makeUseCase() {
 }
 
 describe("BackofficePaymentUseCase.createPayment — cartão desligado", () => {
+  let restoreConfig: () => void = () => undefined
+
   beforeEach(() => {
+    restoreConfig = stubCardEnabledConfig(false)
     asaasFetchMock.mockClear()
     process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
     delete process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY
     delete process.env.CARD_PAYMENTS_ENABLED
   })
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 

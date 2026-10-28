@@ -118,7 +118,7 @@ export class PlatformCheckoutUseCase {
       if (input.billingType !== "PIX" && input.billingType !== "CREDIT_CARD") {
         return new Output(false, [], ["billingType inválido"], null)
       }
-      assertBillingTypeAllowed(input.billingType)
+      await assertBillingTypeAllowed(input.billingType)
 
       const purchaseId = randomUUID()
       const externalReference = buildPlatformPurchaseExternalReference(purchaseId)
@@ -160,7 +160,7 @@ export class PlatformCheckoutUseCase {
 
       return new Output(true, [], [], {
         ...toDetails(purchase),
-        availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+        availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
       })
     } catch (error) {
       console.error("[PlatformCheckoutUseCase][getCheckoutDetails]", error)

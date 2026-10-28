@@ -6760,6 +6760,7 @@ model PaymentProviderConfig {
   externalAccountContext String                    @map("external_account_context") @db.Text
   rolloutState            PaymentProviderRolloutState @default(DISABLED) @map("rollout_state")
   killSwitch              Boolean                   @default(false) @map("kill_switch")
+  cardEnabled             Boolean                   @default(false) @map("card_enabled")
   configRevision          Int                       @default(1) @map("config_revision")
   healthStatus             PaymentProviderHealthStatus @default(UNKNOWN) @map("health_status")
   lastHealthCheckAt        DateTime?                 @map("last_health_check_at") @db.Timestamptz(6)
