@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  buildRollingReleaseUrl,
   evaluateRollingRelease,
   parseRollingReleaseOutput,
   redactSecret,
@@ -19,13 +20,46 @@ const release = (overrides: Partial<RollingRelease>): RollingRelease => ({
 })
 
 describe("parseRollingReleaseOutput", () => {
-  it("extrai o JSON ignorando o prefixo da CLI", () => {
+  it("extrai o JSON ignorando texto antes e depois", () => {
     const parsed = parseRollingReleaseOutput(`Vercel CLI 59\nRetrieving project…\n> {"state":"COMPLETE"}\n`)
     expect(parsed.state).toBe("COMPLETE")
   })
 
+  it("desembrulha a resposta real da API REST ({ rollingRelease: {...} })", () => {
+    const parsed = parseRollingReleaseOutput(
+      JSON.stringify({
+        rollingRelease: {
+          state: "COMPLETE",
+          currentDeployment: { url: OLD },
+          canaryDeployment: { url: NEW },
+          currentCanaryPercentage: 100,
+        },
+      }),
+    )
+
+    expect(evaluateRollingRelease(parsed, `https://${NEW}`).kind).toBe("complete")
+  })
+
+  it("rollingRelease nulo (projeto sem rollout) segue pendente em vez de quebrar", () => {
+    const parsed = parseRollingReleaseOutput('{"rollingRelease":null}')
+
+    expect(evaluateRollingRelease(parsed, `https://${NEW}`).kind).toBe("pending")
+  })
+
   it("rejeita saída sem JSON", () => {
     expect(() => parseRollingReleaseOutput("Error: Not authorized (403)")).toThrow()
+  })
+})
+
+describe("buildRollingReleaseUrl", () => {
+  it("monta o endpoint do projeto com o time", () => {
+    expect(buildRollingReleaseUrl({ projectId: "prj_123", teamId: "team_9" })).toBe(
+      "https://api.vercel.com/v1/projects/prj_123/rolling-release?teamId=team_9",
+    )
+  })
+
+  it("sem time (conta pessoal) não envia teamId", () => {
+    expect(buildRollingReleaseUrl({ projectId: "prj_123" })).toBe("https://api.vercel.com/v1/projects/prj_123/rolling-release")
   })
 })
 
