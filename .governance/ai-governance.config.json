@@ -449,6 +449,7 @@
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/[supabaseId]/teams/page.tsx": "e2e/specs/product/team-schedule-settings.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/backoffice/(app)/clients/page.tsx": "e2e/specs/backoffice/clients/master-with-operator-profile.spec.ts",
       "app/lead-form/[supabaseId]/page.tsx": "e2e/specs/public/lead-form.spec.ts",
       "app/lead-form/[supabaseId]/[teamId]/page.tsx": "e2e/specs/public/lead-form.spec.ts",
       "app/[supabaseId]/integrations/webhooks/inbound/page.tsx": "e2e/specs/product/integrations-webhooks-inbound.spec.ts",
