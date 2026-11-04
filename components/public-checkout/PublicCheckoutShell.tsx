@@ -25,7 +25,7 @@ export function PublicCheckoutShell({
   const branding = provider === null ? null : getProviderBranding(provider)
 
   return (
-    <main className="min-h-dvh w-full bg-background">
+    <main className="min-h-dvh w-full bg-background font-[Inter,sans-serif]">
       <div className="flex min-h-dvh flex-col">
         <header className="bg-primary px-6 py-6">
           <div className="mx-auto flex w-full max-w-[1120px] items-center justify-between">

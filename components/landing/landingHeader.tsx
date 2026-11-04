@@ -10,7 +10,7 @@ export function LandingHeader() {
       <div className="landing-nav-pill mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-5">
         <MobileNavMenu />
 
-        <Link href="/#top" className="flex shrink-0 items-center gap-2 font-display text-lg font-bold tracking-[-0.02em]">
+        <Link href="/#top" className="flex min-h-11 min-w-11 shrink-0 items-center gap-2 font-display text-lg font-bold tracking-[-0.02em]">
           <Image
             src="/corretor-studio-icon.svg"
             alt="Corretor Studio"
@@ -22,7 +22,7 @@ export function LandingHeader() {
           <span className="hidden sm:inline">Corretor Studio</span>
         </Link>
 
-        <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-medium text-landing-body min-[920px]:flex">
+        <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-medium text-landing-body min-[1200px]:flex">
           <Link href="/#crm" className="transition-colors hover:text-[var(--landing-ink)]">
             Plataforma
           </Link>
@@ -40,14 +40,14 @@ export function LandingHeader() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Link
             href="/sign-in"
-            className="hidden min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-landing-body transition-colors hover:text-[var(--landing-ink)] sm:inline-flex"
+            className="hidden min-h-11 min-w-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-landing-body transition-colors hover:text-[var(--landing-ink)] sm:inline-flex"
             aria-label="Entrar na conta"
           >
             <LogIn className="size-4" aria-hidden />
             Entrar
           </Link>
           <DemoRequestDialogButton
-            className="landing-primary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="landing-secondary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Solicitar demonstração
             <ArrowRight className="size-4" aria-hidden />

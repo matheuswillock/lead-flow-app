@@ -18,7 +18,7 @@ export function SelfCheckoutLoadError({
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
       <Alert variant="destructive">
         <AlertCircle className="size-4" aria-hidden="true" />
-        <AlertDescription>{message}</AlertDescription>
+        <AlertDescription className="break-words">{message}</AlertDescription>
       </Alert>
       <Button type="button" variant="outline" className="max-lg:min-h-11 sm:w-fit" onClick={onRetry}>
         Tentar de novo

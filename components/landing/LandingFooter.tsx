@@ -46,7 +46,7 @@ export function LandingFooter() {
       <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:px-10">
         <div className="grid gap-10 border-b border-landing-footer-line pb-12 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
-            <Link href="/" className="flex items-center gap-2 mb-4">
+            <Link href="/" className="mb-4 flex min-h-11 min-w-11 items-center gap-2">
               <Image
                 src="/corretor-studio-icon.svg"
                 alt="Corretor Studio"
@@ -69,12 +69,12 @@ export function LandingFooter() {
                   {"href" in link ? (
                     <Link
                       href={link.href}
-                      className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
+                      className="inline-flex min-h-11 items-center text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
                     >
                       {link.label}
                     </Link>
                   ) : (
-                    <DemoRequestDialogButton className="text-left text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]">
+                    <DemoRequestDialogButton className="min-h-11 text-left text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]">
                       {link.label}
                     </DemoRequestDialogButton>
                   )}
@@ -90,7 +90,7 @@ export function LandingFooter() {
                 <li key={link.label}>
                   <Link
                     href={link.href}
-                    className="text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
+                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-landing-footer-muted transition-colors hover:text-[var(--landing-invert)]"
                   >
                     {link.label}
                   </Link>
@@ -117,22 +117,22 @@ export function LandingFooter() {
                 href="https://willockshouse.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-landing-footer-muted underline-offset-4 transition-colors hover:text-[var(--landing-invert)] hover:underline"
+                className="inline-flex min-h-11 items-center font-medium text-landing-footer-muted underline-offset-4 transition-colors hover:text-[var(--landing-invert)] hover:underline"
               >
                 Willocks House
               </a>
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/privacy-policy" className="transition-colors hover:text-[var(--landing-invert)]">
+            <Link href="/privacy-policy" className="inline-flex min-h-11 items-center transition-colors hover:text-[var(--landing-invert)]">
               Privacidade
             </Link>
             <span>·</span>
-            <Link href="/terms" className="transition-colors hover:text-[var(--landing-invert)]">
+            <Link href="/terms" className="inline-flex min-h-11 items-center transition-colors hover:text-[var(--landing-invert)]">
               Termos
             </Link>
             <span>·</span>
-            <Link href="/cookies" className="transition-colors hover:text-[var(--landing-invert)]">
+            <Link href="/cookies" className="inline-flex min-h-11 items-center transition-colors hover:text-[var(--landing-invert)]">
               Cookies
             </Link>
           </div>
