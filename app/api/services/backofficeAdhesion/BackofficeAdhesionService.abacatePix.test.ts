@@ -1,10 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
 import type { BackofficeAdhesionWithRelations } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 
 import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
-import { paymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
-import { clearCardEnabledCache } from "@/lib/payment-methods/availability"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 
 const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
 mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
@@ -447,19 +446,14 @@ describe("BackofficeAdhesionService — cartão e preset", () => {
 
   it("getPublicDetails: com cartão disponível mantém o preset de cartão e oferece os dois métodos", async () => {
     process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
-    // O cartão agora também exige a flag do backoffice (lida da config do Abacate).
-    clearCardEnabledCache()
-    const listConfigs = spyOn(paymentProviderConfigRepository, "list").mockResolvedValue([
-      { provider: "ABACATE_PAY", cardEnabled: true },
-    ] as never)
+    const restoreConfig = stubCardEnabledConfig(true)
     const h = makeHarness(buildAdhesion({ billingType: "CREDIT_CARD" }))
 
     let details: unknown
     try {
       details = await h.service.getPublicDetails("tok")
     } finally {
-      listConfigs.mockRestore()
-      clearCardEnabledCache()
+      restoreConfig()
     }
 
     expect(details).toMatchObject({ availableBillingTypes: ["PIX", "CREDIT_CARD"], billingType: "CREDIT_CARD" })

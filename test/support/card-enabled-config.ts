@@ -1,5 +1,6 @@
 import { spyOn } from "bun:test"
 import { paymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
+import { paymentProviderCredentialRepository } from "@/app/api/infra/data/repositories/paymentProviderCredential/PaymentProviderCredentialRepository"
 import { clearCardEnabledCache } from "@/lib/payment-methods/availability"
 import type { ProviderRoutingConfigRecord } from "@/lib/payment-provider/routing-config"
 
@@ -12,7 +13,9 @@ export function stubCardEnabledConfig(cardEnabled: boolean): () => void {
   const spy = spyOn(paymentProviderConfigRepository, "list").mockResolvedValue([
     abacateConfig(cardEnabled),
   ])
+  const credentialSpy = spyOn(paymentProviderCredentialRepository, "getEncrypted").mockResolvedValue(null)
   return () => {
+    credentialSpy.mockRestore()
     spy.mockRestore()
     clearCardEnabledCache()
   }
@@ -23,7 +26,7 @@ function abacateConfig(cardEnabled: boolean): ProviderRoutingConfigRecord {
     provider: "ABACATE_PAY",
     environment: "PRODUCTION",
     enabled: true,
-    isDefault: false,
+    isDefault: true,
     externalAccountContext: "abacate-production",
     rolloutState: "ACTIVE",
     killSwitch: false,
