@@ -159,6 +159,105 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
     expect(access.slugs).not.toContain("whatsapp")
   })
 
+  it("libera Email em beta gratuito durante a carência para manager", async () => {
+    repository.features = [
+      makeFeature({
+        id: "feature-email",
+        slug: "email",
+        accessMode: "ADDON",
+        productSlug: "email",
+        betaEnabled: true,
+        chargeDuringBeta: false,
+        accessRules: [
+          { principal: "MASTER", accessLevel: "FULL" },
+          { principal: "MANAGER", accessLevel: "FULL" },
+          { principal: "BACKOFFICE", accessLevel: "FULL" },
+          { principal: "OPERATOR", accessLevel: "FULL" },
+          { principal: "SDR", accessLevel: "FULL" },
+          { principal: "CLOSER", accessLevel: "FULL" },
+        ],
+      }),
+    ]
+    repository.temporaryBillingGrace = true
+    repository.betaEligibleFeatureIds = new Set(["feature-email"])
+    repository.currentUserRole = makeUserRole({
+      isMaster: false,
+      role: "manager",
+      functions: ["SDR", "CLOSER"],
+    })
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("email")
+    expect(access.betaLabelSlugs).toContain("email")
+  })
+
+  it("mantém Email restrito a manager/master durante a carência mesmo com regras amplas", async () => {
+    repository.features = [
+      makeFeature({
+        id: "feature-email",
+        slug: "email",
+        accessMode: "ADDON",
+        productSlug: "email",
+        betaEnabled: true,
+        chargeDuringBeta: false,
+        accessRules: [
+          { principal: "MASTER", accessLevel: "FULL" },
+          { principal: "MANAGER", accessLevel: "FULL" },
+          { principal: "SDR", accessLevel: "FULL" },
+          { principal: "CLOSER", accessLevel: "FULL" },
+        ],
+      }),
+    ]
+    repository.temporaryBillingGrace = true
+    repository.betaEligibleFeatureIds = new Set(["feature-email"])
+    repository.currentUserRole = makeUserRole({
+      isMaster: false,
+      role: "operator",
+      functions: ["SDR"],
+      canManageAccountTeams: false,
+      canCreateAccountUsers: false,
+    })
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).not.toContain("email")
+    expect(access.betaSlugs).toContain("email")
+  })
+
+  it("não libera beta cobrado durante a carência sem o produto contratado", async () => {
+    repository.features = [
+      makeFeature({
+        id: "feature-email",
+        slug: "email",
+        accessMode: "ADDON",
+        productSlug: "email",
+        betaEnabled: true,
+        chargeDuringBeta: true,
+        accessRules: [{ principal: "MANAGER", accessLevel: "FULL" }],
+      }),
+    ]
+    repository.temporaryBillingGrace = true
+    repository.betaEligibleFeatureIds = new Set(["feature-email"])
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).not.toContain("email")
+    expect(access.betaSlugs).toContain("email")
+  })
+
   it("bloqueia funcionalidades quando a concessão expirou", async () => {
     repository.ownerSubscriptions = [{ product: { featureSlugs: ["crm"] } }]
 

@@ -307,6 +307,14 @@ export class FeatureAccessService implements IFeatureAccessService {
     const resolvedUserPrincipals = principalsForUser(safeUserRole)
 
     for (const feature of features) {
+      if (
+        (feature.slug === "email" || feature.slug.startsWith("email-")) &&
+        !safeUserRole.isMaster &&
+        safeUserRole.role !== "manager"
+      ) {
+        continue
+      }
+
       const effectiveFeature = resolveEffectiveFeature(feature.id) ?? feature
       const betaEnabled = effectiveFeature.betaEnabled === true
       const chargeDuringBeta = effectiveFeature.chargeDuringBeta === true
@@ -367,7 +375,8 @@ export class FeatureAccessService implements IFeatureAccessService {
       if (
         hasAccess &&
         (!temporaryBillingGraceIsOnlyAccess ||
-          (temporaryGraceProductSlug !== null && paidProductSlugs.has(temporaryGraceProductSlug)))
+          (temporaryGraceProductSlug !== null && paidProductSlugs.has(temporaryGraceProductSlug)) ||
+          freeBeta)
       ) {
         allowedSlugs.add(feature.slug)
       }
