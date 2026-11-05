@@ -18,7 +18,7 @@ import { faqData } from "@/lib/landing/faq-data"
 import { getLandingStats } from "@/lib/landing/public-stats"
 import { buildStatsData, hasPublishableStats } from "@/lib/landing/stats-data"
 
-const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
+const homeTitle = "CRM para corretores de saúde | Corretor Studio"
 const homeDescription =
   "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas de conversão. Solicite uma demonstração gratuita."
 
