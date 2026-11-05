@@ -6,7 +6,7 @@ import { PaymentProviderPostPaymentService } from "@/app/api/services/PaymentPro
 export type PaymentProviderRefundUseCaseDependencies = {
   readonly sessions: Pick<IPaymentProviderSessionRepository, "findAttemptById">
   readonly refundService: PaymentProviderPostPaymentService
-  readonly resolveProvider: (environment: "DEV" | "PRODUCTION") => FullRefundCapability
+  readonly resolveProvider: (environment: "DEV" | "PRODUCTION", context: string) => FullRefundCapability | Promise<FullRefundCapability>
 }
 
 export class PaymentProviderRefundUseCase {
@@ -22,7 +22,7 @@ export class PaymentProviderRefundUseCase {
       }
       const refunded = await this.dependencies.refundService.refund({
         attempt,
-        provider: this.dependencies.resolveProvider(attempt.environment),
+        provider: await this.dependencies.resolveProvider(attempt.environment, attempt.externalAccountContext),
         reason: input.reason,
       })
       return new Output(true, ["Refund solicitado com sucesso"], [], refunded)

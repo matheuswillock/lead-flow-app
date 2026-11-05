@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 import { PaymentMethodUnavailableError } from "./availability"
 import { rejectUnavailableBillingType, toPaymentMethodUnavailableResponse } from "./route-guard"
 
@@ -6,6 +7,13 @@ const WITH_KEY = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION", ABACATE_PAY_PRODU
 const WITHOUT_KEY = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION" }
 const flagOn = async () => true
 const flagOff = async () => false
+let restoreConfig: () => void
+
+beforeEach(() => {
+  restoreConfig = stubCardEnabledConfig(true)
+})
+
+afterEach(() => restoreConfig())
 
 describe("route-guard", () => {
   it("cartão sem chave pública -> 422 com Output de erro", async () => {

@@ -4,6 +4,7 @@ import {
   createAbacatePayProviderRegistry,
   resolvePaymentProviderEnvironment,
 } from "./paymentProviderPaymentComposition"
+import type { IPaymentProviderCredentialRepository } from "@/app/api/infra/data/repositories/paymentProviderCredential/IPaymentProviderCredentialRepository"
 
 const ENV_KEYS = [
   "PAYMENT_PROVIDER_ENVIRONMENT",
@@ -19,6 +20,9 @@ const ENV_KEYS = [
 ] as const
 
 const saved: Record<string, string | undefined> = {}
+const emptyCredentialRepository = {
+  getEncrypted: async () => null,
+} as unknown as IPaymentProviderCredentialRepository
 
 beforeEach(() => {
   for (const key of ENV_KEYS) {
@@ -63,7 +67,7 @@ describe("createAbacatePayProviderRegistry", () => {
 
     expect(metadata?.environment).toBe("PRODUCTION")
     expect(metadata?.capabilities).toContain("PIX")
-    expect(metadata?.capabilities).not.toContain("CARD")
+    expect(metadata?.capabilities).toContain("CARD")
   })
 
   it("em PRODUCTION com PUBLIC_KEY inclui CARD", () => {
@@ -85,20 +89,18 @@ describe("createAbacatePayProviderRegistry", () => {
 })
 
 describe("createAbacatePayProvider", () => {
-  it("cria o provider de PRODUCTION sem PUBLIC_KEY", () => {
+  it("cria o provider de PRODUCTION sem PUBLIC_KEY", async () => {
     setProductionSecrets()
-    expect(() => createAbacatePayProvider("PRODUCTION")).not.toThrow()
+    await expect(createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository)).resolves.toBeDefined()
   })
 
-  it("lança quando o segredo API_KEY está ausente", () => {
+  it("lança quando o segredo API_KEY está ausente", async () => {
     process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
-    expect(() => createAbacatePayProvider("PRODUCTION")).toThrow("Segredo API_KEY do provider não configurado")
+    await expect(createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository)).rejects.toThrow("Credencial obrigatória do provider não configurada")
   })
 
-  it("lança quando o segredo WEBHOOK_SECRET está ausente", () => {
+  it("lança quando o segredo WEBHOOK_SECRET está ausente", async () => {
     process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
-    expect(() => createAbacatePayProvider("PRODUCTION")).toThrow(
-      "Segredo WEBHOOK_SECRET do provider não configurado",
-    )
+    await expect(createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository)).rejects.toThrow("Credencial obrigatória do provider não configurada")
   })
 })

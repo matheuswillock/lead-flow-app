@@ -760,6 +760,22 @@ describe("AbacatePayProvider", () => {
     expect(() => provider.normalizeEvent(verifiedWebhook(provider, rawBody))).toThrow("data")
   })
 
+  it("aceita segredo webhook anterior durante rotação mantendo validação HMAC", () => {
+    const provider = new AbacatePayProvider(
+      PaymentProviderConfig.create({ ...config, webhookSecret: "new-secret", webhookSecretPrevious: "webhook-secret" }),
+    )
+    const rawBody = JSON.stringify({
+      id: "evt_rotation",
+      event: "transparent.completed",
+      apiVersion: "1",
+      devMode: true,
+      data: { id: "pay_1", status: "PAID", method: "PIX", amount: 1500 },
+    })
+    const signature = createHmac("sha256", "hmac-secret").update(rawBody).digest("base64")
+    expect(() => provider.verifyRequest({ rawBody, signature, query: { webhookSecret: "webhook-secret" } })).not.toThrow()
+    expect(() => provider.verifyRequest({ rawBody, signature: "bad", query: { webhookSecret: "webhook-secret" } })).toThrow("Webhook não autenticado")
+  })
+
   it("não propaga valor remoto fora do intervalo seguro", async () => {
     const http = mock(async () =>
       response({ data: { id: "pay_unsafe", status: "PAID", amount: Number.MAX_SAFE_INTEGER + 1 } }),
@@ -828,16 +844,14 @@ describe("AbacatePayProvider", () => {
         }),
       )
 
-    it("authenticates by URL secret alone, with or without a signature header", () => {
+    it("fails closed in production when the public signing key is unavailable", () => {
       const provider = productionProvider()
-      expect(
-        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } })
-          .environment,
-      ).toBe("PRODUCTION")
-      expect(
-        provider.verifyRequest({ rawBody, signature: "ignored", query: { webhookSecret: "webhook-secret" } })
-          .environment,
-      ).toBe("PRODUCTION")
+      expect(() =>
+        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } }),
+      ).toThrow("Webhook não autenticado")
+      expect(() =>
+        provider.verifyRequest({ rawBody, signature: "ignored", query: { webhookSecret: "webhook-secret" } }),
+      ).toThrow("Webhook não autenticado")
     })
 
     it("still rejects a wrong or missing URL secret", () => {

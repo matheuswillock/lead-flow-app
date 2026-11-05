@@ -29,8 +29,9 @@ type RuntimeProcess = {
 function getRuntimeProcess(): RuntimeProcess | undefined {
   return (globalThis as typeof globalThis & { process?: RuntimeProcess }).process;
 }
-const SECRET_KEY_PATTERN = /token|secret|cookie|password|passwd|pwd|pass|authorization|api[_-]?key|access[_-]?key|service[_-]?role|database[_-]?url|connection[_-]?string/i;
+const SECRET_KEY_PATTERN = /token|secret|cookie|password|passwd|pwd|pass|authorization|api[_-]?key|access[_-]?key|service[_-]?role|database[_-]?url|connection[_-]?string|private[_-]?key|credential/i;
 const SECRET_VALUE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /([?&](?:[a-z0-9_-]*(?:api[_-]?key|webhook[_-]?(?:secret|token)|access[_-]?token|client[_-]?secret))=)[^&#\s]*/gi, replacement: "$1[redacted]" },
   { pattern: /Bearer\s+[A-Za-z0-9\-._~+/=]+/gi, replacement: "Bearer [redacted]" },
   { pattern: /\bsk-[A-Za-z0-9\-_]+/g, replacement: "sk-[redacted]" },
   { pattern: /\beyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]*\.[A-Za-z0-9\-_]*/g, replacement: "[redacted-jwt]" },

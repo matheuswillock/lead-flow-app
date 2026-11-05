@@ -1277,6 +1277,7 @@ model Profile {
   createdTasks                             Task[]                                       @relation("TaskCreator")
   taskAssignments                          TaskAssignee[]                               @relation("TaskAssigneeProfile")
   backofficeEmailDispatches                BackofficeEmailDispatch[]                    @relation("ProfileBackofficeEmailDispatches")
+  updatedPaymentProviderCredentials         PaymentProviderCredential[]                   @relation("PaymentProviderCredentialUpdater")
 
   // Email campaigns relations
   emailTemplatesCreated            EmailTemplate[]         @relation("EmailTemplateCreator")
@@ -2615,6 +2616,7 @@ enum AuditEntityType {
   PROFILE
   TEAM
   TEAM_MEMBER
+  PAYMENT_PROVIDER_CONFIG
 }
 
 enum AuditAction {
@@ -6749,8 +6751,7 @@ model PaymentProviderEventOutbox {
   @@map("payment_provider_event_outbox")
 }
 
-/// Configuração global server-owned. Segredos permanecem fora deste registro;
-/// o runtime resolve-os do mecanismo seguro de configuração do provider.
+/// Instância global de provider. Segredos são armazenados separadamente e cifrados.
 model PaymentProviderConfig {
   id                     String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   providerKey            PaymentProviderKey        @map("provider_key")
@@ -6767,15 +6768,38 @@ model PaymentProviderConfig {
   lastErrorCode            String?                   @map("last_error_code") @db.Text
   lastErrorMessage         String?                   @map("last_error_message") @db.Text
   publicKeyFingerprint     String?                   @map("public_key_fingerprint") @db.Text
+  displayName              String?                   @map("display_name") @db.Text
   logoUrl                  String?                   @map("logo_url") @db.Text
   logoAltText              String?                   @map("logo_alt_text") @db.Text
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([providerKey, environment], map: "payment_provider_configs_provider_environment_key")
+  credentials PaymentProviderCredential[]
+
+  @@unique([providerKey, environment, externalAccountContext], map: "payment_provider_configs_provider_environment_account_key")
   @@index([environment, enabled, rolloutState], map: "payment_provider_configs_routing_idx")
   @@index([environment, isDefault], map: "payment_provider_configs_default_idx")
   @@map("payment_provider_configs")
+}
+
+model PaymentProviderCredential {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  configId           String   @map("config_id") @db.Uuid
+  key                String   @db.Text
+  valueCiphertext    String   @map("value_ciphertext") @db.Text
+  keyId              String   @map("key_id") @db.Text
+  last4              String?  @db.Text
+  fingerprint        String   @db.Text
+  updatedByProfileId String?  @map("updated_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  config    PaymentProviderConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  updatedBy Profile?              @relation("PaymentProviderCredentialUpdater", fields: [updatedByProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([configId, key], map: "payment_provider_credentials_config_key_key")
+  @@index([updatedByProfileId], map: "payment_provider_credentials_updated_by_idx")
+  @@map("payment_provider_credentials")
 }
 
 /// Identidade externa imutável por provider, ambiente, conta e tipo.

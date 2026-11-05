@@ -24,7 +24,7 @@ export async function createPaymentProviderWebhookService() {
   )
   if (!configuration) throw new Error("Configuração do provider não encontrada")
 
-  const provider = createAbacatePayProvider(environment)
+  const provider = await createAbacatePayProvider(environment, configuration.externalAccountContext)
   const settlement = createPaymentOwnerSettlement()
   const applyEvent = createApplyPaymentEvent({
     provider,

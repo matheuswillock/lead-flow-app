@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { createHmac } from "node:crypto"
+import { AbacatePayProvider } from "@/app/api/infra/providers/AbacatePayProvider"
+import { PaymentProviderConfig } from "@/lib/payment-provider/config"
 // --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
 const listConfigs = mock(async (_environment: string) => [
@@ -7,6 +10,18 @@ const listConfigs = mock(async (_environment: string) => [
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
   paymentProviderConfigRepository: { list: listConfigs },
+}))
+
+mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
+  resolvePaymentProviderEnvironment: () => "PRODUCTION",
+  createAbacatePayProvider: async () => new AbacatePayProvider(PaymentProviderConfig.create({
+    apiKey: "prod-api-key",
+    publicKey: "prod-public-key",
+    webhookSecret: process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET ?? "prod-webhook-secret",
+    webhookSigningKey: "prod-public-key",
+    environment: "PRODUCTION",
+    devMode: false,
+  })),
 }))
 
 const claim = mock(async (_input: unknown) => ({ kind: "claimed" as const, claimToken: "claim-1" }))
@@ -140,7 +155,12 @@ function webhookRequest(rawBody: string, query: string) {
   return new Request(`https://app.example.com/api/v1/webhooks/payment-provider/abacate${query}`, {
     method: "POST",
     body: rawBody,
+    headers: signedHeaders(rawBody),
   })
+}
+
+function signedHeaders(rawBody: string) {
+  return { "x-abacate-signature": createHmac("sha256", "prod-public-key").update(rawBody).digest("base64") }
 }
 
 describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
@@ -309,7 +329,7 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — o segredo da query 
   })
 
   const failingRequest = () =>
-    new Request(sentinelUrl, { method: "POST", body: completedPayload(false) })
+    new Request(sentinelUrl, { method: "POST", body: completedPayload(false), headers: signedHeaders(completedPayload(false)) })
 
   it("erro 500 vai ao Sentry com provider e id do evento, sem a sentinela no console nem no Sentry", async () => {
     // Pior caso: a mensagem do erro carrega a URL inteira (cliente HTTP, proxy, wrapper).
