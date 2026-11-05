@@ -421,7 +421,6 @@
       "app/email-unsubscribe/[token]/page.tsx",
       "app/forgot-password/page.tsx",
       "app/oferta/[token]/page.tsx",
-      "app/page.tsx",
       "app/prime/page.tsx",
       "app/privacy-policy/page.tsx",
       "app/recursos/[slug]/page.tsx",
@@ -435,12 +434,12 @@
       "e2e/specs/backoffice/clients/member-team-permissions.spec.ts",
       "e2e/specs/backoffice/member-access-copy-link.spec.ts",
       "e2e/specs/product/radar.spec.ts",
-      "e2e/specs/public/home.spec.ts",
       "e2e/specs/public/public-form.spec.ts"
     ]
   },
   "e2ePageCoverage": {
     "coveredBy": {
+      "app/page.tsx": "e2e/specs/public/home.spec.ts",
       "app/[supabaseId]/email/campanhas/page.tsx": "e2e/specs/product/email-campanhas.spec.ts",
       "app/[supabaseId]/email/contatos/page.tsx": "e2e/specs/product/email-contatos.spec.ts",
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",
@@ -449,6 +448,7 @@
       "app/forms/[publicId]/page.tsx": "e2e/specs/public/public-form.spec.ts",
       "app/[supabaseId]/teams/page.tsx": "e2e/specs/product/team-schedule-settings.spec.ts",
       "app/backoffice/(app)/clients/[masterId]/page.tsx": "e2e/specs/backoffice/member-access-copy-link.spec.ts",
+      "app/backoffice/(app)/clients/page.tsx": "e2e/specs/backoffice/clients/master-with-operator-profile.spec.ts",
       "app/lead-form/[supabaseId]/page.tsx": "e2e/specs/public/lead-form.spec.ts",
       "app/lead-form/[supabaseId]/[teamId]/page.tsx": "e2e/specs/public/lead-form.spec.ts",
       "app/[supabaseId]/integrations/webhooks/inbound/page.tsx": "e2e/specs/product/integrations-webhooks-inbound.spec.ts",

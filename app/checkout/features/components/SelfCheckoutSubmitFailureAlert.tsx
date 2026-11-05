@@ -8,7 +8,7 @@ export function SelfCheckoutSubmitFailureAlert({ failure }: { failure: SelfCheck
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" aria-hidden="true" />
-      <AlertDescription>
+      <AlertDescription className="break-words">
         {failure.message}
         {failure.code === "ACCOUNT_EXISTS" ? (
           <>

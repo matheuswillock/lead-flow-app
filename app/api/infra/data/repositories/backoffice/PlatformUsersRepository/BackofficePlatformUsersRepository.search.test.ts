@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 const findManyMock = mock(async () => [] as unknown[])
+const findFirstMock = mock(async () => null as unknown)
 const countMock = mock(async () => 0)
 const memberFindManyMock = mock(async () => [] as unknown[])
 
@@ -8,6 +9,7 @@ mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
     profile: {
       findMany: findManyMock,
+      findFirst: findFirstMock,
       count: countMock,
     },
     teamMember: {
@@ -20,11 +22,39 @@ const { BackofficePlatformUsersRepository } = await import("./BackofficePlatform
 
 beforeEach(() => {
   findManyMock.mockClear()
+  findFirstMock.mockClear()
   countMock.mockClear()
   memberFindManyMock.mockClear()
 })
 
 describe("BackofficePlatformUsersRepository — busca por nome de time", () => {
+  it("inclui masters mesmo quando o papel global do perfil está operator", async () => {
+    await new BackofficePlatformUsersRepository().findMasterUsersWithFilters(
+      { name: "Ventura [Studio]", email: "Ventura [Studio]", team: "Ventura [Studio]" },
+      { page: 1, pageSize: 10 },
+    )
+
+    const calls = findManyMock.mock.calls as unknown as Array<[
+      { where?: Record<string, unknown> } | undefined,
+    ]>
+    const where = calls[0]?.[0]?.where as Record<string, unknown>
+
+    expect(where.isMaster).toBe(true)
+    expect(where.role).toBeUndefined()
+  })
+
+  it("permite abrir os detalhes de master com papel global operator", async () => {
+    await new BackofficePlatformUsersRepository().findMasterUserDetailsById("master-operator", {
+      page: 1,
+      pageSize: 10,
+    })
+
+    const calls = findFirstMock.mock.calls as unknown as Array<[
+      { where?: Record<string, unknown> } | undefined,
+    ]>
+    expect(calls[0]?.[0]?.where).toEqual({ id: "master-operator", isMaster: true })
+  })
+
   it("inclui o nome do time na busca unificada usada pelo filtro q", async () => {
     await new BackofficePlatformUsersRepository().findMasterUsersWithFilters(
       { name: "tri saúde", email: "tri saúde", team: "tri saúde" },

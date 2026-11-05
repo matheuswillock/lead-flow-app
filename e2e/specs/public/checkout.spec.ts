@@ -101,6 +101,22 @@ test.describe("app/checkout", () => {
     await expect(page.getByRole("radio", { name: "Anual" })).toHaveAccessibleDescription(/R\$\s960,00/);
   });
 
+  test("mantém a estrutura do checkout acessível enquanto carrega os planos", async ({ page }) => {
+    let resolveOptions!: () => void;
+    const optionsReady = new Promise<void>((resolve) => {
+      resolveOptions = resolve;
+    });
+    await page.route("**/api/**/public-self-checkout/options", async (route) => {
+      await optionsReady;
+      await route.fulfill({ status: 200, contentType: "application/json", body: envelope(OPTIONS) });
+    });
+
+    await page.goto("/checkout");
+    await expect(page.getByRole("status", { name: "Carregando planos" })).toBeVisible();
+    resolveOptions();
+    await expect(page.getByRole("heading", { name: "Escolha seu plano" })).toBeVisible();
+  });
+
   test("não expõe o honeypot a leitores de tela nem ao teclado", async ({ page }) => {
     await mockSelfCheckoutApi(page);
     await page.goto("/checkout");
@@ -264,11 +280,27 @@ test.describe("app/checkout", () => {
     await expect(page.getByRole("radio")).toHaveCount(3);
   });
 
+  test("textos longos sem espaços não causam overflow em viewport mobile", async ({ page }) => {
+    const longText = "Plano".repeat(80);
+    await mockSelfCheckoutApi(page, {
+      optionsBody: envelope({
+        product: { name: longText, description: longText },
+        cycles: OPTIONS.cycles.map((cycle) => ({ ...cycle, label: longText })),
+      }),
+    });
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/checkout");
+
+    await expect(page.getByRole("radio")).toHaveCount(3);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test("responsivo: sem overflow, alvos de 44px e reduced motion", async ({ page }) => {
     await mockSelfCheckoutApi(page);
     await page.goto("/checkout");
     await expect(page.getByRole("radio")).toHaveCount(3);
 
-    await runResponsiveChecks(page);
+    await runResponsiveChecks(page, { widths: [320, 360, 375, 768, 1024, 1280] });
   });
 });

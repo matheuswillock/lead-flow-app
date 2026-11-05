@@ -23,7 +23,7 @@ function CycleCard({
     <div
       className={cn(
         "relative flex items-start gap-3 rounded-lg border bg-card p-4 transition-colors duration-[var(--motion-duration-base)]",
-        selected ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50",
+        selected ? "border-primary bg-primary/10" : "border-border hover:bg-accent/50",
         disabled && "opacity-60",
       )}
     >
@@ -37,7 +37,7 @@ function CycleCard({
         {selected ? <Check className="size-3" /> : null}
       </span>
       <div className="flex min-w-0 flex-col gap-1">
-        <span id={labelId} className="text-sm font-semibold text-foreground">
+        <span id={labelId} className="break-words text-[15px] font-semibold text-foreground">
           {option.label}
         </span>
         <span id={detailId} className="flex flex-col gap-0.5">
@@ -76,7 +76,10 @@ export function SelfCheckoutCycleSelector({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <h2 id="self-checkout-cycles-title" className="text-lg font-semibold text-foreground">
+      <h2
+        id="self-checkout-cycles-title"
+        className="text-[22px] leading-snug font-bold tracking-[-0.02em] text-foreground"
+      >
         Período do plano
       </h2>
       <RadioGroup

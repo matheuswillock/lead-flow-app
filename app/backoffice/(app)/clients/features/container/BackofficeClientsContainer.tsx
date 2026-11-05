@@ -157,6 +157,7 @@ export function BackofficeClientsContainer() {
           <Button
             type="button"
             size="sm"
+            className="min-h-11 sm:min-h-0"
             onClick={() => setNewAdhesionDialogOpen(true)}
           >
             <Plus data-icon="inline-start" />
@@ -194,7 +195,7 @@ export function BackofficeClientsContainer() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 px-2 lg:px-3"
+            className="h-8 min-h-11 px-2 lg:px-3 sm:min-h-0"
             onClick={() => void handleClear()}
             disabled={isLoading}
           >
@@ -278,6 +279,7 @@ export function BackofficeClientsContainer() {
                         asChild
                         size="sm"
                         variant="outline"
+                        className="min-h-11 sm:min-h-0"
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => event.stopPropagation()}
                       >
@@ -357,6 +359,7 @@ export function BackofficeClientsContainer() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="min-h-11 sm:min-h-0"
                   onClick={() => setClientsPage(pagination.page - 1)}
                   disabled={!pagination.hasPreviousPage || isLoading}
                 >
@@ -369,6 +372,7 @@ export function BackofficeClientsContainer() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="min-h-11 sm:min-h-0"
                   onClick={() => setClientsPage(pagination.page + 1)}
                   disabled={!pagination.hasNextPage || isLoading}
                 >

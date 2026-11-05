@@ -83,14 +83,15 @@ function SelfCheckoutContent() {
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <div className="text-[11px] font-semibold tracking-[0.3em] text-primary">CONTRATAÇÃO ONLINE</div>
-        <h1 className="text-2xl font-semibold text-foreground">Escolha seu plano</h1>
+        <h1 className="text-[30px] leading-tight font-bold tracking-[-0.02em] text-foreground">
+          Escolha seu plano
+        </h1>
       </div>
 
       <div className="flex flex-col gap-1 rounded-xl border border-border bg-muted/40 px-4 py-3">
-        <span className="text-sm font-semibold text-foreground">{options.product.name}</span>
+        <span className="break-words text-[15px] font-semibold text-foreground">{options.product.name}</span>
         {options.product.description ? (
-          <span className="text-sm text-muted-foreground">{options.product.description}</span>
+          <span className="break-words text-[15px] text-muted-foreground">{options.product.description}</span>
         ) : null}
       </div>
 
@@ -104,7 +105,7 @@ function SelfCheckoutContent() {
         />
 
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold text-foreground">Seus dados</h2>
+          <h2 className="text-[22px] leading-snug font-bold tracking-[-0.02em] text-foreground">Seus dados</h2>
           <SelfCheckoutBuyerFields
             values={values}
             errors={fieldErrors}

@@ -119,7 +119,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     const q = (filters?.name ?? filters?.email ?? filters?.team ?? "").trim()
     const normalizedTeam = filters?.team?.trim()
 
-    const base: Prisma.ProfileWhereInput = { isMaster: true, role: "manager" }
+    const base: Prisma.ProfileWhereInput = { isMaster: true }
 
     const andClauses: Prisma.ProfileWhereInput[] = []
 
@@ -359,7 +359,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       where: {
         id: masterProfileId,
         isMaster: true,
-        role: "manager",
       },
       select: {
         id: true,
@@ -603,7 +602,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       where: {
         id: masterProfileId,
         isMaster: true,
-        role: "manager",
       },
       select: {
         id: true,
@@ -712,7 +710,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         where: {
           id: masterProfileId,
           isMaster: true,
-          role: "manager",
         },
         data: updateData,
         select: { id: true, hasUnlimitedUsers: true },
@@ -783,7 +780,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       where: {
         id: masterProfileId,
         isMaster: true,
-        role: "manager",
       },
       select: {
         id: true,
@@ -836,7 +832,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
 
     await prisma.$transaction(async (tx) => {
       const master = await tx.profile.findFirst({
-        where: { id: masterProfileId, isMaster: true, role: "manager" },
+        where: { id: masterProfileId, isMaster: true },
         select: { id: true, supabaseId: true },
       })
 
@@ -909,7 +905,6 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       where: {
         id: masterProfileId,
         isMaster: true,
-        role: "manager",
       },
       select: { id: true },
     })

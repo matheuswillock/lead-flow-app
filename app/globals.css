@@ -643,8 +643,8 @@ h1, h2, h3, h4, h5, h6 {
   --landing-line: color-mix(in oklab, var(--landing-ink) 9%, transparent);
   --landing-warm: color-mix(in oklab, var(--primary) 8%, var(--card));
   --landing-invert: #ffffff;
-  --landing-panel-body: color-mix(in oklab, #ffffff 86%, transparent);
-  --landing-panel-muted: color-mix(in oklab, #ffffff 74%, transparent);
+  --landing-panel-body: var(--landing-invert);
+  --landing-panel-muted: var(--landing-invert);
   --landing-panel-check: color-mix(in oklab, #ffffff 16%, transparent);
   --landing-panel-border: color-mix(in oklab, #ffffff 24%, transparent);
   --landing-panel-control: color-mix(in oklab, #ffffff 16%, transparent);
@@ -915,31 +915,31 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .landing-feature-panel--orange {
-  background: linear-gradient(155deg, var(--semantic-warning), var(--primary));
+  background: color-mix(in oklab, var(--semantic-warning) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--coral {
-  background: linear-gradient(155deg, var(--primary), var(--semantic-danger));
+  background: color-mix(in oklab, var(--semantic-danger) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--rose {
-  background: linear-gradient(155deg, var(--semantic-danger), var(--brand-rose));
+  background: color-mix(in oklab, var(--brand-rose) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--magenta {
-  background: linear-gradient(155deg, var(--brand-rose), var(--brand-pink));
+  background: color-mix(in oklab, var(--brand-pink) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--pink {
-  background: linear-gradient(155deg, var(--brand-pink), var(--brand-purple));
+  background: color-mix(in oklab, var(--brand-purple) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--purple {
-  background: linear-gradient(155deg, var(--brand-purple), var(--precision-indigo));
+  background: color-mix(in oklab, var(--brand-purple) 65%, var(--landing-ink));
 }
 
 .landing-feature-panel--indigo {
-  background: linear-gradient(155deg, var(--precision-indigo), var(--brand-purple));
+  background: color-mix(in oklab, var(--precision-indigo) 65%, var(--landing-ink));
 }
 
 .landing-feature-glow {
@@ -1022,34 +1022,43 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 11px;
-  height: 11px;
-  min-width: 11px;
-  min-height: 11px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--landing-ink) 16%, transparent);
+  background: transparent;
   color: transparent;
   font-weight: 700;
   line-height: 1;
-  transition:
-    background 280ms var(--motion-ease-standard),
-    color 280ms var(--motion-ease-standard),
-    height 280ms var(--motion-ease-standard),
-    width 280ms var(--motion-ease-standard);
+  transition: background 280ms var(--motion-ease-standard), color 280ms var(--motion-ease-standard);
+}
+
+.landing-feature-dot::before {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--landing-ink) 24%, transparent);
+  content: "";
 }
 
 .landing-feature-dot--active {
   width: auto;
-  height: 32px;
+  height: 44px;
   min-width: 0;
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 16px;
-  background: var(--landing-feature-active-bg, var(--primary));
+  border: 2px solid var(--landing-feature-active-bg, var(--primary));
+  background: var(--landing-ink);
   color: var(--landing-invert);
   font-size: 12px;
   box-shadow: 0 10px 22px -14px var(--landing-feature-active-bg, var(--primary));
+}
+
+.landing-feature-dot--active::before {
+  display: none;
 }
 
 .landing-feature-dot-label {
@@ -1207,7 +1216,7 @@ h1, h2, h3, h4, h5, h6 {
   position: relative;
   overflow: hidden;
   border-radius: 28px;
-  background: linear-gradient(90deg, var(--primary), var(--brand-rose));
+  background: var(--landing-ink);
   color: var(--landing-invert);
   padding: clamp(3rem, 7vw, 5rem) clamp(1.5rem, 5vw, 4rem);
 }

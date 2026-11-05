@@ -22,7 +22,7 @@ export function MobileNavMenu() {
       <Button
         variant="ghost"
         size="icon"
-        className="min-[920px]:hidden"
+        className="min-h-11 min-w-11 min-[1200px]:hidden"
         aria-label="Abrir menu de navegação"
         onClick={() => setOpen(true)}
       >
@@ -47,7 +47,7 @@ export function MobileNavMenu() {
             ))}
             <DemoRequestDialogButton
               onClick={() => setOpen(false)}
-              className="rounded-lg px-4 py-3 text-left text-base font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="landing-secondary-cta min-h-11 rounded-2xl px-4 py-3 text-left text-base font-medium transition-colors hover:bg-muted"
             >
               Demonstração
             </DemoRequestDialogButton>
