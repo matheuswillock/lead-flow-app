@@ -20,13 +20,26 @@ export function hostOf(urlOrHost: string): string {
   return urlOrHost.replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase()
 }
 
+/**
+ * Lê a resposta da API REST da Vercel (`GET /v1/projects/{id}/rolling-release`). O corpo vem embrulhado em
+ * `{ "rollingRelease": {...} }` e `rollingRelease` é `null` quando o projeto ainda não teve rollout. A CLI
+ * `vercel rolling-release fetch` não serve aqui: ela imprime texto para humanos, sem JSON.
+ */
 export function parseRollingReleaseOutput(output: string): RollingRelease {
   const start = output.indexOf("{")
   const end = output.lastIndexOf("}")
   if (start === -1 || end < start) {
-    throw new Error("saída do vercel rolling-release fetch sem JSON")
+    throw new Error("resposta da API de rolling release sem JSON")
   }
-  return JSON.parse(output.slice(start, end + 1)) as RollingRelease
+  const body = JSON.parse(output.slice(start, end + 1)) as { rollingRelease?: RollingRelease | null } & RollingRelease
+  if ("rollingRelease" in body) return body.rollingRelease ?? {}
+  return body
+}
+
+export function buildRollingReleaseUrl(input: { projectId: string; teamId?: string }): string {
+  const url = new URL(`https://api.vercel.com/v1/projects/${encodeURIComponent(input.projectId)}/rolling-release`)
+  if (input.teamId) url.searchParams.set("teamId", input.teamId)
+  return url.toString()
 }
 
 export function evaluateRollingRelease(

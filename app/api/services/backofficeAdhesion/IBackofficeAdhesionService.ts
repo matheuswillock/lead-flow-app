@@ -5,6 +5,11 @@ import type {
 import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import type { AsaasAccountId } from "@/lib/asaas"
 import type { BillingType } from "@/lib/payment-methods/availability"
+import type {
+  SelfCheckoutOptionsDTO,
+  SelfCheckoutRequest,
+  SelfCheckoutResponse,
+} from "@/lib/self-checkout/contracts"
 
 export type AdhesionPixProvider = "ABACATE_PAY" | "ASAAS"
 
@@ -297,6 +302,13 @@ export interface IBackofficeAdhesionService {
     query?: string
   }): Promise<BackofficeAdhesionListDTO>
   getOptions(): Promise<BackofficeAdhesionOptionsDTO>
+  /** Ciclos com PIX do CRM padrão e ativo, lidos do banco; sem autenticação (checkout público). */
+  getSelfCheckoutOptions(): Promise<SelfCheckoutOptionsDTO>
+  /**
+   * Cria a adesão do auto-checkout sem operador: ledger vazio (segue no Abacate PIX), sem e-mail
+   * de checkout. Lança `SelfCheckoutError` (ACCOUNT_EXISTS, CYCLE_UNAVAILABLE).
+   */
+  createSelfCheckout(input: SelfCheckoutRequest): Promise<SelfCheckoutResponse>
   create(
     input: BackofficeAdhesionCreateInput,
     createdByBackofficeUserId: string | null

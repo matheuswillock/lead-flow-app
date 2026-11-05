@@ -33,6 +33,9 @@ export default function TermsPage() {
                   Termos de Uso
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">Última atualização: 27/01/2026</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Studio Marketing e Tecnologia LTDA — CNPJ 68.647.473/0001-19
+                </p>
                 <p className="mt-4 text-base text-muted-foreground">
                   Ao utilizar o Corretor Studio, você concorda com estes Termos de Uso.
                 </p>

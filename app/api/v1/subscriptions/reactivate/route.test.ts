@@ -11,6 +11,7 @@ mock.module("@/app/api/v1/utils/requireActiveAccountAccess", () => ({
 }))
 
 const { POST } = await import("./route")
+const { stubCardEnabledConfig } = await import("@/test/support/card-enabled-config")
 
 const originalEnv = { ...process.env }
 
@@ -64,11 +65,28 @@ describe("POST /subscriptions/reactivate — cartão desligado", () => {
     expect(reactivateMock).toHaveBeenCalledTimes(1)
   })
 
+  it("a chave pública sozinha não libera o cartão: a flag do backoffice também precisa estar ligada", async () => {
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+    const restore = stubCardEnabledConfig(false)
+    try {
+      const response = await POST(makeRequest(CARD_BODY))
+
+      expect(response.status).toBe(422)
+      expect(reactivateMock).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
   it("cartão liberado passa", async () => {
     process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_live_x"
+    const restore = stubCardEnabledConfig(true)
+    try {
+      const response = await POST(makeRequest(CARD_BODY))
 
-    const response = await POST(makeRequest(CARD_BODY))
-
-    expect(response.status).toBe(201)
+      expect(response.status).toBe(201)
+    } finally {
+      restore()
+    }
   })
 })

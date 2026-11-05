@@ -70,7 +70,8 @@ mock.module("@/app/api/services/backofficeAdhesion/BackofficeAdhesionService", (
 }))
 
 const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
-mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
+const captureException = mock((_error: unknown, _hint?: unknown) => "event-id")
+mock.module("@sentry/nextjs", () => ({ captureMessage, captureException }))
 
 const { POST } = await import("./route")
 
@@ -85,7 +86,25 @@ const ENV_KEYS = [
 ] as const
 const saved: Record<string, string | undefined> = {}
 
+// A confirmação reconsulta o pagamento no Abacate com a nossa API key; o stub devolve o estado remoto.
+const originalFetch = globalThis.fetch
+let remotePayment = { status: "PAID", amount: 6990 }
+const remoteLookup = mock(async (_url: string) => undefined)
+
 beforeEach(() => {
+  remotePayment = { status: "PAID", amount: 6990 }
+  remoteLookup.mockClear()
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
+    await remoteLookup(url.href)
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { id: url.searchParams.get("id"), status: remotePayment.status, amount: remotePayment.amount },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
   for (const key of ENV_KEYS) {
     saved[key] = process.env[key]
     delete process.env[key]
@@ -94,13 +113,14 @@ beforeEach(() => {
   process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
   process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
   attempt = { ...defaultAttempt }
-  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage]) {
+  for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage, captureException]) {
     fn.mockClear()
   }
   markPaidFromProvider.mockImplementation(async () => undefined)
 })
 
 afterEach(() => {
+  globalThis.fetch = originalFetch
   for (const key of ENV_KEYS) {
     if (saved[key] === undefined) delete process.env[key]
     else process.env[key] = saved[key]
@@ -135,6 +155,34 @@ describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
       provider: "ABACATE_PAY",
       externalId: "pix_char_prod_1",
     })
+  })
+
+  it("evento forjado: segredo correto mas o Abacate não confirma PAID, então 401 e nenhuma baixa", async () => {
+    remotePayment = { status: "EXPIRED", amount: 6990 }
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(401)
+    expect(remoteLookup).toHaveBeenCalledTimes(1)
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+  })
+
+  it("pagamento ainda pendente no Abacate responde 500 para o Abacate reenviar o evento", async () => {
+    remotePayment = { status: "PENDING", amount: 6990 }
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(500)
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
+  })
+
+  it("valor consultado diferente do evento é rejeitado com 401 e nenhuma baixa", async () => {
+    remotePayment = { status: "PAID", amount: 100 }
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(401)
+    expect(markPaidOnceForProvider).not.toHaveBeenCalled()
   })
 
   it("responde 401 quando o webhookSecret está ausente", async () => {
@@ -240,5 +288,78 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BILLING_GRACE
       tags: { ownerType: "ALGUM_OWNER_NOVO" },
     })
     expect(markPaidFromProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/webhooks/payment-provider/abacate — o segredo da query nunca deixa rastro", () => {
+  const SENTINEL = "SENTINELA_SEGREDO"
+  const sentinelUrl = `https://app.example.com/api/v1/webhooks/payment-provider/abacate?webhookSecret=${SENTINEL}`
+  const consoleError = mock((..._args: unknown[]) => undefined)
+  const originalConsoleError = console.error
+
+  beforeEach(() => {
+    consoleError.mockClear()
+    console.error = consoleError
+    process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = SENTINEL
+    attempt = { ...defaultAttempt, ownerType: "BACKOFFICE_ADHESION", ownerId: "adhesion-payment-1", tenantId: "adhesion-1" }
+  })
+
+  afterEach(() => {
+    console.error = originalConsoleError
+  })
+
+  const failingRequest = () =>
+    new Request(sentinelUrl, { method: "POST", body: completedPayload(false) })
+
+  it("erro 500 vai ao Sentry com provider e id do evento, sem a sentinela no console nem no Sentry", async () => {
+    // Pior caso: a mensagem do erro carrega a URL inteira (cliente HTTP, proxy, wrapper).
+    markPaidFromProvider.mockImplementation(async () => {
+      throw new Error(`falha ao chamar ${sentinelUrl}`)
+    })
+
+    const response = await POST(failingRequest())
+
+    expect(response.status).toBe(500)
+    expect(captureException).toHaveBeenCalledTimes(1)
+    const [captured, hint] = captureException.mock.calls[0] ?? []
+    expect(hint).toMatchObject({ tags: { provider: "ABACATE_PAY" }, extra: { eventId: "evt_prod_1" } })
+    expect(JSON.stringify(hint)).not.toContain(SENTINEL)
+    expect(captured).toBeInstanceOf(Error)
+    expect(`${(captured as Error).message}\n${(captured as Error).stack}`).not.toContain(SENTINEL)
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(SENTINEL)
+  })
+
+  it("corpo que não é JSON responde 401 sem captura e sem a sentinela no console", async () => {
+    const response = await POST(new Request(sentinelUrl, { method: "POST", body: "não é json" }))
+
+    expect(response.status).toBe(401)
+    expect(captureException).not.toHaveBeenCalled()
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(SENTINEL)
+  })
+
+  it("401 (segredo inválido) não vai ao Sentry: é ruído de scanner e já fica no log estruturado", async () => {
+    const response = await POST(
+      new Request(`${sentinelUrl}_ERRADO`, { method: "POST", body: completedPayload(false) }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(captureException).not.toHaveBeenCalled()
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(SENTINEL)
+  })
+
+  it("toda resposta (202, 401, 500) traz Referrer-Policy e Cache-Control e nunca redireciona", async () => {
+    const accepted = await POST(failingRequest())
+    markPaidFromProvider.mockImplementation(async () => {
+      throw new Error("Supabase Admin indisponível")
+    })
+    const failed = await POST(failingRequest())
+    const unauthorized = await POST(webhookRequest(completedPayload(false), "?webhookSecret=errado"))
+
+    expect([accepted.status, failed.status, unauthorized.status]).toEqual([202, 500, 401])
+    for (const response of [accepted, failed, unauthorized]) {
+      expect(response.headers.get("Referrer-Policy")).toBe("no-referrer")
+      expect(response.headers.get("Cache-Control")).toBe("no-store")
+      expect(response.headers.get("Location")).toBeNull()
+    }
   })
 })

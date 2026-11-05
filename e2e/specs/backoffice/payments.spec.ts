@@ -87,6 +87,66 @@ test.describe("app/backoffice/(app)/payments", () => {
     await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
   });
 
+  test("cartão: ligar pede confirmação e usa a revisão atual; desligar é direto", async ({ page }) => {
+    const abacate = (environment: string, cardEnabled: boolean, revision: number) => ({
+      provider: "ABACATE_PAY",
+      environment,
+      enabled: true,
+      isDefault: false,
+      externalAccountContext: "e2e",
+      rolloutState: "ACTIVE",
+      killSwitch: false,
+      cardEnabled,
+      revision,
+      healthStatus: "UNKNOWN",
+    });
+    const puts: Array<{ environment: string; patch: { cardEnabled: boolean; expectedRevision: number } }> = [];
+    await page.route("**/api/q/backoffice/payment-providers/config**", async (route) => {
+      const request = route.request();
+      if (request.method() === "PUT") {
+        const body = request.postDataJSON();
+        puts.push(body);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            result: abacate(body.environment, body.patch.cardEnabled, body.patch.expectedRevision + 1),
+          }),
+        });
+        return;
+      }
+      const environment = new URL(request.url()).searchParams.get("environment") ?? "DEV";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ isValid: true, result: [abacate(environment, false, 4)] }),
+      });
+    });
+
+    await page.goto("/backoffice/payments");
+    const card = page.getByTestId("card-config");
+    await expect(card.getByText("Cartão de crédito", { exact: true })).toBeVisible({ timeout: 60_000 });
+    const productionSwitch = card.getByRole("switch", { name: "Cartão de crédito em Produção" });
+    await expect(productionSwitch).not.toBeChecked();
+
+    await productionSwitch.click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog.getByText("Ligar o cartão de crédito?")).toBeVisible();
+    expect(puts).toHaveLength(0);
+    await dialog.getByRole("button", { name: "Ligar cartão" }).click();
+    await expect(productionSwitch).toBeChecked();
+    expect(puts[0]).toEqual({
+      environment: "PRODUCTION",
+      provider: "ABACATE_PAY",
+      patch: { cardEnabled: true, expectedRevision: 4 },
+    });
+
+    await productionSwitch.click();
+    await expect(productionSwitch).not.toBeChecked();
+    expect(puts[1]?.patch).toEqual({ cardEnabled: false, expectedRevision: 5 });
+  });
+
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({ page }) => {
     await page.goto("/backoffice/payments");
     const main = page.locator("#backoffice-main-content");

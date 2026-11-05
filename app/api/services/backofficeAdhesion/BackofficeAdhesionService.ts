@@ -5,6 +5,7 @@ import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/Asa
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
   BACKOFFICE_ADHESION_CYCLE_MONTHS,
+  type BackofficeAdhesionPricing,
   type BackofficeAdhesionPrices,
   calculateBackofficeAdhesionPricing,
   resolveCardMonthlyPriceFromRule,
@@ -33,6 +34,12 @@ import { resolveMemberProAccessWindow } from "@/app/api/shared/billing/memberPro
 import { hashBillingQuote } from "@/lib/billing/billingCheckoutIntent"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
+import {
+  SelfCheckoutError,
+  type SelfCheckoutOptionsDTO,
+  type SelfCheckoutRequest,
+  type SelfCheckoutResponse,
+} from "@/lib/self-checkout/contracts"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -40,6 +47,7 @@ import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import type {
   BackofficeAdhesionWithRelations,
   IBackofficeAdhesionRepository,
+  UpdateBackofficeAdhesionInput,
 } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
 import type { IBackofficeProductRepository, BackofficeProductWithPaymentRules } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
@@ -189,6 +197,25 @@ function addTokenTtl(now = new Date()): Date {
   return new Date(now.getTime() + TOKEN_TTL_MS)
 }
 
+type AdhesionTokenIssue = {
+  token: string
+  fields: { tokenHash: string; tokenPreview: string; tokenPlain: string; expiresAt: Date }
+}
+
+/** Gera um token novo (texto puro + hash) com o prazo padrão da adesão. */
+function issueAdhesionToken(): AdhesionTokenIssue {
+  const token = generateBackofficeAdhesionToken()
+  return {
+    token,
+    fields: {
+      tokenHash: hashBackofficeAdhesionToken(token),
+      tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      tokenPlain: token,
+      expiresAt: addTokenTtl(),
+    },
+  }
+}
+
 function getPublicUrl(token: string): string {
   return getFullUrl(`/adesao/${token}`)
 }
@@ -235,6 +262,78 @@ function sumPendingLedgerAmount(ledger: AdhesionInstallmentLedgerEntry[]): numbe
   return roundCurrency(
     ledger.filter((entry) => entry.status === "pending").reduce((sum, entry) => sum + entry.amount, 0)
   )
+}
+
+const SELF_CHECKOUT_ACCOUNT_EXISTS_MESSAGE = "Já existe uma conta cadastrada com este e-mail"
+const SELF_CHECKOUT_FALLBACK_PRODUCT_NAME = "CRM"
+
+/** Campos comerciais da adesão do auto-checkout: valem tanto na criação quanto na reemissão. */
+type SelfCheckoutCommercialFields = UpdateBackofficeAdhesionInput & {
+  productId: string
+  cycle: BackofficeAdhesionBillingCycle
+  monthlyBaseAmount: number
+  monthlyExtraTeamsAmount: number
+  monthlyExtraUsersAmount: number
+  monthlyTotalAmount: number
+  totalAmount: number
+}
+
+type SelfCheckoutCyclePlan = {
+  cycle: BackofficeAdhesionBillingCycle
+  months: number
+  pricing: BackofficeAdhesionPricing
+}
+
+/**
+ * Ciclos que o auto-checkout pode vender: os que o produto padrão precifica e que têm regra PIX,
+ * do menor para o maior. Fonte única de opções e de validação do pedido, sempre lida do produto.
+ */
+function planSelfCheckoutCycles(product: BackofficeProductWithPaymentRules): SelfCheckoutCyclePlan[] {
+  const cycles = (Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]).sort(
+    (a, b) => BACKOFFICE_ADHESION_CYCLE_MONTHS[a] - BACKOFFICE_ADHESION_CYCLE_MONTHS[b]
+  )
+  return cycles.flatMap((cycle) => {
+    const hasPixRule = product.paymentRules.some(
+      (rule) => rule.billingCycle === cycle && rule.paymentMethod === "PIX"
+    )
+    const baseMonthlyPrice = resolveProductPriceForCycleOrNull(product, cycle)
+    if (!hasPixRule || baseMonthlyPrice == null) return []
+    const pricing = calculateBackofficeAdhesionPricing(
+      { cycle, extraTeams: 0, extraUsers: 0 },
+      { baseMonthlyPrice, extraTeamPrice: 0, extraUserPrice: 0 },
+      product.paymentRules
+    )
+    if (!(pricing.pixTotalAmount > 0)) return []
+    return [{ cycle, months: BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1, pricing }]
+  })
+}
+
+function buildSelfCheckoutCommercialFields(
+  productId: string,
+  plan: SelfCheckoutCyclePlan,
+  hasUnlimitedUsers: boolean
+): SelfCheckoutCommercialFields {
+  const { pricing } = plan
+  return {
+    productId,
+    cycle: plan.cycle,
+    billingType: "PIX",
+    hasUnlimitedUsers,
+    monthlyBaseAmount: pricing.monthlyBaseAmount,
+    monthlyExtraTeamsAmount: pricing.monthlyExtraTeamsAmount,
+    monthlyExtraUsersAmount: pricing.monthlyExtraUsersAmount,
+    monthlyTotalAmount: pricing.pixMonthlyTotalAmount,
+    totalAmount: pricing.pixTotalAmount,
+    // Pagamento único à vista; o ledger fica vazio para a adesão seguir no provider PIX do Abacate.
+    installmentSchedule: [pricing.pixTotalAmount],
+    installmentLedger: [],
+  }
+}
+
+/** Telefone no formato nacional (DDD + número): aceita o código do país 55 que o formulário permite. */
+function toNationalPhoneDigits(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  return digits.length > 11 && digits.startsWith("55") ? digits.slice(2) : digits
 }
 
 function resolveCheckoutChargeAmount(
@@ -539,9 +638,78 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       pricing: {
         cycles: pricingCycles,
       },
-      availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
       productVariants,
     }
+  }
+
+  async getSelfCheckoutOptions(): Promise<SelfCheckoutOptionsDTO> {
+    const product = await this.findActiveDefaultProduct(CRM_PRODUCT_SLUG)
+    if (!product) {
+      return { product: { name: SELF_CHECKOUT_FALLBACK_PRODUCT_NAME, description: null }, cycles: [] }
+    }
+
+    return {
+      product: { name: product.name, description: product.description ?? null },
+      cycles: planSelfCheckoutCycles(product).map(({ cycle, months, pricing }) => ({
+        cycle,
+        label: BACKOFFICE_ADHESION_CYCLE_LABELS[cycle] ?? cycle,
+        months,
+        pixTotal: pricing.pixTotalAmount,
+        monthlyEquivalent: roundCurrency(pricing.pixTotalAmount / months),
+      })),
+    }
+  }
+
+  async createSelfCheckout(input: SelfCheckoutRequest): Promise<SelfCheckoutResponse> {
+    const product = await this.findActiveDefaultProduct(CRM_PRODUCT_SLUG)
+    const plan = product ? planSelfCheckoutCycles(product).find((item) => item.cycle === input.cycle) : undefined
+    if (!product || !plan) {
+      throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Este plano não está disponível no momento.")
+    }
+
+    const commercial = this.normalizeCommercialInput({
+      leadId: "",
+      fullName: input.fullName,
+      phone: toNationalPhoneDigits(input.phone),
+      email: input.email,
+      cycle: plan.cycle,
+      extraTeams: 0,
+      extraUsers: 0,
+      billingType: "PIX",
+    })
+    const email = commercial.email ?? input.email.trim().toLowerCase()
+    if (await this.repo.findProfileIdByEmail(email)) {
+      throw new SelfCheckoutError("ACCOUNT_EXISTS", SELF_CHECKOUT_ACCOUNT_EXISTS_MESSAGE)
+    }
+
+    const contact = { name: commercial.fullName, phone: commercial.phone ?? "" }
+    const commercialFields = buildSelfCheckoutCommercialFields(
+      product.id,
+      plan,
+      commercial.hasUnlimitedUsers === true
+    )
+
+    // Cada pedido cria o próprio lead e a própria adesão. Reaproveitar lead ou adesão pelo e-mail
+    // entregaria o token (e os dados) de outra pessoa a quem só conhece o e-mail, sobrescreveria o
+    // contato dela e invalidaria o PIX pendente dela. Adesões pendentes ficam órfãs e expiram em 24h.
+    // shortcut: um lead por tentativa; se o volume pedir, deduplicar por pedido autenticado por e-mail.
+    const lead = await this.repo.createSelfCheckoutLead({ ...contact, email })
+
+    const { token, fields } = issueAdhesionToken()
+    await this.repo.createAndMoveLeadToAdhesion({
+      ...commercialFields,
+      leadId: lead.id,
+      fullName: contact.name,
+      phone: contact.phone,
+      plan: "crm",
+      modules: CRM_MODULES,
+      extraTeams: 0,
+      extraUsers: 0,
+      ...fields,
+      createdByBackofficeUserId: null,
+    })
+    return { token }
   }
 
   async create(
@@ -549,7 +717,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult> {
     const normalized = this.normalizeCommercialInput(input)
-    assertBillingTypeAllowed(normalized.billingType)
+    await assertBillingTypeAllowed(normalized.billingType)
     const crmWithRules = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, normalized.productId)
     const options = await this.repo.getOptions()
     const lead = options.leads.find((item) => item.id === normalized.leadId)
@@ -837,7 +1005,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           : existing.hasUnlimitedUsers,
     })
     // Só a NOVA escolha de cartão é barrada: editar uma adesão que já era cartão segue permitido.
-    assertBillingTypeAllowed(next.billingType, {
+    await assertBillingTypeAllowed(next.billingType, {
       existingCardSubscriber: existing.billingType === "CREDIT_CARD",
     })
     const crmWithRules = await this.getProductForAdhesion(
@@ -992,14 +1160,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Adesões pagas não podem ser reenviadas")
     }
 
-    const token = generateBackofficeAdhesionToken()
-    const updated = await this.repo.update(id, {
-      status: "pending",
-      tokenHash: hashBackofficeAdhesionToken(token),
-      tokenPreview: getBackofficeAdhesionTokenPreview(token),
-      tokenPlain: token,
-      expiresAt: addTokenTtl(),
-    })
+    const { token, fields } = issueAdhesionToken()
+    const updated = await this.repo.update(id, { status: "pending", ...fields })
 
     const checkoutUrl = getPublicUrl(token)
     const leadEmail = (updated.lead.email ?? updated.email)?.trim() ?? null
@@ -1175,7 +1337,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const paymentRules = crmProduct?.paymentRules ?? []
 
     return mapPublicAdhesion(adhesion, paymentRules, {
-      availableBillingTypes: resolveCardAvailability().availableBillingTypes,
+      availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
     })
   }
 
@@ -1202,7 +1364,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       )
     }
 
-    assertBillingTypeAllowed(input.billingType)
+    await assertBillingTypeAllowed(input.billingType)
     // Um PIX do provider ainda válido pode ser pago a qualquer momento: trocar o método agora
     // abriria uma segunda cobrança para a mesma adesão.
     if (await this.pixPayments.hasLivePendingPix(adhesion.id)) {
@@ -2524,11 +2686,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return product
     }
 
-    const product = await this.productRepo.findDefaultByFeatureSlugWithPaymentRules(featureSlug)
-    if (!product || !product.isActive) {
+    const product = await this.findActiveDefaultProduct(featureSlug)
+    if (!product) {
       throw new Error(`Produto obrigatório indisponível: ${featureSlug}`)
     }
     return product
+  }
+
+  private async findActiveDefaultProduct(
+    featureSlug: string
+  ): Promise<BackofficeProductWithPaymentRules | null> {
+    const product = await this.productRepo.findDefaultByFeatureSlugWithPaymentRules(featureSlug)
+    return product?.isActive ? product : null
   }
 
   private mapProductVariants(

@@ -11,7 +11,7 @@ import { rejectUnavailableBillingType } from "@/lib/payment-methods/route-guard"
 // desligado responde 422 antes de qualquer efeito. Candidata a remoção (issue de remoção pendente).
 export async function POST(request: NextRequest) {
   try {
-    const unavailableMethod = rejectUnavailableBillingType("CREDIT_CARD");
+    const unavailableMethod = await rejectUnavailableBillingType("CREDIT_CARD");
     if (unavailableMethod) return unavailableMethod;
 
     const body = await request.json();

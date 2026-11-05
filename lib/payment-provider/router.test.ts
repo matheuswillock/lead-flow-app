@@ -11,6 +11,7 @@ const config: ProviderRoutingConfigRecord = {
   externalAccountContext: "abacate-production",
   rolloutState: "ACTIVE",
   killSwitch: false,
+  cardEnabled: false,
   revision: 2,
   healthStatus: "HEALTHY",
 }

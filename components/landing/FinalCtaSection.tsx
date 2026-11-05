@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react"
+import Link from "next/link"
 import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 export function FinalCtaSection() {
@@ -15,12 +16,26 @@ export function FinalCtaSection() {
             <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-8 text-landing-panel-body">
               Solicite uma demonstração e veja Radar e campanhas de e-mail com a sua própria base.
             </p>
-            <DemoRequestDialogButton
-              className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              Solicitar demonstração
-              <ArrowRight className="size-5" aria-hidden />
-            </DemoRequestDialogButton>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <div className="flex flex-col items-center">
+                <Link
+                  href="/checkout"
+                  className="landing-primary-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-6 py-3 font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  Contratar online
+                  <ArrowRight className="size-5" aria-hidden />
+                </Link>
+                <span className="mt-2 text-sm text-landing-panel-body">
+                  Escolha seu plano e pague por PIX.
+                </span>
+              </div>
+              <DemoRequestDialogButton
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                Solicitar demonstração
+                <ArrowRight className="size-5" aria-hidden />
+              </DemoRequestDialogButton>
+            </div>
           </div>
         </div>
       </div>

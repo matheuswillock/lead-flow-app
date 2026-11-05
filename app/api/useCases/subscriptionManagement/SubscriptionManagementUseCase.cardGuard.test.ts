@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 
 const owner = {
   id: "owner-1",
@@ -58,7 +59,10 @@ const input = (billingType: string) =>
   ({ action: "add", resource: "team", quantity: 1, billingType }) as never
 
 describe("SubscriptionManagementUseCase.updateCredits — cartão desligado", () => {
+  let restoreConfig: () => void = () => undefined
+
   beforeEach(() => {
+    restoreConfig = stubCardEnabledConfig(false)
     owner.asaasSubscriptionId = null
     subscriptionBillingType = "CREDIT_CARD"
     pendingActionCreate.mockClear()
@@ -67,6 +71,7 @@ describe("SubscriptionManagementUseCase.updateCredits — cartão desligado", ()
     delete process.env.CARD_PAYMENTS_ENABLED
   })
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 

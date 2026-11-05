@@ -1,4 +1,8 @@
-import { assertBillingTypeAllowed, type AvailableBillingTypes } from "./availability"
+import {
+  assertBillingTypeAllowed,
+  type AvailableBillingTypes,
+  type CardEnabledReader,
+} from "./availability"
 
 export interface CardSubscriberCandidate {
   asaasSubscriptionId?: string | null
@@ -52,10 +56,11 @@ export async function assertCardChoiceAllowedForAccount(
   candidate: CardSubscriberCandidate | null | undefined,
   fetchCardInfo: FetchSubscriptionCardInfo,
   env: Record<string, string | undefined> = process.env,
+  readCardEnabled?: CardEnabledReader,
 ): Promise<void> {
   if (billingType !== "CREDIT_CARD") return
   try {
-    assertBillingTypeAllowed(billingType, {}, env)
+    await assertBillingTypeAllowed(billingType, {}, env, readCardEnabled)
   } catch (error) {
     const existingCardSubscriber = await isExistingCardSubscriber(candidate, fetchCardInfo)
     if (!existingCardSubscriber) throw error

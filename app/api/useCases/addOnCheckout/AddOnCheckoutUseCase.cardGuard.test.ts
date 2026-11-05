@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 
 const baseAction = {
   id: "pa-1",
@@ -86,7 +87,10 @@ function withSubscriber() {
 }
 
 describe("AddOnCheckoutUseCase — guard de cartão desligado", () => {
+  let restoreConfig: () => void = () => undefined
+
   beforeEach(() => {
+    restoreConfig = stubCardEnabledConfig(false)
     setCardOff()
     subscriptionBillingType = "CREDIT_CARD"
     findByIdMock.mockReset()
@@ -100,6 +104,7 @@ describe("AddOnCheckoutUseCase — guard de cartão desligado", () => {
   })
 
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 

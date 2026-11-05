@@ -13,7 +13,7 @@ export async function GET() {
   await connection()
 
   try {
-    const { card, reason, availableBillingTypes } = resolveCardAvailability()
+    const { card, reason, availableBillingTypes } = await resolveCardAvailability()
     return NextResponse.json(new Output(true, [], [], { card, reason, availableBillingTypes }), {
       status: 200,
       headers: { "Cache-Control": "public, max-age=30, s-maxage=30, stale-while-revalidate=60" },

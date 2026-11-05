@@ -80,4 +80,39 @@ describe("PaymentProviderPostPaymentService", () => {
     })
     expect(refundFull).not.toHaveBeenCalled()
   })
+
+  it("rejeita o reembolso de tentativa DISPUTED sem adquirir lease nem chamar o provider (decisão 17)", async () => {
+    const acquireAttemptLease = mock(async () => attempt)
+    const refundFull = mock(provider.refundFull)
+    const service = new PaymentProviderPostPaymentService({
+      acquireAttemptLease,
+      updateAttemptWithLease: async () => {
+        throw new Error("não deveria atualizar")
+      },
+      releaseAttemptLease: async () => undefined,
+    })
+
+    await expect(
+      service.refund({ attempt: { ...attempt, status: "DISPUTED" }, provider: { refundFull } }),
+    ).rejects.toThrow("Somente pagamentos confirmados podem ser reembolsados")
+    expect(acquireAttemptLease).not.toHaveBeenCalled()
+    expect(refundFull).not.toHaveBeenCalled()
+  })
+
+  it.each(["CREATED", "PENDING", "FAILED", "EXPIRED", "CANCELED", "UNKNOWN"] as const)(
+    "rejeita o reembolso de tentativa %s",
+    async (status) => {
+      const refundFull = mock(provider.refundFull)
+      const service = new PaymentProviderPostPaymentService({
+        acquireAttemptLease: async () => attempt,
+        updateAttemptWithLease: async () => attempt,
+        releaseAttemptLease: async () => undefined,
+      })
+
+      await expect(
+        service.refund({ attempt: { ...attempt, status }, provider: { refundFull } }),
+      ).rejects.toThrow("Somente pagamentos confirmados podem ser reembolsados")
+      expect(refundFull).not.toHaveBeenCalled()
+    },
+  )
 })

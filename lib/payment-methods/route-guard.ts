@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { Output } from "@/lib/output"
-import { PaymentMethodUnavailableError, assertBillingTypeAllowed } from "./availability"
+import {
+  PaymentMethodUnavailableError,
+  assertBillingTypeAllowed,
+  type CardEnabledReader,
+} from "./availability"
 
 export const PAYMENT_METHOD_UNAVAILABLE_CODE = "PAYMENT_METHOD_UNAVAILABLE"
 
@@ -30,10 +34,19 @@ export function toPaymentMethodUnavailableResponse(error: unknown): NextResponse
   return NextResponse.json(paymentMethodUnavailableOutput(error), { status: error.status })
 }
 
-/** Guard síncrono para rotas sem isenção: resposta 422 quando o cartão não pode ser escolhido. */
-export function rejectUnavailableBillingType(billingType: unknown): NextResponse | null {
+/** Guard para rotas sem isenção: resposta 422 quando o cartão não pode ser escolhido. */
+export async function rejectUnavailableBillingType(
+  billingType: unknown,
+  env: Record<string, string | undefined> = process.env,
+  readCardEnabled?: CardEnabledReader,
+): Promise<NextResponse | null> {
   try {
-    assertBillingTypeAllowed(typeof billingType === "string" ? billingType : null)
+    await assertBillingTypeAllowed(
+      typeof billingType === "string" ? billingType : null,
+      {},
+      env,
+      readCardEnabled,
+    )
     return null
   } catch (error) {
     const response = toPaymentMethodUnavailableResponse(error)

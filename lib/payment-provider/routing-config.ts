@@ -11,6 +11,8 @@ export type ProviderRoutingConfigRecord = {
   readonly externalAccountContext: string
   readonly rolloutState: ProviderRolloutState
   readonly killSwitch: boolean
+  /** Oferta de cartão gerida no backoffice; nasce desligada e só o dono liga. */
+  readonly cardEnabled: boolean
   readonly revision: number
   readonly healthStatus: ProviderHealthStatus
 }
@@ -21,6 +23,7 @@ export type ProviderRoutingConfigPatch = {
   readonly externalAccountContext?: string
   readonly rolloutState?: ProviderRolloutState
   readonly killSwitch?: boolean
+  readonly cardEnabled?: boolean
   readonly expectedRevision: number
 }
 
@@ -93,6 +96,7 @@ export function applyProviderRoutingConfigPatch(
     externalAccountContext: accountContext,
     rolloutState: accountContextChanged ? "DISABLED" : next.rolloutState,
     killSwitch: next.killSwitch,
+    cardEnabled: next.cardEnabled,
     revision: next.revision,
     healthStatus: accountContextChanged ? "UNKNOWN" : current.healthStatus,
   })

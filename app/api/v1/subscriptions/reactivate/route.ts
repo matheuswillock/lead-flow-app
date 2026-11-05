@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Reativação exige o formulário do cartão (nova escolha de cartão), então não há isenção de assinante.
-    const unavailableMethod = rejectUnavailableBillingType(paymentMethod);
+    const unavailableMethod = await rejectUnavailableBillingType(paymentMethod);
     if (unavailableMethod) return unavailableMethod;
 
     // Chamar UseCase para reativar assinatura (cancelar antiga + criar nova)

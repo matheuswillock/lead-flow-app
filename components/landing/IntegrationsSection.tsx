@@ -48,7 +48,7 @@ export function IntegrationsSection() {
               <h3 className="font-display text-lg font-bold tracking-[-0.02em] text-landing-ink">
                 {integration.title}
               </h3>
-              <p className="mt-2 text-sm leading-6 text-landing-body">{integration.description}</p>
+              <p className="mt-2 text-base leading-relaxed text-landing-body">{integration.description}</p>
             </article>
           ))}
         </div>

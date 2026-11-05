@@ -37,6 +37,7 @@ import type { CreatePaymentFormData } from "../services/IBackofficePaymentsServi
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
+import { CardConfigCard } from "../card-config/CardConfigCard"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -216,6 +217,8 @@ export function BackofficePaymentsContainer() {
           </AlertDescription>
         </Alert>
       )}
+
+      <CardConfigCard />
 
       <div className="rounded-md border">
         <Table>

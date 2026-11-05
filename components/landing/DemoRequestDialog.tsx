@@ -45,7 +45,7 @@ const teamSizeOptions = ["Só eu", "2 a 5 corretores", "6 a 15 corretores", "Mai
 const contactTimeOptions = ["Manhã", "Tarde", "Fim do dia"]
 
 const inputClassName =
-  "w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+  "w-full rounded-xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
 const fieldClassName = "gap-1.5"
 
 const nameAllowedPattern = /^[\p{L}\p{M}\s'-]+$/u

@@ -31,7 +31,7 @@ export function HowItWorksSteps() {
               <h3 className="relative z-[1] font-display text-lg font-bold tracking-[-0.02em] text-landing-ink">
                 {step.title}
               </h3>
-              <p className="mt-3 text-sm leading-6 text-landing-body">{step.description}</p>
+              <p className="mt-3 text-base leading-relaxed text-landing-body">{step.description}</p>
               <span aria-hidden className="mt-5 block h-px w-full bg-landing-step-line" />
             </li>
           ))}

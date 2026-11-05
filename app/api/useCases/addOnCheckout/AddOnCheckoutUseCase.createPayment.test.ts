@@ -49,6 +49,7 @@ mock.module("@/lib/asaas", () => ({
   }),
 }))
 
+const { stubCardEnabledConfig } = await import("@/test/support/card-enabled-config")
 const { AddOnCheckoutUseCase } = await import("./AddOnCheckoutUseCase")
 
 const baseAction = {
@@ -100,9 +101,11 @@ describe("AddOnCheckoutUseCase.createPayment — retomada de cobrança existente
 
 describe("AddOnCheckoutUseCase.updateBillingType — troca de forma de pagamento roteada por conta (C33)", () => {
   const originalEnv = { ...process.env }
+  let restoreConfig: () => void = () => undefined
 
   beforeEach(() => {
     // O roteamento por conta é ortogonal ao guard de cartão: aqui o cartão está liberado.
+    restoreConfig = stubCardEnabledConfig(true)
     process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
     process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "pk_test_card_on"
     delete process.env.CARD_PAYMENTS_ENABLED
@@ -117,6 +120,7 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma de pagamento
   })
 
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 

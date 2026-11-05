@@ -98,6 +98,13 @@ describe("isPublicPageRoute", () => {
   it("allows public adhesion share paths", () => {
     expect(isPublicPageRoute("/adesao/some-token")).toBe(true)
   })
+
+  it("allows the exact public self-checkout page, not the tokenized checkout paths", () => {
+    expect(isPublicPageRoute("/checkout")).toBe(true)
+    expect(requiresAuth("/checkout")).toBe(false)
+    expect(isPublicPageRoute("/checkout/some-token")).toBe(false)
+    expect(isPublicPageRoute("/checkoutx")).toBe(false)
+  })
 })
 
 describe("isAuthRedirectRoute", () => {

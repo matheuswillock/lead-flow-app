@@ -8,6 +8,8 @@ import {
 
 const CARD_OFF = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION" }
 const CARD_ON = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION", ABACATE_PAY_PRODUCTION_PUBLIC_KEY: "pk" }
+const flagOn = async () => true
+const flagOff = async () => false
 const withCard = async () => ({ billingType: "CREDIT_CARD", creditCardToken: "tok" })
 
 describe("isExistingCardSubscriber", () => {
@@ -41,26 +43,31 @@ describe("isExistingCardSubscriber", () => {
 describe("assertCardChoiceAllowedForAccount", () => {
   it("PIX sempre passa sem consultar o provider", async () => {
     const fetch = mock(withCard)
-    await assertCardChoiceAllowedForAccount("PIX", null, fetch, CARD_OFF)
+    await assertCardChoiceAllowedForAccount("PIX", null, fetch, CARD_OFF, flagOff)
     expect(fetch).not.toHaveBeenCalled()
   })
   it("cartão ligado passa sem consultar o provider", async () => {
     const fetch = mock(withCard)
-    await assertCardChoiceAllowedForAccount("CREDIT_CARD", null, fetch, CARD_ON)
+    await assertCardChoiceAllowedForAccount("CREDIT_CARD", null, fetch, CARD_ON, flagOn)
     expect(fetch).not.toHaveBeenCalled()
   })
   it("cartão desligado barra quem não tem cartão", async () => {
     const fetch = async () => ({ billingType: "PIX" })
     await expect(
-      assertCardChoiceAllowedForAccount("CREDIT_CARD", { asaasSubscriptionId: "sub_1" }, fetch, CARD_OFF),
+      assertCardChoiceAllowedForAccount("CREDIT_CARD", { asaasSubscriptionId: "sub_1" }, fetch, CARD_OFF, flagOff),
     ).rejects.toBeInstanceOf(PaymentMethodUnavailableError)
   })
   it("cartão desligado passa para assinante com cartão", async () => {
-    await assertCardChoiceAllowedForAccount("CREDIT_CARD", { asaasSubscriptionId: "sub_1" }, withCard, CARD_OFF)
+    await assertCardChoiceAllowedForAccount("CREDIT_CARD", { asaasSubscriptionId: "sub_1" }, withCard, CARD_OFF, flagOff)
+  })
+  it("chave presente mas cartão desligado no backoffice barra quem não tem cartão", async () => {
+    await expect(
+      assertCardChoiceAllowedForAccount("CREDIT_CARD", null, withCard, CARD_ON, flagOff),
+    ).rejects.toBeInstanceOf(PaymentMethodUnavailableError)
   })
   it("flag CARD_PAYMENTS_ENABLED=false barra quem não tem cartão mesmo com chave", async () => {
     await expect(
-      assertCardChoiceAllowedForAccount("CREDIT_CARD", null, withCard, { ...CARD_ON, CARD_PAYMENTS_ENABLED: "false" }),
+      assertCardChoiceAllowedForAccount("CREDIT_CARD", null, withCard, { ...CARD_ON, CARD_PAYMENTS_ENABLED: "false" }, flagOn),
     ).rejects.toBeInstanceOf(PaymentMethodUnavailableError)
   })
 })

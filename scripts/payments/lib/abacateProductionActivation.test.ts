@@ -20,6 +20,7 @@ function baseRecord(overrides: Partial<ProviderRoutingConfigRecord> = {}): Provi
     externalAccountContext: ABACATE_PRODUCTION_ACCOUNT_CONTEXT,
     rolloutState: "DISABLED",
     killSwitch: false,
+    cardEnabled: false,
     revision: 4,
     healthStatus: "HEALTHY",
     ...overrides,

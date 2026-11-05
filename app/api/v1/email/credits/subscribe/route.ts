@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 })
     }
 
-    const unavailableMethod = rejectUnavailableBillingType(validation.data.billingType)
+    const unavailableMethod = await rejectUnavailableBillingType(validation.data.billingType)
     if (unavailableMethod) return unavailableMethod
 
     const useCase = makeUseCase()

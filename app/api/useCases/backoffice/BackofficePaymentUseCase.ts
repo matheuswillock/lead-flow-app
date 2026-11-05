@@ -43,7 +43,7 @@ export class BackofficePaymentUseCase {
       }
 
       const billingType = data.billingType ?? "PIX"
-      assertBillingTypeAllowed(billingType)
+      await assertBillingTypeAllowed(billingType)
       const id = randomUUID()
 
       // Criar cobrança no Asaas

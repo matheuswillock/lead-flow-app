@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 import {
   assertCardChoiceAllowedForAccount,
   type FetchSubscriptionCardInfo,
@@ -90,13 +91,17 @@ const params = (billingType: string) =>
   }) as never
 
 describe("ManagerAccountUsersUseCase.createAccountUser — cartão desligado", () => {
+  let restoreConfig: () => void = () => undefined
+
   beforeEach(() => {
+    restoreConfig = stubCardEnabledConfig(false)
     sendPending.mockClear()
     process.env.PAYMENT_PROVIDER_ENVIRONMENT = "PRODUCTION"
     delete process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY
     delete process.env.CARD_PAYMENTS_ENABLED
   })
   afterEach(() => {
+    restoreConfig()
     process.env = { ...originalEnv }
   })
 

@@ -217,11 +217,12 @@ export function FeatureAccessProvider({ children, initialAccess = null }: Featur
   useEffect(() => {
     if (!user?.supabaseId) return
 
-    // Handler único para focus e visibilitychange — o guard de TTL/in-flight do
-    // fetchAccess deduplica quando os dois eventos disparam juntos.
+    // O cache do servidor atende retornos de foco sem manter grants de beta
+    // desatualizados no provider já montado.
     const refreshAccess = () => {
       if (document.visibilityState !== "visible") return
       if (Date.now() < authBlockedUntilRef.current) return
+      lastFetchedAtRef.current = 0
       void fetchAccess()
     }
 

@@ -11,6 +11,18 @@
         ],
         "createdAt": "2026-08-26T11:16:31.701Z",
         "reason": "HTML de e-mail transacional com estilo inline, nao UI de produto"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-03T21:54:23.873Z",
+        "reason": "Agent: case-folded Google Fonts import for Inter, the DESIGN.md-approved landing body/UI typeface"
+      },
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-11-03T21:54:24.485Z",
+        "reason": "Agent: isolated Alvora imported conversion template preserves its supplied visual language and font stack"
       }
     ]
   },
