@@ -323,7 +323,9 @@ export class PaymentProviderSessionRepository implements IPaymentProviderSession
     if (!input.claimToken.trim()) throw new Error("Claim token é obrigatório")
     if (!input.externalId.trim()) throw new Error("externalId é obrigatório")
     const attemptId = input.attemptId?.trim()
-    assertAttemptStatusTransition(input.expectedStatus, input.nextStatus)
+    if (input.expectedStatus !== input.nextStatus) {
+      assertAttemptStatusTransition(input.expectedStatus, input.nextStatus)
+    }
     const result = await prisma.paymentProviderAttempt.updateMany({
       where: {
         ...(attemptId ? { id: attemptId } : { externalId: input.externalId }),

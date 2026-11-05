@@ -47,12 +47,15 @@ describe("payment provider event processing", () => {
     })
   })
 
+  it("reapplies confirmed events to retry domain settlement after a failed webhook", () => {
+    expect(
+      applyProviderEventTransition({ currentStatus: "CONFIRMED", event: "PAYMENT_CONFIRMED" }),
+    ).toEqual({ action: "apply", nextStatus: "CONFIRMED" })
+  })
+
   it("ignores late events that would regress a terminal payment", () => {
     expect(
       applyProviderEventTransition({ currentStatus: "REFUNDED", event: "PAYMENT_CONFIRMED" }),
     ).toEqual({ action: "ignore", nextStatus: "REFUNDED" })
-    expect(
-      applyProviderEventTransition({ currentStatus: "CONFIRMED", event: "PAYMENT_CONFIRMED" }),
-    ).toEqual({ action: "ignore", nextStatus: "CONFIRMED" })
   })
 })
