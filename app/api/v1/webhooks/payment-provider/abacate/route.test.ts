@@ -235,7 +235,7 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BACKOFFICE_AD
     )
   })
 
-  it("falha no efeito de domínio responde 500 e o reenvio (tentativa já CONFIRMED) não repete o efeito", async () => {
+  it("falha no efeito de domínio responde 500 e reenvia settlement para tentativa já CONFIRMED", async () => {
     markPaidFromProvider.mockImplementation(async () => {
       throw new Error("Supabase Admin indisponível")
     })
@@ -243,13 +243,13 @@ describe("POST /api/v1/webhooks/payment-provider/abacate — owner BACKOFFICE_AD
     expect(failed.status).toBe(500)
     expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
 
-    // O CAS da tentativa já a levou a CONFIRMED; o reenvio do webhook não passa mais pelo efeito.
+    // O CAS da tentativa já a levou a CONFIRMED; o retry deve repetir o settlement idempotente.
     attempt = { ...attempt, status: "CONFIRMED" }
     markPaidFromProvider.mockImplementation(async () => undefined)
     const replay = await POST(confirmedRequest())
 
     expect(replay.status).toBe(202)
-    expect(markPaidFromProvider).toHaveBeenCalledTimes(1)
+    expect(markPaidFromProvider).toHaveBeenCalledTimes(2)
   })
 
   it("pagamento da adesão inexistente falha em vez de ser ignorado", async () => {

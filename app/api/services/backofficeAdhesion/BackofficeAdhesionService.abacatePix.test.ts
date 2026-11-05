@@ -8,6 +8,10 @@ import { clearCardEnabledCache } from "@/lib/payment-methods/availability"
 
 const captureMessage = mock((_message: string, _options?: unknown) => "event-id")
 mock.module("@sentry/nextjs", () => ({ captureMessage, captureException: mock(() => "event-id") }))
+const sendAdhesionPaymentProcessingEmail = mock(async () => ({ success: true as const }))
+mock.module("@/lib/email/create-email-service", () => ({
+  createEmailService: () => ({ sendAdhesionPaymentProcessingEmail }),
+}))
 
 const actualTokenValidation = await import("@/lib/backoffice-adhesions/adhesion-token-validation")
 let tokenValidation: { status: string; adhesionId: string | null; adhesionStatus: string | null } = {
@@ -143,6 +147,7 @@ const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
   captureMessage.mockClear()
+  sendAdhesionPaymentProcessingEmail.mockClear()
   for (const key of ENV_KEYS) {
     saved[key] = process.env[key]
     delete process.env[key]
@@ -314,6 +319,11 @@ describe("BackofficeAdhesionService.markPaidFromProvider", () => {
     await expect(h.service.markPaidFromProvider("adhesion-1", settle)).rejects.toThrow("Supabase Admin indisponível")
     expect(h.pixPayments.markConfirmed).toHaveBeenCalled()
     expect(h.pixPayments.markCompleted).not.toHaveBeenCalled()
+    expect(sendAdhesionPaymentProcessingEmail).toHaveBeenCalledWith({
+      userName: "Maria",
+      userEmail: "maria@example.com",
+      adhesionId: "adhesion-1",
+    })
   })
 
   it("é idempotente: adesão já paga não regrava o status e a conta é garantida de novo", async () => {

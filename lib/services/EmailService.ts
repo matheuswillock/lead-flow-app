@@ -158,6 +158,12 @@ export interface AdhesionCompletedEmailData {
   adhesionId?: string;
 }
 
+export interface AdhesionPaymentProcessingEmailData {
+  userName: string;
+  userEmail: string;
+  adhesionId: string;
+}
+
 export interface OperatorInviteEmailData {
   operatorName: string;
   operatorEmail: string;
@@ -1302,6 +1308,30 @@ export class EmailService {
     }
 
     return result
+  }
+
+  async sendAdhesionPaymentProcessingEmail(data: AdhesionPaymentProcessingEmailData) {
+    const safeName = escapeHtml(data.userName)
+    return this.sendEmailUntracked({
+      to: [data.userEmail],
+      subject: "Pagamento recebido: estamos concluindo sua adesão",
+      idempotencyKey: `adhesion-payment-processing/${data.adhesionId}`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin:0;padding:24px;background:#f5f5f5;font-family:Arial,sans-serif;color:#404040">
+          <main style="max-width:560px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+            <h1 style="color:#171717;font-size:22px">Recebemos seu pagamento</h1>
+            <p>Olá ${safeName},</p>
+            <p>Seu pagamento foi confirmado. Estamos concluindo o processamento da sua adesão e enviaremos outro e-mail assim que sua conta estiver pronta.</p>
+            <p>Por enquanto, não é necessário realizar outro pagamento.</p>
+            <p style="color:#737373;font-size:13px">Este é um aviso automático do Corretor Studio.</p>
+          </main>
+        </body>
+        </html>
+      `,
+    })
   }
 
   // Notificação de novo lead para managers
