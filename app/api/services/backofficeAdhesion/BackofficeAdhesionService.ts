@@ -1678,43 +1678,48 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
     if (payment.status === "completed") return
 
-    const reviewReason = this.findSettlementBlocker(adhesion, payment, input)
-    if (reviewReason) {
-      await this.sendPaymentToManualReview(adhesion, payment, reviewReason)
-      return
-    }
+    try {
+      const reviewReason = this.findSettlementBlocker(adhesion, payment, input)
+      if (reviewReason) {
+        await this.sendPaymentToManualReview(adhesion, payment, reviewReason)
+        return
+      }
 
-    const confirmed = await this.pixPayments.markConfirmed({
-      id: payment.id,
-      providerExternalId: input.providerPaymentId,
-      confirmedAt: input.paidAt,
-    })
-    // A transição é condicional: se o pagamento virou superseded/review entre a leitura e aqui,
-    // o dinheiro já entrou no provider e a adesão NÃO pode ser ativada sozinha.
-    if (!confirmed) {
-      await this.sendPaymentToManualReview(adhesion, payment, "payment_state_changed")
-      return
-    }
-    if (confirmed.status === "completed") return
+      const confirmed = await this.pixPayments.markConfirmed({
+        id: payment.id,
+        providerExternalId: input.providerPaymentId,
+        confirmedAt: input.paidAt,
+      })
+      // A transição é condicional: se o pagamento virou superseded/review entre a leitura e aqui,
+      // o dinheiro já entrou no provider e a adesão NÃO pode ser ativada sozinha.
+      if (!confirmed) {
+        await this.sendPaymentToManualReview(adhesion, payment, "payment_state_changed")
+        return
+      }
+      if (confirmed.status === "completed") return
 
-    // Reler a adesão logo antes de ativar: edição ou cancelamento concorrente derruba a ativação.
-    const current = await this.repo.findById(adhesionId)
-    if (!current) throw new Error("Adesão não encontrada")
-    const driftReason = this.findSettlementBlocker(current, confirmed, input)
-    if (driftReason) {
-      await this.sendPaymentToManualReview(current, confirmed, driftReason)
-      return
-    }
+      // Reler a adesão logo antes de ativar: edição ou cancelamento concorrente derruba a ativação.
+      const current = await this.repo.findById(adhesionId)
+      if (!current) throw new Error("Adesão não encontrada")
+      const driftReason = this.findSettlementBlocker(current, confirmed, input)
+      if (driftReason) {
+        await this.sendPaymentToManualReview(current, confirmed, driftReason)
+        return
+      }
 
-    const paid =
-      current.status === "paid"
-        ? current
-        : await this.repo.updateStatus(adhesionId, "paid", { paidAt: input.paidAt })
-    const withPayer = await this.applyPayerToUnprovisionedAdhesion(paid, payment)
-    // Idempotente: com a conta já criada só garante a assinatura; a falha propaga para o
-    // webhook/cron tentar de novo (a linha do pagamento só conclui depois do efeito).
-    await this.ensureAccountForPaidAdhesion(withPayer)
-    await this.pixPayments.markCompleted(payment.id)
+      const paid =
+        current.status === "paid"
+          ? current
+          : await this.repo.updateStatus(adhesionId, "paid", { paidAt: input.paidAt })
+      const withPayer = await this.applyPayerToUnprovisionedAdhesion(paid, payment)
+      // Idempotente: com a conta já criada só garante a assinatura; a falha propaga para o
+      // webhook/cron tentar de novo (a linha do pagamento só conclui depois do efeito).
+      await this.ensureAccountForPaidAdhesion(withPayer)
+      await this.pixPayments.markCompleted(payment.id)
+    } catch (error) {
+      await this.sendPaymentProcessingEmail(adhesion, payment)
+      throw error
+    }
   }
 
   /** Motivo pelo qual o pagamento confirmado NÃO pode ativar a conta sozinho; null = pode. */
@@ -1738,6 +1743,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     reason: string
   ): Promise<void> {
     await this.pixPayments.markNeedsReview(payment.id, reason)
+    await this.sendPaymentProcessingEmail(adhesion, payment)
     const context = { adhesionId: adhesion.id, paymentId: payment.id, reason }
     console.error("[BackofficeAdhesionService][markPaidFromProvider][manual-review]", context)
     Sentry.captureMessage("Pagamento de adesão confirmado exige revisão manual", {
@@ -1745,6 +1751,28 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       tags: { route: "BackofficeAdhesionService", phase: "manual-review", reason },
       extra: context,
     })
+  }
+
+  private async sendPaymentProcessingEmail(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment
+  ): Promise<void> {
+    const userEmail = adhesion.email ?? payment.payerEmail
+    if (!userEmail) return
+
+    try {
+      const result = await createEmailService().sendAdhesionPaymentProcessingEmail({
+        userName: adhesion.fullName,
+        userEmail,
+        adhesionId: adhesion.id,
+      })
+      if (!result.success) throw new Error(result.error || "Falha ao enviar aviso de pagamento")
+    } catch (error) {
+      console.error("[BackofficeAdhesionService][payment-processing-email]", {
+        adhesionId: adhesion.id,
+        error,
+      })
+    }
   }
 
   /** A conta nasce dos dados do pagador da cobrança confirmada, não dos campos mutáveis da adesão. */
@@ -2018,10 +2046,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }
 
   private async invalidateTokenAfterPayment(adhesionId: string): Promise<void> {
-    const token = generateBackofficeAdhesionToken()
     await this.repo.update(adhesionId, {
-      tokenHash: hashBackofficeAdhesionToken(token),
-      tokenPreview: getBackofficeAdhesionTokenPreview(token),
       expiresAt: expireTokenNow(),
       tokenPlain: null,
     })

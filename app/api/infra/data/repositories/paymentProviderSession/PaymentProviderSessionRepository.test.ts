@@ -151,6 +151,30 @@ describe("PaymentProviderSessionRepository", () => {
     )
   })
 
+  it("renova o claim de uma confirmação já gravada para repetir o settlement", async () => {
+    attemptFindFirstOrThrowMock.mockImplementationOnce(async () => makeAttemptRow({ status: "CONFIRMED" }))
+    const repository = new PaymentProviderSessionRepository()
+
+    const attempt = await repository.applyEventWithClaim({
+      externalId: "abacate-payment-1",
+      provider: "ABACATE_PAY",
+      environment: "DEV",
+      externalAccountContext: "abacate-dev",
+      expectedStatus: "CONFIRMED",
+      nextStatus: "CONFIRMED",
+      claimToken: "claim-retry",
+      now,
+    })
+
+    expect(attempt.status).toBe("CONFIRMED")
+    expect(attemptUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "CONFIRMED" }),
+        data: expect.objectContaining({ status: "CONFIRMED", lastEventClaimToken: "claim-retry" }),
+      }),
+    )
+  })
+
   it("bloqueia nova tentativa quando o mesmo checkout possui UNKNOWN pendente", async () => {
     attemptFindFirstMock.mockImplementation(async (args?: unknown) => {
       const where = whereOf(args)

@@ -50,6 +50,10 @@ export function applyProviderEventTransition(input: {
   }
 
   const nextStatus = eventStatus(input.event)
+  if (baseStatus === nextStatus && nextStatus === "CONFIRMED") {
+    // Confirmation is also the retry signal for domain settlement after a partial webhook failure.
+    return { action: "apply", nextStatus }
+  }
   if (baseStatus === nextStatus || !canAdvance(baseStatus, nextStatus)) {
     return { action: "ignore", nextStatus: baseStatus }
   }
