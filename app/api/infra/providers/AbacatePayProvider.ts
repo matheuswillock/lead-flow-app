@@ -316,10 +316,9 @@ export class AbacatePayProvider
     if (!secretMatches) {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
     }
+    // Sem chave pública (loja sem cartão liberado) o HMAC não é verificável; a origem
+    // continua autenticada pelo secret da URL. Com a chave configurada o HMAC é obrigatório.
     const signingKey = this.config.webhookSigningKey
-    if (this.environment === "PRODUCTION" && signingKey === null) {
-      throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
-    }
     if (signingKey !== null) {
       if (typeof signature !== "string") {
         throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")

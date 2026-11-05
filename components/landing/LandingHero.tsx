@@ -41,7 +41,6 @@ export function LandingHero() {
               <ArrowRight className="size-5" aria-hidden />
             </DemoRequestDialogButton>
           </div>
-          <p className="mt-3 text-sm text-landing-muted">Escolha seu plano e pague por PIX.</p>
 
           <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-landing-muted">
             {["Demo gratuita", "Suporte em português", "Sem instalação"].map((item) => (

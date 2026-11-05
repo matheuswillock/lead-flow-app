@@ -844,14 +844,16 @@ describe("AbacatePayProvider", () => {
         }),
       )
 
-    it("fails closed in production when the public signing key is unavailable", () => {
+    it("authenticates by URL secret alone, with or without a signature header", () => {
       const provider = productionProvider()
-      expect(() =>
-        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } }),
-      ).toThrow("Webhook não autenticado")
-      expect(() =>
-        provider.verifyRequest({ rawBody, signature: "ignored", query: { webhookSecret: "webhook-secret" } }),
-      ).toThrow("Webhook não autenticado")
+      expect(
+        provider.verifyRequest({ rawBody, signature: null, query: { webhookSecret: "webhook-secret" } })
+          .environment,
+      ).toBe("PRODUCTION")
+      expect(
+        provider.verifyRequest({ rawBody, signature: "ignored", query: { webhookSecret: "webhook-secret" } })
+          .environment,
+      ).toBe("PRODUCTION")
     })
 
     it("still rejects a wrong or missing URL secret", () => {

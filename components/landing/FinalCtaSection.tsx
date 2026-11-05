@@ -25,9 +25,7 @@ export function FinalCtaSection() {
                   Contratar online
                   <ArrowRight className="size-5" aria-hidden />
                 </Link>
-                <span className="mt-2 text-sm text-landing-panel-body">
-                  Escolha seu plano e pague por PIX.
-                </span>
+
               </div>
               <DemoRequestDialogButton
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
