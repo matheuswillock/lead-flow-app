@@ -9,6 +9,9 @@ mock.module("next/server", () => ({
   connection: mock(async () => undefined),
 }))
 mock.module("server-only", () => ({}))
+mock.module("@/lib/billing/billing-rate-limit", () => ({
+  consumeBillingRateLimit: mock(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+}))
 
 type BackofficeAccessResult =
   | { access: Record<string, unknown>; error?: never; status?: never }
@@ -33,7 +36,7 @@ const { POST } = await import("./route")
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/api/v1/backoffice/payment-providers/config/health-check", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://localhost" },
     body: JSON.stringify(body),
   })
 }

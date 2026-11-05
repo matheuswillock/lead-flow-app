@@ -30,6 +30,16 @@ describe("redactWebhookSecretInText", () => {
       "https://app.example.com/api/v1/leads?x=1",
     )
   })
+
+  it("redige credenciais de provider em texto de query e objetos", () => {
+    const value = scrubWebhookSecretFromEvent<Event>({
+      request: { url: "https://app.example.com/hook?apiKey=api-secret&access_token=token-secret" },
+      extra: { ABACATE_PAY_API_KEY: "api-secret", WEBHOOK_SECRET: "hook-secret" },
+    })
+    expect(serialized(value)).not.toContain("api-secret")
+    expect(serialized(value)).not.toContain("token-secret")
+    expect(serialized(value)).not.toContain("hook-secret")
+  })
 })
 
 describe("scrubWebhookSecretFromEvent", () => {

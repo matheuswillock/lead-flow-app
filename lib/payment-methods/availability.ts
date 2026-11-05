@@ -78,7 +78,7 @@ export const readCardEnabledFromConfig: CardEnabledReader = async (environment) 
       "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
     )
     const configs = await paymentProviderConfigRepository.list(environment)
-    const value = configs.find((config) => config.provider === "ABACATE_PAY")?.cardEnabled === true
+    const value = configs.find((config) => config.provider === "ABACATE_PAY" && config.isDefault)?.cardEnabled === true
     cardEnabledCache.set(environment, { value, expiresAt: Date.now() + CARD_ENABLED_CACHE_TTL_MS })
     return value
   } catch {
@@ -98,10 +98,66 @@ export function clearCardEnabledCache(): void {
 export async function resolveCardAvailability(
   env: Env = process.env,
   readCardEnabled: CardEnabledReader = readCardEnabledFromConfig,
+  readPublicKey: (
+    environment: PaymentProviderEnvironment,
+    env: Env,
+  ) => Promise<string | null> = readConfiguredAbacatePublicKey,
 ): Promise<CardAvailability> {
   const environment = resolveEnvironment(env)
   if (!environment) return build(false, "PROVIDER_WITHOUT_CARD")
-  return computeCardAvailability({ cardEnabled: await readCardEnabled(environment), env })
+  if (env.CARD_PAYMENTS_ENABLED === "false") return build(false, "DISABLED_BY_FLAG")
+  const publicKey = await readPublicKey(environment, env)
+  return computeCardAvailability({
+    cardEnabled: await readCardEnabled(environment),
+    env: {
+      ...env,
+      [`ABACATE_PAY_${environment}_PUBLIC_KEY`]: publicKey ?? "",
+      ABACATE_PAY_PUBLIC_KEY: publicKey ?? "",
+    },
+  })
+}
+
+async function readConfiguredAbacatePublicKey(environment: PaymentProviderEnvironment, env: Env): Promise<string | null> {
+  let modules: Awaited<ReturnType<typeof loadCredentialModules>>
+  try {
+    modules = await loadCredentialModules()
+  } catch {
+    return null
+  }
+  let configurations
+  try {
+    configurations = await modules.paymentProviderConfigRepository.list(environment)
+  } catch {
+    return null
+  }
+  const configuration = configurations.find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
+  if (!configuration) return readAbacatePublicKey(environment, env)
+  try {
+    const resolved = await modules.resolveOptionalProviderCredential({
+      stored: () => modules.paymentProviderCredentialRepository.getEncrypted({
+        provider: "ABACATE_PAY",
+        environment,
+        externalAccountContext: configuration.externalAccountContext,
+        key: "PUBLIC_KEY",
+      }),
+      fromEnvironment: () => readAbacatePublicKey(environment, env) ?? undefined,
+    })
+    return resolved.value
+  } catch {
+    return null
+  }
+}
+
+function loadCredentialModules() {
+  return Promise.all([
+    import("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"),
+    import("@/app/api/infra/data/repositories/paymentProviderCredential/PaymentProviderCredentialRepository"),
+    import("@/lib/payment-provider/credential-resolver"),
+  ]).then(([config, credentials, resolver]) => ({
+    paymentProviderConfigRepository: config.paymentProviderConfigRepository,
+    paymentProviderCredentialRepository: credentials.paymentProviderCredentialRepository,
+    resolveOptionalProviderCredential: resolver.resolveOptionalProviderCredential,
+  }))
 }
 
 /**

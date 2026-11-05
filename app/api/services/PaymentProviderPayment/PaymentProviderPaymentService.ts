@@ -26,7 +26,8 @@ const PAYMENT_LEASE_TTL_MS = 60 * 1000
 type ProviderResolver = (input: {
   readonly provider: "ASAAS" | "ABACATE_PAY"
   readonly environment: PaymentProviderEnvironment
-}) => OneTimePaymentCapability
+  readonly externalAccountContext: string
+}) => OneTimePaymentCapability | Promise<OneTimePaymentCapability>
 
 export type PaymentProviderPaymentServiceDependencies = {
   readonly purchases: Pick<IPlatformPurchaseRepository, "findById" | "markPaidOnceForProvider">
@@ -63,9 +64,10 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
       environment: this.environment,
       requiredCapabilities: ["ONE_TIME_PAYMENT", method],
     })
-    const provider = this.dependencies.resolveProvider({
+    const provider = await this.dependencies.resolveProvider({
       provider: selected.provider,
       environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
     })
     const now = this.now()
     const tenantId = purchase.teamId ?? purchase.profileId

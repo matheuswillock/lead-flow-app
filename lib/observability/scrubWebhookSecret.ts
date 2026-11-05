@@ -10,14 +10,15 @@ import type { Breadcrumb, Event } from "@sentry/nextjs"
 const REDACTED = "[redacted]"
 const SECRET_PARAM = "webhookSecret"
 const MAX_DEPTH = 12
-const SECRET_IN_TEXT = /(^|[?&;\s"'])(webhookSecret=)[^&#\s"']*/gi
+const SECRET_IN_TEXT = /(^|[?&;\s"'])([A-Za-z0-9_.-]*(?:webhook[_-]?(?:secret|token)|api[_-]?key|access[_-]?token|client[_-]?secret|payment[_-]?provider[_-]?encryption[_-]?key)=)[^&#\s"']*/gi
 
 export function redactWebhookSecretInText(value: string): string {
   return value.replace(SECRET_IN_TEXT, `$1$2${REDACTED}`)
 }
 
 function isSecretParamName(name: string): boolean {
-  return name.toLowerCase() === SECRET_PARAM.toLowerCase()
+  return name.toLowerCase() === SECRET_PARAM.toLowerCase() ||
+    /(?:webhook[_-]?(?:secret|token)|api[_-]?key|access[_-]?token|client[_-]?secret|payment[_-]?provider[_-]?encryption[_-]?key)/i.test(name)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

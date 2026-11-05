@@ -17,6 +17,12 @@ import { PaymentProviderRefundUseCase } from "./PaymentProviderRefundUseCase"
 import { PaymentProviderMaintenanceUseCase } from "./PaymentProviderMaintenanceUseCase"
 import { applyEmailCreditsPaidPurchaseUseCase } from "@/app/api/useCases/email/ApplyEmailCreditsPaidPurchaseUseCase"
 import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
+import { paymentProviderCredentialRepository } from "@/app/api/infra/data/repositories/paymentProviderCredential/PaymentProviderCredentialRepository"
+import type { IPaymentProviderCredentialRepository } from "@/app/api/infra/data/repositories/paymentProviderCredential/IPaymentProviderCredentialRepository"
+import {
+  resolveOptionalProviderCredential,
+  resolveProviderCredential,
+} from "@/lib/payment-provider/credential-resolver"
 
 const ABACATE_CAPABILITIES = [
   "ONE_TIME_PAYMENT",
@@ -35,34 +41,81 @@ export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment 
   return configured
 }
 
-function readProviderSecret(environment: PaymentProviderEnvironment, suffix: string): string {
+function readProviderSecretFromEnvironment(environment: PaymentProviderEnvironment, suffix: string): string | undefined {
   const environmentKey = `ABACATE_PAY_${environment}_${suffix}`
   const value = process.env[environmentKey] ?? process.env[`ABACATE_PAY_${suffix}`]
-  if (!value?.trim()) throw new Error(`Segredo ${suffix} do provider não configurado`)
-  return value
+  return value?.trim() || undefined
 }
 
 // Em PRODUCTION a chave pública só existe depois que a loja tem "Checkout próprio" (cartão)
 // liberado. Em DEV ela é sempre obrigatória.
-function readProviderPublicKey(environment: PaymentProviderEnvironment): string | null {
-  if (environment !== "PRODUCTION") return readProviderSecret(environment, "PUBLIC_KEY")
-  return readAbacatePublicKey(environment)
+async function readProviderSecret(
+  environment: PaymentProviderEnvironment,
+  suffix: string,
+  externalAccountContext?: string,
+  credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+): Promise<string> {
+  const instance = externalAccountContext
+    ? null
+    : (await paymentProviderConfigRepository.list(environment)).find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
+  const context = externalAccountContext ?? instance?.externalAccountContext ?? `abacate-${environment.toLowerCase()}`
+  const resolved = await resolveProviderCredential({
+    stored: () => credentialRepository.getEncrypted({
+      provider: "ABACATE_PAY",
+      environment,
+      externalAccountContext: context,
+      key: suffix,
+    }),
+    fromEnvironment: () => readProviderSecretFromEnvironment(environment, suffix),
+  })
+  return resolved.value
+}
+
+async function readOptionalProviderSecret(
+  environment: PaymentProviderEnvironment,
+  suffix: string,
+  externalAccountContext?: string,
+  credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+): Promise<string | null> {
+  const instance = externalAccountContext
+    ? null
+    : (await paymentProviderConfigRepository.list(environment)).find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
+  const context = externalAccountContext ?? instance?.externalAccountContext ?? `abacate-${environment.toLowerCase()}`
+  const resolved = await resolveOptionalProviderCredential({
+    stored: () => credentialRepository.getEncrypted({
+      provider: "ABACATE_PAY",
+      environment,
+      externalAccountContext: context,
+      key: suffix,
+    }),
+    fromEnvironment: () => readProviderSecretFromEnvironment(environment, suffix),
+  })
+  return resolved.value
 }
 
 export function resolveAbacateCapabilities(environment: PaymentProviderEnvironment) {
-  const hasPublicKey = readProviderPublicKey(environment) !== null
-  return ABACATE_CAPABILITIES.filter((capability) => capability !== "CARD" || hasPublicKey)
+  void environment
+  return ABACATE_CAPABILITIES
 }
 
-export function createAbacatePayProvider(
+export async function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
-): AbacatePayProvider {
-  const publicKey = readProviderPublicKey(environment)
+  externalAccountContext?: string,
+  credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+): Promise<AbacatePayProvider> {
+  const [apiKey, webhookSecret, webhookSecretPrevious, databasePublicKey] = await Promise.all([
+    readProviderSecret(environment, "API_KEY", externalAccountContext, credentialRepository),
+    readProviderSecret(environment, "WEBHOOK_SECRET", externalAccountContext, credentialRepository),
+    readOptionalProviderSecret(environment, "WEBHOOK_SECRET_PREVIOUS", externalAccountContext, credentialRepository),
+    readOptionalProviderSecret(environment, "PUBLIC_KEY", externalAccountContext, credentialRepository),
+  ])
+  const publicKey = databasePublicKey ?? readAbacatePublicKey(environment)
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
-      apiKey: readProviderSecret(environment, "API_KEY"),
+      apiKey,
       publicKey,
-      webhookSecret: readProviderSecret(environment, "WEBHOOK_SECRET"),
+      webhookSecret,
+      webhookSecretPrevious,
       // AbacatePay signs webhook payloads with the store public key. There is
       // no separate webhook-signing credential in the dashboard.
       webhookSigningKey: publicKey,
@@ -106,9 +159,9 @@ function createUseCase() {
     sessions: paymentProviderSessionRepository,
     identities: paymentProviderIdentityRepository,
     environment,
-    resolveProvider: ({ provider, environment: providerEnvironment }) => {
+    resolveProvider: ({ provider, environment: providerEnvironment, externalAccountContext }) => {
       if (provider !== "ABACATE_PAY") throw new Error("Provider não suportado nesta fase")
-      return createAbacatePayProvider(providerEnvironment)
+      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
     },
   })
   return new PaymentProviderPaymentUseCase(service)
@@ -123,11 +176,11 @@ export function getPaymentProviderRefundUseCase(): PaymentProviderRefundUseCase 
   return new PaymentProviderRefundUseCase({
     sessions: paymentProviderSessionRepository,
     refundService: new PaymentProviderPostPaymentService(paymentProviderSessionRepository),
-    resolveProvider: (providerEnvironment) => {
+    resolveProvider: (providerEnvironment, externalAccountContext) => {
       if (providerEnvironment !== environment) {
         throw new Error("Ambiente do provider não suportado nesta fase")
       }
-      return createAbacatePayProvider(providerEnvironment)
+      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
     },
   })
 }
@@ -146,11 +199,11 @@ export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenan
       markPaidOnceForProvider: platformPurchaseRepository.markPaidOnceForProvider.bind(platformPurchaseRepository),
     },
     reconciliation,
-    resolveQueryProvider: ({ provider, environment: providerEnvironment }) => {
+    resolveQueryProvider: ({ provider, environment: providerEnvironment, externalAccountContext }) => {
       if (provider !== "ABACATE_PAY" || providerEnvironment !== environment) {
         throw new Error("Provider não suportado nesta fase")
       }
-      return createAbacatePayProvider(providerEnvironment)
+      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
     },
     applyEmailCredits: ({ paymentId, checkoutId, productSlug }) =>
       applyEmailCreditsPaidPurchaseUseCase.apply({

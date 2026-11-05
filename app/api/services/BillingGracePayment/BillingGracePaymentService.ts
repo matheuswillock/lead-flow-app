@@ -68,7 +68,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
 
-    const provider = createAbacatePayProvider(environment)
+    const provider = await createAbacatePayProvider(environment, selected.externalAccountContext)
     // A unicidade das tentativas do provider é global: derivar a chave do pagamento
     // (único) evita colisão entre contas que enviem a mesma chave de cliente.
     const providerIdempotencyKey = `billing-grace-payment:${payment.id}`

@@ -16,7 +16,8 @@ const DEFAULT_BATCH_SIZE = 50
 type QueryProviderResolver = (input: {
   readonly provider: StoredPaymentProviderAttemptRecord["provider"]
   readonly environment: StoredPaymentProviderAttemptRecord["environment"]
-}) => PaymentQueryCapability
+  readonly externalAccountContext: string
+}) => PaymentQueryCapability | Promise<PaymentQueryCapability>
 
 /** Owners sem compra (adesão, regularização): reparo do efeito de domínio e reconciliação. */
 export type PaymentProviderOwnerMaintenance = {
@@ -101,9 +102,10 @@ export class PaymentProviderMaintenanceService {
         const result = await this.dependencies.reconciliation.reconcile({
           attempt,
           method,
-          provider: this.dependencies.resolveQueryProvider({
+          provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (result.requiresReconciliation) stillUnknown += 1
@@ -235,9 +237,10 @@ export class PaymentProviderMaintenanceService {
         const result = await this.dependencies.reconciliation.reconcile({
           attempt,
           method: "PIX",
-          provider: this.dependencies.resolveQueryProvider({
+          provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (!result.requiresReconciliation) reconciled += 1
@@ -262,8 +265,8 @@ export class PaymentProviderMaintenanceService {
       if (!attempt.externalId) continue
       try {
         // O valor pago vem da consulta ao provider (a tentativa persistida não guarda o valor).
-        const remote = await this.dependencies
-          .resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment })
+        const remote = await (await this.dependencies
+          .resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment, externalAccountContext: attempt.externalAccountContext }))
           .getStatus({ externalId: attempt.externalId, method: "PIX" })
         if (remote.status !== "CONFIRMED") {
           throw new Error(`Provider não confirma o pagamento (${remote.status})`)
