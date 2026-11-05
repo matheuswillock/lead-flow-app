@@ -1146,10 +1146,11 @@ export function LeadForm({
             </div>
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2 mb-4">
-                <Button 
-                    className="cursor-pointer" 
-                    type="button" 
-                    variant="ghost" 
+                <Button
+                    data-testid="lead-form-cancel"
+                    className="max-lg:h-11 cursor-pointer"
+                    type="button"
+                    variant="ghost"
                     onClick={onCancel}
                     disabled={isLoading || isUpdating}
                 >
