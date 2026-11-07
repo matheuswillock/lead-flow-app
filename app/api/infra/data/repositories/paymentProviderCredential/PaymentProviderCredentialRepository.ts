@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { encryptProviderCredential } from "@/lib/payment-provider/credential-cipher"
+import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 import type {
   CreatePaymentProviderInstanceInput,
   IPaymentProviderCredentialRepository,
@@ -116,16 +117,17 @@ export class PaymentProviderCredentialRepository implements IPaymentProviderCred
           where: { configId_key: { configId: current.id, key: "WEBHOOK_SECRET" } },
           select: { valueCiphertext: true, keyId: true, last4: true, fingerprint: true },
         })
-        if (currentSecret) {
+        const previousSecret = currentSecret ?? encryptLegacyWebhookSecret(current.environment, input.actorProfileId)
+        if (previousSecret) {
           await transaction.paymentProviderCredential.upsert({
             where: { configId_key: { configId: current.id, key: "WEBHOOK_SECRET_PREVIOUS" } },
             create: {
               configId: current.id,
               key: "WEBHOOK_SECRET_PREVIOUS",
-              ...currentSecret,
+              ...previousSecret,
               updatedByProfileId: input.actorProfileId,
             },
-            update: { ...currentSecret, updatedByProfileId: input.actorProfileId },
+            update: { ...previousSecret, updatedByProfileId: input.actorProfileId },
           })
         }
       }
@@ -170,6 +172,22 @@ export class PaymentProviderCredentialRepository implements IPaymentProviderCred
       select: { keyId: true, valueCiphertext: true },
     })
     return row
+  }
+}
+
+function encryptLegacyWebhookSecret(
+  environment: PaymentProviderEnvironment,
+  actorProfileId: string,
+): { keyId: string; valueCiphertext: string; last4: string; fingerprint: string; updatedByProfileId: string } | null {
+  const value = (
+    process.env[`ABACATE_PAY_${environment}_WEBHOOK_SECRET`] ?? process.env.ABACATE_PAY_WEBHOOK_SECRET
+  )?.trim()
+  if (!value) return null
+  return {
+    ...encryptProviderCredential(value),
+    last4: value.slice(-4),
+    fingerprint: fingerprint(value),
+    updatedByProfileId: actorProfileId,
   }
 }
 

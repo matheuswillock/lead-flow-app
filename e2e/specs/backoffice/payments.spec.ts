@@ -88,12 +88,12 @@ test.describe("app/backoffice/(app)/payments", () => {
   });
 
   test("cartão: ligar pede confirmação e usa a revisão atual; desligar é direto", async ({ page }) => {
-    const abacate = (environment: string, cardEnabled: boolean, revision: number) => ({
+    const abacate = (environment: string, cardEnabled: boolean, revision: number, isDefault = true) => ({
       provider: "ABACATE_PAY",
       environment,
       enabled: true,
-      isDefault: false,
-      externalAccountContext: "e2e",
+      isDefault,
+      externalAccountContext: isDefault ? "e2e-default" : "e2e-non-default",
       rolloutState: "ACTIVE",
       killSwitch: false,
       cardEnabled,
@@ -120,7 +120,10 @@ test.describe("app/backoffice/(app)/payments", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ isValid: true, result: [abacate(environment, false, 4)] }),
+        body: JSON.stringify({
+          isValid: true,
+          result: [abacate(environment, true, 2, false), abacate(environment, false, 4)],
+        }),
       });
     });
 

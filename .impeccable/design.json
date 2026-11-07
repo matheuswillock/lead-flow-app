@@ -1,113 +1,113 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-06-30T00:00:00.000Z",
+  "generatedAt": "2026-11-07T00:00:00.000Z",
   "title": "Design System: Corretor Studio",
-  "source": "Scan mode — extracted from DESIGN.md token blocks + app/globals.css + shadcn/ui components. Root DESIGN.md unchanged (feeds design:sync).",
+  "source": "Color metadata and primary-button example refreshed 2026-11-07 from DESIGN.md, app/globals.css, and components/ui/button.tsx; other examples retained. Root DESIGN.md remains unchanged (feeds design:sync).",
   "extensions": {
     "colorMeta": {
       "primary": {
         "role": "primary",
         "displayName": "Conversion Orange",
-        "canonical": "oklch(0.705 0.213 47.604)",
+        "canonical": "#ff6900",
         "tonalRamp": [
-          "oklch(0.22 0.08 47)",
-          "oklch(0.32 0.12 47)",
-          "oklch(0.42 0.15 47)",
-          "oklch(0.52 0.18 47)",
-          "oklch(0.62 0.20 47)",
-          "oklch(0.705 0.213 47.604)",
-          "oklch(0.78 0.18 47)",
-          "oklch(0.92 0.06 47)"
+          "oklch(0.15 0.202 44.4)",
+          "oklch(0.26 0.202 44.4)",
+          "oklch(0.37 0.202 44.4)",
+          "oklch(0.48 0.202 44.4)",
+          "oklch(0.59 0.202 44.4)",
+          "oklch(0.70 0.202 44.4)",
+          "oklch(0.82 0.202 44.4)",
+          "oklch(0.95 0.202 44.4)"
         ]
       },
       "foreground": {
         "role": "neutral",
         "displayName": "Ink",
-        "canonical": "oklch(0.141 0.005 285.823)",
+        "canonical": "#17171c",
         "tonalRamp": [
-          "oklch(0.12 0.005 286)",
-          "oklch(0.18 0.005 286)",
-          "oklch(0.25 0.005 286)",
-          "oklch(0.35 0.008 286)",
-          "oklch(0.45 0.010 286)",
-          "oklch(0.55 0.012 286)",
-          "oklch(0.75 0.008 286)",
-          "oklch(0.95 0.002 286)"
+          "oklch(0.15 0.010 285.5)",
+          "oklch(0.26 0.010 285.5)",
+          "oklch(0.37 0.010 285.5)",
+          "oklch(0.48 0.010 285.5)",
+          "oklch(0.59 0.010 285.5)",
+          "oklch(0.70 0.010 285.5)",
+          "oklch(0.82 0.010 285.5)",
+          "oklch(0.95 0.010 285.5)"
         ]
       },
       "background": {
         "role": "neutral",
         "displayName": "Canvas White",
-        "canonical": "oklch(1 0 0)",
+        "canonical": "#f4f4f6",
         "tonalRamp": [
-          "oklch(0.15 0.005 286)",
-          "oklch(0.21 0.006 286)",
-          "oklch(0.35 0.008 286)",
-          "oklch(0.55 0.010 286)",
-          "oklch(0.75 0.006 286)",
-          "oklch(0.90 0.003 286)",
-          "oklch(0.97 0.001 286)",
-          "oklch(1 0 0)"
+          "oklch(0.15 0.003 286.4)",
+          "oklch(0.26 0.003 286.4)",
+          "oklch(0.37 0.003 286.4)",
+          "oklch(0.48 0.003 286.4)",
+          "oklch(0.59 0.003 286.4)",
+          "oklch(0.70 0.003 286.4)",
+          "oklch(0.82 0.003 286.4)",
+          "oklch(0.95 0.003 286.4)"
         ]
       },
       "precision-indigo": {
         "role": "secondary",
         "displayName": "Precision Indigo",
-        "canonical": "oklch(0.52 0.18 269)",
+        "canonical": "#494fdf",
         "tonalRamp": [
-          "oklch(0.18 0.08 269)",
-          "oklch(0.28 0.12 269)",
-          "oklch(0.38 0.15 269)",
-          "oklch(0.48 0.17 269)",
-          "oklch(0.52 0.18 269)",
-          "oklch(0.62 0.16 269)",
-          "oklch(0.78 0.10 269)",
-          "oklch(0.92 0.04 269)"
+          "oklch(0.15 0.214 274.1)",
+          "oklch(0.26 0.214 274.1)",
+          "oklch(0.37 0.214 274.1)",
+          "oklch(0.48 0.214 274.1)",
+          "oklch(0.59 0.214 274.1)",
+          "oklch(0.70 0.214 274.1)",
+          "oklch(0.82 0.204 274.1)",
+          "oklch(0.95 0.060 274.1)"
         ]
       },
       "semantic-success": {
         "role": "tertiary",
         "displayName": "Success Green",
-        "canonical": "oklch(0.62 0.14 154)",
+        "canonical": "#3faa8a",
         "tonalRamp": [
-          "oklch(0.20 0.06 154)",
-          "oklch(0.30 0.09 154)",
-          "oklch(0.40 0.11 154)",
-          "oklch(0.50 0.13 154)",
-          "oklch(0.62 0.14 154)",
-          "oklch(0.72 0.12 154)",
-          "oklch(0.85 0.08 154)",
-          "oklch(0.95 0.03 154)"
+          "oklch(0.15 0.109 169.8)",
+          "oklch(0.26 0.109 169.8)",
+          "oklch(0.37 0.109 169.8)",
+          "oklch(0.48 0.109 169.8)",
+          "oklch(0.59 0.109 169.8)",
+          "oklch(0.70 0.109 169.8)",
+          "oklch(0.82 0.109 169.8)",
+          "oklch(0.95 0.109 169.8)"
         ]
       },
       "semantic-danger": {
         "role": "tertiary",
         "displayName": "Danger Red",
-        "canonical": "oklch(0.58 0.20 23)",
+        "canonical": "#c96060",
         "tonalRamp": [
-          "oklch(0.22 0.10 23)",
-          "oklch(0.32 0.14 23)",
-          "oklch(0.42 0.17 23)",
-          "oklch(0.52 0.19 23)",
-          "oklch(0.58 0.20 23)",
-          "oklch(0.68 0.18 23)",
-          "oklch(0.82 0.12 23)",
-          "oklch(0.95 0.04 23)"
+          "oklch(0.15 0.134 21.8)",
+          "oklch(0.26 0.134 21.8)",
+          "oklch(0.37 0.134 21.8)",
+          "oklch(0.48 0.134 21.8)",
+          "oklch(0.59 0.134 21.8)",
+          "oklch(0.70 0.134 21.8)",
+          "oklch(0.82 0.134 21.8)",
+          "oklch(0.95 0.134 21.8)"
         ]
       },
       "brand-rose": {
         "role": "secondary",
         "displayName": "Warm Rose Accent",
-        "canonical": "oklch(0.68 0.14 12)",
+        "canonical": "#e57082",
         "tonalRamp": [
-          "oklch(0.25 0.08 12)",
-          "oklch(0.35 0.10 12)",
-          "oklch(0.45 0.12 12)",
-          "oklch(0.55 0.13 12)",
-          "oklch(0.68 0.14 12)",
-          "oklch(0.78 0.12 12)",
-          "oklch(0.88 0.08 12)",
-          "oklch(0.96 0.03 12)"
+          "oklch(0.15 0.146 12.1)",
+          "oklch(0.26 0.146 12.1)",
+          "oklch(0.37 0.146 12.1)",
+          "oklch(0.48 0.146 12.1)",
+          "oklch(0.59 0.146 12.1)",
+          "oklch(0.70 0.146 12.1)",
+          "oklch(0.82 0.146 12.1)",
+          "oklch(0.95 0.146 12.1)"
         ]
       }
     },
@@ -201,7 +201,7 @@
       "refersTo": "button-primary",
       "description": "Default app CTA — orange fill, compact radius, focus ring.",
       "html": "<button class=\"ds-btn-primary\" type=\"button\">Salvar lead</button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: none; border-radius: calc(var(--radius) - 2px); background: var(--primary); color: var(--primary-foreground); font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.4; cursor: pointer; transition: background 150ms cubic-bezier(0.2, 0, 0, 1); outline: none; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary) 90%, black); } .ds-btn-primary:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent); } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: none; border-radius: calc(var(--radius) - 2px); background: var(--btn-primary-bg); color: var(--btn-primary-foreground); box-shadow: 0 10px 24px -6px color-mix(in oklab, var(--btn-primary-bg) 55%, transparent); font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.4; cursor: pointer; transition: filter 140ms, transform 140ms; outline: none; } .ds-btn-primary:hover { filter: brightness(1.04); transform: translateY(-1px); } .ds-btn-primary:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent); } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; box-shadow: none; transform: none; }"
     },
     {
       "name": "Secondary Button",

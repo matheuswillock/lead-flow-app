@@ -7,6 +7,7 @@ import { PaymentProviderConfig } from "@/lib/payment-provider/config"
 const listConfigs = mock(async (_environment: string) => [
   { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
 ])
+let sharedWebhookCredentials = false
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
   paymentProviderConfigRepository: { list: listConfigs },
@@ -14,14 +15,20 @@ mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProv
 
 mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
   resolvePaymentProviderEnvironment: () => "PRODUCTION",
-  createAbacatePayProvider: async () => new AbacatePayProvider(PaymentProviderConfig.create({
-    apiKey: "prod-api-key",
-    publicKey: "prod-public-key",
-    webhookSecret: process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET ?? "prod-webhook-secret",
-    webhookSigningKey: "prod-public-key",
-    environment: "PRODUCTION",
-    devMode: false,
-  })),
+  createAbacatePayProvider: async (_environment: string, externalAccountContext: string) => {
+    const isSecondAccount = externalAccountContext === "account-b"
+    const publicKey = isSecondAccount && !sharedWebhookCredentials ? "account-b-public-key" : "prod-public-key"
+    return new AbacatePayProvider(PaymentProviderConfig.create({
+      apiKey: "prod-api-key",
+      publicKey,
+      webhookSecret: isSecondAccount && !sharedWebhookCredentials
+        ? "account-b-webhook-secret"
+        : process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET ?? "prod-webhook-secret",
+      webhookSigningKey: publicKey,
+      environment: "PRODUCTION",
+      devMode: false,
+    }))
+  },
 }))
 
 const claim = mock(async (_input: unknown) => ({ kind: "claimed" as const, claimToken: "claim-1" }))
@@ -128,6 +135,7 @@ beforeEach(() => {
   process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
   process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
   attempt = { ...defaultAttempt }
+  sharedWebhookCredentials = false
   for (const fn of [claim, assertClaimActive, markProcessed, markFailed, findAttemptByExternalId, applyEventWithClaim, bind, markPaidOnceForProvider, graceFindById, graceMarkConfirmed, graceComplete, adhesionPaymentFindById, markPaidFromProvider, captureMessage, captureException]) {
     fn.mockClear()
   }
@@ -160,10 +168,45 @@ function webhookRequest(rawBody: string, query: string) {
 }
 
 function signedHeaders(rawBody: string) {
-  return { "x-abacate-signature": createHmac("sha256", "prod-public-key").update(rawBody).digest("base64") }
+  return signedHeadersWithKey(rawBody, "prod-public-key")
+}
+
+function signedHeadersWithKey(rawBody: string, key: string) {
+  return { "x-abacate-signature": createHmac("sha256", key).update(rawBody).digest("base64") }
 }
 
 describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
+  it("seleciona a instância que autenticou o webhook quando há várias contas", async () => {
+    listConfigs.mockImplementationOnce(async () => [
+      { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
+      { provider: "ABACATE_PAY", externalAccountContext: "account-b" },
+    ])
+    attempt = { ...defaultAttempt, externalAccountContext: "account-b" }
+    const body = completedPayload(false)
+    const request = new Request(
+      "https://app.example.com/api/v1/webhooks/payment-provider/abacate?webhookSecret=account-b-webhook-secret",
+      { method: "POST", body, headers: signedHeadersWithKey(body, "account-b-public-key") },
+    )
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(202)
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ externalAccountContext: "account-b" }))
+  })
+
+  it("rejeita sem processar quando mais de uma instância autentica o mesmo webhook", async () => {
+    sharedWebhookCredentials = true
+    listConfigs.mockImplementationOnce(async () => [
+      { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
+      { provider: "ABACATE_PAY", externalAccountContext: "account-b" },
+    ])
+
+    const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
+
+    expect(response.status).toBe(401)
+    expect(claim).not.toHaveBeenCalled()
+  })
+
   it("aceita evento de produção (devMode:false) com o webhookSecret correto e baixa a compra", async () => {
     const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))
 
