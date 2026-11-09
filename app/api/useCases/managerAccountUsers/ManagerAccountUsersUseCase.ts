@@ -31,6 +31,10 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import {
+  memberRemovalFollowUpService,
+  type MemberRemovalFollowUpService,
+} from "@/app/api/services/memberRemoval/MemberRemovalFollowUpService";
 import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
 import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor";
 import type {
@@ -98,7 +102,9 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     private readonly notifications: AccountUserNotificationPort = notificationService,
     private readonly memberProBilling: MemberProBillingPort = memberProBillingUseCase,
     private readonly accessEmailHistory: Pick<ITeamMemberAccessHistoryRepository, "recordAccessEmail"> =
-      teamMemberAccessHistoryRepository
+      teamMemberAccessHistoryRepository,
+    private readonly memberRemovalFollowUp: Pick<MemberRemovalFollowUpService, "handle"> =
+      memberRemovalFollowUpService
   ) {}
 
   /** Liga o convite à conta; falhar aqui não desfaz a criação, só deixa o envio fora do histórico. */
@@ -832,6 +838,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
 
     await this.repository.deleteTeamMember(teamId, validatedData.profileId);
+    await this.memberRemovalFollowUp.handle({ teamId, removedProfileId: validatedData.profileId });
 
     return {
       output: new Output(true, ["Usuário removido do time com sucesso"], [], null),
@@ -1065,6 +1072,8 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     }
 
     await this.repository.deleteTeamMember(teamId, userId);
+    // Leads sem responsável + aviso aos managers + sessão encerrada (cada etapa falha sozinha).
+    await this.memberRemovalFollowUp.handle({ teamId, removedProfileId: userId });
 
     await this.memberProBilling.syncBillingAfterUsageChange(managerId, "remove_user");
 

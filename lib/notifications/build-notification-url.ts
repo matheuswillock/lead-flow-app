@@ -32,6 +32,7 @@ const LEAD_LINK_TYPES = new Set([
   "LEAD_TRANSFER_SCHEDULE_FAILED",
   "MEETING_REMINDER",
   "LEAD_NEEDS_RESCHEDULE",
+  "LEAD_ORPHANED",
 ]);
 
 export function hasLeadNotificationLink(type: string, metadata?: NotificationLinkMetadata | null) {

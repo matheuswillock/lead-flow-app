@@ -870,6 +870,7 @@ enum NotificationType {
   STUDIO_DOMAIN_DNS_RECOVERED
   LEAD_NEEDS_RESCHEDULE
   LEAD_FOLLOW_UP_REMINDER
+  LEAD_ORPHANED
 
   @@map("notification_type")
 }

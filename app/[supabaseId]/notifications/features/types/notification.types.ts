@@ -18,7 +18,8 @@ export type NotificationTypeValue =
   | "WEBHOOK_AUTO_PAUSED"
   | "STUDIO_DOMAIN_DNS_ACTION_REQUIRED"
   | "STUDIO_DOMAIN_DNS_RECOVERED"
-  | "LEAD_NEEDS_RESCHEDULE";
+  | "LEAD_NEEDS_RESCHEDULE"
+  | "LEAD_ORPHANED";
 
 export type NotificationMetadata = {
   event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;
