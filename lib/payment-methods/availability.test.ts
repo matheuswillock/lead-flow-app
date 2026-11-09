@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 import {
   PaymentMethodUnavailableError,
   assertBillingTypeAllowed,
@@ -15,6 +16,13 @@ const PRODUCTION_WITH_KEY = {
 
 const cardOn: CardEnabledReader = async () => true
 const cardOff: CardEnabledReader = async () => false
+let restoreConfig: () => void
+
+beforeEach(() => {
+  restoreConfig = stubCardEnabledConfig(true)
+})
+
+afterEach(() => restoreConfig())
 
 describe("computeCardAvailability", () => {
   it("fica desligado quando o backoffice não ligou o cartão, mesmo com a chave pública", () => {

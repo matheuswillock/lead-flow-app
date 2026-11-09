@@ -2041,7 +2041,6 @@ completed completed
     DateTime created_at 
     DateTime updated_at 
     }
-  
 
   "backoffice_operational_access_grants" {
     String id "🗝️"
@@ -4692,16 +4691,17 @@ completed completed
 
   "payment_provider_credentials" {
     String id "🗝️"
-    String config_id
-    String key
-    String value_ciphertext
-    String key_id
+    String config_id 
+    String key 
+    String value_ciphertext 
+    String key_id 
     String last4 "❓"
-    String fingerprint
+    String fingerprint 
     String updated_by "❓"
-    DateTime created_at
-    DateTime updated_at
+    DateTime created_at 
+    DateTime updated_at 
     }
+  
 
   "payment_provider_identities" {
     String id "🗝️"
