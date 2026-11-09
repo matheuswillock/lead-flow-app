@@ -105,6 +105,8 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "studio-domain-dns-reconcile": 300,
   "sync-contacts": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "task-overdue": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
+  // Gera o ZIP das informações do time (lê tudo em lotes) e exclui o time; declara `maxDuration = 300`.
+  "team-deletion-exports": 300,
   "webhook-outbox": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   // Declara `maxDuration = 60` na rota (SPEC 11, A-E4): cada evento pode criar reunião no Google.
   "webhook-inbound-events-retry": 60,

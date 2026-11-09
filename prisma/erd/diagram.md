@@ -855,6 +855,9 @@ STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
 STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
 LEAD_NEEDS_RESCHEDULE LEAD_NEEDS_RESCHEDULE
 LEAD_FOLLOW_UP_REMINDER LEAD_FOLLOW_UP_REMINDER
+LEAD_ORPHANED LEAD_ORPHANED
+TEAM_EXPORT_READY TEAM_EXPORT_READY
+TEAM_EXPORT_FAILED TEAM_EXPORT_FAILED
         }
     
 
@@ -5230,6 +5233,32 @@ fixed fixed
     Int usesCount 
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_deletion_export_jobs" {
+    String id "🗝️"
+    String teamId 
+    String teamName 
+    String requesterProfileId 
+    String requesterEmail 
+    String requesterName 
+    String billingOwnerId 
+    String status 
+    Int attempts 
+    DateTime lockedAt "❓"
+    String filePath "❓"
+    Int fileSizeBytes "❓"
+    DateTime expiresAt "❓"
+    Json counts "❓"
+    String lastError "❓"
+    Int downloadCount 
+    DateTime lastDownloadedAt "❓"
+    String lastDownloadedBy "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    DateTime completedAt "❓"
+    DateTime purgedAt "❓"
     }
   
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"

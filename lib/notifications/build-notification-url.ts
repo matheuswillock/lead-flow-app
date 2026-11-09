@@ -1,3 +1,4 @@
+import { API_CLIENT_BASE } from "@/lib/route-map";
 import { getFullUrl } from "@/lib/utils/app-url";
 
 export type NotificationLinkMetadata = {
@@ -48,6 +49,15 @@ export function hasStudioDomainDnsLink(type: string, metadata?: NotificationLink
   );
 }
 
+/** Exportação do time excluído: a notificação leva direto ao download (só para quem pediu, logado). */
+export function hasTeamExportDownloadLink(type: string, metadata?: NotificationLinkMetadata | null) {
+  return (
+    type === "TEAM_EXPORT_READY" &&
+    typeof metadata?.href === "string" &&
+    metadata.href.startsWith(`${API_CLIENT_BASE}/teams/exports/`)
+  );
+}
+
 export function getMeetingLink(metadata?: NotificationLinkMetadata | null) {
   if (!metadata || typeof metadata !== "object") return null;
   const meetingLink =
@@ -65,6 +75,10 @@ export function buildNotificationPath(input: NotificationLinkInput): string {
   const metadata = input.metadata ?? null;
 
   if (hasStudioDomainDnsLink(input.type, metadata)) {
+    return metadata!.href!;
+  }
+
+  if (hasTeamExportDownloadLink(input.type, metadata)) {
     return metadata!.href!;
   }
 

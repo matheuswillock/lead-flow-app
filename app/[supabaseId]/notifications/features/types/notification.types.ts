@@ -19,7 +19,9 @@ export type NotificationTypeValue =
   | "STUDIO_DOMAIN_DNS_ACTION_REQUIRED"
   | "STUDIO_DOMAIN_DNS_RECOVERED"
   | "LEAD_NEEDS_RESCHEDULE"
-  | "LEAD_ORPHANED";
+  | "LEAD_ORPHANED"
+  | "TEAM_EXPORT_READY"
+  | "TEAM_EXPORT_FAILED";
 
 export type NotificationMetadata = {
   event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;

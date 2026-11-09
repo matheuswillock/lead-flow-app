@@ -48,6 +48,29 @@ export class MemberRemovalFollowUpService {
     return { releasedLeads: released.length, notifiedLeads, sessionsRevoked }
   }
 
+  /**
+   * O time inteiro foi excluído (leads e vínculos já foram apagados com ele): cada membro que ficou sem
+   * nenhum time perde a sessão; quem tem outro time continua e passa a usar o outro.
+   */
+  async handleTeamDeleted(input: {
+    teamId: string
+    memberProfileIds: string[]
+  }): Promise<{ sessionsRevoked: number }> {
+    let sessionsRevoked = 0
+    for (const profileId of input.memberProfileIds) {
+      const revoked = await this.safely(
+        "tratar membro do time excluído",
+        async () => {
+          const profile = await this.repository.findProfileForRemoval(profileId)
+          return this.endAccessIfNoTeamLeft(input.teamId, profileId, profile?.supabaseId ?? null)
+        },
+        false,
+      )
+      if (revoked) sessionsRevoked += 1
+    }
+    return { sessionsRevoked }
+  }
+
   private async notifyOrphans(
     teamId: string,
     removedProfileId: string,

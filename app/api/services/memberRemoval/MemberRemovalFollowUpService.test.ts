@@ -140,6 +140,50 @@ describe("MemberRemovalFollowUpService — sessão do removido", () => {
   })
 })
 
+describe("MemberRemovalFollowUpService.handleTeamDeleted — time excluído", () => {
+  it("quem só estava nesse time perde a sessão; quem tem outro time continua e troca o time ativo", async () => {
+    const counts: Record<string, number> = { "profile-a": 0, "profile-b": 2 }
+    const { repo, service } = build({
+      countRemainingTeamMemberships: mock(async (profileId: string) => counts[profileId]),
+      findProfileForRemoval: mock(async (profileId: string) => ({
+        fullName: profileId,
+        email: `${profileId}@x.com`,
+        supabaseId: `auth-${profileId}`,
+      })),
+    })
+
+    const result = await service.handleTeamDeleted({ teamId: TEAM, memberProfileIds: ["profile-a", "profile-b"] })
+
+    expect(repo.revokeAuthSessions).toHaveBeenCalledTimes(1)
+    expect(repo.revokeAuthSessions).toHaveBeenCalledWith("auth-profile-a")
+    expect(repo.moveActiveTeamAway).toHaveBeenCalledWith("profile-b", TEAM)
+    expect(result.sessionsRevoked).toBe(1)
+  })
+
+  it("não mexe em leads nem em notificações (os leads foram apagados com o time)", async () => {
+    const { repo, service } = build()
+
+    await service.handleTeamDeleted({ teamId: TEAM, memberProfileIds: ["profile-a"] })
+
+    expect(repo.releaseLeadsOfMember).not.toHaveBeenCalled()
+    expect(repo.createLeadOrphanNotifications).not.toHaveBeenCalled()
+  })
+
+  it("um membro com erro não impede o tratamento dos outros", async () => {
+    const { repo, service } = build({
+      findProfileForRemoval: mock(async (profileId: string) => {
+        if (profileId === "profile-a") throw new Error("banco")
+        return { fullName: "B", email: "b@x.com", supabaseId: "auth-b" }
+      }),
+    })
+
+    const result = await service.handleTeamDeleted({ teamId: TEAM, memberProfileIds: ["profile-a", "profile-b"] })
+
+    expect(repo.revokeAuthSessions).toHaveBeenCalledWith("auth-b")
+    expect(result.sessionsRevoked).toBe(1)
+  })
+})
+
 describe("MemberRemovalFollowUpService — falhas isoladas", () => {
   it("se liberar os leads falhar, ainda encerra a sessão e não propaga o erro", async () => {
     const { repo, service } = build({

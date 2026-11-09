@@ -871,6 +871,8 @@ enum NotificationType {
   LEAD_NEEDS_RESCHEDULE
   LEAD_FOLLOW_UP_REMINDER
   LEAD_ORPHANED
+  TEAM_EXPORT_READY
+  TEAM_EXPORT_FAILED
 
   @@map("notification_type")
 }
@@ -7799,4 +7801,39 @@ model BackofficeCoupon {
   adhesions BackofficeAdhesion[]
 
   @@map("backoffice_coupons")
+}
+
+// -----------------------------
+// TEAM DELETION EXPORT (corretor_studio_team_deletion_export_jobs)
+// Pedido de exportação feito ao excluir um time. NÃO tem relação com Team: precisa sobreviver à
+// exclusão do time (o arquivo é entregue depois que o time deixa de existir).
+// -----------------------------
+model TeamDeletionExportJob {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  teamName           String
+  requesterProfileId String    @db.Uuid
+  requesterEmail     String
+  requesterName      String
+  billingOwnerId     String    @db.Uuid
+  /// pending | processing | ready | failed | purged
+  status             String    @default("pending") @db.VarChar(20)
+  attempts           Int       @default(0)
+  lockedAt           DateTime? @db.Timestamptz(6)
+  filePath           String?
+  fileSizeBytes      Int?
+  expiresAt          DateTime? @db.Timestamptz(6)
+  counts             Json?
+  lastError          String?
+  downloadCount      Int       @default(0)
+  lastDownloadedAt   DateTime? @db.Timestamptz(6)
+  lastDownloadedBy   String?   @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  completedAt        DateTime? @db.Timestamptz(6)
+  purgedAt           DateTime? @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([requesterProfileId])
+  @@map("corretor_studio_team_deletion_export_jobs")
 }
