@@ -4,16 +4,38 @@ import { useState } from "react"
 import {
   AlertCircle,
   CheckCircle2,
+  ClipboardList,
   Clock,
   Copy,
   Link2,
   LoaderCircle,
+  Mail,
+  MoreHorizontal,
+  Sparkles,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { DomainActionsBar } from "./DomainActionsBar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Field,
   FieldContent,
@@ -180,37 +202,76 @@ export function FormsDomainCard() {
                   Verificar agora
                 </Button>
 
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="max-lg:size-11"
+                      disabled={disconnectingFormDomain}
+                    >
+                      <MoreHorizontal className="size-4" />
+                      <span className="sr-only">Ações do domínio de formulários</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={formDomainRecords.length === 0}
+                      onClick={() => void handleCopyFormDomainDnsInstructions()}
+                    >
+                      <ClipboardList data-icon="inline-start" />
+                      Copiar instruções
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={formDomainRecords.length === 0}
+                      onClick={() => void handleCopyFormDomainDnsInstructionsPrompt()}
+                    >
+                      <Sparkles data-icon="inline-start" />
+                      Copiar como prompt de IA
+                    </DropdownMenuItem>
+                    {canSendFormDomainDnsInstructions ? (
+                      <DropdownMenuItem
+                        disabled={sendingFormDomainDnsInstructions}
+                        onClick={() => setSendInstructionsDialogOpen(true)}
+                      >
+                        <Mail data-icon="inline-start" />
+                        Enviar por e-mail
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuSeparator />
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={disconnectingFormDomain}
+                          onSelect={(event) => event.preventDefault()}
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          Remover domínio
+                        </DropdownMenuItem>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remover domínio de formulários?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Os links de formulário das próximas campanhas voltarão a usar o
+                            endereço padrão da plataforma. Links já enviados com{" "}
+                            <strong>{formDomain.hostname}</strong> deixarão de abrir.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => void handleDisconnectFormDomain()}>
+                            Remover
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
-
-            <DomainActionsBar
-              copyInstructions={{
-                disabled: formDomainRecords.length === 0,
-                onClick: () => void handleCopyFormDomainDnsInstructions(),
-              }}
-              copyPrompt={{
-                disabled: formDomainRecords.length === 0,
-                onClick: () => void handleCopyFormDomainDnsInstructionsPrompt(),
-              }}
-              sendByEmail={
-                canSendFormDomainDnsInstructions
-                  ? { disabled: sendingFormDomainDnsInstructions, onClick: () => setSendInstructionsDialogOpen(true) }
-                  : undefined
-              }
-              remove={{
-                label: "Remover domínio",
-                title: "Remover domínio de formulários?",
-                description: (
-                  <>
-                    Os links de formulário das próximas campanhas voltarão a usar o endereço padrão da plataforma.
-                    Links já enviados com <strong>{formDomain.hostname}</strong> deixarão de abrir.
-                  </>
-                ),
-                confirmLabel: "Remover",
-                disabled: disconnectingFormDomain,
-                onConfirm: () => void handleDisconnectFormDomain(),
-              }}
-            />
 
             {isVerified ? (
               <Alert className="border-semantic-success/30 bg-semantic-success/10 text-foreground">
