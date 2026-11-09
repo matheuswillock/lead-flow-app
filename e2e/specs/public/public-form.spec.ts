@@ -275,6 +275,9 @@ test.describe("app/forms/[publicId]", () => {
     await page.goto(`/forms/${publicId}?cs_el=${E2E_EMAIL_LOG_ID}`)
     await page.getByRole("button", { name: /começar/i }).click()
 
+    // LGPD: sem o aceite da política de privacidade o "Continuar" fica desabilitado.
+    await page.getByRole("checkbox", { name: /Li e concordo com a Política de Privacidade/ }).check()
+
     const nameInput = page.getByRole("textbox").first()
     await expect(nameInput).toHaveValue("Destinatário E2E", { timeout: 10_000 })
     await expect(nameInput).toHaveAttribute("name", "name")
