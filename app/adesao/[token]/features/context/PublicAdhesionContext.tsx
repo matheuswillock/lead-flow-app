@@ -74,18 +74,29 @@ export function PublicAdhesionProvider({
       if (isSubmitting) return
       setIsSubmitting(true)
       try {
-        // PIX da adesão cobrado pelo provider (Abacate) tem endpoint próprio; o resto segue o checkout padrão.
+        // PIX e cartão do Abacate têm endpoints próprios; o resto segue o checkout padrão (Asaas).
+        const payer = {
+          fullName: input.fullName,
+          email: input.email,
+          phone: input.phone,
+          cpfCnpj: input.cpfCnpj,
+        }
         const useProviderPix =
           details?.pixProvider === "ABACATE_PAY" && input.billingType === "PIX"
-        const response = useProviderPix
-          ? await service.createPixCheckout(token, {
-              fullName: input.fullName,
-              email: input.email,
-              phone: input.phone,
-              cpfCnpj: input.cpfCnpj,
-              idempotencyKey: `adhesion-pix:${crypto.randomUUID()}`,
+        const useAbacateCard = input.billingType === "CREDIT_CARD" && Boolean(input.cardToken)
+        const response = useAbacateCard
+          ? await service.createCardPayment(token, {
+              cardToken: input.cardToken!,
+              installments: input.installments ?? 1,
+              payer,
+              idempotencyKey: `adhesion-card:${crypto.randomUUID()}`,
             })
-          : await service.createCheckout(token, input)
+          : useProviderPix
+            ? await service.createPixCheckout(token, {
+                ...payer,
+                idempotencyKey: `adhesion-pix:${crypto.randomUUID()}`,
+              })
+            : await service.createCheckout(token, input)
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][submitCheckout]", err)

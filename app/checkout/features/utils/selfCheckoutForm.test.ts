@@ -3,8 +3,10 @@ import { ApiRequestError } from "@/lib/http/api-request-error"
 import { SELF_CHECKOUT_ERROR_CODES, SelfCheckoutError } from "@/lib/self-checkout/contracts"
 import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
 import {
+  computeOrderAmounts,
   describeSubmitFailure,
   formatBRL,
+  withoutDashes,
   INITIAL_FORM_VALUES,
   pickDefaultCycle,
   resolveSelectedCycle,
@@ -28,9 +30,12 @@ const annual: SelfCheckoutCycleOption = {
 
 const validValues = {
   ...INITIAL_FORM_VALUES,
+  companyLegalName: "  Corretora Exemplo Ltda ",
+  cnpj: "11.222.333/0001-81",
   fullName: "  Maria Souza ",
   email: "Maria@Example.com ",
   phone: "(11) 99999-8888",
+  termsAccepted: true,
 }
 
 describe("formatBRL", () => {
@@ -39,9 +44,92 @@ describe("formatBRL", () => {
   })
 })
 
+describe("computeOrderAmounts", () => {
+  const withCard: SelfCheckoutCycleOption = {
+    cycle: "semiannual",
+    label: "Semestral",
+    pixTotal: 958.8,
+    monthlyEquivalent: 79.9,
+    months: 12,
+    creditCardTotal: 1161.12,
+    creditCardMonthlyEquivalent: 96.76,
+    maxInstallments: 12,
+    extraUserMonthlyPrice: 19.9,
+    extraTeamMonthlyPrice: 29.9,
+  }
+
+  it("sem adicionais, devolve o total do plano na forma escolhida", () => {
+    const none = { extraUsers: 0, extraTeams: 0 }
+    expect(computeOrderAmounts(withCard, "PIX", none).total).toBe(958.8)
+    expect(computeOrderAmounts(withCard, "CREDIT_CARD", none).total).toBe(1161.12)
+  })
+
+  it("soma o preço único dos adicionais ao plano, igual no PIX e no cartão", () => {
+    const extras = { extraUsers: 2, extraTeams: 1 }
+    const pix = computeOrderAmounts(withCard, "PIX", extras)
+    expect(pix.extraUsersTotal).toBe(39.8)
+    expect(pix.extraTeamsTotal).toBe(29.9)
+    expect(pix.extrasTotal).toBe(69.7)
+    expect(pix.total).toBe(1028.5)
+
+    const card = computeOrderAmounts(withCard, "CREDIT_CARD", extras)
+    expect(card.total).toBe(1230.82)
+  })
+
+  it("no plano anual os usuários são ilimitados: não cobra usuário adicional, só time", () => {
+    const annualOption = { ...withCard, cycle: "annual" as const, label: "Anual" }
+    const result = computeOrderAmounts(annualOption, "PIX", { extraUsers: 5, extraTeams: 1 })
+    expect(result.extraUsersTotal).toBe(0)
+    expect(result.extrasTotal).toBe(29.9)
+    expect(result.total).toBe(988.7)
+  })
+
+  it("ignora cartão quando o ciclo não oferece e quantidades negativas", () => {
+    const result = computeOrderAmounts(monthly, "CREDIT_CARD", { extraUsers: -3, extraTeams: 0 })
+    expect(result.isCard).toBe(false)
+    expect(result.total).toBe(100)
+  })
+})
+
+describe("validateSelfCheckoutForm com adicionais", () => {
+  it("envia as quantidades só quando maiores que zero", () => {
+    const withExtras = validateSelfCheckoutForm({ ...validValues, extraUsers: 3 }, "semiannual")
+    expect(withExtras.ok).toBe(true)
+    if (withExtras.ok) {
+      expect(withExtras.request.extraUsers).toBe(3)
+      expect(withExtras.request.extraTeams).toBeUndefined()
+    }
+    const annualPlan = validateSelfCheckoutForm({ ...validValues, extraUsers: 3 }, "annual")
+    if (annualPlan.ok) expect(annualPlan.request.extraUsers).toBeUndefined()
+    const without = validateSelfCheckoutForm(validValues, "annual")
+    if (without.ok) {
+      expect(without.request.extraUsers).toBeUndefined()
+    }
+  })
+})
+
+describe("withoutDashes", () => {
+  it("troca o travessão do cadastro do produto por vírgula", () => {
+    expect(withoutDashes("Plano CRM — acesso ao módulo de gestão de leads.")).toBe(
+      "Plano CRM, acesso ao módulo de gestão de leads.",
+    )
+    expect(withoutDashes("Plano A – anual")).toBe("Plano A, anual")
+  })
+
+  it("não altera textos sem travessão nem hífens comuns", () => {
+    expect(withoutDashes("Corretor Studio e-mail")).toBe("Corretor Studio e-mail")
+    expect(withoutDashes("pré-pago")).toBe("pré-pago")
+  })
+})
+
 describe("pickDefaultCycle", () => {
-  it("pré-seleciona o primeiro ciclo devolvido pela API", () => {
+  it("pré-seleciona o plano anual, mesmo quando ele não é o primeiro da lista", () => {
+    expect(pickDefaultCycle([monthly, annual])).toBe("annual")
     expect(pickDefaultCycle([annual, monthly])).toBe("annual")
+  })
+
+  it("sem plano anual, usa o primeiro ciclo devolvido pela API", () => {
+    expect(pickDefaultCycle([monthly])).toBe("monthly")
   })
 
   it("devolve null quando a lista está vazia", () => {
@@ -66,13 +154,26 @@ describe("validateSelfCheckoutForm", () => {
     expect(result).toEqual({
       ok: true,
       request: {
+        companyLegalName: "Corretora Exemplo Ltda",
+        cnpj: "11222333000181",
         fullName: "Maria Souza",
         email: "maria@example.com",
         phone: "11999998888",
         cycle: "monthly",
+        termsAccepted: true,
         website: "",
       },
     })
+  })
+
+  it("bloqueia o envio sem a declaração de leitura e concordância", () => {
+    const result = validateSelfCheckoutForm({ ...validValues, termsAccepted: false }, "monthly")
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.firstInvalidField).toBe("termsAccepted")
+      expect(result.errors.termsAccepted).toBeTruthy()
+    }
   })
 
   it("reporta erro por campo e indica o primeiro inválido na ordem visual", () => {
@@ -80,10 +181,24 @@ describe("validateSelfCheckoutForm", () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
+    expect(result.errors.companyLegalName).toBeDefined()
+    expect(result.errors.cnpj).toBe("Informe o CNPJ.")
     expect(result.errors.fullName).toBeDefined()
     expect(result.errors.email).toBe("E-mail inválido.")
-    expect(result.errors.phone).toBeDefined()
-    expect(result.firstInvalidField).toBe("fullName")
+    expect(result.errors.phone).toBe("WhatsApp inválido.")
+    // O CNPJ vem primeiro no formulário, então é o primeiro campo a receber o foco.
+    expect(result.firstInvalidField).toBe("cnpj")
+  })
+
+  it("só o nome fantasia é opcional: o resto é obrigatório", () => {
+    const result = validateSelfCheckoutForm({ ...validValues, companyTradeName: "" }, "monthly")
+    expect(result.ok).toBe(true)
+
+    for (const field of ["companyLegalName", "cnpj", "fullName", "email", "phone"] as const) {
+      const missing = validateSelfCheckoutForm({ ...validValues, [field]: "" }, "monthly")
+      expect(missing.ok).toBe(false)
+      if (!missing.ok) expect(missing.firstInvalidField).toBe(field)
+    }
   })
 
   it("exige um plano selecionado", () => {
@@ -115,9 +230,9 @@ describe("describeSubmitFailure", () => {
   })
 
   it("usa a mensagem do servidor em erro de validação conhecido", () => {
-    expect(describeSubmitFailure(new ApiRequestError("Celular inválido.", 400))).toEqual({
+    expect(describeSubmitFailure(new ApiRequestError("WhatsApp inválido.", 400))).toEqual({
       code: "UNKNOWN",
-      message: "Celular inválido.",
+      message: "WhatsApp inválido.",
     })
   })
 

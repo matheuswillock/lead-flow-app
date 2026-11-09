@@ -37,10 +37,28 @@ export function parsePixPaymentInstructions(value: unknown): PixPaymentInstructi
   }
 }
 
+/** Linha de cartão: guarda `{ method: "CARD" }` nas instruções (o PIX guarda o QR). */
+export function isCardProviderPayment(payment: Pick<BackofficeAdhesionPayment, "paymentInstructions">): boolean {
+  const instructions = payment.paymentInstructions as { method?: unknown } | null
+  return instructions?.method === "CARD"
+}
+
 export function toAdhesionPixView(
   adhesion: { id: string; status: BackofficeAdhesionStatus },
   payment: BackofficeAdhesionPayment
 ): BackofficeAdhesionPaymentDTO {
+  if (isCardProviderPayment(payment)) {
+    return {
+      adhesionId: adhesion.id,
+      paymentId: payment.providerExternalId,
+      provider: "ABACATE_PAY",
+      status: adhesion.status,
+      billingType: "CREDIT_CARD",
+      amount: payment.amountCents / 100,
+      invoiceUrl: null,
+      bankSlipUrl: null,
+    }
+  }
   const instructions = parsePixPaymentInstructions(payment.paymentInstructions)
   return {
     adhesionId: adhesion.id,

@@ -14,23 +14,18 @@ export function FinalCtaSection() {
               Pronto para disparar no público certo?
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-8 text-landing-panel-body">
-              Solicite uma demonstração e veja Radar e campanhas de e-mail com a sua própria base.
+              Conheça o CRM na prática: veja seus leads, a carteira e as campanhas reunidos em um só lugar.
             </p>
-            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <div className="flex flex-col items-center">
-                <Link
-                  href="/checkout"
-                  className="landing-primary-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-6 py-3 font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  Contratar online
-                  <ArrowRight className="size-5" aria-hidden />
-                </Link>
-                <span className="mt-2 text-sm text-landing-panel-body">
-                  Escolha seu plano e pague por PIX.
-                </span>
-              </div>
+            <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link
+                href="/checkout"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-[var(--landing-cta-bg)] shadow-lg transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              >
+                Contratar online
+                <ArrowRight className="size-5" aria-hidden />
+              </Link>
               <DemoRequestDialogButton
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-card px-6 py-3 font-semibold text-landing-ink transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-landing-panel-border bg-landing-panel-control px-6 py-3 font-semibold text-landing-invert transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
               >
                 Solicitar demonstração
                 <ArrowRight className="size-5" aria-hidden />

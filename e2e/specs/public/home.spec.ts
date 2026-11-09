@@ -19,7 +19,7 @@ test.describe("app/page", () => {
     });
     await page.goto("/");
 
-    const consentNotice = page.getByText("Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.");
+    const consentNotice = page.getByRole("region", { name: "Aviso de cookies" });
     await expect(consentNotice).toBeVisible();
     await page.getByRole("button", { name: "Aceitar" }).click();
     await expect(consentNotice).toHaveCount(0);
@@ -32,7 +32,10 @@ test.describe("app/page", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
 
-    await expect(page.locator("header").getByRole("link", { name: "Contratar online" })).toHaveCount(0);
+    await expect(page.locator("header").getByRole("link", { name: "Contratar online" })).toHaveAttribute(
+      "href",
+      "/checkout",
+    );
 
     const heroCheckout = page.locator("#top").getByRole("link", { name: "Contratar online" });
     const heroDemo = page.locator("#top").getByRole("button", { name: "Solicitar demonstração" });
@@ -66,7 +69,7 @@ test.describe("app/page", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await page.getByRole("button", { name: "Abrir menu de navegação" }).click();
-    await expect(page.getByRole("dialog").getByRole("link", { name: "Contratar online" })).toHaveCount(0);
+    await expect(page.getByRole("dialog").getByRole("link", { name: "Contratar online" })).toBeVisible();
     await page.keyboard.press("Escape");
 
     await runResponsiveChecks(page);

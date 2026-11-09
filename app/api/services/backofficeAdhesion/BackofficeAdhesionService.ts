@@ -36,10 +36,20 @@ import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import {
   SelfCheckoutError,
+  type SelfCheckoutCouponQuote,
+  type SelfCheckoutCouponQuoteRequest,
   type SelfCheckoutOptionsDTO,
   type SelfCheckoutRequest,
   type SelfCheckoutResponse,
 } from "@/lib/self-checkout/contracts"
+import {
+  applyCouponDiscount,
+  computeCouponDiscountAmount,
+  describeCouponDiscount,
+  type CouponDiscountRule,
+} from "@/lib/self-checkout/coupon-discount"
+import type { IBackofficeCouponService, ValidatedBackofficeCoupon } from "@/lib/self-checkout/coupon-service-types"
+import { BackofficeCouponService } from "@/lib/self-checkout/coupon-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -61,6 +71,8 @@ import { BackofficeSponsorAuthorizationRepository } from "@/app/api/infra/data/r
 import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import {
+  PaymentMethodUnavailableError,
+  readConfiguredAbacatePublicKey,
   assertBillingTypeAllowed,
   resolveCardAvailability,
   type BillingType,
@@ -69,8 +81,10 @@ import * as Sentry from "@sentry/nextjs"
 import type { BackofficeAdhesionPayment } from "@prisma/client"
 import type { IBackofficeAdhesionPixPaymentService } from "./IBackofficeAdhesionPixPaymentService"
 import { createBackofficeAdhesionPixPaymentService } from "./backofficeAdhesionPixPaymentComposition"
-import { resolvePixProvider, toAdhesionPixView } from "./backofficeAdhesionPixHelpers"
+import { isCardProviderPayment, resolvePixProvider, toAdhesionPixView } from "./backofficeAdhesionPixHelpers"
+import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types"
 import type {
+  BackofficeAdhesionCardCheckoutInput,
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionCreationResult,
@@ -112,6 +126,7 @@ export class AsaasPaymentCancellationError extends Error {
   }
 }
 
+export const CARD_INVALID_INSTALLMENTS_PUBLIC_MESSAGE = "Parcelamento inválido para este pagamento."
 export const PIX_PENDING_SWITCH_BLOCKED_MESSAGE =
   "Já existe um PIX aguardando pagamento. Pague-o ou aguarde o vencimento para trocar a forma de pagamento."
 export const ASAAS_ADHESION_PIX_MISMATCH_MESSAGE =
@@ -269,6 +284,14 @@ const SELF_CHECKOUT_FALLBACK_PRODUCT_NAME = "CRM"
 
 /** Campos comerciais da adesão do auto-checkout: valem tanto na criação quanto na reemissão. */
 type SelfCheckoutCommercialFields = UpdateBackofficeAdhesionInput & {
+  extrasTotalAmount: number
+  extraTeams: number
+  extraUsers: number
+  couponId?: string
+  couponCode?: string
+  couponDiscountType?: "percent" | "fixed"
+  couponDiscountValue?: number
+  couponDiscountAmount?: number
   productId: string
   cycle: BackofficeAdhesionBillingCycle
   monthlyBaseAmount: number
@@ -278,17 +301,38 @@ type SelfCheckoutCommercialFields = UpdateBackofficeAdhesionInput & {
   totalAmount: number
 }
 
+/** Produtos padrão dos adicionais; `null` quando inexistente ou inativo (o ciclo não vende o adicional). */
+type SelfCheckoutAddOns = { user: BackofficeProduct | null; team: BackofficeProduct | null }
+
+type SelfCheckoutExtras = { extraUsers: number; extraTeams: number }
+
 type SelfCheckoutCyclePlan = {
   cycle: BackofficeAdhesionBillingCycle
   months: number
+  /**
+   * Preço de cada adicional no ciclo; `null` quando o ciclo não tem preço do add-on. Atenção: apesar do nome
+   * do campo da API, é um valor ÚNICO para o período contratado inteiro, não por mês.
+   */
+  extraUserMonthlyPrice: number | null
+  extraTeamMonthlyPrice: number | null
+  extraUsers: number
+  extraTeams: number
+  /** Valor único dos adicionais para o período inteiro (quantidade x preço); 0 sem adicionais. */
+  extrasTotalAmount: number
   pricing: BackofficeAdhesionPricing
+  /** Regra de cartão do produto para o ciclo; sem ela o cartão vale o mesmo que o PIX, parcelado em até `months`. */
+  cardRule: BackofficeProductPaymentRule | undefined
 }
 
 /**
  * Ciclos que o auto-checkout pode vender: os que o produto padrão precifica e que têm regra PIX,
  * do menor para o maior. Fonte única de opções e de validação do pedido, sempre lida do produto.
  */
-function planSelfCheckoutCycles(product: BackofficeProductWithPaymentRules): SelfCheckoutCyclePlan[] {
+function planSelfCheckoutCycles(
+  product: BackofficeProductWithPaymentRules,
+  addOns: SelfCheckoutAddOns = { user: null, team: null },
+  extras: SelfCheckoutExtras = { extraUsers: 0, extraTeams: 0 }
+): SelfCheckoutCyclePlan[] {
   const cycles = (Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]).sort(
     (a, b) => BACKOFFICE_ADHESION_CYCLE_MONTHS[a] - BACKOFFICE_ADHESION_CYCLE_MONTHS[b]
   )
@@ -298,35 +342,115 @@ function planSelfCheckoutCycles(product: BackofficeProductWithPaymentRules): Sel
     )
     const baseMonthlyPrice = resolveProductPriceForCycleOrNull(product, cycle)
     if (!hasPixRule || baseMonthlyPrice == null) return []
+    // O plano anual tem usuários ilimitados: não vende usuário adicional (sem preço, sem cobrança).
+    const extraUserMonthlyPrice =
+      addOns.user && cycle !== "annual" ? resolveProductPriceForCycleOrNull(addOns.user, cycle) : null
+    const extraTeamMonthlyPrice = addOns.team ? resolveProductPriceForCycleOrNull(addOns.team, cycle) : null
+    // O plano é precificado sem extras; os adicionais entram depois como valor único do período.
     const pricing = calculateBackofficeAdhesionPricing(
       { cycle, extraTeams: 0, extraUsers: 0 },
       { baseMonthlyPrice, extraTeamPrice: 0, extraUserPrice: 0 },
       product.paymentRules
     )
     if (!(pricing.pixTotalAmount > 0)) return []
-    return [{ cycle, months: BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1, pricing }]
+    const cardRule = product.paymentRules.find(
+      (rule) => rule.billingCycle === cycle && rule.paymentMethod === "CREDIT_CARD"
+    )
+    const months = BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1
+    // A regra de cartão do produto manda; sem ela o cartão tem o valor do PIX e parcela até o nº de meses do ciclo.
+    const cardPricing: BackofficeAdhesionPricing =
+      cardRule != null && pricing.creditCardTotalAmount > 0
+        ? pricing
+        : {
+            ...pricing,
+            creditCardMonthlyTotalAmount: pricing.pixMonthlyTotalAmount,
+            creditCardTotalAmount: pricing.pixTotalAmount,
+            maxCardInstallments: months,
+          }
+    // Total do plano (sem extras) + quantidade x preço do add-on, igual em PIX e cartão (sem acréscimo de cartão).
+    const usersTotal = roundCurrency(extras.extraUsers * (extraUserMonthlyPrice ?? 0))
+    const teamsTotal = roundCurrency(extras.extraTeams * (extraTeamMonthlyPrice ?? 0))
+    const extrasTotalAmount = roundCurrency(usersTotal + teamsTotal)
+    const pixTotalAmount = roundCurrency(cardPricing.pixTotalAmount + extrasTotalAmount)
+    const creditCardTotalAmount = roundCurrency(cardPricing.creditCardTotalAmount + extrasTotalAmount)
+    const withExtras: BackofficeAdhesionPricing = {
+      ...cardPricing,
+      monthlyExtraUsersAmount: roundCurrency(usersTotal / months),
+      monthlyExtraTeamsAmount: roundCurrency(teamsTotal / months),
+      pixTotalAmount,
+      pixMonthlyTotalAmount: roundCurrency(pixTotalAmount / months),
+      creditCardTotalAmount,
+      creditCardMonthlyTotalAmount: roundCurrency(creditCardTotalAmount / months),
+      totalAmount: creditCardTotalAmount,
+      monthlyTotalAmount: roundCurrency(creditCardTotalAmount / months),
+    }
+    return [
+      {
+        cycle,
+        months,
+        pricing: withExtras,
+        cardRule,
+        extraUserMonthlyPrice,
+        extraTeamMonthlyPrice,
+        extraUsers: extras.extraUsers,
+        extraTeams: extras.extraTeams,
+        extrasTotalAmount,
+      },
+    ]
   })
 }
 
+/**
+ * Campos comerciais do pedido. O desconto do cupom entra aqui nos totais gravados E fica registrado
+ * (tipo e valor) na adesão: `mapPublicAdhesion` recalcula os totais pelas regras do produto e
+ * reaplica o mesmo desconto, que é o valor que os providers realmente cobram.
+ */
 function buildSelfCheckoutCommercialFields(
   productId: string,
   plan: SelfCheckoutCyclePlan,
-  hasUnlimitedUsers: boolean
+  hasUnlimitedUsers: boolean,
+  billingType: "PIX" | "CREDIT_CARD",
+  coupon: ValidatedBackofficeCoupon | null
 ): SelfCheckoutCommercialFields {
   const { pricing } = plan
+  const isCard = billingType === "CREDIT_CARD"
+  const baseTotal = isCard ? pricing.creditCardTotalAmount : pricing.pixTotalAmount
+  const rule = coupon?.rule ?? null
+  const total = applyCouponDiscount(rule, baseTotal)
+  const discountAmount = roundCurrency(baseTotal - total)
+
+  const couponFields = coupon
+    ? {
+        couponId: coupon.id,
+        couponCode: coupon.code,
+        couponDiscountType: coupon.rule.type,
+        couponDiscountValue: coupon.rule.value,
+        couponDiscountAmount: discountAmount,
+      }
+    : {}
+
+  // PIX e cartão são cobrados pelo Abacate (cartão transparente): pagamento único, ledger vazio. O número
+  // de parcelas do cartão é escolhido na página de pagamento (até `maxCardInstallments`), sem parcelas
+  // pendentes do Asaas — assim o cliente ainda pode trocar entre PIX e cartão na /adesao.
+  const installmentSchedule = [total]
+  const installmentLedger: never[] = []
+
   return {
     productId,
     cycle: plan.cycle,
-    billingType: "PIX",
+    billingType,
+    extraTeams: plan.extraTeams,
+    extraUsers: plan.extraUsers,
+    extrasTotalAmount: plan.extrasTotalAmount,
     hasUnlimitedUsers,
     monthlyBaseAmount: pricing.monthlyBaseAmount,
     monthlyExtraTeamsAmount: pricing.monthlyExtraTeamsAmount,
     monthlyExtraUsersAmount: pricing.monthlyExtraUsersAmount,
-    monthlyTotalAmount: pricing.pixMonthlyTotalAmount,
-    totalAmount: pricing.pixTotalAmount,
-    // Pagamento único à vista; o ledger fica vazio para a adesão seguir no provider PIX do Abacate.
-    installmentSchedule: [pricing.pixTotalAmount],
-    installmentLedger: [],
+    monthlyTotalAmount: roundCurrency(total / plan.months),
+    totalAmount: total,
+    installmentSchedule,
+    installmentLedger,
+    ...couponFields,
   }
 }
 
@@ -364,16 +488,33 @@ function resolvePresetBillingType(
   return billingType === "CREDIT_CARD" && cardOffered ? "CREDIT_CARD" : "PIX"
 }
 
+/** Regra do cupom registrada na adesão no pedido; `null` quando a adesão não usou cupom. */
+function readAdhesionCouponRule(adhesion: {
+  couponDiscountType?: string | null
+  couponDiscountValue?: { toString(): string } | number | null
+}): CouponDiscountRule | null {
+  const type = adhesion.couponDiscountType
+  if ((type !== "percent" && type !== "fixed") || adhesion.couponDiscountValue == null) return null
+  const value = decimalToNumber(adhesion.couponDiscountValue)
+  return value > 0 ? { type, value } : null
+}
+
 function mapPublicAdhesion(
   adhesion: BackofficeAdhesionWithRelations,
   paymentRules?: BackofficeProductPaymentRule[],
-  context: { availableBillingTypes: BillingType[] } = { availableBillingTypes: ["PIX"] }
+  context: { availableBillingTypes: BillingType[]; cardPublicKey?: string | null } = {
+    availableBillingTypes: ["PIX"],
+  }
 ): BackofficeAdhesionPublicDTO {
   const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
   const monthlyExtras = roundCurrency(
     decimalToNumber(adhesion.monthlyExtraTeamsAmount) +
     decimalToNumber(adhesion.monthlyExtraUsersAmount)
   )
+  // Auto-checkout: os adicionais são um valor único do período (centavos exatos); o cadastro
+  // administrativo deixa o campo nulo e segue com extras mensais x meses.
+  const fixedExtrasTotal =
+    adhesion.extrasTotalAmount == null ? null : roundCurrency(decimalToNumber(adhesion.extrasTotalAmount))
 
   let pixMonthlyTotalAmount = decimalToNumber(adhesion.monthlyTotalAmount)
   let pixTotalAmount = decimalToNumber(adhesion.totalAmount)
@@ -382,29 +523,45 @@ function mapPublicAdhesion(
   let maxCardInstallments = cycleMonths
   let installmentSplitMode: "EQUAL" | "CUSTOM" | null = null
   let productInstallmentSchedule: number[] = []
+  const couponRule = readAdhesionCouponRule(adhesion)
 
   if (paymentRules && paymentRules.length > 0) {
     const pixRule = paymentRules.find(
       (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "PIX"
     )
     if (pixRule) {
-      pixMonthlyTotalAmount = roundCurrency(Number(pixRule.price.toString()) + monthlyExtras)
-      pixTotalAmount = roundCurrency(pixMonthlyTotalAmount * cycleMonths)
+      const pixPlanMonthly = roundCurrency(Number(pixRule.price.toString()))
+      pixMonthlyTotalAmount = roundCurrency(pixPlanMonthly + (fixedExtrasTotal == null ? monthlyExtras : 0))
+      pixTotalAmount =
+        fixedExtrasTotal == null
+          ? roundCurrency(pixMonthlyTotalAmount * cycleMonths)
+          : roundCurrency(pixPlanMonthly * cycleMonths + fixedExtrasTotal)
+      pixTotalAmount = applyCouponDiscount(couponRule, pixTotalAmount)
+      pixMonthlyTotalAmount = roundCurrency(pixTotalAmount / cycleMonths)
     }
 
     const cardRule = paymentRules.find(
       (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "CREDIT_CARD"
     )
     if (cardRule) {
+      const cardPlanMonthly = resolveCardMonthlyPriceFromRule(cardRule, adhesion.cycle)
       creditCardMonthlyTotalAmount = roundCurrency(
-        resolveCardMonthlyPriceFromRule(cardRule, adhesion.cycle) + monthlyExtras
+        cardPlanMonthly + (fixedExtrasTotal == null ? monthlyExtras : 0)
       )
-      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      creditCardTotalAmount =
+        fixedExtrasTotal == null
+          ? roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+          : roundCurrency(cardPlanMonthly * cycleMonths + fixedExtrasTotal)
+      creditCardTotalAmount = applyCouponDiscount(couponRule, creditCardTotalAmount)
+      creditCardMonthlyTotalAmount = roundCurrency(creditCardTotalAmount / cycleMonths)
       maxCardInstallments = cardRule.maxInstallments
       installmentSplitMode = (cardRule.installmentSplitMode as "EQUAL" | "CUSTOM") ?? "EQUAL"
       productInstallmentSchedule =
         installmentSplitMode === "CUSTOM" && Array.isArray(cardRule.installmentSchedule)
-          ? (cardRule.installmentSchedule as number[]).map((value) => Number(value))
+          ? scaleInstallmentScheduleToTotal(
+              (cardRule.installmentSchedule as number[]).map((value) => Number(value)),
+              creditCardTotalAmount
+            )
           : []
     }
   }
@@ -473,6 +630,10 @@ function mapPublicAdhesion(
     installmentSchedule,
     remainingBalance,
     chargeAmount,
+    cardPublicKey: context.cardPublicKey ?? null,
+    extrasTotalAmount: fixedExtrasTotal,
+    isSelfCheckout: fixedExtrasTotal != null,
+    companyName: adhesion.lead?.qualificationLeadOrganization?.trim() || null,
     availableBillingTypes: context.availableBillingTypes,
     pixProvider: resolvePixProvider(adhesion),
     createdAt: adhesion.createdAt.toISOString(),
@@ -558,7 +719,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository(),
     private readonly sponsorAuthorizationRepo: IBackofficeSponsorAuthorizationRepository = new BackofficeSponsorAuthorizationRepository(),
     private readonly backofficeUserRepo: IBackofficeUserRepository = new BackofficeUserRepository(),
-    private readonly pixPayments: IBackofficeAdhesionPixPaymentService = createBackofficeAdhesionPixPaymentService()
+    private readonly pixPayments: IBackofficeAdhesionPixPaymentService = createBackofficeAdhesionPixPaymentService(),
+    private readonly couponService: IBackofficeCouponService = new BackofficeCouponService()
   ) {}
 
   private async resolveAssignedByProfileId(
@@ -646,27 +808,112 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   async getSelfCheckoutOptions(): Promise<SelfCheckoutOptionsDTO> {
     const product = await this.findActiveDefaultProduct(CRM_PRODUCT_SLUG)
     if (!product) {
-      return { product: { name: SELF_CHECKOUT_FALLBACK_PRODUCT_NAME, description: null }, cycles: [] }
+      return {
+        product: { name: SELF_CHECKOUT_FALLBACK_PRODUCT_NAME, description: null },
+        cycles: [],
+        couponsEnabled: true,
+        cardCheckout: null,
+      }
     }
 
+    const cardCheckout = await this.resolveCardCheckout()
+    const cardOffered = cardCheckout !== null
     return {
       product: { name: product.name, description: product.description ?? null },
-      cycles: planSelfCheckoutCycles(product).map(({ cycle, months, pricing }) => ({
+      cycles: planSelfCheckoutCycles(product, await this.loadSelfCheckoutAddOns()).map(
+        ({ cycle, months, pricing, extraUserMonthlyPrice, extraTeamMonthlyPrice }) => ({
         cycle,
         label: BACKOFFICE_ADHESION_CYCLE_LABELS[cycle] ?? cycle,
         months,
         pixTotal: pricing.pixTotalAmount,
         monthlyEquivalent: roundCurrency(pricing.pixTotalAmount / months),
+        ...(cardOffered
+          ? {
+              creditCardTotal: pricing.creditCardTotalAmount,
+              creditCardMonthlyEquivalent: roundCurrency(pricing.creditCardTotalAmount / months),
+              maxInstallments: Math.max(1, Math.trunc(pricing.maxCardInstallments || 1)),
+            }
+          : {}),
+        ...(extraUserMonthlyPrice != null ? { extraUserMonthlyPrice } : {}),
+        ...(extraTeamMonthlyPrice != null ? { extraTeamMonthlyPrice } : {}),
       })),
+      couponsEnabled: true,
+      cardCheckout,
     }
   }
 
-  async createSelfCheckout(input: SelfCheckoutRequest): Promise<SelfCheckoutResponse> {
+  /** Cartão do Abacate pronto para uso: chave pública presente, cartão ligado e sem kill switch. */
+  private async resolveCardCheckout(): Promise<{ provider: "ABACATE_PAY"; publicKey: string } | null> {
+    const availability = await resolveCardAvailability()
+    const publicKey = availability.card ? readConfiguredAbacatePublicKey() : null
+    return publicKey ? { provider: "ABACATE_PAY", publicKey } : null
+  }
+
+  private async loadSelfCheckoutAddOns(): Promise<SelfCheckoutAddOns> {
+    const [user, team] = await Promise.all([
+      this.productRepo.findDefaultByFeatureSlug(EXTRA_USER_PRODUCT_SLUG),
+      this.productRepo.findDefaultByFeatureSlug(EXTRA_TEAM_PRODUCT_SLUG),
+    ])
+    return { user: user?.isActive ? user : null, team: team?.isActive ? team : null }
+  }
+
+  /** Simula o cupom para o ciclo e a forma de pagamento; o valor vem sempre do produto no banco. */
+  async quoteSelfCheckoutCoupon(input: SelfCheckoutCouponQuoteRequest): Promise<SelfCheckoutCouponQuote> {
     const product = await this.findActiveDefaultProduct(CRM_PRODUCT_SLUG)
     const plan = product ? planSelfCheckoutCycles(product).find((item) => item.cycle === input.cycle) : undefined
     if (!product || !plan) {
       throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Este plano não está disponível no momento.")
     }
+    const billingType = await this.resolveSelfCheckoutBillingType(plan, input.billingType)
+    const coupon = await this.couponService.validate(input.couponCode)
+    return this.buildCouponQuote(coupon, this.selfCheckoutBaseTotal(plan, billingType))
+  }
+
+  private selfCheckoutBaseTotal(plan: SelfCheckoutCyclePlan, billingType: "PIX" | "CREDIT_CARD"): number {
+    return billingType === "CREDIT_CARD" ? plan.pricing.creditCardTotalAmount : plan.pricing.pixTotalAmount
+  }
+
+  private buildCouponQuote(coupon: ValidatedBackofficeCoupon, baseTotal: number): SelfCheckoutCouponQuote {
+    const discountAmount = computeCouponDiscountAmount(coupon.rule, baseTotal)
+    if (!(discountAmount > 0)) {
+      throw new SelfCheckoutError("COUPON_INVALID", "Cupom não se aplica a este plano.")
+    }
+    return {
+      code: coupon.code,
+      label: describeCouponDiscount(coupon.rule),
+      discountAmount,
+      totalAfterDiscount: roundCurrency(baseTotal - discountAmount),
+    }
+  }
+
+  /** Cartão só vale quando o cartão está ligado; senão o pedido é recusado. */
+  private async resolveSelfCheckoutBillingType(
+    plan: SelfCheckoutCyclePlan,
+    requested: "PIX" | "CREDIT_CARD" | undefined
+  ): Promise<"PIX" | "CREDIT_CARD"> {
+    if (requested !== "CREDIT_CARD") return "PIX"
+    if (!(await this.resolveCardCheckout())) {
+      throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Cartão de crédito indisponível para este plano.")
+    }
+    return "CREDIT_CARD"
+  }
+
+  async createSelfCheckout(input: SelfCheckoutRequest): Promise<SelfCheckoutResponse> {
+    const product = await this.findActiveDefaultProduct(CRM_PRODUCT_SLUG)
+    const extras: SelfCheckoutExtras = { extraUsers: input.extraUsers ?? 0, extraTeams: input.extraTeams ?? 0 }
+    const addOns = extras.extraUsers > 0 || extras.extraTeams > 0 ? await this.loadSelfCheckoutAddOns() : undefined
+    const plan = product ? planSelfCheckoutCycles(product, addOns, extras).find((item) => item.cycle === input.cycle) : undefined
+    if (!product || !plan) {
+      throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Este plano não está disponível no momento.")
+    }
+    // Quantidade sem preço de add-on no ciclo nunca vira cobrança de R$ 0: erro claro, nada é criado.
+    if (extras.extraUsers > 0 && plan.extraUserMonthlyPrice == null) {
+      throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Usuários adicionais não estão disponíveis para este plano.")
+    }
+    if (extras.extraTeams > 0 && plan.extraTeamMonthlyPrice == null) {
+      throw new SelfCheckoutError("CYCLE_UNAVAILABLE", "Times adicionais não estão disponíveis para este plano.")
+    }
+    const billingType = await this.resolveSelfCheckoutBillingType(plan, input.billingType)
 
     const commercial = this.normalizeCommercialInput({
       leadId: "",
@@ -674,42 +921,68 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       phone: toNationalPhoneDigits(input.phone),
       email: input.email,
       cycle: plan.cycle,
-      extraTeams: 0,
-      extraUsers: 0,
-      billingType: "PIX",
+      extraTeams: extras.extraTeams,
+      extraUsers: extras.extraUsers,
+      billingType,
     })
     const email = commercial.email ?? input.email.trim().toLowerCase()
     if (await this.repo.findProfileIdByEmail(email)) {
       throw new SelfCheckoutError("ACCOUNT_EXISTS", SELF_CHECKOUT_ACCOUNT_EXISTS_MESSAGE)
     }
 
+    // O cupom é revalidado aqui: o valor e a regra nunca vêm do navegador.
+    const coupon = input.couponCode ? await this.couponService.validate(input.couponCode) : null
+    if (coupon) this.buildCouponQuote(coupon, this.selfCheckoutBaseTotal(plan, billingType))
+
     const contact = { name: commercial.fullName, phone: commercial.phone ?? "" }
     const commercialFields = buildSelfCheckoutCommercialFields(
       product.id,
       plan,
-      commercial.hasUnlimitedUsers === true
+      commercial.hasUnlimitedUsers === true,
+      billingType,
+      coupon
     )
 
-    // Cada pedido cria o próprio lead e a própria adesão. Reaproveitar lead ou adesão pelo e-mail
-    // entregaria o token (e os dados) de outra pessoa a quem só conhece o e-mail, sobrescreveria o
-    // contato dela e invalidaria o PIX pendente dela. Adesões pendentes ficam órfãs e expiram em 24h.
-    // shortcut: um lead por tentativa; se o volume pedir, deduplicar por pedido autenticado por e-mail.
-    const lead = await this.repo.createSelfCheckoutLead({ ...contact, email })
+    // Reserva atômica do uso (UPDATE condicional): respeita o limite mesmo com pedidos simultâneos.
+    // Falha ao criar o pedido devolve o uso. Adesões pendentes que expiram sem pagamento mantêm o uso.
+    if (coupon) await this.couponService.reserve(coupon)
+    try {
+      // Cada pedido cria o próprio lead e a própria adesão. Reaproveitar lead ou adesão pelo e-mail
+      // entregaria o token (e os dados) de outra pessoa a quem só conhece o e-mail, sobrescreveria o
+      // contato dela e invalidaria o PIX pendente dela. Adesões pendentes ficam órfãs e expiram em 24h.
+      // shortcut: um lead por tentativa; se o volume pedir, deduplicar por pedido autenticado por e-mail.
+      const lead = await this.repo.createSelfCheckoutLead({
+        ...contact,
+        email,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: LEGAL_DOCUMENTS_VERSION,
+        cnpj: input.cnpj,
+        companyLegalName: input.companyLegalName,
+        ...(input.companyTradeName ? { companyTradeName: input.companyTradeName } : {}),
+      })
 
-    const { token, fields } = issueAdhesionToken()
-    await this.repo.createAndMoveLeadToAdhesion({
-      ...commercialFields,
-      leadId: lead.id,
-      fullName: contact.name,
-      phone: contact.phone,
-      plan: "crm",
-      modules: CRM_MODULES,
-      extraTeams: 0,
-      extraUsers: 0,
-      ...fields,
-      createdByBackofficeUserId: null,
-    })
-    return { token }
+      const { token, fields } = issueAdhesionToken()
+      await this.repo.createAndMoveLeadToAdhesion({
+        ...commercialFields,
+        leadId: lead.id,
+        fullName: contact.name,
+        phone: contact.phone,
+        plan: "crm",
+        modules: CRM_MODULES,
+        extraTeams: plan.extraTeams,
+        extraUsers: plan.extraUsers,
+        ...fields,
+        createdByBackofficeUserId: null,
+      })
+      return { token }
+    } catch (error) {
+      if (coupon) {
+        await this.couponService.release(coupon).catch((releaseError) => {
+          console.error("[BackofficeAdhesionService][createSelfCheckout][release-coupon]", releaseError)
+        })
+      }
+      throw error
+    }
   }
 
   async create(
@@ -1336,8 +1609,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     )
     const paymentRules = crmProduct?.paymentRules ?? []
 
+    const cardCheckout = await this.resolveCardCheckout()
     return mapPublicAdhesion(adhesion, paymentRules, {
-      availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
+      availableBillingTypes: cardCheckout ? ["PIX", "CREDIT_CARD"] : ["PIX"],
+      cardPublicKey: cardCheckout?.publicKey ?? null,
     })
   }
 
@@ -1621,6 +1896,135 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return toAdhesionPixView(adhesion, payment)
   }
 
+  /**
+   * Cartão transparente do Abacate. O token da URL define a adesão e o valor: o corpo só traz o token
+   * do cartão, as parcelas e o pagador. Aprovado na hora ou depois (webhook `transparent.completed`),
+   * o fluxo de ativação da conta é o mesmo do PIX do Abacate (`markPaidFromProvider`).
+   */
+  async createCardCheckout(
+    token: string,
+    input: BackofficeAdhesionCardCheckoutInput,
+    idempotencyKey: string
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError> {
+    const validation = await validateBackofficeAdhesionToken(token)
+    if (validation.status !== "valid") return tokenError(validation.status)
+    if (!validation.adhesionId) return tokenError("not_found")
+
+    let adhesion = await this.repo.findById(validation.adhesionId)
+    if (!adhesion) return tokenError("not_found")
+
+    if (isAdhesionAccountActivated(adhesion)) {
+      throw new Error(
+        "Assinatura já ativada. Use o link de fatura das parcelas pendentes para pagamento."
+      )
+    }
+    const cardCheckout = await this.resolveCardCheckout()
+    if (!cardCheckout) throw new PaymentMethodUnavailableError()
+    if (resolvePixProvider(adhesion) !== "ABACATE_PAY") {
+      throw new Error(ASAAS_ADHESION_PIX_MISMATCH_MESSAGE)
+    }
+
+    const payer = this.normalizePixPayer(input.payer)
+    const existingProfileId = await this.repo.findProfileIdByEmail(payer.email)
+    if (existingProfileId) {
+      throw new Error("Já existe uma conta cadastrada com este e-mail")
+    }
+
+    const crmProduct = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, adhesion.productId)
+    const publicDetails = mapPublicAdhesion(adhesion, crmProduct?.paymentRules ?? [], {
+      availableBillingTypes: ["PIX", "CREDIT_CARD"],
+      cardPublicKey: cardCheckout.publicKey,
+    })
+    // O valor vem sempre da adesão (total de cartão com cupom e adicionais), nunca do navegador.
+    const amountCents = Math.round(resolveCheckoutChargeAmount(publicDetails, "CREDIT_CARD") * 100)
+    const installments = input.installments
+    if (
+      !Number.isInteger(installments) ||
+      installments < 1 ||
+      installments > Math.max(1, publicDetails.maxCardInstallments)
+    ) {
+      throw new Error(CARD_INVALID_INSTALLMENTS_PUBLIC_MESSAGE)
+    }
+
+    const hasLegacyCharge =
+      Boolean(adhesion.asaasPaymentId) ||
+      readInstallmentLedger(adhesion.installmentLedger).some((entry) => entry.asaasPaymentId)
+    if (hasLegacyCharge) {
+      adhesion = await this.cancelExistingCheckoutPayments(adhesion)
+    }
+
+    const quoteSnapshot = {
+      adhesionId: adhesion.id,
+      productId: adhesion.productId,
+      cycle: adhesion.cycle,
+      billingType: "CREDIT_CARD",
+      provider: "ABACATE_PAY",
+      amount: amountCents / 100,
+      installments,
+      createdAt: new Date().toISOString(),
+    }
+    adhesion = await this.repo.updateCheckoutData(adhesion.id, {
+      billingType: "CREDIT_CARD",
+      quoteSnapshot,
+      quoteHash: hashBillingQuote(quoteSnapshot),
+      quoteCreatedAt: new Date(),
+    })
+
+    const { payment, providerStatus } = await this.pixPayments.createCardPayment({
+      adhesionId: adhesion.id,
+      amountCents,
+      installments,
+      cardToken: input.cardToken,
+      payer,
+      idempotencyKey,
+    })
+    if (providerStatus === "CONFIRMED") {
+      adhesion = await this.settleApprovedCardPayment(adhesion, payment)
+    }
+    return toAdhesionPixView(adhesion, payment)
+  }
+
+  /**
+   * Cartão aprovado: ativa a adesão pelo mesmo caminho do webhook. Falha aqui não pode perder a venda
+   * (o cartão já foi cobrado): o webhook `transparent.completed` e o cron de reparo repetem a ativação.
+   */
+  private async settleApprovedCardPayment(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment
+  ): Promise<BackofficeAdhesionWithRelations> {
+    if (!payment.providerExternalId) return adhesion
+    try {
+      await this.markPaidFromProvider(adhesion.id, {
+        paidAt: new Date(),
+        providerPaymentId: payment.providerExternalId,
+        adhesionPaymentId: payment.id,
+        amountInCents: payment.amountCents,
+      })
+    } catch (error) {
+      console.error("[BackofficeAdhesionService][settleApprovedCardPayment]", error)
+      Sentry.captureException(error, { tags: { route: "BackofficeAdhesionService", phase: "card-settle" } })
+    }
+    return (await this.repo.findById(adhesion.id)) ?? adhesion
+  }
+
+  /** Polling com sync: o cartão pendente é consultado no provider (`/v2/transparents/get`). */
+  private async syncPendingCardPayment(
+    adhesion: BackofficeAdhesionWithRelations,
+    payment: BackofficeAdhesionPayment
+  ): Promise<{ adhesion: BackofficeAdhesionWithRelations; payment: BackofficeAdhesionPayment }> {
+    if (payment.status !== "pending" || !isCardProviderPayment(payment) || !payment.providerExternalId) {
+      return { adhesion, payment }
+    }
+    const remote = await this.pixPayments.getCardProviderStatus(payment).catch((error) => {
+      console.error("[BackofficeAdhesionService][syncPendingCardPayment]", error instanceof Error ? error.name : "erro")
+      return null
+    })
+    const amountMatches = remote?.amountInCents == null || remote.amountInCents === payment.amountCents
+    if (remote?.status !== "CONFIRMED" || !amountMatches) return { adhesion, payment }
+    const settled = await this.settleApprovedCardPayment(adhesion, payment)
+    return { adhesion: settled, payment: (await this.pixPayments.findById(payment.id)) ?? payment }
+  }
+
   async getPaymentStatus(
     token: string,
     options?: { sync?: boolean }
@@ -1646,7 +2050,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const providerPayment = await this.findCurrentProviderPayment(adhesion)
     if (providerPayment) {
-      // Fonte de verdade é o webhook (e o cron de reparo): o polling só lê o banco.
+      // Fonte de verdade é o webhook (e o cron de reparo): o polling só lê o banco; só o cartão
+      // pendente, a pedido (`sync`), consulta o provider.
+      if (options?.sync) {
+        const synced = await this.syncPendingCardPayment(adhesion, providerPayment)
+        return toAdhesionPixView(synced.adhesion, synced.payment)
+      }
       return toAdhesionPixView(adhesion, providerPayment)
     }
 
@@ -2442,6 +2851,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
 
       const createdProfile = await this.repo.createPaidManagerProfile({
+        teamName: adhesion.lead?.qualificationLeadOrganization ?? null,
         supabaseId,
         fullName: adhesion.fullName,
         phone: adhesion.phone,

@@ -3,12 +3,16 @@ import { backofficeShortLinkService } from "@/app/api/services/backoffice/backof
 import { Output } from "@/lib/output"
 import {
   ASAAS_ADHESION_PIX_MISMATCH_MESSAGE,
+  CARD_INVALID_INSTALLMENTS_PUBLIC_MESSAGE,
   AsaasPaymentCancellationError,
   backofficeAdhesionService,
   BackofficeAdhesionService,
   PIX_PENDING_SWITCH_BLOCKED_MESSAGE,
 } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionService"
 import {
+  CARD_PROCESSING_MESSAGE,
+  CARD_REFUSED_MESSAGE,
+  CARD_UNCONFIRMED_MESSAGE,
   INCOMPLETE_PAYER_MESSAGE,
   INVALID_AMOUNT_MESSAGE,
   PAYER_MISMATCH_MESSAGE,
@@ -16,6 +20,7 @@ import {
 } from "@/app/api/services/backofficeAdhesion/BackofficeAdhesionPixPaymentService"
 import { PaymentMethodUnavailableError } from "@/lib/payment-methods/availability"
 import type {
+  BackofficeAdhesionCardCheckoutInput,
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionPaymentWebhookInput,
@@ -141,6 +146,25 @@ const KNOWN_SAFE_PIX_CHECKOUT_ERROR_MESSAGES = new Set([
   INCOMPLETE_PAYER_MESSAGE,
   INVALID_AMOUNT_MESSAGE,
   PAYER_MISMATCH_MESSAGE,
+])
+
+/** Copy do cartão público que pode chegar ao cliente; qualquer outra falha vira a recusa genérica. */
+const KNOWN_SAFE_CARD_CHECKOUT_ERROR_MESSAGES = new Set([
+  CARD_REFUSED_MESSAGE,
+  CARD_UNCONFIRMED_MESSAGE,
+  CARD_PROCESSING_MESSAGE,
+  CARD_INVALID_INSTALLMENTS_PUBLIC_MESSAGE,
+  "Nome completo inválido",
+  "E-mail inválido",
+  "Telefone inválido",
+  "CPF/CNPJ inválido",
+  "Já existe uma conta cadastrada com este e-mail",
+  "Assinatura já ativada. Use o link de fatura das parcelas pendentes para pagamento.",
+  PIX_PENDING_SWITCH_BLOCKED_MESSAGE,
+  ASAAS_ADHESION_PIX_MISMATCH_MESSAGE,
+  INCOMPLETE_PAYER_MESSAGE,
+  INVALID_AMOUNT_MESSAGE,
+  "Já existe um PIX aguardando pagamento. Pague-o ou aguarde o vencimento para trocar a forma de pagamento.",
 ])
 
 function isKnownSafePixCheckoutError(error: unknown): boolean {
@@ -420,6 +444,31 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
         [isKnownSafePixCheckoutError(error) ? (error as Error).message : PIX_UNAVAILABLE_MESSAGE],
         null
       )
+    }
+  }
+
+  async createCardCheckout(
+    token: string,
+    input: BackofficeAdhesionCardCheckoutInput,
+    idempotencyKey: string
+  ): Promise<Output> {
+    try {
+      if (!idempotencyKey.trim()) {
+        return new Output(false, [], ["Idempotency key é obrigatória"], null)
+      }
+      const result = await this.service.createCardCheckout(token, input, idempotencyKey.trim())
+      if ("tokenStatus" in result) {
+        return new Output(false, [], [`Token inválido: ${result.tokenStatus}`], result)
+      }
+      return new Output(true, ["Pagamento no cartão registrado"], [], result)
+    } catch (error) {
+      if (error instanceof PaymentMethodUnavailableError) {
+        return new Output(false, [], [error.message], null)
+      }
+      const safe = error instanceof Error && KNOWN_SAFE_CARD_CHECKOUT_ERROR_MESSAGES.has(error.message)
+      // Sem detalhe do provider nem dados do cartão no log: só o nome do erro.
+      console.error("[BackofficeAdhesionUseCase][createCardCheckout]", error instanceof Error ? error.name : "erro")
+      return new Output(false, [], [safe ? (error as Error).message : CARD_REFUSED_MESSAGE], null)
     }
   }
 

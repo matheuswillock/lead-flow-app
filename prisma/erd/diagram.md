@@ -1821,6 +1821,13 @@ partially_filled partially_filled
 completed completed
         }
     
+
+
+        backoffice_coupon_discount_type {
+            percent percent
+fixed fixed
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -2239,6 +2246,11 @@ completed completed
     Json additional_teams_data 
     Json installmentSchedule 
     Json installmentLedger 
+    String couponCode "❓"
+    BackofficeCouponDiscountType couponDiscountType "❓"
+    Decimal couponDiscountValue "❓"
+    Decimal couponDiscountAmount "❓"
+    Decimal extrasTotalAmount "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -5160,6 +5172,21 @@ completed completed
     DateTime updatedAt 
     }
   
+
+  "backoffice_coupons" {
+    String id "🗝️"
+    String code 
+    BackofficeCouponDiscountType discountType 
+    Decimal discountValue 
+    Boolean isActive 
+    DateTime validFrom "❓"
+    DateTime validUntil "❓"
+    Int maxUses "❓"
+    Int usesCount 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|| "AsaasAccount" : "enum:asaasCustomerAccount"
@@ -5230,6 +5257,7 @@ completed completed
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
     "backoffice_adhesions" |o--|| "AsaasAccount" : "enum:asaasAccount"
+    "backoffice_adhesions" |o--|o "BackofficeCouponDiscountType" : "enum:couponDiscountType"
     "backoffice_adhesions" |o--|| backoffice_leads : "lead"
     "backoffice_adhesions" }o--|o backoffice_products : "product"
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
@@ -5237,6 +5265,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
+    "backoffice_adhesions" }o--|o backoffice_coupons : "coupon"
     "backoffice_adhesion_payments" }o--|| backoffice_adhesions : "adhesion"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
@@ -5795,4 +5824,5 @@ completed completed
     "corretor_studio_lead_document_requests" }o--|| corretor_studio_profiles : "createdBy"
     "corretor_studio_lead_document_request_items" }o--|| corretor_studio_lead_document_requests : "request"
     "corretor_studio_lead_document_request_items" }o--|o corretor_studio_lead_attachments : "attachment"
+    "backoffice_coupons" |o--|| "BackofficeCouponDiscountType" : "enum:discountType"
 ```

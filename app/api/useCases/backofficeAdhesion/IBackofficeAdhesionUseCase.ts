@@ -1,6 +1,7 @@
 import type { BackofficeAdhesionStatus } from "@prisma/client"
 import type { Output } from "@/lib/output"
 import type {
+  BackofficeAdhesionCardCheckoutInput,
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionPaymentWebhookInput,
@@ -31,6 +32,7 @@ export interface IBackofficeAdhesionUseCase {
     input: BackofficeAdhesionPixCheckoutInput,
     idempotencyKey: string
   ): Promise<Output>
+  createCardCheckout(token: string, input: BackofficeAdhesionCardCheckoutInput, idempotencyKey: string): Promise<Output>
   getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output>
   processPaymentWebhook(
     event: string,

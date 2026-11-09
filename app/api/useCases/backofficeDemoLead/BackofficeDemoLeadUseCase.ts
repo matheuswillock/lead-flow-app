@@ -16,7 +16,10 @@ const demoRequestRecipients = [
 
 function buildDemoLeadNotes(input: CreateDemoLeadInput) {
   return [
-    "Solicitação de demonstração via landing page.",
+    input.question
+      ? "Dúvida registrada via landing page."
+      : "Solicitação de demonstração via landing page.",
+    input.question ? `Dúvida: ${input.question}` : null,
     input.teamSize ? `Tamanho da equipe: ${input.teamSize}` : null,
     input.preferredContactTime ? `Melhor horário para contato: ${input.preferredContactTime}` : null,
   ]
@@ -29,7 +32,10 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
 
   async create(input: CreateDemoLeadInput): Promise<Output> {
     try {
-      const sourceExternalId = `demo:${input.email.trim().toLowerCase()}`
+      const normalizedEmail = input.email.trim().toLowerCase()
+      const sourceExternalId = input.question
+        ? `question:${normalizedEmail}:${randomUUID()}`
+        : `demo:${normalizedEmail}`
       const existing = await this.leadRepository.findBySourceExternalId(sourceExternalId)
       if (existing) {
         await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
@@ -59,7 +65,7 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
 
       await backofficeLeadSlackNotificationService.sendLeadCreatedEventBestEffort({
         lead,
-        title: "Nova solicitação de demonstração",
+        title: input.question ? "Nova dúvida registrada na landing page" : "Nova solicitação de demonstração",
       })
 
       await this.sendDemoRequestEmailBestEffort(input, lead.id, false)
@@ -106,7 +112,10 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
     }).format(new Date())
     const duplicateLabel = isDuplicate ? "Lead já existente" : "Novo lead criado"
 
-    const subject = `Novo pedido de demonstração: ${input.name}`
+    const safeQuestion = escapeHtml(input.question || "")
+    const subject = input.question
+      ? `Nova dúvida na landing page: ${input.name}`
+      : `Novo pedido de demonstração: ${input.name}`
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -140,6 +149,14 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">WhatsApp</td>
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${safePhone}</td>
                         </tr>
+                        ${
+                          input.question
+                            ? `<tr>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">Dúvida</td>
+                          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;white-space:pre-wrap;">${safeQuestion}</td>
+                        </tr>`
+                            : ""
+                        }
                         <tr>
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:13px;">Tamanho da equipe</td>
                           <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;text-align:right;">${safeTeamSize}</td>
@@ -168,8 +185,9 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
     `
 
     const text = [
-      "Novo pedido de demonstração",
+      input.question ? "Nova dúvida registrada na landing page" : "Novo pedido de demonstração",
       `Data: ${submittedAt}`,
+      input.question ? `Dúvida: ${input.question}` : null,
       `Nome: ${input.name}`,
       `E-mail: ${input.email}`,
       `WhatsApp: ${input.phone}`,
@@ -177,7 +195,9 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
       `Melhor horário: ${input.preferredContactTime || "Não informado"}`,
       `Status: ${duplicateLabel}`,
       `Lead no backoffice: ${leadId}`,
-    ].join("\n")
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n")
 
     return getEmailService().sendEmailUntracked({
       to: demoRequestRecipients,

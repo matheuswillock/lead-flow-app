@@ -40,6 +40,9 @@ export interface IPublicFormsService {
     },
   ): Promise<unknown>
   getPublic(publicId: string): Promise<unknown>
+  getFormController(
+    teamId: string,
+  ): Promise<{ fullName: string | null; cpfCnpj: string | null; email: string } | null>
   getAvailabilityContext(publicId: string): Promise<unknown>
   recordMetric(
     publicId: string,

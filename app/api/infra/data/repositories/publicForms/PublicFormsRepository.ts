@@ -588,6 +588,16 @@ export class PublicFormsRepository implements IPublicFormsRepository {
     return row?.teamId ?? null
   }
 
+  async findFormController(
+    teamId: string,
+  ): Promise<{ fullName: string | null; cpfCnpj: string | null; email: string } | null> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { master: { select: { fullName: true, cpfCnpj: true, email: true } } },
+    })
+    return team?.master ?? null
+  }
+
   async findPublishedByPublicId(publicId: string): Promise<PublicFormPublishedSnapshot | null> {
     const form = await prisma.publicForm.findUnique({
       where: { publicId },
