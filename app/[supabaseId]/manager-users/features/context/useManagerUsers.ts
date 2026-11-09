@@ -59,8 +59,8 @@ export function useManagerUsers({
   const resolvedRole = activeRole ?? currentUserRole;
   const permissions = useMemo<UserPermissions>(() => ({
     canCreateUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
-    canEditUser: isManagerLikeRole(resolvedRole),
-    canDeleteUser: currentUserIsMaster,
+    canEditUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
+    canDeleteUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
     canManageOperators: isManagerLikeRole(resolvedRole),
   }), [currentUserCanCreateUsers, currentUserIsMaster, resolvedRole]);
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Output } from "@/lib/output"
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
+import { getTeamAccess, hasDelegatedUserCreationAccess } from "@/app/api/v1/utils/teamAccess"
 import { isManagerLikeRole } from "@/lib/roles"
 
 export type ManagerAccessContext = {
@@ -16,7 +16,11 @@ export type ManagerAccessContext = {
  */
 export async function resolveManagerAccessContext(
   request: NextRequest,
-  supabaseId: string
+  supabaseId: string,
+  options: {
+    /** Ações que mexem em usuários (ex.: reenviar acesso) exigem master ou manager com delegação. */
+    requireUserManagement?: boolean
+  } = {}
 ): Promise<{ context: ManagerAccessContext } | { response: NextResponse }> {
   const requesterId = request.headers.get("x-supabase-user-id")
   if (!requesterId) {
@@ -35,6 +39,14 @@ export async function resolveManagerAccessContext(
     return {
       response: NextResponse.json(
         new Output(false, [], ["Apenas o master ou um manager pode ver ou reenviar o acesso de usuários"], null),
+        { status: 403 }
+      ),
+    }
+  }
+  if (options.requireUserManagement && !hasDelegatedUserCreationAccess(teamAccess.access)) {
+    return {
+      response: NextResponse.json(
+        new Output(false, [], ["Apenas o master ou um manager delegado pode gerenciar os usuários da conta"], null),
         { status: 403 }
       ),
     }

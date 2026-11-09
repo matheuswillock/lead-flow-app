@@ -14,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ supabaseId: string; userId: string }> }
 ) {
   try {
-    const context = await resolveMemberAccessInput(request, params)
+    const context = await resolveMemberAccessInput(request, params, { requireUserManagement: true })
     if ("response" in context) return context.response
     const { output, status } = await teamMemberAccessEmailUseCase.sendAccessEmail(context.input)
     return NextResponse.json(output, { status })

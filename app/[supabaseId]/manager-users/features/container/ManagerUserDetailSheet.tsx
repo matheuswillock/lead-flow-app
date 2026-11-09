@@ -158,10 +158,12 @@ function ActiveUserFooter({ user, actions, onClose, onResend, isResending }: {
 }) {
   return (
     <SheetFooter className="flex-col gap-2 sm:flex-col">
-      <Button type="button" className="w-full max-lg:min-h-11" onClick={onResend} disabled={isResending}>
-        {isResending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
-        Reenviar e-mail de acesso
-      </Button>
+      {actions.canDelete ? (
+        <Button type="button" className="w-full max-lg:min-h-11" onClick={onResend} disabled={isResending}>
+          {isResending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+          Reenviar e-mail de acesso
+        </Button>
+      ) : null}
       <div className="grid grid-cols-2 gap-2">
         {user.canEdit ? (
           <Button type="button" variant="outline" className="max-lg:min-h-11" onClick={() => { onClose(); actions.onEdit(user); }}>

@@ -50,7 +50,8 @@ export function ManagerUsersContainer({
   const resolvedRole = activeRole ?? currentUserRole;
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
   const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
-  const canDeleteUser = resolvedIsMaster;
+  // Editar, remover e reenviar acesso seguem a mesma regra de criar: master ou manager com delegação.
+  const canDeleteUser = canCreateUser;
   const canManagePendingPayments = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
   const { hasAvailableUserSlot } = useBillingSlots(supabaseId, resolvedIsMaster);
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
