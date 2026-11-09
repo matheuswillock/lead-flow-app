@@ -64,16 +64,24 @@ describe("computeOrderAmounts", () => {
     expect(computeOrderAmounts(withCard, "CREDIT_CARD", none).total).toBe(1161.12)
   })
 
-  it("soma o preço único dos adicionais ao plano, igual no PIX e no cartão", () => {
+  it("soma os adicionais ao plano, igual no PIX e no cartão; usuário cobra o valor mensal vezes os meses", () => {
     const extras = { extraUsers: 2, extraTeams: 1 }
     const pix = computeOrderAmounts(withCard, "PIX", extras)
-    expect(pix.extraUsersTotal).toBe(39.8)
+    // 2 usuários x R$ 19,90 x 12 meses
+    expect(pix.extraUsersTotal).toBe(477.6)
     expect(pix.extraTeamsTotal).toBe(29.9)
-    expect(pix.extrasTotal).toBe(69.7)
-    expect(pix.total).toBe(1028.5)
+    expect(pix.extrasTotal).toBe(507.5)
+    expect(pix.total).toBe(1466.3)
 
     const card = computeOrderAmounts(withCard, "CREDIT_CARD", extras)
-    expect(card.total).toBe(1230.82)
+    expect(card.total).toBe(1668.62)
+  })
+
+  it("usuário adicional no trimestral: R$ 19,90 x 3 meses por usuário", () => {
+    const quarterly = { ...withCard, cycle: "quarterly" as const, label: "Trimestral", months: 3, pixTotal: 269.7, monthlyEquivalent: 89.9 }
+    const result = computeOrderAmounts(quarterly, "PIX", { extraUsers: 2, extraTeams: 0 })
+    expect(result.extraUsersTotal).toBe(119.4)
+    expect(result.total).toBe(389.1)
   })
 
   it("no plano anual os usuários são ilimitados: não cobra usuário adicional, só time", () => {

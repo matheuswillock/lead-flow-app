@@ -65,8 +65,8 @@ export function addMonths(date: Date, months: number): Date {
 }
 
 /**
- * Cotação da renovação para um prazo: mesmos preços do checkout (plano + adicionais com preço
- * único pelo período). O anual e o ilimitado concedido pelo time interno não cobram usuários.
+ * Cotação da renovação para um prazo: mesmos preços do checkout (plano + usuários adicionais pelo
+ * valor mensal x meses + times com preço único pelo período). O anual e o ilimitado concedido pelo time interno não cobram usuários.
  * O novo período começa no vencimento antigo, para quem paga atrasado não ganhar dias.
  */
 export function quoteRenewalCycle(
@@ -82,7 +82,8 @@ export function quoteRenewalCycle(
   const billedTeams = account.teams.slice(1)
   const extraUserPrice = option.extraUserMonthlyPrice ?? 0
   const extraTeamPrice = option.extraTeamMonthlyPrice ?? 0
-  const extraUsersTotal = roundMoney(billedUsers.length * extraUserPrice)
+  // Usuário adicional: valor mensal x meses do prazo. Time continua com valor único do período.
+  const extraUsersTotal = roundMoney(billedUsers.length * extraUserPrice * option.months)
   const extraTeamsTotal = roundMoney(billedTeams.length * extraTeamPrice)
   const extras = roundMoney(extraUsersTotal + extraTeamsTotal)
   const periodStart = account.currentDueDate ?? now

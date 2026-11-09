@@ -61,6 +61,16 @@ describe("quoteRenewalCycle", () => {
     expect(quote.cardTotal).toBe(132.6)
   })
 
+  it("usuário adicional cobra o valor mensal vezes os meses do prazo", () => {
+    const quarterly: SelfCheckoutCycleOption = { ...monthly, cycle: "quarterly", label: "Trimestral", months: 3, pixTotal: 159.9 }
+    const quote = quoteRenewalCycle(quarterly, account(), NOW)
+
+    // 2 usuários x R$ 19,90 x 3 meses; o time continua com preço único do período
+    expect(quote.extraUsersTotal).toBe(119.4)
+    expect(quote.extraTeamsTotal).toBe(29.9)
+    expect(quote.pixTotal).toBe(309.2)
+  })
+
   it("o novo período começa no vencimento antigo, não na data do pagamento", () => {
     const quote = quoteRenewalCycle(monthly, account(), NOW)
 

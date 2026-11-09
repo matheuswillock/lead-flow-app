@@ -111,7 +111,8 @@ export function applyKeptUsers(quote: BillingGraceCycleQuote, keptUserIds: Reado
   if (quote.unlimitedUsers) return quote;
   const billedUsers = quote.accountUsers.filter((user) => keptUserIds.has(user.id));
   const round = (value: number) => Math.round(value * 100) / 100;
-  const extraUsersTotal = round(billedUsers.length * quote.extraUserPrice);
+  // extraUserPrice é o valor mensal do usuário: cobra-se vezes os meses do prazo.
+  const extraUsersTotal = round(billedUsers.length * quote.extraUserPrice * quote.months);
   const difference = round(extraUsersTotal - quote.extraUsersTotal);
   return {
     ...quote,
@@ -197,7 +198,7 @@ export function BillingGraceBilledItems({ quote, keptUserIds, disabled, onToggle
             <KeepUserRow
               key={user.id}
               user={user}
-              price={quote.extraUserPrice}
+              price={Math.round(quote.extraUserPrice * quote.months * 100) / 100}
               kept={keptUserIds.has(user.id)}
               disabled={disabled}
               onToggle={(kept) => onToggleUser(user.id, kept)}
@@ -222,8 +223,9 @@ export function BillingGraceBilledItems({ quote, keptUserIds, disabled, onToggle
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Cada adicional tem preço único pelo prazo inteiro. Desmarque quem não deve continuar: a pessoa perde o
-        acesso aos times da conta quando o pagamento for confirmado.
+        Cada usuário adicional é cobrado por mês ({formatBRL(quote.extraUserPrice)}) durante os {quote.months}{" "}
+        {quote.months === 1 ? "mês" : "meses"} do prazo; os times têm preço único pelo prazo inteiro. Desmarque quem
+        não deve continuar: a pessoa perde o acesso aos times da conta quando o pagamento for confirmado.
       </p>
     </section>
   );

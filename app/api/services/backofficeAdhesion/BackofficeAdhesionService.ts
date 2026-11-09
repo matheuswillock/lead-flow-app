@@ -310,8 +310,8 @@ type SelfCheckoutCyclePlan = {
   cycle: BackofficeAdhesionBillingCycle
   months: number
   /**
-   * Preço de cada adicional no ciclo; `null` quando o ciclo não tem preço do add-on. Atenção: apesar do nome
-   * do campo da API, é um valor ÚNICO para o período contratado inteiro, não por mês.
+   * Preço de cada adicional no ciclo; `null` quando o ciclo não tem preço do add-on. Usuário adicional: é o
+   * valor MENSAL (cobra-se este valor x meses do ciclo). Time adicional: valor ÚNICO do período contratado.
    */
   extraUserMonthlyPrice: number | null
   extraTeamMonthlyPrice: number | null
@@ -368,7 +368,8 @@ function planSelfCheckoutCycles(
             maxCardInstallments: months,
           }
     // Total do plano (sem extras) + quantidade x preço do add-on, igual em PIX e cartão (sem acréscimo de cartão).
-    const usersTotal = roundCurrency(extras.extraUsers * (extraUserMonthlyPrice ?? 0))
+    // Usuário adicional: preço mensal x meses do ciclo. Time continua com valor único do período.
+    const usersTotal = roundCurrency(extras.extraUsers * (extraUserMonthlyPrice ?? 0) * months)
     const teamsTotal = roundCurrency(extras.extraTeams * (extraTeamMonthlyPrice ?? 0))
     const extrasTotalAmount = roundCurrency(usersTotal + teamsTotal)
     const pixTotalAmount = roundCurrency(cardPricing.pixTotalAmount + extrasTotalAmount)

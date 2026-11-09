@@ -66,8 +66,8 @@ export type SelfCheckoutOrderAmounts = {
 }
 
 /**
- * Valores do pedido na tela. Cada adicional tem preço único para o período contratado (o mesmo no
- * PIX e no cartão): total = valor do plano + preço dos adicionais, que pode ser parcelado como o plano.
+ * Valores do pedido na tela (os mesmos no PIX e no cartão): total = valor do plano + usuários adicionais
+ * (valor mensal x meses do ciclo) + times (preço único do período), que pode ser parcelado como o plano.
  */
 export function computeOrderAmounts(
   option: SelfCheckoutCycleOption,
@@ -81,11 +81,11 @@ export function computeOrderAmounts(
     : option.monthlyEquivalent
   const users = hasUnlimitedUsers(option) ? 0 : Math.max(0, Math.trunc(extras.extraUsers))
   const teams = Math.max(0, Math.trunc(extras.extraTeams))
-  // O preço do adicional vale pelo período contratado inteiro (não é mensal).
-  const extraUsersTotal = roundMoney(users * (option.extraUserMonthlyPrice ?? 0))
+  const months = Math.max(1, option.months)
+  // Usuário adicional: preço mensal x meses do ciclo. Time: preço único pelo período contratado.
+  const extraUsersTotal = roundMoney(users * (option.extraUserMonthlyPrice ?? 0) * months)
   const extraTeamsTotal = roundMoney(teams * (option.extraTeamMonthlyPrice ?? 0))
   const extrasTotal = roundMoney(extraUsersTotal + extraTeamsTotal)
-  const months = Math.max(1, option.months)
   const total = roundMoney(planTotal + extrasTotal)
   return {
     isCard,

@@ -558,14 +558,14 @@ describe("auto-checkout: usuários e times adicionais", () => {
     await h.service.createSelfCheckout({ ...request, extraUsers: 2, extraTeams: 1 })
 
     const created = h.repo.createAndMoveLeadToAdhesion.mock.calls[0][0] as Record<string, unknown>
-    // trimestral: 269,70 do plano + 2 x 19,90 + 1 x 29,90 (valores únicos, sem multiplicar por meses)
+    // trimestral: 269,70 do plano + 2 usuários x 19,90 x 3 meses (119,40) + 1 time x 29,90 (valor único do período)
     expect(created).toMatchObject({
       extraUsers: 2,
       extraTeams: 1,
-      extrasTotalAmount: 69.7,
-      totalAmount: 339.4,
-      monthlyTotalAmount: 113.13,
-      installmentSchedule: [339.4],
+      extrasTotalAmount: 149.3,
+      totalAmount: 419,
+      monthlyTotalAmount: 139.67,
+      installmentSchedule: [419],
       installmentLedger: [],
     })
 
@@ -574,7 +574,7 @@ describe("auto-checkout: usuários e times adicionais", () => {
       buildAdhesion({ ...created, totalAmount: String(created.totalAmount), monthlyTotalAmount: String(created.monthlyTotalAmount) }),
     )
     await h.service.createPixCheckout("tok", payer, "idem-extras")
-    expect((h.pixPayments.createPixPayment.mock.calls as unknown[][])[0][0]).toMatchObject({ amountCents: 33940 })
+    expect((h.pixPayments.createPixPayment.mock.calls as unknown[][])[0][0]).toMatchObject({ amountCents: 41900 })
   })
 
   it("cartão com regra de cartão: plano do cartão + extras como valor único; o Abacate cobra o total com extras", async () => {
@@ -583,15 +583,15 @@ describe("auto-checkout: usuários e times adicionais", () => {
     await h.service.createSelfCheckout({ ...request, billingType: "CREDIT_CARD", extraUsers: 2, extraTeams: 1 })
 
     const created = h.repo.createAndMoveLeadToAdhesion.mock.calls[0][0] as Record<string, unknown>
-    // 299,70 (cartão) + 69,70
-    expect(created).toMatchObject({ totalAmount: 369.4, installmentLedger: [], extraUsers: 2, extraTeams: 1 })
+    // 299,70 (cartão) + 149,30 (2 usuários x 19,90 x 3 meses + 1 time)
+    expect(created).toMatchObject({ totalAmount: 449, installmentLedger: [], extraUsers: 2, extraTeams: 1 })
 
     h.repo.findById.mockResolvedValue(
       buildAdhesion({ ...created, totalAmount: String(created.totalAmount), monthlyTotalAmount: String(created.monthlyTotalAmount) }),
     )
-    expect(await h.service.getPublicDetails("tok")).toMatchObject({ creditCardTotalAmount: 369.4, chargeAmount: 369.4, maxCardInstallments: 3 })
+    expect(await h.service.getPublicDetails("tok")).toMatchObject({ creditCardTotalAmount: 449, chargeAmount: 449, maxCardInstallments: 3 })
     await h.service.createCardCheckout("tok", cardInput(3), "idem-extras-card")
-    expect(h.pixPayments.createCardPayment.mock.calls[0][0]).toMatchObject({ amountCents: 36940, installments: 3 })
+    expect(h.pixPayments.createCardPayment.mock.calls[0][0]).toMatchObject({ amountCents: 44900, installments: 3 })
   })
 
   it("DTO público do auto-checkout traz extrasTotalAmount, isSelfCheckout e companyName; o administrativo traz null/false/null", async () => {
@@ -607,7 +607,7 @@ describe("auto-checkout: usuários e times adicionais", () => {
     )
 
     expect(await h.service.getPublicDetails("tok")).toMatchObject({
-      extrasTotalAmount: 69.7,
+      extrasTotalAmount: 149.3,
       isSelfCheckout: true,
       companyName: "Corretora Exemplo",
     })
@@ -661,9 +661,9 @@ describe("auto-checkout: usuários e times adicionais", () => {
 
     await h.service.createSelfCheckout({ ...request, cycle: "semiannual", billingType: "CREDIT_CARD", extraUsers: 1 })
 
-    // 480 + 19,90 = 499,90
+    // 480 + 1 usuário x 19,90 x 6 meses = 599,40
     const created = h.repo.createAndMoveLeadToAdhesion.mock.calls[0][0] as Record<string, unknown>
-    expect(created).toMatchObject({ totalAmount: 499.9, extraUsers: 1, extraTeams: 0, installmentLedger: [] })
+    expect(created).toMatchObject({ totalAmount: 599.4, extraUsers: 1, extraTeams: 0, installmentLedger: [] })
   })
 
   it("sem extras o pedido grava 0 e 0 e o total não muda", async () => {

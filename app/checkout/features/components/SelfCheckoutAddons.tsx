@@ -78,7 +78,9 @@ function AddonCard({
           <span className="text-sm text-muted-foreground">{description}</span>
           <span className="mt-1 text-sm font-semibold text-foreground tabular-nums">
             {formatBRL(monthlyPrice)}
-            <span className="font-normal text-muted-foreground"> por {unitLabel} no período</span>
+            <span className="font-normal text-muted-foreground">
+              {kind === "extraUsers" ? ` por ${unitLabel} por mês` : ` por ${unitLabel} no período`}
+            </span>
           </span>
         </div>
       </div>
@@ -212,8 +214,8 @@ export function SelfCheckoutAddons({
             {unlimitedUsers
               ? "Todos os planos incluem 1 time. No plano anual os usuários são ilimitados."
               : "Todos os planos incluem 1 usuário e 1 time."}{" "}
-            Se precisar de mais, acrescente quantos quiser: o valor é único e vale por todo o período
-            do plano contratado, parcelável como o plano.
+            Se precisar de mais, acrescente quantos quiser: o usuário é cobrado por mês, durante todos os
+            meses do plano contratado, e o time tem valor único para o período. Tudo parcelável como o plano.
           </p>
           <ul className="flex flex-col gap-3">
             {unlimitedUsers ? <UnlimitedUsersCard /> : null}

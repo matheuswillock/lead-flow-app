@@ -173,9 +173,9 @@ describe("BillingGracePaymentService — prazo escolhido", () => {
   it("cobra o prazo escolhido com os adicionais nominais e grava o ciclo", async () => {
     await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-2", cycle: "quarterly" })
 
-    // Trimestral 159,90 + 2 usuários adicionais (Ana e a manager Bia) 39,80; o único time é o incluído.
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ cycle: "quarterly", amountCents: 19970, revokedProfileIds: [] }))
-    expect(createPixPayment).toHaveBeenCalledWith(expect.objectContaining({ amountInCents: 19970 }))
+    // Trimestral 159,90 + 2 usuários adicionais (Ana e a manager Bia) 2 x 19,90 x 3 meses = 119,40; o único time é o incluído.
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ cycle: "quarterly", amountCents: 27930, revokedProfileIds: [] }))
+    expect(createPixPayment).toHaveBeenCalledWith(expect.objectContaining({ amountInCents: 27930 }))
   })
 
   it("cobra só os usuários mantidos e grava quem será revogado", async () => {
