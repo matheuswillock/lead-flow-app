@@ -1,8 +1,9 @@
 "use client"
 
 import Image from "next/image"
+import Link from "next/link"
 import { useTransition } from "react"
-import { LogOut, MessageCircle, ShieldAlert } from "lucide-react"
+import { LogOut, MessageCircle, RefreshCw, ShieldAlert } from "lucide-react"
 import type { AccountAccessRestrictionReason } from "@/app/api/shared/accountAccessDecision/types"
 import { signout } from "@/app/actions/auth"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
@@ -37,14 +38,31 @@ export const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
 type AccountAccessPausedScreenProps = {
   reason?: AccountAccessRestrictionReason
   isBillingOwner?: boolean
+  /** Página de reativação (pagamento da renovação); só aparece para o master. */
+  reactivateHref?: string
+}
+
+/**
+ * Master: o que fazer para reativar. Demais usuários: só o aviso de que o acesso volta
+ * sozinho quando a conta for regularizada, sem cobrar deles uma ação.
+ */
+export function pausedMessageFor(reason: AccountAccessRestrictionReason | undefined, canReactivate: boolean): string {
+  if (reason === "banned") return "Fale com o time de assinaturas para entender como seguir."
+  if (canReactivate) {
+    return "Pague a renovação para reativar a assinatura. O acesso volta assim que o pagamento for confirmado."
+  }
+  return "Seu acesso volta automaticamente assim que a assinatura desta conta for regularizada."
 }
 
 export function AccountAccessPausedScreen({
   isBillingOwner = false,
   reason,
+  reactivateHref,
 }: AccountAccessPausedScreenProps) {
   const teamContext = useOptionalTeamContext()
   const [isSigningOut, startSignOut] = useTransition()
+  // Só quem paga a conta reativa; banimento não se resolve com pagamento.
+  const canReactivate = isBillingOwner && reason !== "banned" && Boolean(reactivateHref)
   const teams = teamContext?.teams ?? []
 
   return (
@@ -132,22 +150,28 @@ export function AccountAccessPausedScreen({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {reason === "banned"
-                    ? "Fale com o time de assinaturas para entender como seguir."
-                    : isBillingOwner
-                      ? "Fale com o time de assinaturas para regularizar o acesso desta conta."
-                      : "Avise o administrador desta conta para que ele entre em contato com o time de assinaturas."}
-                </p>
+                <p className="text-sm text-muted-foreground">{pausedMessageFor(reason, canReactivate)}</p>
               </CardContent>
-              <CardFooter className="flex-col gap-3">
-                <Button asChild className="h-11 w-full" variant={isBillingOwner ? "outline" : "default"}>
-                  <a href={SUBSCRIPTION_SUPPORT_WHATSAPP_URL} target="_blank" rel="noreferrer">
-                    <MessageCircle data-icon="inline-start" />
-                    Falar com o time de assinaturas
-                  </a>
-                </Button>
-              </CardFooter>
+              {canReactivate || reason === "banned" ? (
+                <CardFooter>
+                  {canReactivate ? (
+                    <Button asChild className="h-11 w-full">
+                      <Link href={reactivateHref ?? "#"}>
+                        <RefreshCw data-icon="inline-start" aria-hidden />
+                        Reativar assinatura
+                      </Link>
+                    </Button>
+                  ) : (
+                    // Bloqueio pelo time interno não se resolve pagando: só o atendimento libera.
+                    <Button asChild className="h-11 w-full">
+                      <a href={SUBSCRIPTION_SUPPORT_WHATSAPP_URL} target="_blank" rel="noreferrer">
+                        <MessageCircle data-icon="inline-start" />
+                        Falar com o time de assinaturas
+                      </a>
+                    </Button>
+                  )}
+                </CardFooter>
+              ) : null}
             </Card>
           </div>
         </main>

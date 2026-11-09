@@ -4,16 +4,8 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw, MessageCircle, Phone } from "lucide-react";
+import { GripVertical, MessageCircle, Phone } from "lucide-react";
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { DraftLeadIndicator } from "@/app/[supabaseId]/components/DraftLeadIndicator";
@@ -78,15 +70,29 @@ function formatMeetingDate(dateString: string | null, tz: string): string {
   }
 }
 
+/**
+ * Prioridade de cada coluna por largura de tela: nome e status sempre; o resto some primeiro nas
+ * telas estreitas em vez de criar rolagem lateral. O lead completo abre ao clicar na linha.
+ */
+export const PIPELINE_COLUMN_SCREEN_CLASS: Readonly<Record<string, string>> = {
+  drag: "hidden md:table-cell",
+  phone: "hidden sm:table-cell",
+  assignedTo: "hidden md:table-cell",
+  meetingDate: "hidden md:table-cell",
+  currentValue: "hidden lg:table-cell",
+  email: "hidden lg:table-cell",
+  ticket: "hidden xl:table-cell",
+  closerId: "hidden xl:table-cell",
+  currentHealthPlan: "hidden 2xl:table-cell",
+  createdAt: "hidden 2xl:table-cell",
+  leadCode: "hidden 2xl:table-cell",
+  contacts: "hidden 2xl:table-cell",
+};
+
 interface ColumnsProps {
   statusLabels: Record<string, string>;
   onRowClick: (lead: Lead) => void;
   onOpenContacts: (lead: Lead) => void;
-  onScheduleMeeting: (lead: Lead) => void;
-  onRescheduleMeeting: (lead: Lead) => void;
-  onDeleteLead: (lead: Lead) => void;
-  onFinalizeContract: (lead: Lead) => void;
-  onChangeStatus: (lead: Lead) => void;
   tz: string;
 }
 
@@ -94,11 +100,6 @@ export const createColumns = ({
   statusLabels,
   onRowClick,
   onOpenContacts,
-  onScheduleMeeting,
-  onRescheduleMeeting,
-  onDeleteLead,
-  onFinalizeContract,
-  onChangeStatus,
   tz,
 }: ColumnsProps): ColumnDef<Lead>[] => [
   {
@@ -528,102 +529,6 @@ export const createColumns = ({
       }
 
       return true
-    },
-  },
-  {
-    id: "actions",
-    enableHiding: false,
-    cell: ({ row }) => {
-      const lead = row.original
-
-      // Verificar se pode agendar reunião (não tem reunião agendada e status permite)
-      const canSchedule = !lead.meetingDate && lead.status !== "contract_finalized"
-
-      // Verificar se pode reagendar (já tem reunião agendada)
-      const canReschedule = !!lead.meetingDate && lead.status !== "contract_finalized"
-
-      // Verificar se pode finalizar contrato
-      const canFinalize =
-        lead.status === "invoicePayment" ||
-        lead.status === "dps_agreement" ||
-        lead.status === "offerSubmission"
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" className="size-8 max-lg:size-11 p-0">
-              <span className="sr-only">Abrir menu</span>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Ações</DropdownMenuLabel>
-
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onChangeStatus(lead)
-              }}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Mudar status
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {canSchedule && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onScheduleMeeting(lead)
-                }}
-              >
-                <Calendar className="mr-2 h-4 w-4" />
-                Agendar reunião
-              </DropdownMenuItem>
-            )}
-
-            {canReschedule && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRescheduleMeeting(lead)
-                }}
-              >
-                <Calendar className="mr-2 h-4 w-4" />
-                Reagendar reunião
-              </DropdownMenuItem>
-            )}
-
-            {canFinalize && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onFinalizeContract(lead)
-                  }}
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Fechar contrato
-                </DropdownMenuItem>
-              </>
-            )}
-
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation()
-                onDeleteLead(lead)
-              }}
-              className="text-red-600"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Deletar lead
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
     },
   },
 ]

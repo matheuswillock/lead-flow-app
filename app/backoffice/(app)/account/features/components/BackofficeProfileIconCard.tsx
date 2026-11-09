@@ -7,6 +7,7 @@ import { toastUserError } from "@/lib/ui/to-user-toast-message"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { useConfirmDelete } from "@/components/confirm-delete-dialog"
 import { useBackofficeAccount } from "../context/BackofficeAccountHook"
 import type { BackofficeAccountData } from "../context/BackofficeAccountTypes"
 
@@ -31,6 +32,7 @@ export function BackofficeProfileIconCard({ account }: Props) {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isUploadingIcon, setIsUploadingIcon] = useState(false)
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   const currentIconUrl = avatarPreview ?? resolveIconUrl(account)
   const hasIcon = Boolean(account.profileIconId || account.profileIconUrl || avatarPreview)
@@ -86,6 +88,7 @@ export function BackofficeProfileIconCard({ account }: Props) {
 
   return (
     <section aria-labelledby="backoffice-avatar-title" className="flex flex-col gap-4">
+      {confirmDeleteDialog}
       <h2 id="backoffice-avatar-title" className="text-base font-medium">
         Ícone de perfil
       </h2>
@@ -169,7 +172,14 @@ export function BackofficeProfileIconCard({ account }: Props) {
           {hasIcon ? (
             <button
               type="button"
-              onClick={() => void handleDeleteIcon()}
+              onClick={() =>
+                confirmDelete({
+                  title: "Remover o ícone de perfil?",
+                  description: "A imagem atual será apagada e o perfil volta a mostrar o ícone padrão.",
+                  confirmLabel: "Remover",
+                  onConfirm: handleDeleteIcon,
+                })
+              }
               disabled={isUploadingIcon}
               className="cursor-pointer text-left text-xs text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
             >

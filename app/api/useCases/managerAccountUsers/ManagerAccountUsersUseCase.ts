@@ -19,6 +19,12 @@ import type {
   IManagerAccountUserRepository,
 } from "@/app/api/infra/data/repositories/managerAccountUser/IManagerAccountUserRepository";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { teamMemberAccessHistoryRepository } from "@/app/api/infra/data/repositories/teamMemberAccessHistory/TeamMemberAccessHistoryRepository";
+import type {
+  ITeamMemberAccessHistoryRepository,
+  RecordAccessEmailInput,
+} from "@/app/api/infra/data/repositories/teamMemberAccessHistory/ITeamMemberAccessHistoryRepository";
+import { getDispatchId } from "@/lib/email/dispatch-id";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
@@ -90,8 +96,22 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     private readonly billing: IIncrementalBillingService = incrementalBillingService,
     private readonly capacity: AccountUserBillingCapacityPort = subscriptionCreditService,
     private readonly notifications: AccountUserNotificationPort = notificationService,
-    private readonly memberProBilling: MemberProBillingPort = memberProBillingUseCase
+    private readonly memberProBilling: MemberProBillingPort = memberProBillingUseCase,
+    private readonly accessEmailHistory: Pick<ITeamMemberAccessHistoryRepository, "recordAccessEmail"> =
+      teamMemberAccessHistoryRepository
   ) {}
+
+  /** Liga o convite à conta; falhar aqui não desfaz a criação, só deixa o envio fora do histórico. */
+  private async recordAccessEmail(input: Omit<RecordAccessEmailInput, "dispatchId"> & { dispatchId: string | null }) {
+    if (!input.dispatchId) return;
+    try {
+      await this.accessEmailHistory.recordAccessEmail({ ...input, dispatchId: input.dispatchId });
+    } catch (error) {
+      console.error("[ManagerAccountUsersUseCase][recordAccessEmail]", {
+        message: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
 
   private async getTeamName(teamId: string) {
     const team = await this.repository.findTeamNameById(teamId);
@@ -210,12 +230,24 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       const requesterProfile = await this.repository.findProfileLabelById(args.requesterProfileId);
 
       const emailService = getEmailService();
-      await emailService.sendOperatorInviteEmail({
+      // Com profileId o envio é registrado (entregue, aberto, devolvido) e entra no histórico de
+      // acesso desta conta; quem cria vê o que aconteceu com o convite sem pedir ao suporte.
+      const inviteResult = await emailService.sendOperatorInviteEmail({
         operatorName: args.userData.name,
         operatorEmail: email,
         operatorRole: args.userData.role,
         managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
         inviteUrl: inviteLink,
+        profileId: profile.id,
+        sourceType: "team_member_access",
+        sourceId: profile.id,
+      });
+      await this.recordAccessEmail({
+        accountId: args.masterId,
+        teamId: args.teamId,
+        profileId: profile.id,
+        dispatchId: getDispatchId(inviteResult),
+        requestedByProfileId: args.requesterProfileId,
       });
 
       try {

@@ -50,7 +50,8 @@ export function SubscriptionResourceCard({
         </div>
         <CardDescription>{isPermanent ? 'Ilimitado para criar' : `${available} disponíveis para criar`}</CardDescription>
         {!isPermanent && <Progress value={percent} className={indicatorClassName} />}
-        {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
+        {/* Na vitalícia não há contratação de extras: "1 base + 0 extras" só confundiria. */}
+        {helperText && !isPermanent && <p className="text-xs text-muted-foreground">{helperText}</p>}
         {!isPermanent && <p className="text-xs text-muted-foreground">{removable} créditos removíveis</p>}
       </CardContent>
     </Card>

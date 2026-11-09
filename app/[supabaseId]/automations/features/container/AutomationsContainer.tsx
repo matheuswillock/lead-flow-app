@@ -1,23 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarX, Clock, MoreHorizontal, Pencil, Trash2, Zap } from "lucide-react";
+import { CalendarX, Clock, Zap } from "lucide-react";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { useAutomationsContext } from "../context/AutomationsContext";
 import type { AutomationRule } from "../context/AutomationsTypes";
 import { AutomationRuleDialog } from "../components/AutomationRuleDialog";
 import { AutomationRunsSheet } from "../components/AutomationRunsSheet";
+import { AutomationRuleCard } from "../components/AutomationRuleCard";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -170,56 +163,21 @@ export function AutomationsContainer() {
       {!isLoading && !error && sortedRules.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sortedRules.map((rule) => (
-            <div
+            <AutomationRuleCard
               key={rule.id}
-              className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <TriggerIcon triggerType={rule.triggerType} />
-                    <h2 className="font-medium">{rule.name}</h2>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{summarizeTrigger(rule)}</p>
-                </div>
-                <Switch
-                  checked={rule.isEnabled}
-                  disabled={mutationLock}
-                  onCheckedChange={(checked) => void toggleRule(rule.id, checked)}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant="secondary">{ACTION_LABELS[rule.actionType]}</Badge>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8" disabled={mutationLock}>
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setEditingRule(rule);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil data-icon="inline-start" />
-                      Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setRunsRule(rule)}>
-                      Execuções
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => setDeleteTarget(rule)}
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      Excluir
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
+              rule={rule}
+              icon={<TriggerIcon triggerType={rule.triggerType} />}
+              summary={summarizeTrigger(rule)}
+              actionLabel={ACTION_LABELS[rule.actionType]}
+              disabled={mutationLock}
+              onEdit={() => {
+                setEditingRule(rule);
+                setDialogOpen(true);
+              }}
+              onToggle={(checked) => void toggleRule(rule.id, checked)}
+              onShowRuns={() => setRunsRule(rule)}
+              onDelete={() => setDeleteTarget(rule)}
+            />
           ))}
         </div>
       )}

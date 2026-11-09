@@ -6,31 +6,16 @@ import { ptBR } from "date-fns/locale"
 import {
   AlertCircle,
   CheckCircle2,
-  ClipboardList,
   Clock,
   Copy,
   Globe,
   LoaderCircle,
-  Mail,
-  MoreHorizontal,
   MousePointerClick,
   ShieldAlert,
-  Sparkles,
-  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { DomainActionsBar } from "./DomainActionsBar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,13 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Field,
   FieldContent,
@@ -478,83 +456,36 @@ export function CustomDomainCard() {
                 </div>
               </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="max-lg:size-11"
-                    disabled={disconnectingDomain}
-                  >
-                    <MoreHorizontal className="size-4" />
-                    <span className="sr-only">Ações do domínio</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    disabled={verifyingDomain || loadingRecords}
-                    onClick={() => void requestDomainVerification()}
-                  >
-                    <Clock data-icon="inline-start" />
-                    {verifyLabel}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    disabled={domainRecords.length === 0}
-                    onClick={() => void handleCopyDnsInstructions()}
-                  >
-                    <ClipboardList data-icon="inline-start" />
-                    Copiar instruções
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={domainRecords.length === 0}
-                    onClick={() => void handleCopyDnsInstructionsPrompt()}
-                  >
-                    <Sparkles data-icon="inline-start" />
-                    Copiar como prompt de IA
-                  </DropdownMenuItem>
-                  {canSendDnsInstructions ? (
-                    <DropdownMenuItem
-                      disabled={sendingDnsInstructions}
-                      onClick={() => setSendInstructionsDialogOpen(true)}
-                    >
-                      <Mail data-icon="inline-start" />
-                      Enviar por e-mail
-                    </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuSeparator />
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        disabled={disconnectingDomain}
-                        onSelect={(event) => event.preventDefault()}
-                      >
-                        <Trash2 data-icon="inline-start" />
-                        Deletar domínio
-                      </DropdownMenuItem>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Deletar domínio</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação
-                          remove o domínio da plataforma e os disparos voltarão a usar{" "}
-                          {PLATFORM_FROM_EMAIL}.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void handleDisconnectDomain()}>
-                          Deletar
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
+
+            <DomainActionsBar
+              verify={{
+                disabled: verifyingDomain || loadingRecords,
+                busy: verifyingDomain,
+                onClick: () => void requestDomainVerification(),
+              }}
+              verifyLabel={verifyLabel}
+              copyInstructions={{ disabled: domainRecords.length === 0, onClick: () => void handleCopyDnsInstructions() }}
+              copyPrompt={{ disabled: domainRecords.length === 0, onClick: () => void handleCopyDnsInstructionsPrompt() }}
+              sendByEmail={
+                canSendDnsInstructions
+                  ? { disabled: sendingDnsInstructions, onClick: () => setSendInstructionsDialogOpen(true) }
+                  : undefined
+              }
+              remove={{
+                label: "Deletar domínio",
+                title: "Deletar domínio",
+                description: (
+                  <>
+                    Tem certeza que deseja remover o domínio <strong>{domainName}</strong>? Esta ação remove o domínio
+                    da plataforma e os disparos voltarão a usar {PLATFORM_FROM_EMAIL}.
+                  </>
+                ),
+                confirmLabel: "Deletar",
+                disabled: disconnectingDomain,
+                onConfirm: () => void handleDisconnectDomain(),
+              }}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex flex-col gap-1">

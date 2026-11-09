@@ -76,6 +76,14 @@ export class BackofficeLeadStatusTransitionGateRepository {
     });
     return team?.masterId ?? null;
   }
+
+  async findTeamMemberRole(teamId: string, profileId: string): Promise<string | null> {
+    const member = await prisma.teamMember.findFirst({
+      where: { teamId, profileId },
+      select: { role: true },
+    });
+    return member ? String(member.role) : null;
+  }
 }
 
 export const backofficeLeadStatusTransitionGateRepository =

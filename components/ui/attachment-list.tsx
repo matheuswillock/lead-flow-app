@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Input } from "./input";
+import { useConfirmDelete } from "@/components/confirm-delete-dialog";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export interface LeadAttachmentItem {
   id: string;
@@ -96,7 +98,7 @@ async function loadAttachmentsWithDedupe(
   }
 
   const requestPromise = (async (): Promise<LeadAttachmentItem[]> => {
-    const response = await fetch(`/api/v1/leads/${leadId}/attachments`, {
+    const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/attachments`, {
       headers: headers ?? {},
     });
     const result = await response.json();
@@ -132,6 +134,7 @@ export function AttachmentList({
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete();
 
   const setUploadState = (value: boolean) => {
     setIsUploading(value);
@@ -225,7 +228,7 @@ export function AttachmentList({
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch(`/api/v1/leads/${leadId}/attachments`, {
+        const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/attachments`, {
           method: "POST",
           headers: authHeaders ?? {},
           body: formData,
@@ -263,7 +266,7 @@ export function AttachmentList({
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     try {
-      const response = await fetch(`/api/v1/leads/${leadId}/attachments/${attachmentId}`, {
+      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadId}/attachments/${attachmentId}`, {
         method: "DELETE",
         headers: authHeaders ?? {},
       });
@@ -309,6 +312,7 @@ export function AttachmentList({
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+      {confirmDeleteDialog}
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">Arquivos Anexados</h3>
         <Button
@@ -384,7 +388,13 @@ export function AttachmentList({
                 <AttachmentActions>
                   <AttachmentAction
                     aria-label={`Remover ${item.fileName}`}
-                    onClick={() => void handleDeleteAttachment(item.id)}
+                    onClick={() =>
+                      confirmDelete({
+                        title: "Excluir este arquivo?",
+                        description: `"${item.fileName}" será apagado do lead e não poderá ser recuperado.`,
+                        onConfirm: () => handleDeleteAttachment(item.id),
+                      })
+                    }
                   >
                     <X />
                   </AttachmentAction>

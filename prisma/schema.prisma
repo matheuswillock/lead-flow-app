@@ -869,6 +869,7 @@ enum NotificationType {
   STUDIO_DOMAIN_DNS_ACTION_REQUIRED
   STUDIO_DOMAIN_DNS_RECOVERED
   LEAD_NEEDS_RESCHEDULE
+  LEAD_FOLLOW_UP_REMINDER
 
   @@map("notification_type")
 }
@@ -1680,6 +1681,8 @@ model BillingGracePayment {
   confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
   completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason         String?   @map("failure_reason") @db.Text
+  /// Usuários que o master não manteve na renovação; saem dos times da conta ao confirmar o pagamento.
+  revokedProfileIds     String[]  @default([]) @map("revoked_profile_ids") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1688,6 +1691,60 @@ model BillingGracePayment {
   @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
   @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")
   @@map("billing_grace_payments")
+}
+
+/// E-mail de acesso (primeiro acesso ou nova senha) enviado a pedido de uma conta. O histórico
+/// de acesso que master/manager veem lista só os envios da própria conta.
+model TeamMemberAccessEmail {
+  id                   String   @id @default(uuid()) @db.Uuid
+  accountId            String   @map("account_id") @db.Uuid
+  teamId               String?  @map("team_id") @db.Uuid
+  profileId            String   @map("profile_id") @db.Uuid
+  dispatchId           String   @unique @map("dispatch_id") @db.Uuid
+  requestedByProfileId String?  @map("requested_by_profile_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([accountId, profileId, createdAt(sort: Desc)], map: "team_member_access_emails_account_profile_idx")
+  @@map("team_member_access_emails")
+}
+
+/// Entrevista da administradora com o cliente (opcional, uma por lead).
+model LeadAdministratorInterview {
+  id                 String   @id @default(uuid()) @db.Uuid
+  leadId             String   @unique @map("lead_id") @db.Uuid
+  teamId             String   @map("team_id") @db.Uuid
+  scheduledAt        DateTime  @map("scheduled_at") @db.Timestamptz(6)
+  /// Data/hora como o usuário digitou ("2026-11-12T14:30"); é o horário que vai na mensagem.
+  scheduledLocal     String    @map("scheduled_local") @db.Text
+  administratorName  String?   @map("administrator_name") @db.Text
+  notes              String?   @db.Text
+  clientNotifiedAt   DateTime? @map("client_notified_at") @db.Timestamptz(6)
+  updatedByProfileId String?   @map("updated_by_profile_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("lead_administrator_interviews")
+}
+
+/// Lembrete datado de acompanhamento do lead: vira tarefa + alerta + item no feed quando vence.
+model LeadFollowUpReminder {
+  id               String    @id @default(uuid()) @db.Uuid
+  leadId           String    @map("lead_id") @db.Uuid
+  teamId           String    @map("team_id") @db.Uuid
+  /// administrator_interview | meeting_nurture | plan_renewal
+  kind             String    @db.Text
+  offsetKey        String    @map("offset_key") @db.Text
+  anchorAt         DateTime  @map("anchor_at") @db.Timestamptz(6)
+  dueAt            DateTime  @map("due_at") @db.Timestamptz(6)
+  eventLabel       String    @map("event_label") @db.Text
+  ownerProfileId   String    @map("owner_profile_id") @db.Uuid
+  notifyProfileIds String[]  @default([]) @map("notify_profile_ids") @db.Uuid
+  processedAt      DateTime? @map("processed_at") @db.Timestamptz(6)
+  taskId           String?   @map("task_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([leadId, kind, anchorAt, offsetKey], map: "lead_follow_up_reminders_unique_key")
+  @@map("lead_follow_up_reminders")
 }
 
 model BackofficeOperationalAccessGrant {

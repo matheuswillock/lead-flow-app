@@ -854,6 +854,7 @@ LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
 STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
 STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
 LEAD_NEEDS_RESCHEDULE LEAD_NEEDS_RESCHEDULE
+LEAD_FOLLOW_UP_REMINDER LEAD_FOLLOW_UP_REMINDER
         }
     
 
@@ -2044,8 +2045,52 @@ fixed fixed
     DateTime confirmed_at "❓"
     DateTime completed_at "❓"
     String failure_reason "❓"
+    String revoked_profile_ids 
     DateTime created_at 
     DateTime updated_at 
+    }
+  
+
+  "team_member_access_emails" {
+    String id "🗝️"
+    String account_id 
+    String team_id "❓"
+    String profile_id 
+    String dispatch_id 
+    String requested_by_profile_id "❓"
+    DateTime created_at 
+    }
+  
+
+  "lead_administrator_interviews" {
+    String id "🗝️"
+    String lead_id 
+    String team_id 
+    DateTime scheduled_at 
+    String scheduled_local 
+    String administrator_name "❓"
+    String notes "❓"
+    DateTime client_notified_at "❓"
+    String updated_by_profile_id "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "lead_follow_up_reminders" {
+    String id "🗝️"
+    String lead_id 
+    String team_id 
+    String kind 
+    String offset_key 
+    DateTime anchor_at 
+    DateTime due_at 
+    String event_label 
+    String owner_profile_id 
+    String notify_profile_ids 
+    DateTime processed_at "❓"
+    String task_id "❓"
+    DateTime created_at 
     }
   
 
