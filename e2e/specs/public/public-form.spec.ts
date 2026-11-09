@@ -333,6 +333,8 @@ test.describe("app/forms/[publicId]", () => {
 
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
+    // LGPD: sem o aceite nada é salvo e o "Continuar" não habilita.
+    await page.getByRole("checkbox", { name: /Li e concordo com a Política de Privacidade/ }).check()
 
     const nameInput = page.getByRole("textbox").first()
     await nameInput.fill("user@example.com")
@@ -366,6 +368,8 @@ test.describe("app/forms/[publicId]", () => {
 
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
+    // LGPD: sem o aceite nada é salvo e o "Continuar" não habilita.
+    await page.getByRole("checkbox", { name: /Li e concordo com a Política de Privacidade/ }).check()
 
     const nameInput = page.getByRole("textbox").first()
     await nameInput.fill(leadName)

@@ -544,6 +544,14 @@ export function PublicFormRenderer({
 
   const sendBlurProgress = useCallback(
     (questionId: string, value: unknown, trigger: "blur" | "change" = "blur") => {
+      // O aviso de campo inválido é só da tela e aparece mesmo antes do aceite; nada sai daqui sem ele.
+      const question = snapshot.questions.find((item) => item.id === questionId)
+      if (question && isLeadNameQuestion(question)) {
+        setError(validateAnswer(question, value))
+      }
+      if (question && question.type === "phone") {
+        setError(getPhoneFieldInlineError(value))
+      }
       if (preview || !publicId || !session || !privacyAccepted) return
       // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
       void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
@@ -556,13 +564,6 @@ export function PublicFormRenderer({
           occurredAt: new Date().toISOString(),
           trigger,
       })
-      const question = snapshot.questions.find((item) => item.id === questionId)
-      if (question && isLeadNameQuestion(question)) {
-        setError(validateAnswer(question, value))
-      }
-      if (question && question.type === "phone") {
-        setError(getPhoneFieldInlineError(value))
-      }
       dispatchLandingFormAnalytics({
         eventType: "landing.form_answer_change",
         formId: publicId,
