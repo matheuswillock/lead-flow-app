@@ -1,5 +1,28 @@
 import { describe, expect, it } from "bun:test"
-import { maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+import { isLandlinePhone, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+
+describe("isLandlinePhone", () => {
+  it("reconhece telefone fixo: DDD + 8 dígitos começando de 2 a 5", () => {
+    expect(isLandlinePhone("(11) 3456-7890")).toBe(true)
+    expect(isLandlinePhone("1134567890")).toBe(true)
+    expect(isLandlinePhone("+55 21 2345-6789")).toBe(true)
+    expect(isLandlinePhone("5511345678901".slice(0, 12))).toBe(true)
+  })
+
+  it("celular com 9 dígitos não é fixo", () => {
+    expect(isLandlinePhone("(11) 99999-9999")).toBe(false)
+    expect(isLandlinePhone("5511999999999")).toBe(false)
+  })
+
+  it("número de 8 dígitos começando em 6 a 9 (celular antigo) não gera aviso", () => {
+    expect(isLandlinePhone("1188887777")).toBe(false)
+  })
+
+  it("vazio ou incompleto não é fixo", () => {
+    expect(isLandlinePhone("")).toBe(false)
+    expect(isLandlinePhone("11345")).toBe(false)
+  })
+})
 
 describe("normalizeLeadPhoneDigits", () => {
   it("mantém DDD + número com até 11 dígitos", () => {

@@ -186,6 +186,15 @@ export function normalizeBrazilPhoneE164(value: string): string {
   return digits ? `55${digits}` : ""
 }
 
+/**
+ * Telefone fixo brasileiro: DDD + 8 dígitos, começando de 2 a 5. Fixos costumam não ter WhatsApp.
+ * Número de 8 dígitos começando em 6 a 9 é celular antigo (sem o nono dígito) e não conta como fixo.
+ */
+export function isLandlinePhone(value: string): boolean {
+  const digits = normalizeLeadPhoneDigits(value);
+  return digits.length === 10 && /^[2-5]$/.test(digits[2]);
+}
+
 export function normalizeLeadPhoneDigits(value: string): string {
   if (!value) return "";
   let digits = value.replace(/\D/g, "");
