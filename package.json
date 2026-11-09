@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.349.1",
+  "version": "0.350.0",
   "private": true,
   "packageManager": "bun@1.3.14",
   "engines": {
