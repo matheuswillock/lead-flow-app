@@ -250,6 +250,9 @@ test.describe("app/forms/[publicId]", () => {
     await page.goto(`/forms/${publicId}`)
     await page.getByRole("button", { name: /começar/i }).click()
 
+    // LGPD: nenhum progresso é salvo antes do aceite da política de privacidade.
+    await page.getByRole("checkbox", { name: /Li e concordo com a Política de Privacidade/ }).check()
+
     const nameInput = page.getByRole("textbox").first()
     await nameInput.fill("Maria Teste")
     await nameInput.blur()

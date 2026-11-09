@@ -458,13 +458,8 @@ export function CustomDomainCard() {
 
             </div>
 
+            {/* Verificar DNS fica só no botão principal da seção "Registros DNS". */}
             <DomainActionsBar
-              verify={{
-                disabled: verifyingDomain || loadingRecords,
-                busy: verifyingDomain,
-                onClick: () => void requestDomainVerification(),
-              }}
-              verifyLabel={verifyLabel}
               copyInstructions={{ disabled: domainRecords.length === 0, onClick: () => void handleCopyDnsInstructions() }}
               copyPrompt={{ disabled: domainRecords.length === 0, onClick: () => void handleCopyDnsInstructionsPrompt() }}
               sendByEmail={
