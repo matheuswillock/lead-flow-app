@@ -15,9 +15,14 @@ const tx = {
 const executeRaw = mock(async (..._args: unknown[]) => 1)
 const teamFindFirst = mock(async () => ({ masterId: "master-1", members: [{ profileId: "manager-1" }] }))
 const notificationCreateMany = mock(async (_args: unknown) => ({ count: 2 }))
+const teamMemberCount = mock(async (_args: unknown) => 2)
+const teamMemberFindFirst = mock(async (_args: unknown): Promise<{ teamId: string } | null> => ({ teamId: "team-2" }))
+const profileUpdateMany = mock(async (_args: unknown) => ({ count: 1 }))
 
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: {
+    teamMember: { count: teamMemberCount, findFirst: teamMemberFindFirst },
+    profile: { updateMany: profileUpdateMany },
     $transaction: async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     $executeRaw: executeRaw,
     team: { findFirst: teamFindFirst },
@@ -75,6 +80,20 @@ describe("MemberRemovalRepository — destinatários, notificações e sessão",
     await new MemberRemovalRepository().createLeadOrphanNotifications(rows)
 
     expect(notificationCreateMany).toHaveBeenCalledWith({ data: rows })
+  })
+
+  it("conta só os times ainda existentes em que o usuário continua membro", async () => {
+    expect(await new MemberRemovalRepository().countRemainingTeamMemberships("profile-1")).toBe(2)
+    expect(teamMemberCount).toHaveBeenCalledWith({ where: { profileId: "profile-1", team: { deletedAt: null } } })
+  })
+
+  it("troca o time ativo só de quem estava no time removido, para outro time em que continua membro", async () => {
+    await new MemberRemovalRepository().moveActiveTeamAway("profile-1", "team-1")
+
+    expect(profileUpdateMany).toHaveBeenCalledWith({
+      where: { id: "profile-1", activeTeamId: "team-1" },
+      data: { activeTeamId: "team-2" },
+    })
   })
 
   it("apaga as sessões de login do usuário pelo id da conta de login", async () => {

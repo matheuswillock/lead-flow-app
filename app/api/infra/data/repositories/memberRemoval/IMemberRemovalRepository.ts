@@ -33,4 +33,8 @@ export interface IMemberRemovalRepository {
   createLeadOrphanNotifications(rows: OrphanNotificationRow[]): Promise<{ count: number }>
   /** Apaga as sessões de login do usuário: o acesso cai na próxima requisição. */
   revokeAuthSessions(authUserId: string): Promise<void>
+  /** Em quantos times (ainda existentes) o usuário continua como membro. */
+  countRemainingTeamMemberships(profileId: string): Promise<number>
+  /** Se o time ativo do usuário era o removido, passa para outro time em que ele continua membro. */
+  moveActiveTeamAway(profileId: string, removedTeamId: string): Promise<void>
 }

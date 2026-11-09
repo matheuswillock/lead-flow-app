@@ -43,7 +43,7 @@ export class MemberRemovalFollowUpService {
       [] as ReleasedLead[],
     )
     const notifiedLeads = await this.notifyOrphans(teamId, removedProfileId, removedName, released)
-    const sessionsRevoked = await this.revokeSessions(profile?.supabaseId ?? null)
+    const sessionsRevoked = await this.endAccessIfNoTeamLeft(teamId, removedProfileId, profile?.supabaseId ?? null)
 
     return { releasedLeads: released.length, notifiedLeads, sessionsRevoked }
   }
@@ -86,6 +86,28 @@ export class MemberRemovalFollowUpService {
       },
       0,
     )
+  }
+
+  /**
+   * A sessão só cai quando o usuário não tem mais nenhum time. Quem continua com acesso normal em outro
+   * time não é afetado (só troca o time ativo, se era o removido). Na dúvida, mantém a sessão.
+   */
+  private async endAccessIfNoTeamLeft(
+    teamId: string,
+    removedProfileId: string,
+    authUserId: string | null,
+  ): Promise<boolean> {
+    const remaining = await this.safely<number | null>(
+      "contar times restantes",
+      () => this.repository.countRemainingTeamMemberships(removedProfileId),
+      null,
+    )
+    if (remaining === null) return false
+    if (remaining > 0) {
+      await this.safely("trocar o time ativo", () => this.repository.moveActiveTeamAway(removedProfileId, teamId), undefined)
+      return false
+    }
+    return this.revokeSessions(authUserId)
   }
 
   private async revokeSessions(authUserId: string | null): Promise<boolean> {

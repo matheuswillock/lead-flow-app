@@ -56,6 +56,23 @@ export class MemberRemovalRepository implements IMemberRemovalRepository {
     return prisma.notification.createMany({ data: rows.map((row) => ({ ...row })) })
   }
 
+  async countRemainingTeamMemberships(profileId: string): Promise<number> {
+    return prisma.teamMember.count({ where: { profileId, team: { deletedAt: null } } })
+  }
+
+  async moveActiveTeamAway(profileId: string, removedTeamId: string): Promise<void> {
+    const next = await prisma.teamMember.findFirst({
+      where: { profileId, teamId: { not: removedTeamId }, team: { deletedAt: null } },
+      select: { teamId: true },
+      orderBy: { teamId: "asc" },
+    })
+    // Só mexe no perfil cujo time ativo era o removido; quem já usa outro time não é alterado.
+    await prisma.profile.updateMany({
+      where: { id: profileId, activeTeamId: removedTeamId },
+      data: { activeTeamId: next?.teamId ?? null },
+    })
+  }
+
   async revokeAuthSessions(authUserId: string): Promise<void> {
     // Apaga as sessões (e, em cascata, os refresh tokens) do Supabase Auth: o login cai na próxima requisição.
     await prisma.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ${authUserId}::uuid`

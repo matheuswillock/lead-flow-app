@@ -26,6 +26,8 @@ function build(overrides: Record<string, unknown> = {}) {
     })),
     createLeadOrphanNotifications: mock(async (rows: OrphanNotificationRow[]) => ({ count: rows.length })),
     revokeAuthSessions: mock(async (_authUserId: string) => {}),
+    countRemainingTeamMemberships: mock(async (_profileId: string) => 0),
+    moveActiveTeamAway: mock(async (_profileId: string, _removedTeamId: string) => {}),
   }
   const repo = { ...base, ...overrides } as typeof base
   const invalidate = mock((_input: { recipientProfileIds: string[] }) => {})
@@ -93,6 +95,37 @@ describe("MemberRemovalFollowUpService — sessão do removido", () => {
 
     expect(repo.revokeAuthSessions).toHaveBeenCalledWith("auth-1")
     expect(result.sessionsRevoked).toBe(true)
+  })
+
+  it("quem tem acesso normal em outro time não perde a sessão e passa a usar o outro time", async () => {
+    const { repo, service } = build({ countRemainingTeamMemberships: mock(async () => 2) })
+
+    const result = await service.handle({ teamId: TEAM, removedProfileId: REMOVED })
+
+    expect(repo.revokeAuthSessions).not.toHaveBeenCalled()
+    expect(repo.moveActiveTeamAway).toHaveBeenCalledWith(REMOVED, TEAM)
+    expect(result.sessionsRevoked).toBe(false)
+  })
+
+  it("sem nenhum outro time, a sessão cai e não há time para trocar", async () => {
+    const { repo, service } = build()
+
+    await service.handle({ teamId: TEAM, removedProfileId: REMOVED })
+
+    expect(repo.moveActiveTeamAway).not.toHaveBeenCalled()
+  })
+
+  it("se não der para contar os outros times, mantém a sessão (não derruba por engano)", async () => {
+    const { repo, service } = build({
+      countRemainingTeamMemberships: mock(async () => {
+        throw new Error("banco indisponível")
+      }),
+    })
+
+    const result = await service.handle({ teamId: TEAM, removedProfileId: REMOVED })
+
+    expect(repo.revokeAuthSessions).not.toHaveBeenCalled()
+    expect(result.sessionsRevoked).toBe(false)
   })
 
   it("convite pendente sem conta de login não tem sessão para encerrar", async () => {
