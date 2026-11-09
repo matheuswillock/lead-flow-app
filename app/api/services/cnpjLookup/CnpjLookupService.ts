@@ -1,5 +1,5 @@
 import { sanitizeDocumentDigits } from "@/lib/masks";
-import type { ICnpjLookupService } from "./ICnpjLookupService";
+import type { CnpjCompanyInfo, ICnpjLookupService } from "./ICnpjLookupService";
 
 const BRASIL_API_CNPJ_URL = "https://brasilapi.com.br/api/cnpj/v1";
 const RECEITAWS_CNPJ_URL = "https://receitaws.com.br/v1/cnpj";
@@ -9,13 +9,19 @@ const LOOKUP_RETRY_DELAY_MS = 400;
 
 type BrasilApiCnpjResponse = {
   razao_social?: string;
+  nome_fantasia?: string | null;
 };
 
 type ReceitaWsCnpjResponse = {
   status?: string; // "OK" | "ERROR"
   nome?: string;
+  fantasia?: string | null;
   message?: string;
 };
+
+function toCompanyInfo(razaoSocial: string, nomeFantasia?: string | null): CnpjCompanyInfo {
+  return { razaoSocial, nomeFantasia: nomeFantasia?.trim() || null };
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,6 +29,10 @@ function sleep(ms: number): Promise<void> {
 
 export class CnpjLookupService implements ICnpjLookupService {
   async lookupRazaoSocial(cnpj: string): Promise<string | null> {
+    return (await this.lookupCompany(cnpj))?.razaoSocial ?? null;
+  }
+
+  async lookupCompany(cnpj: string): Promise<CnpjCompanyInfo | null> {
     const digits = sanitizeDocumentDigits(cnpj);
     if (digits.length !== 14) {
       return null;
@@ -36,7 +46,7 @@ export class CnpjLookupService implements ICnpjLookupService {
     return this.lookupViaReceitaWs(digits);
   }
 
-  private async lookupViaBrasilApi(digits: string): Promise<string | null> {
+  private async lookupViaBrasilApi(digits: string): Promise<CnpjCompanyInfo | null> {
     for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
@@ -83,7 +93,7 @@ export class CnpjLookupService implements ICnpjLookupService {
         }
 
         console.info("[CnpjLookupService][lookupViaBrasilApi] Razão social encontrada", digits);
-        return razaoSocial;
+        return toCompanyInfo(razaoSocial, payload.nome_fantasia);
       } catch (error) {
         console.error(
           `[CnpjLookupService][lookupViaBrasilApi] Erro na consulta (tentativa ${attempt}/${LOOKUP_MAX_ATTEMPTS})`,
@@ -102,7 +112,7 @@ export class CnpjLookupService implements ICnpjLookupService {
     return null;
   }
 
-  private async lookupViaReceitaWs(digits: string): Promise<string | null> {
+  private async lookupViaReceitaWs(digits: string): Promise<CnpjCompanyInfo | null> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
 
@@ -142,7 +152,7 @@ export class CnpjLookupService implements ICnpjLookupService {
       }
 
       console.info("[CnpjLookupService][lookupViaReceitaWs] Razão social encontrada (fallback)", digits);
-      return razaoSocial;
+      return toCompanyInfo(razaoSocial, payload.fantasia);
     } catch (error) {
       console.error("[CnpjLookupService][lookupViaReceitaWs] Erro na consulta", error);
       return null;

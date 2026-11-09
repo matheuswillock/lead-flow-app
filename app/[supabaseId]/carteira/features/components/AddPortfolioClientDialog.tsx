@@ -272,6 +272,9 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
   const [isDependentOpen, setIsDependentOpen] = useState(false);
   const [isLookingUpRazaoSocial, setIsLookingUpRazaoSocial] = useState(false);
   const cnpjLookupSequenceRef = useRef(0);
+  const [isLookingUpIdentityCnpj, setIsLookingUpIdentityCnpj] = useState(false);
+  const [identityCompany, setIdentityCompany] = useState<{ razaoSocial: string; nomeFantasia: string | null } | null>(null);
+  const identityCnpjLookupSequenceRef = useRef(0);
   const contractFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -280,6 +283,8 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
       setIdentity(emptyIdentity);
       setContract(emptyContract);
       setIsSubmitting(false);
+      setIdentityCompany(null);
+      setIsLookingUpIdentityCnpj(false);
     }
   }, [open]);
 
@@ -332,12 +337,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
     patch('holderRazaoSocial', '');
   };
 
-  const handleHolderCnpjBlur = async () => {
-    const cnpj = sanitizeDocumentDigits(contract.holderCnpj);
-    if (cnpj.length !== 14 || contract.holderRazaoSocial.trim()) return;
-
-    const requestSequence = ++cnpjLookupSequenceRef.current;
-    setIsLookingUpRazaoSocial(true);
+  const fetchCnpjCompany = async (cnpj: string): Promise<{ razaoSocial: string; nomeFantasia: string | null } | null> => {
     try {
       const response = await fetch(`${API_CLIENT_BASE}/portfolio/cnpj-lookup?cnpj=${cnpj}`, {
         headers: {
@@ -347,16 +347,47 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
       });
       const result = await response.json().catch(() => null);
       const razaoSocial = result?.result?.razaoSocial;
-      if (requestSequence === cnpjLookupSequenceRef.current && response.ok && razaoSocial) {
-        patch('holderRazaoSocial', razaoSocial);
-      }
+      if (!response.ok || !razaoSocial) return null;
+      return { razaoSocial, nomeFantasia: result?.result?.nomeFantasia ?? null };
     } catch {
-      // A consulta indisponível não impede o preenchimento manual da Razão Social.
-    } finally {
-      if (requestSequence === cnpjLookupSequenceRef.current) {
-        setIsLookingUpRazaoSocial(false);
-      }
+      // A consulta indisponível não impede o preenchimento manual.
+      return null;
     }
+  };
+
+  const handleHolderCnpjBlur = async () => {
+    const cnpj = sanitizeDocumentDigits(contract.holderCnpj);
+    if (cnpj.length !== 14 || contract.holderRazaoSocial.trim()) return;
+
+    const requestSequence = ++cnpjLookupSequenceRef.current;
+    setIsLookingUpRazaoSocial(true);
+    const company = await fetchCnpjCompany(cnpj);
+    if (requestSequence === cnpjLookupSequenceRef.current) {
+      if (company) patch('holderRazaoSocial', company.razaoSocial);
+      setIsLookingUpRazaoSocial(false);
+    }
+  };
+
+  const handleIdentityCnpjBlur = async () => {
+    const cnpj = sanitizeDocumentDigits(identity.cnpj ?? '');
+    if (cnpj.length !== 14) return;
+
+    const requestSequence = ++identityCnpjLookupSequenceRef.current;
+    setIsLookingUpIdentityCnpj(true);
+    const company = await fetchCnpjCompany(cnpj);
+    if (requestSequence !== identityCnpjLookupSequenceRef.current) return;
+
+    if (company) {
+      setIdentityCompany(company);
+      // Nome do cliente só é preenchido se ainda estiver vazio: nunca sobrescreve o que a pessoa digitou.
+      setIdentity((prev) => ({ ...prev, name: prev.name.trim() ? prev.name : company.nomeFantasia ?? company.razaoSocial }));
+      setContract((prev) => ({
+        ...prev,
+        holderCnpj: prev.holderCnpj || cnpj,
+        holderRazaoSocial: prev.holderRazaoSocial || company.razaoSocial,
+      }));
+    }
+    setIsLookingUpIdentityCnpj(false);
   };
 
   const addDependent = (dep: Omit<DependentEntry, '_key'>) => {
@@ -548,8 +579,29 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
                   <Input
                     id="add-cnpj"
                     value={identity.cnpj ?? ''}
-                    onChange={(e) => setIdentity((prev) => ({ ...prev, cnpj: formatDocumentInput(e.target.value) }))}
+                    onChange={(e) => {
+                      identityCnpjLookupSequenceRef.current += 1;
+                      setIsLookingUpIdentityCnpj(false);
+                      setIdentityCompany(null);
+                      setIdentity((prev) => ({ ...prev, cnpj: formatDocumentInput(e.target.value) }));
+                    }}
+                    onBlur={handleIdentityCnpjBlur}
+                    aria-busy={isLookingUpIdentityCnpj}
                   />
+                  {isLookingUpIdentityCnpj ? (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="size-3 animate-spin" /> Consultando CNPJ...
+                    </p>
+                  ) : identityCompany ? (
+                    <p className="text-xs text-muted-foreground">
+                      Razão social: <span className="font-medium text-foreground">{identityCompany.razaoSocial}</span>
+                      {identityCompany.nomeFantasia ? (
+                        <>
+                          {' '}· Nome fantasia: <span className="font-medium text-foreground">{identityCompany.nomeFantasia}</span>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : (
