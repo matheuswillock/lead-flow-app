@@ -201,6 +201,56 @@ export async function waitForPostgres(
   return false;
 }
 
+export interface DockerDiagnostic {
+  label: string;
+  command: string;
+  args: string[];
+}
+
+/**
+ * Coletados só quando o `docker run` do Postgres falha. Em 09/11/2026 o Docker
+ * do Vercel CI baixou a imagem mas recusou o mount overlay
+ * (`err: invalid argument`); estes comandos dizem onde o Docker guarda os dados,
+ * em que filesystem e se uma imagem de 1 camada sobe (separa "overlay quebrado"
+ * de "problema das ~30 camadas da imagem do Supabase").
+ */
+export const DOCKER_DIAGNOSTICS: DockerDiagnostic[] = [
+  { label: "docker info", command: "docker", args: ["info"] },
+  {
+    label: "filesystems",
+    command: "df",
+    args: ["-T", "/", "/tmp", "/var/lib/docker"],
+  },
+  {
+    label: "mounts overlay/docker",
+    command: "sh",
+    args: ["-c", "mount | grep -E 'overlay|docker' | head -20"],
+  },
+  {
+    label: "processos do Docker",
+    command: "sh",
+    args: ["-c", "ps -eo pid,ppid,args | grep -E '[d]ockerd|[c]ontainerd'"],
+  },
+  {
+    label: "daemon.json e kernel",
+    command: "sh",
+    args: ["-c", "cat /etc/docker/daemon.json 2>&1; uname -r"],
+  },
+  {
+    label: "imagem minima (1 camada)",
+    command: "docker",
+    args: ["run", "--rm", "busybox:1.36", "true"],
+  },
+];
+
+export function diagnoseDocker(runner: CommandRunner, log: E2eLogger): void {
+  for (const diagnostic of DOCKER_DIAGNOSTICS) {
+    log.info(`${LOG_PREFIX} diagnostico: ${diagnostic.label}`);
+    const status = runner.run(diagnostic.command, diagnostic.args);
+    log.info(`${LOG_PREFIX} diagnostico: ${diagnostic.label} -> exit ${status}`);
+  }
+}
+
 interface Stage {
   name: string;
   run: () => Promise<number> | number;
@@ -236,8 +286,13 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
     },
     {
       name: "subir Postgres",
-      run: async () =>
-        (await startPostgres(runner, sleep, log, containerName, cwd)) ? 0 : 1,
+      run: async () => {
+        if (await startPostgres(runner, sleep, log, containerName, cwd)) {
+          return 0;
+        }
+        diagnoseDocker(runner, log);
+        return 1;
+      },
     },
     {
       name: "aguardar Postgres",

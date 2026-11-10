@@ -323,6 +323,34 @@ describe("runE2eCi", () => {
     expect(calls.some((call) => call.args[0] === "run")).toBe(false);
   });
 
+  it("coleta o diagnostico do Docker quando o container nao sobe, sem deixar de limpar", async () => {
+    const { deps, calls, logger } = createDeps((call) =>
+      call.args[0] === "run" && call.args.includes(POSTGRES_IMAGE) ? 1 : 0,
+    );
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(1);
+    const lines = calls.map(commandLine);
+    expect(lines).toContain("docker info");
+    expect(lines).toContain("docker run --rm busybox:1.36 true");
+    expect(lines.some((line) => line.startsWith("df -T"))).toBe(true);
+    expect(lines.some((line) => line.includes("daemon.json"))).toBe(true);
+    expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
+    expect(logger.info.join("\n")).toContain(
+      "diagnostico: imagem minima (1 camada) -> exit 0",
+    );
+    expect(lines.some((line) => line.includes("db:seed:e2e"))).toBe(false);
+  });
+
+  it("nao roda o diagnostico quando o Postgres sobe normalmente", async () => {
+    const { deps, calls } = createDeps();
+
+    await runE2eCi(deps);
+
+    expect(calls.map(commandLine)).not.toContain("docker info");
+  });
+
   it("instala o Chromium com dependencias de sistema so com root ou sudo", async () => {
     const privileged = createDeps(() => 0, { privilege: "sudo" });
     await runE2eCi(privileged.deps);
