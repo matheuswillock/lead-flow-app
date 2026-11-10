@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test"
 import { injectE2eAuthCookie } from "../../../fixtures/auth"
+import { E2E_LANDING_FIXTURES } from "../../../support/landing-pages"
 import { runResponsiveChecks } from "../../../support/responsive"
 
 test("black-and-white: e-mail → LP → formulário → lead → Radar", async ({ context, page }) => {
   await injectE2eAuthCookie(context)
   const templateSlug = "black-and-white"
-  const publicId = process.env.E2E_BLACK_AND_WHITE_LANDING_ID
-  test.skip(!publicId, "Landing publicada ausente no seed E2E")
+  // Landing publicada pelo globalSetup (e2e/global-setup.ts).
+  const publicId = E2E_LANDING_FIXTURES.blackAndWhite.publicId
 
   await page.addInitScript(() => localStorage.setItem("sua-marca-cookie-consent", "all"))
   await page.goto(`/conversao/${publicId}?utm_source=email&utm_campaign=e2e-campaign&cs_el=e2e-email-log`, { waitUntil: "domcontentloaded" })
@@ -32,8 +33,8 @@ test("black-and-white: e-mail → LP → formulário → lead → Radar", async 
 test("alvora: e-mail → LP → consentimento → formulário → lead → Radar", async ({ context, page }) => {
   await injectE2eAuthCookie(context)
   const templateSlug = "alvora"
-  const publicId = process.env.E2E_ALVORA_LANDING_ID
-  test.skip(!publicId, "Landing publicada ausente no seed E2E")
+  // Landing publicada pelo globalSetup (e2e/global-setup.ts).
+  const publicId = E2E_LANDING_FIXTURES.alvora.publicId
 
   await page.addInitScript(() => localStorage.setItem("sua-marca-cookie-consent", "all"))
   await page.goto(`/conversao/${publicId}?utm_source=email&utm_campaign=e2e-campaign&cs_el=e2e-email-log`, { waitUntil: "domcontentloaded" })
