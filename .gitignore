@@ -69,3 +69,6 @@ test-results/
 
 # Obsidian vault content lives outside the repository.
 /docs/obsidian/
+
+# Turborepo
+.turbo

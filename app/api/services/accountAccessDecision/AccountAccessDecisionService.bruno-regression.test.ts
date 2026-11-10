@@ -59,7 +59,10 @@ describe("AccountAccessDecisionService - regressão de acesso por conta", () => 
   })
 
   it("restringe time de terceiro com master suspenso (gate exibe pausa + switcher)", () => {
-    const decision = new AccountAccessDecisionService().decide(restrictedThirdPartyTeam())
+    const decision = new AccountAccessDecisionService().decide(
+      restrictedThirdPartyTeam(),
+      new Date("2026-11-01T00:00:00.000Z"),
+    )
 
     expect(decision).toEqual({ state: "restricted", reason: "suspended" })
   })
