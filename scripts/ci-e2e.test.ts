@@ -79,7 +79,7 @@ function createDeps(
   overrides: Partial<E2eDeps> = {},
   respondOutput: OutputResponder = defaultOutput,
 ) {
-  const { runner, calls } = createRunner(respond, respondOutput);
+  const { runner, calls, background } = createRunner(respond, respondOutput);
   const logger = createLogger();
   const deps: E2eDeps = {
     runner,
@@ -92,7 +92,7 @@ function createDeps(
     containerName: "e2e-postgres-ci-1",
     ...overrides,
   };
-  return { deps, calls, logger };
+  return { deps, calls, logger, background };
 }
 
 const commandLine = (call: RecordedCall) =>
@@ -353,7 +353,8 @@ describe("startPostgres", () => {
     const line = commandLine(calls[0]);
     expect(line).toContain("docker run -d --name pg-1");
     expect(line).toContain("--network host");
-    expect(line).toContain("-e PGPORT=55322");
+    // O migrate.sh da imagem ignora PGPORT e usa 5432: nada de remapear porta.
+    expect(line).not.toContain("PGPORT");
     expect(line).not.toContain("-p 55322:5432");
     expect(line).toContain(
       "/repo/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro",
@@ -393,6 +394,17 @@ describe("waitForPostgres", () => {
 
     expect(ok).toBe(true);
     expect(calls).toHaveLength(3);
+    expect(commandLine(calls[0])).toBe(
+      "docker exec pg-1 pg_isready -h 127.0.0.1 -p 5432 -U postgres",
+    );
+  });
+
+  it("checa a porta informada (a do encaminhador) quando ela e passada", async () => {
+    const { runner, calls } = createRunner();
+
+    const ok = await waitForPostgres(runner, noSleep, "pg-1", 5, 1, 55322);
+
+    expect(ok).toBe(true);
     expect(commandLine(calls[0])).toBe(
       "docker exec pg-1 pg_isready -h 127.0.0.1 -p 55322 -U postgres",
     );
@@ -444,6 +456,48 @@ describe("runE2eCi", () => {
     expect(index("test:integration")).toBeLessThan(index("run build"));
     expect(index("run build")).toBeLessThan(index("playwright install"));
     expect(index("playwright install")).toBeLessThan(index("playwright test"));
+    expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
+  });
+
+  it("encaminha 55322 para o Postgres em 5432 e so segue quando a porta responde", async () => {
+    const { deps, calls, background } = createDeps();
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(0);
+    expect(background).toContainEqual({
+      command: "bun",
+      args: ["/repo/scripts/tcp-forward.ts", "55322", "5432"],
+      logFile: "/tmp/tcp-forward-ci-e2e.log",
+    });
+    const lines = calls.map(commandLine);
+    const onContainerPort = lines.findIndex((line) =>
+      line.includes("pg_isready -h 127.0.0.1 -p 5432"),
+    );
+    const onForwardedPort = lines.findIndex((line) =>
+      line.includes("pg_isready -h 127.0.0.1 -p 55322"),
+    );
+    expect(onContainerPort).toBeGreaterThan(-1);
+    expect(onForwardedPort).toBeGreaterThan(onContainerPort);
+    expect(onForwardedPort).toBeLessThan(
+      lines.findIndex((line) => line.includes("db:seed:e2e")),
+    );
+  });
+
+  it("falha com diagnostico e log do encaminhador quando 55322 nao responde", async () => {
+    const { deps, calls } = createDeps((call) =>
+      call.args.includes("pg_isready") && call.args.includes("55322") ? 1 : 0,
+    );
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(1);
+    const lines = calls.map(commandLine);
+    expect(lines.some((line) => line.includes("tcp-forward-ci-e2e.log"))).toBe(
+      true,
+    );
+    expect(lines.some((line) => line.includes("db:seed:e2e"))).toBe(false);
+    expect(lines.at(-2)).toBe("pkill -f scripts/tcp-forward.ts");
     expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
   });
 

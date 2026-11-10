@@ -22,6 +22,8 @@ import { LOCAL_DB_URL } from "./lib/local-stack";
 export const POSTGRES_IMAGE = "ghcr.io/supabase/postgres:17.6.1.149";
 export const POSTGRES_FALLBACK_IMAGE = "docker.io/supabase/postgres:17.6.1.149";
 export const POSTGRES_HOST_PORT = 55322;
+export const POSTGRES_CONTAINER_PORT = 5432;
+export const FORWARDER_LOG = "/tmp/tcp-forward-ci-e2e.log";
 export const ENV_EXAMPLE_PATH = ".env.test.example";
 
 export type EnvMap = Record<string, string | undefined>;
@@ -250,11 +252,10 @@ export async function startPostgres(
     "POSTGRES_DB=postgres",
     // Rede do host: a bridge do Docker 29 exige a tabela `raw` do iptables, que
     // o kernel do Vercel CI nao tem ("Unable to enable DIRECT ACCESS FILTERING").
-    // O servidor Postgres respeita PGPORT, entao ele ja escuta em 55322.
+    // O migrate.sh da imagem usa a porta 5432 fixa (ignora PGPORT); por isso o
+    // Postgres fica em 5432 e o encaminhador expoe 55322 (ver tcp-forward.ts).
     "--network",
     "host",
-    "-e",
-    `PGPORT=${POSTGRES_HOST_PORT}`,
     "-v",
     `${initDir}/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro`,
     "-v",
@@ -293,6 +294,7 @@ export async function waitForPostgres(
   containerName: string,
   maxAttempts = 60,
   intervalMs = 2_000,
+  port: number = POSTGRES_CONTAINER_PORT,
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     // Container que ja morreu nunca vai responder: falha na hora em vez de
@@ -312,7 +314,7 @@ export async function waitForPostgres(
       "-h",
       "127.0.0.1",
       "-p",
-      String(POSTGRES_HOST_PORT),
+      String(port),
       "-U",
       "postgres",
     ]);
@@ -470,6 +472,33 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
       },
     },
     {
+      // O seed e os testes falam com 127.0.0.1:55322; o Postgres esta em 5432.
+      name: "encaminhar porta 55322",
+      run: async () => {
+        runner.startBackground(
+          "bun",
+          [
+            `${cwd}/scripts/tcp-forward.ts`,
+            String(POSTGRES_HOST_PORT),
+            String(POSTGRES_CONTAINER_PORT),
+          ],
+          FORWARDER_LOG,
+        );
+        const ready = await waitForPostgres(
+          runner,
+          sleep,
+          containerName,
+          15,
+          1_000,
+          POSTGRES_HOST_PORT,
+        );
+        if (ready) return 0;
+        diagnosePostgresContainer(runner, log, containerName);
+        runner.run("sh", ["-c", `tail -n 40 ${FORWARDER_LOG} 2>&1`]);
+        return 1;
+      },
+    },
+    {
       name: "seed E2E",
       run: () => runner.run("bun", ["run", "db:seed:e2e"], env),
     },
@@ -513,6 +542,7 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
       }
     }
   } finally {
+    runner.run("pkill", ["-f", "scripts/tcp-forward.ts"]);
     runner.run("docker", ["rm", "-f", containerName]);
   }
 
