@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useConfirmDelete } from "@/components/confirm-delete-dialog";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { toastUserError } from "@/lib/ui/to-user-toast-message";
@@ -79,6 +80,7 @@ export function LeadsFilterPresetsSheet<T>({
   const [presetVisibility, setPresetVisibility] = useState<"private" | "team">("private");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   const [lastUsedPresetId, setLastUsedPresetId] = useState<string | null>(null);
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete();
   const importDoneRef = useRef(false);
   const inFlightKeyRef = useRef<string | null>(null);
   const lastSettledKeyRef = useRef<string | null>(null);
@@ -334,7 +336,16 @@ export function LeadsFilterPresetsSheet<T>({
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => void handleDeletePreset(preset.id)}
+              onClick={() =>
+                confirmDelete({
+                  title: `Excluir o filtro "${preset.name}"?`,
+                  description:
+                    preset.visibility === "team"
+                      ? "O filtro some para todo o time."
+                      : "O filtro salvo será apagado.",
+                  onConfirm: () => handleDeletePreset(preset.id),
+                })
+              }
               aria-label={`Remover preset ${preset.name}`}
             >
               <Trash2 data-icon="inline-start" />
@@ -375,6 +386,7 @@ export function LeadsFilterPresetsSheet<T>({
         if (open) void loadPresets({ force: true });
       }}
     >
+      {confirmDeleteDialog}
       <SheetTrigger asChild>
         <FilterPresetsTriggerButton isActive={isPresetActive} />
       </SheetTrigger>

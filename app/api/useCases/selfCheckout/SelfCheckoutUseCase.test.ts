@@ -9,10 +9,13 @@ import { SelfCheckoutUseCase } from "./SelfCheckoutUseCase"
 import type { ISelfCheckoutProviderGate } from "./ISelfCheckoutUseCase"
 
 const REQUEST: SelfCheckoutRequest = {
+  companyLegalName: "Corretora Exemplo Ltda",
+  cnpj: "11222333000181",
   fullName: "Maria Souza",
   email: "maria@example.com",
   phone: "11999999999",
   cycle: "monthly",
+  termsAccepted: true,
 }
 
 const OPTIONS: SelfCheckoutOptionsDTO = {
@@ -23,15 +26,24 @@ const OPTIONS: SelfCheckoutOptionsDTO = {
 function build(overrides: {
   createSelfCheckout?: () => Promise<{ token: string }>
   getSelfCheckoutOptions?: () => Promise<SelfCheckoutOptionsDTO>
+  quoteSelfCheckoutCoupon?: () => Promise<unknown>
   assertAvailable?: () => Promise<void>
 } = {}) {
   const createSelfCheckout = mock(overrides.createSelfCheckout ?? (async () => ({ token: "tok-1" })))
   const getSelfCheckoutOptions = mock(overrides.getSelfCheckoutOptions ?? (async () => OPTIONS))
   const assertAvailable = mock(overrides.assertAvailable ?? (async () => undefined))
-  const service = { createSelfCheckout, getSelfCheckoutOptions } as unknown as IBackofficeAdhesionService
+  const quoteSelfCheckoutCoupon = mock(
+    overrides.quoteSelfCheckoutCoupon ??
+      (async () => ({ code: "BEMVINDO10", label: "10% de desconto", discountAmount: 10, totalAfterDiscount: 90 })),
+  )
+  const service = {
+    createSelfCheckout,
+    getSelfCheckoutOptions,
+    quoteSelfCheckoutCoupon,
+  } as unknown as IBackofficeAdhesionService
   const providerGate: ISelfCheckoutProviderGate = { assertAvailable }
   const useCase = new SelfCheckoutUseCase(service, providerGate)
-  return { useCase, createSelfCheckout, getSelfCheckoutOptions, assertAvailable }
+  return { useCase, createSelfCheckout, getSelfCheckoutOptions, quoteSelfCheckoutCoupon, assertAvailable }
 }
 
 describe("SelfCheckoutUseCase.create", () => {
@@ -43,6 +55,20 @@ describe("SelfCheckoutUseCase.create", () => {
     expect(output.isValid).toBe(true)
     expect(output.result).toEqual({ token: "tok-1" })
     expect(createSelfCheckout).toHaveBeenCalledWith(REQUEST)
+  })
+
+  it("cartão não passa pelo gate do PIX (o Abacate pode estar fora e o cartão segue pelo Asaas)", async () => {
+    const { useCase, createSelfCheckout, assertAvailable } = build({
+      assertAvailable: async () => {
+        throw new SelfCheckoutError("PROVIDER_UNAVAILABLE", "indisponível")
+      },
+    })
+
+    const output = await useCase.create({ ...REQUEST, billingType: "CREDIT_CARD" })
+
+    expect(output.isValid).toBe(true)
+    expect(assertAvailable).not.toHaveBeenCalled()
+    expect(createSelfCheckout).toHaveBeenCalledTimes(1)
   })
 
   it("provider inapto: PROVIDER_UNAVAILABLE e nada é criado", async () => {
@@ -120,6 +146,53 @@ describe("SelfCheckoutUseCase.getOptions", () => {
       })
 
       const output = await useCase.getOptions()
+
+      expect(output.isValid).toBe(false)
+      expect(output.result).toBeNull()
+    } finally {
+      console.error = original
+    }
+  })
+})
+
+describe("SelfCheckoutUseCase.quoteCoupon", () => {
+  const INPUT = { couponCode: "bemvindo10", cycle: "monthly" as const }
+
+  it("devolve a simulação do cupom", async () => {
+    const { useCase, quoteSelfCheckoutCoupon } = build()
+
+    const output = await useCase.quoteCoupon(INPUT)
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toEqual({ code: "BEMVINDO10", label: "10% de desconto", discountAmount: 10, totalAfterDiscount: 90 })
+    expect(quoteSelfCheckoutCoupon).toHaveBeenCalledWith(INPUT)
+  })
+
+  it("cupom recusado vira Output inválido com o código COUPON_INVALID e a mensagem curta", async () => {
+    const { useCase } = build({
+      quoteSelfCheckoutCoupon: async () => {
+        throw new SelfCheckoutError("COUPON_INVALID", "Cupom expirado.")
+      },
+    })
+
+    const output = await useCase.quoteCoupon(INPUT)
+
+    expect(output.isValid).toBe(false)
+    expect(output.errorMessages).toEqual(["Cupom expirado."])
+    expect(output.result).toEqual({ code: "COUPON_INVALID" })
+  })
+
+  it("erro inesperado vira mensagem genérica", async () => {
+    const original = console.error
+    console.error = () => undefined
+    try {
+      const { useCase } = build({
+        quoteSelfCheckoutCoupon: async () => {
+          throw new Error("db down")
+        },
+      })
+
+      const output = await useCase.quoteCoupon(INPUT)
 
       expect(output.isValid).toBe(false)
       expect(output.result).toBeNull()

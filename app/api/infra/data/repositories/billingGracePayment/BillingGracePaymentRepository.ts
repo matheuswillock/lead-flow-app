@@ -1,5 +1,10 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { BillingGracePayment, Prisma } from "@prisma/client"
+import {
+  resolveActiveTeamAfterRevoke,
+  resolveRenewedPeriod,
+  type RenewalBilledUser,
+} from "@/app/api/shared/billing/renewalQuote"
 import type {
   CreateBillingGracePaymentInput,
   IBillingGracePaymentRepository,
@@ -20,11 +25,21 @@ export class BillingGracePaymentRepository implements IBillingGracePaymentReposi
         subscriptionId: true,
         hasUnlimitedUsers: true,
         hasPermanentSubscription: true,
-        teamMemberships: { select: { teamId: true } },
-        operators: { select: { id: true } },
+        subscriptionCycle: true,
+        subscriptionNextDueDate: true,
+        userTypeAssignment: { select: { userType: { select: { slug: true } } } },
+        teamsOwned: {
+          where: { deletedAt: null },
+          select: { name: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
     })
     if (!profile || !profile.isMaster) return null
+    // Member PRO marca o ilimitado como benefício do pacote de 100 dias, que não é mais vendido:
+    // na renovação esse ilimitado não segue. O concedido pelo time interno segue.
+    const isMemberPro = profile.userTypeAssignment?.userType.slug === "member_pro"
+    const extraUsers = await this.findAccountExtraUsers(profile.id)
     return {
       accountId: profile.id,
       teamId: profile.activeTeamId,
@@ -34,11 +49,36 @@ export class BillingGracePaymentRepository implements IBillingGracePaymentReposi
       taxId: profile.cpfCnpj ?? "",
       cellphone: profile.phone ?? "",
       hasUnlimitedUsers: profile.hasUnlimitedUsers,
+      hasManualUnlimitedUsers: profile.hasUnlimitedUsers && !isMemberPro,
       hasPermanentSubscription: profile.hasPermanentSubscription,
-      teamCount: profile.teamMemberships.length,
-      distinctUserCount: profile.operators.length,
-      totalUsersIncludingMaster: profile.operators.length + 1,
+      currentCycle: profile.subscriptionCycle,
+      currentDueDate: profile.subscriptionNextDueDate,
+      teams: profile.teamsOwned.map((team) => ({ name: team.name })),
+      extraUsers,
     }
+  }
+
+  /**
+   * Usuários cobrados: membros distintos dos times do master, exceto ele, de qualquer papel
+   * (manager conta como usuário comum). Mesma regra do resumo de cobrança.
+   */
+  private async findAccountExtraUsers(masterId: string): Promise<RenewalBilledUser[]> {
+    const members = await prisma.teamMember.findMany({
+      where: { team: { masterId, deletedAt: null }, profileId: { not: masterId } },
+      select: { role: true, createdAt: true, profile: { select: { id: true, fullName: true, email: true } } },
+      orderBy: { createdAt: "asc" },
+    })
+    const byProfile = new Map<string, RenewalBilledUser>()
+    for (const member of members) {
+      if (byProfile.has(member.profile.id)) continue
+      byProfile.set(member.profile.id, {
+        id: member.profile.id,
+        name: member.profile.fullName || member.profile.email,
+        email: member.profile.email,
+        role: String(member.role).toLowerCase(),
+      })
+    }
+    return [...byProfile.values()]
   }
 
   create(input: CreateBillingGracePaymentInput): Promise<BillingGracePayment> {
@@ -112,20 +152,63 @@ export class BillingGracePaymentRepository implements IBillingGracePaymentReposi
       })
       if (!payment) return null
 
-      const nextDueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-      await transaction.profile.update({
+      const account = await transaction.profile.findUnique({
         where: { id: payment.accountId },
-        data: { subscriptionStatus: "active", subscriptionNextDueDate: nextDueDate },
+        select: { subscriptionNextDueDate: true },
       })
-      await transaction.profileSubscription.updateMany({
-        where: { profileId: payment.accountId },
-        data: { subscriptionStatus: "active", subscriptionNextDueDate: nextDueDate },
-      })
+      const renewal = resolveRenewedPeriod({ cycle: payment.cycle, currentDueDate: account?.subscriptionNextDueDate ?? null, now })
+      const data = {
+        subscriptionStatus: "active" as const,
+        subscriptionNextDueDate: renewal.nextDueDate,
+        ...(renewal.cycle ? { subscriptionCycle: renewal.cycle } : {}),
+      }
+      await transaction.profile.update({ where: { id: payment.accountId }, data })
+      await transaction.profileSubscription.updateMany({ where: { profileId: payment.accountId }, data })
+      if (payment.revokedProfileIds.length > 0) {
+        await revokeFromAccountTeams(transaction, payment.accountId, payment.revokedProfileIds)
+      }
       return transaction.billingGracePayment.update({
         where: { id },
         data: { status: "completed", completedAt: now },
       })
     })
+  }
+}
+
+/**
+ * Tira os usuários que o master não manteve somente dos times desta conta. Os times de outras
+ * contas em que a pessoa também está não são tocados; se o time ativo dela era desta conta, ela
+ * passa para o time que sobrou (ou fica sem time ativo, se não sobrou nenhum).
+ */
+async function revokeFromAccountTeams(
+  transaction: Prisma.TransactionClient,
+  accountId: string,
+  profileIds: string[],
+): Promise<void> {
+  const targets = profileIds.filter((profileId) => profileId !== accountId)
+  if (targets.length === 0) return
+  const accountTeamIds = (
+    await transaction.team.findMany({ where: { masterId: accountId }, select: { id: true } })
+  ).map((team) => team.id)
+  if (accountTeamIds.length === 0) return
+
+  await transaction.teamMember.deleteMany({
+    where: { profileId: { in: targets }, teamId: { in: accountTeamIds } },
+  })
+
+  const profiles = await transaction.profile.findMany({
+    where: { id: { in: targets } },
+    select: { id: true, activeTeamId: true, teamMemberships: { select: { teamId: true }, orderBy: { createdAt: "asc" } } },
+  })
+  for (const profile of profiles) {
+    const nextActiveTeamId = resolveActiveTeamAfterRevoke({
+      activeTeamId: profile.activeTeamId,
+      revokedTeamIds: accountTeamIds,
+      remainingTeamIds: profile.teamMemberships.map((membership) => membership.teamId),
+    })
+    if (nextActiveTeamId !== profile.activeTeamId) {
+      await transaction.profile.update({ where: { id: profile.id }, data: { activeTeamId: nextActiveTeamId } })
+    }
   }
 }
 

@@ -104,6 +104,37 @@ describe("AccountAccessDecisionService", () => {
     expect(decision).toEqual({ state: "restricted", reason: "past_due" })
   })
 
+  it("carência de cobrança (vencida há menos de 5 dias) libera o acesso e informa até quando", () => {
+    const service = new AccountAccessDecisionService()
+    const dueDate = new Date("2026-11-03T00:00:00.000Z")
+
+    expect(service.decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      subscriptionNextDueDate: dueDate,
+      hasPermanentSubscription: false,
+      isBanned: false,
+    }, new Date("2026-11-05T12:00:00.000Z"))).toEqual({
+      state: "allowed",
+      temporaryAccessGranted: true,
+      temporaryAccessUntil: "2026-11-08T00:00:00.000Z",
+      billingGraceUntil: "2026-11-08T00:00:00.000Z",
+    })
+  })
+
+  it("concessão operacional não é tratada como vencimento (sem billingGraceUntil)", () => {
+    const service = new AccountAccessDecisionService()
+    const decision = service.decide({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      hasPermanentSubscription: false,
+      temporaryAccessGranted: true,
+      temporaryAccessUntil: new Date("2026-11-10T00:00:00.000Z"),
+      isBanned: false,
+    }, new Date("2026-11-05T12:00:00.000Z"))
+    expect(decision).not.toHaveProperty("billingGraceUntil")
+  })
+
   it("libera uma exceção de cobrança válida somente até sua expiração", () => {
     const service = new AccountAccessDecisionService()
     const until = new Date("2026-10-17T02:59:59.999Z")

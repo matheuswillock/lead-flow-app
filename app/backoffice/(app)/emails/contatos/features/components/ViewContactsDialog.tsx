@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirmDelete } from "@/components/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +35,7 @@ export function ViewContactsDialog({ list, onOpenChange }: Props) {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   useEffect(() => {
     if (!list) return
@@ -61,6 +63,7 @@ export function ViewContactsDialog({ list, onOpenChange }: Props) {
 
   return (
     <Dialog open={Boolean(list)} onOpenChange={onOpenChange}>
+      {confirmDeleteDialog}
       <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Contatos — {list?.name}</DialogTitle>
@@ -108,7 +111,14 @@ export function ViewContactsDialog({ list, onOpenChange }: Props) {
                         size="icon"
                         className="size-8"
                         aria-label="Remover contato"
-                        onClick={() => handleDelete(contact.id)}
+                        onClick={() =>
+                          confirmDelete({
+                            title: `Remover ${contact.email} da lista?`,
+                            description: "O contato deixa de receber os envios desta lista.",
+                            confirmLabel: "Remover",
+                            onConfirm: () => handleDelete(contact.id),
+                          })
+                        }
                       >
                         <Trash2 />
                       </Button>

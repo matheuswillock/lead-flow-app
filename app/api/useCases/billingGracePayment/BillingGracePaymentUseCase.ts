@@ -13,10 +13,13 @@ export class BillingGracePaymentUseCase implements IBillingGracePaymentUseCase {
     }
   }
 
-  async createPixPayment(input: { supabaseId: string; idempotencyKey: string }): Promise<Output> {
+  async createPixPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }): Promise<Output> {
     try {
       if (!input.idempotencyKey.trim()) {
         return new Output(false, [], ["Idempotency key é obrigatória"], null)
+      }
+      if (!input.cycle.trim()) {
+        return new Output(false, [], ["Escolha o prazo da renovação"], null)
       }
       return new Output(true, ["Pagamento PIX iniciado"], [], await this.service.createPixPayment(input))
     } catch (error) {

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { injectE2eAuthCookie } from "../../../fixtures/auth";
 import { runResponsiveChecks } from "../../../support/responsive";
+import { EMAIL_CREDITS_PURCHASE_ENABLED } from "../../../../lib/email/email-credits-availability";
 
 // A contratação exige sessão: a página redireciona anônimos ao login e, logado,
 // a compra nasce no servidor (PlatformPurchase) e segue ao checkout interno.
@@ -15,7 +16,24 @@ test.describe("public/adquirir/creditos", () => {
     await expect(page).toHaveURL(/\/sign-in\?next=%2Fadquirir%2Fcreditos/);
   });
 
+  test.describe("com sessão, venda pausada", () => {
+    test.skip(EMAIL_CREDITS_PURCHASE_ENABLED, "só vale enquanto a venda de créditos está desligada");
+    test.beforeEach(async ({ context }) => {
+      await injectE2eAuthCookie(context);
+    });
+
+    test("mostra a compra indisponível, sem planos nem botão de ativar", async ({ page }) => {
+      await page.goto("/adquirir/creditos");
+      await expect(page.getByRole("heading", { name: "Compra de créditos indisponível" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Ativar" })).toHaveCount(0);
+      await runResponsiveChecks(page);
+    });
+  });
+
   test.describe("com sessão", () => {
+    // A venda de créditos está desligada (lib/email/email-credits-availability.ts); estes cenários
+    // voltam a rodar sozinhos quando ela for reaberta.
+    test.skip(!EMAIL_CREDITS_PURCHASE_ENABLED, "venda de créditos de e-mail desligada");
     test.beforeEach(async ({ context }) => {
       await injectE2eAuthCookie(context);
     });

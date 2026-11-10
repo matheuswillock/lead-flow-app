@@ -45,6 +45,11 @@ import {
   type PublicFormPrefillResult,
 } from "@/lib/public-forms/prefill-indicator"
 import { PrefillFieldIndicator } from "@/components/public-forms/PrefillFieldIndicator"
+import { PublicFormPrivacyConsent } from "@/components/public-forms/PublicFormPrivacyConsent"
+import {
+  FORM_PRIVACY_CONSENT_VERSION,
+  type PublicFormLegalNotice,
+} from "@/lib/legal/form-privacy-policy"
 import { readFormSessionCookie, writeFormSessionCookie } from "@/lib/public-forms/session-cookie"
 import { buildPublicFormTrackEventKey } from "@/lib/public-forms/origin"
 import { API_CLIENT_BASE } from "@/lib/route-map"
@@ -79,6 +84,8 @@ type Props = {
   publicId?: string
   publicationId?: string
   preview?: boolean
+  /** Controlador (acesso master do time) exibido na política de privacidade. */
+  legalNotice?: PublicFormLegalNotice | null
   className?: string
 }
 
@@ -153,6 +160,7 @@ export function PublicFormRenderer({
   publicId,
   publicationId,
   preview = false,
+  legalNotice = null,
   className,
 }: Props) {
   const [started, setStarted] = useState(false)
@@ -166,6 +174,18 @@ export function PublicFormRenderer({
   const [campaignPrefill, setCampaignPrefill] = useState<PublicFormPrefillResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [privacyAcceptedAt, setPrivacyAcceptedAt] = useState<string | null>(null)
+  const consentOrigin = useMemo(
+    () =>
+      privacyAccepted && privacyAcceptedAt
+        ? {
+            privacyConsentVersion: FORM_PRIVACY_CONSENT_VERSION,
+            privacyConsentAcceptedAt: privacyAcceptedAt,
+          }
+        : {},
+    [privacyAccepted, privacyAcceptedAt],
+  )
   const [done, setDone] = useState(false)
   const [resolvedThankYouPageId, setResolvedThankYouPageId] = useState<string | null>(null)
   const [session, setSession] = useState<string | null>(null)
@@ -230,8 +250,10 @@ export function PublicFormRenderer({
     [answers, pageQuestions],
   )
   const pageIsValid = useMemo(
-    () => pageQuestions.every((item) => !validateAnswer(item, answers[item.id])),
-    [pageQuestions, answers],
+    () =>
+      (preview || privacyAccepted) &&
+      pageQuestions.every((item) => !validateAnswer(item, answers[item.id])),
+    [pageQuestions, answers, preview, privacyAccepted],
   )
   const isSimulator = snapshot.formKind === "health_plan_simulator"
   const hasCalculationQuestion = snapshot.questions.some((item) => item.type === "calculation")
@@ -506,33 +528,23 @@ export function PublicFormRenderer({
   }, [started, phase, pageQuestionsKey])
 
   const saveProgress = useCallback(async () => {
-    if (preview || !publicId || !session) return
+    // Nenhum dado é coletado antes do aceite da política de privacidade.
+    if (preview || !publicId || !session || !privacyAccepted) return
     await sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
         visitorSessionId: session,
         ...(publicationId ? { publicationId } : {}),
         answers: pageAnswers,
-        origin: getOrigin(),
+        origin: { ...getOrigin(), ...consentOrigin },
         schemaVersion: 1,
         eventId: crypto.randomUUID(),
         occurredAt: new Date().toISOString(),
         trigger: "page_flush",
     })
-  }, [pageAnswers, preview, publicId, publicationId, sendWithOutbox, session])
+  }, [consentOrigin, pageAnswers, preview, privacyAccepted, publicId, publicationId, sendWithOutbox, session])
 
   const sendBlurProgress = useCallback(
     (questionId: string, value: unknown, trigger: "blur" | "change" = "blur") => {
-      if (preview || !publicId || !session) return
-      // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
-      void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
-          visitorSessionId: session,
-          ...(publicationId ? { publicationId } : {}),
-          answers: [{ questionId, value }],
-          origin: getOrigin(),
-          schemaVersion: 1,
-          eventId: crypto.randomUUID(),
-          occurredAt: new Date().toISOString(),
-          trigger,
-      })
+      // O aviso de campo inválido é só da tela e aparece mesmo antes do aceite; nada sai daqui sem ele.
       const question = snapshot.questions.find((item) => item.id === questionId)
       if (question && isLeadNameQuestion(question)) {
         setError(validateAnswer(question, value))
@@ -540,6 +552,18 @@ export function PublicFormRenderer({
       if (question && question.type === "phone") {
         setError(getPhoneFieldInlineError(value))
       }
+      if (preview || !publicId || !session || !privacyAccepted) return
+      // Sempre persiste no backend (dado parcial/inválido incluso) — UX bloqueia só Continuar/Enviar.
+      void sendWithOutbox("answer", `${API_CLIENT_BASE}/public-forms/${publicId}/progress`, {
+          visitorSessionId: session,
+          ...(publicationId ? { publicationId } : {}),
+          answers: [{ questionId, value }],
+          origin: { ...getOrigin(), ...consentOrigin },
+          schemaVersion: 1,
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date().toISOString(),
+          trigger,
+      })
       dispatchLandingFormAnalytics({
         eventType: "landing.form_answer_change",
         formId: publicId,
@@ -547,7 +571,7 @@ export function PublicFormRenderer({
         answerPresent: value !== undefined && value !== null && value !== "",
       })
     },
-    [preview, publicId, publicationId, sendWithOutbox, session, snapshot.questions],
+    [consentOrigin, preview, privacyAccepted, publicId, publicationId, sendWithOutbox, session, snapshot.questions],
   )
 
   function start() {
@@ -632,6 +656,7 @@ export function PublicFormRenderer({
       return
     }
     if (!publicId || !session) return
+    if (!privacyAccepted) return
     if (sending || done || submitLockRef.current) return
     // O telefone que decide o lead é o mapeado para native_field.phone — um
     // telefone de recado (custom_field) válido não pode suprimir o aviso.
@@ -681,7 +706,7 @@ export function PublicFormRenderer({
           requestKey: buildPublicFormSubmitRequestKey(session, getOrigin().emailLogId),
           ...(publicationId ? { publicationId } : {}),
           answers: answerList,
-          origin: getOrigin(),
+          origin: { ...getOrigin(), ...consentOrigin },
           visitorSessionId: session,
           schemaVersion: 1,
           eventId: crypto.randomUUID(),
@@ -1066,6 +1091,19 @@ export function PublicFormRenderer({
                   </Field>
                 ))}
               </FieldGroup>
+              {index === 0 ? (
+                <div className="mt-8">
+                  <PublicFormPrivacyConsent
+                    checked={privacyAccepted}
+                    legalNotice={legalNotice}
+                    disabled={sending}
+                    onCheckedChange={(accepted) => {
+                      setPrivacyAccepted(accepted)
+                      setPrivacyAcceptedAt(accepted ? new Date().toISOString() : null)
+                    }}
+                  />
+                </div>
+              ) : null}
               {error ? (
                 <Alert variant="destructive" className="mt-5">
                   <AlertDescription>{error}</AlertDescription>

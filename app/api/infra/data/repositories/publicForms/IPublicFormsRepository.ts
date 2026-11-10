@@ -261,6 +261,10 @@ export interface IPublicFormsRepository {
     },
   ): Promise<PublicFormSettings>
   findPublishedByPublicId(publicId: string): Promise<PublicFormPublishedSnapshot | null>
+  /** Acesso master do time dono do formulário: controlador exibido na política de privacidade. */
+  findFormController(
+    teamId: string,
+  ): Promise<{ fullName: string | null; cpfCnpj: string | null; email: string } | null>
   findPublicationById(id: string): Promise<PublicFormPublishedSnapshot | null>
   findTeamIdByPublicId(publicId: string): Promise<string | null>
   /**

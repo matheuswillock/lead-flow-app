@@ -14,8 +14,31 @@ export interface CreateAdhesionPixPaymentInput {
   idempotencyKey: string
 }
 
+export interface CreateAdhesionCardPaymentInput {
+  adhesionId: string
+  amountCents: number
+  installments: number
+  /** Token de uso único (ctok_) emitido pelo abacatepay.js; nunca PAN/CVV. */
+  cardToken: string
+  payer: AdhesionPixPayer
+  idempotencyKey: string
+}
+
+export interface AdhesionCardPaymentResult {
+  payment: BackofficeAdhesionPayment
+  /** Status devolvido pelo provider na cobrança: CONFIRMED (aprovado na hora) ou PENDING. */
+  providerStatus: "CONFIRMED" | "PENDING"
+}
+
 export interface IBackofficeAdhesionPixPaymentService {
   createPixPayment(input: CreateAdhesionPixPaymentInput): Promise<BackofficeAdhesionPayment>
+  /** Cobra o cartão transparente pelo provider; recusa lança `CARD_REFUSED_MESSAGE`. Idempotente pela chave. */
+  createCardPayment(input: CreateAdhesionCardPaymentInput): Promise<AdhesionCardPaymentResult>
+  /** Consulta o status do cartão no provider (usado pelo polling com sync). */
+  getCardProviderStatus(payment: BackofficeAdhesionPayment): Promise<{
+    status: string
+    amountInCents: number | null
+  }>
   findLatest(adhesionId: string): Promise<BackofficeAdhesionPayment | null>
   /** PIX do provider ainda aguardando pagamento e dentro da validade. */
   hasLivePendingPix(adhesionId: string): Promise<boolean>

@@ -1,5 +1,5 @@
 import type { Output } from "@/lib/output"
-import type { SelfCheckoutRequest } from "@/lib/self-checkout/contracts"
+import type { SelfCheckoutCouponQuoteRequest, SelfCheckoutRequest } from "@/lib/self-checkout/contracts"
 
 /** Garante que o provider de PIX pode receber uma cobrança nova antes de qualquer escrita. */
 export interface ISelfCheckoutProviderGate {
@@ -10,4 +10,6 @@ export interface ISelfCheckoutProviderGate {
 export interface ISelfCheckoutUseCase {
   getOptions(): Promise<Output>
   create(input: SelfCheckoutRequest): Promise<Output>
+  /** Simula o desconto do cupom; `result` é um `SelfCheckoutCouponQuote`. */
+  quoteCoupon(input: SelfCheckoutCouponQuoteRequest): Promise<Output>
 }

@@ -54,4 +54,20 @@ describe("parseMeetingDatetimeInput", () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.isoDate).toBe(new Date("2028-02-29T10:00:00-03:00").toISOString());
   });
+
+  it("lê a hora no fuso da conta (Acre, Mato Grosso e Noronha)", () => {
+    expect(parseMeetingDatetimeInput("15/07/2026 14:30", "America/Rio_Branco")!.isoDate).toBe(
+      new Date("2026-07-15T14:30:00-05:00").toISOString()
+    );
+    expect(parseMeetingDatetimeInput("15/07/2026 14:30", "America/Cuiaba")!.isoDate).toBe(
+      new Date("2026-07-15T14:30:00-04:00").toISOString()
+    );
+    expect(parseMeetingDatetimeInput("15/07/2026 14:30", "America/Noronha")!.isoDate).toBe(
+      new Date("2026-07-15T14:30:00-02:00").toISOString()
+    );
+  });
+
+  it("rejeita data inexistente também em outro fuso", () => {
+    expect(parseMeetingDatetimeInput("31/02/2026 23:30", "America/Rio_Branco")).toBeNull();
+  });
 });

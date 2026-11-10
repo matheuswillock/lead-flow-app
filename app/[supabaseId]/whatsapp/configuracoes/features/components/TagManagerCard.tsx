@@ -12,6 +12,7 @@ import {
   whatsAppTagBadgeClassName,
   type WhatsAppTagColorToken,
 } from "@/lib/whatsapp/tag-colors"
+import { useConfirmDelete } from "@/components/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,6 +46,7 @@ export function TagManagerCard() {
   const [name, setName] = useState("")
   const [color, setColor] = useState<WhatsAppTagColorToken>("primary")
   const [isSaving, setIsSaving] = useState(false)
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   const loadTags = useCallback(async () => {
     if (!activeTeamId || !user?.id) return
@@ -201,7 +203,15 @@ export function TagManagerCard() {
                   <Pencil />
                   <span className="sr-only">Editar tag</span>
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => void deleteTag(tag)} disabled={isSaving}>
+                <Button variant="ghost" size="icon" onClick={() =>
+                    confirmDelete({
+                      title: `Excluir a tag "${tag.name}"?`,
+                      description: "A tag sai de todas as conversas em que estiver aplicada.",
+                      onConfirm: () => deleteTag(tag),
+                    })
+                  }
+                  disabled={isSaving}
+                >
                   <Trash2 />
                   <span className="sr-only">Excluir tag</span>
                 </Button>
@@ -210,6 +220,8 @@ export function TagManagerCard() {
           ))
         )}
       </div>
+
+      {confirmDeleteDialog}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] flex flex-col">

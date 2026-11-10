@@ -54,7 +54,11 @@ export const metadata: Metadata = {
     images: [getAbsoluteUrl(SHARE_IMAGE_PATH)],
   },
   icons: {
-    icon: "/corretor-studio-icon.svg",
+    icon: [
+      { url: "/corretor-studio-icon.png", type: "image/png", sizes: "512x512" },
+      { url: "/corretor-studio-icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/corretor-studio-apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
 }
 

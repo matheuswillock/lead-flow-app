@@ -47,11 +47,17 @@ export function LandingHeader() {
             Entrar
           </Link>
           <DemoRequestDialogButton
-            className="landing-secondary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="landing-secondary-cta hidden min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:inline-flex"
           >
             Solicitar demonstração
-            <ArrowRight className="size-4" aria-hidden />
           </DemoRequestDialogButton>
+          <Link
+            href="/checkout"
+            className="landing-primary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Contratar online
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
         </div>
       </div>
     </header>

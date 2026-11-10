@@ -282,6 +282,7 @@ export function PipelineContainer({
         finalizeContract={finalizeContract}
         patchLead={patchLead}
         defaultTab={leadDialogDefaultTab}
+        allowDelete
       />
     </div>
   )

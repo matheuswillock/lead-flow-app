@@ -3,7 +3,8 @@
 import * as React from "react"
 import { toast } from "sonner"
 import {
-  MoreVertical,
+  Pencil,
+  XCircle,
   Loader2,
   Clock,
   BadgeCheck,
@@ -21,13 +22,6 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -40,6 +34,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatIntimezone } from "@/lib/dates"
+import { API_CLIENT_BASE } from "@/lib/route-map"
 
 type TaskAssigneeStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "CANCELED" | "OVERDUE"
 
@@ -171,7 +166,7 @@ export function TaskCard({
     try {
       for (const assignee of targets) {
         const response = await fetch(
-          `/api/v1/tasks/${task.id}/assignees/${assignee.profileId}/status`,
+          `${API_CLIENT_BASE}/tasks/${task.id}/assignees/${assignee.profileId}/status`,
           {
             method: "PATCH",
             headers: {
@@ -199,7 +194,7 @@ export function TaskCard({
   const handleCancel = async () => {
     setCanceling(true)
     try {
-      const response = await fetch(`/api/v1/tasks/${task.id}/cancel`, {
+      const response = await fetch(`${API_CLIENT_BASE}/tasks/${task.id}/cancel`, {
         method: "POST",
         headers: {
           "x-supabase-user-id": supabaseId,
@@ -250,48 +245,6 @@ export function TaskCard({
                 </Badge>
               )}
             </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  data-no-card-open="true"
-                  className="size-7 max-lg:size-11 shrink-0"
-                  disabled={updatingStatus || canceling}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {updatingStatus ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <MoreVertical className="size-4" />
-                  )}
-                  <span className="sr-only">Ações da tarefa</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {onEdit && (
-                  <>
-                    <DropdownMenuItem
-                      disabled={overallStatus === "DONE"}
-                      onSelect={() => onEdit(task)}
-                    >
-                      Editar tarefa
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                {overallStatus !== "CANCELED" && (
-                  <DropdownMenuItem
-                    disabled={overallStatus === "DONE"}
-                    className="text-destructive focus:text-destructive"
-                    onSelect={() => setCancelDialogOpen(true)}
-                  >
-                    Cancelar tarefa
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
           <div className="text-xs text-muted-foreground">
@@ -326,8 +279,8 @@ export function TaskCard({
 
           <Separator />
 
-          <div className="flex items-end justify-between gap-3">
-            <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">Responsáveis</span>
               <div className="flex flex-wrap gap-2">
                 {task.assignees.map((assignee) => (
@@ -361,6 +314,41 @@ export function TaskCard({
                 ))}
               </div>
             </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+            {onEdit && overallStatus !== "DONE" && overallStatus !== "CANCELED" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-no-card-open="true"
+                className="max-lg:min-h-11"
+                disabled={updatingStatus || canceling}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit(task)
+                }}
+              >
+                <Pencil className="size-4" aria-hidden />
+                Editar tarefa
+              </Button>
+            ) : null}
+            {overallStatus !== "DONE" && overallStatus !== "CANCELED" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                data-no-card-open="true"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive max-lg:min-h-11"
+                disabled={updatingStatus || canceling}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCancelDialogOpen(true)
+                }}
+              >
+                <XCircle className="size-4" aria-hidden />
+                Cancelar
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
@@ -387,6 +375,7 @@ export function TaskCard({
                 </>
               )}
             </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

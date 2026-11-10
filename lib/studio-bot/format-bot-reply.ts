@@ -1,3 +1,5 @@
+import { DEFAULT_TZ } from "@/lib/dates/DEFAULT_TZ";
+
 const PERMISSION_DENIED_MESSAGE =
   "Você não tem permissão para esta opção. Digite *menu* para ver o que está disponível.";
 
@@ -27,12 +29,13 @@ type TeamDigest = {
   tasksDueToday?: number;
 };
 
-function formatDateTime(value: Date | string | null | undefined): string {
+/** Fuso da conta do usuário; sem ele, o padrão do sistema (Brasília). */
+function formatDateTime(value: Date | string | null | undefined, timezone: string = DEFAULT_TZ): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
+    timeZone: timezone,
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -40,12 +43,12 @@ function formatDateTime(value: Date | string | null | undefined): string {
   }).format(date);
 }
 
-function formatTime(value: Date | string | null | undefined): string {
+function formatTime(value: Date | string | null | undefined, timezone: string = DEFAULT_TZ): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
+    timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
@@ -79,13 +82,13 @@ export function formatLeadListReply(
   return `${title}\n\n${lines.join("\n")}\n\n${LIST_FOOTER}`;
 }
 
-export function formatAgendaTodayReply(schedules: AgendaItem[]): string {
+export function formatAgendaTodayReply(schedules: AgendaItem[], timezone: string = DEFAULT_TZ): string {
   if (!schedules.length) {
     return "*Agenda de hoje*\n\nSem reuniões hoje.\n\nDigite *menu* para voltar.";
   }
 
   const lines = schedules.map((item) => {
-    const time = formatTime(item.date);
+    const time = formatTime(item.date, timezone);
     const leadLabel =
       item.lead?.leadCode != null
         ? `${item.lead.leadCode} — ${item.lead.name?.trim() || "Lead"}`
@@ -97,14 +100,14 @@ export function formatAgendaTodayReply(schedules: AgendaItem[]): string {
   return `*Agenda de hoje*\n\n${lines.join("\n")}\n\nDigite *menu* para voltar.`;
 }
 
-export function formatTasksReply(tasks: TaskListItem[]): string {
+export function formatTasksReply(tasks: TaskListItem[], timezone: string = DEFAULT_TZ): string {
   if (!tasks.length) {
     return "*Minhas tarefas*\n\nSem tarefas no período.\n\nDigite *menu* para voltar.";
   }
 
   const lines = tasks.slice(0, 15).map((task) => {
     const title = task.title?.trim() || "Tarefa";
-    const due = formatDateTime(task.endAt ?? task.startAt);
+    const due = formatDateTime(task.endAt ?? task.startAt, timezone);
     return `• ${title} — ${due}`;
   });
 
@@ -142,13 +145,13 @@ type LeadDetail = {
   assignee?: { fullName?: string | null } | null;
 };
 
-export function formatLeadSubmenu(lead: LeadDetail): string {
+export function formatLeadSubmenu(lead: LeadDetail, timezone: string = DEFAULT_TZ): string {
   const code = lead.leadCode != null ? String(lead.leadCode) : "—";
   const name = lead.name?.trim() || "Sem nome";
   const status = lead.status?.trim() || "—";
   const meeting =
     lead.meetingTitle?.trim() || lead.meetingDate
-      ? `${lead.meetingTitle?.trim() || "Reunião"} — ${formatDateTime(lead.meetingDate)}`
+      ? `${lead.meetingTitle?.trim() || "Reunião"} — ${formatDateTime(lead.meetingDate, timezone)}`
       : "—";
 
   return [
@@ -165,7 +168,7 @@ export function formatLeadSubmenu(lead: LeadDetail): string {
   ].join("\n");
 }
 
-export function formatLeadDetailReply(lead: LeadDetail): string {
+export function formatLeadDetailReply(lead: LeadDetail, timezone: string = DEFAULT_TZ): string {
   const code = lead.leadCode != null ? String(lead.leadCode) : "—";
   const name = lead.name?.trim() || "Sem nome";
   const lines = [
@@ -177,7 +180,7 @@ export function formatLeadDetailReply(lead: LeadDetail): string {
     `Responsável: ${lead.assignee?.fullName?.trim() || "—"}`,
     `Reunião: ${
       lead.meetingTitle?.trim() || lead.meetingDate
-        ? `${lead.meetingTitle?.trim() || "Reunião"} — ${formatDateTime(lead.meetingDate)}`
+        ? `${lead.meetingTitle?.trim() || "Reunião"} — ${formatDateTime(lead.meetingDate, timezone)}`
         : "—"
     }`,
     "",
@@ -238,8 +241,12 @@ export function formatTaskCreatedReply(title: string): string {
   return `Tarefa criada: *${title}*\n\nDigite *6* para o submenu do lead ou *menu* para o início.`;
 }
 
-export function formatMeetingScheduledReply(meetingDate?: Date | string | null, title?: string | null): string {
-  const when = formatDateTime(meetingDate);
+export function formatMeetingScheduledReply(
+  meetingDate?: Date | string | null,
+  title?: string | null,
+  timezone: string = DEFAULT_TZ
+): string {
+  const when = formatDateTime(meetingDate, timezone);
   const label = title?.trim() || "Reunião";
   return `Reunião agendada: *${label}* — ${when}\n\nDigite *6* para o submenu do lead ou *menu* para o início.`;
 }
@@ -260,7 +267,8 @@ export function formatComingSoonReply(feature: string): string {
 export function formatActionReply(
   action: string,
   result: unknown,
-  errorMessages: string[] = []
+  errorMessages: string[] = [],
+  timezone: string = DEFAULT_TZ
 ): string {
   if (errorMessages.length > 0) {
     return formatActionErrorMessage(errorMessages);
@@ -279,14 +287,15 @@ export function formatActionReply(
     case "lead_detail": {
       const lead =
         payload.lead && typeof payload.lead === "object" ? (payload.lead as LeadDetail) : {};
-      return `${formatLeadDetailReply(lead)}\n\n${formatLeadSubmenu(lead)}`;
+      return `${formatLeadDetailReply(lead, timezone)}\n\n${formatLeadSubmenu(lead, timezone)}`;
     }
     case "agenda_today":
       return formatAgendaTodayReply(
-        Array.isArray(payload.schedules) ? (payload.schedules as AgendaItem[]) : []
+        Array.isArray(payload.schedules) ? (payload.schedules as AgendaItem[]) : [],
+        timezone
       );
     case "list_tasks":
-      return formatTasksReply(Array.isArray(result) ? (result as TaskListItem[]) : []);
+      return formatTasksReply(Array.isArray(result) ? (result as TaskListItem[]) : [], timezone);
     case "team_digest": {
       const digest =
         payload.digest && typeof payload.digest === "object"
@@ -316,7 +325,7 @@ export function formatActionReply(
           : typeof payload.title === "string"
             ? payload.title
             : null;
-      return formatMeetingScheduledReply(meetingDate, title);
+      return formatMeetingScheduledReply(meetingDate, title, timezone);
     }
     case "cancel_meeting":
       return formatMeetingCancelledReply();

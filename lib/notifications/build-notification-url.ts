@@ -1,3 +1,4 @@
+import { API_CLIENT_BASE } from "@/lib/route-map";
 import { getFullUrl } from "@/lib/utils/app-url";
 
 export type NotificationLinkMetadata = {
@@ -32,6 +33,7 @@ const LEAD_LINK_TYPES = new Set([
   "LEAD_TRANSFER_SCHEDULE_FAILED",
   "MEETING_REMINDER",
   "LEAD_NEEDS_RESCHEDULE",
+  "LEAD_ORPHANED",
 ]);
 
 export function hasLeadNotificationLink(type: string, metadata?: NotificationLinkMetadata | null) {
@@ -44,6 +46,15 @@ export function hasStudioDomainDnsLink(type: string, metadata?: NotificationLink
     (type === "STUDIO_DOMAIN_DNS_ACTION_REQUIRED" || type === "STUDIO_DOMAIN_DNS_RECOVERED") &&
     typeof metadata?.href === "string" &&
     metadata.href.startsWith("/")
+  );
+}
+
+/** Exportação do time excluído: a notificação leva direto ao download (só para quem pediu, logado). */
+export function hasTeamExportDownloadLink(type: string, metadata?: NotificationLinkMetadata | null) {
+  return (
+    type === "TEAM_EXPORT_READY" &&
+    typeof metadata?.href === "string" &&
+    metadata.href.startsWith(`${API_CLIENT_BASE}/teams/exports/`)
   );
 }
 
@@ -64,6 +75,10 @@ export function buildNotificationPath(input: NotificationLinkInput): string {
   const metadata = input.metadata ?? null;
 
   if (hasStudioDomainDnsLink(input.type, metadata)) {
+    return metadata!.href!;
+  }
+
+  if (hasTeamExportDownloadLink(input.type, metadata)) {
     return metadata!.href!;
   }
 

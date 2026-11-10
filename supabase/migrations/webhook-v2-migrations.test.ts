@@ -52,8 +52,9 @@ describe("migration do enum de notificação", () => {
   it("só altera o enum, sem usar o valor novo na mesma transação", () => {
     const sql = read(ENUM_MIGRATION);
     const statements = sql
-      .split("\n")
-      .filter((line) => line.trim() && !line.trim().startsWith("--"));
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("--"));
     expect(statements).toEqual([
       "ALTER TYPE public.notification_type ADD VALUE IF NOT EXISTS 'LEAD_NEEDS_RESCHEDULE';",
     ]);

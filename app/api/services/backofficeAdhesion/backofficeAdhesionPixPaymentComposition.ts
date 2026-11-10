@@ -11,14 +11,14 @@ import {
  */
 export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
   return {
-    async select() {
+    async select(method = "PIX") {
       const composition = await import(
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
       const selected = await composition.createPaymentProviderRouter(environment).select({
         environment,
-        requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+        requiredCapabilities: ["ONE_TIME_PAYMENT", method],
       })
       return {
         provider: selected.provider,
@@ -32,6 +32,23 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
       )
       const environment = composition.resolvePaymentProviderEnvironment()
       return composition.createAbacatePayProvider(environment).createPixPayment(input)
+    },
+    async createCard(input) {
+      const composition = await import(
+        "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+      )
+      const environment = composition.resolvePaymentProviderEnvironment()
+      return composition.createAbacatePayProvider(environment).createCardPayment(input)
+    },
+    async getCardStatus(externalId) {
+      const composition = await import(
+        "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+      )
+      const environment = composition.resolvePaymentProviderEnvironment()
+      const status = await composition
+        .createAbacatePayProvider(environment)
+        .getStatus({ externalId, method: "CARD" })
+      return { status: status.status, amountInCents: status.amountInCents }
     },
   }
 }

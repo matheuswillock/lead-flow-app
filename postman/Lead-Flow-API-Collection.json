@@ -10386,6 +10386,83 @@
               }
             },
             {
+              "name": "POST Public Self Checkout Coupon",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"couponCode\": \"BEMVINDO10\",\n  \"cycle\": \"quarterly\",\n  \"billingType\": \"PIX\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-self-checkout/coupon",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-self-checkout",
+                    "coupon"
+                  ]
+                },
+                "description": "Simula o desconto de um cupom no auto-checkout público (/checkout). O valor vem sempre do produto no servidor; billingType é PIX (padrão) ou CREDIT_CARD. Devolve Output com result { code, label, discountAmount, totalAfterDiscount }. Cupom inexistente, inativo, expirado ou esgotado devolve 422 com mensagem curta em errorMessages. Limitado por IP e por IP + código (429)."
+              }
+            },
+            {
+              "name": "GET Public Self Checkout Options",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-self-checkout/options",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-self-checkout",
+                    "options"
+                  ]
+                },
+                "description": "Ciclos e preços do auto-checkout. Ciclos com cartão trazem creditCardTotal, creditCardMonthlyEquivalent e maxInstallments; couponsEnabled indica que o campo de cupom deve aparecer."
+              }
+            },
+            {
+              "name": "POST Public Self Checkout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"companyLegalName\": \"Corretora Exemplo Ltda\",\n  \"cnpj\": \"11222333000181\",\n  \"cpf\": \"52998224725\",\n  \"jobTitle\": \"owner\",\n  \"fullName\": \"Maria Souza\",\n  \"email\": \"maria@example.com\",\n  \"phone\": \"11999999999\",\n  \"cycle\": \"quarterly\",\n  \"billingType\": \"CREDIT_CARD\",\n  \"couponCode\": \"BEMVINDO10\",\n  \"termsAccepted\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-self-checkout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-self-checkout"
+                  ]
+                },
+                "description": "Cria a adesão do auto-checkout e devolve o token da /adesao. billingType opcional (PIX por padrão); couponCode opcional e revalidado no servidor, que reserva o uso do cupom. Preço nunca vem do corpo."
+              }
+            },
+            {
               "name": "POST Public Adhesion Checkout",
               "request": {
                 "method": "POST",
@@ -10443,6 +10520,36 @@
                   ]
                 },
                 "description": "Gera o PIX transparente da adesão pelo provider de pagamento (Abacate). O token define a adesão e o valor; a chave de idempotência vale por adesão. Adesões com parcelas pendentes no Asaas usam o checkout padrão. Limitado por IP (429)."
+              }
+            },
+            {
+              "name": "POST Public Adhesion Card (Abacate)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cardToken\": \"ctok_xxxxxxxx\",\n  \"installments\": 3,\n  \"payer\": {\n    \"fullName\": \"Maria Souza\",\n    \"email\": \"maria@example.com\",\n    \"phone\": \"11999999999\",\n    \"cpfCnpj\": \"11222333000181\"\n  },\n  \"idempotencyKey\": \"adhesion-card-{{$guid}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}/card",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}",
+                    "card"
+                  ]
+                },
+                "description": "Cobra o cartão da adesão pelo cartão transparente do Abacate. cardToken é o ctok_ de uso único emitido pelo abacatepay.js (vale 60 s); nunca enviar número ou CVV. O valor vem da adesão (cupom e adicionais já gravados), installments vai de 1 até maxCardInstallments com mínimo de R$ 10 por parcela. Idempotente pela chave. Resposta: pagamento com provider ABACATE_PAY, billingType CREDIT_CARD e status pending|paid; recusa devolve 400 com mensagem genérica. A ativação da conta ocorre na aprovação ou pelo webhook transparent.completed. Limitado por IP e por token (429)."
               }
             },
             {

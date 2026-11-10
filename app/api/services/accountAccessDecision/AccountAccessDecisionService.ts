@@ -52,7 +52,14 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
     if (billingGraceUntil) {
       const temporaryAccessUntil = billingGraceUntil.toISOString()
       if (billingGraceUntil.getTime() > now.getTime()) {
-        return { state: "allowed", temporaryAccessGranted: true, temporaryAccessUntil }
+        // Carência de cobrança (não uma concessão operacional): a tela avisa o vencimento.
+        const isBillingGrace = account.temporaryAccessGranted !== true && account.subscriptionStatus === "past_due"
+        return {
+          state: "allowed",
+          temporaryAccessGranted: true,
+          temporaryAccessUntil,
+          ...(isBillingGrace ? { billingGraceUntil: temporaryAccessUntil } : {}),
+        }
       }
       // Somente past_due degrada para leitura; uma concessão expirada não transforma
       // suspended/canceled em read_only: elas seguem para as regras restritivas abaixo.

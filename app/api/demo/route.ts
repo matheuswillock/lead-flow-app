@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     const whatsapp = String(body?.whatsapp || "").trim();
     const teamSize = String(body?.teamSize || "").trim();
     const preferredContactTime = String(body?.preferredContactTime || "").trim();
+    const question = String(body?.question || "").trim().slice(0, 1000);
 
     const errors: string[] = [];
     if (!fullName) errors.push("Nome completo é obrigatório");
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       lastName,
       teamSize: teamSize || null,
       preferredContactTime: preferredContactTime || null,
+      question: question || null,
     });
 
     if (!result.isValid) {
