@@ -1,0 +1,128 @@
+# =============================================================================
+# docker-compose.test.yml — suíte de testes 100% em container (Podman)
+# =============================================================================
+#
+# Orquestrado por `bun run test:compose[:e2e|:integration|:unit]`
+# (scripts/test-compose.ts). Não use `up` direto: o orquestrador decide a suíte
+# e derruba tudo no final.
+#
+# Isolamento: este stack NÃO publica porta no host. `forward`, `setup`, `app` e `tests`
+# compartilham o namespace de rede do `db` (network_mode: service:db), então
+# dentro deles o Postgres continua em 127.0.0.1:55322 e o app em
+# 127.0.0.1:3000 — exatamente o que .env.test, seed-e2e.ts e o Playwright já
+# esperam. Por isso nenhum script do projeto precisa mudar, e o stack não
+# conflita com o `leadflow-local-db` do `bun run dev` (que ocupa :55322 no host).
+#
+# Fluxo:  db (healthy) -> setup (install, migrate, seed, build) -> app (healthy)
+#         -> tests (profile "tests", executado via `run`).
+#
+# SELinux (Fedora): o repo é montado com `label=disable` em vez de `:Z`, para
+# não reetiquetar (nem varrer) o checkout e o node_modules do host.
+# =============================================================================
+
+name: leadflow-test
+
+x-test-service: &test-service
+  build:
+    # Contexto mínimo: a imagem só tem ferramentas, o repo entra por bind mount.
+    context: ./docker/test
+    dockerfile: Containerfile
+  image: leadflow-test-runner:local
+  working_dir: /app
+  security_opt:
+    - label=disable
+  volumes:
+    - .:/app
+    - test_node_modules:/app/node_modules
+    - test_next_cache:/app/.next
+    - test_bun_cache:/usr/local/bun/install/cache
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.149
+    container_name: leadflow-test-db
+    security_opt:
+      - label=disable
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    command:
+      - postgres
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+      - -c
+      - max_connections=100
+      # Banco descartável: sem fsync, os E2E migram e semeiam bem mais rápido.
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    volumes:
+      - ./docker/local/init-realtime-schema.sql:/docker-entrypoint-initdb.d/init-realtime-schema.sql:ro
+      - ./docker/local/zz-init-storage-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-storage-stub-schema.sql:ro
+      - ./docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -p 5432"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  # O `migrate.sh` da imagem supabase/postgres fixa a porta 5432 (ignora PGPORT),
+  # mas o projeto fala com 127.0.0.1:55322. Mesmo encaminhador do `e2e:ci`.
+  forward:
+    <<: *test-service
+    container_name: leadflow-test-forward
+    network_mode: "service:db"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["bun", "scripts/tcp-forward.ts", "55322", "5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 55322 -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  setup:
+    <<: *test-service
+    container_name: leadflow-test-setup
+    network_mode: "service:db"
+    depends_on:
+      forward:
+        condition: service_healthy
+    restart: "no"
+    command: ["bun", "scripts/test-compose-entry.ts", "setup"]
+
+  app:
+    <<: *test-service
+    container_name: leadflow-test-app
+    network_mode: "service:db"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command: ["bun", "scripts/test-compose-entry.ts", "app"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+  tests:
+    <<: *test-service
+    container_name: leadflow-test-runner
+    profiles: ["tests"]
+    network_mode: "service:db"
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  test_node_modules:
+  test_next_cache:
+  test_bun_cache:

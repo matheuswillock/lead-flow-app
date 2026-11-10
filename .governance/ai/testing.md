@@ -25,6 +25,8 @@ bun run test:e2e
 
 Use a spec relevante localmente quando a suíte completa não for necessária durante a iteração.
 
+**Ambiente de execução:** a validação local roda no stack em container (`bun run test:compose`, `:unit`, `:integration`, `:e2e`). Comandos, composição do stack, o que dá e não dá para validar (contas, processos, provedores externos) e armadilhas estão em `.governance/ai/local-stack.md`. Se a mudança exige serviço, variável ou seed novo para ser testada, implemente-o no compose na mesma mudança.
+
 ## Visual
 
 - Observe a tela renderizada por Playwright, preview/dev server, navegador conectado ou screenshot do owner.
