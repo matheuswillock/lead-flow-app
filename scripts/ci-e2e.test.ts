@@ -609,6 +609,30 @@ describe("runE2eCi", () => {
     );
   });
 
+  it("regenera o Prisma Client para a plataforma da tarefa antes do seed, da integracao e do build", async () => {
+    const ok = createDeps();
+    expect(await runE2eCi(ok.deps)).toBe(0);
+    const lines = ok.calls.map(commandLine);
+    const generate = lines.indexOf("bun run prisma:generate");
+    expect(generate).toBeGreaterThan(-1);
+    expect(generate).toBeLessThan(
+      lines.findIndex((line) => line.includes("db:seed:e2e")),
+    );
+    expect(generate).toBeLessThan(lines.indexOf("bun run test:integration"));
+    expect(generate).toBeLessThan(lines.indexOf("bun run build"));
+    expect(ok.calls[generate].env?.DATABASE_URL).toContain("127.0.0.1:55322");
+
+    const failing = createDeps((call) =>
+      commandLine(call) === "bun run prisma:generate" ? 1 : 0,
+    );
+    expect(await runE2eCi(failing.deps)).toBe(1);
+    const failingLines = failing.calls.map(commandLine);
+    expect(failingLines.some((line) => line.includes("db:seed:e2e"))).toBe(
+      false,
+    );
+    expect(failingLines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
+  });
+
   it("passa o ambiente de E2E para seed, integracao, build e Playwright", async () => {
     const { deps, calls } = createDeps();
 

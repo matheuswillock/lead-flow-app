@@ -549,6 +549,13 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
       run: () => (ensurePsql(runner, log, privilege, deps.baseEnv) ? 0 : 1),
     },
     {
+      // As dependencias sao instaladas na imagem Amazon Linux (engine
+      // rhel-openssl-3.0.x), mas esta tarefa roda em Ubuntu (debian-openssl-3.0.x):
+      // sem regenerar, o seed, o build e o `next start` nao acham o query engine.
+      name: "gerar Prisma Client",
+      run: () => runner.run("bun", ["run", "prisma:generate"], env),
+    },
+    {
       name: "seed E2E",
       run: () => runner.run("bun", ["run", "db:seed:e2e"], env),
     },
