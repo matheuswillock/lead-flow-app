@@ -62,7 +62,7 @@ describe("AccountAccessDecisionService - regressão de acesso por conta", () => 
     // Relógio fixo antes do vencimento do fixture: sem isso o teste vira past_due quando a data passa.
     const decision = new AccountAccessDecisionService().decide(
       restrictedThirdPartyTeam(),
-      new Date("2026-11-01T12:00:00.000Z"),
+      new Date("2026-11-01T00:00:00.000Z"),
     )
 
     expect(decision).toEqual({ state: "restricted", reason: "suspended" })
