@@ -541,7 +541,13 @@ describe("runE2eCi", () => {
     expect(index("db:seed:e2e")).toBeLessThan(index("test:integration"));
     expect(index("test:integration")).toBeLessThan(index("run build"));
     expect(index("run build")).toBeLessThan(index("playwright install"));
-    expect(index("playwright install")).toBeLessThan(index("playwright test"));
+    expect(index("playwright install")).toBeLessThan(
+      index("bun run test:e2e --reporter=list,html"),
+    );
+    // Rodar o Playwright com `bunx --bun` quebra o carregamento das specs .ts.
+    expect(lines.some((line) => line.includes("--bun playwright test"))).toBe(
+      false,
+    );
     expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
   });
 
@@ -638,12 +644,18 @@ describe("runE2eCi", () => {
 
     await runE2eCi(deps);
 
+    const envStages = [
+      "bun run prisma:generate",
+      "bun run db:seed:e2e",
+      "bun run test:integration",
+      "bun run build",
+      "bunx --bun playwright install --with-deps chromium",
+      "bun run test:e2e --reporter=list,html",
+    ];
     const withEnv = calls.filter((call) =>
-      ["db:seed:e2e", "test:integration", "run build", "playwright"].some(
-        (needle) => commandLine(call).includes(needle),
-      ),
+      envStages.includes(commandLine(call)),
     );
-    expect(withEnv.length).toBeGreaterThanOrEqual(5);
+    expect(withEnv.map(commandLine)).toEqual(envStages);
     for (const call of withEnv) {
       expect(call.env?.APP_ENV).toBe("test");
       expect(call.env?.DATABASE_URL).toContain("127.0.0.1:55322");
@@ -660,7 +672,7 @@ describe("runE2eCi", () => {
     expect(exitCode).toBe(3);
     const lines = calls.map(commandLine);
     expect(lines.some((line) => line.includes("run build"))).toBe(false);
-    expect(lines.some((line) => line.includes("playwright test"))).toBe(false);
+    expect(lines.some((line) => line.includes("test:e2e"))).toBe(false);
     expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
     expect(logger.error.join("\n")).toContain(
       'etapa "testes de integração" falhou (exit 3)',

@@ -574,14 +574,13 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
       run: () => runner.run("bunx", playwrightInstallArgs(privilege), env),
     },
     {
+      // `bun run test:e2e` executa o binario do Playwright pelo shebang node, como
+      // a action do GitHub. Com `bunx --bun` o Bun carrega as specs .ts sem o
+      // transformador do Playwright e falha com "Expected ; but found :".
       // Sem artefato no Vercel CI: o reporter `list` deixa a falha nos logs.
       name: "Playwright",
       run: () =>
-        runner.run(
-          "bunx",
-          ["--bun", "playwright", "test", "--reporter=list,html"],
-          env,
-        ),
+        runner.run("bun", ["run", "test:e2e", "--reporter=list,html"], env),
     },
   ];
 
