@@ -132,7 +132,7 @@ export function OperatorAccountLinksField({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 shrink-0"
+                    className="size-10 shrink-0"
                     onClick={() => onRemoveAccount(draft.masterId)}
                     disabled={disabled}
                     aria-label={`Remover conta ${draft.masterName ?? draft.masterEmail}`}
@@ -154,17 +154,20 @@ export function OperatorAccountLinksField({
                     {draft.teams.map((team) => {
                       const checkboxId = `link-${draft.masterId}-${team.id}`
                       return (
-                        <li key={team.id} className="flex items-center gap-2">
-                          <Checkbox
-                            id={checkboxId}
-                            checked={draft.selectedTeamIds.includes(team.id)}
-                            onCheckedChange={(checked) =>
-                              onToggleTeam(draft.masterId, team.id, checked === true)
-                            }
-                            disabled={disabled}
-                          />
-                          <Label htmlFor={checkboxId} className="cursor-pointer font-normal">
-                            {team.name}
+                        <li key={team.id}>
+                          <Label
+                            htmlFor={checkboxId}
+                            className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 font-normal hover:bg-muted"
+                          >
+                            <Checkbox
+                              id={checkboxId}
+                              checked={draft.selectedTeamIds.includes(team.id)}
+                              onCheckedChange={(checked) =>
+                                onToggleTeam(draft.masterId, team.id, checked === true)
+                              }
+                              disabled={disabled}
+                            />
+                            <span className="min-w-0 break-words">{team.name}</span>
                           </Label>
                         </li>
                       )
@@ -186,7 +189,6 @@ export function OperatorAccountLinksField({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 className="self-start"
                 disabled={disabled}
               >
