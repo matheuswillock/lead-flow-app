@@ -204,6 +204,12 @@ const FEATURES: Array<{
 
   // ── Integração guarda-chuva ───────────────────────────────────────────────
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
+  { slug: "webhooks", name: "Webhooks", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 201, parentSlug: "integration", productSlug: null },
+  { slug: "api-catalog", name: "Catálogo de API", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 202, parentSlug: "integration", productSlug: null },
+  { slug: "lead-form", name: "Formulário de Captação de Leads", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 203, parentSlug: "integration", productSlug: null },
+
+  // ── Pixel (filha do Radar) ─────────────────────────────────────────────────
+  { slug: "pixel", name: "Pixel", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 181, parentSlug: "radar", productSlug: "radar" },
 ]
 
 const WHATSAPP_PAYMENT_RULES: Array<{
@@ -418,6 +424,11 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MANAGER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
   ]),
+  pixel: completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+  ]),
   "studio-bot": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "BACKOFFICE", accessLevel: "FULL" },
@@ -436,6 +447,18 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
   // regra, um manager não-master perde acesso ao trocar a lista fixa de
   // times por essa feature (SPEC 15, achado R15-1).
   integration: completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  webhooks: completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  "api-catalog": completeRuleSet([
+    { principal: "MASTER", accessLevel: "FULL" },
+    { principal: "MANAGER", accessLevel: "FULL" },
+  ]),
+  "lead-form": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),

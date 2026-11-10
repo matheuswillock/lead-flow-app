@@ -129,9 +129,9 @@ export function WebhooksListContainer({ supabaseId, direction }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-2">
           <Button variant="ghost" size="sm" asChild className="w-fit px-0">
-            <Link href={`/${supabaseId}/integrations`}>
+            <Link href={`/${supabaseId}/integrations/webhooks`}>
               <ArrowLeft data-icon="inline-start" />
-              Integrações
+              Webhooks
             </Link>
           </Button>
           <h1 className="text-2xl font-semibold">{title}</h1>
