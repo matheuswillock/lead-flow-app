@@ -1,9 +1,13 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  DOCKERD_LOG,
+  DOCKER_ROOT,
   POSTGRES_FALLBACK_IMAGE,
   POSTGRES_IMAGE,
+  SKIP_DOCKER_REMOUNT_ENV,
   buildE2eEnv,
+  ensureDockerOffOverlay,
   parseEnvFile,
   pullPostgresImage,
   runE2eCi,
@@ -23,16 +27,36 @@ interface RecordedCall {
 
 type Responder = (call: RecordedCall) => number | undefined;
 
-function createRunner(respond: Responder = () => 0) {
+type OutputResponder = (call: RecordedCall) => { status: number; stdout: string };
+
+const defaultOutput: OutputResponder = () => ({
+  status: 0,
+  stdout: "ext2/ext3\n",
+});
+
+function createRunner(
+  respond: Responder = () => 0,
+  respondOutput: OutputResponder = defaultOutput,
+) {
   const calls: RecordedCall[] = [];
+  const outputCalls: RecordedCall[] = [];
+  const background: Array<{ command: string; args: string[]; logFile: string }> = [];
   const runner: CommandRunner = {
     run: (command, args, env) => {
       const call = { command, args, env };
       calls.push(call);
       return respond(call) ?? 0;
     },
+    output: (command, args) => {
+      const call = { command, args };
+      outputCalls.push(call);
+      return respondOutput(call);
+    },
+    startBackground: (command, args, logFile) => {
+      background.push({ command, args, logFile });
+    },
   };
-  return { runner, calls };
+  return { runner, calls, outputCalls, background };
 }
 
 const noSleep = async () => {};
@@ -53,8 +77,9 @@ function createLogger() {
 function createDeps(
   respond: Responder = () => 0,
   overrides: Partial<E2eDeps> = {},
+  respondOutput: OutputResponder = defaultOutput,
 ) {
-  const { runner, calls } = createRunner(respond);
+  const { runner, calls } = createRunner(respond, respondOutput);
   const logger = createLogger();
   const deps: E2eDeps = {
     runner,
@@ -129,6 +154,143 @@ describe("buildE2eEnv", () => {
     );
     expect(withoutKey.ASAAS_API_KEY).toBe("placeholder");
     expect(withoutKey.ASAAS_SANDBOX_API_KEY).toBe("placeholder");
+  });
+});
+
+const overlayOutput =
+  (dockerInfoStatus = 0): OutputResponder =>
+  (call) =>
+    call.command === "stat"
+      ? { status: 0, stdout: "overlayfs\n" }
+      : { status: dockerInfoStatus, stdout: "29.1.3\n" };
+
+/** `pidof dockerd` responde "rodando" nas primeiras chamadas e "parado" depois. */
+const dockerdStopsAfter = (runningChecks: number): Responder => {
+  let checks = 0;
+  return (call) =>
+    call.command === "pidof" ? (++checks <= runningChecks ? 0 : 1) : 0;
+};
+
+describe("ensureDockerOffOverlay", () => {
+  it("nao mexe no Docker sem root", async () => {
+    const { runner, calls, outputCalls } = createRunner();
+
+    const ok = await ensureDockerOffOverlay(
+      runner,
+      noSleep,
+      createLogger().log,
+      "sudo",
+    );
+
+    expect(ok).toBe(true);
+    expect(calls).toEqual([]);
+    expect(outputCalls).toEqual([]);
+  });
+
+  it("respeita o opt-out por variavel de ambiente", async () => {
+    const { runner, calls, outputCalls } = createRunner(() => 0, overlayOutput());
+
+    const ok = await ensureDockerOffOverlay(
+      runner,
+      noSleep,
+      createLogger().log,
+      "root",
+      { [SKIP_DOCKER_REMOUNT_ENV]: "1" },
+    );
+
+    expect(ok).toBe(true);
+    expect(calls).toEqual([]);
+    expect(outputCalls).toEqual([]);
+  });
+
+  it("nao reinicia o Docker quando o diretorio de dados nao esta em overlayfs", async () => {
+    const { runner, calls, outputCalls } = createRunner();
+
+    const ok = await ensureDockerOffOverlay(
+      runner,
+      noSleep,
+      createLogger().log,
+      "root",
+    );
+
+    expect(ok).toBe(true);
+    expect(outputCalls.map(commandLine)).toEqual([
+      `stat -f -c %T ${DOCKER_ROOT}`,
+    ]);
+    expect(calls).toEqual([]);
+  });
+
+  it("para o dockerd, monta tmpfs no diretorio de dados e o reinicia", async () => {
+    const { runner, calls, background } = createRunner(
+      dockerdStopsAfter(2),
+      overlayOutput(),
+    );
+
+    const ok = await ensureDockerOffOverlay(
+      runner,
+      noSleep,
+      createLogger().log,
+      "root",
+    );
+
+    expect(ok).toBe(true);
+    const lines = calls.map(commandLine);
+    expect(lines[0]).toBe("pkill -TERM dockerd");
+    expect(lines.filter((line) => line === "pidof dockerd")).toHaveLength(3);
+    expect(lines.indexOf("pkill -TERM containerd")).toBeGreaterThan(
+      lines.lastIndexOf("pidof dockerd"),
+    );
+    expect(lines.at(-1)).toBe(`mount -t tmpfs -o size=8g tmpfs ${DOCKER_ROOT}`);
+    expect(background).toEqual([
+      { command: "dockerd", args: [], logFile: DOCKERD_LOG },
+    ]);
+  });
+
+  it("forca o encerramento e desiste sem montar tmpfs quando o dockerd nao para", async () => {
+    const { runner, calls, background } = createRunner(
+      (call) => (call.command === "pidof" ? 0 : 0),
+      overlayOutput(),
+    );
+    const logger = createLogger();
+
+    const ok = await ensureDockerOffOverlay(runner, noSleep, logger.log, "root");
+
+    expect(ok).toBe(false);
+    const lines = calls.map(commandLine);
+    expect(lines).toContain("pkill -KILL dockerd");
+    expect(lines.some((line) => line.startsWith("mount"))).toBe(false);
+    expect(background).toEqual([]);
+    expect(logger.error.join("\n")).toContain("o dockerd nao encerrou");
+  });
+
+  it("desiste sem reiniciar o dockerd quando o mount do tmpfs falha", async () => {
+    const { runner, background } = createRunner(
+      (call) => (call.command === "mount" ? 1 : call.command === "pidof" ? 1 : 0),
+      overlayOutput(),
+    );
+    const logger = createLogger();
+
+    const ok = await ensureDockerOffOverlay(runner, noSleep, logger.log, "root");
+
+    expect(ok).toBe(false);
+    expect(background).toEqual([]);
+    expect(logger.error.join("\n")).toContain("nao foi possivel montar tmpfs");
+  });
+
+  it("falha quando o dockerd nao fica pronto apos o remount", async () => {
+    const { runner, outputCalls } = createRunner(
+      dockerdStopsAfter(0),
+      overlayOutput(1),
+    );
+    const logger = createLogger();
+
+    const ok = await ensureDockerOffOverlay(runner, noSleep, logger.log, "root");
+
+    expect(ok).toBe(false);
+    expect(
+      outputCalls.filter((call) => call.args[0] === "info"),
+    ).toHaveLength(60);
+    expect(logger.error.join("\n")).toContain("nao ficou pronto");
   });
 });
 
@@ -321,6 +483,41 @@ describe("runE2eCi", () => {
 
     expect(exitCode).toBe(1);
     expect(calls.some((call) => call.args[0] === "run")).toBe(false);
+  });
+
+  it("remonta o storage do Docker em tmpfs antes de baixar a imagem", async () => {
+    const { deps, calls } = createDeps(
+      dockerdStopsAfter(1),
+      {},
+      overlayOutput(),
+    );
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(0);
+    const lines = calls.map(commandLine);
+    expect(
+      lines.findIndex((line) => line.startsWith("mount -t tmpfs")),
+    ).toBeGreaterThan(-1);
+    expect(
+      lines.findIndex((line) => line.startsWith("mount -t tmpfs")),
+    ).toBeLessThan(lines.findIndex((line) => line.startsWith("docker pull")));
+  });
+
+  it("falha com diagnostico, sem baixar a imagem, quando o remount nao funciona", async () => {
+    const { deps, calls } = createDeps(
+      (call) => (call.command === "mount" ? 1 : call.command === "pidof" ? 1 : 0),
+      {},
+      overlayOutput(),
+    );
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(1);
+    const lines = calls.map(commandLine);
+    expect(lines).toContain("docker info");
+    expect(lines.some((line) => line.startsWith("docker pull"))).toBe(false);
+    expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
   });
 
   it("coleta o diagnostico do Docker quando o container nao sobe, sem deixar de limpar", async () => {

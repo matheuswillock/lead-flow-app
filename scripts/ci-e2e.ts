@@ -14,8 +14,8 @@
  * Este E2E espelha o do GitHub Actions; o do GitHub continua sendo o gate.
  */
 
-import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { openSync, readFileSync } from "node:fs";
 
 import { LOCAL_DB_URL } from "./lib/local-stack";
 
@@ -30,6 +30,10 @@ export type Privilege = "root" | "sudo" | "none";
 export interface CommandRunner {
   /** Executa o comando com stdio herdado e devolve o exit code. */
   run(command: string, args: string[], env?: EnvMap): number;
+  /** Executa o comando capturando o stdout (nada é herdado). */
+  output(command: string, args: string[]): { status: number; stdout: string };
+  /** Inicia um processo desacoplado, gravando stdout e stderr em `logFile`. */
+  startBackground(command: string, args: string[], logFile: string): void;
 }
 
 export interface E2eLogger {
@@ -90,6 +94,108 @@ export function buildE2eEnv(
   }
 
   return { ...baseEnv, ...envExample, ...overrides };
+}
+
+export const DOCKER_ROOT = "/var/lib/docker";
+export const DOCKERD_LOG = "/tmp/dockerd-ci-e2e.log";
+export const DOCKER_TMPFS_SIZE = "8g";
+export const SKIP_DOCKER_REMOUNT_ENV = "E2E_CI_SKIP_DOCKER_REMOUNT";
+
+async function waitUntil(
+  check: () => boolean,
+  sleep: (ms: number) => Promise<void>,
+  attempts: number,
+  intervalMs: number,
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (check()) return true;
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+/**
+ * No Vercel CI a tarefa roda dentro de um container: `/` e `/var/lib/docker`
+ * são overlayfs, e o kernel recusa overlay sobre overlay
+ * (`mount ... fstype: overlay ... err: invalid argument`, inclusive para uma
+ * imagem de 1 camada). A saída é guardar os dados do Docker num tmpfs e
+ * reiniciar o dockerd, antes de baixar qualquer imagem.
+ */
+export async function ensureDockerOffOverlay(
+  runner: CommandRunner,
+  sleep: (ms: number) => Promise<void>,
+  log: E2eLogger,
+  privilege: Privilege,
+  env: EnvMap = {},
+): Promise<boolean> {
+  if (env[SKIP_DOCKER_REMOUNT_ENV]) {
+    log.info(`${LOG_PREFIX} ${SKIP_DOCKER_REMOUNT_ENV} definido; mantendo o storage do Docker.`);
+    return true;
+  }
+  if (privilege !== "root") {
+    log.info(`${LOG_PREFIX} sem root; mantendo o storage do Docker como esta.`);
+    return true;
+  }
+
+  const fsType = runner.output("stat", ["-f", "-c", "%T", DOCKER_ROOT]).stdout.trim();
+  if (fsType !== "overlayfs") {
+    log.info(`${LOG_PREFIX} ${DOCKER_ROOT} em ${fsType || "fs desconhecido"}; nada a ajustar.`);
+    return true;
+  }
+
+  log.info(`${LOG_PREFIX} ${DOCKER_ROOT} esta em overlayfs; remontando em tmpfs.`);
+  runner.run("pkill", ["-TERM", "dockerd"]);
+  let stopped = await waitUntil(
+    () => runner.run("pidof", ["dockerd"]) !== 0,
+    sleep,
+    30,
+    1_000,
+  );
+  if (!stopped) {
+    runner.run("pkill", ["-KILL", "dockerd"]);
+    stopped = await waitUntil(
+      () => runner.run("pidof", ["dockerd"]) !== 0,
+      sleep,
+      5,
+      1_000,
+    );
+  }
+  if (!stopped) {
+    log.error(`${LOG_PREFIX} o dockerd nao encerrou.`);
+    return false;
+  }
+
+  runner.run("pkill", ["-TERM", "containerd"]);
+  if (
+    runner.run("mount", [
+      "-t",
+      "tmpfs",
+      "-o",
+      `size=${DOCKER_TMPFS_SIZE}`,
+      "tmpfs",
+      DOCKER_ROOT,
+    ]) !== 0
+  ) {
+    log.error(`${LOG_PREFIX} nao foi possivel montar tmpfs em ${DOCKER_ROOT}.`);
+    return false;
+  }
+
+  runner.startBackground("dockerd", [], DOCKERD_LOG);
+  const ready = await waitUntil(
+    () =>
+      runner.output("docker", ["info", "--format", "{{.ServerVersion}}"])
+        .status === 0,
+    sleep,
+    60,
+    1_000,
+  );
+  if (!ready) {
+    log.error(`${LOG_PREFIX} o dockerd nao ficou pronto apos o remount.`);
+    return false;
+  }
+
+  log.info(`${LOG_PREFIX} Docker reiniciado com ${DOCKER_ROOT} em tmpfs.`);
+  return true;
 }
 
 export async function pullPostgresImage(
@@ -237,6 +343,11 @@ export const DOCKER_DIAGNOSTICS: DockerDiagnostic[] = [
     args: ["-c", "cat /etc/docker/daemon.json 2>&1; uname -r"],
   },
   {
+    label: "log do dockerd reiniciado",
+    command: "sh",
+    args: ["-c", `tail -n 40 ${DOCKERD_LOG} 2>&1`],
+  },
+  {
     label: "imagem minima (1 camada)",
     command: "docker",
     args: ["run", "--rm", "busybox:1.36", "true"],
@@ -277,6 +388,18 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
         if (privilege === "root") runner.run(args[0], args.slice(1));
         else if (privilege === "sudo") runner.run("sudo", ["-n", ...args]);
         return 0;
+      },
+    },
+    {
+      name: "ajustar storage do Docker",
+      run: async () => {
+        if (
+          await ensureDockerOffOverlay(runner, sleep, log, privilege, deps.baseEnv)
+        ) {
+          return 0;
+        }
+        diagnoseDocker(runner, log);
+        return 1;
       },
     },
     {
@@ -352,6 +475,20 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
 
 function createNodeRunner(): CommandRunner {
   return {
+    output: (command, args) => {
+      const result = spawnSync(command, args, {
+        encoding: "utf8",
+        shell: false,
+      });
+      return { status: result.status ?? 1, stdout: result.stdout ?? "" };
+    },
+    startBackground: (command, args, logFile) => {
+      const fd = openSync(logFile, "a");
+      spawn(command, args, {
+        detached: true,
+        stdio: ["ignore", fd, fd],
+      }).unref();
+    },
     run: (command, args, env) =>
       spawnSync(command, args, {
         stdio: "inherit",
