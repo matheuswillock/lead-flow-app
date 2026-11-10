@@ -42,6 +42,10 @@ test.describe.serial("gate de acesso da conta", () => {
         fullName: "E2E Account Access Allowed",
         isMaster: true,
         hasPermanentSubscription: true,
+        // Conta com assinatura válida (não só a flag de vitalícia) — evita
+        // qualquer caminho de resolução de acesso que dependa de
+        // subscriptionStatus estar preenchido além de hasPermanentSubscription.
+        subscriptionStatus: "active",
       },
     })
     allowedMasterProfileId = allowedMaster.id
