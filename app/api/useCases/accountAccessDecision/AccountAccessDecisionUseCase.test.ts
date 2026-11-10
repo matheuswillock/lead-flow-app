@@ -11,6 +11,44 @@ const repository = {
   }),
 }
 
+describe("AccountAccessDecisionUseCase: suporte do backoffice", () => {
+  const supportRepository = {
+    resolveProfileId: async () => "manager-1",
+    resolveAccount: async () => ({
+      billingOwnerId: "owner-1",
+      subscriptionStatus: null,
+      hasPermanentSubscription: true,
+      isBanned: false,
+      isSupportAccess: true,
+    }),
+  }
+
+  it("Manager do backoffice numa conta de cliente passa pelo bloqueio de cobrança", async () => {
+    const output = await new AccountAccessDecisionUseCase(supportRepository).execute({
+      profileId: "manager-1",
+      teamId: "team-1",
+    })
+
+    expect(output.isValid).toBe(true)
+    expect(output.result).toEqual({ state: "allowed" })
+  })
+
+  it("passa mesmo quando a conta do cliente está banida", async () => {
+    const output = await new AccountAccessDecisionUseCase({
+      ...supportRepository,
+      resolveAccount: async () => ({
+        billingOwnerId: "owner-1",
+        subscriptionStatus: "canceled" as const,
+        hasPermanentSubscription: false,
+        isBanned: true,
+        isSupportAccess: true,
+      }),
+    }).execute({ profileId: "manager-1", teamId: "team-1" })
+
+    expect(output.result).toEqual({ state: "allowed" })
+  })
+})
+
 describe("AccountAccessDecisionUseCase", () => {
   it("bloqueia imediatamente uma assinatura past_due", async () => {
     const output = await new AccountAccessDecisionUseCase(repository).execute({

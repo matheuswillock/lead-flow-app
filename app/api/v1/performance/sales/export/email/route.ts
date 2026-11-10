@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
+import { denyIfSupportAccess } from '@/app/api/v1/utils/denyIfSupportAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { performanceUseCase, PerformanceUseCase } from '@/app/api/useCases/performance/PerformanceUseCase';
 import { endOfDayInTz, parseDateKeyToUtc } from '@/lib/dates';
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
   if (teamAccess.error) {
     return NextResponse.json(teamAccess.error, { status: teamAccess.status });
   }
+
+  const supportDenied = denyIfSupportAccess(teamAccess.access, 'exportar dados');
+  if (supportDenied) return supportDenied;
 
   const { profileId, profileEmail, profileName, teamId, teamMember, userTimezone } = teamAccess.access;
   const isManager = isManagerLikeRole(teamMember.role);

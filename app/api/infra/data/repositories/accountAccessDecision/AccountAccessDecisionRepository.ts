@@ -31,11 +31,21 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
   }): Promise<AccountAccessRecord | null> {
     const profile = await prisma.profile.findUnique({
       where: { id: input.profileId },
-      select: { id: true, managerId: true, activeTeamId: true },
+      select: {
+        id: true,
+        managerId: true,
+        activeTeamId: true,
+        backofficeUser: { select: { isActive: true, fullAccess: true } },
+      },
     })
 
     if (!profile) {
       return null
+    }
+
+    if (profile.backofficeUser?.isActive && profile.backofficeUser.fullAccess) {
+      const supportRecord = await this.resolveSupportAccount(profile, input.teamId)
+      if (supportRecord) return supportRecord
     }
 
     const billingOwnerId = await this.resolveBillingOwnerId({
@@ -113,6 +123,29 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
       temporaryAccessGranted: Boolean(temporaryAccessGrace),
       temporaryAccessUntil: temporaryAccessGrace?.expiresAt ?? null,
       isBanned,
+    }
+  }
+
+  /** Manager do backoffice num time de cliente: acesso de suporte, sem cobrança. */
+  private async resolveSupportAccount(
+    profile: { id: string; activeTeamId: string | null },
+    requestedTeamId?: string | null
+  ): Promise<AccountAccessRecord | null> {
+    const teamId = requestedTeamId ?? profile.activeTeamId
+    if (!teamId) return null
+
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null },
+      select: { masterId: true },
+    })
+    if (!team || team.masterId === profile.id) return null
+
+    return {
+      billingOwnerId: team.masterId,
+      subscriptionStatus: null,
+      hasPermanentSubscription: true,
+      isBanned: false,
+      isSupportAccess: true,
     }
   }
 

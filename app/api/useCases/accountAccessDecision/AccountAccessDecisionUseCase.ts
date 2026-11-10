@@ -19,6 +19,10 @@ export class AccountAccessDecisionUseCase {
         return new Output(false, [], ["Conta de assinatura não encontrada"], null)
       }
 
+      if (account.isSupportAccess) {
+        return new Output(true, [], [], { state: "allowed" })
+      }
+
       const decision = this.service.decide(account)
       if (decision.state === "allowed") {
         return new Output(true, [], [], decision)

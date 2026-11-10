@@ -36,6 +36,11 @@ export type AccountAccessRecord = {
   temporaryAccessUntil?: Date | null
   temporaryAccessReason?: string | null
   isBanned: boolean
+  /**
+   * Manager do backoffice numa conta de cliente (suporte): não está sujeito ao
+   * bloqueio de cobrança da conta nem tem assinatura própria para avaliar.
+   */
+  isSupportAccess?: boolean
 }
 
 export interface IAccountAccessDecisionRepository {
