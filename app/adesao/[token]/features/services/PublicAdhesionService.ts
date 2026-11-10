@@ -1,4 +1,5 @@
 import type {
+  PublicAdhesionCardInput,
   PublicAdhesionCheckoutInput,
   PublicAdhesionDetails,
   PublicAdhesionPayment,
@@ -47,6 +48,19 @@ export class PublicAdhesionService implements IPublicAdhesionService {
   ): Promise<PublicAdhesionPayment> {
     return parseOutput<PublicAdhesionPayment>(
       await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/pix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      })
+    )
+  }
+
+  async createCardPayment(
+    token: string,
+    input: PublicAdhesionCardInput
+  ): Promise<PublicAdhesionPayment> {
+    return parseOutput<PublicAdhesionPayment>(
+      await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/card`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),

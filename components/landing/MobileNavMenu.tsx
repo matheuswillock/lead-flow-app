@@ -45,6 +45,13 @@ export function MobileNavMenu() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href="/checkout"
+              onClick={() => setOpen(false)}
+              className="landing-primary-cta mt-2 inline-flex min-h-11 items-center rounded-2xl px-4 py-3 text-base font-semibold"
+            >
+              Contratar online
+            </Link>
             <DemoRequestDialogButton
               onClick={() => setOpen(false)}
               className="landing-secondary-cta min-h-11 rounded-2xl px-4 py-3 text-left text-base font-medium transition-colors hover:bg-muted"

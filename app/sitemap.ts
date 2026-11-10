@@ -4,19 +4,26 @@ import {
   getPublicResourceBySlug,
   getPublicResourcePath,
   getPublicResourceSlugs,
+  PUBLIC_RESOURCE_ENTRIES,
   PUBLIC_RESOURCES_HUB_PATH,
 } from "@/lib/seo/publicResources"
 
-const HOMEPAGE_MODIFIED = "2026-11-05T00:00:00.000Z"
+const HOMEPAGE_MODIFIED = "2026-06-20T00:00:00.000Z"
 const LEGAL_MODIFIED = "2026-04-01T00:00:00.000Z"
-const RESOURCES_HUB_MODIFIED = "2026-11-05T00:00:00.000Z"
 
 const HIGH_PRIORITY_SLUGS = ["crm-corretores-saude", "pipeline-planos-saude", "crm-vs-planilha"]
+
+function getLatestResourceModified(): string {
+  return PUBLIC_RESOURCE_ENTRIES.reduce((latest, entry) =>
+    entry.modifiedTime > latest ? entry.modifiedTime : latest,
+    PUBLIC_RESOURCE_ENTRIES[0].modifiedTime,
+  )
+}
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseRoutes: MetadataRoute.Sitemap = [
     {
-      url: getAbsoluteUrl("/").replace(/\/$/, ""),
+      url: getAbsoluteUrl("/"),
       lastModified: HOMEPAGE_MODIFIED,
       changeFrequency: "weekly",
       priority: 1,
@@ -41,7 +48,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: getAbsoluteUrl(PUBLIC_RESOURCES_HUB_PATH),
-      lastModified: RESOURCES_HUB_MODIFIED,
+      lastModified: getLatestResourceModified(),
       changeFrequency: "weekly",
       priority: 0.85,
     },

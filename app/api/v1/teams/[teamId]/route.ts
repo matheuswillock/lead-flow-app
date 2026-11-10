@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import {
@@ -7,7 +7,7 @@ import {
 } from "@/app/api/useCases/teamManagement/TeamManagementUseCase";
 import { invalidatePublicFormBootstrapCache } from "@/lib/cache/invalidation";
 import { createSupabaseAdmin as createSupabaseAdminClient } from "@/lib/supabase/server";
-import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import { teamDeletionUseCase } from "@/app/api/useCases/teamDeletion/teamDeletionComposition";
 import {
   getTeamAccess,
   hasDelegatedTeamManagementAccess,
@@ -31,6 +31,8 @@ const updateTeamSchema = z
 
 const deleteTeamSchema = z.object({
   password: z.string().min(1, "Senha é obrigatória"),
+  /** Gera um ZIP com as informações do time e só então exclui. A exclusão é definitiva em qualquer caso. */
+  exportData: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -188,12 +190,29 @@ export async function DELETE(
       return NextResponse.json(new Output(false, [], ["Senha incorreta"], null), { status: 401 });
     }
 
-    const output = await teamManagementUseCase.deleteTeam(teamId, requesterId);
+    const exportData = payload.exportData === true;
+    const output = await teamDeletionUseCase.requestDeletion({
+      teamId,
+      requesterProfileId: requesterId,
+      requesterEmail,
+      billingOwnerId,
+      exportData,
+    });
     if (!output.isValid) {
       return NextResponse.json(output, { status: 500 });
     }
 
-    await memberProBillingUseCase.syncBillingAfterUsageChange(billingOwnerId, "remove_team");
+    if (exportData) {
+      // Começa já, sem esperar o próximo ciclo do cron (que continua como rede de segurança).
+      after(async () => {
+        try {
+          await teamDeletionUseCase.processPending();
+        } catch (error) {
+          console.error("[TeamsRoute][DELETE] Erro ao processar a exportação do time:", error);
+        }
+      });
+      return NextResponse.json(output, { status: 202 });
+    }
 
     return NextResponse.json(output, { status: 200 });
   } catch (error: any) {

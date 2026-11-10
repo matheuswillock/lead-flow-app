@@ -23,9 +23,10 @@ export function hasPublishableStats(snapshot: LandingStatsSnapshot | null): snap
 }
 
 /**
- * Só entram aqui números com fonte verificável no banco.
- * Ver agents.md › Landing Page Method › Inventário de fatos: número sem fonte
- * MUST NOT ir para a UI.
+ * Cada número precisa de fonte registrada em `docs/design/landing-fatos-stats.md`
+ * (agents.md › Landing Page Method › Inventário de fatos). Corretores e leads vêm
+ * do banco; fechamentos e satisfação foram informados pelo dono do produto, com
+ * origem em pesquisas e reuniões com corretores.
  */
 export function buildStatsData(snapshot: LandingStatsSnapshot): LandingStat[] {
   return [
@@ -38,6 +39,17 @@ export function buildStatsData(snapshot: LandingStatsSnapshot): LandingStat[] {
       label: "Leads gerenciados",
       value: snapshot.totalLeads,
       format: "compact",
+    },
+    {
+      label: "Mais fechamentos",
+      value: 31,
+      suffix: "%",
+    },
+    {
+      label: "Satisfação",
+      value: 4.9,
+      suffix: "/5",
+      decimals: 1,
     },
   ]
 }

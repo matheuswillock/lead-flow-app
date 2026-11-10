@@ -64,20 +64,22 @@ export type PipelineTableColumnKey =
 
 export type PipelineTableColumnVisibility = Record<PipelineTableColumnKey, boolean>;
 
+// Padrão enxuto para caber sem rolagem lateral; o resto do lead fica no lead aberto pela linha.
+// Quem já escolheu colunas mantém a própria escolha (salva no navegador).
 export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibility = {
   name: true,
   leadCode: false,
-  email: true,
+  email: false,
   phone: true,
-  currentHealthPlan: true,
+  currentHealthPlan: false,
   currentValue: true,
   status: true,
-  ticket: true,
+  ticket: false,
   assignedTo: true,
-  closerId: true,
+  closerId: false,
   meetingDate: true,
   contacts: false,
-  createdAt: true,
+  createdAt: false,
 };
 
 export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
@@ -95,7 +97,6 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
   "closerId",
   "meetingDate",
   "createdAt",
-  "actions",
 ];
 
 interface IPipelineContextState {

@@ -7,8 +7,11 @@ export class LookupPortfolioCnpjUseCase {
 
   async execute(cnpj: string): Promise<Output> {
     try {
-      const razaoSocial = await this.lookupService.lookupRazaoSocial(cnpj);
-      return new Output(true, [], [], { razaoSocial });
+      const company = await this.lookupService.lookupCompany(cnpj);
+      return new Output(true, [], [], {
+        razaoSocial: company?.razaoSocial ?? null,
+        nomeFantasia: company?.nomeFantasia ?? null,
+      });
     } catch (error) {
       console.error('[LookupPortfolioCnpjUseCase] Erro ao consultar CNPJ:', error);
       return new Output(false, [], ['Não foi possível consultar a Razão Social'], null);

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import type { BackofficeAdhesionBillingCycle } from "@prisma/client"
 import type { BackofficeAdhesionWithRelations } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 import { hashBackofficeAdhesionToken } from "@/lib/backoffice-adhesions/adhesion-token-validation"
+import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types"
 import { SelfCheckoutError } from "@/lib/self-checkout/contracts"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { resolvePixProvider } from "./backofficeAdhesionPixHelpers"
@@ -17,6 +18,13 @@ mock.module("@/lib/backoffice-adhesions/adhesion-token-validation", () => ({
   validateBackofficeAdhesionToken: async () => ({ ...tokenValidation, expiresAt: null }),
 }))
 
+// As opções consultam a disponibilidade do cartão: nunca lê a config de pagamento do banco.
+const actualAvailability = await import("@/lib/payment-methods/availability")
+mock.module("@/lib/payment-methods/availability", () => ({
+  ...actualAvailability,
+  resolveCardAvailability: async () => ({ card: false, reason: "DISABLED_BY_BACKOFFICE", availableBillingTypes: ["PIX"] }),
+}))
+
 const { BackofficeAdhesionService } = await import("./BackofficeAdhesionService")
 
 type Rule = { billingCycle: BackofficeAdhesionBillingCycle; paymentMethod: "PIX" | "CREDIT_CARD"; price: string }
@@ -25,10 +33,13 @@ const NOW = new Date("2026-10-27T12:00:00.000Z")
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const request = {
+  companyLegalName: "Corretora Exemplo Ltda",
+  cnpj: "11222333000181",
   fullName: "Maria Souza",
   email: "maria@example.com",
   phone: "(11) 99999-9999",
   cycle: "quarterly" as const,
+  termsAccepted: true as const,
 }
 
 function pixRule(billingCycle: BackofficeAdhesionBillingCycle, price: string): Rule {
@@ -183,6 +194,8 @@ describe("BackofficeAdhesionService.getSelfCheckoutOptions", () => {
       months: 3,
       pixTotal: 269.7,
       monthlyEquivalent: 89.9,
+      extraUserMonthlyPrice: 30,
+      extraTeamMonthlyPrice: 30,
     })
     expect(options.cycles[3]).toMatchObject({ cycle: "annual", label: "Anual", months: 12, pixTotal: 900, monthlyEquivalent: 75 })
   })
@@ -273,6 +286,10 @@ describe("BackofficeAdhesionService.createSelfCheckout", () => {
       name: "Maria Souza",
       email: "maria@example.com",
       phone: "11999999999",
+      termsAcceptedAt: expect.any(String),
+      termsVersion: LEGAL_DOCUMENTS_VERSION,
+      cnpj: "11222333000181",
+      companyLegalName: "Corretora Exemplo Ltda",
     })
     expect(h.repo.createAndMoveLeadToAdhesion).toHaveBeenCalledTimes(1)
     const data = h.repo.createAndMoveLeadToAdhesion.mock.calls[0][0]

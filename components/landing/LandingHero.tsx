@@ -20,9 +20,9 @@ export function LandingHero() {
           <p className="mt-6 max-w-xl text-pretty text-lg leading-8 text-landing-body md:text-xl">
             Enquanto outros perdem leads no WhatsApp e em planilhas, seu time opera com{" "}
             <strong className="font-bold text-landing-ink">pipeline</strong>,{" "}
-            <strong className="font-bold text-landing-ink">Radar</strong>,{" "}
+            <strong className="font-bold text-landing-ink">radar</strong>,{" "}
             <strong className="font-bold text-landing-ink">campanhas de e-mail</strong> e{" "}
-            <strong className="font-bold text-landing-ink">indicadores</strong> — tudo em um só lugar
+            <strong className="font-bold text-landing-ink">indicadores</strong>, tudo em um só lugar
             para não ficar para trás.
           </p>
 
@@ -41,6 +41,7 @@ export function LandingHero() {
               <ArrowRight className="size-5" aria-hidden />
             </DemoRequestDialogButton>
           </div>
+          <p className="mt-3 text-sm text-landing-muted">Escolha seu plano e pague por PIX.</p>
 
           <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-landing-muted">
             {["Demo gratuita", "Suporte em português", "Sem instalação"].map((item) => (

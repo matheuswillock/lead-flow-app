@@ -1,4 +1,5 @@
 import type { BillingGracePayment, Prisma } from "@prisma/client"
+import type { RenewalAccount } from "@/app/api/shared/billing/renewalQuote"
 
 export type CreateBillingGracePaymentInput = {
   accountId: string
@@ -11,6 +12,8 @@ export type CreateBillingGracePaymentInput = {
   providerEnvironment: string
   idempotencyKey: string
   quoteExpiresAt: Date
+  /** Usuários que o master não manteve; saem dos times ao confirmar o pagamento. */
+  revokedProfileIds: string[]
 }
 
 export interface IBillingGracePaymentRepository {
@@ -24,10 +27,7 @@ export interface IBillingGracePaymentRepository {
     cellphone: string
     hasUnlimitedUsers: boolean
     hasPermanentSubscription: boolean
-    teamCount: number
-    distinctUserCount: number
-    totalUsersIncludingMaster: number
-  } | null>
+  } & RenewalAccount | null>
   create(input: CreateBillingGracePaymentInput): Promise<BillingGracePayment>
   findByIdForAccount(id: string, accountId: string): Promise<BillingGracePayment | null>
   findById(id: string): Promise<BillingGracePayment | null>

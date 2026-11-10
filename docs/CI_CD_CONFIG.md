@@ -1,50 +1,43 @@
-# Configuração de exemplo para CI/CD
+# CI/CD e Vercel CI
 
-# No GitHub Actions, adicione as seguintes secrets no repositório:
-# RESEND_API_KEY=re_xxxxxxxxxx (opcional - se não estiver definida, o sistema funcionará sem emails)
-# NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+O repositório mantém GitHub Actions para deploys, migrations, E2E e demais etapas que precisam de serviços ou credenciais. O Vercel CI adiciona execução seletiva dos checks definidos no Turborepo; ele não substitui esses workflows.
 
-# Exemplo de workflow que agora funciona:
+## Configuração do Turborepo
 
-name: Build and Test
+O projeto é single-package e usa Turborepo `2.11.10` (`turbo.json` na raiz). O Vercel CI requer Turborepo `2.11.7` ou superior. As tarefas são declaradas em `turbo.json`; somente tarefas com a tag `ci` entram no Vercel CI, respeitando o grafo de dependências e o cache do Turbo.
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+Atualmente estão marcadas:
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v2
-      with:
-        bun-version: latest
-    
-    - name: Install dependencies
-      run: bun install
-    
-    - name: Generate Prisma Client
-      run: bun run prisma:generate
-    
-    - name: Type Check
-      run: bun run typecheck
-    
-    - name: Build
-      run: bun run build
-      env:
-        CI: true
-        NEXT_TELEMETRY_DISABLED: 1
-        # RESEND_API_KEY é opcional - se não estiver definida, emails serão desabilitados
-        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-        NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+- `lint`, `typecheck`, `test` e `test:proxy`;
+- `governance:check`, `governance:check-api-masking`, `governance:check-e2e-pages` e `governance:check-responsive`;
+- `design:check`, `lint:pt-br` e `build`.
 
-# ✅ AGORA O BUILD FUNCIONARÁ MESMO SEM A RESEND_API_KEY
-# ✅ O sistema funciona normalmente, apenas os emails serão desabilitados
+As tags `ci:cpus:<n>` definem a capacidade das tarefas mais pesadas. Tarefas de integração, E2E, migrations, deploy e processos persistentes ficam fora dessa lista porque dependem de serviços, credenciais ou não terminam.
+
+## Variáveis de ambiente
+
+`vercel.json` declara constantes não secretas para o Vercel CI. O build recebe placeholders para Supabase, Resend e banco, seguindo os fallbacks do job `Build (quality gate)` em `.github/workflows/ci-main.yml`. `turbo.json` permite ao build receber essas variáveis e os valores `DATABASE_URL`/`DIRECT_URL`.
+
+Os placeholders existem apenas para validação de build e não devem ser usados em deploy ou conectados a dados reais. Não grave secrets no `vercel.json`; adicione valores sensíveis nas variáveis de ambiente de CI da Vercel.
+
+## Execução local
+
+Para conferir o plano sem executar as tarefas:
+
+```bash
+bun run turbo run lint typecheck test test:proxy governance:check governance:check-api-masking governance:check-e2e-pages governance:check-responsive design:check lint:pt-br build --dry
+```
+
+Para executar uma tarefa localmente, remova `--dry` e selecione apenas a tarefa desejada, por exemplo `bun run turbo run typecheck`.
+
+Os comandos diretos `bun run ...` continuam válidos para a validação local prevista em `agents.md`; Turborepo é a orquestração seletiva usada pelo Vercel CI.
+
+## Habilitação no Vercel
+
+O arquivo `turbo.json` configura as tarefas, mas não habilita o Vercel CI na conta. O repositório precisa ser privado, estar acessível ao GitHub App da Vercel e pertencer a apenas um time Vercel. Use o CLI Vercel `64.3.1` ou mais recente e habilite o CI antes do primeiro push da branch de configuração:
+
+```bash
+vercel ci enable --remote <remote> --scope <team>
+```
+
+Depois do primeiro push, o Vercel CI cria a execução e publica o resultado como check no GitHub. As execuções posteriores começam em cada `git push`, mas rodam apenas as tarefas marcadas e afetadas pelas mudanças.

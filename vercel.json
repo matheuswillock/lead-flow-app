@@ -3,6 +3,48 @@
   "git": {
     "deploymentEnabled": false
   },
+  "ci": {
+    "bootstrapping": {
+      "installEnv": {}
+    },
+    "tasks": [
+      {
+        "name": "typecheck",
+        "env": {
+          "NODE_OPTIONS": {
+            "constant": { "value": "--max-old-space-size=8192" }
+          }
+        }
+      },
+      {
+        "name": "build",
+        "env": {
+          "NODE_OPTIONS": {
+            "constant": { "value": "--max-old-space-size=8192" }
+          },
+          "NEXT_PUBLIC_SUPABASE_URL": {
+            "constant": { "value": "https://placeholder.supabase.co" }
+          },
+          "NEXT_PUBLIC_SUPABASE_ANON_KEY": {
+            "constant": { "value": "placeholder-anon-key" }
+          },
+          "RESEND_API_KEY": {
+            "constant": { "value": "placeholder-resend-key" }
+          },
+          "DATABASE_URL": {
+            "constant": {
+              "value": "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+            }
+          },
+          "DIRECT_URL": {
+            "constant": {
+              "value": "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+            }
+          }
+        }
+      }
+    ]
+  },
   "functions": {
     "app/api/queues/public-form-metric-events/route.ts": {
       "experimentalTriggers": [
@@ -218,6 +260,18 @@
     {
       "path": "/api/v1/automations/cron/evaluate-idle",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/leads/cron/follow-up-reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/teams/cron/team-deletion-exports",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/v1/leads/cron/plan-renewal-reminders",
+      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/v1/notifications/cron/meeting-follow-up",

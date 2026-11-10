@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
-import type { IBillingGracePaymentActions, IBillingGracePaymentState } from "./BillingGracePaymentTypes";
+import type {
+  BillingGraceCardInput,
+  IBillingGracePaymentActions,
+  IBillingGracePaymentState,
+} from "./BillingGracePaymentTypes";
 import { BillingGracePaymentService } from "../services/BillingGracePaymentService";
 
 interface UseBillingGracePaymentHookProps {
@@ -31,11 +35,11 @@ export function useBillingGracePaymentHook({
     }
   }, [service, supabaseId]);
 
-  const createPayment = useCallback(async () => {
+  const createPayment = useCallback(async (cycle: string, keptUserIds: string[]) => {
     try {
       setIsLoading(true)
       setError(null)
-      const created = await service.createPayment(supabaseId, `billing-grace:${supabaseId}:${Date.now()}`)
+      const created = await service.createPayment(supabaseId, `billing-grace:${supabaseId}:${Date.now()}`, cycle, keptUserIds)
       setPayment(created)
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Não foi possível iniciar o pagamento")
@@ -43,6 +47,34 @@ export function useBillingGracePaymentHook({
       setIsLoading(false)
     }
   }, [service, supabaseId])
+
+  const createCardPayment = useCallback(async (input: BillingGraceCardInput) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const created = await service.createCardPayment(supabaseId, `billing-grace-card:${supabaseId}:${Date.now()}`, input)
+      setPayment(created)
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Não foi possível cobrar o cartão")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [service, supabaseId])
+
+  const resetPayment = useCallback(() => {
+    setPayment(null)
+    setError(null)
+  }, [])
+
+  /** "Já paguei": consulta o status na hora, sem esperar a próxima verificação automática. */
+  const refreshPayment = useCallback(async () => {
+    if (!payment) return
+    try {
+      setPayment(await service.getPayment(supabaseId, payment.id))
+    } catch {
+      // a verificação automática tenta de novo em seguida
+    }
+  }, [payment, service, supabaseId])
 
   useEffect(() => {
     if (!payment || payment.status === "completed" || payment.status === "failed") return
@@ -52,5 +84,5 @@ export function useBillingGracePaymentHook({
     return () => window.clearInterval(timer)
   }, [payment, service, supabaseId])
 
-  return { isLoading, error, quote, payment, load, createPayment };
+  return { isLoading, error, quote, payment, load, createPayment, createCardPayment, refreshPayment, resetPayment };
 }

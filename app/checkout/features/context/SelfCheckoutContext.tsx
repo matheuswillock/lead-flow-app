@@ -11,9 +11,13 @@ import {
   type ReactNode,
 } from "react"
 
-import { maskPhone } from "@/lib/masks"
+import { isValidCNPJ, maskPhone } from "@/lib/masks"
 import {
+  SELF_CHECKOUT_COUPON_MAX_LENGTH,
   SELF_CHECKOUT_ERROR_CODES,
+  SELF_CHECKOUT_EXTRAS_MAX,
+  type SelfCheckoutBillingType,
+  type SelfCheckoutCouponQuote,
   type SelfCheckoutCycle,
   type SelfCheckoutOptionsDTO,
 } from "@/lib/self-checkout/contracts"
@@ -21,15 +25,19 @@ import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 import type { ISelfCheckoutService } from "../services/ISelfCheckoutService"
 import { SelfCheckoutService } from "../services/SelfCheckoutService"
 import type {
+  SelfCheckoutCouponStatus,
   SelfCheckoutFieldErrors,
+  SelfCheckoutFieldName,
   SelfCheckoutFormValues,
   SelfCheckoutLoadStatus,
   SelfCheckoutSubmitFailure,
   SelfCheckoutSubmitOutcome,
+  SelfCheckoutTextFieldName,
 } from "./SelfCheckoutTypes"
 import {
   describeSubmitFailure,
   INITIAL_FORM_VALUES,
+  maskCnpjInput,
   resolveSelectedCycle,
   validateSelfCheckoutForm,
 } from "../utils/selfCheckoutForm"
@@ -39,15 +47,36 @@ export type SelfCheckoutContextValue = {
   loadErrorMessage: string | null
   options: SelfCheckoutOptionsDTO | null
   selectedCycle: SelfCheckoutCycle | null
+  /** Token do pedido já criado; com ele, o pagamento é gerado sem criar outro pedido. */
+  orderToken: string | null
+  /** Verdadeiro enquanto busca razão social e nome fantasia pelo CNPJ digitado. */
+  isLookingUpCompany: boolean
+  /** Valida os campos do pedido sem enviar; devolve o primeiro inválido (ou `null`). */
+  validate: () => SelfCheckoutFieldName | null
   values: SelfCheckoutFormValues
   fieldErrors: SelfCheckoutFieldErrors
+  /** Chamado ao sair de um campo: a partir daí ele já mostra o erro se estiver vazio ou inválido. */
+  markFieldTouched: (field: SelfCheckoutFieldName) => void
   submitFailure: SelfCheckoutSubmitFailure | null
   isSubmitting: boolean
   /** Verdadeiro entre a criação da adesão e a troca de página; mantém o envio travado. */
   isRedirecting: boolean
   reload: () => Promise<void>
   selectCycle: (cycle: SelfCheckoutCycle) => void
-  setFieldValue: (field: keyof SelfCheckoutFormValues, value: string) => void
+  setFieldValue: (field: SelfCheckoutTextFieldName, value: string) => void
+  setTermsAccepted: (accepted: boolean) => void
+  setBillingType: (billingType: SelfCheckoutBillingType) => void
+  /** Define a quantidade de usuários ou times adicionais, limitada de 0 ao máximo do contrato. */
+  setExtraQuantity: (kind: "extraUsers" | "extraTeams", quantity: number) => void
+  /** Texto digitado no campo de cupom (ainda não validado). */
+  couponInput: string
+  couponStatus: SelfCheckoutCouponStatus
+  /** Desconto confirmado pelo servidor para o plano e a forma de pagamento atuais. */
+  couponQuote: SelfCheckoutCouponQuote | null
+  couponMessage: string | null
+  setCouponInput: (value: string) => void
+  applyCoupon: () => Promise<void>
+  removeCoupon: () => void
   submit: () => Promise<SelfCheckoutSubmitOutcome>
 }
 
@@ -72,10 +101,19 @@ export function SelfCheckoutProvider({
   const [options, setOptions] = useState<SelfCheckoutOptionsDTO | null>(null)
   const [selectedCycle, setSelectedCycle] = useState<SelfCheckoutCycle | null>(null)
   const [values, setValues] = useState<SelfCheckoutFormValues>(INITIAL_FORM_VALUES)
-  const [fieldErrors, setFieldErrors] = useState<SelfCheckoutFieldErrors>({})
+  const [submitErrors, setFieldErrors] = useState<SelfCheckoutFieldErrors>({})
+  const [touchedFields, setTouchedFields] = useState<Partial<Record<SelfCheckoutFieldName, boolean>>>({})
   const [submitFailure, setSubmitFailure] = useState<SelfCheckoutSubmitFailure | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [orderToken, setOrderToken] = useState<string | null>(null)
+  const [isLookingUpCompany, setIsLookingUpCompany] = useState(false)
+  const lastLookedUpCnpj = useRef<string | null>(null)
+  const [couponInput, setCouponInputState] = useState("")
+  const [couponStatus, setCouponStatus] = useState<SelfCheckoutCouponStatus>("idle")
+  const [couponQuote, setCouponQuote] = useState<SelfCheckoutCouponQuote | null>(null)
+  const [couponMessage, setCouponMessage] = useState<string | null>(null)
+  const couponLock = useRef(false)
 
   const loadInFlight = useRef<string | null>(null)
   const loadSucceeded = useRef<string | null>(null)
@@ -118,19 +156,144 @@ export function SelfCheckoutProvider({
     void loadOptions({ silent: false })
   }, [loadOptions])
 
-  const selectCycle = useCallback((cycle: SelfCheckoutCycle) => {
-    setSelectedCycle(cycle)
-    setFieldErrors((current) => ({ ...current, cycle: undefined }))
+  /** O desconto vale para um plano e uma forma de pagamento; ao mudar um deles o cupom sai. */
+  const dropAppliedCoupon = useCallback((message: string | null) => {
+    setCouponQuote(null)
+    setCouponStatus("idle")
+    setCouponMessage(message)
+    setValues((current) => (current.couponCode ? { ...current, couponCode: "" } : current))
+  }, [])
+
+  const selectCycle = useCallback(
+    (cycle: SelfCheckoutCycle) => {
+      setSelectedCycle(cycle)
+      setFieldErrors((current) => ({ ...current, cycle: undefined }))
+      setSubmitFailure(null)
+      const nextOption = options?.cycles.find((option) => option.cycle === cycle)
+      if (!nextOption?.creditCardTotal) {
+        setValues((current) =>
+          current.billingType === "PIX" ? current : { ...current, billingType: "PIX" },
+        )
+      }
+      if (couponQuote) dropAppliedCoupon("O cupom foi removido porque o plano mudou. Aplique novamente.")
+    },
+    [couponQuote, dropAppliedCoupon, options],
+  )
+
+  const setBillingType = useCallback(
+    (billingType: SelfCheckoutBillingType) => {
+      setValues((current) => ({ ...current, billingType }))
+      setSubmitFailure(null)
+      if (couponQuote) {
+        dropAppliedCoupon("O cupom foi removido porque a forma de pagamento mudou. Aplique novamente.")
+      }
+    },
+    [couponQuote, dropAppliedCoupon],
+  )
+
+  const setExtraQuantity = useCallback((kind: "extraUsers" | "extraTeams", quantity: number) => {
+    const safe = Number.isFinite(quantity) ? Math.trunc(quantity) : 0
+    const clamped = Math.min(SELF_CHECKOUT_EXTRAS_MAX, Math.max(0, safe))
+    setValues((current) => (current[kind] === clamped ? current : { ...current, [kind]: clamped }))
     setSubmitFailure(null)
   }, [])
 
-  const setFieldValue = useCallback((field: keyof SelfCheckoutFormValues, value: string) => {
-    const next = field === "phone" ? maskPhone(value) : value
-    setValues((current) => ({ ...current, [field]: next }))
-    if (field !== "website") {
-      setFieldErrors((current) => ({ ...current, [field]: undefined }))
-    }
+  const setCouponInput = useCallback((value: string) => {
+    setCouponInputState(value.slice(0, SELF_CHECKOUT_COUPON_MAX_LENGTH))
+    setCouponStatus((current) => (current === "error" ? "idle" : current))
+    setCouponMessage(null)
   }, [])
+
+  const applyCoupon = useCallback(async () => {
+    const code = couponInput.trim()
+    if (couponLock.current || !selectedCycle) return
+    if (!code) {
+      setCouponStatus("error")
+      setCouponMessage("Informe o código do cupom.")
+      return
+    }
+
+    couponLock.current = true
+    setCouponStatus("loading")
+    setCouponMessage(null)
+    try {
+      const quote = await service.quoteCoupon({
+        couponCode: code,
+        cycle: selectedCycle,
+        ...(values.billingType === "CREDIT_CARD" ? { billingType: values.billingType } : {}),
+      })
+      setCouponQuote(quote)
+      setCouponStatus("applied")
+      setValues((current) => ({ ...current, couponCode: quote.code }))
+    } catch (error) {
+      setCouponQuote(null)
+      setCouponStatus("error")
+      setCouponMessage(toUserToastMessage(error))
+    } finally {
+      couponLock.current = false
+    }
+  }, [couponInput, selectedCycle, service, values.billingType])
+
+  const removeCoupon = useCallback(() => {
+    setCouponInputState("")
+    dropAppliedCoupon(null)
+  }, [dropAppliedCoupon])
+
+  /** Preenche razão social e nome fantasia pelo CNPJ, sem sobrescrever o que o cliente já digitou. */
+  const lookupCompany = useCallback(
+    async (cnpj: string) => {
+      const digits = cnpj.replace(/\D/g, "")
+      if (digits.length !== 14 || !isValidCNPJ(digits) || lastLookedUpCnpj.current === digits) return
+      lastLookedUpCnpj.current = digits
+      setIsLookingUpCompany(true)
+      try {
+        const company = await service.lookupCompany(digits)
+        if (!company) return
+        setValues((current) => ({
+          ...current,
+          companyLegalName: current.companyLegalName.trim() ? current.companyLegalName : company.legalName,
+          companyTradeName: current.companyTradeName.trim()
+            ? current.companyTradeName
+            : (company.tradeName ?? current.companyTradeName),
+        }))
+      } catch {
+        // a consulta é só uma ajuda: se falhar, o cliente preenche à mão
+      } finally {
+        setIsLookingUpCompany(false)
+      }
+    },
+    [service],
+  )
+
+  const setFieldValue = useCallback(
+    (field: SelfCheckoutTextFieldName, value: string) => {
+      const next =
+        field === "phone"
+          ? maskPhone(value)
+          : field === "cnpj"
+            ? maskCnpjInput(value)
+            : value
+      setValues((current) => ({ ...current, [field]: next }))
+      if (field !== "website") {
+        setFieldErrors((current) => ({ ...current, [field]: undefined }))
+      }
+      if (field === "cnpj") void lookupCompany(next)
+    },
+    [lookupCompany],
+  )
+
+  const setTermsAccepted = useCallback((accepted: boolean) => {
+    setValues((current) => ({ ...current, termsAccepted: accepted }))
+    setFieldErrors((current) => ({ ...current, termsAccepted: undefined }))
+    setSubmitFailure(null)
+  }, [])
+
+  const validate = useCallback((): SelfCheckoutFieldName | null => {
+    const validation = validateSelfCheckoutForm(values, selectedCycle)
+    if (validation.ok) return null
+    setFieldErrors(validation.errors)
+    return validation.firstInvalidField
+  }, [selectedCycle, values])
 
   const submit = useCallback(async (): Promise<SelfCheckoutSubmitOutcome> => {
     if (submitLock.current || isRedirecting) return { kind: "ignored" }
@@ -148,6 +311,7 @@ export function SelfCheckoutProvider({
     setSubmitFailure(null)
     try {
       const { token } = await service.create(validation.request)
+      setOrderToken(token)
       setIsRedirecting(true)
       return { kind: "created", token }
     } catch (error) {
@@ -164,20 +328,52 @@ export function SelfCheckoutProvider({
     }
   }, [isRedirecting, loadOptions, selectedCycle, service, values])
 
+  /** Marca o campo como visitado: depois disso ele mostra o erro (vermelho) assim que está inválido. */
+  const markFieldTouched = useCallback((field: SelfCheckoutFieldName) => {
+    setTouchedFields((current) => (current[field] ? current : { ...current, [field]: true }))
+  }, [])
+
+  // Erros do envio + erros dos campos já visitados, calculados com a mesma validação do envio.
+  const fieldErrors = useMemo<SelfCheckoutFieldErrors>(() => {
+    const touchedNames = Object.keys(touchedFields) as SelfCheckoutFieldName[]
+    if (touchedNames.length === 0) return submitErrors
+    const validation = validateSelfCheckoutForm(values, selectedCycle)
+    if (validation.ok) return submitErrors
+    const merged: SelfCheckoutFieldErrors = { ...submitErrors }
+    for (const name of touchedNames) {
+      if (touchedFields[name] && validation.errors[name]) merged[name] = validation.errors[name]
+    }
+    return merged
+  }, [selectedCycle, submitErrors, touchedFields, values])
+
   const value = useMemo<SelfCheckoutContextValue>(
     () => ({
       loadStatus,
       loadErrorMessage,
       options,
       selectedCycle,
+      orderToken,
+      isLookingUpCompany,
+      validate,
       values,
       fieldErrors,
+      markFieldTouched,
       submitFailure,
       isSubmitting,
       isRedirecting,
       reload,
       selectCycle,
       setFieldValue,
+      setTermsAccepted,
+      setBillingType,
+      setExtraQuantity,
+      couponInput,
+      couponStatus,
+      couponQuote,
+      couponMessage,
+      setCouponInput,
+      applyCoupon,
+      removeCoupon,
       submit,
     }),
     [
@@ -185,14 +381,28 @@ export function SelfCheckoutProvider({
       loadErrorMessage,
       options,
       selectedCycle,
+      orderToken,
+      isLookingUpCompany,
+      validate,
       values,
       fieldErrors,
+      markFieldTouched,
       submitFailure,
       isSubmitting,
       isRedirecting,
       reload,
       selectCycle,
       setFieldValue,
+      setTermsAccepted,
+      setBillingType,
+      setExtraQuantity,
+      couponInput,
+      couponStatus,
+      couponQuote,
+      couponMessage,
+      setCouponInput,
+      applyCoupon,
+      removeCoupon,
       submit,
     ],
   )

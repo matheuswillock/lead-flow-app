@@ -4,10 +4,13 @@ import { SelfCheckoutError, type SelfCheckoutRequest } from "@/lib/self-checkout
 import { SelfCheckoutService } from "./SelfCheckoutService"
 
 const request: SelfCheckoutRequest = {
+  companyLegalName: "Corretora Exemplo Ltda",
+  cnpj: "11222333000181",
   fullName: "Maria Souza",
   email: "maria@example.com",
   phone: "11999998888",
   cycle: "quarterly",
+  termsAccepted: true,
   website: "",
 }
 
@@ -39,6 +42,40 @@ const optionsBody = {
     ],
   },
 }
+
+describe("SelfCheckoutService.getOptions - cartão do Abacate Pay", () => {
+  const cardCycle = {
+    cycle: "annual",
+    label: "Anual",
+    pixTotal: 958.8,
+    monthlyEquivalent: 79.9,
+    months: 12,
+    creditCardTotal: 1161.12,
+    creditCardMonthlyEquivalent: 96.76,
+    maxInstallments: 12,
+  }
+  const bodyWith = (cardCheckout: unknown) => ({
+    isValid: true,
+    result: { product: { name: "Corretor Studio" }, cycles: [cardCycle], cardCheckout },
+  })
+
+  it("com a chave pública do Abacate mantém o cartão e devolve a chave", async () => {
+    const { fetcher } = fakeFetch(200, bodyWith({ provider: "ABACATE_PAY", publicKey: "pk_test_123" }))
+    const options = await new SelfCheckoutService(fetcher).getOptions()
+    expect(options.cardCheckout).toEqual({ provider: "ABACATE_PAY", publicKey: "pk_test_123" })
+    expect(options.cycles[0].creditCardTotal).toBe(1161.12)
+  })
+
+  it("sem a chave pública (cartão não liberado) tira os preços de cartão: só PIX", async () => {
+    for (const cardCheckout of [null, undefined, { provider: "ABACATE_PAY", publicKey: "" }, { provider: "ASAAS", publicKey: "x" }]) {
+      const { fetcher } = fakeFetch(200, bodyWith(cardCheckout))
+      const options = await new SelfCheckoutService(fetcher).getOptions()
+      expect(options.cardCheckout).toBeNull()
+      expect(options.cycles[0].creditCardTotal).toBeUndefined()
+      expect(options.cycles[0].maxInstallments).toBeUndefined()
+    }
+  })
+})
 
 describe("SelfCheckoutService.getOptions", () => {
   it("lê o endpoint público sem cache e descarta ciclos malformados", async () => {
@@ -112,13 +149,27 @@ describe("SelfCheckoutService.create", () => {
     expect((error as SelfCheckoutError).message).toBe("mensagem do servidor")
   })
 
+  it("distingue cupom inválido de plano indisponível pelo código, mesmo com o mesmo status 422", async () => {
+    const { fetcher } = fakeFetch(422, {
+      isValid: false,
+      errorMessages: ["Cupom expirado."],
+      result: { code: "COUPON_INVALID" },
+    })
+
+    const error = await new SelfCheckoutService(fetcher).create(request).catch((err: unknown) => err)
+
+    expect(error).toBeInstanceOf(SelfCheckoutError)
+    expect((error as SelfCheckoutError).code).toBe("COUPON_INVALID")
+    expect((error as SelfCheckoutError).message).toBe("Cupom expirado.")
+  })
+
   it("trata status desconhecido como erro de API com a mensagem do servidor", async () => {
-    const { fetcher } = fakeFetch(400, { isValid: false, errorMessages: ["Celular inválido."] })
+    const { fetcher } = fakeFetch(400, { isValid: false, errorMessages: ["WhatsApp inválido."] })
 
     const error = await new SelfCheckoutService(fetcher).create(request).catch((err: unknown) => err)
 
     expect(error).toBeInstanceOf(ApiRequestError)
-    expect((error as ApiRequestError).message).toBe("Celular inválido.")
+    expect((error as ApiRequestError).message).toBe("WhatsApp inválido.")
     expect((error as ApiRequestError).status).toBe(400)
   })
 

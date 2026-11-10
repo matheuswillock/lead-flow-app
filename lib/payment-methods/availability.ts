@@ -64,6 +64,15 @@ export function computeCardAvailability(input: {
   return build(true, "AVAILABLE")
 }
 
+/**
+ * Chave pública do Abacate do ambiente configurado (a mesma que o front usa no abacatepay.js);
+ * `null` enquanto a loja não tem o "Checkout próprio" liberado.
+ */
+export function readConfiguredAbacatePublicKey(env: Env = process.env): string | null {
+  const environment = resolveEnvironment(env)
+  return environment ? readAbacatePublicKey(environment, env) : null
+}
+
 const cardEnabledCache = new Map<PaymentProviderEnvironment, { value: boolean; expiresAt: number }>()
 
 /**

@@ -15,6 +15,7 @@ import {
   type TeamAccess,
 } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
+import { canMarkMeetingHeld } from "@/lib/lead-meeting";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 const LEAD_FUNCTION_DENIED_MESSAGE =
@@ -138,9 +139,12 @@ export async function PUT(
     const wantsMeetingHealdUpdate = Object.prototype.hasOwnProperty.call(body, "meetingHeald");
 
     if (wantsMeetingHealdUpdate) {
-      const isAssignedCloser = !!lead.closerId && lead.closerId === profileId;
-      const canMarkMeetingHeald =
-        isTeamMaster || (teamMember.functions?.includes("CLOSER") && isAssignedCloser);
+      const canMarkMeetingHeald = canMarkMeetingHeld({
+        isTeamMaster,
+        isManagerLike: isManagerLikeRole(teamMember.role),
+        isAssignedCloser:
+          !!teamMember.functions?.includes("CLOSER") && !!lead.closerId && lead.closerId === profileId,
+      });
 
       if (lead.status !== "scheduled") {
         const output = new Output(false, [], ["Reuniao so pode ser marcada como realizada para leads agendados."], null);
@@ -148,7 +152,7 @@ export async function PUT(
       }
 
       if (!canMarkMeetingHeald) {
-        const output = new Output(false, [], ["Acesso negado: somente o closer do lead (ou master) pode marcar reuniao como realizada."], null);
+        const output = new Output(false, [], ["Acesso negado: somente o closer do lead, o manager ou o master pode marcar reunião como realizada."], null);
         return NextResponse.json(output, { status: 403 });
       }
     }

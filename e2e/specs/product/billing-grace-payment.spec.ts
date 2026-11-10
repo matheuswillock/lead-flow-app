@@ -49,22 +49,45 @@ test.describe("regularização da assinatura", () => {
           successMessages: [],
           errorMessages: [],
           result: {
-            cycle: "one-time",
-            amountCents: 5990,
+            cycles: [
+              {
+                cycle: "monthly",
+                label: "Mensal",
+                months: 1,
+                periodStart: new Date().toISOString(),
+                periodEnd: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+                planPixTotal: 59.9,
+                planCardTotal: null,
+                maxInstallments: 1,
+                unlimitedUsers: false,
+                billedUsers: [],
+                accountUsers: [],
+                billedTeams: [],
+                extraUserPrice: 0,
+                extraTeamPrice: 0,
+                extraUsersTotal: 0,
+                extraTeamsTotal: 0,
+                pixTotal: 59.9,
+                cardTotal: null,
+                losesUnlimitedUsers: false,
+              },
+            ],
+            currentCycle: "monthly",
+            hasUnlimitedUsers: false,
             expiresAt: new Date(Date.now() + 600_000).toISOString(),
-            method: "PIX",
+            cardCheckout: null,
           },
         }),
       })
     })
 
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/billing-grace-payment`)
-    await expect(page.getByRole("heading", { name: "Regularizar pagamento" })).toBeVisible()
-    await expect(page.getByText("R$ 59,90")).toBeAttached()
-    await page.getByRole("button", { name: "Gerar PIX" }).click({ force: true })
+    await expect(page.getByRole("heading", { name: "Renove sua assinatura" })).toBeVisible()
+    await expect(page.getByText("R$ 59,90").first()).toBeAttached()
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
     await expect(page.getByText("000201PIX-E2E")).toBeAttached()
     await expect(page.getByAltText("QR Code PIX")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Copiar código PIX" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible()
     expect(paymentCreated).toBe(true)
     await runResponsiveChecks(page)
   })

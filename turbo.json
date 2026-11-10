@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": ["CI", "NODE_OPTIONS", "NEXT_TELEMETRY_DISABLED"],
+  "tasks": {
+    "lint": {
+      "tags": ["ci", "ci:cpus:4"]
+    },
+    "typecheck": {
+      "tags": ["ci", "ci:cpus:8"]
+    },
+    "test": {
+      "tags": ["ci", "ci:cpus:4"]
+    },
+    "test:proxy": {
+      "tags": ["ci"]
+    },
+    "governance:check": {
+      "tags": ["ci"]
+    },
+    "governance:check-api-masking": {
+      "tags": ["ci"]
+    },
+    "governance:check-e2e-pages": {
+      "tags": ["ci"]
+    },
+    "governance:check-responsive": {
+      "tags": ["ci"]
+    },
+    "design:check": {
+      "tags": ["ci"]
+    },
+    "lint:pt-br": {
+      "tags": ["ci"]
+    },
+    "build": {
+      "env": [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "RESEND_API_KEY"
+      ],
+      "passThroughEnv": ["DATABASE_URL", "DIRECT_URL"],
+      "outputs": [".next/**", "!.next/cache/**"],
+      "tags": ["ci", "ci:cpus:8"]
+    }
+  }
+}

@@ -218,6 +218,18 @@ export async function PUT(
       return NextResponse.json(output, { status });
     }
 
+    // Editar usuários da conta segue a mesma regra de criar: master ou manager com delegação.
+    // (associate/dissociate acima têm regra própria no use case.)
+    if (!hasDelegatedUserCreationAccess(teamAccess.access)) {
+      const output = new Output(
+        false,
+        [],
+        ["Apenas o master ou um manager delegado pode editar usuários da conta"],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
+    }
+
     let validatedData;
     try {
       validatedData = UpdateUserSchema.parse(body);
@@ -283,8 +295,13 @@ export async function DELETE(
       return NextResponse.json(output, { status: 403 });
     }
 
-    if (!isMaster) {
-      const output = new Output(false, [], ["Apenas o master do time pode remover usuários"], null);
+    if (!hasDelegatedUserCreationAccess(teamAccess.access)) {
+      const output = new Output(
+        false,
+        [],
+        ["Apenas o master ou um manager delegado pode remover usuários da conta"],
+        null
+      );
       return NextResponse.json(output, { status: 403 });
     }
 

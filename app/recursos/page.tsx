@@ -4,13 +4,13 @@ import { ResourcesProvider } from "./features/context/ResourcesContext"
 import { ResourcesContainer } from "./features/container/ResourcesContainer"
 
 export const metadata: Metadata = createPublicPageMetadata({
-  title: "Recursos para corretores de saúde | Corretor Studio",
+  title: "Recursos para corretores de saude | Corretor Studio",
   description:
-    "Central de conteúdo sobre CRM, pipeline comercial, gestão de equipe, integrações e produtividade para corretores de planos de saúde.",
+    "Central de conteudo sobre CRM, pipeline comercial, gestao de equipe, integracoes e produtividade para corretores de planos de saude.",
   canonicalPath: "/recursos",
   keywords: [
-    "recursos para corretor de saúde",
-    "conteúdo CRM corretor",
+    "recursos para corretor de saude",
+    "conteudo crm corretor",
     "guia pipeline comercial",
     "faq corretor studio",
   ],
