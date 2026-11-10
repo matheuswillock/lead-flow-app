@@ -295,6 +295,16 @@ export async function waitForPostgres(
   intervalMs = 2_000,
 ): Promise<boolean> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Container que ja morreu nunca vai responder: falha na hora em vez de
+    // esperar os 120 s inteiros.
+    const running = runner.output("docker", [
+      "inspect",
+      "-f",
+      "{{.State.Running}}",
+      containerName,
+    ]);
+    if (running.stdout.trim() === "false") return false;
+
     const status = runner.run("docker", [
       "exec",
       containerName,
@@ -367,6 +377,35 @@ export function diagnoseDocker(runner: CommandRunner, log: E2eLogger): void {
   }
 }
 
+/** Por que o container do Postgres caiu ou nao respondeu. */
+export function diagnosePostgresContainer(
+  runner: CommandRunner,
+  log: E2eLogger,
+  containerName: string,
+): void {
+  const diagnostics: DockerDiagnostic[] = [
+    {
+      label: "estado do container",
+      command: "docker",
+      args: ["inspect", "-f", "{{json .State}}", containerName],
+    },
+    {
+      label: "logs do container",
+      command: "docker",
+      args: ["logs", "--tail", "150", containerName],
+    },
+    {
+      label: "memoria e shm",
+      command: "sh",
+      args: ["-c", "free -m; df -h /dev/shm"],
+    },
+  ];
+  for (const diagnostic of diagnostics) {
+    log.info(`${LOG_PREFIX} diagnostico do Postgres: ${diagnostic.label}`);
+    runner.run(diagnostic.command, diagnostic.args);
+  }
+}
+
 interface Stage {
   name: string;
   run: () => Promise<number> | number;
@@ -424,8 +463,11 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
     },
     {
       name: "aguardar Postgres",
-      run: async () =>
-        (await waitForPostgres(runner, sleep, containerName)) ? 0 : 1,
+      run: async () => {
+        if (await waitForPostgres(runner, sleep, containerName)) return 0;
+        diagnosePostgresContainer(runner, log, containerName);
+        return 1;
+      },
     },
     {
       name: "seed E2E",

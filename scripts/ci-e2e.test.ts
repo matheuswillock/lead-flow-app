@@ -406,6 +406,24 @@ describe("waitForPostgres", () => {
     expect(ok).toBe(false);
     expect(calls).toHaveLength(4);
   });
+
+  it("falha na hora, sem esperar o tempo todo, quando o container ja morreu", async () => {
+    const { runner, calls, outputCalls } = createRunner(
+      () => 0,
+      (call) =>
+        call.args[0] === "inspect"
+          ? { status: 0, stdout: "false\n" }
+          : { status: 0, stdout: "" },
+    );
+
+    const ok = await waitForPostgres(runner, noSleep, "pg-1");
+
+    expect(ok).toBe(false);
+    expect(calls).toEqual([]);
+    expect(outputCalls.map(commandLine)).toEqual([
+      "docker inspect -f {{.State.Running}} pg-1",
+    ]);
+  });
 });
 
 describe("runE2eCi", () => {
@@ -474,6 +492,28 @@ describe("runE2eCi", () => {
     expect(calls.map(commandLine).some((l) => l.includes("db:seed:e2e"))).toBe(
       false,
     );
+  });
+
+  it("imprime estado e logs do container quando o Postgres cai logo apos subir", async () => {
+    const { deps, calls } = createDeps(
+      () => 0,
+      {},
+      (call) =>
+        call.args[0] === "inspect"
+          ? { status: 0, stdout: "false\n" }
+          : { status: 0, stdout: "ext2/ext3\n" },
+    );
+
+    const exitCode = await runE2eCi(deps);
+
+    expect(exitCode).toBe(1);
+    const lines = calls.map(commandLine);
+    expect(lines).toContain(
+      "docker inspect -f {{json .State}} e2e-postgres-ci-1",
+    );
+    expect(lines).toContain("docker logs --tail 150 e2e-postgres-ci-1");
+    expect(lines.some((line) => line.includes("db:seed:e2e"))).toBe(false);
+    expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
   });
 
   it("falha sem subir o Postgres quando a imagem nao pode ser baixada", async () => {
