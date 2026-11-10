@@ -5,6 +5,7 @@ import type { ITeamMembersRepository } from "@/app/api/infra/data/repositories/t
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { teamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import { backofficeSupportAccessUseCase } from "@/app/api/useCases/backofficeSupport/BackofficeSupportAccessUseCase";
 import type { AccountAccessDecisionInput } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
 
 export const SET_ACTIVE_TEAM_ERRORS = {
@@ -24,11 +25,17 @@ type AccountAccessPort = {
   execute(input: AccountAccessDecisionInput): Promise<Output>;
 };
 
+/** Entrada da equipe Corretor Studio (Manager do backoffice) numa conta de cliente. */
+type SupportAccessPort = {
+  enterTeam(profileId: string, teamId: string): Promise<unknown | null>;
+};
+
 export class SetActiveTeamUseCase implements ISetActiveTeamUseCase {
   constructor(
     private readonly profiles: ProfilePort = profileRepository,
     private readonly teamMembers: TeamMembersPort = teamMembersRepository,
-    private readonly accountAccess: AccountAccessPort = accountAccessDecisionUseCase
+    private readonly accountAccess: AccountAccessPort = accountAccessDecisionUseCase,
+    private readonly supportAccess: SupportAccessPort = backofficeSupportAccessUseCase
   ) {}
 
   async execute(input: { supabaseId: string; teamId: string }): Promise<Output> {
@@ -44,8 +51,23 @@ export class SetActiveTeamUseCase implements ISetActiveTeamUseCase {
       );
       if (!membershipTeam || membershipTeam.deletedAt) {
         const sponsored = await this.teamMembers.findSponsoredTeamAccess(input.teamId);
-        if (!sponsored || sponsored.sponsorMasterId !== profile.id) {
+        if (!sponsored) {
           return new Output(false, [], [SET_ACTIVE_TEAM_ERRORS.NOT_TEAM_MEMBER], null);
+        }
+
+        if (sponsored.sponsorMasterId !== profile.id) {
+          // Manager do backoffice entra por permissão, sem virar membro do time,
+          // e a entrada fica registrada. Não passa pela decisão de cobrança da conta.
+          const supportTeam = await this.supportAccess.enterTeam(profile.id, input.teamId);
+          if (!supportTeam) {
+            return new Output(false, [], [SET_ACTIVE_TEAM_ERRORS.NOT_TEAM_MEMBER], null);
+          }
+
+          await this.profiles.updateActiveTeamId(profile.id, input.teamId);
+          return new Output(true, ["Active team updated"], [], {
+            activeTeamId: input.teamId,
+            accountAccessDecision: { state: "allowed" },
+          });
         }
       }
 

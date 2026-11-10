@@ -17,6 +17,7 @@ import { resolveTeamAccountAccessDecisions } from "./resolveTeamAccountAccessDec
 import { resolveActiveTeamId } from "@/lib/account/teamAccessDecision";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter";
+import { backofficeSupportAccessUseCase } from "@/app/api/useCases/backofficeSupport/BackofficeSupportAccessUseCase";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -403,7 +404,18 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    const teams = [...activeTeamsMerged, ...pendingTeamRows];
+    // Manager do backoffice: o time de cliente em que ele está entra na lista (sem
+    // ser membro) para o app não devolvê-lo ao time dele; a busca fica no seletor.
+    const supportState = await backofficeSupportAccessUseCase.resolveTeamState(
+      profile.id,
+      profile.activeTeamId
+    );
+    const supportRows =
+      supportState.supportTeam && !activeTeamsMerged.some((team) => team.id === supportState.supportTeam?.id)
+        ? [supportState.supportTeam]
+        : [];
+
+    const teams = [...activeTeamsMerged, ...supportRows, ...pendingTeamRows];
 
     let activeTeamId = profile.activeTeamId;
     const resolvedActiveTeamId = resolveActiveTeamId({
@@ -422,7 +434,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      new Output(true, [], [], { teams, activeTeamId }),
+      new Output(true, [], [], { teams, activeTeamId, canSupportSearch: supportState.canSupportSearch }),
       { status: 200 }
     );
   } catch (error) {

@@ -103,7 +103,17 @@ function getSidebarStatusBadge(status?: SidebarItem["status"]) {
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const pathname = usePathname();
   const { user } = useUserContext();
-  const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster, activeRole, activeFunctions } = useTeamContext();
+  const {
+    teams,
+    activeTeamId,
+    activeTeam,
+    setActiveTeamId,
+    isTeamMaster,
+    activeRole,
+    activeFunctions,
+    canSupportSearch,
+    enterSupportTeam,
+  } = useTeamContext();
   const { hasAccess, showsBetaLabel } = useFeatureAccess();
   const { access: operationalAccess } = useOperationalAccess();
   const isManager = activeRole === "manager" || activeRole === "backoffice";
@@ -369,7 +379,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
             />
             <span className="text-base font-semibold">Corretor Studio</span>
           </div>
-          {teams.length > 0 ? (
+          {teams.length > 0 || canSupportSearch ? (
             <TeamSwitcher
               teams={teams.map((team) => ({
                 id: team.id,
@@ -379,9 +389,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 isAccessible: team.isAccessible,
                 isAssociateAccount: team.isAssociateAccount,
                 isPending: team.isPending,
+                isSupportAccess: team.isSupportAccess,
               }))}
               activeTeamId={activeTeamId}
               onChange={setActiveTeamId}
+              supportSearch={
+                canSupportSearch && supabaseId
+                  ? { supabaseId, onEnterTeam: enterSupportTeam }
+                  : undefined
+              }
               variant="compact"
               inline
             />

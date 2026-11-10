@@ -43,6 +43,7 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
       initialTeams={bootstrap?.teams ?? null}
       initialActiveTeamId={bootstrap?.activeTeamId ?? null}
       initialAccountAccessDecision={bootstrap?.accountAccessDecision ?? null}
+      initialCanSupportSearch={bootstrap?.canSupportSearch ?? false}
     >
       <UserProvider
         supabaseId={supabaseId}

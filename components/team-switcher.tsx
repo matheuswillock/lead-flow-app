@@ -20,6 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
+import { useSupportAccountSearch } from "@/lib/team/useSupportAccountSearch"
 
 type TeamSwitcherTeam = {
   id: string
@@ -29,6 +30,12 @@ type TeamSwitcherTeam = {
   isAccessible?: boolean
   isAssociateAccount?: boolean
   isPending?: boolean
+  isSupportAccess?: boolean
+}
+
+type SupportSearchConfig = {
+  supabaseId: string
+  onEnterTeam: (teamId: string) => void
 }
 
 export function TeamSwitcher({
@@ -37,17 +44,25 @@ export function TeamSwitcher({
   onChange,
   variant = "default",
   inline = false,
+  supportSearch,
 }: {
   teams: TeamSwitcherTeam[]
   activeTeamId: string | null
   onChange: (teamId: string) => void
   variant?: "default" | "compact"
   inline?: boolean
+  /** Manager do backoffice: busca contas de clientes e entra nelas como suporte. */
+  supportSearch?: SupportSearchConfig
 }) {
   const { isMobile } = useSidebar()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const support = useSupportAccountSearch({
+    enabled: Boolean(supportSearch) && open,
+    supabaseId: supportSearch?.supabaseId ?? null,
+    query,
+  })
 
   const activeTeam = React.useMemo(
     () => teams.find((team) => team.id === activeTeamId) || teams.find((team) => !team.isPending),
@@ -99,9 +114,11 @@ export function TeamSwitcher({
     return () => window.cancelAnimationFrame(frame)
   }, [open])
 
-  if (!activeTeam) {
+  // Manager do backoffice sem time próprio ainda vê o seletor, só para buscar contas.
+  if (!activeTeam && !supportSearch) {
     return null
   }
+  const activeName = activeTeam?.name ?? "Escolher conta de cliente"
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
@@ -120,6 +137,17 @@ export function TeamSwitcher({
     setQuery("")
   }
 
+  const handleEnterSupportTeam = (teamId: string) => {
+    if (teamId === activeTeamId) {
+      setOpen(false)
+      setQuery("")
+      return
+    }
+    supportSearch?.onEnterTeam(teamId)
+    setOpen(false)
+    setQuery("")
+  }
+
   const trigger =
     variant === "compact" ? (
       <button
@@ -127,7 +155,12 @@ export function TeamSwitcher({
         className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-md px-2 py-1 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       >
         <ChevronsUpDown className="h-4 w-4" />
-        <span className="max-w-[140px] truncate">{activeTeam.name}</span>
+        <span className="max-w-[140px] truncate">{activeName}</span>
+        {activeTeam?.isSupportAccess ? (
+          <Badge variant="outline" className="shrink-0">
+            Suporte
+          </Badge>
+        ) : null}
       </button>
     ) : (
       <SidebarMenuButton
@@ -135,12 +168,25 @@ export function TeamSwitcher({
         className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
       >
         <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 cursor-pointer items-center justify-center rounded-lg text-xs font-semibold">
-          {activeTeam.name.slice(0, 2).toUpperCase()}
+          {activeName.slice(0, 2).toUpperCase()}
         </div>
         <div className="grid flex-1 text-left text-sm leading-tight">
-          <span className="truncate font-medium">{activeTeam.name}</span>
+          <span className="flex min-w-0 items-center gap-2 font-medium">
+            <span className="truncate">{activeName}</span>
+            {activeTeam?.isSupportAccess ? (
+              <Badge variant="outline" className="shrink-0">
+                Suporte
+              </Badge>
+            ) : null}
+          </span>
           <span className="truncate text-xs">
-            {activeTeam.isOwnAccount ? "Minha conta" : activeTeam.accountName || "Time ativo"}
+            {!activeTeam
+              ? "Busque pelo nome ou e-mail"
+              : activeTeam.isSupportAccess
+                ? `Você está na conta de ${activeTeam.accountName ?? "cliente"} como suporte`
+                : activeTeam.isOwnAccount
+                  ? "Minha conta"
+                  : activeTeam.accountName || "Time ativo"}
           </span>
         </div>
         <ChevronsUpDown className="ml-auto" />
@@ -164,10 +210,10 @@ export function TeamSwitcher({
             ref={inputRef}
             value={query}
             onValueChange={setQuery}
-            placeholder="Pesquisar time ou conta"
+            placeholder={supportSearch ? "Pesquisar time ou conta de cliente" : "Pesquisar time ou conta"}
           />
           <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto">
-            {filteredTeams.length === 0 ? (
+            {filteredTeams.length === 0 && !support.shouldSearch ? (
               <CommandEmpty>Nenhum time encontrado.</CommandEmpty>
             ) : (
               groupedTeams.map(([groupLabel, groupTeams]) => (
@@ -207,6 +253,42 @@ export function TeamSwitcher({
                 </CommandGroup>
               ))
             )}
+            {supportSearch && support.shouldSearch ? (
+              <CommandGroup heading="Contas de clientes">
+                {support.isSearching ? (
+                  <p className="px-2 py-3 text-xs text-muted-foreground" aria-busy="true">
+                    Buscando contas...
+                  </p>
+                ) : support.hasError ? (
+                  <p className="px-2 py-3 text-xs text-destructive" role="alert">
+                    Não foi possível buscar as contas.
+                  </p>
+                ) : support.results.length === 0 ? (
+                  <p className="px-2 py-3 text-xs text-muted-foreground">Nenhuma conta encontrada.</p>
+                ) : (
+                  support.results.flatMap((account) =>
+                    account.teams.map((team) => (
+                      <CommandItem
+                        key={team.id}
+                        value={`support-${account.masterId}-${team.id}`}
+                        onSelect={() => handleEnterSupportTeam(team.id)}
+                        className="min-h-11 gap-2 p-2"
+                      >
+                        <div className="flex size-6 shrink-0 items-center justify-center rounded-md border text-xs font-semibold">
+                          {team.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">{team.name}</span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {account.masterName ?? account.masterEmail}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))
+                  )
+                )}
+              </CommandGroup>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>

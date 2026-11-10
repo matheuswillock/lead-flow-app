@@ -46,6 +46,8 @@ export interface TeamSummary {
     paymentMethod: string;
     checkoutUrl: string;
   } | null;
+  /** Time de cliente em que a equipe Corretor Studio entrou como suporte (sem ser membro). */
+  isSupportAccess?: boolean;
 }
 
 interface TeamContextState {
@@ -61,9 +63,13 @@ interface TeamContextState {
   switchingTeamName: string | null;
   isTeamSwitchPersisted: boolean;
   accountAccessDecision: AccountAccessDecision | null;
+  /** Manager do backoffice: o seletor mostra a busca de contas de clientes. */
+  canSupportSearch: boolean;
   refreshTeams: () => Promise<void>;
   setProfileId: (profileId: string | null) => void;
   setActiveTeamId: (teamId: string) => Promise<void>;
+  /** Entra num time de cliente como suporte e recarrega o app já nesse time. */
+  enterSupportTeam: (teamId: string) => Promise<void>;
   completeTeamSwitch: () => void;
 }
 
@@ -89,6 +95,7 @@ interface TeamProviderProps {
   initialTeams?: TeamSummary[] | null;
   initialActiveTeamId?: string | null;
   initialAccountAccessDecision?: AccountAccessDecision | null;
+  initialCanSupportSearch?: boolean;
 }
 
 export const TeamProvider = ({
@@ -98,6 +105,7 @@ export const TeamProvider = ({
   initialTeams = null,
   initialActiveTeamId = null,
   initialAccountAccessDecision = null,
+  initialCanSupportSearch = false,
 }: TeamProviderProps) => {
   const storageKey = getStorageKey(supabaseId);
   const hasInitialTeams = initialTeams !== null;
@@ -114,6 +122,7 @@ export const TeamProvider = ({
   const [switchingTeamName, setSwitchingTeamName] = useState<string | null>(null);
   const [isTeamSwitchPersisted, setIsTeamSwitchPersisted] = useState(false);
   const [accountAccessDecision, setAccountAccessDecision] = useState<AccountAccessDecision | null>(initialDecision);
+  const [canSupportSearch, setCanSupportSearch] = useState(initialCanSupportSearch);
   const [resolvedProfileId, setResolvedProfileId] = useState<string | null>(profileId);
   const serverActiveTeamIdRef = useRef<string | null>(initialActiveTeamId);
   const activeTeamIdRef = useRef<string | null>(initialActiveTeamId);
@@ -205,8 +214,13 @@ export const TeamProvider = ({
         return;
       }
 
-      const payload = output.result as { teams: TeamSummary[]; activeTeamId: string | null };
+      const payload = output.result as {
+        teams: TeamSummary[];
+        activeTeamId: string | null;
+        canSupportSearch?: boolean;
+      };
       serverTeamsReadyRef.current = true;
+      setCanSupportSearch(payload.canSupportSearch === true);
       setTeams(payload.teams || []);
       serverActiveTeamIdRef.current = payload.activeTeamId ?? null;
       if (!pendingActiveTeamSwitchRef.current) {
@@ -359,6 +373,32 @@ export const TeamProvider = ({
     }
   }, [activeTeamId, persistActiveTeam, revertTeamSwitch, teams]);
 
+  const enterSupportTeam = useCallback(async (teamId: string) => {
+    try {
+      const response = await fetch(`${API_CLIENT_BASE}/teams/active`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+        body: JSON.stringify({ teamId }),
+      });
+      const output = await response.json();
+      if (!response.ok || !output.isValid) {
+        throw new Error(output.errorMessages?.join(", ") || "Não foi possível entrar nesta conta.");
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storageKey, teamId);
+        // O servidor já guardou o time ativo: recarrega para o app inteiro nascer nele.
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Error entering support team:", err);
+      toastUserError(err);
+    }
+  }, [storageKey, supabaseId]);
+
   useEffect(() => {
     if (!supabaseId) return;
     // Com bootstrap server-side, a primeira execução não precisa refazer o fetch.
@@ -443,6 +483,19 @@ export const TeamProvider = ({
   );
 
   useEffect(() => {
+    if (!activeTeam?.isSupportAccess || typeof window === "undefined") return;
+    // Avisa uma vez por conta e sessão que o acesso é como suporte.
+    const noticeKey = `support-notice:${activeTeam.id}`;
+    try {
+      if (window.sessionStorage.getItem(noticeKey)) return;
+      window.sessionStorage.setItem(noticeKey, "1");
+    } catch {
+      // Sem sessionStorage o aviso pode repetir, o que é aceitável.
+    }
+    toast.info(`Você está acessando a conta de ${activeTeam.accountName ?? "cliente"} como suporte.`);
+  }, [activeTeam]);
+
+  useEffect(() => {
     if (!activeTeamId || !activeTeam) return;
     if (activeRole === "operator" && activeFunctions.length === 0) {
       toast.info("Seu time atual não possui funções atribuídas.");
@@ -462,9 +515,11 @@ export const TeamProvider = ({
     switchingTeamName,
     isTeamSwitchPersisted,
     accountAccessDecision,
+    canSupportSearch,
     refreshTeams,
     setProfileId,
     setActiveTeamId,
+    enterSupportTeam,
     completeTeamSwitch,
   }), [
     teams,
@@ -479,9 +534,11 @@ export const TeamProvider = ({
     switchingTeamName,
     isTeamSwitchPersisted,
     accountAccessDecision,
+    canSupportSearch,
     refreshTeams,
     setProfileId,
     setActiveTeamId,
+    enterSupportTeam,
     completeTeamSwitch,
   ]);
 

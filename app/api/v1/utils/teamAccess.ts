@@ -7,6 +7,7 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { resolveTimezone } from "@/lib/dates";
 import { ACCOUNT_MASTER_BANNED_MESSAGE } from "@/lib/account/isAccountMasterBanned";
 import { accountAccessDecisionUseCase } from "@/app/api/useCases/accountAccessDecision/AccountAccessDecisionUseCase";
+import { backofficeSupportAccessUseCase } from "@/app/api/useCases/backofficeSupport/BackofficeSupportAccessUseCase";
 import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types";
 
 export type TeamAccess = {
@@ -24,6 +25,8 @@ export type TeamAccess = {
   userTimezone: string;
   accountAccessDecision?: AccountAccessDecision;
   accountAccessMode?: "full" | "read_only";
+  /** Equipe Corretor Studio na conta de um cliente (Manager do backoffice, sem ser membro). */
+  isSupportAccess?: boolean;
   teamMember: {
     role: UserRole;
     functions: UserFunction[];
@@ -199,6 +202,36 @@ export async function getTeamAccess(
   if (!teamMember) {
     const teamForSponsor = await resolveTeamForSponsorAccess(teamId);
     const sponsorMasterId = teamForSponsor?.master.sponsorMasterId;
+    if (teamForSponsor && sponsorMasterId !== profile.id) {
+      // Manager do backoffice: entra por permissão (sem linha de membro, então não
+      // aparece em nenhuma lista do cliente) e não fica sujeito ao bloqueio de cobrança.
+      if (await backofficeSupportAccessUseCase.isSupportManager(profile.id)) {
+        return {
+          access: {
+            supabaseId,
+            teamId,
+            profileId: profile.id,
+            profileEmail: profile.email,
+            profileName: profile.fullName,
+            isMaster: false,
+            managerId: teamForSponsor.masterId,
+            canCreateAccountUsers: true,
+            canManageAccountTeams: true,
+            canTransferAccountLeads: true,
+            canViewAllTeams: true,
+            userTimezone: resolveTimezone(profile.timezone),
+            accountAccessDecision: { state: "allowed" },
+            accountAccessMode: "full",
+            isSupportAccess: true,
+            teamMember: {
+              role: "backoffice" as UserRole,
+              functions: [] as UserFunction[],
+            },
+          },
+        };
+      }
+    }
+
     if (!teamForSponsor || sponsorMasterId !== profile.id) {
       return {
         error: new Output(false, [], ["Acesso negado para este time"], null),

@@ -36,6 +36,8 @@ export type AuthenticatedLayoutBootstrapData = {
   userRole: string | null;
   teams: TeamSummary[] | null;
   activeTeamId: string | null;
+  /** Manager do backoffice: o seletor de times ganha a busca de contas de clientes. */
+  canSupportSearch: boolean;
   featureAccess: LayoutFeatureAccessBootstrap | null;
   operationalAccess: OperationalAccessInitialData | null;
   accountAccessDecision: AccountAccessDecision | null;
@@ -51,7 +53,7 @@ const profileUseCase = new RegisterNewUserProfile();
 
 async function fetchTeamsViaRoute(
   supabaseId: string
-): Promise<{ teams: TeamSummary[]; activeTeamId: string | null } | null> {
+): Promise<{ teams: TeamSummary[]; activeTeamId: string | null; canSupportSearch?: boolean } | null> {
   try {
     // Reusa o handler da rota (fonte única da lógica de listagem de times)
     // sem round-trip HTTP.
@@ -64,7 +66,11 @@ async function fetchTeamsViaRoute(
     const output = await response.json();
     if (!output?.isValid || !output.result) return null;
 
-    return output.result as { teams: TeamSummary[]; activeTeamId: string | null };
+    return output.result as {
+      teams: TeamSummary[];
+      activeTeamId: string | null;
+      canSupportSearch?: boolean;
+    };
   } catch (error) {
     console.error("[LayoutBootstrap] Erro ao resolver times no servidor:", error);
     return null;
@@ -198,11 +204,15 @@ export async function getAuthenticatedLayoutBootstrapData(
       userRole: subscriptionCheck?.userRole ?? null,
       teams: teamsPayload?.teams ?? null,
       activeTeamId,
+      canSupportSearch: teamsPayload?.canSupportSearch === true,
       featureAccess,
       operationalAccess: operationalAccessResult,
-      accountAccessDecision: accountAccessOutput.isValid
-        ? (accountAccessOutput.result as AccountAccessDecision)
-        : null,
+      // Equipe de suporte numa conta de cliente não passa pelo bloqueio de cobrança.
+      accountAccessDecision: activeTeam?.isSupportAccess
+        ? { state: "allowed" }
+        : accountAccessOutput.isValid
+          ? (accountAccessOutput.result as AccountAccessDecision)
+          : null,
     };
   } catch (error) {
     console.error("[LayoutBootstrap] Erro no bootstrap server-side:", error);
