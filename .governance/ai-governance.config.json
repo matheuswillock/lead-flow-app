@@ -410,7 +410,6 @@
       "app/backoffice/(app)/studio-bot/page.tsx",
       "app/backoffice/(app)/studio-bot/verificacoes/page.tsx",
       "app/backoffice/(app)/studio-bot/vinculacoes/page.tsx",
-      "app/backoffice/(app)/users/page.tsx",
       "app/backoffice/(app)/whatsapp/page.tsx",
       "app/backoffice/sign-in/page.tsx",
       "app/contrato/[token]/page.tsx",

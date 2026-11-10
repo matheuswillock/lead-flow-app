@@ -92,7 +92,7 @@ export function OperatorAccountLinksField({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border p-3">
+    <div data-testid="operator-account-links" className="flex flex-col gap-3 rounded-md border p-3">
       <div className="flex flex-col gap-1">
         <Label>Contas e times</Label>
         <p className="text-xs text-muted-foreground">
@@ -132,7 +132,7 @@ export function OperatorAccountLinksField({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-10 shrink-0"
+                    className="size-10 shrink-0 max-lg:size-11"
                     onClick={() => onRemoveAccount(draft.masterId)}
                     disabled={disabled}
                     aria-label={`Remover conta ${draft.masterName ?? draft.masterEmail}`}
@@ -157,7 +157,7 @@ export function OperatorAccountLinksField({
                         <li key={team.id}>
                           <Label
                             htmlFor={checkboxId}
-                            className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 font-normal hover:bg-muted"
+                            className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 font-normal hover:bg-muted max-lg:min-h-11"
                           >
                             <Checkbox
                               id={checkboxId}
@@ -189,7 +189,7 @@ export function OperatorAccountLinksField({
               <Button
                 type="button"
                 variant="outline"
-                className="self-start"
+                className="self-start max-lg:h-11"
                 disabled={disabled}
               >
                 <Plus data-icon="inline-start" />
