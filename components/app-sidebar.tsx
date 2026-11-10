@@ -45,6 +45,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { NavUser } from "./nav-user"
@@ -81,6 +84,8 @@ type SidebarItem = {
    */
   lockFeatureSlugs?: string[]
   unreadCount?: number
+  /** Submenu de atalhos diretos (ex.: Webhooks → Entrada/Saída/Genérico), sempre visível quando o pai não está bloqueado. */
+  children?: Omit<SidebarItem, "children">[]
 }
 
 function getSidebarStatusBadge(status?: SidebarItem["status"]) {
@@ -202,21 +207,26 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Catálogo de API",
       url: `/${supabaseId}/integrations/api-catalog`,
       icon: Code2,
-      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION],
+      lockFeatureSlugs: [FEATURE_SLUGS.API_CATALOG],
     },
     {
       title: "Webhooks",
       url: `/${supabaseId}/integrations/webhooks`,
       icon: Webhook,
-      // Decisão do owner (22/09, R15-3): integration OU radar libera —
-      // preserva quem já vê Webhooks só com radar hoje.
-      lockFeatureSlugs: [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR],
+      // Decisão do owner (22/09, R15-3): webhooks OU radar libera — preserva
+      // quem já vê Webhooks só com radar hoje.
+      lockFeatureSlugs: [FEATURE_SLUGS.WEBHOOKS, FEATURE_SLUGS.RADAR],
+      children: [
+        { title: "Entrada", url: `/${supabaseId}/integrations/webhooks/inbound`, icon: Webhook },
+        { title: "Saída", url: `/${supabaseId}/integrations/webhooks/outbound`, icon: Webhook },
+        { title: "Genérico", url: `/${supabaseId}/integrations/webhooks/generic`, icon: Webhook },
+      ],
     },
     {
       title: "Pixel",
       url: `/${supabaseId}/integrations/pixel`,
       icon: Radio,
-      lockFeatureSlugs: [FEATURE_SLUGS.RADAR],
+      lockFeatureSlugs: [FEATURE_SLUGS.PIXEL],
     },
   ];
 
@@ -590,6 +600,17 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                               )}
                             </Link>
                           </SidebarMenuButton>
+                          {!locked && item.children?.length ? (
+                            <SidebarMenuSub>
+                              {item.children.map((child) => (
+                                <SidebarMenuSubItem key={child.title}>
+                                  <SidebarMenuSubButton asChild isActive={isItemActive(child.url)}>
+                                    <Link href={child.url}>{child.title}</Link>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          ) : null}
                         </SidebarMenuItem>
                       )
                     })}

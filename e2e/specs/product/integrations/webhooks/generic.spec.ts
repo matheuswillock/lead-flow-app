@@ -1,12 +1,10 @@
 /**
- * app/[supabaseId]/integrations/page.tsx
+ * app/[supabaseId]/integrations/webhooks/generic/page.tsx
  *
  * SPEC 10, B-E1 (T-10.18, T-10.19, T-10.20) — widget legado "Webhook
- * Genérico de Leads" (`StudioWebhookIntegration.tsx`). R10-4/R10-5
- * (revisão Opus, Protocolo 96): a página saía de `e2ePageCoverageAllowlist`
- * junto com o resto da SPEC, mas sem spec própria — só o CRUD novo
- * (webhooks/inbound|outbound) tinha cobertura. Este arquivo fecha a lacuna
- * e tira `app/[supabaseId]/integrations/page.tsx` da allowlist.
+ * Genérico de Leads" (`StudioWebhookIntegration.tsx`). Ganhou página própria
+ * (fora de `app/[supabaseId]/integrations/page.tsx`) para caber no submenu
+ * de Webhooks da sidebar, ao lado de Entrada e Saída.
  *
  * Os cenários "sem config"/"com config" interceptam a resposta de
  * GET /integrations/studio-webhook em vez de escrever no Postgres
@@ -28,10 +26,10 @@
  */
 
 import { expect, test } from "@playwright/test";
-import { injectE2eAuthCookie } from "../../fixtures/auth";
-import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
-import { disconnectPrisma, findE2eMasterProfile } from "../../support/db";
-import { runResponsiveChecks } from "../../support/responsive";
+import { injectE2eAuthCookie } from "../../../../fixtures/auth";
+import { E2E_MASTER_SUPABASE_ID } from "../../../../support/e2e-ids";
+import { disconnectPrisma, findE2eMasterProfile } from "../../../../support/db";
+import { runResponsiveChecks } from "../../../../support/responsive";
 
 // Um único padrão cobre as duas rotas de propósito — "?" em glob do
 // Playwright é curinga de 1 caractere, então "studio-webhook?**" também
@@ -87,7 +85,7 @@ async function mockConfigResponse(page: import("@playwright/test").Page, overrid
   });
 }
 
-test.describe("app/[supabaseId]/integrations — widget legado do webhook (SPEC 10, B-E1)", () => {
+test.describe("app/[supabaseId]/integrations/webhooks/generic — widget legado do webhook (SPEC 10, B-E1)", () => {
   test.beforeAll(async () => {
     const profile = await findE2eMasterProfile();
     if (!profile?.activeTeamId) {
@@ -111,7 +109,7 @@ test.describe("app/[supabaseId]/integrations — widget legado do webhook (SPEC 
   }) => {
     await mockConfigResponse(page, { configured: false });
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/generic`, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByText("Webhook Genérico de Leads")).toBeVisible();
     await expect(page.getByText("Token não configurado")).toBeVisible();
@@ -134,7 +132,7 @@ test.describe("app/[supabaseId]/integrations — widget legado do webhook (SPEC 
       tokenPreview: "e2e-tok...prev",
     });
 
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/generic`, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByText("Webhook Genérico de Leads")).toBeVisible();
     await expect(page.getByText("Pronto para uso")).toBeVisible();
@@ -171,7 +169,7 @@ test.describe("app/[supabaseId]/integrations — widget legado do webhook (SPEC 
 
   test("responsivo — 360/375 sem overflow, touch targets, prefers-reduced-motion", async ({ page }) => {
     await mockConfigResponse(page, { configured: true, tokenMode: "auto", tokenPreview: "e2e-tok...prev" });
-    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations/webhooks/generic`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Webhook Genérico de Leads")).toBeVisible();
     await page.getByRole("heading", { level: 3, name: "Webhook Genérico de Leads", exact: true }).click();
 

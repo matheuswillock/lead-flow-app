@@ -1,11 +1,9 @@
 "use client";
 
-import { Code2, Radio, Webhook } from "lucide-react";
+import { Code2, FileText, Radio, Webhook } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IntegrationEntryCard } from "../components/IntegrationEntryCard";
 import { IntegrationFlowChecklist, buildIntegrationFlowSteps } from "../components/IntegrationFlowChecklist";
-import { LeadFormIntegration } from "../components/LeadFormIntegration";
-import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
 import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
@@ -19,14 +17,20 @@ export function IntegrationsContainer() {
   const { integrationsBootstrapLoading, supabaseId, radarPixelConfig, radarPixelLoading } = useIntegrationsContext();
   const { hasAccess } = useFeatureAccess();
 
-  const hasIntegrationAccess = hasAccess(FEATURE_SLUGS.CONFIGURATION);
+  const hasApiCatalogAccess = hasAccess(FEATURE_SLUGS.API_CATALOG);
+  const hasWebhooksAccess = hasAccess(FEATURE_SLUGS.WEBHOOKS);
   const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
+  const hasPixelAccess = hasAccess(FEATURE_SLUGS.PIXEL);
+  const hasLeadFormAccess = hasAccess(FEATURE_SLUGS.LEAD_FORM);
   const { apiCatalogLocked, webhooksLocked, pixelLocked } = resolveIntegrationsHubAccess({
-    hasIntegrationAccess,
+    hasApiCatalogAccess,
+    hasWebhooksAccess,
     hasRadarAccess,
+    hasPixelAccess,
   });
 
   const webhooksSummary = useIntegrationsHubWebhooksSummary(supabaseId, !webhooksLocked);
+  const leadFormLocked = !hasLeadFormAccess;
 
   if (isTeamLoading || integrationsBootstrapLoading) {
     return <IntegrationsPageSkeleton />;
@@ -36,6 +40,7 @@ export function IntegrationsContainer() {
   const webhooksHref = `/${supabaseId}/integrations/webhooks`;
   const pixelHref = `/${supabaseId}/integrations/pixel`;
   const apiCatalogHref = `/${supabaseId}/integrations/api-catalog`;
+  const leadFormHref = `/${supabaseId}/integrations/lead-form`;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -46,7 +51,7 @@ export function IntegrationsContainer() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <IntegrationEntryCard
           icon={Code2}
           title="Catálogo de API"
@@ -101,21 +106,19 @@ export function IntegrationsContainer() {
           lockedHref={subscriptionHref}
           href={pixelLocked ? undefined : pixelHref}
         />
+
+        <IntegrationEntryCard
+          icon={FileText}
+          title="Formulário de Captação de Leads"
+          description="Compartilhe este link para receber leads diretamente no seu board."
+          state={leadFormLocked ? "Ver planos disponíveis" : "Gerar link e compartilhar"}
+          locked={leadFormLocked}
+          lockedHref={subscriptionHref}
+          href={leadFormLocked ? undefined : leadFormHref}
+        />
       </div>
 
       <IntegrationFlowChecklist steps={buildIntegrationFlowSteps({ supabaseId, webhooksLocked, apiCatalogLocked })} />
-
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Outras integrações</h2>
-        <LeadFormIntegration />
-
-        {/* Widget legado "Webhook Genérico de Leads" (DA2): some daqui só quando
-            a SPEC 10 A-E1 unificar a tabela legada e o resumo somente-leitura
-            entrar em integrations/webhooks (B-E2). Até lá, continua aqui para
-            não tirar de times que já configuraram o webhook v1 a única forma
-            de ver a URL/token, rotacionar ou ler os logs. */}
-        {!webhooksLocked && <StudioWebhookIntegration />}
-      </div>
     </div>
   );
 }
