@@ -13,6 +13,7 @@ import type {
   IBackofficeUsersService,
   BackofficeUserItem,
   CreateUserFormData,
+  CreateUserResult,
   UpdateUserFormData,
 } from "../services/IBackofficeUsersService"
 import { useBackofficeUser } from "@/app/backoffice/context/BackofficeUserContext"
@@ -26,7 +27,7 @@ interface UsersContextValue {
   canManageUsers: boolean
   error: string | null
   fetchUsers: () => Promise<void>
-  createUser: (data: CreateUserFormData) => Promise<{ isValid: boolean; errorMessages: string[] }>
+  createUser: (data: CreateUserFormData) => Promise<CreateUserResult>
   updateUser: (id: string, data: UpdateUserFormData) => Promise<{ isValid: boolean; errorMessages: string[] }>
   deleteUser: (id: string) => Promise<{ isValid: boolean; errorMessages: string[] }>
 }

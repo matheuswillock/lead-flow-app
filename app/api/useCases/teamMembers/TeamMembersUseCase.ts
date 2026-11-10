@@ -12,6 +12,7 @@ import { backofficeOperationalAccessService } from "@/app/api/services/backoffic
 import { multiskillTransferService } from "@/app/api/services/multiskillTransfer/MultiskillTransferService";
 import { canListExternalMultiskillTargets } from "@/lib/multiskill/is-multiskill-origin-master";
 import { buildTransferTargetItems } from "@/lib/multiskill/build-transfer-target-items";
+import { isCorretorStudioStaffEmail } from "@/lib/backoffice/email-domain";
 
 type ListMembersFunction = Extract<UserFunction, "SDR" | "CLOSER">;
 
@@ -36,6 +37,9 @@ async function getCachedTeamMembersData(teamId: string): Promise<{
   return { team, members, masterAccountTeamMembers, masterAccountProfiles };
 }
 
+const STAFF_MEMBER_LOCKED_MESSAGE =
+  "Acesso negado: este usuário é da equipe Corretor Studio e só pode ser alterado pelo backoffice";
+
 function getDisplayName(profile: { fullName: string | null; email: string | null }) {
   return profile.fullName || profile.email || "Usuário";
 }
@@ -54,6 +58,7 @@ function formatTeamMembersList(
     googleCalendarConnected: member.profile.googleCalendarConnected,
     profileIconUrl: member.profile.profileIconUrl,
     isMaster: member.profileId === team.masterId,
+    isCorretorStudioStaff: isCorretorStudioStaffEmail(member.profile.email),
   }));
 }
 
@@ -328,6 +333,7 @@ export class TeamMembersUseCase {
         googleCalendarConnected: member.profile.googleCalendarConnected,
         profileIconUrl: member.profile.profileIconUrl,
         isMaster: member.profileId === team.masterId,
+        isCorretorStudioStaff: isCorretorStudioStaffEmail(member.profile.email),
       }));
 
       const isAssociateAccount = Boolean(team.sponsorMasterId);
@@ -483,6 +489,12 @@ export class TeamMembersUseCase {
 
       if (profileId === team.masterId) {
         return new Output(false, [], ["Não é possível remover o master do time"], null);
+      }
+
+      const teamMembers = await this.repository.findMembers(teamId);
+      const target = teamMembers.find((member) => member.profileId === profileId);
+      if (target && isCorretorStudioStaffEmail(target.profile.email)) {
+        return new Output(false, [], [STAFF_MEMBER_LOCKED_MESSAGE], null);
       }
 
       const memberSnapshot = await this.repository.findMemberSnapshot(teamId, profileId);

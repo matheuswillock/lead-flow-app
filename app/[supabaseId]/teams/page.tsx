@@ -37,6 +37,7 @@ import { TeamScheduleSettingsProvider } from "./features/teamScheduleSettings/co
 import { TeamScheduleSettingsSection } from "./features/teamScheduleSettings/components/TeamScheduleSettingsSection";
 import type { ManagerTeamTableRow } from "./features/types";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { getStaffBadgeLabels } from "@/lib/backoffice/staff-badge";
 
 type TeamMember = {
   id: string;
@@ -47,6 +48,7 @@ type TeamMember = {
   functions: ("SDR" | "CLOSER")[];
   profileIconUrl: string | null;
   isMaster: boolean;
+  isCorretorStudioStaff?: boolean;
 };
 
 type EligibleProfile = {
@@ -1394,13 +1396,20 @@ export default function TeamsPage() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span>{member.role === "manager" ? "Manager" : member.role === "backoffice" ? "Backoffice" : "Operator"}</span>
                                   {member.isMaster ? <Badge variant="secondary">Master</Badge> : null}
+                                  {member.isCorretorStudioStaff
+                                    ? getStaffBadgeLabels(member.functions).map((label) => (
+                                        <Badge key={label} variant="outline">
+                                          {label}
+                                        </Badge>
+                                      ))
+                                    : null}
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {member.functions?.length ? member.functions.join(", ") : "Sem funções"}
                               </TableCell>
                               <TableCell className="text-right">
-                                {user?.isMaster && !member.isMaster ? (
+                                {user?.isMaster && !member.isMaster && !member.isCorretorStudioStaff ? (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button

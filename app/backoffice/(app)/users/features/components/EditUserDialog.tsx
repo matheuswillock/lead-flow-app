@@ -26,11 +26,15 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { toast } from "sonner"
+import { useOperatorAccountLinks } from "../context/useOperatorAccountLinks"
+import type { IBackofficeOperatorLinksService } from "../services/IBackofficeOperatorLinksService"
 import type {
   BackofficeUserItem,
   UpdateUserFormData,
 } from "../services/IBackofficeUsersService"
 import { BackofficeEmailInput, isBackofficeEmail } from "./BackofficeEmailInput"
+import { OperatorAccountLinksField } from "./OperatorAccountLinksField"
 
 interface EditUserFormState {
   email: string
@@ -46,6 +50,7 @@ interface EditUserDialogProps {
   user: BackofficeUserItem | null
   isUpdating: boolean
   isDeleting: boolean
+  linksService: IBackofficeOperatorLinksService
   onOpenChange: (open: boolean) => void
   onUpdate: (id: string, data: UpdateUserFormData) => Promise<void>
   onDelete: (id: string) => Promise<void>
@@ -65,6 +70,7 @@ export function EditUserDialog({
   user,
   isUpdating,
   isDeleting,
+  linksService,
   onOpenChange,
   onUpdate,
   onDelete,
@@ -73,8 +79,13 @@ export function EditUserDialog({
   const [emailError, setEmailError] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const links = useOperatorAccountLinks(
+    linksService,
+    user?.id ?? null,
+    open && user !== null && !user.fullAccess
+  )
 
-  const isPending = isUpdating || isDeleting
+  const isPending = isUpdating || isDeleting || links.isSaving
 
   useEffect(() => {
     if (!user) {
@@ -124,10 +135,23 @@ export function EditUserDialog({
         isSdr: form.isSdr,
         isCloser: form.isCloser,
       })
-      onOpenChange(false)
     } catch {
       // Toast de erro é emitido pelo container.
+      return
     }
+
+    // Só grava os vínculos se eles carregaram: salvar uma lista vazia por falha
+    // de leitura apagaria as contas do Operator.
+    const canSaveLinks = !form.fullAccess && !links.isLoading && !links.loadError
+    if (canSaveLinks) {
+      const result = await links.save(user.id)
+      if (!result.isValid) {
+        toast.error(result.errorMessages?.[0] ?? "Erro ao salvar contas e times")
+        return
+      }
+    }
+
+    onOpenChange(false)
   }
 
   async function handleConfirmDelete() {
@@ -198,14 +222,18 @@ export function EditUserDialog({
                       <RadioGroupItem value="manager" id="edit-role-manager" className="mt-0.5" />
                       <div>
                         <Label htmlFor="edit-role-manager" className="font-medium cursor-pointer">Manager</Label>
-                        <p className="text-xs text-muted-foreground">Acesso total ao backoffice</p>
+                        <p className="text-xs text-muted-foreground">
+                          Acesso total ao backoffice e a todas as contas de clientes
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <RadioGroupItem value="operator" id="edit-role-operator" className="mt-0.5" />
                       <div>
                         <Label htmlFor="edit-role-operator" className="font-medium cursor-pointer">Operator</Label>
-                        <p className="text-xs text-muted-foreground">Apenas visualização</p>
+                        <p className="text-xs text-muted-foreground">
+                          Visualiza o backoffice e trabalha nas contas e times vinculados
+                        </p>
                       </div>
                     </div>
                   </RadioGroup>
@@ -263,6 +291,19 @@ export function EditUserDialog({
                     disabled={isPending}
                   />
                 </div>
+
+                {!form.fullAccess ? (
+                  <OperatorAccountLinksField
+                    service={linksService}
+                    drafts={links.drafts}
+                    isLoading={links.isLoading}
+                    loadError={links.loadError}
+                    disabled={isPending}
+                    onAddAccount={links.addAccount}
+                    onRemoveAccount={links.removeAccount}
+                    onToggleTeam={links.toggleTeam}
+                  />
+                ) : null}
 
                 <Separator />
 

@@ -10,6 +10,7 @@ import type { IProfileRepository } from "@/app/api/infra/data/repositories/profi
 import type { IMailboxProvisioningService } from "@/app/api/services/mailbox/IMailboxProvisioningService"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import type { IBackofficeOperatorLinksSync } from "./BackofficeOperatorLinksUseCase"
 
 export interface CreateBackofficeUserInput {
   email: string
@@ -43,7 +44,9 @@ export class BackofficeUserUseCase {
   constructor(
     private userRepo: IBackofficeUserRepository,
     private profileRepo: IProfileRepository,
-    private mailboxService: IMailboxProvisioningService
+    private mailboxService: IMailboxProvisioningService,
+    // Opcional: só a rota de edição precisa manter os vínculos de Operator em dia.
+    private operatorLinks?: IBackofficeOperatorLinksSync
   ) {}
 
   async createUser(data: CreateBackofficeUserInput, actorAccess: BackofficeAccess): Promise<Output> {
@@ -215,6 +218,12 @@ export class BackofficeUserUseCase {
             isCloser: data.isCloser,
           })
         : existing
+
+      const changedLinkedAttributes =
+        data.fullAccess !== undefined || data.isSdr !== undefined || data.isCloser !== undefined
+      if (changedLinkedAttributes) {
+        await this.operatorLinks?.syncAfterUserChange(updated)
+      }
 
       return new Output(true, ["Usuário atualizado com sucesso"], [], updated)
     } catch (error) {

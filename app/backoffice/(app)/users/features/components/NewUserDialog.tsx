@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,8 @@ interface NewUserDialogProps {
   form: CreateUserFormData
   emailError: string | null
   isCreating: boolean
+  /** Seção "Contas e times", mostrada só para Operator. */
+  operatorLinksSection?: ReactNode
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>
   onChange: (field: keyof CreateUserFormData, value: string | boolean) => void
 }
@@ -30,6 +32,7 @@ export function NewUserDialog({
   form,
   emailError,
   isCreating,
+  operatorLinksSection,
   onSubmit,
   onChange,
 }: NewUserDialogProps) {
@@ -109,18 +112,23 @@ export function NewUserDialog({
                     <RadioGroupItem value="manager" id="role-manager" className="mt-0.5" />
                     <div>
                       <Label htmlFor="role-manager" className="font-medium cursor-pointer">Manager</Label>
-                      <p className="text-xs text-muted-foreground">Acesso total ao backoffice</p>
+                      <p className="text-xs text-muted-foreground">
+                        Acesso total ao backoffice e a todas as contas de clientes
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <RadioGroupItem value="operator" id="role-operator" className="mt-0.5" />
                     <div>
                       <Label htmlFor="role-operator" className="font-medium cursor-pointer">Operator</Label>
-                      <p className="text-xs text-muted-foreground">Apenas visualização</p>
+                      <p className="text-xs text-muted-foreground">
+                        Visualiza o backoffice e trabalha nas contas e times vinculados
+                      </p>
                     </div>
                   </div>
                 </RadioGroup>
               </div>
+              {form.fullAccess ? null : operatorLinksSection}
             </div>
           </div>
           <DialogFooter>

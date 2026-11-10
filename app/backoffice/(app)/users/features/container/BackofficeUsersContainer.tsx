@@ -29,7 +29,10 @@ import type {
 } from "../services/IBackofficeUsersService"
 import { NewUserDialog } from "../components/NewUserDialog"
 import { EditUserDialog } from "../components/EditUserDialog"
+import { OperatorAccountLinksField } from "../components/OperatorAccountLinksField"
 import { isBackofficeEmail } from "../components/BackofficeEmailInput"
+import { useOperatorAccountLinks } from "../context/useOperatorAccountLinks"
+import type { IBackofficeOperatorLinksService } from "../services/IBackofficeOperatorLinksService"
 
 const MAILBOX_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
   provisioned: { label: "Ativo", variant: "default" },
@@ -47,7 +50,11 @@ function validateEmail(email: string) {
   return isBackofficeEmail(email)
 }
 
-export function BackofficeUsersContainer() {
+interface BackofficeUsersContainerProps {
+  linksService: IBackofficeOperatorLinksService
+}
+
+export function BackofficeUsersContainer({ linksService }: BackofficeUsersContainerProps) {
   const {
     users,
     isLoading,
@@ -64,6 +71,7 @@ export function BackofficeUsersContainer() {
   const [selectedUser, setSelectedUser] = useState<BackofficeUserItem | null>(null)
   const [form, setForm] = useState<CreateUserFormData>(initialForm)
   const [emailError, setEmailError] = useState<string | null>(null)
+  const createLinks = useOperatorAccountLinks(linksService, null, open && !form.fullAccess)
 
   function handleChange(field: keyof CreateUserFormData, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -80,6 +88,15 @@ export function BackofficeUsersContainer() {
     const result = await createUser(form)
     if (result.isValid) {
       toast.success("Usuário backoffice criado com sucesso")
+      const createdId = result.result?.id
+      if (!form.fullAccess && createLinks.hasPayload && createdId) {
+        const linksResult = await createLinks.save(createdId)
+        if (!linksResult.isValid) {
+          toast.warning(
+            "Usuário criado, mas não foi possível vincular as contas. Edite o usuário para tentar de novo."
+          )
+        }
+      }
       setOpen(false)
       setForm(initialForm)
     } else {
@@ -266,7 +283,19 @@ export function BackofficeUsersContainer() {
         onOpenChange={setOpen}
         form={form}
         emailError={emailError}
-        isCreating={isCreating}
+        isCreating={isCreating || createLinks.isSaving}
+        operatorLinksSection={
+          <OperatorAccountLinksField
+            service={linksService}
+            drafts={createLinks.drafts}
+            isLoading={createLinks.isLoading}
+            loadError={createLinks.loadError}
+            disabled={isCreating || createLinks.isSaving}
+            onAddAccount={createLinks.addAccount}
+            onRemoveAccount={createLinks.removeAccount}
+            onToggleTeam={createLinks.toggleTeam}
+          />
+        }
         onSubmit={handleSubmit}
         onChange={handleChange}
       />
@@ -275,6 +304,7 @@ export function BackofficeUsersContainer() {
         user={selectedUser}
         isUpdating={isUpdating}
         isDeleting={isDeleting}
+        linksService={linksService}
         onOpenChange={handleEditOpenChange}
         onUpdate={handleUpdateUser}
         onDelete={handleDeleteUser}

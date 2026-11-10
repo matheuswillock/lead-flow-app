@@ -32,9 +32,15 @@ export interface UpdateUserFormData {
   isCloser?: boolean
 }
 
+export interface CreateUserResult {
+  isValid: boolean
+  errorMessages: string[]
+  result?: { id: string } | null
+}
+
 export interface IBackofficeUsersService {
   list(): Promise<BackofficeUserItem[]>
-  create(data: CreateUserFormData): Promise<{ isValid: boolean; errorMessages: string[] }>
+  create(data: CreateUserFormData): Promise<CreateUserResult>
   update(id: string, data: UpdateUserFormData): Promise<{ isValid: boolean; errorMessages: string[] }>
   delete(id: string): Promise<{ isValid: boolean; errorMessages: string[] }>
 }

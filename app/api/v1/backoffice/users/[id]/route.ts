@@ -2,10 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
-import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
-import { noopMailboxProvisioningService } from "@/app/api/services/mailbox/NoopMailboxProvisioningService"
-import { BackofficeUserUseCase } from "@/app/api/useCases/backoffice/BackofficeUserUseCase"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { createBackofficeUserUseCase } from "@/app/api/useCases/backoffice/BackofficeUserUseCaseFactory"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 export async function PATCH(
@@ -23,12 +20,7 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const useCase = new BackofficeUserUseCase(
-      new BackofficeUserRepository(),
-      profileRepository,
-      noopMailboxProvisioningService
-    )
-    const output = await useCase.updateUser(id, body, result.access)
+    const output = await createBackofficeUserUseCase().updateUser(id, body, result.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
@@ -50,12 +42,7 @@ export async function DELETE(
     if (denied) return denied
 
     const { id } = await params
-    const useCase = new BackofficeUserUseCase(
-      new BackofficeUserRepository(),
-      profileRepository,
-      noopMailboxProvisioningService
-    )
-    const output = await useCase.deleteUser(id, result.access)
+    const output = await createBackofficeUserUseCase().deleteUser(id, result.access)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     rethrowIfPrerenderInterrupted(error);
