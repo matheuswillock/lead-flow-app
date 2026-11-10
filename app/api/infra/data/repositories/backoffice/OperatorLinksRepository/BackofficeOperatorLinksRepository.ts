@@ -9,7 +9,6 @@ import type {
 
 const OPERATOR_LINK_WHERE = {
   role: "operator",
-  isSupportAccess: false,
   team: { deletedAt: null },
 } as const
 
@@ -64,7 +63,7 @@ export class BackofficeOperatorLinksRepository implements IBackofficeOperatorLin
         prisma.teamMember.upsert({
           where: { teamId_profileId: { teamId, profileId } },
           create: { teamId, profileId, role: "operator", functions },
-          update: { role: "operator", functions, isSupportAccess: false },
+          update: { role: "operator", functions },
           select: { id: true, teamId: true },
         })
       )
