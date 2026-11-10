@@ -1,4 +1,5 @@
 import prisma from "@/app/api/infra/data/prisma";
+import { EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER } from "@/lib/backoffice/email-domain";
 import {
   isActiveMemberProAssignment,
   resolveHasUnlimitedUsers,
@@ -42,6 +43,7 @@ class PrismaBillingRepository implements IBillingRepository {
       prisma.teamMember.findMany({
         where: {
           team: { masterId },
+          profile: EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER,
         },
         select: { profileId: true },
         distinct: ["profileId"],

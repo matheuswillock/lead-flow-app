@@ -3117,6 +3117,7 @@ completed completed
     Boolean canManageAccountTeams 
     Boolean canTransferAccountLeads 
     Boolean canViewAllTeams 
+    Boolean isSupportAccess 
     DateTime createdAt 
     DateTime updatedAt 
     }

@@ -15,6 +15,18 @@ export function isValidBackofficeEmail(email: string) {
   return /^[^\s@]+$/.test(prefix) && normalized === `${prefix}${BACKOFFICE_EMAIL_DOMAIN}`
 }
 
+export function isCorretorStudioStaffEmail(email: string | null | undefined) {
+  return typeof email === "string" && normalizeBackofficeEmail(email).endsWith(BACKOFFICE_EMAIL_DOMAIN)
+}
+
+/**
+ * Filtro Prisma para `Profile`: deixa de fora a equipe Corretor Studio.
+ * Usado nas contagens de usuário cobrado, que nunca incluem o suporte.
+ */
+export const EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER = {
+  NOT: { email: { endsWith: BACKOFFICE_EMAIL_DOMAIN, mode: "insensitive" } },
+} as const
+
 export function backofficeEmailDomainErrorMessage() {
   return `E-mail deve pertencer ao domínio ${BACKOFFICE_EMAIL_DOMAIN}`
 }

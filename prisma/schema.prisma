@@ -3654,6 +3654,9 @@ model TeamMember {
   canManageAccountTeams   Boolean        @default(false)
   canTransferAccountLeads Boolean        @default(false)
   canViewAllTeams         Boolean        @default(false) @map("canViewAllTeams")
+  /// Acesso oculto da equipe Corretor Studio (Manager do backoffice). Fica fora
+  /// das listas de membros do cliente e nunca entra na cobrança.
+  isSupportAccess         Boolean        @default(false) @map("isSupportAccess")
   createdAt               DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt               DateTime       @updatedAt @db.Timestamptz(6)
 
@@ -3662,6 +3665,7 @@ model TeamMember {
 
   @@unique([teamId, profileId])
   @@index([profileId])
+  @@index([teamId, isSupportAccess])
   @@map("corretor_studio_team_members")
 }
 

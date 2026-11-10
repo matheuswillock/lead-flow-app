@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
+import { EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER } from "@/lib/backoffice/email-domain"
 import type { IBackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
 import {
   isActiveMemberProAssignment,
@@ -173,7 +174,7 @@ export class BillingQuoteRepository implements IBillingQuoteRepository {
       prisma.teamMember.findMany({
         where: {
           team: { masterId: billingOwnerId, deletedAt: null },
-          profile: { deletedAt: null },
+          profile: { deletedAt: null, ...EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER },
         },
         select: { profileId: true },
         distinct: ["profileId"],

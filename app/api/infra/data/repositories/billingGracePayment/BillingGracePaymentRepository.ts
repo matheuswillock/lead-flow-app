@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
+import { EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER } from "@/lib/backoffice/email-domain"
 import type { BillingGracePayment, Prisma } from "@prisma/client"
 import type {
   CreateBillingGracePaymentInput,
@@ -21,7 +22,7 @@ export class BillingGracePaymentRepository implements IBillingGracePaymentReposi
         hasUnlimitedUsers: true,
         hasPermanentSubscription: true,
         teamMemberships: { select: { teamId: true } },
-        operators: { select: { id: true } },
+        operators: { where: EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER, select: { id: true } },
       },
     })
     if (!profile || !profile.isMaster) return null

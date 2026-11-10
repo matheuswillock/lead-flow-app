@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER } from "@/lib/backoffice/email-domain";
 import type { BillingSnapshot } from "@/app/api/infra/data/repositories/billing/IBillingRepository";
 import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary";
 import type { BillingSummary } from "@/app/api/shared/billing/billingConfig";
@@ -140,7 +141,7 @@ class PrismaSubscriptionCreditRepository {
     const [teamCount, teamMembers, subscription] = await Promise.all([
       tx.team.count({ where: { masterId } }),
       tx.teamMember.findMany({
-        where: { team: { masterId } },
+        where: { team: { masterId }, profile: EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER },
         select: { profileId: true },
         distinct: ["profileId"],
       }),
