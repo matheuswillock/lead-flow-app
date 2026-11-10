@@ -20,7 +20,7 @@ export function GenericWebhookContainer() {
     return (
       <div className="flex flex-col gap-6 p-6">
         <div>
-          <h1 className="text-2xl font-semibold">Webhook Genérico de Leads</h1>
+          <h1 className="text-2xl font-semibold">Webhook Genérico</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Esta área está disponível apenas para times com a integração contratada.
           </p>
@@ -41,9 +41,9 @@ export function GenericWebhookContainer() {
             Webhooks
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Webhook Genérico de Leads</h1>
+        <h1 className="text-2xl font-semibold">Webhook Genérico</h1>
         <p className="text-sm text-muted-foreground">
-          Configure um endpoint para receber leads de ferramentas como Make, n8n ou qualquer integração HTTP POST
+          Widget legado de recebimento de leads por HTTP POST
         </p>
       </div>
 
