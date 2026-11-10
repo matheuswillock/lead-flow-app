@@ -8,7 +8,7 @@ import { DataTable } from "@/app/[supabaseId]/components/data-table/DataTable";
 import type { TeamSummary } from "@/app/context/TeamContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import type { ManagerTeamTableRow } from "../types";
-import { createColumns } from "./ManagerTeamsColumns";
+import { createColumns, MANAGER_TEAMS_HIDDEN_COLUMNS } from "./ManagerTeamsColumns";
 
 interface ManagerTeamsContainerProps {
   teams: TeamSummary[];
@@ -81,13 +81,13 @@ export function ManagerTeamsContainer({
     ownAccountTeamCount,
     onSetActiveTeam,
     onSetDefaultTeam,
-    onManageTeam,
     onViewPendingCheckout,
     onEditPendingPayment,
     onCancelPendingTeam,
     canManageTeams,
-    canManageScheduleSettings,
   });
+  // Clicar na linha abre "Gerenciar" (configurações do time), quando a pessoa pode gerenciar.
+  const canOpenTeam = (team: ManagerTeamTableRow) => !team.isPending && (canManageTeams || canManageScheduleSettings);
 
   return (
     <div className="container mx-auto py-6 px-6 space-y-6">
@@ -159,7 +159,12 @@ export function ManagerTeamsContainer({
             columns={columns}
             data={tableData}
             loading={loading}
-            getRowClassName={(row) => (row.isPending ? "opacity-50" : "")}
+            getRowClassName={(row) => (row.isPending ? "opacity-70" : "")}
+            onRowClick={(row) => {
+              if (canOpenTeam(row)) onManageTeam(row.id, row.name);
+            }}
+            getRowLabel={(row) => `Gerenciar ${row.name}`}
+            initialHiddenColumns={MANAGER_TEAMS_HIDDEN_COLUMNS}
             toolbar={{
               search: { columnId: "name", placeholder: "Buscar por nome ou e-mail..." },
               selectFilters: [

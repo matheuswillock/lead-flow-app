@@ -20,7 +20,41 @@ test("renderiza apenas a navegação restrita, sem conteúdo da plataforma, para
   expect(markup).not.toContain("dados financeiros e CRM")
   expect(markup).toContain("w-full max-w-md")
   expect(markup).toContain("p-4")
-  expect(markup).toContain("h-11 w-full")
+  // Sem ser o master (quem paga), não há botão de reativar: só a orientação e o suporte.
+  expect(markup).not.toContain("Reativar assinatura")
+  expect(markup).toContain("Seu acesso volta automaticamente")
+})
+
+test("na carência mostra o aviso de vencimento sobre o conteúdo, sem bloquear", () => {
+  const markup = renderToStaticMarkup(
+    <AccountAccessGate
+      decision={{
+        state: "allowed",
+        temporaryAccessGranted: true,
+        temporaryAccessUntil: "2026-11-08T03:00:00.000Z",
+        billingGraceUntil: "2026-11-08T03:00:00.000Z",
+      }}
+      decisionResolved
+    >
+      <section data-testid="platform-content">dados financeiros e CRM</section>
+    </AccountAccessGate>
+  )
+
+  expect(markup).toContain("A assinatura desta conta está pendente")
+  expect(markup).toContain("dados financeiros e CRM")
+})
+
+test("concessão operacional (sem billingGraceUntil) não mostra aviso de vencimento", () => {
+  const markup = renderToStaticMarkup(
+    <AccountAccessGate
+      decision={{ state: "allowed", temporaryAccessGranted: true, temporaryAccessUntil: null }}
+      decisionResolved
+    >
+      <section>conteúdo</section>
+    </AccountAccessGate>
+  )
+
+  expect(markup).not.toContain("venceu")
 })
 
 test("falha fechado quando a decisão autenticada não foi resolvida", () => {

@@ -11,6 +11,9 @@ const ORIGIN_TOKEN_KEYS = [
   "dispatchId",
   "recipientEmail",
   "recipientName",
+  // Prova do aceite da política de privacidade (cookies, remarketing e e-mails comerciais).
+  "privacyConsentVersion",
+  "privacyConsentAcceptedAt",
 ] as const
 
 const UUID_RE =

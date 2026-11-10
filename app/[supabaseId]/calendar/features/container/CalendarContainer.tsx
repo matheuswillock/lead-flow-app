@@ -13,17 +13,11 @@ import { toUserToastMessage, toastUserError } from "@/lib/ui/to-user-toast-messa
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { MeetingCardActions } from "./MeetingCardActions"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
-import { CheckCircle2, XCircle, HelpCircle, Clock, MoreVertical, BadgeCheck, BadgeIcon, Loader2, CalendarIcon } from "lucide-react"
+import { CheckCircle2, XCircle, HelpCircle, Clock, BadgeCheck, CalendarIcon } from "lucide-react"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import { TaskFormDialog, type TaskCreatedPayload } from "@/components/task-form-dialog"
 import { TaskCard, type TaskItem } from "@/components/task-card"
@@ -34,7 +28,8 @@ import {
 } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
-import { isMeetingFollowUpOverdue, canConfirmMeetingPresence, isMeetingPresenceConfirmationDue, getMeetingPresenceBadgeClass, getMeetingPresenceBadgeLabel, getMeetingPresenceAlertLabel } from "@/lib/lead-meeting"
+import { isManagerLikeRole } from "@/lib/roles"
+import { isMeetingFollowUpOverdue, canConfirmMeetingPresence, canMarkMeetingHeld, isMeetingPresenceConfirmationDue, getMeetingPresenceBadgeClass, getMeetingPresenceBadgeLabel, getMeetingPresenceAlertLabel } from "@/lib/lead-meeting"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
@@ -300,9 +295,14 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
     }
   }, [])
 
+  // Por lead, o servidor ainda exige que o closer seja o do lead; master e manager marcam qualquer um.
   const canToggleMeetingHeald = React.useMemo(() => {
-    return isTeamMaster || activeFunctions.includes("CLOSER")
-  }, [isTeamMaster, activeFunctions])
+    return canMarkMeetingHeld({
+      isTeamMaster,
+      isManagerLike: isManagerLikeRole(activeRole),
+      isAssignedCloser: activeFunctions.includes("CLOSER"),
+    })
+  }, [isTeamMaster, activeRole, activeFunctions])
 
   const isRestrictedToOwnEvents = !isTeamMaster
     && activeRole !== "manager"
@@ -1193,9 +1193,6 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                       const leadFromTask = findLeadForTask(selectedTask)
                       if (!leadFromTask) return
                       handleCardClick(leadFromTask)
-                      setEditingTask(selectedTask)
-                      setTaskDialogLead(leadFromTask)
-                      setTaskDialogOpen(true)
                     }}
                   />
                 ))}
@@ -1288,57 +1285,6 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                                 </Badge>
                               )}
                             </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  data-no-card-open="true"
-                                  className="size-7 shrink-0"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  <MoreVertical className="size-4" />
-                                  <span className="sr-only">Ações do agendamento</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onSelect={() => {
-                                    blockLeadDialogOpen()
-                                    setLeadToSchedule(lead)
-                                    setScheduleDialogMode("reschedule")
-                                    setScheduleDialogOpen(true)
-                                  }}
-                                >
-                                  Editar agendamento
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={() => {
-                                    blockLeadDialogOpen()
-                                    setLeadToSchedule(lead)
-                                    setScheduleDialogMode("reschedule")
-                                    setScheduleDialogOpen(true)
-                                  }}
-                                >
-                                  Reagendar reunião
-                                </DropdownMenuItem>
-                                <DropdownMenuItem disabled={!isOverdue} onSelect={() => { void handleMarkNoShow(lead) }}>
-                                  No-show
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onSelect={() => {
-                                    blockLeadDialogOpen()
-                                    setOpen(false)
-                                    setLeadToCancel(lead)
-                                    setCancelDialogOpen(true)
-                                  }}
-                                >
-                                  Cancelar agenda
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </div>
 
                           <div className="text-xs text-muted-foreground">Lead: {lead.name} <span className="opacity-60">· {lead.leadCode}</span></div>
@@ -1384,59 +1330,41 @@ export function CalendarContainer({ calendarMonth, onCalendarMonthChange }: Cale
                               ) : null}
                             </div>
                             <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-                              {canConfirmPresence && !isPresenceConfirmed && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  data-no-card-open="true"
-                                  disabled={meetingPresenceConfirmSavingId === lead.id}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    void handleConfirmMeetingPresence(lead)
+                              {!isCanceled ? (
+                                <MeetingCardActions
+                                  isOverdue={isOverdue}
+                                  confirmPresence={
+                                    canConfirmPresence && !isPresenceConfirmed
+                                      ? {
+                                          saving: meetingPresenceConfirmSavingId === lead.id,
+                                          onClick: () => void handleConfirmMeetingPresence(lead),
+                                        }
+                                      : undefined
+                                  }
+                                  meetingHeld={
+                                    lead.status === "scheduled" && canToggleMeetingHeald
+                                      ? {
+                                          held: lead.meetingHeald === "yes",
+                                          saving: meetingHealdSavingId === lead.id,
+                                          onClick: () => void handleToggleMeetingHeald(lead, lead.meetingHeald !== "yes"),
+                                        }
+                                      : undefined
+                                  }
+                                  onReschedule={() => {
+                                    blockLeadDialogOpen()
+                                    setLeadToSchedule(lead)
+                                    setScheduleDialogMode("reschedule")
+                                    setScheduleDialogOpen(true)
                                   }}
-                                >
-                                  {meetingPresenceConfirmSavingId === lead.id ? (
-                                    <>
-                                      <Loader2 className="size-4 animate-spin" />
-                                      Confirmando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <BadgeCheck className="size-4" />
-                                      Confirmar agenda
-                                    </>
-                                  )}
-                                </Button>
-                              )}
-                            {lead.status === "scheduled" && canToggleMeetingHeald && (
-                              <Button
-                                size="sm"
-                                variant={lead.meetingHeald === "yes" ? "default" : "outline"}
-                                data-no-card-open="true"
-                                disabled={meetingHealdSavingId === lead.id || !canToggleMeetingHeald}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void handleToggleMeetingHeald(lead, lead.meetingHeald !== "yes")
-                                }}
-                              >
-                                {meetingHealdSavingId === lead.id ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Salvando...
-                                  </>
-                                ) : lead.meetingHeald === "yes" ? (
-                                  <>
-                                    <BadgeCheck className="h-4 w-4" />
-                                    Reunião realizada
-                                  </>
-                                ) : (
-                                  <>
-                                    <BadgeIcon className="h-4 w-4" />
-                                    Reunião realizada
-                                  </>
-                                )}
-                              </Button>
-                            )}
+                                  onNoShow={() => { void handleMarkNoShow(lead) }}
+                                  onCancel={() => {
+                                    blockLeadDialogOpen()
+                                    setOpen(false)
+                                    setLeadToCancel(lead)
+                                    setCancelDialogOpen(true)
+                                  }}
+                                />
+                              ) : null}
                             </div>
                           </div>
                         </CardContent>

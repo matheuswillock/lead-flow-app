@@ -44,15 +44,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
 import { DraggableRow } from "./DraggableRow";
-import { toast } from "sonner";
 import { useState } from "react";
-import {
-  ScheduleMeetingDialog,
-  type ScheduleMeetingSuccessPayload,
-} from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
-import { FinalizeContractDialog, type FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
-import { ChangeStatusDialog } from "./ChangeStatusDialog";
-import { createColumns } from "./PipelineColumns";
+import { createColumns, PIPELINE_COLUMN_SCREEN_CLASS } from "./PipelineColumns";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { DateRange } from "react-day-picker";
@@ -62,19 +55,7 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
-import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface PipelineTableProps {
   useExternalFilters?: boolean;
@@ -95,9 +76,6 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     handleRowHover,
     statusLabels, 
     isLoading,
-    refreshLeads,
-    patchLead,
-    finalizeContract,
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
@@ -110,20 +88,11 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   } = usePipelineContext();
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
-  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [data, setData] = React.useState<Lead[]>(filtered);
   
-  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
-  const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
-  const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
-  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
-  const [isDeletingLead, setIsDeletingLead] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
   // Atualizar data quando filtered mudar
@@ -180,151 +149,16 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     }));
   }, [closers]);
 
-  const handleScheduleMeeting = (lead: Lead) => {
-    setSelectedLead(lead);
-    setScheduleDialogMode("create");
-    setShowScheduleDialog(true);
-  };
-
-  const handleRescheduleMeeting = (lead: Lead) => {
-    setSelectedLead(lead);
-    setScheduleDialogMode("reschedule");
-    setShowScheduleDialog(true);
-  };
-
-  const handleDeleteLead = async (lead: Lead) => {
-    setLeadToDelete(lead);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteDialogOpenChange = (open: boolean) => {
-    if (isDeletingLead) return;
-    setDeleteDialogOpen(open);
-    if (!open) {
-      setLeadToDelete(null);
-    }
-  };
-
-  const confirmDeleteLead = async () => {
-    if (!leadToDelete || isDeletingLead) return;
-    setIsDeletingLead(true);
-    try {
-      const response = await fetch(`${API_CLIENT_BASE}/leads/${leadToDelete.id}`, {
-        method: 'DELETE',
-        headers: {
-          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
-          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao deletar lead');
-      }
-
-      toast.success('Lead deletado com sucesso!');
-      setDeleteDialogOpen(false);
-      setLeadToDelete(null);
-      await refreshLeads();
-    } catch (error) {
-      toast.error('Erro ao deletar lead');
-      console.error('Erro ao deletar lead:', error);
-    } finally {
-      setIsDeletingLead(false);
-    }
-  };
-
-  const handleFinalizeContract = (lead: Lead) => {
-    setSelectedLead(lead);
-    setShowFinalizeDialog(true);
-  };
-
-  const handleFinalizeSubmit = async (data: FinalizeContractData) => {
-    if (!selectedLead) return;
-
-    await finalizeContract(selectedLead.id, data);
-    setShowFinalizeDialog(false);
-    setSelectedLead(null);
-  };
-
-  const handleChangeStatus = (lead: Lead) => {
-    setSelectedLead(lead);
-    setShowChangeStatusDialog(true);
-  };
-
-  const applyScheduledPatch = React.useCallback(
-    (payload: ScheduleMeetingSuccessPayload) => {
-      patchLead(payload.leadId, {
-        status: payload.status,
-        email: payload.leadEmail,
-        meetingDate: payload.meetingDate,
-        meetingTitle: payload.meetingTitle,
-        meetingNotes: payload.meetingNotes,
-        meetingLink: payload.meetingLink,
-        closerId: payload.closerId,
-        meetingType: payload.meetingType,
-      });
-      setSelectedLead((prev) =>
-        prev?.id === payload.leadId
-          ? {
-              ...prev,
-              status: payload.status,
-              email: payload.leadEmail,
-              meetingDate: payload.meetingDate,
-              meetingTitle: payload.meetingTitle,
-              meetingNotes: payload.meetingNotes,
-              meetingLink: payload.meetingLink,
-              closerId: payload.closerId,
-              meetingType: payload.meetingType,
-            }
-          : prev
-      );
-    },
-    [patchLead]
-  );
-
-  const handleScheduleSuccess = React.useCallback(
-    async (payload?: ScheduleMeetingSuccessPayload) => {
-      if (payload) {
-        applyScheduledPatch(payload);
-      }
-    },
-    [applyScheduledPatch]
-  );
-
-  const handleStatusChanged = React.useCallback(
-    async (leadId: string, patch: Partial<Lead>) => {
-      patchLead(leadId, patch);
-      setSelectedLead((prev) =>
-        prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev
-      );
-    },
-    [patchLead]
-  );
-
+  // Status, agendamento, fechar contrato e excluir ficam dentro do lead, aberto pela linha.
   const columns = React.useMemo<ColumnDef<Lead>[]>(
     () =>
       createColumns({
         statusLabels,
         onRowClick: handleRowClick,
         onOpenContacts: handleOpenContacts,
-        onScheduleMeeting: handleScheduleMeeting,
-        onRescheduleMeeting: handleRescheduleMeeting,
-        onDeleteLead: handleDeleteLead,
-        onFinalizeContract: handleFinalizeContract,
-        onChangeStatus: handleChangeStatus,
         tz,
       }),
-    [
-      handleChangeStatus,
-      handleDeleteLead,
-      handleFinalizeContract,
-      handleOpenContacts,
-      handleRescheduleMeeting,
-      handleRowClick,
-      handleScheduleMeeting,
-      statusLabels,
-      tz,
-    ]
+    [handleOpenContacts, handleRowClick, statusLabels, tz]
   );
 
   const table = useReactTable({
@@ -545,7 +379,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
                     return (
                       <TableHead
                         key={header.id}
-                        className={`text-center align-middle ${canReorder ? "cursor-move select-none" : ""} ${draggingColumnId === header.column.id ? "opacity-60" : ""} ${dragOverColumnId === header.column.id ? "bg-muted/50 ring-1 ring-primary/40" : ""}`}
+                        className={`text-center align-middle ${PIPELINE_COLUMN_SCREEN_CLASS[header.column.id] ?? ""} ${canReorder ? "cursor-move select-none" : ""} ${draggingColumnId === header.column.id ? "opacity-60" : ""} ${dragOverColumnId === header.column.id ? "bg-muted/50 ring-1 ring-primary/40" : ""}`}
                         draggable={canReorder}
                         onDragStart={
                           canReorder
@@ -688,84 +522,6 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
         </div>
       </div>
 
-      {selectedLead && (
-        <ScheduleMeetingDialog
-          open={showScheduleDialog}
-          onOpenChange={(open) => {
-            setShowScheduleDialog(open);
-            if (!open) {
-              setScheduleDialogMode("create");
-            }
-          }}
-          lead={selectedLead}
-          onScheduleSuccess={handleScheduleSuccess}
-          closers={closers}
-          teamMembers={[]}
-          mode={scheduleDialogMode}
-        />
-      )}
-
-      {selectedLead && (
-        <ChangeStatusDialog
-          open={showChangeStatusDialog}
-          onOpenChange={setShowChangeStatusDialog}
-          lead={selectedLead}
-          statusLabels={statusLabels}
-          onStatusChanged={handleStatusChanged}
-          closers={closers}
-          healthPlans={healthPlans}
-          teamMembers={[]}
-          onSchedulePatched={applyScheduledPatch}
-        />
-      )}
-
-      {selectedLead && (
-        <FinalizeContractDialog
-          open={showFinalizeDialog}
-          onOpenChange={(open) => {
-            setShowFinalizeDialog(open);
-            if (!open) setSelectedLead(null);
-          }}
-          leadName={selectedLead.name}
-          leadCloserId={selectedLead.closerId ?? undefined}
-          onFinalize={handleFinalizeSubmit}
-          closers={closers}
-          healthPlans={healthPlans}
-          initialAmount={selectedLead.ticket}
-          initialStartDate={selectedLead.contractDueDate}
-          initialOperadora={selectedLead.soldPlan}
-          initialHolderCnpj={selectedLead.cnpj}
-          initialHolderRazaoSocial={selectedLead.razaoSocial}
-        />
-      )}
-
-      <AlertDialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">
-              Confirmar exclusão
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja deletar o lead{" "}
-              <strong className="text-foreground">"{leadToDelete?.name ?? "selecionado"}"</strong>?
-              Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingLead}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isDeletingLead || !leadToDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void confirmDeleteLead();
-              }}
-            >
-              {isDeletingLead ? "Deletando..." : "Deletar lead"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

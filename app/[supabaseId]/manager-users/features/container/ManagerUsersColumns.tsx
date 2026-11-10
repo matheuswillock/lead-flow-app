@@ -1,177 +1,145 @@
 "use client";
 
-import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, CircleCheck, CircleX, ExternalLink, MoreHorizontal, Pencil, Trash2, Mail, CreditCard } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ArrowUpDown, CircleCheck, CircleX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { CopyIcon } from "@/components/ui/copy";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ManagerUserTableRow } from "../types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { formatIntimezone } from "@/lib/dates"
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import { formatIntimezone } from "@/lib/dates";
+import { describeAccessSummary, type TeamMemberAccessSummary } from "@/lib/team-member-access/access-history";
+import type { ManagerUserTableRow } from "../types";
+import { ACCESS_TONE_CLASS, ROLE_LABEL, delegationLabelsOf } from "../utils/managerUserDisplay";
+
+/**
+ * Colunas que começam ocultas: o detalhe delas está no painel aberto pela linha. Continuam
+ * disponíveis em "Colunas" e para os filtros (a data de criação, por exemplo).
+ */
+export const MANAGER_USERS_HIDDEN_COLUMNS = [
+  "delegatedPermissions",
+  "googleCalendarConnected",
+  "leadsCount",
+  "meetingsCount",
+  "createdAt",
+];
+
+const STATUS_CONFIG: Record<ManagerUserTableRow["status"], { label: string; className: string }> = {
+  active: { label: "Ativo", className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success" },
+  pending_payment: { label: "Aguardando pagamento", className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning" },
+  payment_confirmed: { label: "Pagamento confirmado", className: "border-border bg-muted text-foreground" },
+  pending_creation: { label: "Criando conta", className: "border-border bg-muted text-foreground" },
+  payment_failed: { label: "Pagamento falhou", className: "border-destructive/30 bg-destructive/10 text-destructive" },
+  subscription_updated: { label: "Assinatura atualizada", className: "border-border bg-muted text-foreground" },
+};
+
+function SortableHeader({ label, onToggle, align = "start" }: { label: string; onToggle: () => void; align?: "start" | "center" }) {
+  return (
+    <div className={cn("flex", align === "center" && "justify-center")}>
+      <Button variant="ghost" onClick={onToggle} className="h-auto p-0 font-semibold">
+        {label}
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+function avatarSrcOf(user: ManagerUserTableRow): string | undefined {
+  const byId =
+    user.profileIconId && process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`
+      : undefined;
+  return user.profileIconUrl || byId;
+}
+
+/** Foto, nome e e-mail numa célula só: é o que identifica a pessoa sem gastar largura. */
+function UserCell({ user }: { user: ManagerUserTableRow }) {
+  const name = user.name || "Usuário";
+  const initials = name.split(" ").map((part) => part[0]).join("").toUpperCase().slice(0, 2);
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <Avatar className="size-8 shrink-0">
+        <AvatarImage src={avatarSrcOf(user)} alt="" />
+        <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+      </Avatar>
+      <div className="flex min-w-0 flex-col">
+        <span className="font-medium text-foreground [overflow-wrap:anywhere]">{user.name || "Nome não informado"}</span>
+        <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{user.email}</span>
+      </div>
+    </div>
+  );
+}
+
+// No celular o selo quebra em duas linhas em vez de empurrar a tabela para o lado.
+const BADGE_CLASS = "inline-block rounded-2xl border px-2 py-0.5 text-xs font-semibold sm:whitespace-nowrap sm:rounded-full";
+
+/** Selo da situação de acesso: o que pede ação (e-mail não entregue) aparece em vermelho. */
+function AccessCell({ user, summary, isLoading }: {
+  user: ManagerUserTableRow
+  summary: TeamMemberAccessSummary | undefined
+  isLoading: boolean
+}) {
+  if (user.status !== "active") {
+    const status = STATUS_CONFIG[user.status] ?? STATUS_CONFIG.active;
+    return <span className={cn(BADGE_CLASS, status.className)}>{status.label}</span>;
+  }
+  if (!summary) {
+    return isLoading ? <Skeleton className="h-5 w-28 rounded-full" /> : <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const access = describeAccessSummary(summary);
+  return (
+    <span className={cn(BADGE_CLASS, ACCESS_TONE_CLASS[access.tone])}>
+      {access.label}
+    </span>
+  );
+}
 
 interface CreateColumnsProps {
-  onEdit: (user: ManagerUserTableRow) => void;
-  onDelete: (user: ManagerUserTableRow) => void;
-  onResendInvite: (email: string, userId?: string) => void;
-  onDeletePendingOperator: (user: ManagerUserTableRow) => void;
-  onViewPendingCheckout: (user: ManagerUserTableRow) => void;
-  onEditPendingPayment: (user: ManagerUserTableRow) => void;
-  onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
-  currentUserIsMaster?: boolean;
-  canDelete?: boolean;
-  canManagePendingPayments?: boolean;
+  /** Situação de acesso por usuário (coluna "Acesso"). As ações ficam no painel aberto pela linha. */
+  accessSummaryById: ReadonlyMap<string, TeamMemberAccessSummary>;
+  isAccessSummaryLoading: boolean;
   tz: string;
 }
 
-export function createColumns({ 
-  onEdit, 
-  onDelete, 
-  onResendInvite,
-  onDeletePendingOperator,
-  onViewPendingCheckout,
-  onEditPendingPayment,
-  onTogglePermanentSubscription: _onTogglePermanentSubscription,
-  currentUserIsMaster: _currentUserIsMaster = false,
-  canDelete = false,
-  canManagePendingPayments = false,
-  tz
-}: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
+export function createColumns({ accessSummaryById, isAccessSummaryLoading, tz }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
-      accessorKey: "profileIconUrl",
-      header: "",
-      cell: ({ row }) => {
-        const user = row.original;
-        const userName = user.name || "Usuário";
-        const avatarById =
-          user.profileIconId && process.env.NEXT_PUBLIC_SUPABASE_URL
-            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`
-            : undefined;
-        const avatarSrc = user.profileIconUrl || avatarById;
-        const initials = userName
-          .split(" ")
-          .map(n => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2);
-
-        return (
-          <div className="flex justify-center">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={avatarSrc || undefined} alt={userName} />
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-            </Avatar>
-          </div>
-        );
+      accessorKey: "name",
+      meta: { label: "Usuário" },
+      header: ({ column }) => <SortableHeader label="Usuário" onToggle={() => column.toggleSorting(column.getIsSorted() === "asc")} />,
+      cell: ({ row }) => <UserCell user={row.original} />,
+      // A busca acha por nome ou e-mail.
+      filterFn: (row, _id, value) => {
+        const term = String(value ?? "").trim().toLowerCase();
+        if (!term) return true;
+        return `${row.original.name} ${row.original.email}`.toLowerCase().includes(term);
       },
+      enableHiding: false,
+    },
+    {
+      id: "access",
+      meta: { label: "Acesso" },
+      header: () => <span className="font-semibold">Acesso</span>,
+      cell: ({ row }) => (
+        <AccessCell user={row.original} summary={accessSummaryById.get(row.original.id)} isLoading={isAccessSummaryLoading} />
+      ),
       enableSorting: false,
       enableHiding: false,
     },
     {
-      accessorKey: "name",
-      meta: { label: "Nome" },
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Nome Completo
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("name") || "Nome não informado"}</div>
-      ),
-    },
-    {
-      accessorKey: "email",
-      meta: { label: "Email" },
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Email
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => {
-        const email = row.getValue("email") as string || "E-mail não informado";
-
-        return (
-          <div className="flex items-center gap-2">
-            <div className="text-muted-foreground">{email}</div>
-            {email !== "E-mail não informado" && (                    
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 hover:bg-muted cursor-pointer"
-                            onClick={() => navigator.clipboard.writeText(email)}
-                        >
-                            <CopyIcon size={14} className="text-muted-foreground hover:text-foreground" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p>Copiar e-mail</p>
-                    </TooltipContent>
-                </Tooltip>
-
-            )}
-          </div>
-        );
-      },
-    },
-    {
       accessorKey: "role",
-      meta: { label: "Nível de acesso" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Nível de acesso
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
+      // No celular o nível fica no painel: a tabela mostra só pessoa e acesso.
+      meta: { label: "Nível", className: "hidden md:table-cell" },
+      header: ({ column }) => <SortableHeader label="Nível" onToggle={() => column.toggleSorting(column.getIsSorted() === "asc")} />,
       cell: ({ row }) => {
-        const role = row.getValue("role") as string;
-        const roleLabel = role === "manager"
-          ? "MANAGER"
-          : role === "backoffice"
-          ? "BACKOFFICE"
-          : "OPERATOR";
-
-        const roleVariant = role === "operator" ? "secondary" : "default";
+        const user = row.original;
+        const functions = user.functions ?? [];
         return (
-          <div className="flex justify-center">
-            <Badge variant={roleVariant}>
-              {roleLabel}
-            </Badge>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant={user.role === "operator" ? "secondary" : "default"}>{ROLE_LABEL[user.role]}</Badge>
+            {functions.map((fn) => (
+              <Badge key={fn} variant="outline" className="text-[11px]">{fn}</Badge>
+            ))}
           </div>
         );
       },
@@ -179,347 +147,51 @@ export function createColumns({
     {
       id: "delegatedPermissions",
       meta: { label: "Delegações" },
-      header: () => <div className="text-center font-semibold">Delegações</div>,
+      header: () => <span className="font-semibold">Delegações</span>,
       cell: ({ row }) => {
-        const user = row.original;
-        const badges: string[] = [];
-
-        if (user.role === "manager" && user.canCreateAccountUsers) {
-          badges.push("Cadastrar usuários");
-        }
-
-        if (user.role === "manager" && user.canManageAccountTeams) {
-          badges.push("Gerenciar times");
-        }
-
-        if ((user.role === "manager" || user.role === "backoffice") && user.canTransferAccountLeads) {
-          badges.push("Transferir leads");
-        }
-
-        if (!badges.length) {
-          return <div className="text-center text-muted-foreground">-</div>;
-        }
-
-        return (
-          <div className="flex flex-wrap justify-center gap-1">
-            {badges.map((badge) => (
-              <Badge key={badge} variant="outline" className="text-[11px]">
-                {badge}
-              </Badge>
-            ))}
-          </div>
-        );
+        const labels = delegationLabelsOf(row.original);
+        return labels.length ? labels.join(", ") : <span className="text-muted-foreground">—</span>;
       },
     },
     {
       accessorKey: "googleCalendarConnected",
       meta: { label: "Google conectado" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Google conectado
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const isConnected = Boolean(row.getValue("googleCalendarConnected"));
-        return (
-          <div className="flex justify-center">
-            {isConnected ? (
-              <CircleCheck className="h-4 w-4 text-emerald-500" aria-hidden />
-            ) : (
-              <CircleX className="h-4 w-4 text-red-500" aria-hidden />
-            )}
-            <span className="sr-only">{isConnected ? "Sim" : "Não"}</span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "functions",
-      meta: { label: "Funções" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Funções
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const functions = row.original.functions || [];
-        if (!functions.length) {
-          return <div className="text-center text-muted-foreground">-</div>;
-        }
-
-        return (
-          <div className="flex justify-center">
-            <div className="flex flex-wrap justify-center gap-1">
-            {functions.map((func) => (
-              <Badge key={func} variant="secondary">
-                {func}
-              </Badge>
-            ))}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "status",
-      meta: { label: "Status" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Status
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const user = row.original;
-        const status = user.status || "active";
-        
-        const statusConfig = {
-          active: { 
-            label: "Ativo", 
-            variant: "default" as const,
-            className: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200"
-          },
-          pending_payment: { 
-            label: "Aguardando Pagamento", 
-            variant: "secondary" as const,
-            className: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 animate-pulse"
-          },
-          payment_confirmed: { 
-            label: "Pagamento Confirmado", 
-            variant: "secondary" as const,
-            className: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-200"
-          },
-          pending_creation: { 
-            label: "Criando Conta...", 
-            variant: "secondary" as const,
-            className: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900 dark:text-purple-200 animate-pulse"
-          },
-          payment_failed: { 
-            label: "Pagamento Falhou", 
-            variant: "destructive" as const,
-            className: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200"
-          },
-          subscription_updated: {
-            label: "Assinatura Atualizada",
-            variant: "secondary" as const,
-            className: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200"
-          }
-        };
-
-        const config = statusConfig[status] || statusConfig.active;
-
-        return (
-          <div className="flex justify-center">
-            <Badge variant={config.variant} className={config.className}>
-              {config.label}
-            </Badge>
-          </div>
-        );
-      },
+      header: () => <span className="font-semibold">Google</span>,
+      cell: ({ row }) =>
+        row.original.googleCalendarConnected ? (
+          <CircleCheck className="size-4 text-semantic-success" aria-label="Conectado" />
+        ) : (
+          <CircleX className="size-4 text-muted-foreground" aria-label="Não conectado" />
+        ),
     },
     {
       accessorKey: "leadsCount",
       meta: { label: "Leads" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Leads
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const count = row.getValue("leadsCount") as number;
-        return (
-          <div className="text-center font-medium">
-            {count || 0}
-          </div>
-        );
-      },
+      header: ({ column }) => <SortableHeader label="Leads" onToggle={() => column.toggleSorting(column.getIsSorted() === "asc")} />,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.leadsCount ?? 0}</span>,
     },
     {
       accessorKey: "meetingsCount",
       meta: { label: "Agendamentos" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Agendamentos
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const user = row.original;
-        const isCloser = user.functions?.includes("CLOSER");
-        if (!isCloser) {
-          return <div className="text-center text-muted-foreground">-</div>;
-        }
-        return (
-          <div className="text-center font-medium">
-            {user.meetingsCount || 0}
-          </div>
-        );
-      },
+      header: ({ column }) => <SortableHeader label="Agendamentos" onToggle={() => column.toggleSorting(column.getIsSorted() === "asc")} />,
+      cell: ({ row }) => <span className="tabular-nums">{row.original.meetingsCount ?? 0}</span>,
     },
     {
       accessorKey: "createdAt",
       meta: { label: "Criado em" },
-      header: ({ column }) => {
-        return (
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              className="h-auto p-0 font-semibold"
-            >
-              Criado em
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        );
-      },
-      cell: ({ row }) => {
-        const date = new Date(row.getValue("createdAt"));
-        return (
-          <div className="text-center text-muted-foreground">
-            {formatIntimezone(date, "dd/MM/yyyy", tz)}
-          </div>
-        );
-      },
+      header: ({ column }) => <SortableHeader label="Criado em" onToggle={() => column.toggleSorting(column.getIsSorted() === "asc")} />,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">{formatIntimezone(new Date(row.getValue("createdAt")), "dd/MM/yyyy", tz)}</span>
+      ),
       filterFn: (row, id, value) => {
         if (!Array.isArray(value)) return true;
-
         const [startDate, endDate] = value as [Date | undefined, Date | undefined];
         const rowDate = new Date(row.getValue(id) as string);
-
         if (Number.isNaN(rowDate.getTime())) return false;
         if (startDate && rowDate < startDate) return false;
         if (endDate && rowDate > endDate) return false;
-
         return true;
       },
-    },
-    {
-      id: "actions",
-      header: "Ações",
-      cell: ({ row }) => {
-        const user = row.original;
-
-        return (
-          <div className="flex justify-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
-                  <span className="sr-only">Abrir menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                {user.status === 'active' ? (
-                  <>
-                    <DropdownMenuItem
-                      onClick={() => onResendInvite(user.email, user.id)}
-                      className="flex items-center gap-2"
-                    >
-                      <Mail className="h-4 w-4" />
-                      Enviar reset de senha
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem
-                      onClick={() => onEdit(user)}
-                      className="flex items-center gap-2"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Editar usuário
-                    </DropdownMenuItem>
-                    {canDelete && (
-                      <DropdownMenuItem
-                        onClick={() => onDelete(user)}
-                        className="flex items-center gap-2 text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remover usuário
-                      </DropdownMenuItem>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {canManagePendingPayments && user.pendingPayment?.checkoutUrl ? (
-                      <DropdownMenuItem
-                        onClick={() => onViewPendingCheckout(user)}
-                        className="flex items-center gap-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        Ver checkout
-                      </DropdownMenuItem>
-                    ) : null}
-                    {canManagePendingPayments && user.pendingPayment?.pendingActionId ? (
-                      <DropdownMenuItem
-                        onClick={() => onEditPendingPayment(user)}
-                        className="flex items-center gap-2"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Editar pagamento
-                      </DropdownMenuItem>
-                    ) : null}
-                    {canDelete ? (
-                      <DropdownMenuItem
-                        onClick={() => onDeletePendingOperator(user)}
-                        className="flex items-center gap-2 text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Deletar operador pendente
-                      </DropdownMenuItem>
-                    ) : null}
-                  </>
-                )}
-                
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
-      enableSorting: false,
-      enableHiding: false,
     },
   ];
 }

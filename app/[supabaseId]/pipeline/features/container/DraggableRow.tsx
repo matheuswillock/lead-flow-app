@@ -8,6 +8,7 @@ import { Lead } from "../context/PipelineTypes";
 import { cn } from "@/lib/utils";
 import { isDraftLead } from "@/lib/lead-status";
 import { isMeetingFollowUpOverdue } from "@/lib/lead-meeting";
+import { PIPELINE_COLUMN_SCREEN_CLASS } from "./PipelineColumns";
 
 interface DraggableRowProps {
   row: Row<Lead>;
@@ -52,7 +53,15 @@ export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps)
           "border-l-2 border-semantic-danger-border bg-semantic-danger-surface/30 ring-1 ring-semantic-danger-border"
       )}
       data-draft={isDraftLead(row.original) ? "true" : "false"}
+      tabIndex={0}
+      aria-label={`Abrir lead ${row.original.name ?? ""}`.trim()}
       onClick={() => onRowClick(row.original)}
+      onKeyDown={(event) => {
+        if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) {
+          event.preventDefault();
+          onRowClick(row.original);
+        }
+      }}
       onMouseEnter={() => onRowHover?.(row.original)}
     >
       {row.getVisibleCells().map((cell) => (
@@ -60,7 +69,8 @@ export function DraggableRow({ row, onRowClick, onRowHover }: DraggableRowProps)
           key={cell.id}
           className={cn(
             "p-2 align-middle",
-            cell.column.id === "status" ? "text-left" : "text-center"
+            cell.column.id === "status" ? "text-left" : "text-center",
+            PIPELINE_COLUMN_SCREEN_CLASS[cell.column.id]
           )}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}

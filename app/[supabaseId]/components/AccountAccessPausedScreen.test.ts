@@ -6,6 +6,8 @@ import {
   SUBSCRIPTION_SUPPORT_WHATSAPP_URL,
 } from "./AccountAccessPausedScreen"
 
+const REACTIVATE_HREF = "/supabase-1/billing-grace-payment"
+
 test("usa o WhatsApp de assinaturas com a mensagem humanizada codificada", () => {
   const url = new URL(SUBSCRIPTION_SUPPORT_WHATSAPP_URL)
 
@@ -17,33 +19,37 @@ test("usa o WhatsApp de assinaturas com a mensagem humanizada codificada", () =>
   expect(url.searchParams.get("text")).not.toContain("Bruno")
 })
 
-test("não oferece checkout durante o bloqueio, inclusive ao master", () => {
+test("o master reativa a assinatura pagando a renovação, com uma única ação", () => {
   const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
     isBillingOwner: true,
     reason: "past_due",
+    reactivateHref: REACTIVATE_HREF,
   }))
 
-  expect(markup).not.toContain("Regularizar assinatura")
-  expect(markup).toContain("Falar com o time de assinaturas")
+  expect(markup).toContain("Reativar assinatura")
+  expect(markup).toContain(`href="${REACTIVATE_HREF}"`)
+  expect(markup).not.toContain("wa.me")
 })
 
-test("não exibe checkout para master past_due sem migração elegível", () => {
-  const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
-    isBillingOwner: true,
-    reason: "past_due",
-  }))
-
-  expect(markup).not.toContain("Regularizar assinatura")
-  expect(markup).toContain("Falar com o time de assinaturas")
-})
-
-test("orienta o membro a avisar o administrador da conta", () => {
+test("o membro não paga: só é avisado de que o acesso volta sozinho, sem ações", () => {
   const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
     isBillingOwner: false,
     reason: "past_due",
+    reactivateHref: REACTIVATE_HREF,
   }))
 
-  expect(markup).toContain(
-    "Avise o administrador desta conta para que ele entre em contato com o time de assinaturas."
-  )
+  expect(markup).not.toContain("Reativar assinatura")
+  expect(markup).not.toContain("wa.me")
+  expect(markup).toContain("Seu acesso volta automaticamente assim que a assinatura desta conta for regularizada.")
+})
+
+test("conta banida não se reativa com pagamento: só o time de assinaturas", () => {
+  const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
+    isBillingOwner: true,
+    reason: "banned",
+    reactivateHref: REACTIVATE_HREF,
+  }))
+
+  expect(markup).not.toContain("Reativar assinatura")
+  expect(markup).toContain("Falar com o time de assinaturas")
 })

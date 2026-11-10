@@ -1,11 +1,17 @@
 import type { IBillingGracePaymentService } from "./IBillingGracePaymentService";
-import type { BillingGracePaymentQuote, BillingGracePaymentRecord } from "../context/BillingGracePaymentTypes"
+import type {
+  BillingGraceCardInput,
+  BillingGracePaymentQuote,
+  BillingGracePaymentRecord,
+} from "../context/BillingGracePaymentTypes"
 import { API_CLIENT_BASE } from "@/lib/route-map"
 
+const ENDPOINT = `${API_CLIENT_BASE}/billing-grace-payment`
+
 export class BillingGracePaymentService implements IBillingGracePaymentService {
-  async request<T>(supabaseId: string, init: RequestInit, paymentId?: string): Promise<T> {
-    const query = paymentId ? `?paymentId=${encodeURIComponent(paymentId)}` : ""
-    const response = await fetch(`${API_CLIENT_BASE}/billing-grace-payment${query}`, {
+  async request<T>(supabaseId: string, init: RequestInit, options: { paymentId?: string; path?: string } = {}): Promise<T> {
+    const query = options.paymentId ? `?paymentId=${encodeURIComponent(options.paymentId)}` : ""
+    const response = await fetch(`${ENDPOINT}${options.path ?? ""}${query}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
@@ -26,14 +32,41 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     return this.request<BillingGracePaymentQuote>(supabaseId, { method: "GET" })
   }
 
-  createPayment(supabaseId: string, idempotencyKey: string): Promise<BillingGracePaymentRecord> {
+  createPayment(
+    supabaseId: string,
+    idempotencyKey: string,
+    cycle: string,
+    keptUserIds: string[]
+  ): Promise<BillingGracePaymentRecord> {
     return this.request<BillingGracePaymentRecord>(supabaseId, {
       method: "POST",
-      body: JSON.stringify({ idempotencyKey }),
+      body: JSON.stringify({ idempotencyKey, cycle, keptUserIds }),
     })
   }
 
+  /** Cobra o token do cartão (uso único, 60s). Rota própria: nunca cai na cobrança PIX. */
+  createCardPayment(
+    supabaseId: string,
+    idempotencyKey: string,
+    input: BillingGraceCardInput
+  ): Promise<BillingGracePaymentRecord> {
+    return this.request<BillingGracePaymentRecord>(
+      supabaseId,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          idempotencyKey,
+          cycle: input.cycle,
+          keptUserIds: input.keptUserIds,
+          cardToken: input.cardToken,
+          installments: input.installments,
+        }),
+      },
+      { path: "/card" }
+    )
+  }
+
   getPayment(supabaseId: string, paymentId: string): Promise<BillingGracePaymentRecord> {
-    return this.request<BillingGracePaymentRecord>(supabaseId, { method: "GET" }, paymentId)
+    return this.request<BillingGracePaymentRecord>(supabaseId, { method: "GET" }, { paymentId })
   }
 }

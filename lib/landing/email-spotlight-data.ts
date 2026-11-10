@@ -3,9 +3,9 @@ export interface EmailBenefitData {
   description: string
 }
 
-export const EMAIL_SPOTLIGHT_HEADING = "Campanhas de e-mail com o Radar no comando"
+export const EMAIL_SPOTLIGHT_HEADING = "Campanhas de e-mail com o radar no comando"
 export const EMAIL_SPOTLIGHT_SUBHEADING =
-  "Crie, agende e meça campanhas sem sair do Corretor Studio — com audiência vinda do Radar ou de listas CSV."
+  "Crie, agende e meça campanhas sem sair do Corretor Studio, com audiência vinda do radar ou de listas CSV."
 
 export const emailBenefitsData: EmailBenefitData[] = [
   {
@@ -13,7 +13,7 @@ export const emailBenefitsData: EmailBenefitData[] = [
     description: "Crie e-mails profissionais com editor HTML e fluxo de aprovação do time.",
   },
   {
-    title: "Listas CSV ou segmentos do Radar",
+    title: "Listas CSV ou segmentos do radar",
     description: "Importe contatos ou dispare para audiência dinâmica unificada do CRM e da carteira.",
   },
   {

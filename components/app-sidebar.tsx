@@ -179,7 +179,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Gerenciar Usuários",
       url: `/${supabaseId}/manager-users`,
       icon: Users,
-      masterOnly: true,
+      // Manager também entra: acompanha o acesso da equipe e reenvia e-mails. Criar, editar e
+      // remover continuam limitados pelas permissões de cada ação na própria página.
+      managerOnly: true,
       featureSlug: FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
     },
     {

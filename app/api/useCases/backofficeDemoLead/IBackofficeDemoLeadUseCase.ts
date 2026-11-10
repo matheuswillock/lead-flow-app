@@ -8,6 +8,7 @@ export interface CreateDemoLeadInput {
   lastName?: string | null
   teamSize?: string | null
   preferredContactTime?: string | null
+  question?: string | null
 }
 
 export interface IBackofficeDemoLeadUseCase {

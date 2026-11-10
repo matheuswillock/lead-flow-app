@@ -18,8 +18,9 @@ import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
 import { PendingPaymentEditDialog } from "./PendingPaymentEditDialog";
+import { ManagerUserDetailSheet, type ManagerUserDetailActions } from "./ManagerUserDetailSheet";
 import type { ManagerUserTableRow } from "../types";
-import { createColumns } from "./ManagerUsersColumns";
+import { createColumns, MANAGER_USERS_HIDDEN_COLUMNS } from "./ManagerUsersColumns";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
@@ -49,10 +50,13 @@ export function ManagerUsersContainer({
   const resolvedRole = activeRole ?? currentUserRole;
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
   const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
-  const canDeleteUser = resolvedIsMaster;
+  // Editar, remover e reenviar acesso seguem a mesma regra de criar: master ou manager com delegação.
+  const canDeleteUser = canCreateUser;
   const canManagePendingPayments = resolvedIsMaster || (resolvedRole === "manager" && activeTeam?.canCreateAccountUsers === true);
   const { hasAvailableUserSlot } = useBillingSlots(supabaseId, resolvedIsMaster);
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
+  // Usuário aberto no painel lateral (clique na linha).
+  const [detailUser, setDetailUser] = useState<ManagerUserTableRow | null>(null);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
   const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
   const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerUserTableRow | null>(null);
@@ -89,6 +93,10 @@ export function ManagerUsersContainer({
     updateUser,
     deleteUser,
     resendInvite,
+    loadAccessHistory,
+    accessSummaryById,
+    isAccessSummaryLoading,
+    loadAccessSummary,
     refreshData,
     
     // Controle de UI
@@ -260,17 +268,25 @@ export function ManagerUsersContainer({
   }
 
   const columns = createColumns({
-    onEdit: openEditModal,
-    onDelete: openDeleteDialog,
-    onDeletePendingOperator: handleDeletePendingOperator,
-    onViewPendingCheckout: handleViewPendingCheckout,
-    onEditPendingPayment: handleOpenEditPendingPayment,
-    onResendInvite: resendInvite,
-    currentUserIsMaster: resolvedIsMaster,
-    canDelete: canDeleteUser,
-    canManagePendingPayments,
+    accessSummaryById,
+    isAccessSummaryLoading,
     tz,
   });
+
+  const detailActions: ManagerUserDetailActions = {
+    loadHistory: loadAccessHistory,
+    onResend: async (email, userId) => {
+      await resendInvite(email, userId);
+      void loadAccessSummary();
+    },
+    onEdit: openEditModal,
+    onDelete: openDeleteDialog,
+    onDeletePending: handleDeletePendingOperator,
+    onViewPendingCheckout: handleViewPendingCheckout,
+    onEditPendingPayment: handleOpenEditPendingPayment,
+    canDelete: canDeleteUser,
+    canManagePendingPayments,
+  };
 
   // O usuário logado não deve se ver na tabela de gerenciamento.
   const visibleTableData = user?.id ? tableData.filter((row) => row.id !== user.id) : tableData;
@@ -367,6 +383,9 @@ export function ManagerUsersContainer({
             columns={columns}
             data={visibleTableData}
             loading={loading}
+            onRowClick={setDetailUser}
+            initialHiddenColumns={MANAGER_USERS_HIDDEN_COLUMNS}
+            getRowLabel={(row) => `Abrir ${row.name}`}
             toolbar={{
               search: { columnId: "name", placeholder: "Buscar por nome ou e-mail..." },
               selectFilters: [
@@ -433,6 +452,14 @@ export function ManagerUsersContainer({
           />
         </>
       )}
+
+      <ManagerUserDetailSheet
+        user={detailUser}
+        onOpenChange={(open) => {
+          if (!open) setDetailUser(null);
+        }}
+        actions={detailActions}
+      />
 
       <PendingPaymentEditDialog
         open={isEditPendingPaymentOpen}

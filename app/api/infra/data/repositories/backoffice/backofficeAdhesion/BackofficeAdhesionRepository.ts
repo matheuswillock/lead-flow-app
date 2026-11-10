@@ -43,6 +43,7 @@ const backofficeAdhesionLeadSelect = {
   status: true,
   sdrBackofficeUserId: true,
   closerBackofficeUserId: true,
+  qualificationLeadOrganization: true,
 } satisfies Prisma.BackofficeLeadSelect
 
 const backofficeAdhesionInclude = {
@@ -56,6 +57,8 @@ const backofficeAdhesionInclude = {
     select: backofficeAdhesionUserSelect,
   },
 } satisfies Prisma.BackofficeAdhesionInclude
+
+const MAX_TEAM_NAME_LENGTH = 120
 
 /** Marca os leads que nasceram do auto-checkout; é o que separa o reaproveitamento do lead de operador. */
 export const SELF_CHECKOUT_LEAD_NOTES = "auto-checkout"
@@ -105,6 +108,14 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
           installmentSchedule: (data.installmentSchedule ?? []) as Prisma.InputJsonValue,
           installmentLedger: (data.installmentLedger ?? []) as Prisma.InputJsonValue,
+          couponId: data.couponId ?? null,
+          couponCode: data.couponCode ?? null,
+          couponDiscountType: data.couponDiscountType ?? null,
+          couponDiscountValue:
+            data.couponDiscountValue == null ? null : toDecimal(data.couponDiscountValue),
+          couponDiscountAmount:
+            data.couponDiscountAmount == null ? null : toDecimal(data.couponDiscountAmount),
+          extrasTotalAmount: data.extrasTotalAmount == null ? null : toDecimal(data.extrasTotalAmount),
           // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): toda
           // adesão nova nasce na conta primary — as cobranças que essa
           // adesão vai gerar (createCheckout/chargePendingInstallments)
@@ -400,7 +411,21 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         email: input.email,
         phone: input.phone,
         origin: "landing_page",
-        notes: SELF_CHECKOUT_LEAD_NOTES,
+        cpfCnpj: input.cnpj ?? null,
+        // Preferência: nome fantasia; sem ele, a razão social. Vira o nome do time da conta.
+        qualificationLeadOrganization:
+          input.companyTradeName?.trim() || input.companyLegalName?.trim() || null,
+        notes: [
+          SELF_CHECKOUT_LEAD_NOTES,
+          input.companyLegalName ? `Razão social: ${input.companyLegalName}` : null,
+          input.companyTradeName ? `Nome fantasia: ${input.companyTradeName}` : null,
+          input.cnpj ? `CNPJ: ${input.cnpj}` : null,
+          input.termsAcceptedAt
+            ? `Aceite dos Termos de Uso, da Política de Privacidade e da Política de Cookies da contratação (versão ${input.termsVersion ?? "não informada"}) em ${input.termsAcceptedAt}`
+            : null,
+        ]
+          .filter((line): line is string => Boolean(line))
+          .join("\n"),
         createdByProfileId: null,
       },
       select: backofficeAdhesionLeadSelect,
@@ -442,7 +467,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       const createdProfile = await tx.profile.create({ data: profileData })
       const team = await tx.team.create({
         data: {
-          name: "Meu Time",
+          name: data.teamName?.trim().slice(0, MAX_TEAM_NAME_LENGTH) || "Meu Time",
           masterId: createdProfile.id,
           isDefault: true,
         },

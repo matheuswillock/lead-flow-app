@@ -27,7 +27,7 @@ export function RadarFeaturePreview() {
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <p className="font-display text-sm font-semibold tracking-[-0.02em] text-landing-ink">
-            Segmentos do Radar
+            Segmentos do radar
           </p>
           <p className="mt-1 text-xs text-landing-body">
             Audiência dinâmica para campanhas de e-mail

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { useConfirmDelete } from "@/components/confirm-delete-dialog";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type LeadTag = {
@@ -59,6 +60,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
   const [pendingTagId, setPendingTagId] = useState<string | null>(null);
   const requestKeyRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete();
 
   const headers = useMemo(
     () => ({
@@ -199,6 +201,7 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
 
   return (
     <div className="flex flex-col gap-6 p-1">
+      {confirmDeleteDialog}
       <section className="flex flex-col gap-2">
         <h4 className="text-sm font-medium">Tags aplicadas</h4>
         {applied.length === 0 ? (
@@ -217,7 +220,14 @@ export function LeadTagsTab({ leadId, teamId, supabaseId }: LeadTagsTabProps) {
                   type="button"
                   className="rounded-sm opacity-70 hover:opacity-100"
                   disabled={pendingTagId === assignment.tagId}
-                  onClick={() => void removeTag(assignment.tagId)}
+                  onClick={() =>
+                    confirmDelete({
+                      title: `Remover a tag "${assignment.tag.name}" deste lead?`,
+                      description: "A tag continua disponível para os outros leads.",
+                      confirmLabel: "Remover",
+                      onConfirm: () => removeTag(assignment.tagId),
+                    })
+                  }
                   aria-label={`Remover tag ${assignment.tag.name}`}
                 >
                   <X className="size-3" />

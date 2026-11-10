@@ -1,9 +1,14 @@
 import type { IBackofficeAdhesionService } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 import { Output } from "@/lib/output"
-import { SelfCheckoutError, type SelfCheckoutRequest } from "@/lib/self-checkout/contracts"
+import {
+  SelfCheckoutError,
+  type SelfCheckoutCouponQuoteRequest,
+  type SelfCheckoutRequest,
+} from "@/lib/self-checkout/contracts"
 import type { ISelfCheckoutProviderGate, ISelfCheckoutUseCase } from "./ISelfCheckoutUseCase"
 
 const GENERIC_CREATE_ERROR = "Não foi possível iniciar a compra. Tente novamente."
+const GENERIC_COUPON_ERROR = "Não foi possível validar o cupom. Tente novamente."
 const GENERIC_OPTIONS_ERROR = "Não foi possível carregar os planos."
 
 function failedFromSelfCheckoutError(error: SelfCheckoutError): Output {
@@ -14,7 +19,7 @@ export class SelfCheckoutUseCase implements ISelfCheckoutUseCase {
   constructor(
     private readonly service: Pick<
       IBackofficeAdhesionService,
-      "getSelfCheckoutOptions" | "createSelfCheckout"
+      "getSelfCheckoutOptions" | "createSelfCheckout" | "quoteSelfCheckoutCoupon"
     >,
     private readonly providerGate: ISelfCheckoutProviderGate,
   ) {}
@@ -28,9 +33,20 @@ export class SelfCheckoutUseCase implements ISelfCheckoutUseCase {
     }
   }
 
+  async quoteCoupon(input: SelfCheckoutCouponQuoteRequest): Promise<Output> {
+    try {
+      return new Output(true, [], [], await this.service.quoteSelfCheckoutCoupon(input))
+    } catch (error) {
+      if (error instanceof SelfCheckoutError) return failedFromSelfCheckoutError(error)
+      console.error("[SelfCheckoutUseCase][quoteCoupon]", error instanceof Error ? error.name : "erro")
+      return new Output(false, [], [GENERIC_COUPON_ERROR], null)
+    }
+  }
+
   async create(input: SelfCheckoutRequest): Promise<Output> {
     try {
-      await this.providerGate.assertAvailable()
+      // O gate cobre o PIX do Abacate; o cartão é cobrado pelo Asaas e valida a própria disponibilidade.
+      if (input.billingType !== "CREDIT_CARD") await this.providerGate.assertAvailable()
       return new Output(true, [], [], await this.service.createSelfCheckout(input))
     } catch (error) {
       if (error instanceof SelfCheckoutError) return failedFromSelfCheckoutError(error)

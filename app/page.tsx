@@ -8,6 +8,7 @@ import { IntegrationsSection } from "@/components/landing/IntegrationsSection"
 import { HowItWorksSteps } from "@/components/landing/HowItWorksSteps"
 import { FaqSection } from "@/components/landing/FaqSection"
 import { DemoRequestDialogProvider } from "@/components/landing/DemoRequestDialog"
+import { QuestionRequestDialogProvider } from "@/components/landing/QuestionRequestDialog"
 import { FinalCtaSection } from "@/components/landing/FinalCtaSection"
 import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
@@ -18,9 +19,9 @@ import { faqData } from "@/lib/landing/faq-data"
 import { getLandingStats } from "@/lib/landing/public-stats"
 import { buildStatsData, hasPublishableStats } from "@/lib/landing/stats-data"
 
-const homeTitle = "Corretor Studio | CRM, Radar e Campanhas para Corretores de Saúde"
+const homeTitle = "Corretor Studio | CRM, radar e Campanhas para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde com pipeline, Radar de audiência, campanhas de e-mail e métricas de conversão. Solicite uma demonstração gratuita."
+  "CRM para corretores de saúde com pipeline, radar de audiência, campanhas de e-mail e métricas de conversão. Solicite uma demonstração gratuita."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -30,7 +31,7 @@ export const metadata: Metadata = createPublicPageMetadata({
 
 export default async function HomePage() {
   const websiteUrl = getAbsoluteUrl("/")
-  const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
+  const logoUrl = getAbsoluteUrl("/corretor-studio-icon.png")
   const landingStats = await getLandingStats()
   const statsData = hasPublishableStats(landingStats) ? buildStatsData(landingStats) : null
 
@@ -72,7 +73,7 @@ export default async function HomePage() {
         inLanguage: "pt-BR",
         url: websiteUrl,
         description:
-          "Plataforma de gestão de leads para corretores de saúde com CRM, Radar, campanhas de e-mail, pipeline comercial, gestão de times e agendamento de reuniões.",
+          "Plataforma de gestão de leads para corretores de saúde com CRM, radar, campanhas de e-mail, pipeline comercial, gestão de times e agendamento de reuniões.",
         publisher: { "@id": `${websiteUrl}#organization` },
         featureList: featurePanelsData.map((feature) => feature.eyebrow),
       },
@@ -115,7 +116,9 @@ export default async function HomePage() {
           {statsData ? <StatsBand stats={statsData} /> : null}
           <IntegrationsSection />
           <HowItWorksSteps />
-          <FaqSection />
+          <QuestionRequestDialogProvider>
+            <FaqSection />
+          </QuestionRequestDialogProvider>
           <FinalCtaSection />
           <LandingFooter />
           <HomeClientRuntime />
@@ -123,7 +126,7 @@ export default async function HomePage() {
           <section className="sr-only" aria-label="Resumo da plataforma">
             <h2>CRM para corretores de planos de saúde</h2>
             <p>
-              O Corretor Studio reúne pipeline Kanban, carteira, Radar, campanhas de e-mail, dashboard,
+              O Corretor Studio reúne pipeline Kanban, carteira, radar, campanhas de e-mail, dashboard,
               times, operadores, integrações e agenda para organizar a rotina comercial de
               corretores de saúde.
             </p>
