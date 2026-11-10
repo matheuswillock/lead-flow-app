@@ -248,8 +248,13 @@ export async function startPostgres(
     "POSTGRES_PASSWORD=postgres",
     "-e",
     "POSTGRES_DB=postgres",
-    "-p",
-    `${POSTGRES_HOST_PORT}:5432`,
+    // Rede do host: a bridge do Docker 29 exige a tabela `raw` do iptables, que
+    // o kernel do Vercel CI nao tem ("Unable to enable DIRECT ACCESS FILTERING").
+    // O servidor Postgres respeita PGPORT, entao ele ja escuta em 55322.
+    "--network",
+    "host",
+    "-e",
+    `PGPORT=${POSTGRES_HOST_PORT}`,
     "-v",
     `${initDir}/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro`,
     "-v",
@@ -297,7 +302,7 @@ export async function waitForPostgres(
       "-h",
       "127.0.0.1",
       "-p",
-      "5432",
+      String(POSTGRES_HOST_PORT),
       "-U",
       "postgres",
     ]);

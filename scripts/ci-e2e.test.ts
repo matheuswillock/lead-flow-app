@@ -338,7 +338,7 @@ describe("pullPostgresImage", () => {
 });
 
 describe("startPostgres", () => {
-  it("sobe o container na porta 55322 com os dois scripts de init montados", async () => {
+  it("sobe o container em rede host na porta 55322 com os dois scripts de init montados", async () => {
     const { runner, calls } = createRunner();
 
     const ok = await startPostgres(
@@ -352,7 +352,9 @@ describe("startPostgres", () => {
     expect(ok).toBe(true);
     const line = commandLine(calls[0]);
     expect(line).toContain("docker run -d --name pg-1");
-    expect(line).toContain("-p 55322:5432");
+    expect(line).toContain("--network host");
+    expect(line).toContain("-e PGPORT=55322");
+    expect(line).not.toContain("-p 55322:5432");
     expect(line).toContain(
       "/repo/docker/local/zz-init-auth-stub-schema.sql:/docker-entrypoint-initdb.d/zz-init-auth-stub-schema.sql:ro",
     );
@@ -392,7 +394,7 @@ describe("waitForPostgres", () => {
     expect(ok).toBe(true);
     expect(calls).toHaveLength(3);
     expect(commandLine(calls[0])).toBe(
-      "docker exec pg-1 pg_isready -h 127.0.0.1 -p 5432 -U postgres",
+      "docker exec pg-1 pg_isready -h 127.0.0.1 -p 55322 -U postgres",
     );
   });
 
