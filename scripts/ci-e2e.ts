@@ -379,6 +379,52 @@ export function diagnoseDocker(runner: CommandRunner, log: E2eLogger): void {
   }
 }
 
+/**
+ * O seed (`scripts/seed-e2e.ts`) chama o `psql` do host, e a imagem da tarefa
+ * do Vercel CI nao o traz. Instala o `postgresql-client` via apt (root ou sudo),
+ * como a action `run-e2e-playwright` faz no runner do GitHub.
+ */
+export function ensurePsql(
+  runner: CommandRunner,
+  log: E2eLogger,
+  privilege: Privilege,
+  baseEnv: EnvMap = {},
+): boolean {
+  if (runner.output("sh", ["-c", "command -v psql"]).status === 0) {
+    log.info(`${LOG_PREFIX} psql ja disponivel.`);
+    return true;
+  }
+  if (privilege === "none") {
+    log.error(`${LOG_PREFIX} psql ausente e sem root/sudo para instalar.`);
+    return false;
+  }
+
+  const env: EnvMap = { ...baseEnv, DEBIAN_FRONTEND: "noninteractive" };
+  const prefix = privilege === "sudo" ? ["sudo", "-n"] : [];
+  const runPrivileged = (args: string[]): number => {
+    const [command, ...rest] = [...prefix, ...args];
+    return runner.run(command, rest, env);
+  };
+
+  const aptOptions = [
+    "-o",
+    "Acquire::Retries=3",
+    "-o",
+    "Acquire::http::Timeout=15",
+    "-o",
+    "Acquire::https::Timeout=15",
+  ];
+  if (runPrivileged(["apt-get", "update", "-y", ...aptOptions]) !== 0) {
+    log.error(`${LOG_PREFIX} apt-get update falhou.`);
+    return false;
+  }
+  if (runPrivileged(["apt-get", "install", "-y", "postgresql-client"]) !== 0) {
+    log.error(`${LOG_PREFIX} apt-get install postgresql-client falhou.`);
+    return false;
+  }
+  return true;
+}
+
 /** Por que o container do Postgres caiu ou nao respondeu. */
 export function diagnosePostgresContainer(
   runner: CommandRunner,
@@ -497,6 +543,10 @@ export async function runE2eCi(deps: E2eDeps): Promise<number> {
         runner.run("sh", ["-c", `tail -n 40 ${FORWARDER_LOG} 2>&1`]);
         return 1;
       },
+    },
+    {
+      name: "instalar psql",
+      run: () => (ensurePsql(runner, log, privilege, deps.baseEnv) ? 0 : 1),
     },
     {
       name: "seed E2E",

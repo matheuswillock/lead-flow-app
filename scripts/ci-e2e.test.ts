@@ -8,6 +8,7 @@ import {
   SKIP_DOCKER_REMOUNT_ENV,
   buildE2eEnv,
   ensureDockerOffOverlay,
+  ensurePsql,
   parseEnvFile,
   pullPostgresImage,
   runE2eCi,
@@ -294,6 +295,91 @@ describe("ensureDockerOffOverlay", () => {
   });
 });
 
+/** `command -v psql` (unico uso de `output("sh", ...)`) devolve "nao encontrado". */
+const withoutPsql: OutputResponder = (call) =>
+  call.command === "sh"
+    ? { status: 1, stdout: "" }
+    : { status: 0, stdout: "ext2/ext3\n" };
+
+describe("ensurePsql", () => {
+  it("nao instala nada quando o psql ja existe", () => {
+    const { runner, calls } = createRunner();
+
+    const ok = ensurePsql(runner, createLogger().log, "root");
+
+    expect(ok).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it("instala o postgresql-client via apt, sem prompts, quando e root", () => {
+    const { runner, calls } = createRunner(() => 0, withoutPsql);
+
+    const ok = ensurePsql(runner, createLogger().log, "root", { PATH: "/bin" });
+
+    expect(ok).toBe(true);
+    expect(calls.map(commandLine)).toEqual([
+      "apt-get update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15",
+      "apt-get install -y postgresql-client",
+    ]);
+    for (const call of calls) {
+      expect(call.env?.DEBIAN_FRONTEND).toBe("noninteractive");
+      expect(call.env?.PATH).toBe("/bin");
+    }
+  });
+
+  it("usa sudo -n quando nao e root mas tem sudo", () => {
+    const { runner, calls } = createRunner(() => 0, withoutPsql);
+
+    const ok = ensurePsql(runner, createLogger().log, "sudo");
+
+    expect(ok).toBe(true);
+    expect(calls.map(commandLine)).toEqual([
+      "sudo -n apt-get update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15",
+      "sudo -n apt-get install -y postgresql-client",
+    ]);
+  });
+
+  it("falha sem tentar instalar quando nao ha root nem sudo", () => {
+    const { runner, calls } = createRunner(() => 0, withoutPsql);
+    const logger = createLogger();
+
+    const ok = ensurePsql(runner, logger.log, "none");
+
+    expect(ok).toBe(false);
+    expect(calls).toEqual([]);
+    expect(logger.error.join("\n")).toContain("sem root/sudo");
+  });
+
+  it("nao tenta instalar quando o apt-get update falha", () => {
+    const { runner, calls } = createRunner(
+      (call) => (call.args.includes("update") ? 100 : 0),
+      withoutPsql,
+    );
+    const logger = createLogger();
+
+    const ok = ensurePsql(runner, logger.log, "root");
+
+    expect(ok).toBe(false);
+    expect(calls.map(commandLine).some((line) => line.includes("install"))).toBe(
+      false,
+    );
+    expect(logger.error.join("\n")).toContain("apt-get update falhou");
+  });
+
+  it("devolve false quando a instalacao falha", () => {
+    const { runner } = createRunner(
+      (call) => (call.args.includes("install") ? 100 : 0),
+      withoutPsql,
+    );
+    const logger = createLogger();
+
+    const ok = ensurePsql(runner, logger.log, "root");
+
+    expect(ok).toBe(false);
+    expect(logger.error.join("\n")).toContain("postgresql-client falhou");
+  });
+});
+
 describe("pullPostgresImage", () => {
   it("retorna true no primeiro pull bem-sucedido do ghcr", async () => {
     const { runner, calls } = createRunner();
@@ -499,6 +585,28 @@ describe("runE2eCi", () => {
     expect(lines.some((line) => line.includes("db:seed:e2e"))).toBe(false);
     expect(lines.at(-2)).toBe("pkill -f scripts/tcp-forward.ts");
     expect(lines.at(-1)).toBe("docker rm -f e2e-postgres-ci-1");
+  });
+
+  it("instala o psql antes do seed e nao semeia se a instalacao falhar", async () => {
+    const ok = createDeps(() => 0, {}, withoutPsql);
+    expect(await runE2eCi(ok.deps)).toBe(0);
+    const lines = ok.calls.map(commandLine);
+    expect(
+      lines.findIndex((line) => line.startsWith("apt-get install")),
+    ).toBeLessThan(lines.findIndex((line) => line.includes("db:seed:e2e")));
+
+    const failing = createDeps(
+      (call) => (call.args.includes("install") ? 100 : 0),
+      {},
+      withoutPsql,
+    );
+    expect(await runE2eCi(failing.deps)).toBe(1);
+    expect(
+      failing.calls.map(commandLine).some((line) => line.includes("db:seed:e2e")),
+    ).toBe(false);
+    expect(failing.calls.map(commandLine).at(-1)).toBe(
+      "docker rm -f e2e-postgres-ci-1",
+    );
   });
 
   it("passa o ambiente de E2E para seed, integracao, build e Playwright", async () => {
