@@ -10,9 +10,17 @@ Atualmente estão marcadas:
 
 - `lint`, `typecheck`, `test` e `test:proxy`;
 - `governance:check`, `governance:check-api-masking`, `governance:check-e2e-pages` e `governance:check-responsive`;
-- `design:check`, `lint:pt-br` e `build`.
+- `design:check`, `lint:pt-br`, `build:ci` e `e2e:ci`.
 
-As tags `ci:cpus:<n>` definem a capacidade das tarefas mais pesadas. Tarefas de integração, E2E, migrations, deploy e processos persistentes ficam fora dessa lista porque dependem de serviços, credenciais ou não terminam.
+`build:ci` roda `bun run build` e em seguida `bun run build:verify` ([scripts/validate-build-output.ts](../scripts/validate-build-output.ts)), que reprova um build com exit code zero mas saída incompleta (`.next/BUILD_ID` ausente ou vazio, `.next/server` ou `.next/required-server-files.json` ausentes). A validação roda na mesma tarefa do build para não depender de transferir `.next` entre instâncias do Vercel CI. É o equivalente da action `validate-build-output` (modo `next`) do GitHub Actions; o modo `vercel` (`.vercel/output`) continua só nos workflows de deploy.
+
+O antigo passo `governance:sync` + `git diff --exit-code` do CI Light não tem tarefa própria: `governance:check` já compara cada adaptador com o conteúdo esperado e falha com `Adapter out of sync`.
+
+`e2e:ci` ([scripts/ci-e2e.ts](../scripts/ci-e2e.ts)) espelha a action `run-e2e-playwright`: sobe o `supabase/postgres` em Docker na porta 55322 (pull com fallback ghcr → Docker Hub), roda `db:seed:e2e`, `test:integration`, `build` e o Playwright, e remove o container no fim. Roda na imagem Ubuntu (`ci:os:ubuntu`) com 8 CPUs. Diferenças em relação ao GitHub Actions: sem cache da imagem nem upload do `playwright-report` (a falha aparece nos logs, com o reporter `list`), `E2E_INCLUDE_SLOW=false` sempre e o mesmo `E2E_WORKERS` padrão (2). A chave `ASAAS_SANDBOX_API_KEY` vem de uma variável de CI da Vercel (Secret); sem ela, vale o placeholder do `.env.test.example`.
+
+Enquanto "Vercel CI" não for check obrigatório nos rulesets, o `e2e:ci` é só espelho: o E2E do GitHub Actions continua sendo o gate, e uma falha do `e2e:ci` apenas deixa o check "Vercel CI" vermelho.
+
+As tags `ci:cpus:<n>` definem a capacidade das tarefas mais pesadas. Migrations, deploy e processos persistentes ficam fora da lista porque dependem de credenciais de ambientes reais ou não terminam.
 
 ## Variáveis de ambiente
 
@@ -25,7 +33,7 @@ Os placeholders existem apenas para validação de build e não devem ser usados
 Para conferir o plano sem executar as tarefas:
 
 ```bash
-bun run turbo run lint typecheck test test:proxy governance:check governance:check-api-masking governance:check-e2e-pages governance:check-responsive design:check lint:pt-br build --dry
+bun run turbo run lint typecheck test test:proxy governance:check governance:check-api-masking governance:check-e2e-pages governance:check-responsive design:check lint:pt-br build:ci --dry
 ```
 
 Para executar uma tarefa localmente, remova `--dry` e selecione apenas a tarefa desejada, por exemplo `bun run turbo run typecheck`.

@@ -5,7 +5,7 @@ description: Replica instruções de IA e skills do Corretor Studio para todos o
 
 # AI Agents Sync — Corretor Studio
 
-Propaga regras de governança e skills para todos os agentes de IA suportados no projeto lead-flow-app, mantendo consistência entre ambientes.
+Propaga regras de governança e skills para todos os agentes de IA suportados no projeto corretor-studio-app, mantendo consistência entre ambientes.
 
 ## Arquitetura de sincronização
 

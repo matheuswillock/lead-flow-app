@@ -10,7 +10,7 @@ Esta tabela define o que pode sair das instruções narrativas e quais garantias
 | Checks dedicados de governance | Reexecutam isoladamente API masking, cobertura E2E e presença de `runResponsiveChecks` | Resultado dos testes ou responsividade real |
 | `bun run design:check` | Sincronização dos tokens de `DESIGN.md` com `app/globals.css` | JSX, contraste, composição, layout e dark mode renderizado |
 | `bun run lint:pt-br:strict` | Heurística de acentuação em textos cobertos | Tom de voz, clareza ou correção semântica da copy |
-| Vercel CI (`turbo.json` + `vercel.json`) | Executa, após habilitação no repositório, as tarefas afetadas marcadas com `ci` no grafo do Turborepo; cacheia tarefas elegíveis | Tarefas sem tag ficam fora; cache ou plano `--dry` não garante comportamento; workflows de deploy, migrations, E2E e integrações continuam no GitHub Actions |
+| Vercel CI (`turbo.json` + `vercel.json`) | Executa, após habilitação no repositório, as tarefas afetadas marcadas com `ci` no grafo do Turborepo; cacheia tarefas elegíveis | Tarefas sem tag ficam fora; cache ou plano `--dry` não garante comportamento; deploy e migrations continuam só no GitHub Actions; o E2E roda nos dois (`e2e:ci` espelha o do GitHub, que segue como gate) |
 | Testes unitários/integração | Cenários efetivamente executados | Casos ausentes e integrações externas não ativadas |
 | Playwright | Fluxos e asserts presentes nas specs executadas | Qualidade visual fora dos asserts |
 
