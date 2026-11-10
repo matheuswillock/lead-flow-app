@@ -9,7 +9,9 @@ import type {
   PublicCheckoutPaymentView,
   PublicCheckoutPayerPrefill,
 } from "@/components/public-checkout/publicCheckoutTypes"
+import { Skeleton } from "@/components/ui/skeleton"
 import { usePublicAdhesion } from "../context/PublicAdhesionHook"
+import { SelfCheckoutPaymentContainer } from "./SelfCheckoutPaymentContainer"
 import type { PublicAdhesionCheckoutInput } from "../context/PublicAdhesionTypes"
 
 const ATTEMPT_STORAGE_PREFIX = "public-adhesion-attempt-start:"
@@ -32,7 +34,32 @@ function getAttemptStorageKey(token: string): string {
   return `${ATTEMPT_STORAGE_PREFIX}${token}`
 }
 
+/**
+ * Adesões do auto-checkout (`/checkout`) têm a própria tela de pagamento; as demais (links criados
+ * pelo cadastro administrativo) seguem no fluxo compartilhado de sempre.
+ */
 export function PublicAdhesionContainer() {
+  const { details, isLoading } = usePublicAdhesion()
+  if (isLoading && !details) return <PublicAdhesionLoadingScreen />
+  if (details?.isSelfCheckout) return <SelfCheckoutPaymentContainer />
+  return <SharedPublicAdhesionContainer />
+}
+
+function PublicAdhesionLoadingScreen() {
+  return (
+    <main className="min-h-screen bg-background p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <Skeleton className="h-10 w-72" />
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          <Skeleton className="h-[560px]" />
+          <Skeleton className="h-[360px]" />
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function SharedPublicAdhesionContainer() {
   const { token, details, payment, isLoading, isSubmitting, error, submitCheckout, refreshPaymentStatus } =
     usePublicAdhesion()
 

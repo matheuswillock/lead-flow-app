@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import { div as MotionDiv } from "framer-motion/client"
 import { integrationsData } from "@/lib/landing/integrations-data"
 import { cn } from "@/lib/utils"
@@ -20,8 +19,9 @@ export function IntegrationsSection() {
             Conecta com o que você já usa
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-lg leading-8 text-landing-body">
-            Transforme visitantes em oportunidades automaticamente. Os leads entram pelo site ou ADS
-            e o atendimento começa sem intervenção manual.
+            As integrações são feitas via webhook: conecte o site, o Instagram e o Meta Ads, e os
+            leads chegam direto ao CRM, tudo centralizado em um só lugar, com o atendimento
+            começando sem intervenção manual.
           </p>
         </MotionDiv>
 
@@ -29,21 +29,7 @@ export function IntegrationsSection() {
           {integrationsData.map((integration) => (
             <article key={integration.title} className="landing-integration-card">
               <div className={cn("landing-integration-icon", `landing-integration-icon--${integration.tone}`)}>
-                {"iconSrc" in integration ? (
-                  <Image
-                    src={integration.iconSrc}
-                    alt={integration.iconAlt}
-                    width={40}
-                    height={40}
-                    className="size-9"
-                  />
-                ) : "svgPath" in integration ? (
-                  <svg viewBox="0 0 24 24" className="size-9" aria-hidden>
-                    <path fill={integration.svgFill} d={integration.svgPath} />
-                  </svg>
-                ) : (
-                  <integration.icon className="size-7" aria-hidden />
-                )}
+                <integration.icon className="size-7" aria-hidden />
               </div>
               <h3 className="font-display text-lg font-bold tracking-[-0.02em] text-landing-ink">
                 {integration.title}

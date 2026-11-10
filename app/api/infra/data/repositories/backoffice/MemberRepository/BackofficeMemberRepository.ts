@@ -122,8 +122,9 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         where: { assignedTo: memberId, deletedAt: null },
         data: { assignedTo: null },
       })
+      // Leads da carteira mantêm o closer atribuído (histórico do cliente); os demais ficam sem closer.
       await tx.lead.updateMany({
-        where: { closerId: memberId, deletedAt: null },
+        where: { closerId: memberId, deletedAt: null, portfolio: { is: null } },
         data: { closerId: null },
       })
 

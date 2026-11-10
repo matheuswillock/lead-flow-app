@@ -72,7 +72,11 @@ export class TeamManagementUseCase implements ITeamManagementUseCase {
     }
   }
 
-  async deleteTeam(teamId: string, actorProfileId: string): Promise<Output> {
+  async deleteTeam(
+    teamId: string,
+    actorProfileId: string,
+    details?: { leads: number; members: number },
+  ): Promise<Output> {
     try {
       const snapshot = await this.teams.findAuditSnapshot(teamId);
       await this.teams.deleteTeam(teamId);
@@ -84,7 +88,8 @@ export class TeamManagementUseCase implements ITeamManagementUseCase {
         actorProfileId,
         before: snapshot,
         after: null,
-        metadata: { teamId },
+        // Só contagens (nenhum dado pessoal): quantos leads e membros foram apagados com o time.
+        metadata: { teamId, ...(details ? { deletedLeads: details.leads, deletedMembers: details.members } : {}) },
       });
 
       return new Output(true, ["Time deletado com sucesso"], [], { teamId });

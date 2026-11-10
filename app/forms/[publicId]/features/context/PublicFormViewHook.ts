@@ -4,13 +4,16 @@ import { useEffect, useRef, useState } from "react"
 import { publicFormViewService } from "../services/PublicFormViewService"
 import type { PublicFormViewState } from "./PublicFormViewTypes"
 import type { PublicFormSnapshot } from "@/lib/public-forms/types"
+import type { PublicFormLegalNotice } from "@/lib/legal/form-privacy-policy"
 import { toUserToastMessage } from "@/lib/ui/to-user-toast-message"
 
 export function usePublicFormView(
   publicId: string,
   initialSnapshot?: PublicFormSnapshot | null,
   initialPublicationId?: string | null,
+  initialLegalNotice?: PublicFormLegalNotice | null,
 ): PublicFormViewState {
+  const [legalNotice, setLegalNotice] = useState<PublicFormLegalNotice | null>(initialLegalNotice ?? null)
   const [snapshot, setSnapshot] = useState<PublicFormViewState["snapshot"]>(initialSnapshot ?? null)
   const [publicationId, setPublicationId] = useState<string | null>(initialPublicationId ?? null)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +35,7 @@ export function usePublicFormView(
       .then((result) => {
         setSnapshot(result.snapshot)
         setPublicationId(result.publicationId)
+        setLegalNotice(result.legalNotice ?? null)
         lastSuccessKeyRef.current = requestKey
       })
       .catch((fetchError: unknown) => {
@@ -43,5 +47,5 @@ export function usePublicFormView(
       })
   }, [publicId])
 
-  return { publicId, publicationId, snapshot, error, isLoading }
+  return { publicId, publicationId, snapshot, legalNotice, error, isLoading }
 }

@@ -31,7 +31,7 @@ async function productionTypeScriptFiles(root: string): Promise<string[]> {
   const canonicalRoot = normalize(await realpath(root))
   if (
     canonicalRoot !== normalizedRepositoryPath &&
-    !canonicalRoot.startsWith(`${normalizedRepositoryPath}/`)
+    !canonicalRoot.startsWith(`${normalizedRepositoryPath}${sep}`)
   ) {
     throw new Error(`Fronteira fora do repositório: ${root}`)
   }
@@ -41,7 +41,7 @@ async function productionTypeScriptFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true })
   const nestedFiles = await Promise.all(
     entries.map(async (entry) => {
-      const path = `${root}/${entry.name}`
+      const path = join(root, entry.name)
       if (entry.isSymbolicLink()) {
         throw new Error(`Symlink não permitido na fronteira: ${path}`)
       }

@@ -383,6 +383,10 @@ export class PublicFormsService implements IPublicFormsService {
     return publicFormsRepository.findPublishedByPublicId(publicId)
   }
 
+  getFormController(teamId: string) {
+    return publicFormsRepository.findFormController(teamId)
+  }
+
   async getAvailabilityContext(publicId: string) {
     const current = await this.getPublic(publicId)
     if (!current) return null

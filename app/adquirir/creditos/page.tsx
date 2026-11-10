@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { createPublicPageMetadata } from "@/lib/metadata/policies";
 import { AdquirirCreditosProvider } from "./features/context/AdquirirCreditosContext";
 import { AdquirirCreditosContainer } from "./features/container/AdquirirCreditosContainer";
+import { AdquirirCreditosUnavailable } from "./features/container/AdquirirCreditosUnavailable";
+import { EMAIL_CREDITS_PURCHASE_ENABLED } from "@/lib/email/email-credits-availability";
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: "Créditos de E-mail — Corretor Studio",
@@ -12,6 +14,8 @@ export const metadata: Metadata = createPublicPageMetadata({
 });
 
 export default function AdquirirCreditosRoute() {
+  if (!EMAIL_CREDITS_PURCHASE_ENABLED) return <AdquirirCreditosUnavailable />
+
   return (
     <AdquirirCreditosProvider>
       <AdquirirCreditosContainer />

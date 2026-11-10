@@ -7,6 +7,7 @@ import {
 } from "../types";
 import { isManagerLikeRole } from "@/lib/roles";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import type { TeamMemberAccessHistory, TeamMemberAccessSummary } from "@/lib/team-member-access/access-history";
 
 class ManagerUsersService {
   private baseUrl: string;
@@ -151,25 +152,72 @@ class ManagerUsersService {
     return this.makeRequest<ManagerUserTeamsApiResponse>(`/${this.supabaseId}/users/${userId}/teams`);
   }
 
-  // Reenviar convite por e-mail para operador
-  async resendInvite(email: string, userId?: string): Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }> {
+  /** Situação de acesso de cada usuário do time ativo (coluna "Acesso"). */
+  async getAccessSummary(): Promise<TeamMemberAccessSummary[]> {
     try {
-      const response = await fetch(`${API_CLIENT_BASE}/operators/resend-invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, userId }),
-      });
-
-      const result = await response.json();
-      return result;
+      const response = await fetch(
+        `${this.baseUrl}${API_CLIENT_BASE}/manager/${this.supabaseId}/users/access-summary`,
+        {
+          headers: {
+            'x-supabase-user-id': this.supabaseId,
+            ...(this.teamId ? { 'x-team-id': this.teamId } : {}),
+          },
+          cache: 'no-store',
+        }
+      );
+      const body = await response.json();
+      return body?.isValid && Array.isArray(body.result) ? body.result : [];
     } catch (error) {
-      console.error('Erro ao reenviar convite:', error);
+      // A coluna é informativa: sem resumo, a tabela segue funcionando.
+      console.error('Erro ao carregar situação de acesso:', error);
+      return [];
+    }
+  }
+
+  /** Último acesso e e-mails de acesso enviados ao usuário. */
+  async getAccessHistory(userId: string): Promise<{ isValid: boolean; errorMessages: string[]; result: TeamMemberAccessHistory | null }> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}${API_CLIENT_BASE}/manager/${this.supabaseId}/users/${encodeURIComponent(userId)}/access-history`,
+        {
+          headers: {
+            'x-supabase-user-id': this.supabaseId,
+            ...(this.teamId ? { 'x-team-id': this.teamId } : {}),
+          },
+          cache: 'no-store',
+        }
+      );
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar histórico de acesso:', error);
+      return { isValid: false, errorMessages: ['Não foi possível carregar o histórico de acesso.'], result: null };
+    }
+  }
+
+  /**
+   * Reenvia o e-mail de acesso do usuário: primeiro acesso para quem ainda não entrou, nova senha
+   * para quem já entrou. O servidor confere se quem pede é master/manager do time do usuário.
+   */
+  async resendAccessEmail(userId: string): Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}${API_CLIENT_BASE}/manager/${this.supabaseId}/users/${encodeURIComponent(userId)}/access-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': this.supabaseId,
+            ...(this.teamId ? { 'x-team-id': this.teamId } : {}),
+          },
+        }
+      );
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao reenviar e-mail de acesso:', error);
       return {
         isValid: false,
         successMessages: [],
-        errorMessages: ['Erro ao reenviar convite'],
+        errorMessages: ['Não foi possível reenviar o e-mail de acesso. Tente novamente.'],
       };
     }
   }

@@ -30,8 +30,59 @@ function errorEnvelope(message: string) {
 
 type CreateHandler = (route: Route) => Promise<void>;
 
+const ADHESION_DETAILS = {
+  id: "adhesion-e2e",
+  fullName: "Maria Souza",
+  phone: "11999998888",
+  cpfCnpj: "11222333000181",
+  email: "maria@example.com",
+  billingType: "PIX",
+  status: "pending",
+  cycle: "annual",
+  cycleLabel: "Anual",
+  cycleMonths: 12,
+  modules: [],
+  extraTeams: 0,
+  extraUsers: 0,
+  monthlyBaseAmount: 80,
+  monthlyExtraTeamsAmount: 0,
+  monthlyExtraUsersAmount: 0,
+  monthlyTotalAmount: 80,
+  totalAmount: 960,
+  maxInstallments: 12,
+  pixMonthlyTotalAmount: 80,
+  pixTotalAmount: 960,
+  creditCardMonthlyTotalAmount: 80,
+  creditCardTotalAmount: 960,
+  maxCardInstallments: 12,
+  installmentSplitMode: "EQUAL",
+  installmentSchedule: [],
+  remainingBalance: 0,
+  chargeAmount: 0,
+  availableBillingTypes: ["PIX"],
+  pixProvider: "ABACATE_PAY",
+  extrasTotalAmount: 0,
+  isSelfCheckout: true,
+  companyName: "Corretora Exemplo Ltda",
+  createdAt: "2026-11-06T12:00:00.000Z",
+  paidAt: null,
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
+
+const PIX_PAYMENT = {
+  adhesionId: "adhesion-e2e",
+  paymentId: "pix-e2e",
+  status: "pending",
+  billingType: "PIX",
+  amount: 960,
+  invoiceUrl: null,
+  bankSlipUrl: null,
+  pix: { encodedImage: "", payload: "00020126e2e-pix-payload", expirationDate: "2099-01-01T00:00:00.000Z" },
+};
+
 interface SelfCheckoutMocks {
   createBodies: Record<string, unknown>[];
+  pixBodies: Record<string, unknown>[];
   optionsCalls: () => number;
 }
 
@@ -40,6 +91,7 @@ async function mockSelfCheckoutApi(
   options: { optionsStatus?: number; optionsBody?: string; create?: CreateHandler } = {},
 ): Promise<SelfCheckoutMocks> {
   const createBodies: Record<string, unknown>[] = [];
+  const pixBodies: Record<string, unknown>[] = [];
   let optionsCalls = 0;
 
   await page.route("**/api/**/public-self-checkout/options", async (route) => {
@@ -64,37 +116,47 @@ async function mockSelfCheckoutApi(
     });
   });
 
-  await page.route(`**/adesao/${TOKEN}**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "text/html",
-      body: "<html><body><h1>Pagamento da adesão</h1></body></html>",
-    });
+  // A consulta pública de CNPJ nunca sai do teste: sem resposta, o cliente preenche à mão.
+  await page.route("**/brasilapi.com.br/**", async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
   });
 
-  return { createBodies, optionsCalls: () => optionsCalls };
+  // Depois do pedido criado, a mesma tela gera o PIX pela adesão: nada disso toca o banco.
+  await page.route(`**/api/**/public-adhesions/${TOKEN}`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: envelope(ADHESION_DETAILS) });
+  });
+  await page.route(`**/api/**/public-adhesions/${TOKEN}/pix`, async (route) => {
+    pixBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 200, contentType: "application/json", body: envelope(PIX_PAYMENT) });
+  });
+  await page.route(`**/api/**/public-adhesions/${TOKEN}/payment-status**`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: envelope(PIX_PAYMENT) });
+  });
+
+  return { createBodies, pixBodies, optionsCalls: () => optionsCalls };
 }
 
 async function fillBuyer(page: Page) {
+  await page.getByLabel("Razão social").fill("Corretora Exemplo Ltda");
+  await page.getByLabel("CNPJ").fill("11222333000181");
   await page.getByLabel("Nome completo").fill("Maria Souza");
   await page.getByLabel("E-mail").fill("Maria@Example.com");
-  await page.getByLabel("Celular").fill("11999998888");
+  await page.getByLabel("WhatsApp").fill("11999998888");
+  await page.getByRole("checkbox", { name: /Declaro que li e concordo/ }).check();
 }
 
-const continueButton = (page: Page) =>
-  page.getByRole("button", { name: /Continuar para o pagamento/ });
+const payButton = (page: Page) => page.getByRole("button", { name: /Gerar QR Code PIX|Criando seu pedido/ });
 
 test.describe("app/checkout", () => {
   test("renderiza os ciclos devolvidos pela API com preço PIX e equivalente mensal", async ({ page }) => {
     await mockSelfCheckoutApi(page);
     await page.goto("/checkout");
 
-    await expect(page.getByRole("heading", { name: "Escolha seu plano" })).toBeVisible();
-    await expect(page.getByText("Gestão de leads para corretores.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Contrate o Corretor Studio" })).toBeVisible();
 
     const radios = page.getByRole("radio");
     await expect(radios).toHaveCount(3);
-    await expect(page.getByRole("radio", { name: "Mensal" })).toBeChecked();
+    await expect(page.getByRole("radio", { name: "Anual" })).toBeChecked();
     await expect(page.getByRole("radio", { name: "Trimestral" })).toHaveAccessibleDescription(
       /R\$\s270,00.*à vista no PIX.*R\$\s90,00 por mês/,
     );
@@ -114,7 +176,7 @@ test.describe("app/checkout", () => {
     await page.goto("/checkout");
     await expect(page.getByRole("status", { name: "Carregando planos" })).toBeVisible();
     resolveOptions();
-    await expect(page.getByRole("heading", { name: "Escolha seu plano" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Contrate o Corretor Studio" })).toBeVisible();
   });
 
   test("não expõe o honeypot a leitores de tela nem ao teclado", async ({ page }) => {
@@ -132,7 +194,17 @@ test.describe("app/checkout", () => {
     expect(box === null || box.x + box.width < 0).toBe(true);
   });
 
-  test("seleciona outro ciclo, envia só o ciclo e os dados do comprador e abre /adesao/{token}", async ({
+  test("período, dados da empresa e pagamento ficam na mesma tela, com adicionais recolhidos", async ({ page }) => {
+    await mockSelfCheckoutApi(page);
+    await page.goto("/checkout");
+
+    await expect(page.getByRole("radio", { name: "Anual" })).toBeChecked();
+    await expect(page.getByLabel("Razão social")).toBeVisible();
+    await expect(payButton(page)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar para o pagamento" })).toHaveCount(0);
+  });
+
+  test("seleciona outro ciclo, cria o pedido só ao enviar os dados e gera o PIX na mesma tela", async ({
     page,
   }) => {
     const mocks = await mockSelfCheckoutApi(page);
@@ -143,16 +215,21 @@ test.describe("app/checkout", () => {
     await expect(page.getByRole("radio", { name: "Mensal" })).not.toBeChecked();
 
     await fillBuyer(page);
-    await expect(page.getByLabel("Celular")).toHaveValue("(11) 99999-8888");
-    await continueButton(page).click();
+    await expect(page.getByLabel("WhatsApp")).toHaveValue("(11) 99999-8888");
+    expect(mocks.createBodies).toHaveLength(0);
+    await payButton(page).click();
 
-    await expect(page).toHaveURL(new RegExp(`/adesao/${TOKEN}$`));
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible();
+    expect(mocks.pixBodies).toHaveLength(1);
     expect(mocks.createBodies).toEqual([
       {
+        companyLegalName: "Corretora Exemplo Ltda",
+        cnpj: "11222333000181",
         fullName: "Maria Souza",
         email: "maria@example.com",
         phone: "11999998888",
         cycle: "annual",
+        termsAccepted: true,
         website: "",
       },
     ]);
@@ -178,13 +255,14 @@ test.describe("app/checkout", () => {
     await page.goto("/checkout");
     await fillBuyer(page);
 
-    await continueButton(page).dblclick();
+    await payButton(page).dblclick();
     await expect(page.getByRole("button", { name: /Criando seu pedido/ })).toBeDisabled();
     expect(mocks.createBodies).toHaveLength(1);
 
     release();
-    await expect(page).toHaveURL(new RegExp(`/adesao/${TOKEN}$`));
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible();
     expect(mocks.createBodies).toHaveLength(1);
+    expect(mocks.pixBodies).toHaveLength(1);
   });
 
   test("valida os campos inline sem chamar a API", async ({ page }) => {
@@ -192,12 +270,14 @@ test.describe("app/checkout", () => {
     await page.goto("/checkout");
 
     await page.getByLabel("E-mail").fill("nao-e-email");
-    await continueButton(page).click();
+    await payButton(page).click();
 
+    await expect(page.getByText("Informe a razão social conforme o CNPJ.")).toBeVisible();
     await expect(page.getByText("Informe seu nome completo.")).toBeVisible();
     await expect(page.getByText("E-mail inválido.")).toBeVisible();
-    await expect(page.getByText("Celular inválido.")).toBeVisible();
-    await expect(page.getByLabel("Nome completo")).toBeFocused();
+    await expect(page.getByText("WhatsApp inválido.")).toBeVisible();
+    // O CNPJ é o primeiro campo da tela, então recebe o foco.
+    await expect(page.getByLabel("CNPJ")).toBeFocused();
     await expect(page.getByLabel("E-mail")).toHaveAttribute("aria-invalid", "true");
     expect(mocks.createBodies).toHaveLength(0);
   });
@@ -213,14 +293,14 @@ test.describe("app/checkout", () => {
     });
     await page.goto("/checkout");
     await fillBuyer(page);
-    await continueButton(page).click();
+    await payButton(page).click();
 
     await expect(page.getByText("Já existe uma conta com este e-mail.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Entrar na sua conta" })).toHaveAttribute(
       "href",
       "/sign-in",
     );
-    await expect(continueButton(page)).toBeEnabled();
+    await expect(payButton(page)).toBeEnabled();
   });
 
   for (const [status, message] of [
@@ -239,10 +319,10 @@ test.describe("app/checkout", () => {
       });
       await page.goto("/checkout");
       await fillBuyer(page);
-      await continueButton(page).click();
+      await payButton(page).click();
 
       await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
-      await expect(continueButton(page)).toBeEnabled();
+      await expect(payButton(page)).toBeEnabled();
     });
   }
 
@@ -255,7 +335,7 @@ test.describe("app/checkout", () => {
     await expect(page.getByText("Compra online indisponível no momento")).toBeVisible();
     await expect(page.getByRole("link", { name: "Voltar ao início" })).toHaveAttribute("href", "/");
     await expect(page.getByRole("radio")).toHaveCount(0);
-    await expect(continueButton(page)).toHaveCount(0);
+    await expect(payButton(page)).toHaveCount(0);
   });
 
   test("erro de carga oferece tentar de novo e recupera", async ({ page }) => {
@@ -274,7 +354,7 @@ test.describe("app/checkout", () => {
     });
     await page.goto("/checkout");
 
-    await expect(page.getByText("Não foi possível carregar os planos.")).toBeVisible();
+    await expect(page.getByRole("main").getByText("Não foi possível carregar os planos.")).toBeVisible();
     await page.getByRole("button", { name: "Tentar de novo" }).click();
 
     await expect(page.getByRole("radio")).toHaveCount(3);

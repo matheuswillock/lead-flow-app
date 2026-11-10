@@ -16,8 +16,8 @@ export function SubscriptionPermanentHeroCard({ subscription, onOpenDetails }: S
     <Card className="md:col-span-2 xl:col-span-2 border-primary/30 bg-surface-1">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <Badge className="w-fit">
-            <Sparkles data-icon="inline-start" />
+          <Badge className="w-fit gap-1.5">
+            <Sparkles className="size-3.5 shrink-0" aria-hidden />
             Vitalícia
           </Badge>
           <div className="flex flex-col gap-1">

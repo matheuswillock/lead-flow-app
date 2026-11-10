@@ -6,6 +6,8 @@ import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-a
 import type { AsaasAccountId } from "@/lib/asaas"
 import type { BillingType } from "@/lib/payment-methods/availability"
 import type {
+  SelfCheckoutCouponQuote,
+  SelfCheckoutCouponQuoteRequest,
   SelfCheckoutOptionsDTO,
   SelfCheckoutRequest,
   SelfCheckoutResponse,
@@ -18,6 +20,13 @@ export interface BackofficeAdhesionPixCheckoutInput {
   email: string
   phone: string
   cpfCnpj: string
+}
+
+export interface BackofficeAdhesionCardCheckoutInput {
+  /** Token de uso único (ctok_) do abacatepay.js; vale 60 s. Nunca número ou CVV do cartão. */
+  cardToken: string
+  installments: number
+  payer: BackofficeAdhesionPixCheckoutInput
 }
 
 export interface BackofficeAdhesionProviderPaymentInput {
@@ -166,6 +175,14 @@ export interface BackofficeAdhesionPublicDTO {
   installmentSchedule: number[]
   remainingBalance: number
   chargeAmount: number
+  /** Chave pública do Abacate para o abacatepay.js; `null` esconde o cartão (loja sem "Checkout próprio"). */
+  cardPublicKey: string | null
+  /** Valor único dos adicionais no período inteiro; `null` nas adesões do cadastro administrativo. */
+  extrasTotalAmount: number | null
+  /** Adesão criada pelo auto-checkout público (`extrasTotalAmount` preenchido). */
+  isSelfCheckout: boolean
+  /** Empresa do lead (nome fantasia ou razão social); `null` quando não informada. */
+  companyName: string | null
   /** Métodos que podem ser oferecidos agora (cartão some enquanto indisponível). */
   availableBillingTypes: BillingType[]
   /** Provider que cobra o PIX desta adesão: define o endpoint e a marca do checkout. */
@@ -309,6 +326,8 @@ export interface IBackofficeAdhesionService {
    * de checkout. Lança `SelfCheckoutError` (ACCOUNT_EXISTS, CYCLE_UNAVAILABLE).
    */
   createSelfCheckout(input: SelfCheckoutRequest): Promise<SelfCheckoutResponse>
+  /** Simula o cupom para o ciclo e a forma de pagamento. Lança `SelfCheckoutError` (COUPON_INVALID, CYCLE_UNAVAILABLE). */
+  quoteSelfCheckoutCoupon(input: SelfCheckoutCouponQuoteRequest): Promise<SelfCheckoutCouponQuote>
   create(
     input: BackofficeAdhesionCreateInput,
     createdByBackofficeUserId: string | null
@@ -329,6 +348,15 @@ export interface IBackofficeAdhesionService {
   createPixCheckout(
     token: string,
     input: BackofficeAdhesionPixCheckoutInput,
+    idempotencyKey: string
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  /**
+   * Cartão transparente do Abacate: cobra o total de cartão da adesão (cupom e adicionais já gravados) em
+   * `installments` parcelas. Idempotente pela chave; recusa lança mensagem genérica.
+   */
+  createCardCheckout(
+    token: string,
+    input: BackofficeAdhesionCardCheckoutInput,
     idempotencyKey: string
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   getPaymentStatus(

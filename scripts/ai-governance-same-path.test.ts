@@ -1,8 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { promises as fs } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { isSamePath } from "./ai-governance"
+
+// Windows e macOS (padrão) ignoram maiúsculas: lá AGENTS.md e agents.md são o mesmo arquivo
+// e os cenários abaixo não podem existir. Os testes só valem em filesystem case-sensitive.
+function isCaseInsensitiveFilesystem(): boolean {
+  const probeDir = mkdtempSync(path.join(os.tmpdir(), "ai-governance-case-probe-"))
+  try {
+    writeFileSync(path.join(probeDir, "probe.md"), "")
+    return existsSync(path.join(probeDir, "PROBE.md"))
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true })
+  }
+}
+
+const caseInsensitiveFs = isCaseInsensitiveFilesystem()
 
 describe("isSamePath", () => {
   let dir: string
@@ -21,7 +36,7 @@ describe("isSamePath", () => {
     expect(await isSamePath(target, target)).toBe(true)
   })
 
-  it("regressão: AGENTS.md e agents.md são arquivos DIFERENTES num filesystem case-sensitive — não pode pular a sincronização (P1 do review #1113)", async () => {
+  it.skipIf(caseInsensitiveFs)("regressão: AGENTS.md e agents.md são arquivos DIFERENTES num filesystem case-sensitive — não pode pular a sincronização (P1 do review #1113)", async () => {
     const lower = path.join(dir, "agents.md")
     const upper = path.join(dir, "AGENTS.md")
     await fs.writeFile(lower, "conteudo canonico", "utf8")
@@ -30,7 +45,7 @@ describe("isSamePath", () => {
     expect(await isSamePath(lower, upper)).toBe(false)
   })
 
-  it("caminhos com nomes diferentes só por maiúscula, mas onde um ainda não existe, não são tratados como o mesmo arquivo", async () => {
+  it.skipIf(caseInsensitiveFs)("caminhos com nomes diferentes só por maiúscula, mas onde um ainda não existe, não são tratados como o mesmo arquivo", async () => {
     const lower = path.join(dir, "only-lower.md")
     const upperMissing = path.join(dir, "ONLY-LOWER.md")
     await fs.writeFile(lower, "conteudo", "utf8")

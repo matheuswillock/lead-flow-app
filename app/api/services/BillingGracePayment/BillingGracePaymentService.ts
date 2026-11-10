@@ -5,7 +5,15 @@ import {
   createPaymentProviderRouter,
   resolvePaymentProviderEnvironment,
 } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
-import { buildBillingSummary } from "@/app/api/shared/billing/billingSummary"
+import {
+  currentlyHasUnlimitedUsers,
+  quoteRenewal,
+  quoteRenewalCycle,
+  resolveRevokedUserIds,
+  type RenewalAccount,
+  type RenewalCycleQuote,
+} from "@/app/api/shared/billing/renewalQuote"
+import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
 import type { Prisma } from "@prisma/client"
 import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
 
@@ -14,27 +22,48 @@ const SESSION_TTL_MS = 30 * 60 * 1000
 const ROUTE_VERSION = "BILLING-GRACE-PHASE-5"
 
 
+/**
+ * Prazos e preços vigentes do checkout (fonte única de preço da contratação e da renovação),
+ * injetados pela composição do use case.
+ */
+export type RenewalCycleOptionsLoader = () => Promise<SelfCheckoutCycleOption[]>
+
 export class BillingGracePaymentService implements IBillingGracePaymentService {
+  constructor(private readonly loadCycleOptions: RenewalCycleOptionsLoader) {}
+
   async getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {
     const account = await billingGracePaymentRepository.findAccountContext(supabaseId)
     if (!account) throw new Error("Somente o master pode regularizar esta conta")
+    if (account.hasPermanentSubscription) throw new Error("Assinatura vitalícia não tem renovação")
 
-    const summary = buildAccountSummary(account)
-    const amountCents = Math.round(summary.totalPrice * 100)
-    if (!Number.isSafeInteger(amountCents) || amountCents < 100) {
-      throw new Error("Não foi possível calcular o valor da regularização")
-    }
+    const cycles = quoteRenewal(await this.loadCycleOptions(), account, new Date())
+    if (cycles.length === 0) throw new Error("Nenhum prazo de renovação disponível no momento")
 
-    const expiresAt = new Date(Date.now() + QUOTE_TTL_MS)
     return {
-      cycle: "one-time",
-      amountCents,
-      expiresAt: expiresAt.toISOString(),
-      method: "PIX",
+      cycles,
+      currentCycle: account.currentCycle,
+      hasUnlimitedUsers: currentlyHasUnlimitedUsers(account),
+      expiresAt: new Date(Date.now() + QUOTE_TTL_MS).toISOString(),
+      // Cartão na renovação ainda não tem rota de cobrança: liga aqui junto com POST /card.
+      cardCheckout: null,
     }
   }
 
-  async createPixPayment(input: { supabaseId: string; idempotencyKey: string }) {
+  /** Valor do prazo escolhido, recalculado no servidor (o navegador só envia o prazo). */
+  private async quoteCycle(account: RenewalAccount, cycle: string, keptUserIds?: readonly string[]): Promise<RenewalCycleQuote> {
+    const options = await this.loadCycleOptions()
+    const option = options.find((item) => item.cycle === cycle)
+    if (!option) throw new Error("Este prazo não está disponível. Escolha outro prazo.")
+    if (keptUserIds) {
+      const accountUserIds = new Set(account.extraUsers.map((user) => user.id))
+      if (keptUserIds.some((id) => !accountUserIds.has(id))) {
+        throw new Error("A lista de usuários mudou. Atualize a página e escolha de novo.")
+      }
+    }
+    return quoteRenewalCycle(option, account, new Date(), keptUserIds)
+  }
+
+  async createPixPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }) {
     // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
     // nem devolver o pagamento (e o PIX) de outra conta.
     const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
@@ -53,13 +82,19 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
     })
 
-    const summary = buildAccountSummary(account)
-    const amountCents = Math.round(summary.totalPrice * 100)
+    if (account.hasPermanentSubscription) throw new Error("Assinatura vitalícia não tem renovação")
+    const quote = await this.quoteCycle(account, input.cycle, input.keptUserIds)
+    const revokedProfileIds = resolveRevokedUserIds(quote, account, input.keptUserIds)
+    const amountCents = Math.round(quote.pixTotal * 100)
+    if (!Number.isSafeInteger(amountCents) || amountCents < 100) {
+      throw new Error("Não foi possível calcular o valor da renovação")
+    }
     const payment = await billingGracePaymentRepository.create({
       accountId: account.accountId,
       teamId: account.teamId,
       subscriptionId: account.subscriptionId,
-      cycle: "one-time",
+      cycle: quote.cycle,
+      revokedProfileIds,
       amountCents,
       effectivePriceCents: amountCents,
       provider: "ABACATE_PAY",
@@ -92,7 +127,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       now: new Date(),
       attemptNumber: 1,
       idempotencyKey: providerIdempotencyKey,
-      requestFingerprint: JSON.stringify({ amountCents, method: "PIX", accountId: account.accountId }),
+      requestFingerprint: JSON.stringify({ amountCents, method: "PIX", cycle: quote.cycle, revokedProfileIds, accountId: account.accountId }),
       provider: selected.provider,
       environment: selected.environment,
       externalAccountContext: selected.externalAccountContext,
@@ -151,26 +186,3 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     return payment
   }
 }
-
-function buildAccountSummary(account: {
-  accountId: string
-  hasUnlimitedUsers: boolean
-  hasPermanentSubscription: boolean
-  teamCount: number
-  distinctUserCount: number
-  totalUsersIncludingMaster: number
-}) {
-  return buildBillingSummary(account.accountId, {
-    hasUnlimitedUsers: account.hasUnlimitedUsers,
-    hasPermanentSubscription: account.hasPermanentSubscription,
-    teamCount: account.teamCount,
-    distinctUserCount: account.distinctUserCount,
-    totalUsersIncludingMaster: account.totalUsersIncludingMaster,
-    includedExtraTeams: 0,
-    includedExtraUsers: 0,
-    manualAdjustmentExtraTeams: 0,
-    manualAdjustmentExtraUsers: 0,
-  })
-}
-
-export const billingGracePaymentService = new BillingGracePaymentService()

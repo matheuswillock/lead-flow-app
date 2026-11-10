@@ -28,6 +28,9 @@ mock.module("@/app/api/infra/data/repositories/profile/ProfileRepository", () =>
 mock.module("@/app/api/services/notifications/NotificationService", () => ({
   notificationService: {},
 }))
+mock.module("@/app/api/services/memberRemoval/MemberRemovalFollowUpService", () => ({
+  memberRemovalFollowUpService: { handle: async () => ({ releasedLeads: 0, notifiedLeads: 0, sessionsRevoked: false }) },
+}))
 mock.module("@/app/api/services/billing/IncrementalBillingService", () => ({
   incrementalBillingService: {},
 }))

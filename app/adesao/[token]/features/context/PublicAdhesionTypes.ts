@@ -50,6 +50,14 @@ export interface PublicAdhesionDetails {
   availableBillingTypes: PublicAdhesionBillingType[]
   /** Provider que cobra o PIX: define o endpoint e a marca do checkout. */
   pixProvider: PublicAdhesionPixProvider
+  /** Valor único dos adicionais no período; `null` nas adesões do cadastro administrativo. */
+  extrasTotalAmount?: number | null
+  /** Verdadeiro quando a adesão nasceu no auto-checkout público (`/checkout`). */
+  isSelfCheckout?: boolean
+  /** Empresa contratante (nome fantasia ou razão social) informada no auto-checkout. */
+  companyName?: string | null
+  /** Chave pública do Abacate Pay para o formulário seguro do cartão; `null` sem cartão. */
+  cardPublicKey?: string | null
   createdAt: string
   paidAt: string | null
   expiresAt: string
@@ -69,6 +77,9 @@ export interface PublicAdhesionCheckoutInput {
   state: string
   billingType: PublicAdhesionBillingType
   installments?: number
+  /** Token `ctok_` do abacatepay.js: cartão do Abacate Pay (o número nunca passa pelo servidor). */
+  cardToken?: string
+  /** Legado: cartão do Asaas no fluxo compartilhado (links do cadastro administrativo). */
   creditCard?: {
     holderName: string
     number: string
@@ -76,6 +87,14 @@ export interface PublicAdhesionCheckoutInput {
     expiryYear: string
     ccv: string
   }
+}
+
+/** Cobrança no cartão do Abacate Pay com o token gerado no navegador. */
+export interface PublicAdhesionCardInput {
+  cardToken: string
+  installments: number
+  payer: { fullName: string; email: string; phone: string; cpfCnpj: string }
+  idempotencyKey: string
 }
 
 export interface PublicAdhesionPayment {

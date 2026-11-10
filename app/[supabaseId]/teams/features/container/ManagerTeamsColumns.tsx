@@ -1,19 +1,76 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, CreditCard, ExternalLink, MoreHorizontal, Settings, XCircle } from "lucide-react";
+import { ArrowUpDown, CreditCard, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { formatIntimezone } from "@/lib/dates";
 import type { ManagerTeamTableRow } from "../types";
+
+/** Começa oculta (continua no filtro de data e em "Colunas"), para a tabela não rolar para o lado. */
+export const MANAGER_TEAMS_HIDDEN_COLUMNS = ["createdAt"];
+
+/** Ações curtas da linha, à vista. "Gerenciar" é o clique na linha. */
+function TeamRowActions({
+  team,
+  isActive,
+  isSwitching,
+  isCanceling,
+  canManageTeams,
+  onSetActiveTeam,
+  onViewPendingCheckout,
+  onEditPendingPayment,
+  onCancelPendingTeam,
+}: {
+  team: ManagerTeamTableRow
+  isActive: boolean
+  isSwitching: boolean
+  isCanceling: boolean
+  canManageTeams: boolean
+  onSetActiveTeam: (teamId: string) => void
+  onViewPendingCheckout: (team: ManagerTeamTableRow) => void
+  onEditPendingPayment: (team: ManagerTeamTableRow) => void
+  onCancelPendingTeam: (team: ManagerTeamTableRow) => void
+}) {
+  if (team.isPending) {
+    return (
+      <div className="flex flex-wrap justify-end gap-2">
+        {canManageTeams && team.pendingPayment?.checkoutUrl ? (
+          <Button size="sm" variant="outline" className="max-lg:min-h-11" onClick={() => onViewPendingCheckout(team)}>
+            <ExternalLink data-icon="inline-start" aria-hidden />
+            Ver pagamento
+          </Button>
+        ) : null}
+        {canManageTeams && team.pendingPayment?.id ? (
+          <Button size="sm" variant="outline" className="max-lg:min-h-11" onClick={() => onEditPendingPayment(team)}>
+            <CreditCard data-icon="inline-start" aria-hidden />
+            Trocar pagamento
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive max-lg:min-h-11"
+          disabled={isCanceling}
+          onClick={() => onCancelPendingTeam(team)}
+        >
+          {isCanceling ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <XCircle data-icon="inline-start" aria-hidden />}
+          {isCanceling ? "Cancelando..." : "Cancelar"}
+        </Button>
+      </div>
+    );
+  }
+  if (isActive) return null;
+  return (
+    <div className="flex justify-end">
+      <Button size="sm" variant="outline" className="max-lg:min-h-11" disabled={isSwitching} onClick={() => onSetActiveTeam(team.id)}>
+        {isSwitching ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+        {isSwitching ? "Trocando..." : "Usar este time"}
+      </Button>
+    </div>
+  );
+}
 
 interface CreateColumnsProps {
   tz: string;
@@ -24,12 +81,10 @@ interface CreateColumnsProps {
   ownAccountTeamCount: number;
   onSetActiveTeam: (teamId: string) => void;
   onSetDefaultTeam: (teamId: string) => void;
-  onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
   onEditPendingPayment: (team: ManagerTeamTableRow) => void;
   onCancelPendingTeam: (team: ManagerTeamTableRow) => void;
   canManageTeams: boolean;
-  canManageScheduleSettings: boolean;
 }
 
 export function createColumns({
@@ -41,12 +96,10 @@ export function createColumns({
   ownAccountTeamCount,
   onSetActiveTeam,
   onSetDefaultTeam,
-  onManageTeam,
   onViewPendingCheckout,
   onEditPendingPayment,
   onCancelPendingTeam,
   canManageTeams,
-  canManageScheduleSettings,
 }: CreateColumnsProps): ColumnDef<ManagerTeamTableRow>[] {
   const showDefaultTeamColumn = ownAccountTeamCount >= 2;
 
@@ -85,7 +138,7 @@ export function createColumns({
     },
     {
       accessorKey: "role",
-      meta: { label: "Nível de acesso" },
+      meta: { label: "Nível de acesso", className: "hidden sm:table-cell" },
       header: ({ column }) => (
         <div className="flex justify-center">
           <Button
@@ -112,7 +165,7 @@ export function createColumns({
     },
     {
       accessorKey: "functions",
-      meta: { label: "Funções" },
+      meta: { label: "Funções", className: "hidden lg:table-cell" },
       header: ({ column }) => (
         <div className="flex justify-center">
           <Button
@@ -183,7 +236,7 @@ export function createColumns({
   if (showDefaultTeamColumn) {
     columns.splice(1, 0, {
       id: "isDefault",
-      meta: { label: "Time padrão" },
+      meta: { label: "Time padrão", className: "hidden md:table-cell" },
       header: () => <div className="flex justify-center font-semibold">Time padrão</div>,
       cell: ({ row }) => {
         const team = row.original;
@@ -253,75 +306,21 @@ export function createColumns({
     },
     {
       id: "actions",
-      header: "Ações",
-      cell: ({ row }) => {
-        const team = row.original;
-        const isActive = team.id === activeTeamId;
-        const isCanceling = cancelingPendingTeamId === team.id;
-
-        return (
-          <div className="flex justify-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 cursor-pointer p-0 max-lg:size-11!">
-                  <span className="sr-only">Abrir menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                {!team.isPending && (
-                  <DropdownMenuItem
-                    onClick={() => onSetActiveTeam(team.id)}
-                    disabled={isActive || switchingTeamId === team.id}
-                    className="flex items-center gap-2"
-                  >
-                    {isActive ? "Time ativo" : switchingTeamId === team.id ? "Alterando..." : "Definir ativo"}
-                  </DropdownMenuItem>
-                )}
-                {canManageTeams && team.pendingPayment?.checkoutUrl ? (
-                  <DropdownMenuItem
-                    onClick={() => onViewPendingCheckout(team)}
-                    className="flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Ver checkout
-                  </DropdownMenuItem>
-                ) : null}
-                {canManageTeams && team.pendingPayment?.id ? (
-                  <DropdownMenuItem
-                    onClick={() => onEditPendingPayment(team)}
-                    className="flex items-center gap-2"
-                  >
-                    <CreditCard className="h-4 w-4" />
-                    Editar pagamento
-                  </DropdownMenuItem>
-                ) : null}
-                {!team.isPending && (
-                  <DropdownMenuItem
-                    onClick={() => onManageTeam(team.id, team.name)}
-                    disabled={!canManageTeams && !canManageScheduleSettings}
-                    className="flex items-center gap-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Gerenciar
-                  </DropdownMenuItem>
-                )}
-                {team.isPending && (
-                  <DropdownMenuItem
-                    onClick={() => onCancelPendingTeam(team)}
-                    disabled={isCanceling}
-                    className="flex items-center gap-2 text-destructive focus:text-destructive"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    {isCanceling ? "Cancelando..." : "Cancelar criação"}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
+      header: () => <span className="sr-only">Ações</span>,
+      // Ações curtas à vista; "Gerenciar" é o clique na própria linha.
+      cell: ({ row }) => (
+        <TeamRowActions
+          team={row.original}
+          isActive={row.original.id === activeTeamId}
+          isSwitching={switchingTeamId === row.original.id}
+          isCanceling={cancelingPendingTeamId === row.original.id}
+          canManageTeams={canManageTeams}
+          onSetActiveTeam={onSetActiveTeam}
+          onViewPendingCheckout={onViewPendingCheckout}
+          onEditPendingPayment={onEditPendingPayment}
+          onCancelPendingTeam={onCancelPendingTeam}
+        />
+      ),
       enableSorting: false,
       enableHiding: false,
     }

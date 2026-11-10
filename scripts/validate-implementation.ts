@@ -7,7 +7,8 @@
  * adapters e os checks leves. Qualquer falha aqui aborta antes dos
  * checks pesados.
  *
- * Fase 2 (paralela): `lint`, `typecheck` e `test` rodam juntos — são
+ * Fase 2 (paralela): `lint`, `typecheck` (só `tsc`; o client Prisma já foi
+ * gerado na fase 1) e `test` rodam juntos — são
  * independentes entre si e dominam o tempo do hook. O wall time cai
  * para o mais lento dos três em vez da soma.
  *
@@ -41,11 +42,14 @@ const FAST_STEPS: Step[] = [
   { name: "governance:check-responsive", cmd: "bun", args: ["run", "governance:check-responsive"] },
   { name: "governance:check-api-masking", cmd: "bun", args: ["run", "governance:check-api-masking"] },
   { name: "lint:pt-br:strict", cmd: "bun", args: ["run", "lint:pt-br:strict"] },
+  // Gera o client antes da fase paralela: no Windows o `test` carrega a DLL do engine
+  // e o `prisma generate` concorrente falha com EPERM ao tentar substituí-la.
+  { name: "prisma:generate", cmd: "bun", args: ["run", "prisma:generate"] },
 ];
 
 const PARALLEL_STEPS: Step[] = [
   { name: "lint", cmd: "bun", args: ["run", "lint"] },
-  { name: "typecheck", cmd: "bun", args: ["run", "typecheck"] },
+  { name: "typecheck", cmd: "bunx", args: ["tsc", "--noEmit"] },
   { name: "test", cmd: "bun", args: ["run", "test"] },
 ];
 

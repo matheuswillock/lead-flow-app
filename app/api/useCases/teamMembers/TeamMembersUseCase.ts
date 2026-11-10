@@ -5,6 +5,10 @@ import { cacheTags } from "@/lib/cache/cacheTags";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { auditLogService } from "@/app/api/services/audit/AuditLogService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
+import {
+  memberRemovalFollowUpService,
+  type MemberRemovalFollowUpService,
+} from "@/app/api/services/memberRemoval/MemberRemovalFollowUpService";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import type { ITeamMembersRepository, TeamMembersListItem, TeamMembersTeam, TeamMembersProfileOption } from "@/app/api/infra/data/repositories/teamMembers/ITeamMembersRepository";
 import type { TeamAccess } from "@/app/api/v1/utils/teamAccess";
@@ -58,7 +62,10 @@ function formatTeamMembersList(
 }
 
 export class TeamMembersUseCase {
-  constructor(private readonly repository: ITeamMembersRepository) {}
+  constructor(
+    private readonly repository: ITeamMembersRepository,
+    private readonly memberRemovalFollowUp: Pick<MemberRemovalFollowUpService, "handle"> = memberRemovalFollowUpService,
+  ) {}
 
   async listMembersWithCtx(
     access: TeamAccess,
@@ -501,6 +508,8 @@ export class TeamMembersUseCase {
       }
 
       await this.repository.deleteMember(teamId, profileId);
+      // Leads sem responsável + aviso aos managers + sessão encerrada (cada etapa falha sozinha).
+      await this.memberRemovalFollowUp.handle({ teamId, removedProfileId: profileId });
 
       if (memberSnapshot) {
         await auditLogService.logAudit({

@@ -58,21 +58,21 @@ export const featurePanelsData: FeaturePanel[] = [
   },
   {
     id: "radar",
-    navLabel: "Radar",
-    eyebrow: "Radar",
-    title: "Saiba quem merece o próximo e-mail — antes da concorrência",
+    navLabel: "radar",
+    eyebrow: "radar",
+    title: "Saiba quem merece o próximo e-mail antes da concorrência",
     description:
-      "O Radar une CRM, carteira e histórico de e-mail em perfis únicos. Monte segmentos prontos ou sob medida e dispare campanhas para quem realmente pode fechar.",
+      "O radar une CRM, carteira e histórico de e-mail em perfis únicos. Monte segmentos prontos ou sob medida e dispare campanhas para quem realmente pode fechar.",
     bullets: [
       "Perfis unificados com timeline e consentimento por canal",
       "Segmentos prontos: aptos, renovação, abriram e não clicaram",
       "Builder de segmentos custom para a sua operação",
       "Audiência dinâmica ligada às campanhas de e-mail",
     ],
-    cta: "Ver o Radar na prática",
+    cta: "Ver o radar na prática",
     image: "/images/landing/campanhas.webp",
-    imageAlt: "Segmentos do Radar com audiência para campanhas de e-mail",
-    windowTitle: "Radar · Segmentos",
+    imageAlt: "Segmentos do radar com audiência para campanhas de e-mail",
+    windowTitle: "radar · Segmentos",
     colorClass: "landing-feature-panel--indigo",
     accentClass: "landing-feature-accent--indigo",
     preview: "radar",
@@ -81,11 +81,11 @@ export const featurePanelsData: FeaturePanel[] = [
     id: "campanhas",
     navLabel: "Campanhas",
     eyebrow: "E-mail e Campanhas",
-    title: "Dispare campanhas para o público certo — com o Radar no comando",
+    title: "Dispare campanhas para o público certo, com o radar no comando",
     description:
-      "Templates, agendamento e métricas no mesmo lugar. Escolha uma lista CSV ou um segmento do Radar e envie em minutos, sem exportar planilha.",
+      "Templates, agendamento e métricas no mesmo lugar. Escolha uma lista CSV ou um segmento do radar e envie em minutos, sem exportar planilha.",
     bullets: [
-      "Audiência via lista CSV ou segmento do Radar",
+      "Audiência via lista CSV ou segmento do radar",
       "Templates aprováveis e personalização por destinatário",
       "Agendamento e disparo com limite controlado",
       "Analytics de abertura, clique, entrega e descadastro",
@@ -123,7 +123,7 @@ export const featurePanelsData: FeaturePanel[] = [
     description:
       "Separe carteiras, leads e campanhas por equipe. Alterne o workspace ativo instantaneamente, cada time enxerga apenas o que é seu.",
     bullets: [
-      "Dados isolados por time — sem cruzar carteiras",
+      "Dados isolados por time, sem cruzar carteiras",
       "Troca de workspace ativo em um clique",
       "Metas e relatórios independentes por equipe",
     ],

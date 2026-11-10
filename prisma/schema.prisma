@@ -869,6 +869,10 @@ enum NotificationType {
   STUDIO_DOMAIN_DNS_ACTION_REQUIRED
   STUDIO_DOMAIN_DNS_RECOVERED
   LEAD_NEEDS_RESCHEDULE
+  LEAD_FOLLOW_UP_REMINDER
+  LEAD_ORPHANED
+  TEAM_EXPORT_READY
+  TEAM_EXPORT_FAILED
 
   @@map("notification_type")
 }
@@ -1680,6 +1684,8 @@ model BillingGracePayment {
   confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
   completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason         String?   @map("failure_reason") @db.Text
+  /// Usuários que o master não manteve na renovação; saem dos times da conta ao confirmar o pagamento.
+  revokedProfileIds     String[]  @default([]) @map("revoked_profile_ids") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1688,6 +1694,60 @@ model BillingGracePayment {
   @@index([providerAttemptId], map: "billing_grace_payments_provider_attempt_idx")
   @@index([providerExternalId], map: "billing_grace_payments_provider_external_idx")
   @@map("billing_grace_payments")
+}
+
+/// E-mail de acesso (primeiro acesso ou nova senha) enviado a pedido de uma conta. O histórico
+/// de acesso que master/manager veem lista só os envios da própria conta.
+model TeamMemberAccessEmail {
+  id                   String   @id @default(uuid()) @db.Uuid
+  accountId            String   @map("account_id") @db.Uuid
+  teamId               String?  @map("team_id") @db.Uuid
+  profileId            String   @map("profile_id") @db.Uuid
+  dispatchId           String   @unique @map("dispatch_id") @db.Uuid
+  requestedByProfileId String?  @map("requested_by_profile_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([accountId, profileId, createdAt(sort: Desc)], map: "team_member_access_emails_account_profile_idx")
+  @@map("team_member_access_emails")
+}
+
+/// Entrevista da administradora com o cliente (opcional, uma por lead).
+model LeadAdministratorInterview {
+  id                 String   @id @default(uuid()) @db.Uuid
+  leadId             String   @unique @map("lead_id") @db.Uuid
+  teamId             String   @map("team_id") @db.Uuid
+  scheduledAt        DateTime  @map("scheduled_at") @db.Timestamptz(6)
+  /// Data/hora como o usuário digitou ("2026-11-12T14:30"); é o horário que vai na mensagem.
+  scheduledLocal     String    @map("scheduled_local") @db.Text
+  administratorName  String?   @map("administrator_name") @db.Text
+  notes              String?   @db.Text
+  clientNotifiedAt   DateTime? @map("client_notified_at") @db.Timestamptz(6)
+  updatedByProfileId String?   @map("updated_by_profile_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("lead_administrator_interviews")
+}
+
+/// Lembrete datado de acompanhamento do lead: vira tarefa + alerta + item no feed quando vence.
+model LeadFollowUpReminder {
+  id               String    @id @default(uuid()) @db.Uuid
+  leadId           String    @map("lead_id") @db.Uuid
+  teamId           String    @map("team_id") @db.Uuid
+  /// administrator_interview | meeting_nurture | plan_renewal
+  kind             String    @db.Text
+  offsetKey        String    @map("offset_key") @db.Text
+  anchorAt         DateTime  @map("anchor_at") @db.Timestamptz(6)
+  dueAt            DateTime  @map("due_at") @db.Timestamptz(6)
+  eventLabel       String    @map("event_label") @db.Text
+  ownerProfileId   String    @map("owner_profile_id") @db.Uuid
+  notifyProfileIds String[]  @default([]) @map("notify_profile_ids") @db.Uuid
+  processedAt      DateTime? @map("processed_at") @db.Timestamptz(6)
+  taskId           String?   @map("task_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([leadId, kind, anchorAt, offsetKey], map: "lead_follow_up_reminders_unique_key")
+  @@map("lead_follow_up_reminders")
 }
 
 model BackofficeOperationalAccessGrant {
@@ -2017,6 +2077,13 @@ model BackofficeAdhesion {
   additionalTeamsData               Json                           @default("[]") @map("additional_teams_data")
   installmentSchedule               Json                           @default("[]") @map("installmentSchedule")
   installmentLedger                 Json                           @default("[]") @map("installmentLedger")
+  couponId                          String?                        @map("couponId") @db.Uuid
+  couponCode                        String?                        @map("couponCode") @db.Text
+  couponDiscountType                BackofficeCouponDiscountType?  @map("couponDiscountType")
+  couponDiscountValue               Decimal?                       @map("couponDiscountValue") @db.Decimal(12, 2)
+  couponDiscountAmount              Decimal?                       @map("couponDiscountAmount") @db.Decimal(12, 2)
+  /// Auto-checkout: valor único dos adicionais para o período inteiro; substitui monthlyExtra*Amount x meses quando preenchido.
+  extrasTotalAmount                 Decimal?                       @map("extrasTotalAmount") @db.Decimal(12, 2)
   createdAt                         DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                         DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
@@ -2029,6 +2096,8 @@ model BackofficeAdhesion {
   sponsorMaster           Profile?           @relation("BackofficeAdhesionSponsorMaster", fields: [sponsorMasterId], references: [id], onDelete: SetNull)
   discountApprovedBy      Profile?           @relation("BackofficeAdhesionDiscountApprover", fields: [discountApprovedByProfileId], references: [id], onDelete: SetNull, map: "backoffice_adhesions_discount_approved_by_fkey")
 
+  coupon              BackofficeCoupon?  @relation(fields: [couponId], references: [id], onDelete: SetNull, map: "backoffice_adhesions_coupon_id_fkey")
+
   profileSubscription ProfileSubscription?
 
   @@unique([asaasPaymentId, asaasAccount], map: "backoffice_adhesions_asaas_payment_account_key")
@@ -2040,6 +2109,7 @@ model BackofficeAdhesion {
   @@index([closerBackofficeUserId], map: "backoffice_adhesions_closer_user_id_idx")
   @@index([createdProfileId, createdAt(sort: Desc)], map: "backoffice_adhesions_created_profile_id_created_at_idx")
   @@index([sponsorMasterId], map: "backoffice_adhesions_sponsor_master_id_idx")
+  @@index([couponId], map: "backoffice_adhesions_coupon_id_idx")
   @@map("backoffice_adhesions")
 }
 
@@ -7706,4 +7776,64 @@ model LeadDocumentRequestItem {
 
   @@index([requestId])
   @@map("corretor_studio_lead_document_request_items")
+}
+enum BackofficeCouponDiscountType {
+  percent
+  fixed
+
+  @@map("backoffice_coupon_discount_type")
+}
+
+/// Cupom de desconto do auto-checkout. `code` é sempre normalizado (maiúsculas, sem espaços nas pontas).
+model BackofficeCoupon {
+  id            String                       @id @default(uuid()) @db.Uuid
+  code          String                       @unique(map: "backoffice_coupons_code_key") @db.Text
+  discountType  BackofficeCouponDiscountType @map("discountType")
+  discountValue Decimal                      @map("discountValue") @db.Decimal(12, 2)
+  isActive      Boolean                      @default(true) @map("isActive")
+  validFrom     DateTime?                    @map("validFrom") @db.Timestamptz(6)
+  validUntil    DateTime?                    @map("validUntil") @db.Timestamptz(6)
+  maxUses       Int?                         @map("maxUses")
+  usesCount     Int                          @default(0) @map("usesCount")
+  createdAt     DateTime                     @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt     DateTime                     @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  adhesions BackofficeAdhesion[]
+
+  @@map("backoffice_coupons")
+}
+
+// -----------------------------
+// TEAM DELETION EXPORT (corretor_studio_team_deletion_export_jobs)
+// Pedido de exportação feito ao excluir um time. NÃO tem relação com Team: precisa sobreviver à
+// exclusão do time (o arquivo é entregue depois que o time deixa de existir).
+// -----------------------------
+model TeamDeletionExportJob {
+  id                 String    @id @default(uuid()) @db.Uuid
+  teamId             String    @db.Uuid
+  teamName           String
+  requesterProfileId String    @db.Uuid
+  requesterEmail     String
+  requesterName      String
+  billingOwnerId     String    @db.Uuid
+  /// pending | processing | ready | failed | purged
+  status             String    @default("pending") @db.VarChar(20)
+  attempts           Int       @default(0)
+  lockedAt           DateTime? @db.Timestamptz(6)
+  filePath           String?
+  fileSizeBytes      Int?
+  expiresAt          DateTime? @db.Timestamptz(6)
+  counts             Json?
+  lastError          String?
+  downloadCount      Int       @default(0)
+  lastDownloadedAt   DateTime? @db.Timestamptz(6)
+  lastDownloadedBy   String?   @db.Uuid
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  completedAt        DateTime? @db.Timestamptz(6)
+  purgedAt           DateTime? @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([requesterProfileId])
+  @@map("corretor_studio_team_deletion_export_jobs")
 }

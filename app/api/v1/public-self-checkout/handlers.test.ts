@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { createHash } from "node:crypto"
 import { Output } from "@/lib/output"
 import type { ISelfCheckoutUseCase } from "@/app/api/useCases/selfCheckout/ISelfCheckoutUseCase"
-import { createSelfCheckoutOptionsHandler, createSelfCheckoutPostHandler } from "./handlers"
+import {
+  createSelfCheckoutCouponPostHandler,
+  createSelfCheckoutOptionsHandler,
+  createSelfCheckoutPostHandler,
+} from "./handlers"
 
 const GENERIC_INVALID = "Dados inválidos para submissão."
 const EMAIL = "maria@example.com"
@@ -10,18 +14,26 @@ const EMAIL_KEY = `public-self-checkout-email:${createHash("sha256").update(EMAI
 const IP_KEY = "public-self-checkout-ip:198.51.100.4"
 
 const validBody = {
+  companyLegalName: "Corretora Exemplo Ltda",
+  cnpj: "11222333000181",
   fullName: "Maria Souza",
   email: "  Maria@Example.com ",
   phone: "(11) 99999-9999",
   cycle: "monthly",
+  termsAccepted: true,
 }
 
 const create = mock(async (_input: unknown): Promise<Output> => new Output(true, [], [], { token: "tok-1" }))
 const getOptions = mock(async (): Promise<Output> => new Output(true, [], [], { product: { name: "CRM" }, cycles: [] }))
-const useCase: ISelfCheckoutUseCase = { create, getOptions }
+const quoteCoupon = mock(
+  async (_input: unknown): Promise<Output> =>
+    new Output(true, [], [], { code: "BEMVINDO10", label: "10% de desconto", discountAmount: 10, totalAfterDiscount: 90 }),
+)
+const useCase: ISelfCheckoutUseCase = { create, getOptions, quoteCoupon }
 
 const consumeRateLimit = mock(async (_key: string, _options: unknown) => ({ allowed: true, retryAfterSeconds: 1 }))
 const post = createSelfCheckoutPostHandler({ useCase, consumeRateLimit })
+const postCoupon = createSelfCheckoutCouponPostHandler({ useCase, consumeRateLimit })
 
 const SAFE_HEADERS = { "x-vercel-id": "gru1::abc", "x-vercel-forwarded-for": "198.51.100.4" }
 const env = process.env as Record<string, string | undefined>
@@ -49,6 +61,7 @@ beforeEach(() => {
   create.mockClear()
   create.mockImplementation(async () => new Output(true, [], [], { token: "tok-1" }))
   getOptions.mockClear()
+  quoteCoupon.mockClear()
   consumeRateLimit.mockClear()
   consumeRateLimit.mockImplementation(async () => ({ allowed: true, retryAfterSeconds: 1 }))
 })
@@ -68,11 +81,22 @@ describe("POST /api/v1/public-self-checkout", () => {
     expect(body.result).toEqual({ token: "tok-1" })
     expect(create).toHaveBeenCalledTimes(1)
     expect(create.mock.calls[0]?.[0]).toEqual({
+      companyLegalName: "Corretora Exemplo Ltda",
+      cnpj: "11222333000181",
       fullName: "Maria Souza",
       email: EMAIL,
       phone: "(11) 99999-9999",
       cycle: "monthly",
+      termsAccepted: true,
     })
+  })
+
+  it("sem declaração de aceite dos documentos: 400 sem criar nada", async () => {
+    create.mockClear()
+    const response = await post(request({ ...validBody, termsAccepted: false }))
+
+    expect(response.status).toBe(400)
+    expect(create).not.toHaveBeenCalled()
   })
 
   it("corpo ilegível ou não-objeto: 400 sem criar nada", async () => {
@@ -260,5 +284,60 @@ describe("GET /api/v1/public-self-checkout/options", () => {
     } finally {
       console.error = original
     }
+  })
+})
+
+describe("POST /api/v1/public-self-checkout/coupon", () => {
+  const couponBody = { couponCode: "  bemvindo10 ", cycle: "monthly", billingType: "CREDIT_CARD" }
+
+  function couponRequest(body: unknown) {
+    return new Request("https://app.example.com/api/v1/public-self-checkout/coupon", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "app.example.com", ...SAFE_HEADERS },
+      body: JSON.stringify(body),
+    })
+  }
+
+  it("200 com a simulação, sem cache, repassando o corpo validado", async () => {
+    const response = await postCoupon(couponRequest(couponBody))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("Cache-Control")).toBe("no-store")
+    expect((await json(response)).result).toMatchObject({ code: "BEMVINDO10", totalAfterDiscount: 90 })
+    expect(quoteCoupon).toHaveBeenCalledWith({ couponCode: "bemvindo10", cycle: "monthly", billingType: "CREDIT_CARD" })
+  })
+
+  it("cupom recusado devolve 422 com a mensagem em errorMessages", async () => {
+    quoteCoupon.mockResolvedValueOnce(new Output(false, [], ["Cupom expirado."], { code: "COUPON_INVALID" }))
+
+    const response = await postCoupon(couponRequest(couponBody))
+
+    expect(response.status).toBe(422)
+    expect((await json(response)).errorMessages).toEqual(["Cupom expirado."])
+  })
+
+  it("corpo inválido devolve 400 sem chamar o caso de uso nem consumir limite", async () => {
+    const response = await postCoupon(couponRequest({ couponCode: "", cycle: "monthly" }))
+
+    expect(response.status).toBe(400)
+    expect(quoteCoupon).not.toHaveBeenCalled()
+    expect(consumeRateLimit).not.toHaveBeenCalled()
+  })
+
+  it("aplica o limite por IP e por IP + código; estourou devolve 429 com Retry-After", async () => {
+    await postCoupon(couponRequest(couponBody))
+    const keys = consumeRateLimit.mock.calls.map((call) => call[0])
+    expect(keys[0]).toBe("public-self-checkout-coupon-ip:198.51.100.4")
+    expect(keys[1]).toStartWith("public-self-checkout-coupon-code:198.51.100.4:")
+    expect(keys[1]).not.toContain("BEMVINDO10")
+
+    consumeRateLimit.mockClear()
+    quoteCoupon.mockClear()
+    consumeRateLimit.mockImplementation(async () => ({ allowed: false, retryAfterSeconds: 42 }))
+    const blocked = await postCoupon(couponRequest(couponBody))
+
+    expect(blocked.status).toBe(429)
+    expect(blocked.headers.get("Retry-After")).toBe("42")
+    expect(quoteCoupon).not.toHaveBeenCalled()
   })
 })

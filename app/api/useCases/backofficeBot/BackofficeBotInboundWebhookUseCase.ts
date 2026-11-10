@@ -14,6 +14,7 @@ import {
   formatTaskPrompt,
 } from "@/lib/studio-bot/format-bot-reply";
 import { parseMeetingDatetimeInput } from "@/lib/studio-bot/parse-meeting-datetime";
+import { resolveTimezone } from "@/lib/dates";
 import { normalizePhoneE164, parseVincularCode, looksLikeEmail } from "@/lib/studio-bot/phone";
 import type { StudioBotInboundWebhookBody } from "@/lib/studio-bot/types";
 import { backofficeBotActionUseCase } from "./BackofficeBotActionUseCase";
@@ -134,6 +135,8 @@ type OutboundBase = {
   channelDisplayName: string;
   phone: string;
   userLinkId: string;
+  /** Fuso da conta do usuário vinculado; usado para formatar datas nas respostas. */
+  timezone?: string;
 };
 
 export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInboundWebhookUseCase {
@@ -283,10 +286,11 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       }
 
       const session = await backofficeBotRepository.findActiveSession(userLink.id);
-      const teamId =
-        session?.teamId ??
-        (await backofficeBotRepository.findProfileActiveTeam(userLink.profileId))?.activeTeamId ??
-        null;
+      const profile = await backofficeBotRepository.findProfileActiveTeam(userLink.profileId);
+      const teamId = session?.teamId ?? profile?.activeTeamId ?? null;
+      // Datas que o robô lê e escreve seguem o fuso da conta (o Brasil tem quatro).
+      const timezone = resolveTimezone(profile?.timezone);
+      outboundBase.timezone = timezone;
 
       if (session?.flowStep === "awaiting_search_query" && text.length > 0) {
         return this.runActionAndReply({
@@ -327,7 +331,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
       }
 
       if (session?.flowStep === "awaiting_meeting_datetime" && session.currentLeadId && text.length > 0) {
-        const parsed = parseMeetingDatetimeInput(text);
+        const parsed = parseMeetingDatetimeInput(text, timezone);
         if (!parsed) {
           await this.sendOutboundText({
             ...outboundBase,
@@ -946,6 +950,7 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
     nextFlowStep: string;
     currentLeadId?: string | null;
     captureLeadIdFromResult?: boolean;
+    timezone?: string;
   }): Promise<Output> {
     if (!input.teamId) {
       await this.sendOutboundText({
@@ -971,13 +976,13 @@ export class BackofficeBotInboundWebhookUseCase implements IBackofficeBotInbound
     });
 
     let replyText = actionOutput.isValid
-      ? formatActionReply(input.action, actionOutput.result)
-      : formatActionReply(input.action, null, actionOutput.errorMessages);
+      ? formatActionReply(input.action, actionOutput.result, [], input.timezone)
+      : formatActionReply(input.action, null, actionOutput.errorMessages, input.timezone);
 
     if (actionOutput.isValid && input.action === "lead_detail") {
       const lead = (actionOutput.result as { lead?: Parameters<typeof formatLeadSubmenu>[0] })?.lead;
       if (lead) {
-        replyText = formatActionReply("lead_detail", actionOutput.result);
+        replyText = formatActionReply("lead_detail", actionOutput.result, [], input.timezone);
       }
     }
 

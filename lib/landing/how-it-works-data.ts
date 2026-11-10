@@ -21,17 +21,17 @@ export const howItWorksSteps: StepData[] = [
   },
   {
     number: "03",
-    title: "Unifique no Radar",
+    title: "Unifique no radar",
     description: "CRM e carteira viram perfis únicos. Segmente quem está apto, perto da renovação ou frio.",
   },
   {
     number: "04",
     title: "Dispare campanhas",
-    description: "Escolha um segmento do Radar ou uma lista CSV, agende e envie sem sair da plataforma.",
+    description: "Escolha um segmento do radar ou uma lista CSV, agende e envie sem sair da plataforma.",
   },
   {
     number: "05",
     title: "Analise e cresça",
-    description: "Abertura, clique, entrega e indicadores do time — decida o próximo movimento com dados.",
+    description: "Abertura, clique, entrega e indicadores do time. Decida o próximo movimento com dados.",
   },
 ]

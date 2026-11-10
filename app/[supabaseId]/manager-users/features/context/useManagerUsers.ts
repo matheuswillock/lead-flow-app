@@ -15,6 +15,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import type { TeamMemberAccessHistory, TeamMemberAccessSummary } from "@/lib/team-member-access/access-history";
 
 interface UseManagerUsersProps {
   supabaseId: string;
@@ -58,8 +59,8 @@ export function useManagerUsers({
   const resolvedRole = activeRole ?? currentUserRole;
   const permissions = useMemo<UserPermissions>(() => ({
     canCreateUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
-    canEditUser: isManagerLikeRole(resolvedRole),
-    canDeleteUser: currentUserIsMaster,
+    canEditUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
+    canDeleteUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
     canManageOperators: isManagerLikeRole(resolvedRole),
   }), [currentUserCanCreateUsers, currentUserIsMaster, resolvedRole]);
 
@@ -474,17 +475,22 @@ export function useManagerUsers({
     return () => clearInterval(intervalId);
   }, [state.users, loadUsers]);
 
-  // Reenviar convite por e-mail
-  const resendInvite = useCallback(async (email: string, userId?: string) => {
-    const toastId = toast.loading('Enviando email de reset de senha...');
-    
+  // Reenviar e-mail de acesso (primeiro acesso ou nova senha, decidido no servidor)
+  const resendInvite = useCallback(async (_email: string, userId?: string) => {
+    if (!userId) return;
+    const toastId = toast.loading('Enviando e-mail de acesso...');
+
     try {
-      const result = await managerUsersService.resendInvite(email, userId);
-      
+      const result = await managerUsersService.resendAccessEmail(userId);
+
       toast.dismiss(toastId);
-      
+
       if (result.isValid) {
-        toast.success('Email de reset de senha enviado com sucesso!');
+        // Endereço de destino no título; prazo e lembrete do spam na descrição, por tempo suficiente para ler.
+        toast.success(result.successMessages?.[0] ?? 'E-mail de acesso enviado.', {
+          description: result.successMessages?.[1],
+          duration: 10000,
+        });
       } else {
         notifyManagerUsersError({
           operation: "resendInvite",
@@ -494,7 +500,7 @@ export function useManagerUsers({
       }
     } catch (error) {
       toast.dismiss(toastId);
-      console.error('Erro ao enviar email de reset:', error);
+      console.error('Erro ao enviar e-mail de acesso:', error);
       notifyManagerUsersError({
         operation: "resendInvite",
         error,
@@ -502,6 +508,34 @@ export function useManagerUsers({
       });
     }
   }, [managerUsersService, errorContext]);
+
+  // Situação de acesso por usuário (coluna "Acesso"): carrega depois da lista, sem travar a tabela.
+  const [accessSummaryById, setAccessSummaryById] = useState<ReadonlyMap<string, TeamMemberAccessSummary>>(
+    () => new Map()
+  );
+  const [isAccessSummaryLoading, setIsAccessSummaryLoading] = useState(false);
+  const userIdsKey = state.users.map((managerUser) => managerUser.id).join(",");
+
+  const loadAccessSummary = useCallback(async () => {
+    setIsAccessSummaryLoading(true);
+    const summaries = await managerUsersService.getAccessSummary();
+    setAccessSummaryById(new Map(summaries.map((summary) => [summary.profileId, summary])));
+    setIsAccessSummaryLoading(false);
+  }, [managerUsersService]);
+
+  useEffect(() => {
+    if (!userIdsKey) return;
+    void loadAccessSummary();
+  }, [userIdsKey, loadAccessSummary]);
+
+  /** Histórico de acesso do usuário; lança com a mensagem do servidor quando não dá para carregar. */
+  const loadAccessHistory = useCallback(async (userId: string): Promise<TeamMemberAccessHistory> => {
+    const response = await managerUsersService.getAccessHistory(userId);
+    if (!response.isValid || !response.result) {
+      throw new Error(response.errorMessages?.[0] ?? 'Não foi possível carregar o histórico de acesso.');
+    }
+    return response.result;
+  }, [managerUsersService]);
 
   return {
     // Estado
@@ -516,6 +550,10 @@ export function useManagerUsers({
     updateUser,
     deleteUser,
     resendInvite,
+    loadAccessHistory,
+    accessSummaryById,
+    isAccessSummaryLoading,
+    loadAccessSummary,
     operatorCheckout,
     closeOperatorCheckout,
     completeOperatorCheckout,

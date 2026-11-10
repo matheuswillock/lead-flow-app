@@ -1,6 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
+import { API_CLIENT_BASE } from "@/lib/route-map";
 
 export type ManagerUsersOperation =
   | "loadUsers"
@@ -43,7 +44,7 @@ const OPERATION_FALLBACK: Record<ManagerUsersOperation, string> = {
   deleteUser: "Não foi possível remover o usuário.",
   checkEmail: "Não foi possível validar o e-mail.",
   loadUserTeams: "Não foi possível carregar os times do usuário.",
-  resendInvite: "Não foi possível enviar o e-mail de reset.",
+  resendInvite: "Não foi possível reenviar o e-mail de acesso.",
   togglePermanentSubscription: "Não foi possível alterar a assinatura permanente.",
   deletePendingOperator: "Não foi possível remover o operador pendente.",
   createPayment: "Não foi possível gerar o pagamento.",
@@ -134,7 +135,7 @@ const SENSITIVE_KEYS = new Set([
   "userEmail",
 ]);
 
-const LOG_ENDPOINT = "/api/v1/logs/client-error";
+const LOG_ENDPOINT = `${API_CLIENT_BASE}/logs/client-error`;
 
 const extractRawMessage = (input?: ErrorInput, errorMessages?: string[]) => {
   const messageFromArray = errorMessages?.find((msg) => !!msg)?.trim();

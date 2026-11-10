@@ -103,4 +103,27 @@ describe("BackofficeAdhesionService — guard de assinatura na origem (T-20.21)"
 
     expect(createPaidManagerProfileMock).toHaveBeenCalledTimes(1)
   })
+
+  it("o time padrão da conta recebe o nome da empresa do lead (fantasia ou razão social)", async () => {
+    const createPaidManagerProfileMock = mock(async (_input: { teamName?: string | null }) => {
+      throw new Error("sentinel: passou do guard")
+    })
+    const repo = {
+      createPaidManagerProfile: createPaidManagerProfileMock,
+    } as unknown as IBackofficeAdhesionRepository
+    const service = new BackofficeAdhesionService(repo)
+
+    const adhesion = buildAdhesion({
+      cycle: "quarterly",
+      monthlyTotalAmount: 91.4 as unknown as BackofficeAdhesionWithRelations["monthlyTotalAmount"],
+      totalAmount: 274.2 as unknown as BackofficeAdhesionWithRelations["totalAmount"],
+      lead: { qualificationLeadOrganization: "Corretora Exemplo" } as BackofficeAdhesionWithRelations["lead"],
+    })
+
+    await expect((service as any).ensureAccountForPaidAdhesion(adhesion)).rejects.toThrow(
+      /sentinel: passou do guard/,
+    )
+
+    expect(createPaidManagerProfileMock.mock.calls[0]?.[0].teamName).toBe("Corretora Exemplo")
+  })
 })

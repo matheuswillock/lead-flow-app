@@ -9,12 +9,16 @@ import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-i
 import { isPublicFormRequestOriginAllowed } from "@/lib/public-forms/request-origin-guard"
 import {
   SELF_CHECKOUT_ERROR_STATUS,
+  selfCheckoutCouponQuoteRequestSchema,
   selfCheckoutRequestSchema,
   type SelfCheckoutErrorCode,
   type SelfCheckoutRequest,
 } from "@/lib/self-checkout/contracts"
 
 const IP_RATE_LIMIT: BillingRateLimitOptions = { limit: 5, windowMs: 10 * 60_000 }
+// Cupom: limite por IP (contra varredura de códigos) e por IP + código (contra repetir o mesmo palpite).
+const COUPON_IP_RATE_LIMIT: BillingRateLimitOptions = { limit: 20, windowMs: 10 * 60_000 }
+const COUPON_CODE_RATE_LIMIT: BillingRateLimitOptions = { limit: 8, windowMs: 10 * 60_000 }
 const EMAIL_RATE_LIMIT: BillingRateLimitOptions = { limit: 3, windowMs: 10 * 60_000 }
 // IP não confiável (cabeçalho forjável) cai num balde compartilhado: falha fechada.
 const UNTRUSTED_IP_BUCKET = "untrusted-shared"
@@ -92,6 +96,41 @@ export function createSelfCheckoutPostHandler(dependencies: SelfCheckoutHandlerD
     } catch (error) {
       rethrowIfPrerenderInterrupted(error)
       console.error("[PublicSelfCheckoutRoute][POST]", error instanceof Error ? error.name : "erro")
+      return failure([INTERNAL_ERROR_MESSAGE], 500)
+    }
+  }
+}
+
+export function createSelfCheckoutCouponPostHandler(dependencies: SelfCheckoutHandlerDependencies) {
+  return async function POST(request: Request): Promise<Response> {
+    try {
+      const body = await request.json().catch(() => null)
+      if (!body || typeof body !== "object") return failure([GENERIC_INVALID_MESSAGE], 400)
+      const parsed = selfCheckoutCouponQuoteRequestSchema.safeParse(body)
+      if (!parsed.success) return failure(parsed.error.issues.map((issue) => issue.message), 400)
+      if (detectSqlInjection(parsed.data.couponCode).suspicious) return failure([GENERIC_INVALID_MESSAGE], 400)
+      if (!isPublicFormRequestOriginAllowed(request)) return failure([GENERIC_INVALID_MESSAGE], 400)
+
+      const clientIp = getTrustedClientIp(request.headers) ?? UNTRUSTED_IP_BUCKET
+      const ipLimit = await dependencies.consumeRateLimit(`public-self-checkout-coupon-ip:${clientIp}`, COUPON_IP_RATE_LIMIT)
+      const codeLimit = ipLimit.allowed
+        ? await dependencies.consumeRateLimit(
+            `public-self-checkout-coupon-code:${clientIp}:${hashEmail(parsed.data.couponCode.trim().toUpperCase())}`,
+            COUPON_CODE_RATE_LIMIT,
+          )
+        : ipLimit
+      if (!codeLimit.allowed) {
+        return failure([RATE_LIMITED_MESSAGE], 429, { "Retry-After": String(codeLimit.retryAfterSeconds) })
+      }
+
+      const output = await dependencies.useCase.quoteCoupon(parsed.data)
+      return NextResponse.json(output, {
+        status: output.isValid ? 200 : statusFor(output),
+        headers: { "Cache-Control": "no-store" },
+      })
+    } catch (error) {
+      rethrowIfPrerenderInterrupted(error)
+      console.error("[PublicSelfCheckoutCouponRoute][POST]", error instanceof Error ? error.name : "erro")
       return failure([INTERNAL_ERROR_MESSAGE], 500)
     }
   }
