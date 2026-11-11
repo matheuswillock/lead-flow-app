@@ -4,9 +4,17 @@ import { AbacatePayProvider } from "@/app/api/infra/providers/AbacatePayProvider
 import { PaymentProviderConfig } from "@/lib/payment-provider/config"
 // --isolate: os mocks de módulo abaixo valem apenas para este arquivo.
 
-const listConfigs = mock(async (_environment: string) => [
-  { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
-])
+function eligibleConfig(externalAccountContext: string) {
+  return {
+    provider: "ABACATE_PAY",
+    externalAccountContext,
+    enabled: true,
+    killSwitch: false,
+    rolloutState: "ACTIVE",
+  }
+}
+
+const listConfigs = mock(async (_environment: string) => [eligibleConfig("abacate-production")])
 let sharedWebhookCredentials = false
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
@@ -178,8 +186,8 @@ function signedHeadersWithKey(rawBody: string, key: string) {
 describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
   it("seleciona a instância que autenticou o webhook quando há várias contas", async () => {
     listConfigs.mockImplementationOnce(async () => [
-      { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
-      { provider: "ABACATE_PAY", externalAccountContext: "account-b" },
+      eligibleConfig("abacate-production"),
+      eligibleConfig("account-b"),
     ])
     attempt = { ...defaultAttempt, externalAccountContext: "account-b" }
     const body = completedPayload(false)
@@ -197,8 +205,8 @@ describe("POST /api/v1/webhooks/payment-provider/abacate em PRODUCTION", () => {
   it("rejeita sem processar quando mais de uma instância autentica o mesmo webhook", async () => {
     sharedWebhookCredentials = true
     listConfigs.mockImplementationOnce(async () => [
-      { provider: "ABACATE_PAY", externalAccountContext: "abacate-production" },
-      { provider: "ABACATE_PAY", externalAccountContext: "account-b" },
+      eligibleConfig("abacate-production"),
+      eligibleConfig("account-b"),
     ])
 
     const response = await POST(webhookRequest(completedPayload(false), "?webhookSecret=prod-webhook-secret"))

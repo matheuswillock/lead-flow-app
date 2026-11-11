@@ -8,6 +8,7 @@ import { createApplyPaymentEvent } from "./applyPaymentEvent"
 import { reportPaymentDisputed } from "./reportPaymentDisputed"
 import { reportRejectedConfirmation } from "./reportRejectedConfirmation"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
+import { selectWebhookAuthenticatableConfigurations } from "./selectWebhookAuthenticatableConfigurations"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
 import { PaymentProviderError } from "@/lib/payment-provider/errors"
@@ -21,8 +22,10 @@ const ROUTE_VERSION = "PAY-PROV-PHASE-3"
 
 export async function createPaymentProviderWebhookService(request: RawWebhookRequest) {
   const environment = resolvePaymentProviderEnvironment()
-  const configurations = (await paymentProviderConfigRepository.list(environment)).filter(
-    (item) => item.provider === "ABACATE_PAY",
+  const configurations = selectWebhookAuthenticatableConfigurations(
+    (await paymentProviderConfigRepository.list(environment)).filter(
+      (item) => item.provider === "ABACATE_PAY",
+    ),
   )
   if (configurations.length === 0) throw new Error("Configuração do provider não encontrada")
 

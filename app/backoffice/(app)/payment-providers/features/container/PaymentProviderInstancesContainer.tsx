@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePaymentProviderInstances } from "../context/PaymentProviderInstancesHook"
 import type { CreatePaymentProviderInstance, PaymentProviderInstance } from "../services/IPaymentProviderInstancesService"
+import { CardConfigCard } from "../card-config/CardConfigCard"
 
 const CREDENTIAL_FIELDS: Record<PaymentProviderInstance["provider"], Array<{ key: string; label: string }>> = {
   ABACATE_PAY: [
@@ -109,6 +110,8 @@ export function PaymentProviderInstancesContainer() {
           <Plus data-icon="inline-start" /> Nova instância
         </Button>
       </header>
+
+      <CardConfigCard />
 
       <section aria-label="Instâncias de pagamento" className="flex flex-col gap-3">
         {loading ? <Skeleton className="h-40 w-full" /> : error ? (

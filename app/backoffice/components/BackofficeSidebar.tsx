@@ -124,8 +124,21 @@ const navigationItems: NavItem[] = [
     ],
   },
   { title: "Contratos", url: "/backoffice/contracts", icon: FileText },
-  { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
-  { title: "Providers de pagamento", url: "/backoffice/payment-providers", icon: CreditCard },
+  {
+    title: "Pagamentos",
+    url: "/backoffice/payments",
+    icon: CreditCard,
+    match: (pathname) =>
+      pathname.startsWith("/backoffice/payments") || pathname.startsWith("/backoffice/payment-providers"),
+    children: [
+      { title: "Cobranças", url: "/backoffice/payments", match: (pathname) => pathname.startsWith("/backoffice/payments") },
+      {
+        title: "Provedores de Pagamento",
+        url: "/backoffice/payment-providers",
+        match: (pathname) => pathname.startsWith("/backoffice/payment-providers"),
+      },
+    ],
+  },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   {
     title: "Funcionalidades",
