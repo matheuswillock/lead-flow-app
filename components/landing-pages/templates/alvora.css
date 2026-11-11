@@ -307,6 +307,7 @@ h1 { font-size:80px; line-height:.88; letter-spacing:-.075em; margin:7px 0 48px;
   .alvora-source .site-header button,
   .alvora-source .footer a,
   .alvora-source .footer button,
+  .alvora-source a[href^="tel:"],
   .alvora-source .cookie-consent button,
   .alvora-source .cookie-dialog button {
     display: inline-flex;

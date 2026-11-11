@@ -125,10 +125,29 @@ export async function assertNoHorizontalOverflow(
   for (const width of widths) {
     await page.setViewportSize({ width, height: 800 });
     await waitForLayoutSettle(page);
-    const noOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-    );
-    expect(noOverflow, `sem overflow horizontal em ${width}px`).toBe(true);
+    // Em caso de overflow, nomeia quem passa da borda direita da janela: sem
+    // isso a falha só diz "false" e o elemento é caçado às cegas em CI.
+    const overflow = await page.evaluate(() => {
+      const viewportWidth = window.innerWidth;
+      const describe = (element: Element) => {
+        const id = element.id ? `#${element.id}` : "";
+        const classes = (element.getAttribute("class") ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 3);
+        const rect = element.getBoundingClientRect();
+        return `${element.tagName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join("")} (esquerda ${rect.left.toFixed(0)}, direita ${rect.right.toFixed(0)}, largura ${rect.width.toFixed(0)})`;
+      };
+      const hasOverflow = document.documentElement.scrollWidth > viewportWidth + 1;
+      const offenders = hasOverflow
+        ? Array.from(document.querySelectorAll("body *"))
+            .filter((element) => element.getBoundingClientRect().right > viewportWidth + 1)
+            .slice(0, 8)
+            .map(describe)
+        : [];
+      return { hasOverflow, scrollWidth: document.documentElement.scrollWidth, viewportWidth, offenders };
+    });
+    expect(
+      overflow.hasOverflow,
+      `sem overflow horizontal em ${width}px (scrollWidth ${overflow.scrollWidth} > ${overflow.viewportWidth}); passam da borda: ${overflow.offenders.join(" | ") || "nenhum elemento identificado"}`,
+    ).toBe(false);
   }
 }
 
