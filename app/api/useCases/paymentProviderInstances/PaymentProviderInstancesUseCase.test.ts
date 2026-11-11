@@ -73,4 +73,28 @@ describe("PaymentProviderInstancesUseCase", () => {
     expect(result.isValid).toBe(false)
     expect(create).not.toHaveBeenCalled()
   })
+
+  it("decisão 16: credencial salva com sucesso nunca ecoa o valor na resposta nem na auditoria", async () => {
+    const secret = "sk_live_super_secreto_12345"
+    const create = mock(async () => record)
+    const logAudit = mock(async (_entry: { after: unknown; metadata: unknown }) => undefined)
+    const useCase = new PaymentProviderInstancesUseCase(repository({ create }), { logAudit })
+
+    const result = await useCase.create({
+      provider: "ABACATE_PAY",
+      environment: "DEV",
+      displayName: "Abacate",
+      externalAccountContext: "dev",
+      isDefault: false,
+      credentials: { API_KEY: secret, WEBHOOK_SECRET: "whsec_outro_segredo", PUBLIC_KEY: "pk_dev_outra_chave" },
+      actorProfileId: "profile-1",
+    })
+
+    expect(result.isValid).toBe(true)
+    expect(JSON.stringify(result.result)).not.toContain(secret)
+    expect(logAudit).toHaveBeenCalled()
+    const auditCall = logAudit.mock.calls[0]?.[0]
+    expect(JSON.stringify(auditCall?.after)).not.toContain(secret)
+    expect(auditCall?.metadata).toMatchObject({ credentialValuesOmitted: true })
+  })
 })
