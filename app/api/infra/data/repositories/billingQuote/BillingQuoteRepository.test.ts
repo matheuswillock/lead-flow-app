@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
+import { EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER } from "@/lib/backoffice/email-domain"
 
 const profileFindUnique = mock(async () => ({
   id: "owner-1",
@@ -71,7 +72,10 @@ describe("BillingQuoteRepository", () => {
     expect(projection?.baseProduct?.unitAmount).toBe(239.7)
     expect(teamMemberFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { team: { masterId: "owner-1", deletedAt: null }, profile: { deletedAt: null } },
+        where: {
+          team: { masterId: "owner-1", deletedAt: null },
+          profile: { deletedAt: null, ...EXCLUDE_CORRETOR_STUDIO_STAFF_PROFILE_FILTER },
+        },
         distinct: ["profileId"],
       })
     )
