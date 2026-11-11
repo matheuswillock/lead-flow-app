@@ -4,6 +4,7 @@ import { getLeadStatusStageColor } from "@/lib/lead-status";
 import { div as MotionDiv } from "framer-motion/client";
 import { COLUMNS } from "../context/BoardContext";
 import useBoardContext from "../context/BoardHook";
+import { useIsReadOnlyAccess } from "@/app/[supabaseId]/components/useIsReadOnlyAccess";
 import { LeadsLoader } from "./LeadsLoader";
 import { LeadsError } from "./LeadsError";
 import { LeadCard } from "./LeadCard";
@@ -39,6 +40,7 @@ export default function BoardColumns({
         onDrop,
         onDragOver
     } = useBoardContext();
+    const isReadOnlyAccess = useIsReadOnlyAccess();
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +159,7 @@ export default function BoardColumns({
                             <div className="kanban-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pr-3">
                                 {items.length === 0 && (
                                     <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
-                                        Solte aqui
+                                        {isReadOnlyAccess ? "Nenhum lead" : "Solte aqui"}
                                     </div>
                                 )}
 

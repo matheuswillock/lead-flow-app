@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
+import { useIsReadOnlyAccess } from "@/app/[supabaseId]/components/useIsReadOnlyAccess";
 import { LeadsSingleFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsSingleFilter";
 import { LEAD_ORIGIN_FILTER_OPTIONS, parseLeadOriginFilter } from "@/lib/leads/origin-filter";
 
@@ -39,6 +40,7 @@ export default function PipelineHeader({
         openNewLeadDialog,
         refreshLeads
     } = usePipelineContext();
+    const isReadOnlyAccess = useIsReadOnlyAccess();
 
     // Calcular total de leads
     const totalLeads = allLeads.length;
@@ -125,15 +127,17 @@ export default function PipelineHeader({
             onChange={(value) => setOriginFilter(parseLeadOriginFilter(value))}
           />
 
-          <Button
-            onClick={openNewLeadDialog}
-            className="ml-2 cursor-pointer max-lg:h-11"
-          >
-            <Plus className="mr-2 size-4" />
-            Adicionar novo lead
-          </Button>
+          {isReadOnlyAccess ? null : (
+            <Button
+              onClick={openNewLeadDialog}
+              className="ml-2 cursor-pointer max-lg:h-11"
+            >
+              <Plus className="mr-2 size-4" />
+              Adicionar novo lead
+            </Button>
+          )}
           {viewModeToggle}
-          <LeadImportButton onImportComplete={refreshLeads} />
+          {isReadOnlyAccess ? null : <LeadImportButton onImportComplete={refreshLeads} />}
         </div>
       </div>
     );

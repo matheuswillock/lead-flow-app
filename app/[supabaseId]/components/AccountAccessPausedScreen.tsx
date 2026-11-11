@@ -31,6 +31,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { getAccessPausedCopy } from "./accountAccessPausedCopy"
+import { getAccessPausedAction } from "./accountAccessRecovery"
 
 export const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
   `https://wa.me/5511939534668?text=${encodeURIComponent("Olá! Minha conta do Corretor Studio está com o acesso pausado e preciso de orientação sobre os próximos passos.")}`
@@ -42,18 +44,6 @@ type AccountAccessPausedScreenProps = {
   reactivateHref?: string
 }
 
-/**
- * Master: o que fazer para reativar. Demais usuários: só o aviso de que o acesso volta
- * sozinho quando a conta for regularizada, sem cobrar deles uma ação.
- */
-export function pausedMessageFor(reason: AccountAccessRestrictionReason | undefined, canReactivate: boolean): string {
-  if (reason === "banned") return "Fale com o time de assinaturas para entender como seguir."
-  if (canReactivate) {
-    return "Pague a renovação para reativar a assinatura. O acesso volta assim que o pagamento for confirmado."
-  }
-  return "Seu acesso volta automaticamente assim que a assinatura desta conta for regularizada."
-}
-
 export function AccountAccessPausedScreen({
   isBillingOwner = false,
   reason,
@@ -61,8 +51,12 @@ export function AccountAccessPausedScreen({
 }: AccountAccessPausedScreenProps) {
   const teamContext = useOptionalTeamContext()
   const [isSigningOut, startSignOut] = useTransition()
-  // Só quem paga a conta reativa; banimento não se resolve com pagamento.
-  const canReactivate = isBillingOwner && reason !== "banned" && Boolean(reactivateHref)
+  // Só o master reativa pagando (pendente, suspenso ou cancelado). Banido e master com assinatura
+  // indisponível não têm pagamento a fazer: falam com o time de assinaturas. Os demais só leem o aviso.
+  const action = getAccessPausedAction(reason, isBillingOwner)
+  const canReactivate = action === "payment" && Boolean(reactivateHref)
+  const showSupport = action === "support" || (action === "payment" && !reactivateHref)
+  const copy = getAccessPausedCopy(reason, isBillingOwner)
   const teams = teamContext?.teams ?? []
 
   return (
@@ -145,14 +139,12 @@ export function AccountAccessPausedScreen({
                   <ShieldAlert className="size-5 text-muted-foreground" />
                   <h1 className="leading-none font-semibold">Seu acesso está pausado</h1>
                 </div>
-                <CardDescription>
-                  {reason === "past_due" ? "Esta conta está com um pagamento pendente." : "Esta conta está com o acesso pausado."}
-                </CardDescription>
+                <CardDescription>{copy.description}</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">{pausedMessageFor(reason, canReactivate)}</p>
+                <p className="text-sm text-muted-foreground">{copy.guidance}</p>
               </CardContent>
-              {canReactivate || reason === "banned" ? (
+              {canReactivate || showSupport ? (
                 <CardFooter>
                   {canReactivate ? (
                     <Button asChild className="h-11 w-full">
@@ -162,7 +154,7 @@ export function AccountAccessPausedScreen({
                       </Link>
                     </Button>
                   ) : (
-                    // Bloqueio pelo time interno não se resolve pagando: só o atendimento libera.
+                    // Banimento ou assinatura indisponível não se resolve pagando: só o atendimento libera.
                     <Button asChild className="h-11 w-full">
                       <a href={SUBSCRIPTION_SUPPORT_WHATSAPP_URL} target="_blank" rel="noreferrer">
                         <MessageCircle data-icon="inline-start" />

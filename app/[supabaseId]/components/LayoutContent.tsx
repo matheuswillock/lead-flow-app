@@ -16,6 +16,8 @@ import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/f
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
 import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
 import { TeamSwitchingScreen } from "./TeamSwitchingScreen";
+import { ReadOnlySidebar } from "./ReadOnlySidebar";
+import { ReadOnlyAccessBanner } from "./ReadOnlyAccessBanner";
 import { shouldContainLayoutContent } from "@/lib/layout/layout-content-overflow";
 
 interface LayoutContentProps {
@@ -40,7 +42,10 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
     switchingTeamName,
     isTeamSwitchPersisted,
     completeTeamSwitch,
+    accountAccessDecision,
+    isTeamMaster,
   } = useTeamContext();
+  const isReadOnlyAccess = accountAccessDecision?.state === "read_only";
   const { isLoading: featureLoading, hasAccess, refresh: refreshFeatureAccess } = useFeatureAccess();
   const { access: operationalAccess, isLoading: operationalAccessLoading, refresh: refreshOperationalAccess } = useOperationalAccess();
   const refreshFeatureAccessRef = useRef(refreshFeatureAccess);
@@ -148,10 +153,13 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
         } as React.CSSProperties
       }
     >
-      <AppSidebar supabaseId={supabaseId} />
+      {isReadOnlyAccess ? <ReadOnlySidebar supabaseId={supabaseId} /> : <AppSidebar supabaseId={supabaseId} />}
       <SidebarInset>
         <SiteHeader />
-        <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal} />
+        {isReadOnlyAccess ? (
+          <ReadOnlyAccessBanner supabaseId={supabaseId} isBillingOwner={isTeamMaster} />
+        ) : null}
+        <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal && !isReadOnlyAccess} />
         <CampaignDispatchIndicator />
         <div className={`flex min-h-0 flex-1 flex-col ${containsPageScroll ? "overflow-hidden" : "overflow-auto"}`}>
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">

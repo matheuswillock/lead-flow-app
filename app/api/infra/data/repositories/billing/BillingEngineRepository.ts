@@ -121,16 +121,13 @@ class BillingEngineRepository {
         subscriptionStatus: "past_due",
         hasPermanentSubscription: false,
         AND: [
-          // A data efetiva pode vir da ProfileSubscription OU do Profile (o
-          // webhook do Asaas grava só no Profile) — ver
-          // `resolveEffectiveNextDueDate`.
+          // O atraso é contado da data mais antiga entre ProfileSubscription e Profile (o
+          // webhook do Asaas grava só no Profile) — ver `resolveEffectiveNextDueDate`.
+          // Por isso basta uma das duas ter passado do corte para a conta ser candidata.
           {
             OR: [
               { subscriptionNextDueDate: { lte: params.notBefore } },
-              {
-                subscriptionNextDueDate: null,
-                profile: { subscriptionNextDueDate: { lte: params.notBefore } },
-              },
+              { profile: { subscriptionNextDueDate: { lte: params.notBefore } } },
             ],
           },
           ...(keysetFilter ? [keysetFilter] : []),

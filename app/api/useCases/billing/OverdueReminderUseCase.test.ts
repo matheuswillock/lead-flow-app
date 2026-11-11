@@ -80,6 +80,12 @@ function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 }
 
+// A data de vencimento é sempre contada a partir da mais antiga (assinatura ou perfil).
+function makeRowWithProfileDue(profileDueDaysAgo: number, subscriptionDueDaysAgo: number) {
+  const row = makeRow({ subscriptionNextDueDate: daysAgo(subscriptionDueDaysAgo) })
+  return { ...row, profile: { ...row.profile, subscriptionNextDueDate: daysAgo(profileDueDaysAgo) } }
+}
+
 function makeRow(overrides: Record<string, unknown> = {}) {
   return {
     profileId: "profile-1",
@@ -126,11 +132,23 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
       userEmail: "cliente@example.com",
       tier: "crm_only",
     })
+    // O botão do e-mail leva à página de pagamento, a única que o master alcança com a conta limitada.
+    const manageUrl = (sendDelinquencyReminderEmailMock.mock.calls[0][0] as { manageUrl?: string }).manageUrl
+    expect(manageUrl).toMatch(/\/supabase-1\/billing-grace-payment$/)
     expect(recordDelinquencyNoticeMock).toHaveBeenCalledTimes(1)
     expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
       profileId: "profile-1",
       eventType: "reduced",
     })
+  })
+
+  it("assinatura com atraso recente mas perfil com 20 dias → conta da mais antiga e envia o e-mail de corte", async () => {
+    findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [makeRowWithProfileDue(20, 3)])
+
+    const output = await new OverdueReminderUseCase().processOverdueReminders()
+
+    expect(output.isValid).toBe(true)
+    expect(sendDelinquencyReminderEmailMock.mock.calls[0][0]).toMatchObject({ tier: "cut_off" })
   })
 
   it("dia 20 (cut_off) sem aviso prévio → envia e-mail com tier cut_off e loga eventType cut", async () => {

@@ -1,6 +1,93 @@
-import { expect, test } from "bun:test"
+import { expect, mock, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
-import { AccountAccessGate } from "./AccountAccessGate"
+
+let currentPathname: string | null = null
+const actualNavigation = await import("next/navigation")
+mock.module("next/navigation", () => ({
+  ...actualNavigation,
+  usePathname: () => currentPathname,
+  useParams: () => ({ supabaseId: "conta-1" }),
+  useRouter: () => ({ replace: () => undefined }),
+}))
+const { AccountAccessGate } = await import("./AccountAccessGate")
+
+const PAYMENT_PATH = "/conta-1/billing-grace-payment"
+const PAYMENT_HREF = 'href="/conta-1/billing-grace-payment"'
+
+function renderGate({
+  pathname,
+  reason,
+  isBillingOwner,
+}: {
+  pathname: string
+  reason: "banned" | "past_due" | "suspended" | "canceled" | "subscription_unavailable"
+  isBillingOwner: boolean
+}) {
+  currentPathname = pathname
+  return renderToStaticMarkup(
+    <AccountAccessGate decision={{ state: "restricted", reason, isBillingOwner }}>
+      <section data-testid="platform-content">pagamento e CRM</section>
+    </AccountAccessGate>
+  )
+}
+
+test("master pausado recebe o botão de pagamento, sem o WhatsApp", () => {
+  const markup = renderGate({ pathname: "/conta-1/dashboard", reason: "past_due", isBillingOwner: true })
+
+  expect(markup).toContain("Seu acesso está pausado")
+  expect(markup).toContain("Reativar assinatura")
+  expect(markup).toContain(PAYMENT_HREF)
+  expect(markup).not.toContain("wa.me")
+  expect(markup).not.toContain("pagamento e CRM")
+})
+
+test("quem não é master vê só o aviso, sem botão de pagamento nem WhatsApp", () => {
+  const markup = renderGate({ pathname: "/conta-1/dashboard", reason: "past_due", isBillingOwner: false })
+
+  expect(markup).toContain("Avise o administrador desta conta")
+  expect(markup).not.toContain("Reativar assinatura")
+  expect(markup).not.toContain("billing-grace-payment")
+  expect(markup).not.toContain("wa.me")
+})
+
+test("banido, mesmo master, só fala com o time de assinaturas", () => {
+  const markup = renderGate({ pathname: "/conta-1/dashboard", reason: "banned", isBillingOwner: true })
+
+  expect(markup).toContain("Falar com o time de assinaturas")
+  expect(markup).toContain("wa.me")
+  expect(markup).not.toContain("Reativar assinatura")
+})
+
+test("libera a página de pagamento só para o master que pode pagar", () => {
+  const owner = renderGate({ pathname: PAYMENT_PATH, reason: "suspended", isBillingOwner: true })
+
+  expect(owner).toContain("pagamento e CRM")
+  expect(owner).not.toContain("Seu acesso está pausado")
+})
+
+test("mantém a tela pausada na página de pagamento para quem não pode usá-la", () => {
+  const member = renderGate({ pathname: PAYMENT_PATH, reason: "past_due", isBillingOwner: false })
+  const bannedOwner = renderGate({ pathname: PAYMENT_PATH, reason: "banned", isBillingOwner: true })
+  const unavailableOwner = renderGate({
+    pathname: PAYMENT_PATH,
+    reason: "subscription_unavailable",
+    isBillingOwner: true,
+  })
+
+  for (const markup of [member, bannedOwner, unavailableOwner]) {
+    expect(markup).toContain("Seu acesso está pausado")
+    expect(markup).not.toContain("pagamento e CRM")
+  }
+})
+
+test("a liberação vale só para a rota de pagamento: o resto segue pausado para o master", () => {
+  for (const pathname of ["/conta-1/subscription", "/conta-1/billing-grace-payment/extra"]) {
+    const markup = renderGate({ pathname, reason: "past_due", isBillingOwner: true })
+
+    expect(markup).toContain("Seu acesso está pausado")
+    expect(markup).not.toContain("pagamento e CRM")
+  }
+})
 
 test("renderiza apenas a navegação restrita, sem conteúdo da plataforma, para conta restrita", () => {
   const markup = renderToStaticMarkup(
@@ -20,9 +107,10 @@ test("renderiza apenas a navegação restrita, sem conteúdo da plataforma, para
   expect(markup).not.toContain("dados financeiros e CRM")
   expect(markup).toContain("w-full max-w-md")
   expect(markup).toContain("p-4")
-  // Sem ser o master (quem paga), não há botão de reativar: só a orientação e o suporte.
+  // Sem ser o master (quem paga), não há botão de reativar nem WhatsApp: só a orientação.
   expect(markup).not.toContain("Reativar assinatura")
-  expect(markup).toContain("Seu acesso volta automaticamente")
+  expect(markup).not.toContain("wa.me")
+  expect(markup).toContain("Avise o administrador desta conta")
 })
 
 test("na carência mostra o aviso de vencimento sobre o conteúdo, sem bloquear", () => {
@@ -92,4 +180,41 @@ test("sessão na URL de outra conta sem decisão resolvida nunca exibe pausa alh
 
   expect(markup).toContain("dados financeiros e CRM")
   expect(markup).not.toContain("Seu acesso está pausado")
+})
+
+function renderReadOnlyGate({ pathname, isBillingOwner }: { pathname: string; isBillingOwner: boolean }) {
+  currentPathname = pathname
+  return renderToStaticMarkup(
+    <AccountAccessGate decision={{ state: "read_only", reason: "past_due", isBillingOwner }}>
+      <section data-testid="platform-content">conteúdo da rota</section>
+    </AccountAccessGate>
+  )
+}
+
+test("somente leitura mantém o CRM e a Carteira visíveis", () => {
+  for (const pathname of ["/conta-1/crm", "/conta-1/carteira", "/conta-1/carteira/lead-9"]) {
+    const markup = renderReadOnlyGate({ pathname, isBillingOwner: false })
+
+    expect(markup).toContain("conteúdo da rota")
+    expect(markup).not.toContain("read-only-redirect")
+  }
+})
+
+test("somente leitura esconde qualquer outra funcionalidade e leva ao CRM", () => {
+  for (const pathname of ["/conta-1/dashboard", "/conta-1/email/campanhas", "/conta-1/whatsapp", "/conta-1/subscription"]) {
+    const markup = renderReadOnlyGate({ pathname, isBillingOwner: true })
+
+    expect(markup).not.toContain("conteúdo da rota")
+    expect(markup).toContain("read-only-redirect")
+    expect(markup).toContain('data-href="/conta-1/crm"')
+  }
+})
+
+test("somente leitura libera a página de pagamento só para o master", () => {
+  const owner = renderReadOnlyGate({ pathname: "/conta-1/billing-grace-payment", isBillingOwner: true })
+  const member = renderReadOnlyGate({ pathname: "/conta-1/billing-grace-payment", isBillingOwner: false })
+
+  expect(owner).toContain("conteúdo da rota")
+  expect(member).not.toContain("conteúdo da rota")
+  expect(member).toContain("read-only-redirect")
 })

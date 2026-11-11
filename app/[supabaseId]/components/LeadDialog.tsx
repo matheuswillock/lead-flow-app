@@ -52,6 +52,8 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { ReadOnlyFieldset } from "./ReadOnlyFieldset";
+import { useIsReadOnlyAccess } from "./useIsReadOnlyAccess";
 import { useOperationalAccess } from "@/app/context/OperationalAccessContext";
 import { Textarea } from "@/components/ui/textarea";
 import { LeadTagsTab } from "@/app/[supabaseId]/components/lead-tags/LeadTagsTab";
@@ -282,6 +284,11 @@ type LeadOriginBadge = {
 
 
 
+// Em 375px o rótulo "Documentos" não cabe numa das 4 colunas iguais: no celular as abas viram
+// uma faixa rolável (cada uma com a largura do próprio texto); de `sm` em diante voltam à grade.
+const LEAD_LEFT_TAB_CLASS = "flex-1 shrink-0 sm:shrink";
+const LEAD_LEFT_TABLIST_CLASS = "flex w-full justify-start overflow-x-auto sm:grid sm:grid-cols-4";
+
 export default function LeadDialog({
   open,
   setOpen,
@@ -294,6 +301,7 @@ export default function LeadDialog({
   defaultTab = "dados",
   allowDelete = false,
 }: LeadDialogProps) {
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const { tz: scheduleTimezone } = useTimezone();
   const [localLead, setLocalLead] = useState<Lead | null>(lead);
   const currentLead = localLead ?? lead;
@@ -2725,11 +2733,13 @@ export default function LeadDialog({
                 <div className="flex items-center justify-between">
                   <div>
                     <DialogTitle>
-                      {currentLead ? "Editar Lead" : "Novo Lead"}
+                      {currentLead ? (isReadOnlyAccess ? "Visualizar Lead" : "Editar Lead") : "Novo Lead"}
                     </DialogTitle>
                     <DialogDescription>
                       {currentLead
-                        ? "Faça as alterações necessárias nos dados do lead."
+                        ? (isReadOnlyAccess
+                          ? "Conta em modo somente leitura: os dados do lead não podem ser alterados."
+                          : "Faça as alterações necessárias nos dados do lead.")
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
@@ -2764,6 +2774,7 @@ export default function LeadDialog({
                       </div>
                     )}
                   </div>
+                  {isReadOnlyAccess ? null : (
                   <div className="ml-4 flex items-center gap-2">
                     {currentLead && !leadDetailsLoading && currentLead.isTransfer === true && currentLead.status === "new_opportunity" && canTransferBetweenTeams && hasTransferTargets && (
                       <TooltipProvider>
@@ -2887,6 +2898,7 @@ export default function LeadDialog({
                       />
                     ) : null}
                   </div>
+                  )}
                 </div>
               </DialogHeader>
 
@@ -2910,18 +2922,19 @@ export default function LeadDialog({
                     onValueChange={(value) => setLeftPanelTab(value as LeadDialogLeftTab)}
                     className="flex h-full min-h-0 flex-col gap-3"
                   >
-                    <TabsList className={currentLead ? "grid w-full grid-cols-4" : "grid w-full grid-cols-1"}>
-                      <TabsTrigger value="dados">Dados</TabsTrigger>
+                    <TabsList className={currentLead ? LEAD_LEFT_TABLIST_CLASS : "grid w-full grid-cols-1"}>
+                      <TabsTrigger value="dados" className={LEAD_LEFT_TAB_CLASS}>Dados</TabsTrigger>
                       {currentLead ? (
                         <>
-                          <TabsTrigger value="tags">Tags</TabsTrigger>
-                          <TabsTrigger value="contatos">Contatos</TabsTrigger>
-                          <TabsTrigger value="documentos">Documentos</TabsTrigger>
+                          <TabsTrigger value="tags" className={LEAD_LEFT_TAB_CLASS}>Tags</TabsTrigger>
+                          <TabsTrigger value="contatos" className={LEAD_LEFT_TAB_CLASS}>Contatos</TabsTrigger>
+                          <TabsTrigger value="documentos" className={LEAD_LEFT_TAB_CLASS}>Documentos</TabsTrigger>
                         </>
                       ) : null}
                     </TabsList>
 
                     <TabsContent value="dados" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                      <ReadOnlyFieldset readOnly={isReadOnlyAccess}>
                       <LeadForm
                         form={form}
                         onSubmit={onSubmit}
@@ -2984,57 +2997,64 @@ export default function LeadDialog({
                         supabaseId={supabaseId}
                         activeTeamId={activeTeamId ?? undefined}
                       />
+                      </ReadOnlyFieldset>
                     </TabsContent>
 
                     {currentLead && activeTeamId && supabaseId ? (
                       <>
                         <TabsContent value="tags" className="mt-0 min-h-0 flex-1 overflow-y-auto">
-                          <LeadTagsTab
-                            leadId={currentLead.id}
-                            teamId={activeTeamId}
-                            supabaseId={supabaseId}
-                          />
+                          <ReadOnlyFieldset readOnly={isReadOnlyAccess}>
+                            <LeadTagsTab
+                              leadId={currentLead.id}
+                              teamId={activeTeamId}
+                              supabaseId={supabaseId}
+                            />
+                          </ReadOnlyFieldset>
                         </TabsContent>
                         <TabsContent value="contatos" className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-                          <MeetingNurtureSection
-                            leadId={currentLead.id}
-                            teamId={activeTeamId}
-                            supabaseId={supabaseId}
-                            leadName={currentLead.name}
-                            leadPhone={currentLead.phone}
-                            sdrName={user.fullName}
-                            canEdit={
-                              isTeamMaster ||
-                              isManagerLikeRole(activeRole ?? user.role ?? "") ||
-                              activeFunctions.includes("SDR") ||
-                              activeFunctions.includes("CLOSER")
-                            }
-                          />
-                          <LeadContactsTab
-                            leadId={currentLead.id}
-                            teamId={activeTeamId}
-                            supabaseId={supabaseId}
-                          />
+                          <ReadOnlyFieldset readOnly={isReadOnlyAccess}>
+                            <MeetingNurtureSection
+                              leadId={currentLead.id}
+                              teamId={activeTeamId}
+                              supabaseId={supabaseId}
+                              leadName={currentLead.name}
+                              leadPhone={currentLead.phone}
+                              sdrName={user.fullName}
+                              canEdit={
+                                isTeamMaster ||
+                                isManagerLikeRole(activeRole ?? user.role ?? "") ||
+                                activeFunctions.includes("SDR") ||
+                                activeFunctions.includes("CLOSER")
+                              }
+                            />
+                            <LeadContactsTab
+                              leadId={currentLead.id}
+                              teamId={activeTeamId}
+                              supabaseId={supabaseId}
+                            />
+                          </ReadOnlyFieldset>
                         </TabsContent>
                         <TabsContent value="documentos" className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-                          <LeadAdministratorInterviewSection
-                            leadId={currentLead.id}
-                            teamId={activeTeamId}
-                            supabaseId={supabaseId}
-                            clientName={currentLead.name}
-                            clientPhone={currentLead.phone}
-                            brokerName={user.fullName}
-                            canManage={
-                              isTeamMaster ||
-                              isManagerLikeRole(activeRole ?? user.role ?? "") ||
-                              activeFunctions.includes("CLOSER")
-                            }
-                          />
-                          <LeadDocumentRequestsTab
-                            leadId={currentLead.id}
-                            teamId={activeTeamId}
-                            supabaseId={supabaseId}
-                          />
+                          <ReadOnlyFieldset readOnly={isReadOnlyAccess}>
+                            <LeadAdministratorInterviewSection
+                              leadId={currentLead.id}
+                              teamId={activeTeamId}
+                              supabaseId={supabaseId}
+                              clientName={currentLead.name}
+                              clientPhone={currentLead.phone}
+                              brokerName={user.fullName}
+                              canManage={
+                                isTeamMaster ||
+                                isManagerLikeRole(activeRole ?? user.role ?? "") ||
+                                activeFunctions.includes("CLOSER")
+                              }
+                            />
+                            <LeadDocumentRequestsTab
+                              leadId={currentLead.id}
+                              teamId={activeTeamId}
+                              supabaseId={supabaseId}
+                            />
+                          </ReadOnlyFieldset>
                         </TabsContent>
                       </>
                     ) : null}
@@ -3126,6 +3146,7 @@ export default function LeadDialog({
                 )}
               </div>
 
+              {isReadOnlyAccess ? null : (
               <div className="mt-auto shrink-0 border-t border-border/60 pt-4">
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Tipo de atividade</label>
@@ -3257,6 +3278,7 @@ export default function LeadDialog({
                   </>
                 )}
               </div>
+              )}
 
               </>
               )}

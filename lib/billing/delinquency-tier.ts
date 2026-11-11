@@ -33,19 +33,28 @@ export const CRM_ONLY_ALLOWED_FEATURE_SLUGS: ReadonlySet<string> = new Set(
     .map(([, slug]) => slug),
 );
 
+/**
+ * Modo somente leitura (dias 6 a 15 de atraso): a plataforma "some" e só ficam o CRM
+ * (leads) e a Carteira, apenas para visualização. Mais restrito que `crm_only`, que
+ * mantém todas as funcionalidades `CRM_*` (dashboard, calendário, automações...).
+ */
+export const READ_ONLY_ALLOWED_FEATURE_SLUGS: ReadonlySet<string> = new Set([
+  FEATURE_SLUGS.CRM,
+  FEATURE_SLUGS.CRM_WALLET,
+]);
+
 /** Slug continua acessível no degrau `crm_only`? */
 export function isAllowedUnderCrmOnly(slug: string): boolean {
   return CRM_ONLY_ALLOWED_FEATURE_SLUGS.has(slug) || FEATURE_PRODUCT_SLUG_MAP[slug] === "crm";
 }
 
 /**
- * Vencimento efetivo. `ProfileSubscription` é a verdade viva, mas o webhook
- * do Asaas (`processAsaasWebhookEvent.ts`, SUBSCRIPTION_UPDATED) atualiza
- * **só** `Profile.subscriptionNextDueDate` — conta que ainda não passou pelo
- * `AsaasSubscriptionSyncService` tem data fresca no Profile e nula/velha na
- * ProfileSubscription (achado codex P1 no PR #1198). Usa a **mais recente**
- * das duas: data mais nova = menos punição, então a dessincronia nunca corta
- * ninguém antes da hora.
+ * Vencimento efetivo. A data de vencimento existe em dois lugares (`Profile` e
+ * `ProfileSubscription`) e o webhook do Asaas (`processAsaasWebhookEvent.ts`,
+ * SUBSCRIPTION_UPDATED) atualiza só o `Profile`. Decisão da Nathiele (11/11/2026): o
+ * atraso é **sempre contado a partir da data mais antiga** das duas. Se só uma
+ * existe, vale ela; sem nenhuma, não há como medir atraso (null, sem punição).
+ * Todo cálculo de carência, somente leitura e pausa deve usar esta função.
  */
 export function resolveEffectiveNextDueDate(
   subscriptionDate: Date | null | undefined,
@@ -53,7 +62,7 @@ export function resolveEffectiveNextDueDate(
 ): Date | null {
   if (!subscriptionDate) return profileDate ?? null;
   if (!profileDate) return subscriptionDate;
-  return profileDate.getTime() > subscriptionDate.getTime() ? profileDate : subscriptionDate;
+  return profileDate.getTime() < subscriptionDate.getTime() ? profileDate : subscriptionDate;
 }
 
 export type DelinquencyTier = "full_access" | "crm_only" | "cut_off";

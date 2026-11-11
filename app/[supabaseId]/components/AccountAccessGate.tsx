@@ -6,9 +6,9 @@ import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecisi
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { AccountAccessPausedScreen } from "./AccountAccessPausedScreen"
 import { BillingGraceBanner } from "./BillingGraceBanner"
-
-/** Rota de regularização: o master de uma conta pausada precisa chegar nela para pagar. */
-const BILLING_REGULARIZATION_SEGMENT = "/billing-grace-payment"
+import { getAccessPausedAction, getPaymentRecoveryHref, isPaymentRecoveryPath } from "./accountAccessRecovery"
+import { getReadOnlyHomeHref, isReadOnlyAllowedPath } from "./accountAccessReadOnly"
+import { ReadOnlyRedirect } from "./ReadOnlyRedirect"
 
 type AccountAccessGateProps = {
   decision: AccountAccessDecision | null | undefined
@@ -28,10 +28,11 @@ export function AccountAccessGate({ decision, decisionResolved = false, children
   const teamContext = useOptionalTeamContext()
   const pathname = usePathname()
   const params = useParams<{ supabaseId: string }>()
+  const supabaseId = params?.supabaseId
   const effectiveDecision = teamContext ? teamContext.accountAccessDecision : decision
   const isBillingOwner = billingOwnerOf(teamContext?.isTeamMaster, effectiveDecision)
-  const reactivateHref = params?.supabaseId ? `/${params.supabaseId}${BILLING_REGULARIZATION_SEGMENT}` : undefined
-  const isOnRegularization = Boolean(pathname?.endsWith(BILLING_REGULARIZATION_SEGMENT))
+  const reactivateHref = supabaseId ? getPaymentRecoveryHref(supabaseId) : undefined
+  const isOnRegularization = isPaymentRecoveryPath(pathname)
 
   if (!effectiveDecision && decisionResolved) {
     return (
@@ -43,14 +44,24 @@ export function AccountAccessGate({ decision, decisionResolved = false, children
     )
   }
 
-  // read_only: allow children to render; writes are blocked at the route layer
+  // read_only (dias 6 a 15 do vencimento): só o CRM e a Carteira (visualização) e, para o master,
+  // a página de pagamento. As gravações são barradas na camada de rotas da API.
   if (effectiveDecision?.state === "read_only") {
-    return children
+    if (!supabaseId) {
+      return <AccountAccessPausedScreen reason={effectiveDecision.reason} isBillingOwner={isBillingOwner} />
+    }
+
+    if (isReadOnlyAllowedPath(pathname, isBillingOwner)) return children
+
+    return <ReadOnlyRedirect href={getReadOnlyHomeHref(supabaseId)} />
   }
 
   if (effectiveDecision?.state === "restricted" && !teamContext?.isSwitchingTeam) {
-    // Conta pausada: só o master entra na regularização; o resto vê a tela de pausa.
-    if (isOnRegularization && isBillingOwner && effectiveDecision.reason !== "banned") return children
+    // Conta pausada: só o master que pode pagar entra na regularização; o resto vê a tela de pausa.
+    if (getAccessPausedAction(effectiveDecision.reason, isBillingOwner) === "payment" && isOnRegularization) {
+      return children
+    }
+
     return (
       <AccountAccessPausedScreen
         isBillingOwner={isBillingOwner}

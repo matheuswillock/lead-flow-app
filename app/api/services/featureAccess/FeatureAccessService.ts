@@ -11,6 +11,11 @@ import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featu
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
 import {
+  READ_ONLY_ALLOWED_FEATURE_SLUGS,
+  resolveDelinquencyTier,
+  resolveEffectiveNextDueDate,
+} from "@/lib/billing/delinquency-tier"
+import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
@@ -200,6 +205,24 @@ export class FeatureAccessService implements IFeatureAccessService {
     const accountSubscriptionActive =
       hasPermanentAccess ||
       (!memberProBlocked && (hasActiveMainSubscription || memberProActive || hasTemporaryBillingGrace))
+    if (!accountSubscriptionActive && !ownerBanned && !memberProBlocked) {
+      // Dias 6 a 15 de atraso: somente leitura. O acesso às telas some, só CRM e Carteira ficam.
+      const delinquencyTier = resolveDelinquencyTier({
+        subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus,
+        subscriptionNextDueDate: resolveEffectiveNextDueDate(
+          ownerProfileSubscription?.subscriptionNextDueDate,
+          ownerProfile?.subscriptionNextDueDate
+        ),
+      })
+      if (delinquencyTier === "crm_only") {
+        return {
+          slugs: features.map((feature) => feature.slug).filter((slug) => READ_ONLY_ALLOWED_FEATURE_SLUGS.has(slug)),
+          betaSlugs: [],
+          betaLabelSlugs: [],
+          userRole: safeUserRole,
+        }
+      }
+    }
     if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
