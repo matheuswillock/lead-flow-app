@@ -70,7 +70,7 @@
 .closing-line{margin:24px 0 0}
 
 @media(min-width:901px){.price-card{position:sticky;top:104px}}
-@media(max-width:900px){.awareness{padding:80px 0}.awareness-layout{grid-template-columns:1fr;gap:40px}.price-card{position:static;top:auto;width:100%;max-width:420px;min-height:288px;justify-self:start}.context-content h2{font-size:clamp(40px,6vw,48px)}}
+@media(max-width:900px){.awareness{padding:80px 0}.awareness-layout{grid-template-columns:1fr;gap:40px}.price-card{position:relative;top:auto;width:100%;max-width:420px;min-height:288px;justify-self:start}.context-content h2{font-size:clamp(40px,6vw,48px)}}
 @media(max-width:640px){.awareness{padding:80px 0}.awareness-layout{gap:32px}.price-card{max-width:none;min-height:0;padding:32px}.price-card .price-label{margin-top:32px}.context-content h2{font-size:clamp(36px,11vw,44px);line-height:1.05}.context-heading{margin-top:48px}.factor-grid{grid-template-columns:1fr;column-gap:0;margin-top:24px}.factor-item{padding:24px 0}.quote-compare{grid-template-columns:1fr;gap:24px;margin-top:48px}.quote-card{min-height:0}.context-list{grid-template-columns:1fr}.closing-line{margin-top:24px;padding:0 18px}}
 
 /* Reversible scenario card and shared lead form. */
