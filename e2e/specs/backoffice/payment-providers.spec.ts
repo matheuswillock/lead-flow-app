@@ -124,6 +124,72 @@ test.describe("app/backoffice/(app)/payment-providers", () => {
     await expect(page.getByText(secret)).toHaveCount(0);
   });
 
+  test("cartão: ligar pede confirmação e usa a revisão atual; desligar é direto", async ({ page }) => {
+    const abacate = (environment: string, cardEnabled: boolean, revision: number, isDefault = true) => ({
+      provider: "ABACATE_PAY",
+      environment,
+      enabled: true,
+      isDefault,
+      externalAccountContext: isDefault ? "e2e-default" : "e2e-non-default",
+      rolloutState: "ACTIVE",
+      killSwitch: false,
+      cardEnabled,
+      revision,
+      healthStatus: "UNKNOWN",
+    });
+    const puts: Array<{ environment: string; patch: { cardEnabled: boolean; expectedRevision: number } }> = [];
+    await page.route("**/api/q/backoffice/payment-providers/config**", async (route) => {
+      const request = route.request();
+      if (request.method() === "PUT") {
+        const body = request.postDataJSON();
+        puts.push(body);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            isValid: true,
+            result: abacate(body.environment, body.patch.cardEnabled, body.patch.expectedRevision + 1),
+          }),
+        });
+        return;
+      }
+      const environment = new URL(request.url()).searchParams.get("environment") ?? "DEV";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          isValid: true,
+          result: [abacate(environment, true, 2, false), abacate(environment, false, 4)],
+        }),
+      });
+    });
+    await page.route("**/api/q/backoffice/payment-providers/instances**", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ isValid: true, result: [] }) }),
+    );
+
+    await page.goto("/backoffice/payment-providers");
+    const card = page.getByTestId("card-config");
+    await expect(card.getByText("Cartão de crédito", { exact: true })).toBeVisible({ timeout: 60_000 });
+    const productionSwitch = card.getByRole("switch", { name: "Cartão de crédito em Produção" });
+    await expect(productionSwitch).not.toBeChecked();
+
+    await productionSwitch.click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog.getByText("Ligar o cartão de crédito?")).toBeVisible();
+    expect(puts).toHaveLength(0);
+    await dialog.getByRole("button", { name: "Ligar cartão" }).click();
+    await expect(productionSwitch).toBeChecked();
+    expect(puts[0]).toEqual({
+      environment: "PRODUCTION",
+      provider: "ABACATE_PAY",
+      patch: { cardEnabled: true, expectedRevision: 4 },
+    });
+
+    await productionSwitch.click();
+    await expect(productionSwitch).not.toBeChecked();
+    expect(puts[1]?.patch).toEqual({ cardEnabled: false, expectedRevision: 5 });
+  });
+
   test("responsivo: sem overflow em viewport mobile", async ({ page }) => {
     await page.route("**/api/q/backoffice/payment-providers/instances**", (route) =>
       route.fulfill({ contentType: "application/json", body: JSON.stringify({ isValid: true, result: [] }) }),
