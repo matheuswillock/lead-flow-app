@@ -32,7 +32,7 @@ export default function PrivacyPolicyPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
                   Política de Privacidade
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground">Última atualização: 27/01/2026</p>
+                <p className="mt-2 text-sm text-muted-foreground">Última atualização: 11/11/2026</p>
                 <p className="mt-4 text-base text-muted-foreground">
                   Esta Política de Privacidade explica como o Corretor Studio coleta, usa e protege
                   seus dados ao utilizar a plataforma.
@@ -64,6 +64,10 @@ export default function PrivacyPolicyPage() {
                     <li>Organizar leads, atividades e reuniões.</li>
                     <li>Integrar com Google Calendar para criar e cancelar eventos.</li>
                     <li>Processar pagamentos e assinaturas.</li>
+                    <li>
+                      Prestar suporte e manter o serviço, com acesso da equipe do Corretor Studio à
+                      sua conta, limitado a essa finalidade.
+                    </li>
                     <li>Melhorar a experiência e a segurança do serviço.</li>
                   </ul>
                 </article>
@@ -109,7 +113,21 @@ export default function PrivacyPolicyPage() {
                   className="rounded-2xl border p-6"
                   style={{ borderColor: "var(--border)", background: "var(--card)" }}
                 >
-                  <h2 className="text-lg font-semibold">6. Contato</h2>
+                  <h2 className="text-lg font-semibold">6. Seu papel e o nosso</h2>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Os dados dos seus leads e clientes são tratados pelo Corretor Studio em nome da
+                    sua empresa, que decide para que esses dados são usados. Nesse caso, a sua
+                    empresa é a controladora e o Corretor Studio atua como operador, tratando os
+                    dados conforme as suas instruções e para prestar o serviço contratado,
+                    incluindo o suporte.
+                  </p>
+                </article>
+
+                <article
+                  className="rounded-2xl border p-6"
+                  style={{ borderColor: "var(--border)", background: "var(--card)" }}
+                >
+                  <h2 className="text-lg font-semibold">7. Contato</h2>
                   <p className="mt-3 text-sm text-muted-foreground">
                     Dúvidas? Fale conosco em{" "}
                     <a
@@ -124,11 +142,17 @@ export default function PrivacyPolicyPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <Link className="underline underline-offset-4" href="/terms">
+                <Link
+                  className="inline-flex min-h-11 items-center underline underline-offset-4"
+                  href="/terms"
+                >
                   Termos de Uso
                 </Link>
                 <span>•</span>
-                <Link className="underline underline-offset-4" href="/">
+                <Link
+                  className="inline-flex min-h-11 items-center underline underline-offset-4"
+                  href="/"
+                >
                   Voltar para a home
                 </Link>
               </div>

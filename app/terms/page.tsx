@@ -32,7 +32,7 @@ export default function TermsPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
                   Termos de Uso
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground">Última atualização: 27/01/2026</p>
+                <p className="mt-2 text-sm text-muted-foreground">Última atualização: 11/11/2026</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Studio Marketing e Tecnologia LTDA — CNPJ 68.647.473/0001-19
                 </p>
@@ -115,14 +115,51 @@ export default function TermsPage() {
                     .
                   </p>
                 </article>
+
+                <article
+                  className="rounded-2xl border p-6"
+                  style={{ borderColor: "var(--border)", background: "var(--card)" }}
+                >
+                  <h2 className="text-lg font-semibold">
+                    7. Suporte e acesso da equipe Corretor Studio
+                  </h2>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Para atender você e manter o serviço funcionando, a equipe do Corretor Studio
+                    pode acessar a sua conta. Esse acesso é feito por pessoas da nossa equipe,
+                    identificadas pelo e-mail @corretorstudio.com.br.
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                    <li>
+                      Com esse acesso, a equipe pode ver e operar os dados da sua conta, como leads,
+                      atividades e agenda, para dar suporte, configurar recursos, corrigir problemas
+                      e garantir a segurança da plataforma.
+                    </li>
+                    <li>
+                      Você pode tirar dúvidas sobre esse acesso pelos canais de contato indicados na{" "}
+                      <Link
+                        className="text-primary underline underline-offset-4"
+                        href="/privacy-policy"
+                      >
+                        Política de Privacidade
+                      </Link>
+                      .
+                    </li>
+                  </ul>
+                </article>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <Link className="underline underline-offset-4" href="/privacy-policy">
+                <Link
+                  className="inline-flex min-h-11 items-center underline underline-offset-4"
+                  href="/privacy-policy"
+                >
                   Política de Privacidade
                 </Link>
                 <span>•</span>
-                <Link className="underline underline-offset-4" href="/">
+                <Link
+                  className="inline-flex min-h-11 items-center underline underline-offset-4"
+                  href="/"
+                >
                   Voltar para a home
                 </Link>
               </div>
