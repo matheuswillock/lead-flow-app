@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { formatActivityAuthorName } from "@/lib/lead-activities/formatActivityAuthorName";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type ContactType = "call" | "whatsapp" | "email" | "meeting" | "visit" | "missed";
@@ -422,7 +423,7 @@ export function LeadContactsTab({ leadId, teamId, supabaseId }: LeadContactsTabP
                 {formatRelativeDate(dateKey)}
               </h4>
               {items.map((contact) => {
-                const authorLabel = contact.author?.fullName || contact.author?.email || "—";
+                const authorLabel = formatActivityAuthorName(contact.author, "—");
                 const notesOpen = expandedNotes[contact.id] === true;
                 return (
                   <div

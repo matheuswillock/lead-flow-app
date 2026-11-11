@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import type { LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { formatActivityAuthorName } from "@/lib/lead-activities/formatActivityAuthorName"
 import { formatActivityDate, getActivityInitials } from "./timeline-utils"
 
 type TimelineItemShellProps = {
@@ -25,8 +26,8 @@ export function TimelineItemShell({
   children,
   footer,
 }: TimelineItemShellProps) {
-  const authorName = activity.author?.fullName || activity.author?.email || "Sistema"
-  const initials = getActivityInitials(authorName)
+  const authorName = formatActivityAuthorName(activity.author)
+  const initials = getActivityInitials(activity.author?.fullName || activity.author?.email || "Sistema")
   const fallbackEmail = activity.author?.email || "guest"
   const avatarSrc = activity.author?.avatarUrl || `https://avatar.vercel.sh/${fallbackEmail}.png`
 

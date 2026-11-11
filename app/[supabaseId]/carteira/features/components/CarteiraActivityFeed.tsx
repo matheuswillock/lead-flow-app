@@ -21,6 +21,7 @@ import { useTeamContext } from '@/app/context/TeamContext';
 import type { LeadActivityResponseDTO } from '@/app/api/v1/leads/DTO/leadResponseDTO';
 import { resolveStudioActivityAuthor } from '@/lib/lead-activities/resolveActivityAuthor';
 import { isStudioAuthoredPayload } from '@/lib/studio-feed-identity';
+import { formatActivityAuthorName } from '@/lib/lead-activities/formatActivityAuthorName';
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 const ACTIVITY_TYPES = [
@@ -156,13 +157,13 @@ export function CarteiraActivityFeed({ leadId, open = true }: CarteiraActivityFe
                       activity.payload as Record<string, unknown> | null | undefined
                     )
                   : null);
-              const authorName = author?.fullName ?? author?.email ?? 'Sistema';
+              const authorName = formatActivityAuthorName(author);
               const avatarSrc =
                 author?.avatarUrl ??
                 (author?.email
                   ? `https://avatar.vercel.sh/${author.email}.png`
                   : '/corretor-studio-icon.svg');
-              const initials = getInitials(authorName);
+              const initials = getInitials(author?.fullName ?? author?.email ?? 'Sistema');
               const TypeIcon = ACTIVITY_TYPES.find((t) => t.value === activity.type)?.Icon ?? MessageSquare;
               return (
                 <div key={activity.id} className="rounded-lg border border-border/60 bg-background/60 p-3">

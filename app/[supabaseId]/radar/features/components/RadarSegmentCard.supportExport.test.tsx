@@ -26,6 +26,7 @@ function renderCard(team?: TeamSummary) {
   const card = (
     <RadarSegmentCard
       name="Compradores"
+      description={null}
       count={10}
       variant="custom"
       onExport={mock(() => undefined)}
