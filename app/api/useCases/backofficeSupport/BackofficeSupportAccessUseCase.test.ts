@@ -114,6 +114,22 @@ describe("BackofficeSupportAccessUseCase.resolveTeamState", () => {
   })
 })
 
+describe("BackofficeSupportAccessUseCase.resolveSupportMembership", () => {
+  it("Manager do backoffice num time de cliente recebe o papel backoffice, sem funções", async () => {
+    const { useCase } = build()
+
+    expect(await useCase.resolveSupportMembership("profile-1", "team-1")).toEqual({
+      role: "backoffice",
+      functions: [],
+    })
+  })
+
+  it("quem não é Manager, ou time inexistente, não recebe papel", async () => {
+    expect(await build({ isManager: false }).useCase.resolveSupportMembership("profile-1", "team-1")).toBeNull()
+    expect(await build({ team: null }).useCase.resolveSupportMembership("profile-1", "team-x")).toBeNull()
+  })
+})
+
 describe("BackofficeSupportAccessUseCase.enterTeam", () => {
   it("registra quem entrou em qual conta", async () => {
     const { useCase, audits } = build()

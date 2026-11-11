@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { combineDateAndTimeInTz, formatLocalTimeValue } from "@/lib/dates"
 import type { DateRange } from "react-day-picker"
 import { landingAnalyticsService, type LandingAnalyticsFilterOption, type LandingAnalyticsFilters, type LandingAnalyticsSummary } from "../../services/LandingAnalyticsService"
@@ -29,6 +30,8 @@ function formatNumber(value: number | undefined) { return new Intl.NumberFormat(
 function optionLabel(option: LandingAnalyticsFilterOption) { return option.context ? `${option.name} · ${option.context}` : option.name }
 
 export function LandingAnalyticsDashboard({ teamId, headers }: { teamId: string; headers: HeadersInit }) {
+  // A equipe de suporte, numa conta de cliente, não exporta dados dela.
+  const isSupportAccess = useOptionalTeamContext()?.isSupportAccess === true
   const { tz } = useTimezone()
   const searchParams = useSearchParams()
   const requestedLandingId = searchParams.get("landingPageId") ?? undefined
@@ -79,7 +82,7 @@ export function LandingAnalyticsDashboard({ teamId, headers }: { teamId: string;
   const rangeLabel = range.from ? range.to ? `${format(range.from, "dd/MM/yyyy", { locale: ptBR })} – ${format(range.to, "dd/MM/yyyy", { locale: ptBR })}` : format(range.from, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar período"
 
   return <main className="container mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="mb-1 text-sm font-medium text-primary">Landing pages</p><h1 className="text-2xl font-semibold tracking-tight">Analytics das landing pages</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe visitas, interações e conversões por campanha.</p></div><div className="flex gap-2"><Button variant="outline" className="min-h-11" onClick={() => void load()}><RefreshCw data-icon="inline-start" />Atualizar</Button><Button className="min-h-11" onClick={exportCsv} disabled={!summary}><Download data-icon="inline-start" />Exportar CSV</Button></div></div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="mb-1 text-sm font-medium text-primary">Landing pages</p><h1 className="text-2xl font-semibold tracking-tight">Analytics das landing pages</h1><p className="mt-1 text-sm text-muted-foreground">Acompanhe visitas, interações e conversões por campanha.</p></div><div className="flex gap-2"><Button variant="outline" className="min-h-11" onClick={() => void load()}><RefreshCw data-icon="inline-start" />Atualizar</Button>{isSupportAccess ? null : <Button className="min-h-11" onClick={exportCsv} disabled={!summary}><Download data-icon="inline-start" />Exportar CSV</Button>}</div></div>
     <Card><CardHeader><CardTitle className="text-base">Filtros</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="flex flex-col gap-2 sm:col-span-2"><Label>Período</Label><Popover><PopoverTrigger asChild><Button variant="outline" className="min-h-11 justify-start text-left font-normal"><CalendarDays data-icon="inline-start" />{rangeLabel}</Button></PopoverTrigger><PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] p-3"><Calendar mode="range" selected={range} onSelect={updateRange} numberOfMonths={1} locale={ptBR} /><div className="grid grid-cols-2 gap-3 border-t pt-3"><div className="flex flex-col gap-2"><Label htmlFor="analytics-from-time">Início</Label><Input id="analytics-from-time" type="time" value={startTime} onChange={(event) => updateTime("from", event.target.value)} /></div><div className="flex flex-col gap-2"><Label htmlFor="analytics-to-time">Fim</Label><Input id="analytics-to-time" type="time" value={endTime} onChange={(event) => updateTime("to", event.target.value)} /></div></div></PopoverContent></Popover>{rangeError ? <p className="text-sm text-destructive" role="alert">{rangeError}</p> : null}</div>
       <FilterSelect label="Campanha" value={filters.campaignId} options={options?.campaigns ?? []} onChange={(value) => setFilter("campaignId", value)} />

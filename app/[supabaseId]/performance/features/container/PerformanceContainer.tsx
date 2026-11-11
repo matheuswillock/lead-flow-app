@@ -21,7 +21,7 @@ export function PerformanceContainer() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { user } = useUserContext();
-  const { activeRole, isTeamMaster } = useTeamContext();
+  const { activeRole, isTeamMaster, isSupportAccess } = useTeamContext();
   const { error, filters, data, lastFetchedAt, teamScope, setTeamScope, canUseAllTeamsScope } = usePerformanceContext();
   const [isExportarOpen, setIsExportarOpen] = useState(false);
 
@@ -104,14 +104,16 @@ export function PerformanceContainer() {
                   </span>
                 </div>
               ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsExportarOpen(true)}
-              >
-                <Download data-icon="inline-start" size={13} />
-                Exportar relatório
-              </Button>
+              {isSupportAccess ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsExportarOpen(true)}
+                >
+                  <Download data-icon="inline-start" size={13} />
+                  Exportar relatório
+                </Button>
+              )}
               {/*
                 TODO(performance): implementar serviço de Metas e reativar o fluxo de "Nova meta".
               */}

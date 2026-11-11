@@ -143,6 +143,21 @@ export class BackofficeSupportAccessUseCase {
     return { canSupportSearch: true, supportTeam: team ? buildSupportTeamRow(team) : null }
   }
 
+  /**
+   * Papel que o Manager do backoffice tem num time de cliente. As telas legadas
+   * conferem "é membro do time?" e usam este papel quando a resposta é não.
+   */
+  async resolveSupportMembership(
+    profileId: string,
+    teamId: string
+  ): Promise<{ role: "backoffice"; functions: [] } | null> {
+    const manager = await this.repository.findActiveSupportManager(profileId)
+    if (!manager) return null
+
+    const team = await this.repository.findActiveTeam(teamId)
+    return team ? { role: "backoffice", functions: [] } : null
+  }
+
   /** Valida a entrada e registra quem entrou em qual conta. */
   async enterTeam(profileId: string, teamId: string): Promise<SupportTeamDetails | null> {
     const manager = await this.repository.findActiveSupportManager(profileId)

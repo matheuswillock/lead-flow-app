@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { AlertTriangle, Database, Download, Plus } from "lucide-react"
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -43,6 +44,8 @@ import { SegmentTreeView } from "../components/SegmentTreeView"
 
 export function RadarContainer() {
   const { hasAccess } = useFeatureAccess()
+  // A equipe de suporte, numa conta de cliente, não exporta dados dela.
+  const isSupportAccess = useOptionalTeamContext()?.isSupportAccess === true
   const {
     profiles,
     segments,
@@ -224,7 +227,7 @@ export function RadarContainer() {
 
           <TabsContent value="perfis" className="flex flex-col gap-4">
             <div className="flex justify-end">
-              <DropdownMenu>
+              {isSupportAccess ? null : <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" disabled={mutationLock || total === 0}>
                     <Download data-icon="inline-start" />
@@ -239,7 +242,7 @@ export function RadarContainer() {
                     Excel
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
+              </DropdownMenu>}
               <RadarImportButton mutationLock={mutationLock} onImportComplete={() => void reload()} />
             </div>
             <RadarProfileFilters

@@ -1,6 +1,7 @@
 "use client"
 
 import { Download, GitBranch, ListPlus, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { useOptionalTeamContext } from "@/app/context/TeamContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,6 +43,8 @@ export function RadarSegmentCard({
   onGenerateChild,
 }: RadarSegmentCardProps) {
   const isSystem = variant === "system"
+  // A equipe de suporte, numa conta de cliente, não exporta dados dela.
+  const isSupportAccess = useOptionalTeamContext()?.isSupportAccess === true
 
   return (
     <div
@@ -90,7 +93,7 @@ export function RadarSegmentCard({
             Ver perfis
           </Button>
         ) : null}
-        {onExport ? (
+        {onExport && !isSupportAccess ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" disabled={mutationLock || count === 0}>

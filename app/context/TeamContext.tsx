@@ -65,6 +65,8 @@ interface TeamContextState {
   accountAccessDecision: AccountAccessDecision | null;
   /** Manager do backoffice: o seletor mostra a busca de contas de clientes. */
   canSupportSearch: boolean;
+  /** A equipe de suporte está numa conta de cliente: não paga nem exporta dados dela. */
+  isSupportAccess: boolean;
   refreshTeams: () => Promise<void>;
   setProfileId: (profileId: string | null) => void;
   setActiveTeamId: (teamId: string) => Promise<void>;
@@ -516,6 +518,7 @@ export const TeamProvider = ({
     isTeamSwitchPersisted,
     accountAccessDecision,
     canSupportSearch,
+    isSupportAccess: activeTeam?.isSupportAccess === true,
     refreshTeams,
     setProfileId,
     setActiveTeamId,

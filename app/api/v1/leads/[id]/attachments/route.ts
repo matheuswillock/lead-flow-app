@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { backofficeSupportAccessUseCase } from "@/app/api/useCases/backofficeSupport/BackofficeSupportAccessUseCase";
 import { Output } from "@/lib/output";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -45,7 +46,7 @@ export async function GET(
       );
     }
 
-    const [membership, lead] = await Promise.all([
+    const [directMembership, lead] = await Promise.all([
       prisma.teamMember.findUnique({
         where: { teamId_profileId: { teamId, profileId: profile.id } },
       }),
@@ -54,6 +55,8 @@ export async function GET(
         select: { id: true, teamId: true },
       }),
     ]);
+    const membership =
+      directMembership ?? (await backofficeSupportAccessUseCase.resolveSupportMembership(profile.id, teamId));
 
     if (!membership) {
       return NextResponse.json(
@@ -129,7 +132,7 @@ export async function POST(
       );
     }
 
-    const [membership, lead] = await Promise.all([
+    const [directMembership, lead] = await Promise.all([
       prisma.teamMember.findUnique({
         where: { teamId_profileId: { teamId, profileId: profile.id } },
       }),
@@ -138,6 +141,8 @@ export async function POST(
         select: { id: true, teamId: true },
       }),
     ]);
+    const membership =
+      directMembership ?? (await backofficeSupportAccessUseCase.resolveSupportMembership(profile.id, teamId));
 
     if (!membership) {
       return NextResponse.json(

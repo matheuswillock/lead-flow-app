@@ -7,6 +7,7 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { leadAttachmentUseCase } from "@/app/api/useCases/leadAttachments/LeadAttachmentUseCase";
+import { backofficeSupportAccessUseCase } from "@/app/api/useCases/backofficeSupport/BackofficeSupportAccessUseCase";
 import { TeamMembersRepository } from "@/app/api/infra/data/repositories/teamMembers/TeamMembersRepository";
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
@@ -122,9 +123,11 @@ export async function GET(
       );
     }
 
-    const membership = await prisma.teamMember.findUnique({
+    const directMembership = await prisma.teamMember.findUnique({
       where: { teamId_profileId: { teamId, profileId: profile.id } },
     });
+    const membership =
+      directMembership ?? (await backofficeSupportAccessUseCase.resolveSupportMembership(profile.id, teamId));
 
     if (!membership) {
       return NextResponse.json(
