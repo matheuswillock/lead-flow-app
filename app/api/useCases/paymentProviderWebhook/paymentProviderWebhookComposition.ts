@@ -10,6 +10,8 @@ import { reportRejectedConfirmation } from "./reportRejectedConfirmation"
 import { reportUnknownOwnerType } from "./reportUnknownOwnerType"
 import { PaymentProviderWebhookService } from "@/app/api/services/paymentProvider/PaymentProviderWebhookService"
 import { PaymentProviderEventProcessor } from "@/lib/payment-provider/event-inbox"
+import { PaymentProviderError } from "@/lib/payment-provider/errors"
+import type { RawWebhookRequest } from "@/lib/payment-provider/contracts"
 import {
   createAbacatePayProvider,
   resolvePaymentProviderEnvironment,
@@ -17,14 +19,28 @@ import {
 
 const ROUTE_VERSION = "PAY-PROV-PHASE-3"
 
-export async function createPaymentProviderWebhookService() {
+export async function createPaymentProviderWebhookService(request: RawWebhookRequest) {
   const environment = resolvePaymentProviderEnvironment()
-  const configuration = (await paymentProviderConfigRepository.list(environment)).find(
+  const configurations = (await paymentProviderConfigRepository.list(environment)).filter(
     (item) => item.provider === "ABACATE_PAY",
   )
-  if (!configuration) throw new Error("Configuração do provider não encontrada")
+  if (configurations.length === 0) throw new Error("Configuração do provider não encontrada")
 
-  const provider = createAbacatePayProvider(environment)
+  const matches = []
+  for (const configuration of configurations) {
+    const provider = await createAbacatePayProvider(environment, configuration.externalAccountContext)
+    try {
+      provider.verifyRequest(request)
+      matches.push({ configuration, provider })
+    } catch (error) {
+      if (!(error instanceof PaymentProviderError) || error.code !== "WEBHOOK_INVALID") throw error
+    }
+  }
+  if (matches.length !== 1) {
+    throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
+  }
+  const { configuration, provider } = matches[0]
+
   const settlement = createPaymentOwnerSettlement()
   const applyEvent = createApplyPaymentEvent({
     provider,

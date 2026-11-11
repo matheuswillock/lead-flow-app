@@ -5,6 +5,7 @@ import { paymentProviderConfigUseCase } from "@/app/api/useCases/paymentProvider
 import { Output } from "@/lib/output"
 import { parseProviderConfigPatch } from "./parseProviderConfigPatch"
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import { protectPaymentProviderWrite } from "../protectWrite"
 
 export async function GET(request: NextRequest) {
   await connection()
@@ -22,6 +23,8 @@ export async function PUT(request: NextRequest) {
   if (access.error) return NextResponse.json(access.error, { status: access.status })
   const denied = requireManagerAccess(access.access)
   if (denied) return denied
+  const protection = await protectPaymentProviderWrite(request, access.access.profileId)
+  if (protection) return protection
 
   try {
     const body = await request.json()

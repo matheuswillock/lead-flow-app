@@ -12,7 +12,7 @@ import type {
 export type HealthCheckProviderFactory = (
   provider: PaymentProviderKey,
   environment: PaymentProviderEnvironment,
-) => HealthCheckCapability
+) => HealthCheckCapability | Promise<HealthCheckCapability>
 
 const CONFIGURATION_UNHEALTHY: ProviderHealthCheckResult = {
   healthy: false,
@@ -51,7 +51,7 @@ export class PaymentProviderHealthCheckService implements IPaymentProviderHealth
   private async probe(input: CheckPaymentProviderHealthInput): Promise<ProviderHealthCheckResult> {
     let provider: HealthCheckCapability
     try {
-      provider = this.createProvider(input.provider, input.environment)
+      provider = await this.createProvider(input.provider, input.environment)
     } catch {
       return CONFIGURATION_UNHEALTHY
     }
