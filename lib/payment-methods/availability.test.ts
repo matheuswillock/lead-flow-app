@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
+import { paymentProviderConfigRepository } from "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
 import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 import {
   PaymentMethodUnavailableError,
@@ -94,6 +95,22 @@ describe("resolveCardAvailability", () => {
     })
     expect(result.card).toBe(false)
     expect(called).toBe(false)
+  })
+
+  it("mantém a chave pública do env quando a consulta da instância padrão falha (DB indisponível)", async () => {
+    // Duas fontes de credencial: banco primeiro, env como reserva. Uma falha de
+    // infraestrutura ao consultar a instância padrão não pode derrubar o fallback de env —
+    // isso regrediu ao ligar resolveCardCheckout no resolvedor banco-primeiro (ver
+    // backofficeAdhesionPixPaymentComposition/BackofficeAdhesionService).
+    const listSpy = spyOn(paymentProviderConfigRepository, "list").mockRejectedValue(
+      new Error("connection refused"),
+    )
+    try {
+      const result = await resolveCardAvailability(PRODUCTION_WITH_KEY, cardOn)
+      expect(result.card).toBe(true)
+    } finally {
+      listSpy.mockRestore()
+    }
   })
 })
 

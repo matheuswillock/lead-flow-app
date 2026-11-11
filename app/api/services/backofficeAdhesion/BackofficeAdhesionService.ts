@@ -72,7 +72,7 @@ import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositorie
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import {
   PaymentMethodUnavailableError,
-  readConfiguredAbacatePublicKey,
+  resolveConfiguredAbacatePublicKey,
   assertBillingTypeAllowed,
   resolveCardAvailability,
   type BillingType,
@@ -846,7 +846,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   /** Cartão do Abacate pronto para uso: chave pública presente, cartão ligado e sem kill switch. */
   private async resolveCardCheckout(): Promise<{ provider: "ABACATE_PAY"; publicKey: string } | null> {
     const availability = await resolveCardAvailability()
-    const publicKey = availability.card ? readConfiguredAbacatePublicKey() : null
+    const publicKey = availability.card ? await resolveConfiguredAbacatePublicKey() : null
     return publicKey ? { provider: "ABACATE_PAY", publicKey } : null
   }
 
