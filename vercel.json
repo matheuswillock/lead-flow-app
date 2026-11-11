@@ -17,7 +17,15 @@
         }
       },
       {
-        "name": "build",
+        "name": "e2e:ci",
+        "env": {
+          "NODE_OPTIONS": {
+            "constant": { "value": "--max-old-space-size=8192" }
+          }
+        }
+      },
+      {
+        "name": "build:ci",
         "env": {
           "NODE_OPTIONS": {
             "constant": { "value": "--max-old-space-size=8192" }
