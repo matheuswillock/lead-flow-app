@@ -1,3 +1,5 @@
+"use client"
+
 import { PaymentProviderInstancesProvider } from "./features/context/PaymentProviderInstancesContext"
 import { PaymentProviderInstancesContainer } from "./features/container/PaymentProviderInstancesContainer"
 import { CardConfigProvider } from "./features/card-config/CardConfigContext"
