@@ -22,6 +22,8 @@ export type LandingTemplateSlug = "black-and-white" | "alvora"
 export type LandingFixture = {
   templateSlug: LandingTemplateSlug
   name: string
+  /** Nome da marca exibido no cabeçalho do template (`identity.tradeName`). */
+  brandName: string
   /** `publicId` da landing: é o que vai em `/conversao/[landingPageId]`. */
   publicId: string
   landingId: string
@@ -35,10 +37,16 @@ function fixtureId(kind: number, slot: number): string {
   return `e2e20000-0000-4000-8000-${String(kind).padStart(4, "0")}${String(slot).padStart(8, "0")}`
 }
 
-function createFixture(kind: number, templateSlug: LandingTemplateSlug, name: string): LandingFixture {
+function createFixture(
+  kind: number,
+  templateSlug: LandingTemplateSlug,
+  name: string,
+  brandName: string,
+): LandingFixture {
   return {
     templateSlug,
     name,
+    brandName,
     landingId: fixtureId(kind, 1),
     publicId: fixtureId(kind, 2),
     formId: fixtureId(kind, 3),
@@ -52,8 +60,8 @@ function createFixture(kind: number, templateSlug: LandingTemplateSlug, name: st
 }
 
 export const E2E_LANDING_FIXTURES = {
-  blackAndWhite: createFixture(1, "black-and-white", "Landing E2E Black and White"),
-  alvora: createFixture(2, "alvora", "Landing E2E Alvorá"),
+  blackAndWhite: createFixture(1, "black-and-white", "Landing E2E Black and White", "Black and White E2E"),
+  alvora: createFixture(2, "alvora", "Landing E2E Alvorá", "Alvorá E2E"),
 } as const
 
 export const E2E_LANDING_FIXTURE_LIST: LandingFixture[] = Object.values(E2E_LANDING_FIXTURES)
@@ -62,7 +70,7 @@ const OFFER = { enabled: false, badge: "", percentage: null, title: "", items: [
 
 /** Conteúdo mínimo e válido, no formato que o wizard de landing pages salva. */
 function buildContent(fixture: LandingFixture) {
-  const brand = fixture.templateSlug === "alvora" ? "Alvorá E2E" : "Black and White E2E"
+  const brand = fixture.brandName
   return {
     brandName: brand,
     heroTitle: "Compare planos de saúde com contexto",
