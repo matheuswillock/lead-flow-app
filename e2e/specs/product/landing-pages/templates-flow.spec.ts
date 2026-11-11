@@ -27,7 +27,10 @@ async function submitLeadThroughLanding(context: BrowserContext, page: Page, fix
   await page.getByRole("link").filter({ hasText: /comparar|analisar|começar|entender/i }).first().click()
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
 
-  const form = page.locator("#landing-form form:visible").first()
+  // O formulário compacto do topo do black-and-white fica em um card com
+  // aria-hidden/inert até o clique em "Preencher": para o usuário ele não existe.
+  // Pegar o formulário com botão acessível escolhe o interativo, em qualquer template.
+  const form = page.locator("#landing-form form").filter({ has: page.getByRole("button") }).first()
   await expect(form).toBeVisible()
   for (const input of await form.locator("input").all()) {
     const inputType = await input.getAttribute("type")

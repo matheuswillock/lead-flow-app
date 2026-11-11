@@ -395,7 +395,7 @@ export function TemplateLandingPageWizard() {
               </div>
             </Field>
             <div className="flex justify-end">
-              <Button type="button" disabled={isLoadingEdit} onClick={() => setStep(2)}>
+              <Button type="button" className="min-h-11" disabled={isLoadingEdit} onClick={() => setStep(2)}>
                 {isLoadingEdit ? "Carregando..." : "Continuar"}
               </Button>
             </div>

@@ -295,3 +295,23 @@ h1 { font-size:80px; line-height:.88; letter-spacing:-.075em; margin:7px 0 48px;
 .alvora-source .cookie-dialog { width: min(100%, 34rem); max-height: min(90vh, 42rem); overflow: auto; padding: 1.5rem; border-radius: 1rem; background: #fff; color: #17256b; box-shadow: 0 1rem 3rem rgba(14, 27, 92, .25); }
 .alvora-source .cookie-actions, .alvora-source .dialog-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
 @media (max-width: 40rem) { .alvora-source .cookie-consent { inset: auto .75rem .75rem; max-width: none; } }
+
+/*
+ * Alvorá no mobile: o design importado deixava links do cabeçalho e do rodapé e
+ * os botões do banner de cookies com 21 a 40px de altura; o projeto exige alvos
+ * de toque de 44px (medido pelo E2E em 360px). Só mexe em elementos que não são
+ * texto corrido (links inline não entram na medição e não mudam).
+ */
+@media (max-width: 780px) {
+  .alvora-source .site-header a,
+  .alvora-source .site-header button,
+  .alvora-source .footer a,
+  .alvora-source .footer button,
+  .alvora-source .cookie-consent button,
+  .alvora-source .cookie-dialog button {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
