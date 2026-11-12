@@ -268,8 +268,7 @@ export async function assertReducedMotion(
   options: ReducedMotionOptions = {},
 ): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.reload();
-  await page.waitForLoadState("load");
+  await page.reload({ waitUntil: "domcontentloaded" });
   await waitForLayoutSettle(page);
 
   const infiniteAnimations = await page.evaluate(
