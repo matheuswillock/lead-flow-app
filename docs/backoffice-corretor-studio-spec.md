@@ -1,7 +1,7 @@
 # Backoffice Corretor Studio
 
 ## Objetivo
-Criar um módulo interno de backoffice dentro do `lead-flow-app`, acessível pela rota `/backoffice`, reutilizando a arquitetura atual de frontend, backend, autenticação com Supabase e integração com Asaas.
+Criar um módulo interno de backoffice dentro do `corretor-studio-app`, acessível pela rota `/backoffice`, reutilizando a arquitetura atual de frontend, backend, autenticação com Supabase e integração com Asaas.
 
 ## Escopo inicial
 1. Gerar novo cliente.

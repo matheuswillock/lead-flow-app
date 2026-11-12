@@ -49,14 +49,15 @@ export async function POST(request: Request) {
   try {
     const rawBody = await request.text()
     eventId = readEventId(rawBody)
-    const composition = await createPaymentProviderWebhookService()
+    const webhookRequest = {
+      rawBody,
+      signature: request.headers.get("x-abacate-signature") ?? request.headers.get("x-signature"),
+      query: { webhookSecret: new URL(request.url).searchParams.get("webhookSecret") },
+    }
+    const composition = await createPaymentProviderWebhookService(webhookRequest)
     const result = await composition.service.handle({
       externalAccountContext: composition.externalAccountContext,
-      request: {
-        rawBody,
-        signature: request.headers.get("x-abacate-signature") ?? request.headers.get("x-signature"),
-        query: { webhookSecret: new URL(request.url).searchParams.get("webhookSecret") },
-      },
+      request: webhookRequest,
     })
     return respond({ accepted: true, action: result.action }, 202)
   } catch (error) {

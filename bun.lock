@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "lead-flow-app",
+      "name": "corretor-studio-app",
       "dependencies": {
         "@cnpja/sdk": "^1.8.1",
         "@date-fns/tz": "^1.4.1",

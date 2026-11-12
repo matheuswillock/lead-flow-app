@@ -1,6 +1,6 @@
 ---
 name: project-context-doc
-description: Analisa um repositório GitHub do Corretor Studio (lead-flow-app), cruza com a documentação interna e o banco de dados Supabase, e gera o arquivo CONTEXTO_DO_PROJETO.md com visão de produto, público-alvo, preços reais, níveis de acesso, funcionalidades e arquitetura. Use quando o usuário pedir para criar, atualizar ou reescrever o contexto do projeto.
+description: Analisa um repositório GitHub do Corretor Studio (corretor-studio-app), cruza com a documentação interna e o banco de dados Supabase, e gera o arquivo CONTEXTO_DO_PROJETO.md com visão de produto, público-alvo, preços reais, níveis de acesso, funcionalidades e arquitetura. Use quando o usuário pedir para criar, atualizar ou reescrever o contexto do projeto.
 ---
 
 # Project Context Doc — Corretor Studio

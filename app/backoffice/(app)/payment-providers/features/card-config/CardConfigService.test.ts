@@ -13,6 +13,7 @@ const abacate = (environment: string, cardEnabled: boolean, revision: number) =>
   provider: "ABACATE_PAY",
   environment,
   enabled: true,
+  isDefault: true,
   cardEnabled,
   revision,
 })
@@ -34,6 +35,22 @@ describe("CardConfigService", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "/backoffice/payment-providers/config?environment=PRODUCTION"
     )
+  })
+
+  it("usa a instância padrão quando há várias contas Abacate no mesmo ambiente", async () => {
+    stubFetch(() => Response.json({
+      isValid: true,
+      result: [
+        { ...abacate("PRODUCTION", false, 2), isDefault: false },
+        { ...abacate("PRODUCTION", true, 7), isDefault: true },
+      ],
+    }))
+
+    expect(await new CardConfigService().getAbacateCardConfig("PRODUCTION")).toEqual({
+      environment: "PRODUCTION",
+      cardEnabled: true,
+      revision: 7,
+    })
   })
 
   it("devolve null quando o ambiente não tem Abacate Pay", async () => {
