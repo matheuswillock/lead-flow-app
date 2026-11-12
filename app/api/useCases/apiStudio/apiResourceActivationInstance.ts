@@ -9,6 +9,6 @@ export const apiResourceActivationUseCase = new ApiResourceActivationUseCase({
   requestLogs: teamApiRequestLogRepository,
   features: {
     hasIntegrationFeature: (teamId) =>
-      featureAccessService.hasTeamFeatureAccess({ teamId, featureSlug: FEATURE_SLUGS.CONFIGURATION }),
+      featureAccessService.hasTeamFeatureAccess({ teamId, featureSlug: FEATURE_SLUGS.API_CATALOG }),
   },
 });

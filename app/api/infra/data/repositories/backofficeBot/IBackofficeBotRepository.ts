@@ -87,7 +87,9 @@ export interface IBackofficeBotRepository {
   findProfileBotAccessBySupabaseId(
     supabaseId: string
   ): Promise<{ id: string; activeTeamId: string | null } | null>;
-  findProfileActiveTeam(profileId: string): Promise<{ id: string; activeTeamId: string | null } | null>;
+  findProfileActiveTeam(
+    profileId: string
+  ): Promise<{ id: string; activeTeamId: string | null; timezone: string } | null>;
   findProfileByEmail(
     email: string
   ): Promise<{ id: string; activeTeamId: string | null; email: string; fullName: string | null } | null>;

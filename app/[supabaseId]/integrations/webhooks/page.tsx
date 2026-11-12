@@ -1,3 +1,4 @@
+import { IntegrationsProvider } from "@/app/[supabaseId]/integrations/features/context/IntegrationsContext";
 import { WebhooksEntryProvider } from "./features/context/WebhooksEntryContext";
 import { WebhooksEntryContainer } from "./features/container/WebhooksEntryContainer";
 
@@ -9,8 +10,10 @@ export default async function WebhooksEntryPage({ params }: PageProps) {
   const { supabaseId } = await params;
 
   return (
-    <WebhooksEntryProvider supabaseId={supabaseId}>
-      <WebhooksEntryContainer />
-    </WebhooksEntryProvider>
+    <IntegrationsProvider supabaseId={supabaseId}>
+      <WebhooksEntryProvider supabaseId={supabaseId}>
+        <WebhooksEntryContainer />
+      </WebhooksEntryProvider>
+    </IntegrationsProvider>
   );
 }

@@ -3,24 +3,12 @@
 import { type DragEvent, useMemo, useRef, useState } from 'react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  MoreHorizontal,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toastUserError } from '@/lib/ui/to-user-toast-message';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -229,27 +217,19 @@ function renderDataCell(
   }
 }
 
-function ActionsCell({ row, onVisualize }: { row: CarteiraRow; onVisualize: (leadId: string) => void }) {
-  return (
-    <div className="flex justify-center">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon" className="size-7">
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Ações</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
-            <Eye className="mr-2 size-4" />
-            Visualizar
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
+/**
+ * Prioridade das colunas por largura de tela: cliente, valor, vencimento e status sempre; o resto
+ * some primeiro nas telas estreitas em vez de criar rolagem lateral. O detalhe abre pela linha.
+ */
+const COLUMN_SCREEN_CLASS: Partial<Record<CarteiraTableColumnKey, string>> = {
+  operadora: 'hidden sm:table-cell',
+  contractDate: 'hidden md:table-cell',
+  source: 'hidden lg:table-cell',
+  sdr: 'hidden xl:table-cell',
+  closer: 'hidden xl:table-cell',
+};
 
+/** Linha inteira abre o cliente (antes só pelo "⋯ → Visualizar"). */
 function CarteiraTableRow({
   row,
   columnOrder,
@@ -260,15 +240,23 @@ function CarteiraTableRow({
   onVisualize: (leadId: string) => void;
 }) {
   return (
-    <TableRow>
+    <TableRow
+      tabIndex={0}
+      aria-label={`Abrir ${row.leadName}`}
+      className="cursor-pointer hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      onClick={() => onVisualize(row.leadId)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onVisualize(row.leadId);
+        }
+      }}
+    >
       {columnOrder.map((column) => (
-        <TableCell key={`${row.leadId}-${column}`} className="text-center">
+        <TableCell key={`${row.leadId}-${column}`} className={cn('text-center', COLUMN_SCREEN_CLASS[column])}>
           {renderDataCell(column, row)}
         </TableCell>
       ))}
-      <TableCell className="w-10 text-center">
-        <ActionsCell row={row} onVisualize={onVisualize} />
-      </TableCell>
     </TableRow>
   );
 }
@@ -401,6 +389,7 @@ export function CarteiraTable() {
                       key={column}
                       className={cn(
                         'text-center align-middle',
+                        COLUMN_SCREEN_CLASS[column],
                         draggingColumnId === column ? 'opacity-60' : '',
                         dragOverColumnId === column ? 'bg-muted/50 ring-1 ring-primary/40' : '',
                         'cursor-move select-none'
@@ -442,13 +431,12 @@ export function CarteiraTable() {
                     </TableHead>
                   );
                 })}
-                <TableHead className="w-10 text-center" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={visibleColumnOrder.length + 1} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={visibleColumnOrder.length} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente na carteira.
                   </TableCell>
                 </TableRow>

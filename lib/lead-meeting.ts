@@ -105,6 +105,15 @@ function isRealScheduledMeeting(params: {
   return parseMeetingDate(params.meetingDate) !== null;
 }
 
+/** Quem pode marcar "Reunião realizada": master, manager (ou backoffice) e o closer do lead. */
+export function canMarkMeetingHeld(params: {
+  isTeamMaster: boolean;
+  isManagerLike: boolean;
+  isAssignedCloser: boolean;
+}): boolean {
+  return params.isTeamMaster || params.isManagerLike || params.isAssignedCloser;
+}
+
 export function canConfirmMeetingPresence(params: {
   status: string | null | undefined;
   meetingDate: string | Date | null | undefined;

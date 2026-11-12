@@ -10,6 +10,7 @@
  * timeout de polling) determinísticos e rápidos, sem tocar o Asaas.
  */
 import { expect, test } from "@playwright/test";
+import { EMAIL_CREDITS_PURCHASE_ENABLED } from "../../../lib/email/email-credits-availability";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile } from "../../support/db";
@@ -258,6 +259,8 @@ test.describe("app/[supabaseId]/subscription", () => {
   });
 
   test("T-21.5/DA3: 500 em email/credits/status → botão Comprar ausente e card de erro com retry", async ({ page }) => {
+    // A aba de créditos some enquanto a venda está desligada (lib/email/email-credits-availability.ts).
+    test.skip(!EMAIL_CREDITS_PURCHASE_ENABLED, "venda de créditos de e-mail desligada");
     await mockSubscriptionGet(page, buildMockSubscription());
     await mockInvoices(page, []);
     await page.route("**/email/credits/status**", async (route) => {
@@ -329,14 +332,14 @@ test.describe("app/[supabaseId]/subscription", () => {
     await expect(payButton).toHaveAttribute("href", "https://sandbox.asaas.com/i/overdue-invoice");
   });
 
-  test("E5: status past_due mostra alerta com link para a aba Faturas", async ({ page }) => {
+  test("E5: status past_due mostra alerta que leva à regularização do pagamento", async ({ page }) => {
     await mockSubscriptionGet(page, buildMockSubscription({ status: "past_due" }));
     await mockInvoices(page, []);
     await page.goto(SUBSCRIPTION_PATH, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByText("Pagamento Atrasado")).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Ver faturas" }).click();
-    await expect(page.getByRole("tabpanel").getByText(/Faturas|fatura/i).first()).toBeVisible();
+    await page.getByRole("button", { name: "Regularizar pagamento" }).click();
+    await expect(page).toHaveURL(/\/billing-grace-payment$/);
   });
 
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion (inclui Alert de cancelada)", async ({ page }) => {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
+import { useConfirmDelete } from "@/components/confirm-delete-dialog"
 import type { BetaFeatureItem, BetaGrantItem } from "../context/BackofficeBetaTypes"
 import { useBackofficeBeta } from "../context/BackofficeBetaContext"
 import { betaBillingLabel, scopeLabel } from "../utils/betaScopeLabel"
@@ -28,9 +29,11 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
   const { openAddDialog, openEditScopeDialog, removeBetaUser, isRemoving } = useBackofficeBeta()
 
   const activeGrants = feature.grants.filter((g) => g.isActive)
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   return (
     <div className="rounded-lg border bg-card flex flex-col">
+      {confirmDeleteDialog}
       <div className="flex items-start justify-between gap-3 p-4">
         <div className="flex flex-col gap-0.5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -110,7 +113,14 @@ export function BackofficeBetaFeatureCard({ feature }: Props) {
                   size="icon"
                   className="size-7 text-muted-foreground hover:text-destructive"
                   disabled={removing}
-                  onClick={() => removeBetaUser(feature.id, grant.profileId)}
+                  onClick={() =>
+                    confirmDelete({
+                      title: `Remover ${grant.profile.fullName ?? grant.profile.email ?? "este master"} do beta?`,
+                      description: `A conta perde o acesso a ${feature.name}.`,
+                      confirmLabel: "Remover",
+                      onConfirm: () => removeBetaUser(feature.id, grant.profileId),
+                    })
+                  }
                   aria-label={`Remover ${grant.profile.fullName ?? grant.profileId} do grupo beta`}
                 >
                   {removing ? (

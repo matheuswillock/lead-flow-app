@@ -11,6 +11,11 @@ export type AccountAccessDecision =
       /** Present only when access is granted by a temporary operational grace. */
       temporaryAccessGranted?: true
       temporaryAccessUntil?: string | null
+      /**
+       * Presente só na carência de cobrança: a assinatura venceu (past_due) e o acesso segue até
+       * esta data (ISO). Concessões operacionais não preenchem este campo.
+       */
+      billingGraceUntil?: string
     }
   | {
       state: "read_only"

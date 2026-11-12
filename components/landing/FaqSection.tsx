@@ -1,7 +1,9 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
+import { MessageCircleQuestion } from "lucide-react"
 import { faqData } from "@/lib/landing/faq-data"
+import { QuestionRequestDialogButton } from "./QuestionRequestDialog"
 import { useLandingReveal } from "@/lib/landing/use-landing-motion"
 
 export function FaqSection() {
@@ -29,6 +31,14 @@ export function FaqSection() {
               <p>{item.answer}</p>
             </details>
           ))}
+        </div>
+
+        <div className="mt-10 flex flex-col items-center gap-3 text-center">
+          <p className="text-base text-landing-body">Não encontrou o que procurava?</p>
+          <QuestionRequestDialogButton className="landing-secondary-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-6 py-3 font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <MessageCircleQuestion className="size-5" aria-hidden />
+            Registrar uma dúvida
+          </QuestionRequestDialogButton>
         </div>
       </div>
     </section>

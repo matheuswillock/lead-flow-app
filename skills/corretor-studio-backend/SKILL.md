@@ -1,11 +1,11 @@
 ---
 name: corretor-studio-backend
-description: Guia obrigatório para construção de novas features de Backend/API no Corretor Studio (lead-flow-app). Cobre arquitetura de camadas Route→UseCase→Service→Prisma, padrão Output, scaffold, nomenclatura, variáveis de ambiente, logging, testes e validação. Use antes de implementar qualquer novo endpoint, UseCase, Service ou domínio de API.
+description: Guia obrigatório para construção de novas features de Backend/API no Corretor Studio (corretor-studio-app). Cobre arquitetura de camadas Route→UseCase→Service→Prisma, padrão Output, scaffold, nomenclatura, variáveis de ambiente, logging, testes e validação. Use antes de implementar qualquer novo endpoint, UseCase, Service ou domínio de API.
 ---
 
 # Corretor Studio — Backend Feature
 
-Produz uma feature de backend completa e consistente com a arquitetura do lead-flow-app.
+Produz uma feature de backend completa e consistente com a arquitetura do corretor-studio-app.
 
 ## Processo obrigatório (6 passos)
 

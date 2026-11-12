@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Webhook } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
+import { useIntegrationsContext } from "@/app/[supabaseId]/integrations/features/context/IntegrationsContext";
 import { useWebhooksEntryContext } from "../context/WebhooksEntryContext";
 import type { WebhookDirectionSummary } from "../context/WebhooksEntryTypes";
 import { WebhooksEntryPageSkeleton } from "../components/WebhooksEntryPageSkeleton";
@@ -36,12 +37,12 @@ export function WebhooksEntryContainer() {
   const { isLoading: isTeamLoading } = useTeamContext();
   const { hasAccess } = useFeatureAccess();
   const { supabaseId, inboundSummary, outboundSummary, loading, error } = useWebhooksEntryContext();
+  const { studioWebhookConfig } = useIntegrationsContext();
 
   // Decisão do owner (22/09, achado R15-3): Webhooks fica liberado por
-  // `integration` OU `radar` — é o comportamento de hoje (o OR frouxo do
-  // extinto `lib/integrationsAccess.ts`), preservado para não tirar acesso
-  // de nenhuma conta que já vê Webhooks só com `radar`.
-  const hasWebhooksAccess = hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR);
+  // `webhooks` OU `radar` — preserva o acesso de quem já vê Webhooks hoje só
+  // com `radar`; nenhuma conta perde acesso.
+  const hasWebhooksAccess = hasAccess(FEATURE_SLUGS.WEBHOOKS) || hasAccess(FEATURE_SLUGS.RADAR);
 
   if (isTeamLoading) {
     return <WebhooksEntryPageSkeleton />;
@@ -65,6 +66,8 @@ export function WebhooksEntryContainer() {
 
   const inboundHref = `/${supabaseId}/integrations/webhooks/inbound`;
   const outboundHref = `/${supabaseId}/integrations/webhooks/outbound`;
+  const genericHref = `/${supabaseId}/integrations/webhooks/generic`;
+  const genericConfigured = studioWebhookConfig?.configured === true;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -75,7 +78,7 @@ export function WebhooksEntryContainer() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Link
           href={inboundHref}
           className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -121,10 +124,33 @@ export function WebhooksEntryContainer() {
             </CardHeader>
           </Card>
         </Link>
-      </div>
 
-      {/* [!] Resumo só leitura do widget legado "Webhook Genérico de Leads" (DA2) aguardando
-          a unificação da SPEC 10 A-E1. Ver SPEC 15 B-E2 na tabela de completude. */}
+        <Link
+          href={genericHref}
+          className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Card className="h-full transition-colors hover:bg-muted/40">
+            <CardHeader className="flex flex-row items-start gap-3">
+              <div className="rounded-md border bg-background p-2">
+                <Webhook className="size-5 text-primary" />
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-base">Webhook Genérico de Leads</CardTitle>
+                  <Badge variant="outline">Legado</Badge>
+                </div>
+                <CardDescription>
+                  Configure um endpoint para receber leads de ferramentas como Make, n8n ou qualquer integração HTTP
+                  POST.
+                </CardDescription>
+                <div className="text-sm text-muted-foreground">
+                  {genericConfigured ? "Pronto para uso" : "Não configurado"}
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        </Link>
+      </div>
     </div>
   );
 }

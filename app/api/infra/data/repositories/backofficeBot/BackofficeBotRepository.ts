@@ -95,7 +95,7 @@ class PrismaBackofficeBotRepository implements IBackofficeBotRepository {
   async findProfileActiveTeam(profileId: string) {
     return prisma.profile.findUnique({
       where: { id: profileId },
-      select: { id: true, activeTeamId: true },
+      select: { id: true, activeTeamId: true, timezone: true },
     });
   }
 

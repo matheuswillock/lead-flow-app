@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useConfirmDelete } from "@/components/confirm-delete-dialog"
 import type { useBackofficeSettings } from "../hooks/useBackofficeSettings"
 
 type SettingsState = ReturnType<typeof useBackofficeSettings>
@@ -193,6 +194,7 @@ function SendersCard({
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [replyTo, setReplyTo] = useState("")
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   const submit = async () => {
     if (!name.trim() || !email.trim()) return
@@ -208,6 +210,7 @@ function SendersCard({
 
   return (
     <Card>
+      {confirmDeleteDialog}
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Mail className="size-4" />
@@ -252,7 +255,14 @@ function SendersCard({
                         size="sm"
                         variant="ghost"
                         disabled={deletingSenderId === sender.id}
-                        onClick={() => void onDelete(sender.id)}
+                        onClick={() =>
+                          confirmDelete({
+                            title: `Remover o remetente ${sender.email}?`,
+                            description: "Os próximos envios do cliente não poderão mais usar este remetente.",
+                            confirmLabel: "Remover",
+                            onConfirm: () => onDelete(sender.id),
+                          })
+                        }
                       >
                         <Trash2 data-icon="inline-start" />
                         Remover
@@ -304,6 +314,7 @@ function VariablesCard({
 }) {
   const [key, setKey] = useState("")
   const [defaultValue, setDefaultValue] = useState("")
+  const { confirmDelete, dialog: confirmDeleteDialog } = useConfirmDelete()
 
   const submit = async () => {
     if (!key.trim()) return
@@ -314,6 +325,7 @@ function VariablesCard({
 
   return (
     <Card>
+      {confirmDeleteDialog}
       <CardHeader>
         <CardTitle className="text-base">Variáveis globais</CardTitle>
       </CardHeader>
@@ -341,7 +353,14 @@ function VariablesCard({
                     size="sm"
                     variant="ghost"
                     disabled={deletingVariableId === variable.id}
-                    onClick={() => void onDelete(variable.id)}
+                    onClick={() =>
+                      confirmDelete({
+                        title: `Remover a variável ${variable.key}?`,
+                        description: "Modelos que usam esta variável ficarão sem o valor dela.",
+                        confirmLabel: "Remover",
+                        onConfirm: () => onDelete(variable.id),
+                      })
+                    }
                   >
                     <Trash2 data-icon="inline-start" />
                     Remover

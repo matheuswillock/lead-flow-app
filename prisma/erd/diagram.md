@@ -854,6 +854,10 @@ LEAD_DOCUMENT_REQUEST_COMPLETED LEAD_DOCUMENT_REQUEST_COMPLETED
 STUDIO_DOMAIN_DNS_ACTION_REQUIRED STUDIO_DOMAIN_DNS_ACTION_REQUIRED
 STUDIO_DOMAIN_DNS_RECOVERED STUDIO_DOMAIN_DNS_RECOVERED
 LEAD_NEEDS_RESCHEDULE LEAD_NEEDS_RESCHEDULE
+LEAD_FOLLOW_UP_REMINDER LEAD_FOLLOW_UP_REMINDER
+LEAD_ORPHANED LEAD_ORPHANED
+TEAM_EXPORT_READY TEAM_EXPORT_READY
+TEAM_EXPORT_FAILED TEAM_EXPORT_FAILED
         }
     
 
@@ -1127,6 +1131,7 @@ MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
             PROFILE PROFILE
 TEAM TEAM
 TEAM_MEMBER TEAM_MEMBER
+PAYMENT_PROVIDER_CONFIG PAYMENT_PROVIDER_CONFIG
         }
     
 
@@ -1821,6 +1826,13 @@ partially_filled partially_filled
 completed completed
         }
     
+
+
+        backoffice_coupon_discount_type {
+            percent percent
+fixed fixed
+        }
+    
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
@@ -2037,8 +2049,52 @@ completed completed
     DateTime confirmed_at "❓"
     DateTime completed_at "❓"
     String failure_reason "❓"
+    String revoked_profile_ids 
     DateTime created_at 
     DateTime updated_at 
+    }
+  
+
+  "team_member_access_emails" {
+    String id "🗝️"
+    String account_id 
+    String team_id "❓"
+    String profile_id 
+    String dispatch_id 
+    String requested_by_profile_id "❓"
+    DateTime created_at 
+    }
+  
+
+  "lead_administrator_interviews" {
+    String id "🗝️"
+    String lead_id 
+    String team_id 
+    DateTime scheduled_at 
+    String scheduled_local 
+    String administrator_name "❓"
+    String notes "❓"
+    DateTime client_notified_at "❓"
+    String updated_by_profile_id "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "lead_follow_up_reminders" {
+    String id "🗝️"
+    String lead_id 
+    String team_id 
+    String kind 
+    String offset_key 
+    DateTime anchor_at 
+    DateTime due_at 
+    String event_label 
+    String owner_profile_id 
+    String notify_profile_ids 
+    DateTime processed_at "❓"
+    String task_id "❓"
+    DateTime created_at 
     }
   
 
@@ -2239,6 +2295,11 @@ completed completed
     Json additional_teams_data 
     Json installmentSchedule 
     Json installmentLedger 
+    String couponCode "❓"
+    BackofficeCouponDiscountType couponDiscountType "❓"
+    Decimal couponDiscountValue "❓"
+    Decimal couponDiscountAmount "❓"
+    Decimal extrasTotalAmount "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -4681,8 +4742,23 @@ completed completed
     String last_error_code "❓"
     String last_error_message "❓"
     String public_key_fingerprint "❓"
+    String display_name "❓"
     String logo_url "❓"
     String logo_alt_text "❓"
+    DateTime created_at 
+    DateTime updated_at 
+    }
+  
+
+  "payment_provider_credentials" {
+    String id "🗝️"
+    String config_id 
+    String key 
+    String value_ciphertext 
+    String key_id 
+    String last4 "❓"
+    String fingerprint 
+    String updated_by "❓"
     DateTime created_at 
     DateTime updated_at 
     }
@@ -5160,6 +5236,47 @@ completed completed
     DateTime updatedAt 
     }
   
+
+  "backoffice_coupons" {
+    String id "🗝️"
+    String code 
+    BackofficeCouponDiscountType discountType 
+    Decimal discountValue 
+    Boolean isActive 
+    DateTime validFrom "❓"
+    DateTime validUntil "❓"
+    Int maxUses "❓"
+    Int usesCount 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_team_deletion_export_jobs" {
+    String id "🗝️"
+    String teamId 
+    String teamName 
+    String requesterProfileId 
+    String requesterEmail 
+    String requesterName 
+    String billingOwnerId 
+    String status 
+    Int attempts 
+    DateTime lockedAt "❓"
+    String filePath "❓"
+    Int fileSizeBytes "❓"
+    DateTime expiresAt "❓"
+    Json counts "❓"
+    String lastError "❓"
+    Int downloadCount 
+    DateTime lastDownloadedAt "❓"
+    String lastDownloadedBy "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    DateTime completedAt "❓"
+    DateTime purgedAt "❓"
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|| "AsaasAccount" : "enum:asaasCustomerAccount"
@@ -5230,6 +5347,7 @@ completed completed
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
     "backoffice_adhesions" |o--|| "AsaasAccount" : "enum:asaasAccount"
+    "backoffice_adhesions" |o--|o "BackofficeCouponDiscountType" : "enum:couponDiscountType"
     "backoffice_adhesions" |o--|| backoffice_leads : "lead"
     "backoffice_adhesions" }o--|o backoffice_products : "product"
     "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
@@ -5237,6 +5355,7 @@ completed completed
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "sponsorMaster"
     "backoffice_adhesions" }o--|o corretor_studio_profiles : "discountApprovedBy"
+    "backoffice_adhesions" }o--|o backoffice_coupons : "coupon"
     "backoffice_adhesion_payments" }o--|| backoffice_adhesions : "adhesion"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
     "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
@@ -5709,6 +5828,8 @@ completed completed
     "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
     "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_credentials" }o--|| payment_provider_configs : "config"
+    "payment_provider_credentials" }o--|o corretor_studio_profiles : "updatedBy"
     "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
     "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"
@@ -5795,4 +5916,5 @@ completed completed
     "corretor_studio_lead_document_requests" }o--|| corretor_studio_profiles : "createdBy"
     "corretor_studio_lead_document_request_items" }o--|| corretor_studio_lead_document_requests : "request"
     "corretor_studio_lead_document_request_items" }o--|o corretor_studio_lead_attachments : "attachment"
+    "backoffice_coupons" |o--|| "BackofficeCouponDiscountType" : "enum:discountType"
 ```

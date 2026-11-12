@@ -52,6 +52,17 @@ import { LeadOngoingTreatmentField } from "./fields/LeadOngoingTreatmentField";
 import { LeadPhoneField } from "./fields/LeadPhoneField";
 import { LeadReferenceHospitalField } from "./fields/LeadReferenceHospitalField";
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "../ui/alert-dialog";
+import { isLandlinePhone, normalizeLeadPhoneDigits } from "@/lib/masks";
+import {
     getPendingRequiredFieldsFeedback,
     LEAD_REQUIRED_FIELD_ORDER,
 } from "@/lib/validations/leadFormFeedback";
@@ -397,6 +408,10 @@ export function LeadForm({
         }
     }, [form, isLoading, isUpdating]);
 
+    // Telefone fixo costuma não ter WhatsApp: pede confirmação antes de salvar (uma vez por número).
+    const [landlineConfirmMode, setLandlineConfirmMode] = useState<LeadFormSaveMode | null>(null);
+    const acknowledgedLandlineRef = useRef<string | null>(null);
+
     const runSubmit = useCallback(
         (mode: LeadFormSaveMode) => {
             const resolvedMode: LeadFormSaveMode =
@@ -409,6 +424,15 @@ export function LeadForm({
                 return;
             }
 
+            const phoneValue = form.getValues("phone") ?? "";
+            if (
+                isLandlinePhone(phoneValue) &&
+                acknowledgedLandlineRef.current !== normalizeLeadPhoneDigits(phoneValue)
+            ) {
+                setLandlineConfirmMode(resolvedMode);
+                return;
+            }
+
             void form.handleSubmit(
                 (data) => onSubmit(data, resolvedMode),
                 () => {
@@ -418,6 +442,13 @@ export function LeadForm({
         },
         [canSaveAssigneesOnly, form, handleInvalidSubmit, isSchemaValid, onSubmit]
     );
+
+    const confirmLandlineAndSave = useCallback(() => {
+        const mode = landlineConfirmMode;
+        acknowledgedLandlineRef.current = normalizeLeadPhoneDigits(form.getValues("phone") ?? "");
+        setLandlineConfirmMode(null);
+        if (mode) runSubmit(mode);
+    }, [form, landlineConfirmMode, runSubmit]);
 
     const handleSaveFull = useCallback(() => {
         if (isSaveDisabled) {
@@ -1187,6 +1218,26 @@ export function LeadForm({
                 form.setValue("referrerPhone", value.referrerPhone || "", { shouldDirty: true });
             }}
         />
+        <AlertDialog
+            open={landlineConfirmMode !== null}
+            onOpenChange={(open) => {
+                if (!open) setLandlineConfirmMode(null);
+            }}
+        >
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Este telefone parece fixo</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Números fixos costumam não ter WhatsApp. Tem certeza que quer salvar este lead com um
+                        número sem WhatsApp?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Corrigir número</AlertDialogCancel>
+                    <AlertDialogAction onClick={confirmLandlineAndSave}>Salvar assim mesmo</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
       </Form>
     );
 }

@@ -6,6 +6,7 @@ export type PaymentProviderConfigInput = {
   /** Opcional apenas em PRODUCTION enquanto a loja não tem "Checkout próprio" (cartão) liberado. */
   readonly publicKey?: string | null
   readonly webhookSecret: string
+  readonly webhookSecretPrevious?: string | null
   /** Chave do HMAC do webhook; o Abacate Pay usa a chave pública da loja. */
   readonly webhookSigningKey?: string | null
   readonly environment: PaymentProviderEnvironment
@@ -17,6 +18,7 @@ export class PaymentProviderConfig {
   readonly apiKey: string
   readonly publicKey: string | null
   readonly webhookSecret: string
+  readonly webhookSecretPrevious: string | null
   readonly webhookSigningKey: string | null
   readonly environment: PaymentProviderEnvironment
   readonly devMode: boolean
@@ -26,6 +28,7 @@ export class PaymentProviderConfig {
     this.apiKey = input.apiKey
     this.publicKey = input.publicKey ?? null
     this.webhookSecret = input.webhookSecret
+    this.webhookSecretPrevious = input.webhookSecretPrevious ?? null
     this.webhookSigningKey = input.webhookSigningKey ?? null
     this.environment = input.environment
     this.devMode = input.devMode

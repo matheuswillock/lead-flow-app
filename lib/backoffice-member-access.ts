@@ -1,4 +1,5 @@
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
+import { getDispatchId } from "@/lib/email/dispatch-id"
 import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 import { createEmailService } from "@/lib/services/EmailService"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
@@ -218,11 +219,6 @@ function getResendEmailId(result: unknown): string | null {
   return typeof id === "string" ? id : null
 }
 
-function getDispatchId(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null
-  const dispatchIds = (result as { dispatchIds?: unknown }).dispatchIds
-  return Array.isArray(dispatchIds) && typeof dispatchIds[0] === "string" ? dispatchIds[0] : null
-}
 
 export async function sendBackofficeMemberAccessEmail(input: {
   profile: BackofficeMemberAccessIdentity
@@ -230,6 +226,8 @@ export async function sendBackofficeMemberAccessEmail(input: {
 }): Promise<{
   email: string
   access: BackofficeMemberAccessSnapshot
+  /** Registro do envio, para ligar à conta que pediu; null se o envio não foi registrado. */
+  dispatchId: string | null
 }> {
   const accessByProfileId = await resolveBackofficeMemberAccess([input.profile])
   const access = accessByProfileId.get(input.profile.profileId) ?? buildSnapshot(null)
@@ -261,7 +259,7 @@ export async function sendBackofficeMemberAccessEmail(input: {
     })
     assertEmailSendSucceeded(sendResult)
 
-    return { email: input.profile.email, access }
+    return { email: input.profile.email, access, dispatchId: getDispatchId(sendResult) }
   }
 
   if (access.accessStatus !== "active") {
@@ -326,7 +324,7 @@ export async function sendBackofficeMemberAccessEmail(input: {
   }
   assertEmailSendSucceeded(sendResult)
 
-  return { email: input.profile.email, access }
+  return { email: input.profile.email, access, dispatchId: getDispatchId(sendResult) }
 }
 
 /**

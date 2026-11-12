@@ -29,6 +29,7 @@ import { SubscriptionPermanentHeroCard } from './SubscriptionPermanentHeroCard';
 import { SubscriptionResourceCard } from './SubscriptionResourceCard';
 import { shouldShowEmailCreditsTab } from '../utils/emailCreditsTabVisibility';
 import { cn } from '@/lib/utils';
+import { EMAIL_CREDITS_PURCHASE_ENABLED } from '@/lib/email/email-credits-availability';
 
 export function SubscriptionContainer() {
   const router = useRouter();
@@ -78,6 +79,9 @@ export function SubscriptionContainer() {
       isManagerLikeRole(userRole.role) ||
       // Mantém compatibilidade com o gate anterior quando o usuário já tem acesso ao módulo.
       hasAccess(FEATURE_SLUGS.EMAIL_CAMPAIGNS);
+
+    // Venda de créditos de e-mail desligada: a aba some junto com a página de compra.
+    if (!EMAIL_CREDITS_PURCHASE_ENABLED) return false
 
     return shouldShowEmailCreditsTab({
       isEmailFeatureBeta,
@@ -271,10 +275,10 @@ export function SubscriptionContainer() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setActiveTab('faturas')}
+              onClick={() => router.push(`/${supabaseId}/billing-grace-payment`)}
               className="w-fit max-lg:h-11"
             >
-              Ver faturas
+              Regularizar pagamento
             </Button>
           </AlertDescription>
         </Alert>

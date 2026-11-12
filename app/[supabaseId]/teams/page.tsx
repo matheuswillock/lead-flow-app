@@ -178,6 +178,7 @@ export default function TeamsPage() {
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"delete" | "transfer" | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [exportTeamData, setExportTeamData] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [transferCandidateId, setTransferCandidateId] = useState("");
   const [transferTargets, setTransferTargets] = useState<TeamTransferTarget[]>([]);
@@ -916,13 +917,20 @@ export default function TeamsPage() {
             "x-supabase-user-id": supabaseId,
             "x-team-id": manageTeamId,
           },
-          body: JSON.stringify({ password: confirmPassword }),
+          body: JSON.stringify({ password: confirmPassword, exportData: exportTeamData }),
         });
         const result = await response.json();
         if (!response.ok || !result?.isValid) {
           throw new Error(result?.errorMessages?.join(", ") || "Não foi possível deletar o time.");
         }
-        toast.success("Time deletado com sucesso.");
+        // 202: o arquivo é gerado em segundo plano e o time só é excluído depois dele pronto.
+        if (response.status === 202) {
+          toast.success(
+            "Exportação iniciada. O time será excluído quando o arquivo ficar pronto e você receberá um e-mail e uma notificação com o link.",
+          );
+        } else {
+          toast.success("Time deletado com sucesso.");
+        }
         setIsManageOpen(false);
         await refreshTeams();
       }
@@ -958,6 +966,7 @@ export default function TeamsPage() {
       setConfirming(false);
       setConfirmAction(null);
       setConfirmPassword("");
+      setExportTeamData(false);
     }
   };
 
@@ -1755,6 +1764,7 @@ export default function TeamsPage() {
           if (!open) {
             setConfirmAction(null)
             setConfirmPassword("")
+            setExportTeamData(false)
           }
         }}
       >
@@ -1781,6 +1791,32 @@ export default function TeamsPage() {
               </ul>
             </div>
           ) : null}
+          {confirmAction === "delete" ? (
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="exportTeamData"
+                  checked={exportTeamData}
+                  onCheckedChange={(checked) => setExportTeamData(checked === true)}
+                  disabled={confirming}
+                  className="mt-0.5"
+                />
+                <Label htmlFor="exportTeamData" className="cursor-pointer text-sm font-medium leading-snug">
+                  Exportar as informações do time antes de excluir
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {exportTeamData
+                  ? "Geramos um ZIP com planilhas (leads, carteira, contratos, atividades, tarefas, agenda, formulários e e-mails) e só então excluímos o time. Você recebe o link por e-mail e por notificação, válido por 7 dias e só com seu login. Se a exportação falhar, o time não é excluído."
+                  : "Sem exportar, o time é excluído na hora e não há como recuperar nada."}
+              </p>
+              {exportTeamData ? (
+                <p className="text-xs text-muted-foreground">
+                  O arquivo traz dados pessoais de leads e membros. Você é o responsável por guardá-lo e usá-lo conforme a LGPD.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Digite sua senha</Label>
             <Input
@@ -1798,6 +1834,7 @@ export default function TeamsPage() {
               onClick={() => {
                 setConfirmAction(null)
                 setConfirmPassword("")
+                setExportTeamData(false)
               }}
               disabled={confirming}
             >
@@ -1809,7 +1846,11 @@ export default function TeamsPage() {
               onClick={handleConfirmAction}
               disabled={confirming || !confirmPassword}
             >
-              {confirming ? "Confirmando..." : "Confirmar"}
+              {confirming
+                ? "Confirmando..."
+                : confirmAction === "delete" && exportTeamData
+                  ? "Exportar e excluir"
+                  : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

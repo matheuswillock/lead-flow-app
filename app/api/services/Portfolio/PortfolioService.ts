@@ -1,6 +1,7 @@
 import { ActivityType, ContractType, LeadStatus, Prisma, PortfolioSource, RenewalStatus } from '@prisma/client';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
+import { portfolioProfileName } from './portfolioProfileName';
 import type {
   CreatePortfolioEntryPayload,
   CreatePortfolioImportEntryPayload,
@@ -17,6 +18,7 @@ import type {
 
 function mapToPortfolioRow(entry: {
   id: string;
+  teamId: string;
   portfolioStatus: string;
   renewalStatus: RenewalStatus;
   renewalAmount: { toNumber(): number } | null;
@@ -34,7 +36,7 @@ function mapToPortfolioRow(entry: {
     soldPlan: string | null;
     contractDueDate: Date | null;
     assignee: { id: string; fullName: string | null } | null;
-    closer: { id: string; fullName: string | null } | null;
+    closer: { id: string; fullName: string | null; deletedAt: Date | null; teamMemberships: { teamId: string }[] } | null;
     LeadFinalized: { operadora: string | null; startDateAt: Date; contractType: ContractType; holder: { razaoSocial: string | null } | null }[];
   };
 }): PortfolioRow {
@@ -60,7 +62,7 @@ function mapToPortfolioRow(entry: {
       ? { id: entry.lead.assignee.id, name: entry.lead.assignee.fullName ?? '' }
       : null,
     closer: entry.lead.closer
-      ? { id: entry.lead.closer.id, name: entry.lead.closer.fullName ?? '' }
+      ? { id: entry.lead.closer.id, name: portfolioProfileName(entry.lead.closer, entry.teamId) }
       : null,
     soldPlan: entry.lead.soldPlan,
     operadora: finalized?.operadora ?? null,
@@ -86,7 +88,7 @@ const leadInclude = {
       contractDueDate: true,
       closerId: true,
       assignee: { select: { id: true, fullName: true } },
-      closer: { select: { id: true, fullName: true } },
+      closer: { select: { id: true, fullName: true, deletedAt: true, teamMemberships: { select: { teamId: true } } } },
       LeadFinalized: {
         select: { operadora: true, startDateAt: true, contractType: true, holder: { select: { razaoSocial: true } } },
         orderBy: { createdAt: 'desc' as const },
@@ -260,7 +262,7 @@ export class PortfolioService implements IPortfolioService {
         include: {
           holder: true,
           dependents: { orderBy: { createdAt: 'asc' } },
-          closer: { select: { fullName: true } },
+          closer: { select: { fullName: true, deletedAt: true, teamMemberships: { select: { teamId: true } } } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -298,7 +300,9 @@ export class PortfolioService implements IPortfolioService {
       saleValue: ticket > 0 ? ticket : currentValue,
       portfolioStatus: entry.portfolioStatus,
       sdr: entry.lead.assignee ? { id: entry.lead.assignee.id, name: entry.lead.assignee.fullName ?? '' } : null,
-      closer: entry.lead.closer ? { id: entry.lead.closer.id, name: entry.lead.closer.fullName ?? '' } : null,
+      closer: entry.lead.closer
+        ? { id: entry.lead.closer.id, name: portfolioProfileName(entry.lead.closer, entry.teamId) }
+        : null,
       soldPlan: entry.lead.soldPlan,
       contractDueDate: entry.lead.contractDueDate,
       contractType: finalized?.contractType ?? ContractType.individual,
@@ -311,7 +315,7 @@ export class PortfolioService implements IPortfolioService {
             finalizedDateAt: finalized.finalizedDateAt,
             contractFileUrl: finalized.contractFileUrl ?? null,
             notes: finalized.notes ?? null,
-            closerName: finalized.closer?.fullName ?? null,
+            closerName: finalized.closer ? portfolioProfileName(finalized.closer, entry.teamId) : null,
           }
         : null,
       holder: finalized?.holder

@@ -6,20 +6,19 @@ import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support
 import { runResponsiveChecks } from "../../support/responsive";
 
 /**
- * Abre o menu de ações da tabela de times e entra em "Gerenciar".
+ * Entra em "Gerenciar" clicando na linha do primeiro time (o menu "⋯" saiu: a linha abre o time).
  *
  * A página de times tem refresh periódico (times com pagamento pendente
- * disparam `refreshTeams` a cada 10s) que remonta as linhas e derruba o
- * clique em "Abrir menu" no meio da ação. Em vez de um clique único com
- * timeout longo (que segura um worker da VPS por minutos e gera flake em
- * cascata nos specs paralelos), tenta em rajadas curtas até estabilizar.
+ * disparam `refreshTeams` a cada 10s) que remonta as linhas e pode derrubar o
+ * clique no meio da ação. Em vez de um clique único com timeout longo (que
+ * segura um worker da VPS por minutos e gera flake em cascata nos specs
+ * paralelos), tenta em rajadas curtas até estabilizar.
  */
 async function openManageMenu(page: Page, attempts = 6): Promise<void> {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      await page.getByRole("button", { name: "Abrir menu" }).first().click({ timeout: 15_000 });
-      await page.getByRole("menuitem", { name: "Gerenciar" }).click({ timeout: 10_000 });
+      await page.getByRole("row", { name: /^Gerenciar / }).first().click({ timeout: 15_000 });
       return;
     } catch (error) {
       lastError = error;

@@ -15,7 +15,7 @@ export const apiStudioAvailabilityUseCase = new ApiStudioAvailabilityUseCase({
   activations: teamApiResourceActivationRepository,
   features: {
     hasIntegrationFeature: (teamId) =>
-      featureAccessService.hasTeamFeatureAccess({ teamId, featureSlug: FEATURE_SLUGS.CONFIGURATION }),
+      featureAccessService.hasTeamFeatureAccess({ teamId, featureSlug: FEATURE_SLUGS.API_CATALOG }),
   },
   teams: {
     async isAccountAllowed(teamId) {

@@ -10,7 +10,7 @@
  *   full     — `supabase start` (não usa este compose). `--full-supabase`.
  *
  * Este módulo centraliza URLs/porta, leitura dos segredos híbridos e
- * probe/start/stop via `docker compose`.
+ * probe/start/stop via `podman compose`.
  */
 
 import { spawnSync } from "node:child_process";
@@ -23,6 +23,9 @@ export const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:55322/post
 /** Superuser da imagem supabase/postgres — necessário para ALTER em `auth.*`. */
 export const LOCAL_DB_ADMIN_URL = "postgresql://supabase_admin:postgres@127.0.0.1:55322/postgres";
 export const LOCAL_PROXY_URL = "http://127.0.0.1:55321";
+
+/** O stack local roda por `podman compose` (o provider usa o `podman.socket`). */
+export const COMPOSE_COMMAND = "podman";
 
 const COMPOSE_FILE = join(process.cwd(), "docker-compose.local.yml");
 const STACK_ENV_FILE = join(process.cwd(), "docker", "local", ".env.local-stack");
@@ -101,7 +104,7 @@ function podmanSocketPath(): string {
 }
 
 /**
- * No Fedora/Podman o `docker compose` fala com unix:///run/user/UID/podman/podman.sock.
+ * No Fedora o `podman compose` fala com unix:///run/user/UID/podman/podman.sock.
  * O unit `podman.socket` às vezes fica "active" no systemd sem o arquivo do socket
  * (após idle/stop do service). Recria com `systemctl --user restart podman.socket`.
  */
@@ -139,7 +142,7 @@ export function runLocalStackCompose(
   opts: { stdio?: "inherit" | "pipe"; mode?: LocalStackMode } = {},
 ): RunResult {
   const mode = opts.mode ?? "db-only";
-  return run("docker", composeArgs(mode, args), opts);
+  return run(COMPOSE_COMMAND, composeArgs(mode, args), opts);
 }
 
 /** Verifica se o Postgres local está aceitando conexões. */
@@ -185,7 +188,7 @@ export function startLocalStack(mode: LocalStackMode = "db-only"): RunResult {
     return runLocalStackCompose(["up", "-d"], { stdio: "inherit", mode });
   }
   // Nomeia `db` para o compose não tentar subir realtime/proxy se o provider
-  // (Podman + docker-compose) ignorar `profiles`.
+  // (provider do `podman compose`) ignorar `profiles`.
   return runLocalStackCompose(["up", "-d", "db"], { stdio: "inherit", mode });
 }
 

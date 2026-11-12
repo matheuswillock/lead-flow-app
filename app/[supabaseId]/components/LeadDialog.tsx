@@ -69,8 +69,10 @@ import {
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
-import { isMeetingOverdue, canConfirmMeetingPresence } from "@/lib/lead-meeting";
+import { isMeetingOverdue, canConfirmMeetingPresence, canMarkMeetingHeld } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import { LeadAdministratorInterviewSection } from "@/app/[supabaseId]/components/lead-interview/LeadAdministratorInterviewSection";
+import { MeetingNurtureSection } from "@/app/[supabaseId]/components/lead-nurture/MeetingNurtureSection";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import { TransferBetweenTeamsDialog } from "@/app/[supabaseId]/board/features/container/TransferBetweenTeamsDialog";
 import { ResendScheduleInviteDialog } from "@/app/[supabaseId]/board/features/components/ResendScheduleInviteDialog";
@@ -110,6 +112,7 @@ import { LeadDuplicateWarningDialog } from "@/app/[supabaseId]/components/LeadDu
 import { LeadMergeDialog } from "@/app/[supabaseId]/components/LeadMergeDialog";
 import type { LeadDuplicateCandidateDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { LeadDeleteAction } from "./LeadDeleteAction";
 
 type LeadDialogLeftTab = "dados" | "tags" | "contatos" | "documentos";
 
@@ -123,6 +126,8 @@ interface LeadDialogProps {
   patchLead?: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
   defaultTab?: LeadDialogLeftTab;
+  /** Mostra "Excluir" no lead aberto (no funil, onde a exclusão já existia no menu da linha). */
+  allowDelete?: boolean;
 }
 
 type PendingStatusConfirmation = {
@@ -287,6 +292,7 @@ export default function LeadDialog({
   patchLead,
   finalizeContract,
   defaultTab = "dados",
+  allowDelete = false,
 }: LeadDialogProps) {
   const { tz: scheduleTimezone } = useTimezone();
   const [localLead, setLocalLead] = useState<Lead | null>(lead);
@@ -537,7 +543,7 @@ export default function LeadDialog({
     setShortShareUrl("");
     if (!shareUrl || !supabaseId || !activeTeamId) return;
     let cancelled = false;
-    fetch("/api/v1/short-links", {
+    fetch(`${API_CLIENT_BASE}/short-links`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -589,7 +595,12 @@ export default function LeadDialog({
   const shouldShowMeetingHeald = !!currentLead && currentLead.status === "scheduled";
   const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
-    shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
+    shouldShowMeetingHeald &&
+    canMarkMeetingHeld({
+      isTeamMaster,
+      isManagerLike: isManagerLikeRole(activeRole ?? user?.role ?? ""),
+      isAssignedCloser,
+    });
   const isAssignedSdr = !!(currentLead && user && currentLead.assignedTo === user.id);
   const canEditMeetingPresence =
     !!currentLead &&
@@ -2863,6 +2874,18 @@ export default function LeadDialog({
                         Fechar Contrato
                       </Button>
                     )}
+                    {allowDelete && currentLead?.id ? (
+                      <LeadDeleteAction
+                        leadId={currentLead.id}
+                        leadName={currentLead.name || "Este lead"}
+                        supabaseId={supabaseId ?? null}
+                        teamId={activeTeamId ?? null}
+                        onDeleted={async () => {
+                          setOpen(false);
+                          await refreshLeads();
+                        }}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </DialogHeader>
@@ -2972,14 +2995,41 @@ export default function LeadDialog({
                             supabaseId={supabaseId}
                           />
                         </TabsContent>
-                        <TabsContent value="contatos" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                        <TabsContent value="contatos" className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+                          <MeetingNurtureSection
+                            leadId={currentLead.id}
+                            teamId={activeTeamId}
+                            supabaseId={supabaseId}
+                            leadName={currentLead.name}
+                            leadPhone={currentLead.phone}
+                            sdrName={user.fullName}
+                            canEdit={
+                              isTeamMaster ||
+                              isManagerLikeRole(activeRole ?? user.role ?? "") ||
+                              activeFunctions.includes("SDR") ||
+                              activeFunctions.includes("CLOSER")
+                            }
+                          />
                           <LeadContactsTab
                             leadId={currentLead.id}
                             teamId={activeTeamId}
                             supabaseId={supabaseId}
                           />
                         </TabsContent>
-                        <TabsContent value="documentos" className="mt-0 min-h-0 flex-1 overflow-y-auto">
+                        <TabsContent value="documentos" className="mt-0 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+                          <LeadAdministratorInterviewSection
+                            leadId={currentLead.id}
+                            teamId={activeTeamId}
+                            supabaseId={supabaseId}
+                            clientName={currentLead.name}
+                            clientPhone={currentLead.phone}
+                            brokerName={user.fullName}
+                            canManage={
+                              isTeamMaster ||
+                              isManagerLikeRole(activeRole ?? user.role ?? "") ||
+                              activeFunctions.includes("CLOSER")
+                            }
+                          />
                           <LeadDocumentRequestsTab
                             leadId={currentLead.id}
                             teamId={activeTeamId}

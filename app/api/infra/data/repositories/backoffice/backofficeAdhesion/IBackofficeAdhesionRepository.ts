@@ -26,7 +26,10 @@ export type BackofficeAdhesionLeadRelation = Pick<
   | "status"
   | "sdrBackofficeUserId"
   | "closerBackofficeUserId"
->
+> & {
+  /** Empresa do lead (nome fantasia ou razão social); vira o nome do time padrão da conta. */
+  qualificationLeadOrganization?: string | null
+}
 
 export type BackofficeAdhesionWithRelations = BackofficeAdhesion & {
   tokenPlain?: string | null
@@ -68,6 +71,14 @@ export interface CreateBackofficeAdhesionInput {
   additionalTeamsData?: unknown[]
   installmentSchedule?: number[]
   installmentLedger?: unknown[]
+  /** Cupom do auto-checkout: o uso já foi reservado pelo serviço antes da criação. */
+  couponId?: string | null
+  couponCode?: string | null
+  couponDiscountType?: "percent" | "fixed" | null
+  couponDiscountValue?: number | null
+  couponDiscountAmount?: number | null
+  /** Auto-checkout: valor único dos adicionais no período inteiro (nulo no cadastro administrativo). */
+  extrasTotalAmount?: number | null
 }
 
 export interface UpdateBackofficeAdhesionInput {
@@ -137,6 +148,8 @@ export interface MarkBackofficeAdhesionExternalPaidInput {
 }
 
 export interface CreateBackofficeAdhesionManagerProfileInput {
+  /** Nome do time padrão da conta (nome fantasia ou razão social); vazio mantém "Meu Time". */
+  teamName?: string | null
   supabaseId: string
   fullName: string
   phone: string
@@ -182,6 +195,14 @@ export interface SelfCheckoutLeadContact {
   name: string
   email: string
   phone: string
+  /** Momento (ISO) em que o cliente declarou ter lido e concordado com os documentos legais. */
+  termsAcceptedAt?: string
+  /** Versão dos documentos legais aceitos. */
+  termsVersion?: string
+  /** CNPJ da empresa contratante (dígitos). */
+  cnpj?: string
+  companyLegalName?: string
+  companyTradeName?: string
 }
 
 export interface BackofficeAdhesionInvoiceSource {

@@ -49,7 +49,8 @@ function findEscapes(): Array<{ file: string; line: number; snippet: string }> {
   for (const dir of SCAN_DIRS) {
     const absoluteDir = join(ROOT, dir)
     for (const absoluteFile of collectSourceFiles(absoluteDir)) {
-      const relativePath = relative(ROOT, absoluteFile)
+      // Normaliza o separador: no Windows `relative` devolve `\` e a allowlist nunca casaria.
+      const relativePath = relative(ROOT, absoluteFile).split("\\").join("/")
       if (shouldSkip(relativePath)) continue
       if (ALLOWED_FILES.has(relativePath)) continue
 

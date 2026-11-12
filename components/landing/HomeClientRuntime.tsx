@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Cookie } from "lucide-react"
 
 export function HomeClientRuntime() {
   const router = useRouter()
@@ -17,7 +18,7 @@ export function HomeClientRuntime() {
     }
   }, [])
 
-  const dismissCookieConsent = (choice: "accepted" | "declined") => {
+  const dismissCookieConsent = (choice: "accepted" | "essential") => {
     try {
       window.localStorage.setItem("cookieConsent", choice)
     } catch {
@@ -45,26 +46,50 @@ export function HomeClientRuntime() {
   if (!showCookieConsent) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border border-border/20 p-4 shadow-2xl backdrop-blur-xl bg-background/80" data-nosnippet>
-      <p className="text-sm text-muted-foreground">
-        Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+    <div
+      role="region"
+      aria-label="Aviso de cookies"
+      className="landing-page fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-4xl flex-col gap-4 rounded-3xl border border-landing-line bg-card p-5 shadow-2xl sm:p-6 md:flex-row md:items-center md:gap-6"
+      data-nosnippet
+    >
+      <div className="flex flex-1 items-start gap-4">
+        <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/12 text-primary">
+          <Cookie className="size-6" aria-hidden />
+        </span>
+        <div>
+          <p className="font-display text-base font-bold text-landing-ink">Usamos cookies</p>
+          <p className="mt-1 text-sm leading-6 text-landing-body">
+            Utilizamos cookies essenciais para o funcionamento da plataforma e cookies analíticos
+            para melhorar sua experiência. Veja nossa{" "}
+            <Link className="font-semibold text-primary underline-offset-4 hover:underline" href="/cookies">
+              Política de Cookies
+            </Link>{" "}
+            e a{" "}
+            <Link
+              className="font-semibold text-primary underline-offset-4 hover:underline"
+              href="/privacy-policy"
+            >
+              Política de Privacidade
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
         <button
+          type="button"
+          onClick={() => dismissCookieConsent("essential")}
+          className="landing-secondary-cta inline-flex min-h-11 cursor-pointer items-center justify-center rounded-2xl px-5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          Só essenciais
+        </button>
+        <button
+          type="button"
           onClick={() => dismissCookieConsent("accepted")}
-          className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold bg-primary text-primary-foreground"
+          className="landing-primary-cta inline-flex min-h-11 cursor-pointer items-center justify-center rounded-2xl px-5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          Aceitar
+          Aceitar todos
         </button>
-        <button
-          onClick={() => dismissCookieConsent("declined")}
-          className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-border/20 px-3 py-2 text-sm font-semibold text-muted-foreground"
-        >
-          Recusar
-        </button>
-        <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" href="/cookies">
-          Saiba mais
-        </Link>
       </div>
     </div>
   )

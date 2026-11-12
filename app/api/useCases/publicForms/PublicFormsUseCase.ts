@@ -247,8 +247,17 @@ export class PublicFormsUseCase {
     const result = await publicFormsService.getPublic(publicId)
     if (!result) return new Output(false, [], ["Formulário indisponível"], null)
     const domain = result.teamId ? await teamStudioDomainRepository.findByTeamId(result.teamId) : null
+    const controller = result.teamId ? await publicFormsService.getFormController(result.teamId) : null
+    const legalNotice = controller
+      ? {
+          companyName: controller.fullName?.trim() || controller.email,
+          document: controller.cpfCnpj,
+          contactEmail: controller.email,
+        }
+      : null
     return new Output(true, [], [], {
       ...result,
+      legalNotice,
       tracking: domain
         ? { headScripts: domain.headScripts, bodyStartScripts: domain.bodyStartScripts, bodyEndScripts: domain.bodyEndScripts }
         : null,

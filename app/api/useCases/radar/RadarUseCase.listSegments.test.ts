@@ -173,7 +173,7 @@ describe("T-R3.2 — o bloco cacheado só contém o caminho feliz", () => {
   const source = readFileSync(
     path.join(import.meta.dir, "RadarUseCase.ts"),
     "utf8"
-  )
+  ).replace(/\r\n/g, "\n") // checkout com CRLF (Windows) quebraria a busca por "\n}\n"
 
   /** Corpo da função até a chave de fechamento em coluna zero. */
   function bodyOf(functionName: string): string {

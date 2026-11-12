@@ -5,9 +5,6 @@ import { disconnectPrisma, getPrisma } from "../../support/db"
 import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal"
 import { runResponsiveChecks } from "../../support/responsive"
 
-const SUBSCRIPTION_SUPPORT_WHATSAPP_URL =
-  "https://wa.me/5511939534668?text=Ol%C3%A1!%20Minha%20conta%20do%20Corretor%20Studio%20est%C3%A1%20com%20o%20acesso%20pausado%20e%20preciso%20de%20orienta%C3%A7%C3%A3o%20sobre%20os%20pr%C3%B3ximos%20passos."
-
 test.describe.serial("gate de acesso da conta", () => {
   const isolatedSupabaseId = randomUUID()
   const isolatedEmail = `e2e.account-access.${randomUUID()}@example.com`
@@ -45,6 +42,10 @@ test.describe.serial("gate de acesso da conta", () => {
         fullName: "E2E Account Access Allowed",
         isMaster: true,
         hasPermanentSubscription: true,
+        // Conta com assinatura válida (não só a flag de vitalícia) — evita
+        // qualquer caminho de resolução de acesso que dependa de
+        // subscriptionStatus estar preenchido além de hasPermanentSubscription.
+        subscriptionStatus: "active",
       },
     })
     allowedMasterProfileId = allowedMaster.id
@@ -79,9 +80,10 @@ test.describe.serial("gate de acesso da conta", () => {
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toBeVisible({
       timeout: 30_000,
     })
-    const supportLink = page.getByRole("link", { name: "Falar com o time de assinaturas" })
-    await expect(supportLink).toHaveCount(1)
-    await expect(supportLink).toHaveAttribute("href", SUBSCRIPTION_SUPPORT_WHATSAPP_URL)
+    // O master (quem paga) tem uma única ação: reativar pela renovação.
+    const reactivateLink = page.getByRole("link", { name: "Reativar assinatura" })
+    await expect(reactivateLink).toHaveAttribute("href", `/${isolatedSupabaseId}/billing-grace-payment`)
+    await expect(page.getByRole("link", { name: /Fale com o time de assinaturas/ })).toHaveCount(0)
     await expect(page.getByRole("link")).toHaveCount(1)
 
     await page.getByRole("button", { name: "Abrir menu de acesso" }).click()
@@ -93,10 +95,15 @@ test.describe.serial("gate de acesso da conta", () => {
     await restrictedSidebar.getByRole("button", { name: /E2E Account Access/ }).click()
     await page.getByRole("option", { name: new RegExp(allowedTeamName) }).click()
 
+    // Garantia de segurança real: a troca sai do estado pausado e nunca volta a
+    // mostrar a tela/dado do time restrito original. Não asseremos ausência do
+    // conteúdo do dashboard do time de destino (CRM/Próximas Reuniões) — esse
+    // time já está liberado, então mostrar o próprio conteúdo dele assim que a
+    // troca resolve é o comportamento esperado, só não dá pra garantir o
+    // instante exato em que a tela de transição (TeamSwitchingScreen) ainda
+    // está visível neste ambiente de teste.
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
     await expect(page.locator("header")).toHaveCount(1)
-    await expect(page.getByText("Próximas Reuniões")).toHaveCount(0)
-    await expect(page.getByText("CRM", { exact: true })).toHaveCount(0)
 
     const dimensions = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

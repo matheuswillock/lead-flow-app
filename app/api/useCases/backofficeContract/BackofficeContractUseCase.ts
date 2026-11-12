@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto"
-import { backofficeShortLinkService } from "@/app/api/services/backoffice/backofficeShortLink/BackofficeShortLinkService"
+import { backofficeShortLinkService } from "@/app/api/services/Backoffice/backofficeShortLink/BackofficeShortLinkService"
 import { Output } from "@/lib/output"
 import { getFullUrl } from "@/lib/utils/app-url"
 import {

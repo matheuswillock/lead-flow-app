@@ -1,11 +1,11 @@
 ---
 name: corretor-studio-frontend
-description: Guia obrigatório para construção de novas features de Frontend no Corretor Studio (lead-flow-app). Cobre arquitetura de camadas, scaffold, padrões de Context/Hook/Service/Container, regras de componentes shadcn, TypeScript strict, lint e validação. Use antes de implementar qualquer nova tela, rota, contexto ou componente de produto.
+description: Guia obrigatório para construção de novas features de Frontend no Corretor Studio (corretor-studio-app). Cobre arquitetura de camadas, scaffold, padrões de Context/Hook/Service/Container, regras de componentes shadcn, TypeScript strict, lint e validação. Use antes de implementar qualquer nova tela, rota, contexto ou componente de produto.
 ---
 
 # Corretor Studio — Frontend Feature
 
-Produz uma feature de frontend completa e consistente com a arquitetura do lead-flow-app.
+Produz uma feature de frontend completa e consistente com a arquitetura do corretor-studio-app.
 
 ## Processo obrigatório (7 passos)
 

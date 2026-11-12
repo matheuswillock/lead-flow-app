@@ -43,15 +43,14 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
     input: RecordProviderHealthCheckInput,
   ): Promise<ProviderRoutingConfigRecord> {
     const where = {
-      providerKey_environment: {
-        providerKey: toPrismaProvider(input.provider),
-        environment: toPrismaEnvironment(input.environment),
-      },
+      providerKey: toPrismaProvider(input.provider),
+      environment: toPrismaEnvironment(input.environment),
+      isDefault: true,
     }
-    const exists = await prisma.paymentProviderConfig.findUnique({ where, select: { id: true } })
+    const exists = await prisma.paymentProviderConfig.findFirst({ where, select: { id: true } })
     if (!exists) throw new Error("Configuração do provider não encontrada")
     const updated = await prisma.paymentProviderConfig.update({
-      where,
+      where: { id: exists.id },
       data: {
         healthStatus: input.healthStatus,
         lastHealthCheckAt: input.checkedAt,
@@ -65,12 +64,11 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
 
   async update(input: UpdateProviderRoutingConfigInput): Promise<ProviderRoutingConfigRecord> {
     const updated = await prisma.$transaction(async (transaction) => {
-      const current = await transaction.paymentProviderConfig.findUnique({
+      const current = await transaction.paymentProviderConfig.findFirst({
         where: {
-          providerKey_environment: {
-            providerKey: toPrismaProvider(input.provider),
-            environment: toPrismaEnvironment(input.environment),
-          },
+          providerKey: toPrismaProvider(input.provider),
+          environment: toPrismaEnvironment(input.environment),
+          isDefault: true,
         },
         select: { ...configSelect, id: true },
       })

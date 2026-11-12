@@ -22,6 +22,13 @@ export interface ITeamManagementUseCase {
    */
   findDeletionActors(supabaseId: string, managerId: string): Promise<Output>;
 
-  /** Remove o time e registra a auditoria. */
-  deleteTeam(teamId: string, actorProfileId: string): Promise<Output>;
+  /**
+   * Remove o time (definitivo) e registra a auditoria. `details` traz quantos leads e membros foram
+   * apagados e entra no registro de auditoria.
+   */
+  deleteTeam(
+    teamId: string,
+    actorProfileId: string,
+    details?: { leads: number; members: number },
+  ): Promise<Output>;
 }

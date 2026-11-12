@@ -5,6 +5,8 @@ import { backofficeLeadStatusTransitionGateRepository } from "@/app/api/infra/da
 import type { LeadStatusTransitionMode, UpdateLeadStatusTriggerInput } from "@/app/api/useCases/leads/ILeadUseCase";
 import { cacheLife, cacheTag } from "next/cache";
 import { cacheTags } from "@/lib/cache/cacheTags";
+import { canMarkMeetingHeld } from "@/lib/lead-meeting";
+import { isManagerLikeRole } from "@/lib/roles";
 import {
   gateMatchesTransition,
   parseAllowedTargetStatusesConfig,
@@ -299,9 +301,14 @@ export class LeadStatusTransitionGateEvaluatorService {
         const masterId = lead.teamId
           ? await backofficeLeadStatusTransitionGateRepository.findTeamMasterId(lead.teamId)
           : null;
-        const isTeamMaster = !!(masterId && masterId === profileInfo.id);
-        const isAssignedCloser = !!lead.closerId && lead.closerId === profileInfo.id;
-        const canConfirmMeetingHeald = isTeamMaster || isAssignedCloser;
+        const memberRole = lead.teamId
+          ? await backofficeLeadStatusTransitionGateRepository.findTeamMemberRole(lead.teamId, profileInfo.id)
+          : null;
+        const canConfirmMeetingHeald = canMarkMeetingHeld({
+          isTeamMaster: !!(masterId && masterId === profileInfo.id),
+          isManagerLike: isManagerLikeRole(memberRole),
+          isAssignedCloser: !!lead.closerId && lead.closerId === profileInfo.id,
+        });
         const allowNoShow =
           !!lead.meetingDate && lead.meetingDate.getTime() <= Date.now();
 

@@ -79,7 +79,7 @@ async function ensureLocalStackRunning() {
   const start = startLocalStack("db-only");
   if (start.status !== 0) {
     fail(
-      "`docker compose` falhou. No Fedora/Podman: `systemctl --user restart podman.socket`. Confira também se o Podman/Docker está no ar.",
+      "`podman compose` falhou. No Fedora/Podman: `systemctl --user restart podman.socket`. Confira também se o Podman/Docker está no ar.",
     );
   }
   info("  waiting for Postgres…");

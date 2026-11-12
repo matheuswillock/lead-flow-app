@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { publicFormsUseCase } from "@/app/api/useCases/publicForms/PublicFormsUseCase";
 import type { PublicFormSnapshot } from "@/lib/public-forms/types";
+import type { PublicFormLegalNotice } from "@/lib/legal/form-privacy-policy";
 import { isPublicFormServableOnHost } from "@/lib/public-forms/team-form-domain-tenancy";
 import { resolveLegacyPublicHostRedirect } from "@/lib/public-studio/team-studio-domain-tenancy"
 import { serializePublicRedirectSearchParams, type PublicRedirectSearchParams } from "@/lib/public-studio/redirect-search-params"
@@ -68,6 +69,10 @@ export default async function PublicFormPage({
     output.isValid && output.result
       ? (output.result as { publicationId: string }).publicationId
       : null;
+  const initialLegalNotice =
+    output.isValid && output.result
+      ? (output.result as { legalNotice?: PublicFormLegalNotice | null }).legalNotice ?? null
+      : null
   const tracking = output.isValid && output.result
     ? (output.result as { tracking?: Parameters<typeof PublicTrackingHead>[0]["tracking"] }).tracking ?? null
     : null
@@ -79,6 +84,7 @@ export default async function PublicFormPage({
       publicId={publicId}
       initialSnapshot={initialSnapshot}
       initialPublicationId={initialPublicationId}
+      initialLegalNotice={initialLegalNotice}
     >
       <PublicFormViewContainer />
     </PublicFormViewProvider>
