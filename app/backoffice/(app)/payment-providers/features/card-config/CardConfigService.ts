@@ -18,6 +18,7 @@ interface OutputResponse<T> {
 interface ProviderConfigRecord {
   provider: string
   environment: CardConfigEnvironment
+  isDefault: boolean
   cardEnabled: boolean
   revision: number
 }
@@ -57,7 +58,7 @@ export class CardConfigService implements ICardConfigService {
   async getAbacateCardConfig(environment: CardConfigEnvironment): Promise<AbacateCardConfig | null> {
     const res = await fetch(`${CONFIG_URL}?environment=${environment}`, { cache: "no-store" })
     const records = await parseOutput<ProviderConfigRecord[]>(res)
-    const abacate = records.find((record) => record.provider === ABACATE_PROVIDER)
+    const abacate = records.find((record) => record.provider === ABACATE_PROVIDER && record.isDefault)
     return abacate ? toCardConfig(abacate) : null
   }
 

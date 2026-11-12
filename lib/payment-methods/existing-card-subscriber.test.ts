@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
 import { PaymentMethodUnavailableError } from "./availability"
 import {
   assertCardChoiceAllowedForAccount,
@@ -11,6 +12,13 @@ const CARD_ON = { PAYMENT_PROVIDER_ENVIRONMENT: "PRODUCTION", ABACATE_PAY_PRODUC
 const flagOn = async () => true
 const flagOff = async () => false
 const withCard = async () => ({ billingType: "CREDIT_CARD", creditCardToken: "tok" })
+let restoreConfig: () => void
+
+beforeEach(() => {
+  restoreConfig = stubCardEnabledConfig(true)
+})
+
+afterEach(() => restoreConfig())
 
 describe("isExistingCardSubscriber", () => {
   it("assinatura real em cartão com token -> true", async () => {
