@@ -21,6 +21,7 @@ export function LeadFormIntegration() {
             <Button
               variant="outline"
               size="icon"
+              className="min-h-11 min-w-11"
               onClick={copyLeadFormUrl}
               title="Copiar URL"
             >
@@ -29,6 +30,7 @@ export function LeadFormIntegration() {
             <Button
               variant="outline"
               size="icon"
+              className="min-h-11 min-w-11"
               asChild
               title="Abrir formulário"
             >
