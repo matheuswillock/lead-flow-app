@@ -71,6 +71,17 @@ describe("structured logger", () => {
     });
   });
 
+  test("redacts provider credential fields and URL query credentials", () => {
+    const sanitized = sanitize({
+      credentials: { ABACATE_PAY_API_KEY: "api-secret", ASAAS_WEBHOOK_TOKEN: "hook-secret" },
+      message: "?apiKey=api-secret&webhookSecret=hook-secret&access_token=token-secret",
+    });
+
+    expect(JSON.stringify(sanitized)).not.toContain("api-secret");
+    expect(JSON.stringify(sanitized)).not.toContain("hook-secret");
+    expect(JSON.stringify(sanitized)).not.toContain("token-secret");
+  });
+
   test("handles errors, special values, repeated references and cycles", () => {
     const repeated = { value: "safe" };
     const map = new Map<string, unknown>([["safe", repeated]]);

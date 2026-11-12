@@ -12,6 +12,10 @@ Corretores de planos de saúde — managers que lideram times comerciais e opera
 
 Corretor Studio centraliza captação, organização e conversão de leads para corretores de saúde. O produto existe para que times comerciais convertam mais rápido que a concorrência — não apenas para "organizar contatos". Sucesso significa: leads avançando no funil com menos atrito, managers com visibilidade real de performance, e operadores com ferramentas que aceleram o próximo passo comercial (ligar, agendar, cotar, fechar).
 
+## Pagamentos
+
+O produto integra os provedores Asaas e Abacate Pay. O backoffice configura instâncias por provedor e ambiente (desenvolvimento ou produção), identifica a conta externa, define a instância padrão e controla a disponibilidade de cartão. A operação também acompanha estado de rollout e saúde da instância; a configuração de cartão exibida deve corresponder à instância padrão daquele provedor e ambiente.
+
 ## Brand Personality
 
 **Quente + preciso.** Energia de conversão (laranja, urgência legítima, confiança) combinada com disciplina fintech (hierarquia clara, espaçamento polido, superfícies com profundidade). Tom direto e orientado a resultado — fala de alta performance sem ser barulhento. Em três palavras: **assertivo, ágil, confiável**.

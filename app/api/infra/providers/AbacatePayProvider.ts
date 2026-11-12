@@ -310,10 +310,9 @@ export class AbacatePayProvider
 
   verifyRequest(input: RawWebhookRequest): VerifiedWebhook {
     const signature = input.signature
-    const configuredSecret = this.config.webhookSecret
-    const secretMatches =
-      configuredSecret.length > 0 &&
-      constantTimeEqual(input.query.webhookSecret ?? "", configuredSecret)
+    const receivedSecret = input.query.webhookSecret ?? ""
+    const secretMatches = [this.config.webhookSecret, this.config.webhookSecretPrevious]
+      .some((configuredSecret) => configuredSecret !== null && configuredSecret.length > 0 && constantTimeEqual(receivedSecret, configuredSecret))
     if (!secretMatches) {
       throw new PaymentProviderError("WEBHOOK_INVALID", "Webhook não autenticado")
     }
