@@ -148,4 +148,13 @@
     min-width: 44px;
     min-height: 44px;
   }
+  /* CTAs em texto ("Ver como funciona", "Entender meu cenário") ficam com 19 a 26px
+     de altura. Padding vertical aumenta a área de toque sem mudar o texto nem o layout. */
+  .bw-source .text-link,
+  .bw-source .hero-actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-block: 12px;
+  }
 }
