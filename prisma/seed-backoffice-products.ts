@@ -206,7 +206,10 @@ const FEATURES: Array<{
   { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, inheritParentSettings: false, sortOrder: 200, productSlug: null },
   { slug: "webhooks", name: "Webhooks", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 201, parentSlug: "integration", productSlug: null },
   { slug: "api-catalog", name: "Catálogo de API", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 202, parentSlug: "integration", productSlug: null },
-  { slug: "lead-form", name: "Formulário de Captação de Leads", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: false, inheritParentSettings: true, sortOrder: 203, parentSlug: "integration", productSlug: null },
+  // Regras próprias (não herda de `integration`): liberado para todas as
+  // contas, sem beta e sem depender de Radar/billing — achado de produção
+  // (12/11), owner pediu acesso incondicional.
+  { slug: "lead-form", name: "Formulário de Captação de Leads", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: false, sortOrder: 203, parentSlug: "integration", productSlug: null },
 
   // ── Pixel (filha do Radar) ─────────────────────────────────────────────────
   { slug: "pixel", name: "Pixel", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, inheritParentSettings: true, sortOrder: 181, parentSlug: "radar", productSlug: "radar" },
@@ -461,6 +464,10 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
   "lead-form": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
+    { principal: "BACKOFFICE", accessLevel: "FULL" },
+    { principal: "OPERATOR", accessLevel: "FULL" },
+    { principal: "SDR", accessLevel: "FULL" },
+    { principal: "CLOSER", accessLevel: "FULL" },
   ]),
   "public-forms": completeRuleSet([
     { principal: "MASTER", accessLevel: "FULL" },
