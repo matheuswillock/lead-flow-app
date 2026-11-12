@@ -141,6 +141,9 @@
   .bw-source .site-header button,
   .bw-source .institutional-footer a,
   .bw-source .institutional-footer button,
+  .bw-source .situation-card a,
+  .bw-source .cookie-consent .cookie-more,
+  .bw-source .cookie-dialog .cookie-more,
   .bw-source .cookie-consent button,
   .bw-source .cookie-dialog button {
     display: inline-flex;
