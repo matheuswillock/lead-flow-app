@@ -95,10 +95,15 @@ test.describe.serial("gate de acesso da conta", () => {
     await restrictedSidebar.getByRole("button", { name: /E2E Account Access/ }).click()
     await page.getByRole("option", { name: new RegExp(allowedTeamName) }).click()
 
+    // Garantia de segurança real: a troca sai do estado pausado e nunca volta a
+    // mostrar a tela/dado do time restrito original. Não asseremos ausência do
+    // conteúdo do dashboard do time de destino (CRM/Próximas Reuniões) — esse
+    // time já está liberado, então mostrar o próprio conteúdo dele assim que a
+    // troca resolve é o comportamento esperado, só não dá pra garantir o
+    // instante exato em que a tela de transição (TeamSwitchingScreen) ainda
+    // está visível neste ambiente de teste.
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
     await expect(page.locator("header")).toHaveCount(1)
-    await expect(page.getByText("Próximas Reuniões")).toHaveCount(0)
-    await expect(page.getByText("CRM", { exact: true })).toHaveCount(0)
 
     const dimensions = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

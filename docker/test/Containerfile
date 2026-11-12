@@ -1,0 +1,25 @@
+# =============================================================================
+# docker/test/Containerfile — imagem do runner de testes (docker-compose.test.yml)
+# =============================================================================
+# Contém só as ferramentas (bun, node, psql, curl, supabase CLI e os browsers
+# do Playwright). O código do projeto NÃO entra na imagem: é montado em /app,
+# então o teste sempre roda contra a árvore de trabalho atual.
+#
+# A versão da imagem do Playwright acompanha @playwright/test do bun.lock
+# (1.62.1). Ao atualizar o Playwright, atualize esta tag junto.
+# =============================================================================
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    BUN_INSTALL=/usr/local/bun \
+    PATH=/usr/local/bun/bin:$PATH
+
+# psql: seed-e2e/seed-local sondam e aplicam stubs via psql.
+# curl: healthcheck do app e download do bun.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client curl unzip ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://bun.sh/install | bash
+
+WORKDIR /app
