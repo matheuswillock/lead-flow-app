@@ -94,6 +94,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
     return this.temporaryBillingGrace
   }
 
+  async hasActiveExpiredMemberProCrmGrace() {
+    return false
+  }
+
   async listActiveBetaGrantsForProfile() {
     return []
   }

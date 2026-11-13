@@ -35,7 +35,7 @@ export function LeadFormPageContainer() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
-        <Button variant="ghost" size="sm" asChild className="w-fit px-0">
+        <Button variant="ghost" size="sm" asChild className="min-h-11 w-fit px-0">
           <Link href={`/${supabaseId}/integrations`}>
             <ArrowLeft data-icon="inline-start" />
             Integrações
