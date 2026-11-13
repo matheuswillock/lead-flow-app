@@ -77,6 +77,7 @@ export interface IFeatureAccessRepository {
   >
   listActiveUserSubscriptions(profileId: string): Promise<ActiveUserSubscriptionRecord[]>
   hasActiveTemporaryBillingGrace(teamId: string): Promise<boolean>
+  hasActiveExpiredMemberProCrmGrace(teamId: string): Promise<boolean>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   resolveBetaEligibleFeatureIds(ctx: BetaEligibilityContext): Promise<Set<string>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>

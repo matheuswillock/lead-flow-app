@@ -123,6 +123,19 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     return Boolean(grace)
   }
 
+  async hasActiveExpiredMemberProCrmGrace(teamId: string): Promise<boolean> {
+    const grace = await prisma.billingAccessGrace.findFirst({
+      where: {
+        teamId,
+        isActive: true,
+        allowExpiredMemberProCrm: true,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    })
+    return Boolean(grace)
+  }
+
   async listActiveBetaGrantsForProfile(
     profileId: string
   ): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>> {
