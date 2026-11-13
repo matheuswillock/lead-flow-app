@@ -447,7 +447,7 @@ function EnvironmentPanel({
                 <Badge key={key} variant="outline" className="gap-1.5 px-2.5 py-1.5 font-normal">
                   <KeyRound aria-hidden="true" className="size-3.5" />
                   <span>{CREDENTIAL_FIELDS[provider].find((field) => field.key === key)?.label ?? key}</span>
-                  <span className="text-muted-foreground">{value.isSet ? `•••• ${value.last4 ?? ""}` : "não configurada"}</span>
+                  <span className="text-muted-foreground">{value.isSet ? (value.last4 ? `Final ${value.last4}` : "configurada") : "não configurada"}</span>
                 </Badge>
               ))}
             </div>
