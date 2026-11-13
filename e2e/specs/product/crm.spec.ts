@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import { injectE2eAuthCookie } from "../../fixtures/auth";
 import { E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids";
 import { disconnectPrisma, findE2eMasterProfile, getPrisma } from "../../support/db";
@@ -227,6 +228,84 @@ test.describe("app/[supabaseId]/crm", () => {
     });
     await expect(page.getByText("Assinatura Inativa")).toHaveCount(0);
     await expect(page.getByText("Sem Acesso à Plataforma")).toHaveCount(0);
+  });
+
+  test("libera somente o CRM durante grace aprovado após expiração do Member PRO", async ({ context, page }) => {
+    const prisma = getPrisma();
+    const supabaseId = randomUUID();
+    const email = `e2e.crm-member-pro-grace.${randomUUID()}@example.com`;
+    let profileId: string | undefined;
+    let teamId: string | undefined;
+    try {
+      const profile = await prisma.profile.create({
+        data: {
+          email,
+          supabaseId,
+          fullName: "E2E CRM Member PRO Grace",
+          isMaster: true,
+          subscriptionStatus: "past_due",
+        },
+      });
+      profileId = profile.id;
+      const team = await prisma.team.create({
+        data: { name: `E2E CRM Grace ${supabaseId.slice(0, 8)}`, masterId: profile.id },
+      });
+      teamId = team.id;
+      const memberPro = await prisma.profileUserType.findUnique({ where: { slug: "member_pro" } });
+      const crmProduct = await prisma.backofficeProduct.findFirst({
+        where: { isActive: true, featureSlugs: { has: "crm" } },
+      });
+
+      expect(memberPro, "Member PRO user type seed ausente").not.toBeNull();
+      expect(crmProduct, "Produto CRM seed ausente").not.toBeNull();
+
+      await prisma.teamMember.create({
+        data: { teamId: team.id, profileId: profile.id, role: "manager" },
+      });
+      await prisma.profile.update({ where: { id: profile.id }, data: { activeTeamId: team.id } });
+      await prisma.profileSubscription.create({
+        data: {
+          profileId: profile.id,
+          productId: crmProduct!.id,
+          subscriptionStatus: "past_due",
+        },
+      });
+      await prisma.profileUserTypeAssignment.create({
+        data: {
+          profileId: profile.id,
+          userTypeId: memberPro!.id,
+          accessStartsAt: new Date("2026-08-04T00:00:00.000Z"),
+          accessExpiresAt: new Date(Date.now() - 1_000),
+        },
+      });
+      await prisma.billingAccessGrace.create({
+        data: {
+          teamId: team.id,
+          reason: "E2E approved CRM grace override",
+          expiresAt: new Date(Date.now() + 60_000),
+          allowExpiredMemberProCrm: true,
+        },
+      });
+
+      await injectE2eAuthCookie(context, { supabaseId, email });
+      await context.addInitScript(
+        ({ id, version }: { id: string; version: string }) => {
+          window.localStorage.setItem(`whats-new:seen:${version}:${id}`, "true");
+        },
+        { id: supabaseId, version: WHATS_NEW_VERSION },
+      );
+      await page.goto(`/${supabaseId}/crm`, { waitUntil: "domcontentloaded" });
+
+      await expect(page.locator("h1.text-2xl", { hasText: "CRM" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("Acesso não liberado")).toHaveCount(0);
+      await runResponsiveChecks(page);
+    } finally {
+      if (teamId) {
+        await prisma.billingAccessGrace.deleteMany({ where: { teamId: teamId } });
+        await prisma.team.deleteMany({ where: { id: teamId } });
+      }
+      if (profileId) await prisma.profile.deleteMany({ where: { id: profileId } });
+    }
   });
 
   test("responsividade mobile-first do CRM", async ({ page }) => {

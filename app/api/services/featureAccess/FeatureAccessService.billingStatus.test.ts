@@ -58,6 +58,7 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   userSubscriptions: ActiveUserSubscriptionRecord[] = []
   ownerSubscriptions: ActiveUserSubscriptionRecord[] = []
   temporaryBillingGrace = false
+  expiredMemberProCrmGrace = false
   betaEligibleFeatureIds = new Set<string>()
   currentUserRole = makeUserRole()
   ownerSubscriptionStatus: SubscriptionStatus | null = "past_due"
@@ -99,6 +100,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
 
   async hasActiveTemporaryBillingGrace() {
     return this.temporaryBillingGrace
+  }
+
+  async hasActiveExpiredMemberProCrmGrace() {
+    return this.expiredMemberProCrmGrace
   }
 
   async listActiveBetaGrantsForProfile() {
@@ -362,6 +367,44 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
       accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
     }
     repository.ownerSubscriptionStatus = "suspended"
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual([])
+  })
+
+  it("libera somente CRM com exceção de grace aprovada para Member PRO expirado", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: null,
+      accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "past_due"
+    repository.temporaryBillingGrace = true
+    repository.expiredMemberProCrmGrace = true
+    repository.ownerProductFeatureSlugs = ["crm"]
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual(["crm"])
+  })
+
+  it("não libera exceção de CRM sem grace explicitamente aprovado", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: null,
+      accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+    }
+    repository.temporaryBillingGrace = true
+    repository.ownerProductFeatureSlugs = ["crm"]
 
     const access = await service.resolveAllowedSlugs({
       profileId: PROFILE_ID,

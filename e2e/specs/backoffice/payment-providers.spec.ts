@@ -93,34 +93,34 @@ test.describe("app/backoffice/(app)/payment-providers", () => {
       capabilities: ["ONE_TIME_PAYMENT", "PIX", "CARD", "STATUS_QUERY", "FULL_REFUND", "WEBHOOK"],
       credentials: { API_KEY: { isSet: true, last4: "cret", fingerprint: "sha256:new" } },
     };
+    let instanceCreated = false;
     await page.route("**/api/q/backoffice/payment-providers/instances**", async (route) => {
       if (route.request().method() === "POST") {
         const requestBody = route.request().postDataJSON();
         expect(requestBody.credentials.API_KEY).toBe(secret);
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify({
-            isValid: true,
-            result: createdInstance,
-          }),
-        });
+        expect(requestBody.credentials.WEBHOOK_SECRET).toBe("e2e-webhook-secret");
+        expect(requestBody.credentials.PUBLIC_KEY).toBe("e2e-public-key");
+        instanceCreated = true;
+        const responseBody = JSON.stringify({ isValid: true, result: createdInstance });
+        expect(responseBody).not.toContain(secret);
+        await route.fulfill({ contentType: "application/json", body: responseBody });
         return;
       }
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ isValid: true, result: [createdInstance] }) });
+      const result = instanceCreated ? [createdInstance] : [];
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ isValid: true, result }) });
     });
 
     await page.goto("/backoffice/payment-providers");
-    await page.getByRole("button", { name: "Nova instância" }).click();
-    const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Nome da instância").fill("Abacate Pay · dev");
-    await dialog.getByLabel("Contexto da conta").fill("dev-new");
-    await dialog.getByLabel("API key").fill(secret);
-    await dialog.getByLabel("Webhook secret").fill("e2e-webhook-secret");
-    await dialog.getByLabel("Public key").fill("e2e-public-key");
-    await dialog.getByRole("button", { name: "Salvar instância" }).click();
+    const apiKey = page.locator("#ABACATE_PAY-DEV-API_KEY");
+    await page.getByRole("button", { name: /Configurar desenvolvimento/ }).first().click();
+    await page.locator("#ABACATE_PAY-DEV-context").fill("dev-new");
+    await apiKey.fill(secret);
+    await page.locator("#ABACATE_PAY-DEV-WEBHOOK_SECRET").fill("e2e-webhook-secret");
+    await page.locator("#ABACATE_PAY-DEV-PUBLIC_KEY").fill("e2e-public-key");
+    await page.getByRole("button", { name: "Salvar desenvolvimento" }).click();
 
-    await expect(dialog).not.toBeVisible();
     await expect(page.getByText("Abacate Pay · dev", { exact: true })).toBeVisible();
+    await expect(apiKey).toHaveValue("");
     await expect(page.getByText(secret)).toHaveCount(0);
   });
 
