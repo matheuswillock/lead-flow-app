@@ -21,6 +21,8 @@ export const STORAGE_BUCKETS = {
   PROFILE_ICONS: process.env.SUPABASE_PROFILE_ICONS_BUCKET || "profile-icons",
   EMAIL_TEMPLATE_ASSETS:
     process.env.SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET || "email-template-assets",
+  PAYMENT_PROVIDER_LOGOS:
+    process.env.SUPABASE_PAYMENT_PROVIDER_LOGOS_BUCKET || "payment-provider-logos",
   CONTRACTS: process.env.SUPABASE_CONTRACTS_BUCKET || "backoffice-contracts",
   LANDING_PAGE_ASSETS: process.env.SUPABASE_LANDING_PAGE_ASSETS_BUCKET || "landing-page-assets",
   SUPPORT_REQUEST_ATTACHMENTS:
@@ -75,6 +77,11 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
     maxFileSize: 2 * 1024 * 1024, // 2MB
     allowedTypes: ["image/jpeg", "image/png", "image/webp"],
     description: "Imagens PNG/JPG para templates de e-mail",
+  },
+  [STORAGE_BUCKETS.PAYMENT_PROVIDER_LOGOS]: {
+    maxFileSize: 2 * 1024 * 1024,
+    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+    description: "Logos de providers de pagamento",
   },
   [STORAGE_BUCKETS.LANDING_PAGE_ASSETS]: {
     maxFileSize: 5 * 1024 * 1024,
