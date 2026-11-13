@@ -9,6 +9,20 @@ type Output<T> = { isValid: boolean; result: T | null; errorMessages?: string[] 
 const URL = `${API_CLIENT_BASE}/backoffice/payment-providers/instances`
 
 export class PaymentProviderInstancesService implements IPaymentProviderInstancesService {
+  async uploadLogo(file: File): Promise<string> {
+    const formData = new FormData()
+    formData.set("logo", file)
+    const response = await fetch(`${API_CLIENT_BASE}/backoffice/payment-providers/logo`, {
+      method: "POST",
+      body: formData,
+    })
+    const output = (await response.json()) as Output<{ logoUrl: string }>
+    if (!response.ok || !output.isValid || !output.result?.logoUrl) {
+      throw new Error(output.errorMessages?.[0] ?? "Não foi possível enviar a logo")
+    }
+    return output.result.logoUrl
+  }
+
   async list(): Promise<PaymentProviderInstance[]> {
     const response = await fetch(URL, { cache: "no-store" })
     const output = (await response.json()) as Output<PaymentProviderInstance[]>
