@@ -2020,7 +2020,7 @@ fixed fixed
     String reason 
     DateTime expiresAt "❓"
     Boolean isActive 
-    Boolean allowExpiredMemberProCrm
+    Boolean allowExpiredMemberProCrm 
     String grantedByProfileId "❓"
     DateTime grantedAt 
     DateTime resolvedAt "❓"
