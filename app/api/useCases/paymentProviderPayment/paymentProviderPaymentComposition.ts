@@ -35,9 +35,13 @@ export function resolvePaymentProviderEnvironment(): PaymentProviderEnvironment 
   return configured
 }
 
-async function readProviderSecret(environment: PaymentProviderEnvironment, suffix: string): Promise<string> {
+async function readProviderSecret(
+  environment: PaymentProviderEnvironment,
+  suffix: string,
+  configRepository: Pick<typeof paymentProviderConfigRepository, "readRuntimeVariables"> = paymentProviderConfigRepository,
+): Promise<string> {
   const environmentKey = `ABACATE_PAY_${environment}_${suffix}`
-  const configured = (await paymentProviderConfigRepository.readRuntimeVariables("ABACATE_PAY", environment))[environmentKey]
+  const configured = (await configRepository.readRuntimeVariables("ABACATE_PAY", environment))[environmentKey]
   const value = configured ?? process.env[environmentKey] ?? process.env[`ABACATE_PAY_${suffix}`]
   if (!value?.trim()) throw new Error(`Segredo ${suffix} do provider não configurado`)
   return value
@@ -55,13 +59,14 @@ export async function resolveAbacateCapabilities(environment: PaymentProviderEnv
 
 export async function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
+  configRepository: Pick<typeof paymentProviderConfigRepository, "readRuntimeVariables"> = paymentProviderConfigRepository,
 ): Promise<AbacatePayProvider> {
   const publicKey = await readProviderPublicKey(environment)
   return new AbacatePayProvider(
     PaymentProviderConfig.create({
-      apiKey: await readProviderSecret(environment, "API_KEY"),
+      apiKey: await readProviderSecret(environment, "API_KEY", configRepository),
       publicKey,
-      webhookSecret: await readProviderSecret(environment, "WEBHOOK_SECRET"),
+      webhookSecret: await readProviderSecret(environment, "WEBHOOK_SECRET", configRepository),
       // AbacatePay signs webhook payloads with the store public key. There is
       // no separate webhook-signing credential in the dashboard.
       webhookSigningKey: publicKey,

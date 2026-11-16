@@ -85,19 +85,23 @@ describe("createAbacatePayProviderRegistry", () => {
 })
 
 describe("createAbacatePayProvider", () => {
+  const emptyConfigRepository = { readRuntimeVariables: async () => ({}) }
+
   it("cria o provider de PRODUCTION sem PUBLIC_KEY", async () => {
     setProductionSecrets()
-    await expect(createAbacatePayProvider("PRODUCTION")).resolves.toBeDefined()
+    await expect(createAbacatePayProvider("PRODUCTION", emptyConfigRepository)).resolves.toBeDefined()
   })
 
   it("lança quando o segredo API_KEY está ausente", async () => {
     process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
-    await expect(createAbacatePayProvider("PRODUCTION")).rejects.toThrow("Segredo API_KEY do provider não configurado")
+    await expect(createAbacatePayProvider("PRODUCTION", emptyConfigRepository)).rejects.toThrow(
+      "Segredo API_KEY do provider não configurado",
+    )
   })
 
   it("lança quando o segredo WEBHOOK_SECRET está ausente", async () => {
     process.env.ABACATE_PAY_PRODUCTION_API_KEY = "prod-api-key"
-    await expect(createAbacatePayProvider("PRODUCTION")).rejects.toThrow(
+    await expect(createAbacatePayProvider("PRODUCTION", emptyConfigRepository)).rejects.toThrow(
       "Segredo WEBHOOK_SECRET do provider não configurado",
     )
   })
