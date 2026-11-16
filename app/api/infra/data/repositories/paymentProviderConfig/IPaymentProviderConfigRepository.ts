@@ -23,5 +23,7 @@ export interface IPaymentProviderConfigRepository {
   /** Grava o resultado da sondagem sem alterar configRevision nem o roteamento. */
   recordHealthCheck(input: RecordProviderHealthCheckInput): Promise<ProviderRoutingConfigRecord>
   list(environment: PaymentProviderEnvironment): Promise<readonly ProviderRoutingConfigRecord[]>
+  readPublicVariable(provider: PaymentProviderKey, environment: PaymentProviderEnvironment, name: string): Promise<string | null>
+  readRuntimeVariables(provider: PaymentProviderKey, environment: PaymentProviderEnvironment): Promise<Readonly<Record<string, string>>>
   update(input: UpdateProviderRoutingConfigInput): Promise<ProviderRoutingConfigRecord>
 }

@@ -55,6 +55,8 @@ export function PublicCheckoutFlow({
   successDescription = "Verifique seu e-mail para os proximos passos.",
   provider,
   canRegeneratePix = false,
+  abacatePublicKey,
+  skipAddress = false,
 }: {
   /**
    * Métodos que o checkout pode oferecer. Ausente = somente PIX (falha fechada): o cartão
@@ -65,6 +67,8 @@ export function PublicCheckoutFlow({
   provider?: CheckoutPaymentProvider | null
   /** Quando true, PIX/tentativa expirados oferecem "Gerar novo PIX" reaproveitando os dados do pagador. */
   canRegeneratePix?: boolean
+  abacatePublicKey?: string | null
+  skipAddress?: boolean
   /** Legado: PIX sem coleta de endereço. Implica `availableMethods = ["PIX"]`. */
   pixOnly?: boolean
   successDescription?: string
@@ -261,6 +265,8 @@ export function PublicCheckoutFlow({
           ) : null}
           <PublicCheckoutPaymentStep
             pixOnly={pixOnly}
+            skipAddress={skipAddress}
+            abacatePublicKey={abacatePublicKey}
             availableMethods={methods}
             details={details}
             billingType={selectedBillingType}

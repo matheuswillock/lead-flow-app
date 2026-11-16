@@ -6819,8 +6819,7 @@ model PaymentProviderEventOutbox {
   @@map("payment_provider_event_outbox")
 }
 
-/// Configuração global server-owned. Segredos permanecem fora deste registro;
-/// o runtime resolve-os do mecanismo seguro de configuração do provider.
+/// Configuração global server-owned. Valores sensíveis em `variables` são cifrados no servidor.
 model PaymentProviderConfig {
   id                     String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   providerKey            PaymentProviderKey        @map("provider_key")
@@ -6837,6 +6836,8 @@ model PaymentProviderConfig {
   lastErrorCode            String?                   @map("last_error_code") @db.Text
   lastErrorMessage         String?                   @map("last_error_message") @db.Text
   publicKeyFingerprint     String?                   @map("public_key_fingerprint") @db.Text
+  publicKey               String?                   @map("public_key") @db.Text
+  variables                Json                      @default("[]")
   logoUrl                  String?                   @map("logo_url") @db.Text
   logoAltText              String?                   @map("logo_alt_text") @db.Text
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)

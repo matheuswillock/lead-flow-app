@@ -55,7 +55,7 @@ export type BillingGracePaymentRecord = {
   amountCents: number
   effectivePriceCents: number
   method?: BillingGracePaymentMethod
-  paymentInstructions: { brCode?: string; brCodeBase64?: string; expiresAt?: string } | null
+  paymentInstructions: { brCode?: string; brCodeBase64?: string; expiresAt?: string; method?: string } | null
   failureReason?: string | null
 }
 

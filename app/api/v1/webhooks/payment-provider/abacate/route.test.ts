@@ -6,7 +6,13 @@ const listConfigs = mock(async (_environment: string) => [
 ])
 mock.module("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository", () => ({
   PaymentProviderConfigRepository: class {},
-  paymentProviderConfigRepository: { list: listConfigs },
+  paymentProviderConfigRepository: {
+    list: listConfigs,
+    readRuntimeVariables: mock(async () => ({
+      ABACATE_PAY_PRODUCTION_API_KEY: process.env.ABACATE_PAY_PRODUCTION_API_KEY,
+      ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET: process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET,
+    })),
+  },
 }))
 
 const claim = mock(async (_input: unknown) => ({ kind: "claimed" as const, claimToken: "claim-1" }))

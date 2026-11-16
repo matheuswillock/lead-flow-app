@@ -13,6 +13,7 @@ import type {
   PaymentMethod,
 } from "@/lib/payment-provider/types"
 import type { PlatformPurchaseStatus } from "@prisma/client"
+import { assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
 import type {
   IPaymentProviderPaymentService,
   StartPaymentInput,
@@ -26,10 +27,10 @@ const PAYMENT_LEASE_TTL_MS = 60 * 1000
 type ProviderResolver = (input: {
   readonly provider: "ASAAS" | "ABACATE_PAY"
   readonly environment: PaymentProviderEnvironment
-}) => OneTimePaymentCapability
+}) => OneTimePaymentCapability | Promise<OneTimePaymentCapability>
 
 export type PaymentProviderPaymentServiceDependencies = {
-  readonly purchases: Pick<IPlatformPurchaseRepository, "findById" | "markPaidOnceForProvider">
+  readonly purchases: Pick<IPlatformPurchaseRepository, "findById" | "markPaidOnceForProvider"> & Partial<Pick<IPlatformPurchaseRepository, "update">>
   readonly profiles: Pick<IProfileRepository, "findBySupabaseId">
   readonly router: Pick<PaymentProviderRouter, "select">
   readonly sessions: IPaymentProviderSessionRepository
@@ -58,12 +59,17 @@ export class PaymentProviderPaymentService implements IPaymentProviderPaymentSer
     if (purchase.status === "paid") throw new Error("Checkout já foi pago")
 
     const method = resolveMethod(purchase.billingType, input.method)
+    if (method === "CARD") await assertBillingTypeAllowed("CREDIT_CARD")
+    const billingType = method === "CARD" ? "CREDIT_CARD" : "PIX"
+    if (purchase.billingType !== billingType && this.dependencies.purchases.update) {
+      await this.dependencies.purchases.update(purchase.id, { billingType })
+    }
     const amountInCents = toCents(purchase.amount)
     const selected = await this.dependencies.router.select({
       environment: this.environment,
       requiredCapabilities: ["ONE_TIME_PAYMENT", method],
     })
-    const provider = this.dependencies.resolveProvider({
+    const provider = await this.dependencies.resolveProvider({
       provider: selected.provider,
       environment: selected.environment,
     })
@@ -234,8 +240,8 @@ function validateInput(input: StartPaymentInput): void {
 }
 
 function resolveMethod(billingType: string | null, requestedMethod: PaymentMethod): PaymentMethod {
-  const expected = billingType === "CREDIT_CARD" ? "CARD" : billingType === "PIX" ? "PIX" : null
-  if (expected !== requestedMethod) throw new Error("Método incompatível com o checkout")
+  if (requestedMethod !== "PIX" && requestedMethod !== "CARD") throw new Error("Método incompatível com o checkout")
+  if (billingType !== "PIX" && billingType !== "CREDIT_CARD" && billingType !== null) throw new Error("Método incompatível com o checkout")
   return requestedMethod
 }
 

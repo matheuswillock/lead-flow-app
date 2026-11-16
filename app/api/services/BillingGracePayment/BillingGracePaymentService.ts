@@ -15,6 +15,9 @@ import {
 } from "@/app/api/shared/billing/renewalQuote"
 import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
 import type { Prisma } from "@prisma/client"
+import { readConfiguredAbacatePublicKey } from "@/lib/payment-methods/availability"
+import { assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
+import { resolveCardAvailability } from "@/lib/payment-methods/availability"
 import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
 
 const QUOTE_TTL_MS = 10 * 60 * 1000
@@ -39,13 +42,17 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     const cycles = quoteRenewal(await this.loadCycleOptions(), account, new Date())
     if (cycles.length === 0) throw new Error("Nenhum prazo de renovação disponível no momento")
 
+    const availability = await resolveCardAvailability()
+    const publicKey = availability.card ? await readConfiguredAbacatePublicKey() : null
     return {
       cycles,
       currentCycle: account.currentCycle,
       hasUnlimitedUsers: currentlyHasUnlimitedUsers(account),
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS).toISOString(),
-      // Cartão na renovação ainda não tem rota de cobrança: liga aqui junto com POST /card.
-      cardCheckout: null,
+      cardCheckout: publicKey ? {
+        publicKey,
+        payer: { name: account.name, email: account.email, taxId: account.taxId, cellphone: account.cellphone },
+      } : null,
     }
   }
 
@@ -64,6 +71,16 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
   }
 
   async createPixPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }) {
+    return this.startPayment({ ...input, method: "PIX" })
+  }
+
+  async createCardPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }) {
+    if (!input.cardToken.startsWith("ctok_")) throw new Error("Token de cartão inválido")
+    await assertBillingTypeAllowed("CREDIT_CARD")
+    return this.startPayment({ ...input, method: "CARD" })
+  }
+
+  private async startPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; method: "PIX" | "CARD"; cardToken?: string; installments?: number }) {
     // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
     // nem devolver o pagamento (e o PIX) de outra conta.
     const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
@@ -73,19 +90,32 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       accountId: account.accountId,
       idempotencyKey: input.idempotencyKey,
     })
-    if (existing) return existing
+    if (existing) {
+      const instructions = existing.paymentInstructions as { method?: unknown; brCode?: unknown } | null
+      const existingMethod = instructions?.method === "CARD" || instructions?.brCode ? "PIX" : null
+      if (existingMethod && existingMethod !== input.method) {
+        throw new Error("A chave de idempotência já foi usada com outra forma de pagamento")
+      }
+      return existing
+    }
 
     // Seleciona o provider antes de persistir: provider indisponível não deixa linha órfã.
     const environment = resolvePaymentProviderEnvironment()
-    const selected = await createPaymentProviderRouter(environment).select({
+    const router = await createPaymentProviderRouter(environment)
+    const selected = await router.select({
       environment,
-      requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+      requiredCapabilities: ["ONE_TIME_PAYMENT", input.method],
     })
 
     if (account.hasPermanentSubscription) throw new Error("Assinatura vitalícia não tem renovação")
     const quote = await this.quoteCycle(account, input.cycle, input.keptUserIds)
     const revokedProfileIds = resolveRevokedUserIds(quote, account, input.keptUserIds)
-    const amountCents = Math.round(quote.pixTotal * 100)
+    if (input.method === "CARD" && (input.installments ?? 1) > quote.maxInstallments) {
+      throw new Error("Parcelamento indisponível para este prazo")
+    }
+    const total = input.method === "CARD" ? quote.cardTotal : quote.pixTotal
+    if (total == null) throw new Error("Pagamento com cartão indisponível para este prazo")
+    const amountCents = Math.round(total * 100)
     if (!Number.isSafeInteger(amountCents) || amountCents < 100) {
       throw new Error("Não foi possível calcular o valor da renovação")
     }
@@ -103,7 +133,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
 
-    const provider = createAbacatePayProvider(environment)
+    const provider = await createAbacatePayProvider(environment)
     // A unicidade das tentativas do provider é global: derivar a chave do pagamento
     // (único) evita colisão entre contas que enviem a mesma chave de cliente.
     const providerIdempotencyKey = `billing-grace-payment:${payment.id}`
@@ -127,7 +157,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       now: new Date(),
       attemptNumber: 1,
       idempotencyKey: providerIdempotencyKey,
-      requestFingerprint: JSON.stringify({ amountCents, method: "PIX", cycle: quote.cycle, revokedProfileIds, accountId: account.accountId }),
+      requestFingerprint: JSON.stringify({ amountCents, method: input.method, cycle: quote.cycle, revokedProfileIds, accountId: account.accountId, installments: input.installments ?? 1 }),
       provider: selected.provider,
       environment: selected.environment,
       externalAccountContext: selected.externalAccountContext,
@@ -141,7 +171,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       now: new Date(),
       ttlMs: 60_000,
     })
-    const outcome = await provider.createPixPayment({
+    const common = {
       amountInCents: amountCents,
       customer: {
         name: account.name,
@@ -151,7 +181,10 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       },
       externalReference: `${payment.id}:${attempt.id}`,
       metadata: { paymentId: payment.id, attemptId: attempt.id },
-    })
+    }
+    const outcome = input.method === "PIX"
+      ? await provider.createPixPayment(common)
+      : await provider.createCardPayment({ ...common, token: input.cardToken!, tokenIssuedAt: new Date(), installments: input.installments })
     const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
       attemptId: leased.id,
       tenantId: account.teamId ?? account.accountId,
@@ -167,15 +200,27 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
         ? { paymentInstructions: outcome.pix }
         : {}),
     })
-    return billingGracePaymentRepository.attachProviderAttempt({
+    const attached = await billingGracePaymentRepository.attachProviderAttempt({
       id: payment.id,
       providerSessionId: session.id,
       providerAttemptId: updated.id,
       providerExternalId: updated.externalId,
-      ...(updated.paymentInstructions
-        ? { paymentInstructions: updated.paymentInstructions as Prisma.InputJsonValue }
-        : {}),
+      ...(input.method === "CARD"
+        ? { paymentInstructions: { method: "CARD" } as Prisma.InputJsonValue }
+        : updated.paymentInstructions
+          ? { paymentInstructions: { ...(updated.paymentInstructions as object), method: "PIX" } as Prisma.InputJsonValue }
+          : {}),
     })
+    if (outcome.status === "FAILED") return (await billingGracePaymentRepository.markFailed(payment.id, "Pagamento não aprovado")) ?? attached
+    if (outcome.status === "CONFIRMED" && "externalId" in outcome && outcome.externalId) {
+      const confirmed = await billingGracePaymentRepository.markConfirmed({
+        id: payment.id,
+        providerExternalId: outcome.externalId,
+        confirmedAt: new Date(),
+      })
+      if (confirmed) return (await billingGracePaymentRepository.completeAndRestoreAccess(confirmed.id)) ?? confirmed
+    }
+    return attached
   }
 
   async getPayment(input: { id: string; supabaseId: string }) {

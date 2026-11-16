@@ -147,6 +147,75 @@ test.describe("app/backoffice/(app)/payments", () => {
     expect(puts[1]?.patch).toEqual({ cardEnabled: false, expectedRevision: 5 });
   });
 
+  test("variáveis por provider/environment: cria segredo, mascara a resposta e permite remover", async ({ page }) => {
+    const providerConfig = (provider: "ASAAS" | "ABACATE_PAY", environment: string, revision: number, variables: unknown[] = []) => ({
+      provider,
+      environment,
+      enabled: true,
+      isDefault: false,
+      externalAccountContext: "e2e",
+      rolloutState: "ACTIVE",
+      killSwitch: false,
+      cardEnabled: false,
+      revision,
+      healthStatus: "UNKNOWN",
+      variables,
+    });
+    const puts: Array<{ body: { provider: string; environment: string; patch: { variables: Array<{ name: string; visibility: string; value?: string }>; expectedRevision: number } }; response: unknown }> = [];
+    await page.route("**/api/q/backoffice/payment-providers/config**", async (route) => {
+      const request = route.request();
+      if (request.method() === "PUT") {
+        const body = request.postDataJSON();
+        const variables = body.patch.variables.map((variable: { name: string; visibility: string; value?: string }) => ({
+          name: variable.name,
+          visibility: variable.visibility,
+          configured: variable.visibility === "SECRET" || Boolean(variable.value),
+          ...(variable.visibility === "PUBLIC" ? { value: variable.value } : {}),
+        }));
+        const response = {
+          isValid: true,
+          result: providerConfig(body.provider, body.environment, body.patch.expectedRevision + 1, variables),
+        };
+        puts.push({ body, response });
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+        return;
+      }
+      const environment = new URL(request.url()).searchParams.get("environment") ?? "DEV";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ isValid: true, result: [
+          providerConfig("ASAAS", environment, 2),
+          providerConfig("ABACATE_PAY", environment, 4),
+        ] }),
+      });
+    });
+
+    await page.goto("/backoffice/payments");
+    const editor = page.getByRole("region", { name: "Variáveis ABACATE_PAY DEV" });
+    await expect(editor.getByRole("heading", { name: "Variáveis · ABACATE_PAY" })).toBeVisible({ timeout: 60_000 });
+    await editor.getByRole("button", { name: "Adicionar variável" }).click();
+    await editor.getByRole("textbox", { name: "Valor de ABACATE_PAY_DEV_NEW_VARIABLE" }).fill("sandbox-secret-value");
+    await editor.getByRole("button", { name: "Salvar variáveis" }).click();
+
+    await expect.poll(() => puts.length).toBe(1);
+    expect(puts[0]?.body).toEqual({
+      environment: "DEV",
+      provider: "ABACATE_PAY",
+      patch: {
+        variables: [{ name: "ABACATE_PAY_DEV_NEW_VARIABLE", visibility: "SECRET", value: "sandbox-secret-value" }],
+        expectedRevision: 4,
+      },
+    });
+    expect(JSON.stringify(puts[0]?.response)).not.toContain("sandbox-secret-value");
+    await expect(editor.getByRole("textbox", { name: "Valor de ABACATE_PAY_DEV_NEW_VARIABLE" })).toHaveValue("");
+
+    await editor.getByRole("button", { name: "Remover ABACATE_PAY_DEV_NEW_VARIABLE" }).click();
+    await editor.getByRole("button", { name: "Salvar variáveis" }).click();
+    await expect.poll(() => puts.length).toBe(2);
+    expect(puts[1]?.body.patch).toEqual({ variables: [], expectedRevision: 5 });
+  });
+
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion", async ({ page }) => {
     await page.goto("/backoffice/payments");
     const main = page.locator("#backoffice-main-content");

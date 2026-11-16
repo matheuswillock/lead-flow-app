@@ -4,6 +4,8 @@ import type {
   AbacateCardConfig,
   CardConfigEnvironment,
   ICardConfigService,
+  PaymentProvider,
+  ProviderVariablesConfig,
 } from "./ICardConfigService"
 
 const CONFIG_URL = `${API_CLIENT_BASE}/backoffice/payment-providers/config`
@@ -16,9 +18,11 @@ interface OutputResponse<T> {
 }
 
 interface ProviderConfigRecord {
-  provider: string
+  provider: PaymentProvider
   environment: CardConfigEnvironment
   cardEnabled: boolean
+  publicKey?: string | null
+  variables?: ProviderVariablesConfig["variables"]
   revision: number
 }
 
@@ -49,6 +53,7 @@ function toCardConfig(record: ProviderConfigRecord): AbacateCardConfig {
   return {
     environment: record.environment,
     cardEnabled: record.cardEnabled === true,
+    publicKey: record.publicKey ?? null,
     revision: record.revision,
   }
 }
@@ -76,5 +81,45 @@ export class CardConfigService implements ICardConfigService {
       }),
     })
     return toCardConfig(await parseOutput<ProviderConfigRecord>(res))
+  }
+
+  async setPublicKey(environment: CardConfigEnvironment, publicKey: string | null, expectedRevision: number) {
+    const res = await fetch(CONFIG_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ environment, provider: ABACATE_PROVIDER, patch: { publicKey, expectedRevision } }),
+    })
+    return toCardConfig(await parseOutput<ProviderConfigRecord>(res))
+  }
+
+  async getProviderConfigs(environment: CardConfigEnvironment): Promise<ProviderVariablesConfig[]> {
+    const response = await fetch(`${CONFIG_URL}?environment=${environment}`, { cache: "no-store" })
+    const records = await parseOutput<ProviderConfigRecord[]>(response)
+    return records.map((record) => ({
+      provider: record.provider,
+      environment: record.environment,
+      revision: record.revision,
+      variables: record.variables ?? [],
+    }))
+  }
+
+  async setProviderVariables(
+    provider: PaymentProvider,
+    environment: CardConfigEnvironment,
+    variables: Array<{ name: string; visibility: "PUBLIC" | "SECRET"; value?: string }>,
+    expectedRevision: number,
+  ): Promise<ProviderVariablesConfig> {
+    const response = await fetch(CONFIG_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ environment, provider, patch: { variables, expectedRevision } }),
+    })
+    const record = await parseOutput<ProviderConfigRecord>(response)
+    return {
+      provider: record.provider,
+      environment: record.environment,
+      revision: record.revision,
+      variables: record.variables ?? [],
+    }
   }
 }

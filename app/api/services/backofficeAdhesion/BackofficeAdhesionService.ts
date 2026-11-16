@@ -846,7 +846,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   /** Cartão do Abacate pronto para uso: chave pública presente, cartão ligado e sem kill switch. */
   private async resolveCardCheckout(): Promise<{ provider: "ABACATE_PAY"; publicKey: string } | null> {
     const availability = await resolveCardAvailability()
-    const publicKey = availability.card ? readConfiguredAbacatePublicKey() : null
+    const publicKey = availability.card ? await readConfiguredAbacatePublicKey() : null
     return publicKey ? { provider: "ABACATE_PAY", publicKey } : null
   }
 

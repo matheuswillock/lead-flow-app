@@ -1,4 +1,5 @@
 import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
+import { readConfiguredAbacatePublicKey as readStoredAbacatePublicKey } from "@/lib/payment-provider/public-key"
 import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 
 export type BillingType = "PIX" | "CREDIT_CARD"
@@ -68,9 +69,10 @@ export function computeCardAvailability(input: {
  * Chave pública do Abacate do ambiente configurado (a mesma que o front usa no abacatepay.js);
  * `null` enquanto a loja não tem o "Checkout próprio" liberado.
  */
-export function readConfiguredAbacatePublicKey(env: Env = process.env): string | null {
+export async function readConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
   const environment = resolveEnvironment(env)
-  return environment ? readAbacatePublicKey(environment, env) : null
+  if (!environment) return null
+  return (await readStoredAbacatePublicKey(environment, env)) ?? readAbacatePublicKey(environment, env)
 }
 
 const cardEnabledCache = new Map<PaymentProviderEnvironment, { value: boolean; expiresAt: number }>()
@@ -110,7 +112,10 @@ export async function resolveCardAvailability(
 ): Promise<CardAvailability> {
   const environment = resolveEnvironment(env)
   if (!environment) return build(false, "PROVIDER_WITHOUT_CARD")
-  return computeCardAvailability({ cardEnabled: await readCardEnabled(environment), env })
+  const publicKey = await readConfiguredAbacatePublicKey(env)
+  const environmentKey = `ABACATE_PAY_${environment}_PUBLIC_KEY`
+  const effectiveEnv = publicKey ? { ...env, [environmentKey]: publicKey } : env
+  return computeCardAvailability({ cardEnabled: await readCardEnabled(environment), env: effectiveEnv })
 }
 
 /**

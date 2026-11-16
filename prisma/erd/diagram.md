@@ -4741,6 +4741,8 @@ fixed fixed
     String last_error_code "❓"
     String last_error_message "❓"
     String public_key_fingerprint "❓"
+    String public_key "❓"
+    Json variables
     String logo_url "❓"
     String logo_alt_text "❓"
     DateTime created_at 
