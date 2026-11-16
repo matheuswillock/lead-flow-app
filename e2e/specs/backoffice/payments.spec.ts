@@ -77,7 +77,7 @@ test.describe("app/backoffice/(app)/payments", () => {
   });
 
   test("carrega sem erro e mostra o heading, o CTA e o cabeçalho da tabela", async ({ page }) => {
-    await page.goto("/backoffice/payment-providers");
+    await page.goto("/backoffice/payments");
     const main = page.locator("#backoffice-main-content");
     await expect(main.getByRole("heading", { name: "Pagamentos" })).toBeVisible({
       timeout: 60_000,
@@ -191,7 +191,7 @@ test.describe("app/backoffice/(app)/payments", () => {
       });
     });
 
-    await page.goto("/backoffice/payments");
+    await page.goto("/backoffice/payment-providers");
     const editor = page.getByRole("region", { name: "Variáveis ABACATE_PAY DEV" });
     await expect(editor.getByRole("heading", { name: "Variáveis · ABACATE_PAY" })).toBeVisible({ timeout: 60_000 });
     await editor.getByRole("button", { name: "Adicionar variável" }).click();
