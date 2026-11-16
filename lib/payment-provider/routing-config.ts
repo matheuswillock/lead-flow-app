@@ -3,6 +3,21 @@ import type { ProviderRolloutState } from "./routing"
 
 export type ProviderHealthStatus = "UNKNOWN" | "HEALTHY" | "UNHEALTHY"
 
+export type ProviderConfigVariableInput = {
+  readonly name: string
+  readonly visibility: "PUBLIC" | "SECRET"
+  /** Omitir valor preserva um segredo já cadastrado. */
+  readonly value?: string
+}
+
+export type ProviderConfigVariable = {
+  readonly name: string
+  readonly visibility: "PUBLIC" | "SECRET"
+  readonly configured: boolean
+  /** Nunca é incluído para variáveis secretas. */
+  readonly value?: string
+}
+
 export type ProviderRoutingConfigRecord = {
   readonly provider: PaymentProviderKey
   readonly environment: PaymentProviderEnvironment
@@ -13,6 +28,8 @@ export type ProviderRoutingConfigRecord = {
   readonly killSwitch: boolean
   /** Oferta de cartão gerida no backoffice; nasce desligada e só o dono liga. */
   readonly cardEnabled: boolean
+  readonly publicKey?: string | null
+  readonly variables?: readonly ProviderConfigVariable[]
   readonly revision: number
   readonly healthStatus: ProviderHealthStatus
 }
@@ -24,6 +41,8 @@ export type ProviderRoutingConfigPatch = {
   readonly rolloutState?: ProviderRolloutState
   readonly killSwitch?: boolean
   readonly cardEnabled?: boolean
+  readonly publicKey?: string | null
+  readonly variables?: readonly ProviderConfigVariableInput[]
   readonly expectedRevision: number
 }
 
@@ -97,9 +116,22 @@ export function applyProviderRoutingConfigPatch(
     rolloutState: accountContextChanged ? "DISABLED" : next.rolloutState,
     killSwitch: next.killSwitch,
     cardEnabled: next.cardEnabled,
+    publicKey: patch.publicKey === undefined ? current.publicKey : patch.publicKey?.trim() || null,
+    variables: patch.variables === undefined ? current.variables : summarizeProviderConfigVariables(patch.variables),
     revision: next.revision,
     healthStatus: accountContextChanged ? "UNKNOWN" : current.healthStatus,
   })
+}
+
+function summarizeProviderConfigVariables(
+  variables: readonly ProviderConfigVariableInput[],
+): readonly ProviderConfigVariable[] {
+  return variables.map((variable) => ({
+    name: variable.name,
+    visibility: variable.visibility,
+    configured: variable.visibility === "SECRET" || Boolean(variable.value?.trim()),
+    ...(variable.visibility === "PUBLIC" && variable.value !== undefined ? { value: variable.value } : {}),
+  }))
 }
 
 function isValidRolloutTransition(

@@ -17,6 +17,7 @@ export type PlatformPixPaymentData = {
 }
 
 type StoredKey = { key: string; pixExpiresAt: string | null }
+type PlatformPaymentMethod = "PIX" | "CARD"
 
 const STORAGE_PREFIX = "platform-pix-idempotency:"
 const PIX_UNAVAILABLE_MESSAGE = "O PIX ainda não está disponível. Tente novamente em instantes."
@@ -38,20 +39,21 @@ export function resolvePixIdempotencyKey(
   storage: KeyValueStorage,
   purchaseId: string,
   nowMs: number,
-  createId: () => string
+  createId: () => string,
+  method: PlatformPaymentMethod = "PIX"
 ): string {
-  const stored = readStoredKey(storage, purchaseId)
+  const stored = readStoredKey(storage, purchaseId, method)
   if (stored && !isExpired(stored, nowMs)) return stored.key
 
-  const key = `platform-pix:${purchaseId}:${createId()}`
-  writeStoredKey(storage, purchaseId, { key, pixExpiresAt: null })
+  const key = `platform-${method.toLowerCase()}:${purchaseId}:${createId()}`
+  writeStoredKey(storage, purchaseId, { key, pixExpiresAt: null }, method)
   return key
 }
 
 export function rememberPixExpiry(storage: KeyValueStorage, purchaseId: string, expiresAt: string): void {
-  const stored = readStoredKey(storage, purchaseId)
+  const stored = readStoredKey(storage, purchaseId, "PIX")
   if (!stored) return
-  writeStoredKey(storage, purchaseId, { ...stored, pixExpiresAt: expiresAt })
+  writeStoredKey(storage, purchaseId, { ...stored, pixExpiresAt: expiresAt }, "PIX")
 }
 
 function isExpired(stored: StoredKey, nowMs: number): boolean {
@@ -60,9 +62,9 @@ function isExpired(stored: StoredKey, nowMs: number): boolean {
   return Number.isFinite(expiresAtMs) && nowMs >= expiresAtMs
 }
 
-function readStoredKey(storage: KeyValueStorage, purchaseId: string): StoredKey | null {
+function readStoredKey(storage: KeyValueStorage, purchaseId: string, method: PlatformPaymentMethod): StoredKey | null {
   try {
-    const raw = storage.getItem(`${STORAGE_PREFIX}${purchaseId}`)
+    const raw = storage.getItem(`${STORAGE_PREFIX}${method.toLowerCase()}:${purchaseId}`)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<StoredKey>
     return typeof parsed.key === "string" ? { key: parsed.key, pixExpiresAt: parsed.pixExpiresAt ?? null } : null
@@ -71,9 +73,9 @@ function readStoredKey(storage: KeyValueStorage, purchaseId: string): StoredKey 
   }
 }
 
-function writeStoredKey(storage: KeyValueStorage, purchaseId: string, value: StoredKey): void {
+function writeStoredKey(storage: KeyValueStorage, purchaseId: string, value: StoredKey, method: PlatformPaymentMethod): void {
   try {
-    storage.setItem(`${STORAGE_PREFIX}${purchaseId}`, JSON.stringify(value))
+    storage.setItem(`${STORAGE_PREFIX}${method.toLowerCase()}:${purchaseId}`, JSON.stringify(value))
   } catch {
     // storage indisponível: a chave vale apenas para esta tentativa
   }

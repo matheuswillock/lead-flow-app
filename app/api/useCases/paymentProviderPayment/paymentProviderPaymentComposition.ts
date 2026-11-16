@@ -54,11 +54,16 @@ async function readProviderSecret(
   suffix: string,
   externalAccountContext?: string,
   credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+  configRepository: Pick<typeof paymentProviderConfigRepository, "readRuntimeVariables"> = paymentProviderConfigRepository,
 ): Promise<string> {
   const instance = externalAccountContext
     ? null
     : (await paymentProviderConfigRepository.list(environment)).find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
   const context = externalAccountContext ?? instance?.externalAccountContext ?? `abacate-${environment.toLowerCase()}`
+  const configuredVariable = (await configRepository.readRuntimeVariables("ABACATE_PAY", environment, context))[
+    `ABACATE_PAY_${environment}_${suffix}`
+  ]
+  if (configuredVariable?.trim()) return configuredVariable
   const resolved = await resolveProviderCredential({
     stored: () => credentialRepository.getEncrypted({
       provider: "ABACATE_PAY",
@@ -76,11 +81,16 @@ async function readOptionalProviderSecret(
   suffix: string,
   externalAccountContext?: string,
   credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+  configRepository: Pick<typeof paymentProviderConfigRepository, "readRuntimeVariables"> = paymentProviderConfigRepository,
 ): Promise<string | null> {
   const instance = externalAccountContext
     ? null
     : (await paymentProviderConfigRepository.list(environment)).find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
   const context = externalAccountContext ?? instance?.externalAccountContext ?? `abacate-${environment.toLowerCase()}`
+  const configuredVariable = (await configRepository.readRuntimeVariables("ABACATE_PAY", environment, context))[
+    `ABACATE_PAY_${environment}_${suffix}`
+  ]
+  if (configuredVariable?.trim()) return configuredVariable
   const resolved = await resolveOptionalProviderCredential({
     stored: () => credentialRepository.getEncrypted({
       provider: "ABACATE_PAY",
@@ -102,12 +112,13 @@ export async function createAbacatePayProvider(
   environment: PaymentProviderEnvironment,
   externalAccountContext?: string,
   credentialRepository: IPaymentProviderCredentialRepository = paymentProviderCredentialRepository,
+  configRepository: Pick<typeof paymentProviderConfigRepository, "readRuntimeVariables"> = paymentProviderConfigRepository,
 ): Promise<AbacatePayProvider> {
   const [apiKey, webhookSecret, webhookSecretPrevious, databasePublicKey] = await Promise.all([
-    readProviderSecret(environment, "API_KEY", externalAccountContext, credentialRepository),
-    readProviderSecret(environment, "WEBHOOK_SECRET", externalAccountContext, credentialRepository),
-    readOptionalProviderSecret(environment, "WEBHOOK_SECRET_PREVIOUS", externalAccountContext, credentialRepository),
-    readOptionalProviderSecret(environment, "PUBLIC_KEY", externalAccountContext, credentialRepository),
+    readProviderSecret(environment, "API_KEY", externalAccountContext, credentialRepository, configRepository),
+    readProviderSecret(environment, "WEBHOOK_SECRET", externalAccountContext, credentialRepository, configRepository),
+    readOptionalProviderSecret(environment, "WEBHOOK_SECRET_PREVIOUS", externalAccountContext, credentialRepository, configRepository),
+    readOptionalProviderSecret(environment, "PUBLIC_KEY", externalAccountContext, credentialRepository, configRepository),
   ])
   const publicKey = databasePublicKey ?? readAbacatePublicKey(environment)
   return new AbacatePayProvider(
@@ -125,32 +136,32 @@ export async function createAbacatePayProvider(
   )
 }
 
-export function createAbacatePayProviderRegistry(
+export async function createAbacatePayProviderRegistry(
   environment: PaymentProviderEnvironment,
-): PaymentProviderRegistry {
+): Promise<PaymentProviderRegistry> {
   return new PaymentProviderRegistry([
     {
       metadata: {
         key: "ABACATE_PAY",
         environment,
-        capabilities: resolveAbacateCapabilities(environment),
+        capabilities: await resolveAbacateCapabilities(environment),
       },
     },
   ])
 }
 
-export function createPaymentProviderRouter(
+export async function createPaymentProviderRouter(
   environment: PaymentProviderEnvironment,
-): PaymentProviderRouter {
+): Promise<PaymentProviderRouter> {
   return new PaymentProviderRouter(
     paymentProviderConfigRepository,
-    createAbacatePayProviderRegistry(environment),
+    await createAbacatePayProviderRegistry(environment),
   )
 }
 
-function createUseCase() {
+async function createUseCase() {
   const environment = resolvePaymentProviderEnvironment()
-  const router = createPaymentProviderRouter(environment)
+  const router = await createPaymentProviderRouter(environment)
 
   const service = new PaymentProviderPaymentService({
     purchases: platformPurchaseRepository,
@@ -167,11 +178,11 @@ function createUseCase() {
   return new PaymentProviderPaymentUseCase(service)
 }
 
-export function getPaymentProviderPaymentUseCase() {
+export async function getPaymentProviderPaymentUseCase() {
   return createUseCase()
 }
 
-export function getPaymentProviderRefundUseCase(): PaymentProviderRefundUseCase {
+export async function getPaymentProviderRefundUseCase(): Promise<PaymentProviderRefundUseCase> {
   const environment = resolvePaymentProviderEnvironment()
   return new PaymentProviderRefundUseCase({
     sessions: paymentProviderSessionRepository,

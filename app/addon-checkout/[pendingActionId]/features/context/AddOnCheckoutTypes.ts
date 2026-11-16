@@ -22,6 +22,7 @@ export interface AddOnCheckoutData {
   presetBillingType: "PIX" | "CREDIT_CARD";
   /** Métodos que o servidor permite oferecer agora. Ausente = somente PIX (falha fechada). */
   availableBillingTypes?: ("PIX" | "CREDIT_CARD")[];
+  cardCheckout?: { provider: "ABACATE_PAY"; publicKey: string } | null
   addonType: AddOnType;
   addonLabel: string;
   addonDetail: string;
@@ -70,6 +71,7 @@ export interface AddOnCheckoutSubmitInput {
   cardExpiryMonth: string;
   cardExpiryYear: string;
   cardCcv: string;
+  cardToken?: string
 }
 
 export type AddOnCheckoutStep = "loading" | "idle" | "payment" | "success" | "error";

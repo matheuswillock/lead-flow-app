@@ -6839,6 +6839,8 @@ model PaymentProviderConfig {
   lastErrorCode            String?                   @map("last_error_code") @db.Text
   lastErrorMessage         String?                   @map("last_error_message") @db.Text
   publicKeyFingerprint     String?                   @map("public_key_fingerprint") @db.Text
+  publicKey               String?                   @map("public_key") @db.Text
+  variables                Json                      @default("[]")
   displayName              String?                   @map("display_name") @db.Text
   logoUrl                  String?                   @map("logo_url") @db.Text
   logoAltText              String?                   @map("logo_alt_text") @db.Text

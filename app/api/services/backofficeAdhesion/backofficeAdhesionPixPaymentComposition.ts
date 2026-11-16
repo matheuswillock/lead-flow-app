@@ -16,7 +16,8 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const selected = await composition.createPaymentProviderRouter(environment).select({
+      const router = await composition.createPaymentProviderRouter(environment)
+      const selected = await router.select({
         environment,
         requiredCapabilities: ["ONE_TIME_PAYMENT", method],
       })
@@ -31,7 +32,7 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const selected = await composition.createPaymentProviderRouter(environment).select({
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
         environment,
         requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
       })
@@ -42,7 +43,7 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const selected = await composition.createPaymentProviderRouter(environment).select({
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
         environment,
         requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"],
       })
@@ -53,7 +54,7 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const selected = await composition.createPaymentProviderRouter(environment).select({
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
         environment,
         requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"],
       })

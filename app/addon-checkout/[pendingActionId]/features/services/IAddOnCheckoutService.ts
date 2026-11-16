@@ -7,5 +7,6 @@ export interface IAddOnCheckoutService {
   updateBillingType(pendingActionId: string, billingType: "PIX" | "CREDIT_CARD"): Promise<void>;
   createPayment(pendingActionId: string, input: AddOnCheckoutSubmitInput): Promise<any>;
   createPlatformPixPayment(purchaseId: string, input: AddOnCheckoutSubmitInput): Promise<PlatformPixPaymentData>;
+  createPlatformCardPayment(purchaseId: string, input: AddOnCheckoutSubmitInput): Promise<PlatformPixPaymentData>;
   checkPaymentStatus(pendingActionId: string): Promise<PaymentStatus>;
 }

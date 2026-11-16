@@ -30,7 +30,9 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const environment = parseEnvironment(body?.environment)
     const provider = parseProvider(body?.provider)
-    const patch = parseProviderConfigPatch(body?.patch)
+    const patch = environment && provider
+      ? parseProviderConfigPatch(body?.patch, provider, environment)
+      : null
     if (!environment || !provider || !patch)
       return invalidRequest("Payload de configuração inválido")
 

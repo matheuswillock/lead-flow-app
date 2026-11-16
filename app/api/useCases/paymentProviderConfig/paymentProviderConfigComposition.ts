@@ -12,7 +12,7 @@ export const paymentProviderConfigUseCase = new PaymentProviderConfigUseCase(
 )
 
 export const paymentProviderHealthCheckUseCase = new PaymentProviderHealthCheckUseCase(
-  new PaymentProviderHealthCheckService(paymentProviderConfigRepository, (_provider, environment) =>
+  new PaymentProviderHealthCheckService(paymentProviderConfigRepository, async (_provider, environment) =>
     createAbacatePayProvider(environment),
   ),
 )
