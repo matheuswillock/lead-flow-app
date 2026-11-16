@@ -415,6 +415,45 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
     expect(access.slugs).toEqual([])
   })
 
+  it("libera CRM na janela dinâmica de carência (vencimento + 5 dias) para Member PRO expirado, sem BillingAccessGrace manual", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: null,
+      accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "past_due"
+    repository.ownerSubscriptionNextDueDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1_000)
+    repository.ownerProductFeatureSlugs = ["crm"]
+    // De propósito sem repository.temporaryBillingGrace/expiredMemberProCrmGrace: a janela
+    // dinâmica (mesma regra de AccountAccessDecisionService) não deve depender de uma
+    // BillingAccessGrace manual no banco.
 
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual(["crm"])
+  })
+
+  it("bloqueia CRM quando a janela dinâmica de carência já passou de 5 dias, mesmo sem grace manual", async () => {
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: null,
+      accessExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "past_due"
+    repository.ownerSubscriptionNextDueDate = new Date(Date.now() - 6 * 24 * 60 * 60 * 1_000)
+    repository.ownerProductFeatureSlugs = ["crm"]
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toEqual([])
+  })
 
 })
