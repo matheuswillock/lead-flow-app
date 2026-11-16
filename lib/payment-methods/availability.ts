@@ -1,5 +1,4 @@
 import { readAbacatePublicKey } from "@/lib/payment-provider/public-key"
-import { readConfiguredAbacatePublicKey as readStoredAbacatePublicKey } from "@/lib/payment-provider/public-key"
 import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 
 export type BillingType = "PIX" | "CREDIT_CARD"
@@ -65,16 +64,6 @@ export function computeCardAvailability(input: {
   return build(true, "AVAILABLE")
 }
 
-/**
- * Chave pública do Abacate do ambiente configurado (a mesma que o front usa no abacatepay.js);
- * `null` enquanto a loja não tem o "Checkout próprio" liberado.
- */
-export async function readConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
-  const environment = resolveEnvironment(env)
-  if (!environment) return null
-  return (await readStoredAbacatePublicKey(environment, env)) ?? readAbacatePublicKey(environment, env)
-}
-
 const cardEnabledCache = new Map<PaymentProviderEnvironment, { value: boolean; expiresAt: number }>()
 
 /**
@@ -89,7 +78,7 @@ export const readCardEnabledFromConfig: CardEnabledReader = async (environment) 
       "@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"
     )
     const configs = await paymentProviderConfigRepository.list(environment)
-    const value = configs.find((config) => config.provider === "ABACATE_PAY")?.cardEnabled === true
+    const value = configs.find((config) => config.provider === "ABACATE_PAY" && config.isDefault)?.cardEnabled === true
     cardEnabledCache.set(environment, { value, expiresAt: Date.now() + CARD_ENABLED_CACHE_TTL_MS })
     return value
   } catch {
@@ -109,13 +98,97 @@ export function clearCardEnabledCache(): void {
 export async function resolveCardAvailability(
   env: Env = process.env,
   readCardEnabled: CardEnabledReader = readCardEnabledFromConfig,
+  readPublicKey: (
+    environment: PaymentProviderEnvironment,
+    env: Env,
+  ) => Promise<string | null> = readConfiguredAbacatePublicKeyForEnvironment,
 ): Promise<CardAvailability> {
   const environment = resolveEnvironment(env)
   if (!environment) return build(false, "PROVIDER_WITHOUT_CARD")
-  const publicKey = await readConfiguredAbacatePublicKey(env)
-  const environmentKey = `ABACATE_PAY_${environment}_PUBLIC_KEY`
-  const effectiveEnv = publicKey ? { ...env, [environmentKey]: publicKey } : env
-  return computeCardAvailability({ cardEnabled: await readCardEnabled(environment), env: effectiveEnv })
+  if (env.CARD_PAYMENTS_ENABLED === "false") return build(false, "DISABLED_BY_FLAG")
+  const publicKey = await readPublicKey(environment, env)
+  return computeCardAvailability({
+    cardEnabled: await readCardEnabled(environment),
+    env: {
+      ...env,
+      [`ABACATE_PAY_${environment}_PUBLIC_KEY`]: publicKey ?? "",
+      ABACATE_PAY_PUBLIC_KEY: publicKey ?? "",
+    },
+  })
+}
+
+/**
+ * Chave pública do Abacate para o ambiente atual: banco-primeiro (instância padrão), com
+ * fallback em env; `null` enquanto a loja não tem o "Checkout próprio" liberado em nenhuma fonte.
+ */
+export async function resolveConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
+  const environment = resolveEnvironment(env)
+  return environment ? readConfiguredAbacatePublicKeyForEnvironment(environment, env) : null
+}
+
+export async function readConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
+  return resolveConfiguredAbacatePublicKey(env)
+}
+
+async function readConfiguredAbacatePublicKeyForEnvironment(environment: PaymentProviderEnvironment, env: Env): Promise<string | null> {
+  const envFallback = () => readAbacatePublicKey(environment, env)
+  let modules: Awaited<ReturnType<typeof loadCredentialModules>>
+  try {
+    modules = await loadCredentialModules()
+  } catch {
+    return envFallback()
+  }
+  let configurations
+  try {
+    configurations = await modules.paymentProviderConfigRepository.list(environment)
+  } catch {
+    // Falha de infraestrutura ao consultar a instância padrão (ex.: banco indisponível)
+    // não é motivo para derrubar o fallback de env — as duas fontes devem seguir valendo.
+    return envFallback()
+  }
+  const configuration = configurations.find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
+  if (!configuration) return envFallback()
+  try {
+    const configured = await modules.paymentProviderConfigRepository.readPublicVariable(
+      "ABACATE_PAY",
+      environment,
+      `ABACATE_PAY_${environment}_PUBLIC_KEY`,
+      configuration.externalAccountContext,
+    )
+    if (configured?.trim()) return configured.trim()
+  } catch {
+    return envFallback()
+  }
+  try {
+    const resolved = await modules.resolveOptionalProviderCredential({
+      // Erro de leitura (infra) vira "não cadastrada" e cai no fallback de env; só uma
+      // credencial encontrada e corrompida (decifra falha) deve falhar fechado abaixo.
+      stored: () => modules.paymentProviderCredentialRepository
+        .getEncrypted({
+          provider: "ABACATE_PAY",
+          environment,
+          externalAccountContext: configuration.externalAccountContext,
+          key: "PUBLIC_KEY",
+        })
+        .catch(() => null),
+      fromEnvironment: () => envFallback() ?? undefined,
+    })
+    return resolved.value
+  } catch {
+    return null
+  }
+}
+
+function loadCredentialModules() {
+  return Promise.all([
+    import("@/app/api/infra/data/repositories/paymentProviderConfig/PaymentProviderConfigRepository"),
+    import("@/app/api/infra/data/repositories/paymentProviderCredential/PaymentProviderCredentialRepository"),
+    import("@/lib/payment-provider/credential-resolver"),
+  ]).then(([config, credentials, resolver]) => ({
+    paymentProviderConfigRepository: config.paymentProviderConfigRepository,
+    paymentProviderCredentialRepository: credentials.paymentProviderCredentialRepository,
+    resolveOptionalProviderCredential: resolver.resolveOptionalProviderCredential,
+  }))
 }
 
 /**

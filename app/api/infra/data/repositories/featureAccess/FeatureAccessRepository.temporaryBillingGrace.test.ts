@@ -48,3 +48,25 @@ describe("FeatureAccessRepository.hasActiveTemporaryBillingGrace", () => {
     expect(hasGrace).toBe(false)
   })
 })
+
+describe("FeatureAccessRepository.hasActiveExpiredMemberProCrmGrace", () => {
+  beforeEach(() => billingAccessGraceFindFirst.mockReset())
+
+  it("exige a exceção explícita, ativa e ainda não expirada para o time", async () => {
+    billingAccessGraceFindFirst.mockResolvedValueOnce({ id: "grace-1" })
+
+    const hasOverride = await new FeatureAccessRepository()
+      .hasActiveExpiredMemberProCrmGrace("team-blackrock")
+
+    expect(hasOverride).toBe(true)
+    expect(billingAccessGraceFindFirst).toHaveBeenCalledWith({
+      where: {
+        teamId: "team-blackrock",
+        isActive: true,
+        allowExpiredMemberProCrm: true,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      select: { id: true },
+    })
+  })
+})

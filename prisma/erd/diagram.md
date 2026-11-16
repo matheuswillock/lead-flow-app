@@ -1131,6 +1131,7 @@ MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
             PROFILE PROFILE
 TEAM TEAM
 TEAM_MEMBER TEAM_MEMBER
+PAYMENT_PROVIDER_CONFIG PAYMENT_PROVIDER_CONFIG
         }
     
 
@@ -2019,6 +2020,7 @@ fixed fixed
     String reason 
     DateTime expiresAt "❓"
     Boolean isActive 
+    Boolean allowExpiredMemberProCrm
     String grantedByProfileId "❓"
     DateTime grantedAt 
     DateTime resolvedAt "❓"
@@ -4743,12 +4745,27 @@ fixed fixed
     String public_key_fingerprint "❓"
     String public_key "❓"
     Json variables
+    String display_name "❓"
     String logo_url "❓"
     String logo_alt_text "❓"
     DateTime created_at 
     DateTime updated_at 
     }
   
+
+  "payment_provider_credentials" {
+    String id "🗝️"
+    String config_id
+    String key
+    String value_ciphertext
+    String key_id
+    String last4 "❓"
+    String fingerprint
+    String updated_by "❓"
+    DateTime created_at
+    DateTime updated_at
+    }
+
 
   "payment_provider_identities" {
     String id "🗝️"
@@ -5814,6 +5831,8 @@ fixed fixed
     "payment_provider_configs" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_configs" |o--|| "PaymentProviderRolloutState" : "enum:rollout_state"
     "payment_provider_configs" |o--|| "PaymentProviderHealthStatus" : "enum:health_status"
+    "payment_provider_credentials" }o--|| payment_provider_configs : "config"
+    "payment_provider_credentials" }o--|o corretor_studio_profiles : "updatedBy"
     "payment_provider_identities" |o--|| "PaymentProviderKey" : "enum:provider_key"
     "payment_provider_identities" |o--|| "PaymentProviderEnvironment" : "enum:environment"
     "payment_provider_identities" |o--|| "PaymentProviderIdentityType" : "enum:identity_type"

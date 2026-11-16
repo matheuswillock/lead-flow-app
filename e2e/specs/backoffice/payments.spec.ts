@@ -77,7 +77,7 @@ test.describe("app/backoffice/(app)/payments", () => {
   });
 
   test("carrega sem erro e mostra o heading, o CTA e o cabeçalho da tabela", async ({ page }) => {
-    await page.goto("/backoffice/payments");
+    await page.goto("/backoffice/payment-providers");
     const main = page.locator("#backoffice-main-content");
     await expect(main.getByRole("heading", { name: "Pagamentos" })).toBeVisible({
       timeout: 60_000,
@@ -92,7 +92,7 @@ test.describe("app/backoffice/(app)/payments", () => {
       provider: "ABACATE_PAY",
       environment,
       enabled: true,
-      isDefault: false,
+      isDefault: true,
       externalAccountContext: "e2e",
       rolloutState: "ACTIVE",
       killSwitch: false,
@@ -124,7 +124,7 @@ test.describe("app/backoffice/(app)/payments", () => {
       });
     });
 
-    await page.goto("/backoffice/payments");
+    await page.goto("/backoffice/payment-providers");
     const card = page.getByTestId("card-config");
     await expect(card.getByText("Cartão de crédito", { exact: true })).toBeVisible({ timeout: 60_000 });
     const productionSwitch = card.getByRole("switch", { name: "Cartão de crédito em Produção" });
@@ -185,8 +185,8 @@ test.describe("app/backoffice/(app)/payments", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ isValid: true, result: [
-          providerConfig("ASAAS", environment, 2),
-          providerConfig("ABACATE_PAY", environment, 4),
+          providerConfig("ASAAS", environment, 2, []),
+          { ...providerConfig("ABACATE_PAY", environment, 4), isDefault: true },
         ] }),
       });
     });

@@ -66,8 +66,13 @@ test.describe("app/[supabaseId]/integrations/lead-form", () => {
   test("o card do hub navega para a página própria", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/integrations`, { waitUntil: "domcontentloaded" });
 
-    await page.locator("main").getByRole("link", { name: /Formulário de Captação de Leads/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/lead-form$`));
+    const leadFormHref = `/${E2E_MASTER_SUPABASE_ID}/integrations/lead-form`;
+    const leadFormLink = page.locator("main").getByRole("link", { name: /Formulário de Captação de Leads/ });
+    await expect(leadFormLink).toHaveAttribute("href", leadFormHref);
+    await leadFormLink.click();
+    await expect(page).toHaveURL(new RegExp(`/${E2E_MASTER_SUPABASE_ID}/integrations/lead-form$`), {
+      timeout: 30_000,
+    });
     await expect(page.getByRole("heading", { name: "Formulário de Captação de Leads", exact: true })).toBeVisible({
       timeout: 30_000,
     });

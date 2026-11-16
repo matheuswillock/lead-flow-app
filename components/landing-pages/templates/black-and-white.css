@@ -70,7 +70,7 @@
 .closing-line{margin:24px 0 0}
 
 @media(min-width:901px){.price-card{position:sticky;top:104px}}
-@media(max-width:900px){.awareness{padding:80px 0}.awareness-layout{grid-template-columns:1fr;gap:40px}.price-card{position:static;top:auto;width:100%;max-width:420px;min-height:288px;justify-self:start}.context-content h2{font-size:clamp(40px,6vw,48px)}}
+@media(max-width:900px){.awareness{padding:80px 0}.awareness-layout{grid-template-columns:1fr;gap:40px}.price-card{position:relative;top:auto;width:100%;max-width:420px;min-height:288px;justify-self:start}.context-content h2{font-size:clamp(40px,6vw,48px)}}
 @media(max-width:640px){.awareness{padding:80px 0}.awareness-layout{gap:32px}.price-card{max-width:none;min-height:0;padding:32px}.price-card .price-label{margin-top:32px}.context-content h2{font-size:clamp(36px,11vw,44px);line-height:1.05}.context-heading{margin-top:48px}.factor-grid{grid-template-columns:1fr;column-gap:0;margin-top:24px}.factor-item{padding:24px 0}.quote-compare{grid-template-columns:1fr;gap:24px;margin-top:48px}.quote-card{min-height:0}.context-list{grid-template-columns:1fr}.closing-line{margin-top:24px;padding:0 18px}}
 
 /* Reversible scenario card and shared lead form. */
@@ -129,3 +129,35 @@
 @keyframes statusPulse{0%{transform:scale(1);opacity:.35}70%{transform:scale(2.8);opacity:0}100%{transform:scale(2.8);opacity:0}}
 @keyframes cookieIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes scenarioNudge{0%,100%{transform:translateX(0) rotate(0)}25%{transform:translateX(-3px) rotate(-.25deg)}55%{transform:translateX(3px) rotate(.25deg)}80%{transform:translateX(-1px) rotate(-.1deg)}}
+
+/*
+ * Black and White no mobile: cabeçalho, rodapé e banner de cookies do design
+ * importado ficavam abaixo de 44px de altura; o projeto exige alvos de toque de
+ * 44px (medido pelo E2E em 360px). Links inline em texto corrido não entram na
+ * medição e não mudam. Fora do bloco `.bw-source { ... }` acima, daí o prefixo.
+ */
+@media (max-width: 780px) {
+  .bw-source .site-header a,
+  .bw-source .site-header button,
+  .bw-source .institutional-footer a,
+  .bw-source .institutional-footer button,
+  .bw-source .situation-card a,
+  .bw-source .cookie-consent .cookie-more,
+  .bw-source .cookie-dialog .cookie-more,
+  .bw-source .cookie-consent button,
+  .bw-source .cookie-dialog button {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* CTAs em texto ("Ver como funciona", "Entender meu cenário") ficam com 19 a 26px
+     de altura. Padding vertical aumenta a área de toque sem mudar o texto nem o layout. */
+  .bw-source .text-link,
+  .bw-source .hero-actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-block: 12px;
+  }
+}

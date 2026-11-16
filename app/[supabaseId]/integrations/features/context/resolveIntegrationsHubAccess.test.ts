@@ -15,6 +15,7 @@ describe("resolveIntegrationsHubAccess", () => {
       hasWebhooksAccess: true,
       hasRadarAccess: false,
       hasPixelAccess: false,
+      hasLeadFormAccess: false,
     });
 
     expect(access.apiCatalogLocked).toBe(false);
@@ -30,6 +31,7 @@ describe("resolveIntegrationsHubAccess", () => {
       hasWebhooksAccess: false,
       hasRadarAccess: true,
       hasPixelAccess: true,
+      hasLeadFormAccess: false,
     });
 
     expect(access.apiCatalogLocked).toBe(true);
@@ -37,17 +39,19 @@ describe("resolveIntegrationsHubAccess", () => {
     expect(access.pixelLocked).toBe(false);
   });
 
-  test("time sem nenhuma feature: as três entradas aparecem bloqueadas", () => {
+  test("time sem nenhuma feature: as quatro entradas aparecem bloqueadas", () => {
     const access = resolveIntegrationsHubAccess({
       hasApiCatalogAccess: false,
       hasWebhooksAccess: false,
       hasRadarAccess: false,
       hasPixelAccess: false,
+      hasLeadFormAccess: false,
     });
 
     expect(access.apiCatalogLocked).toBe(true);
     expect(access.webhooksLocked).toBe(true);
     expect(access.pixelLocked).toBe(true);
+    expect(access.leadFormLocked).toBe(true);
   });
 
   test("time com todas as features: nenhuma entrada bloqueada", () => {
@@ -56,11 +60,32 @@ describe("resolveIntegrationsHubAccess", () => {
       hasWebhooksAccess: true,
       hasRadarAccess: true,
       hasPixelAccess: true,
+      hasLeadFormAccess: true,
     });
 
     expect(access.apiCatalogLocked).toBe(false);
     expect(access.webhooksLocked).toBe(false);
     expect(access.pixelLocked).toBe(false);
+    expect(access.leadFormLocked).toBe(false);
+  });
+
+  // Achado de produção (12/11): o Formulário de Captação não depende de
+  // `integration` nem de `radar` — a feature `lead-form` em si é PUBLIC com
+  // `defaultAccessLevel: FULL` para todos os principais (seed em
+  // `prisma/seed-backoffice-products.ts`), então `hasLeadFormAccess` já vem
+  // `true` do `FeatureAccessService` para qualquer conta, independente de
+  // ter `integration`/`radar`. Esta função só repassa o valor — não tem OR
+  // com `radar` (diferente de Webhooks, que é mesmo pago/condicionado).
+  test("time sem integration nem radar: Formulário de Captação continua liberado (feature própria é pública)", () => {
+    const access = resolveIntegrationsHubAccess({
+      hasApiCatalogAccess: false,
+      hasWebhooksAccess: false,
+      hasRadarAccess: false,
+      hasPixelAccess: false,
+      hasLeadFormAccess: true,
+    });
+
+    expect(access.leadFormLocked).toBe(false);
   });
 
   // T-15.2 — Os 3 times da lista fixa legada (On | Select 3.0, On | Select 1.0,
@@ -79,6 +104,7 @@ describe("resolveIntegrationsHubAccess", () => {
       hasWebhooksAccess: legacyTeamHasAccess,
       hasRadarAccess: false,
       hasPixelAccess: false,
+      hasLeadFormAccess: false,
     });
 
     expect(access.apiCatalogLocked).toBe(false);
@@ -107,6 +133,7 @@ describe("resolveIntegrationsHubAccess", () => {
       hasWebhooksAccess: true,
       hasRadarAccess: false,
       hasPixelAccess: false,
+      hasLeadFormAccess: false,
     });
     expect(currentAccess.webhooksLocked).toBe(false);
   });

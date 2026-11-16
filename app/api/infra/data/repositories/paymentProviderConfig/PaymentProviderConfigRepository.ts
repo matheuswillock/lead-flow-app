@@ -45,15 +45,16 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
   async readRuntimeVariables(
     provider: ProviderRoutingConfigRecord["provider"],
     environment: ProviderRoutingConfigRecord["environment"],
+    externalAccountContext?: string,
   ): Promise<Readonly<Record<string, string>>> {
-    const record = await prisma.paymentProviderConfig.findUnique({
+    const record = await prisma.paymentProviderConfig.findFirst({
       where: {
-        providerKey_environment: {
-          providerKey: toPrismaProvider(provider),
-          environment: toPrismaEnvironment(environment),
-        },
+        providerKey: toPrismaProvider(provider),
+        environment: toPrismaEnvironment(environment),
+        ...(externalAccountContext ? { externalAccountContext } : {}),
       },
       select: { variables: true, publicKey: true },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
     })
     if (!record) return {}
     const variables = resolveProviderConfigVariables(record.variables)
@@ -66,15 +67,16 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
     provider: ProviderRoutingConfigRecord["provider"],
     environment: ProviderRoutingConfigRecord["environment"],
     name: string,
+    externalAccountContext?: string,
   ): Promise<string | null> {
-    const record = await prisma.paymentProviderConfig.findUnique({
+    const record = await prisma.paymentProviderConfig.findFirst({
       where: {
-        providerKey_environment: {
-          providerKey: toPrismaProvider(provider),
-          environment: toPrismaEnvironment(environment),
-        },
+        providerKey: toPrismaProvider(provider),
+        environment: toPrismaEnvironment(environment),
+        ...(externalAccountContext ? { externalAccountContext } : {}),
       },
       select: { variables: true, publicKey: true },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
     })
     if (!record) return null
     const configured = resolvePublicProviderConfigVariable(record.variables, name)
@@ -86,15 +88,17 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
     input: RecordProviderHealthCheckInput,
   ): Promise<ProviderRoutingConfigRecord> {
     const where = {
-      providerKey_environment: {
-        providerKey: toPrismaProvider(input.provider),
-        environment: toPrismaEnvironment(input.environment),
-      },
+      providerKey: toPrismaProvider(input.provider),
+      environment: toPrismaEnvironment(input.environment),
     }
-    const exists = await prisma.paymentProviderConfig.findUnique({ where, select: { id: true } })
+    const exists = await prisma.paymentProviderConfig.findFirst({
+      where,
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      select: { id: true },
+    })
     if (!exists) throw new Error("Configuração do provider não encontrada")
     const updated = await prisma.paymentProviderConfig.update({
-      where,
+      where: { id: exists.id },
       data: {
         healthStatus: input.healthStatus,
         lastHealthCheckAt: input.checkedAt,
@@ -108,13 +112,12 @@ export class PaymentProviderConfigRepository implements IPaymentProviderConfigRe
 
   async update(input: UpdateProviderRoutingConfigInput): Promise<ProviderRoutingConfigRecord> {
     const updated = await prisma.$transaction(async (transaction) => {
-      const current = await transaction.paymentProviderConfig.findUnique({
+      const current = await transaction.paymentProviderConfig.findFirst({
         where: {
-          providerKey_environment: {
-            providerKey: toPrismaProvider(input.provider),
-            environment: toPrismaEnvironment(input.environment),
-          },
+          providerKey: toPrismaProvider(input.provider),
+          environment: toPrismaEnvironment(input.environment),
         },
+        orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
         select: { ...configSelect, id: true },
       })
       if (!current) throw new Error("Configuração do provider não encontrada")

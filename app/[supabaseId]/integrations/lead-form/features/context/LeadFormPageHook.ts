@@ -16,6 +16,8 @@ export function useLeadFormPage(): LeadFormPageState & LeadFormPageActions {
   const { hasAccess } = useFeatureAccess();
   const { integrationsBootstrapLoading, leadFormUrl, leadFormFullUrl, copyLeadFormUrl } = useIntegrationsContext();
 
+  // Aberta para todos os times (owner, 12/11): não é beta, não é cobrada,
+  // não depende de integration nem de radar.
   const hasLeadFormAccess = hasAccess(FEATURE_SLUGS.LEAD_FORM);
   const isLoading = isTeamLoading || (hasLeadFormAccess && integrationsBootstrapLoading);
 

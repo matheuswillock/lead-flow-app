@@ -20,6 +20,7 @@ interface OutputResponse<T> {
 interface ProviderConfigRecord {
   provider: PaymentProvider
   environment: CardConfigEnvironment
+  isDefault: boolean
   cardEnabled: boolean
   publicKey?: string | null
   variables?: ProviderVariablesConfig["variables"]
@@ -62,7 +63,7 @@ export class CardConfigService implements ICardConfigService {
   async getAbacateCardConfig(environment: CardConfigEnvironment): Promise<AbacateCardConfig | null> {
     const res = await fetch(`${CONFIG_URL}?environment=${environment}`, { cache: "no-store" })
     const records = await parseOutput<ProviderConfigRecord[]>(res)
-    const abacate = records.find((record) => record.provider === ABACATE_PROVIDER)
+    const abacate = records.find((record) => record.provider === ABACATE_PROVIDER && record.isDefault)
     return abacate ? toCardConfig(abacate) : null
   }
 
@@ -95,7 +96,12 @@ export class CardConfigService implements ICardConfigService {
   async getProviderConfigs(environment: CardConfigEnvironment): Promise<ProviderVariablesConfig[]> {
     const response = await fetch(`${CONFIG_URL}?environment=${environment}`, { cache: "no-store" })
     const records = await parseOutput<ProviderConfigRecord[]>(response)
-    return records.map((record) => ({
+    const byProvider = new Map<PaymentProvider, ProviderConfigRecord>()
+    for (const record of records) {
+      const current = byProvider.get(record.provider)
+      if (!current || (record.isDefault && !current.isDefault)) byProvider.set(record.provider, record)
+    }
+    return [...byProvider.values()].map((record) => ({
       provider: record.provider,
       environment: record.environment,
       revision: record.revision,

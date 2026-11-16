@@ -16,6 +16,7 @@ const DEFAULT_BATCH_SIZE = 50
 type QueryProviderResolver = (input: {
   readonly provider: StoredPaymentProviderAttemptRecord["provider"]
   readonly environment: StoredPaymentProviderAttemptRecord["environment"]
+  readonly externalAccountContext: string
 }) => PaymentQueryCapability | Promise<PaymentQueryCapability>
 
 /** Owners sem compra (adesão, regularização): reparo do efeito de domínio e reconciliação. */
@@ -104,6 +105,7 @@ export class PaymentProviderMaintenanceService {
           provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (result.requiresReconciliation) stillUnknown += 1
@@ -237,6 +239,7 @@ export class PaymentProviderMaintenanceService {
           provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (!result.requiresReconciliation) reconciled += 1
@@ -261,7 +264,7 @@ export class PaymentProviderMaintenanceService {
       if (!attempt.externalId) continue
       try {
         // O valor pago vem da consulta ao provider (a tentativa persistida não guarda o valor).
-        const queryProvider = await this.dependencies.resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment })
+        const queryProvider = await this.dependencies.resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment, externalAccountContext: attempt.externalAccountContext })
         const remote = await queryProvider.getStatus({
           externalId: attempt.externalId,
           method: paymentMethodFromFingerprint(attempt.requestFingerprint) ?? "PIX",
