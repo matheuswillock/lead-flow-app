@@ -253,8 +253,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
 
     const billingType: IncrementalBillingType = input.billingType;
-    if (billingType === "CREDIT_CARD") {
-      throw new Error("Cartão em add-on ainda não tem token AbacatePay; use PIX até o checkout tokenizar o cartão");
+    if (billingType === "CREDIT_CARD" && !input.cardToken) {
+      throw new Error("Token do cartão ausente: o checkout precisa tokenizar o cartão antes de cobrar");
     }
     const ownerTz = input.master.timezone ?? DEFAULT_TZ;
     const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
@@ -325,7 +325,15 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       metadata: { pendingActionId: input.pendingActionId, attemptId: attempt.id },
     };
 
-    const outcome = await provider.createPixPayment(common);
+    const outcome =
+      billingType === "PIX"
+        ? await provider.createPixPayment(common)
+        : await provider.createCardPayment({
+            ...common,
+            token: input.cardToken!,
+            tokenIssuedAt: new Date(),
+            installments: input.installments ?? 1,
+          });
 
     const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
       attemptId: leased.id,

@@ -43,7 +43,7 @@ Arquitetura: `Route → UseCase → Service → Repository/Prisma`. Route só tr
 
 | Endpoint | Estado | Contrato alvo |
 | --- | --- | --- |
-| `POST /api/v1/addon-checkout/[pendingActionId]/pay` | Existe. Aceita `creditCard` com número e CVV | Aceita `token` (`ctok_`) e `customer`. Rejeita `creditCard` (R3) |
+| `POST /api/v1/addon-checkout/[pendingActionId]/pay` | Backend atualizado: aceita `cardToken` (`ctok_`). `creditCard` removido | Aceita `cardToken` (`ctok_`) e `customer`. Cartão sem token é recusado (R3) |
 | `GET /api/v1/addon-checkout/[pendingActionId]/status` | Existe. Ramifica por provider (B2) | Mesmo contrato. Ação confirmada pelo provider aplica sem Asaas |
 | `POST /api/v1/addon-checkout/[pendingActionId]/billing-type` | Existe. Não cancela cobrança AbacatePay | Cancela a cobrança anterior antes de criar a nova (R4) |
 | `DELETE /api/v1/backoffice/platform-users/[id]/invoices/[invoiceId]` | Existe | Sem alteração |

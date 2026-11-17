@@ -55,14 +55,6 @@ export interface IncrementalChargeCustomerOverride {
   state?: string;
 }
 
-export interface IncrementalChargeCreditCard {
-  holderName: string;
-  number: string;
-  expiryMonth: string;
-  expiryYear: string;
-  ccv: string;
-}
-
 export interface CreateIncrementalChargeInput {
   master: BillingOwnerProfile;
   pendingActionId: string;
@@ -70,7 +62,7 @@ export interface CreateIncrementalChargeInput {
   description: string;
   billingType?: "PIX" | "CREDIT_CARD";
   customerOverride?: IncrementalChargeCustomerOverride;
-  creditCard?: IncrementalChargeCreditCard;
+  cardToken?: string;
   installments?: number;
   remoteIp?: string;
 }

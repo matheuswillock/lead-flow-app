@@ -163,7 +163,7 @@ describe("IncrementalBillingService — roteamento por conta e fim do self-heal 
     expect(result.pix?.payload).toBe("copia-cola")
   })
 
-  it("T-40.5: cartão de add-on é recusado antes de qualquer escrita ou chamada ao provedor", async () => {
+  it("T-40.5: cartão de add-on sem token é recusado antes de qualquer escrita ou chamada ao provedor", async () => {
     const service = new IncrementalBillingService()
 
     await expect(
@@ -173,14 +173,42 @@ describe("IncrementalBillingService — roteamento por conta e fim do self-heal 
         amount: 50,
         description: "cobrança cartão",
         billingType: "CREDIT_CARD",
-        creditCard: { holderName: "X", number: "4111111111111111", expiryMonth: "12", expiryYear: "2030", ccv: "123" },
       })
-    ).rejects.toThrow(/token AbacatePay/)
+    ).rejects.toThrow(/Token do cartão ausente/)
 
     expect(cardCreateMock).not.toHaveBeenCalled()
     expect(paymentCreatePixMock).not.toHaveBeenCalled()
     expect(sessionCreateMock).not.toHaveBeenCalled()
     expect(requestLog).toHaveLength(0)
+  })
+
+  it("T-40.9: cartão com token ctok_ cobra pelo AbacatePay com o token recebido, sem tocar no Asaas", async () => {
+    cardCreateMock.mockImplementationOnce(async () => ({
+      status: "PENDING",
+      externalId: "bill_card",
+      method: "CARD",
+      amountInCents: 5000,
+      currency: "BRL",
+    }))
+
+    const service = new IncrementalBillingService()
+
+    await service.createIncrementalCharge({
+      master: baseMaster,
+      pendingActionId: "pa-5",
+      amount: 50,
+      description: "cobrança cartão",
+      billingType: "CREDIT_CARD",
+      cardToken: "ctok_abc",
+      installments: 3,
+    })
+
+    expect(cardCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "ctok_abc", installments: 3, tokenIssuedAt: expect.any(Date) })
+    )
+    expect(paymentCreatePixMock).not.toHaveBeenCalled()
+    expect(requestLog).toHaveLength(0)
+    expect(createCustomerMock).not.toHaveBeenCalled()
   })
 
   it("T-40.6: GET/PUT/DELETE de assinatura usam o transporte da asaasSubscriptionAccount (legacy)", async () => {

@@ -92,7 +92,7 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
 
 - [ ] F7.G1: formulário do add-on reutiliza `AbacateCardField` e envia só `ctok_`.
   - EVIDENCE: pendente.
-- [ ] F7.G2: campo `creditCard` (número e CVV) removido do contrato de `POST /api/v1/addon-checkout/[pendingActionId]/pay`.
-  - EVIDENCE: pendente. Ver B3.G6.
+- [x] F7.G2: campo `creditCard` (número e CVV) removido do contrato de `POST /api/v1/addon-checkout/[pendingActionId]/pay`. Feito no backend.
+  - EVIDENCE: ver B3.G6. O front ainda precisa parar de enviar o cartão (F7.G1).
 - [ ] F7.G3: briefing `impeccable shape`, validação no navegador e revisão `impeccable`.
   - EVIDENCE: pendente.

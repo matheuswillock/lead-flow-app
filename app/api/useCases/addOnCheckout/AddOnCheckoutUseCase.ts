@@ -212,7 +212,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
           city: input.city,
           state: input.state,
         },
-        creditCard: input.creditCard,
+        cardToken: input.cardToken,
         installments: input.installments,
         remoteIp: input.remoteIp,
       });

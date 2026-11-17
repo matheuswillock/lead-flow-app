@@ -58,8 +58,10 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
   - EVIDENCE: pendente. Requer credencial de sandbox e autorização explícita.
 - [x] B3.G4: decisão sobre cartão de add-on.
   - EVIDENCE: decidido em 2026-11-17 (opção a): o cartão é tokenizado no navegador com `abacatepay.js` e o backend recebe só o `ctok_`. Ver [05-decisoes.md](05-decisoes.md), D1.
-- [ ] B3.G6: caminho de cartão implementado conforme D1.
-  - EVIDENCE: pendente. Hoje `createIncrementalCharge` recusa `CREDIT_CARD`. O backend ainda recebe `creditCard` com número e CVV em `AddOnCheckoutUseCase.ts` (linha 214), o que deve ser removido. O `AbacatePayProvider.createCard` já exige `ctok_` e idade do token ≤ 60 s.
+- [x] B3.G6: backend aceita `cardToken` (`ctok_`) e cobra pelo AbacatePay. `creditCard` (número e CVV) saiu do contrato do use case, da interface e da rota de pagamento.
+  - CHECK: `bun test app/api/services/billing/IncrementalBillingService.account-routing.test.ts`
+  - EVIDENCE: 7 testes passam isolados, incluindo T-40.5 (sem token, recusa antes de escrever) e T-40.9 (com `ctok_`, chama `createCardPayment` com o token e sem Asaas). Typecheck exit 0 em 2026-11-17. Lint sem erros.
+  - Falta: o formulário do front ainda envia o cartão. Ver F7.
 - [ ] B3.G5: migration aplicada no banco de desenvolvimento pela pipeline.
   - EVIDENCE: pendente. Só após o merge na develop, conforme o protocolo do projeto.
 
