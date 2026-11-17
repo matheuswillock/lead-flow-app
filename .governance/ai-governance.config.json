@@ -337,7 +337,6 @@
       "app/[supabaseId]/associados/page.tsx",
       "app/[supabaseId]/automations/page.tsx",
       "app/[supabaseId]/board/page.tsx",
-      "app/[supabaseId]/carteira/page.tsx",
       "app/[supabaseId]/crm/page.tsx",
       "app/[supabaseId]/docs/page.tsx",
       "app/[supabaseId]/email/descadastro/page.tsx",
