@@ -96,8 +96,10 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
 
 **Estado:** não iniciado. Hoje a confirmação depende só do polling de `checkPaymentStatus`.
 
-- [ ] B6.G1: webhook confirma a ação pendente sem polling.
-  - EVIDENCE: pendente.
+- [x] B6.G1: liquidação de `PENDING_ACTION_ADDON` aplica a ação quando o valor confere, e recusa valor divergente ou ausente.
+  - CHECK: `bun test app/api/services/PaymentProviderPayment/PaymentOwnerSettlementService.test.ts`
+  - EVIDENCE: 10 testes passam, incluindo 5 de add-on. Typecheck exit 0 em 2026-11-17. A checagem de valor compara com `payload.totalCharge` da ação.
+  - Falta: o fluxo completo do webhook do AbacatePay até essa liquidação não foi executado de ponta a ponta. Só os testes unitários do serviço passaram.
 
 ## B7. Reconciliação de estados UNKNOWN para `PENDING_ACTION_ADDON`
 

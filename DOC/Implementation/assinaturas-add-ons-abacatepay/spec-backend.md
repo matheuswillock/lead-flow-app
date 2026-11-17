@@ -33,7 +33,8 @@ Arquitetura: `Route → UseCase → Service → Repository/Prisma`. Route só tr
 
 - **R1, carência.** Conta `past_due` dentro do prazo de carência tem acesso total, com aviso. Depois do prazo, tem `read_only` em tudo que já contratou. Não há lista fixa de módulos. Conta `suspended` ou `canceled` não tem acesso.
 - **R2, sem fallback.** Cobrança nova de add-on vai só para o AbacatePay, inclusive em conta legada. Não há fallback automático para o Asaas.
-- **R3, cartão.** O servidor só aceita token `ctok_` emitido no navegador, com idade até 60 segundos. Número e CVV nunca chegam ao servidor. O `cardToken` permanente devolvido pelo AbacatePay pode ser salvo para cobrança futura.
+- **R3, cartão.** O servidor só aceita token `ctok_` emitido no navegador. Número e CVV nunca chegam ao servidor. O `cardToken` permanente devolvido pelo AbacatePay pode ser salvo para cobrança futura.
+  - Risco residual: o limite de 60 segundos e o uso único são garantidos pelo AbacatePay. A verificação local usa o horário do servidor no recebimento e não é uma barreira independente. O mesmo vale para a carência, que já funciona assim. Não há como o servidor saber quando o token foi gerado no navegador.
 - **R4, troca de forma de pagamento.** Ao trocar PIX por cartão, ou cartão por PIX, a cobrança aberta anterior é cancelada no AbacatePay antes da nova ser criada.
 - **R5, ações de fatura.** Cancelar e marcar como paga externamente existem só no backoffice. Nunca aparecem para o cliente final.
 - **R6, página de assinatura.** Permitida só para `isMaster || canManageAccountTeams`. Vale na API e no cliente.

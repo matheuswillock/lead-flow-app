@@ -19,5 +19,20 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
         await backofficeAdhesionService.markPaidFromProvider(adhesionId, input)
       },
     },
+    pendingActions: {
+      async expectedAmountInCents(pendingActionId) {
+        const { pendingActionRepository } = await import(
+          "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
+        )
+        const action = await pendingActionRepository.findApplicableById(pendingActionId)
+        if (!action) return null
+        const totalCharge = Number((action.payload as { totalCharge?: unknown } | null)?.totalCharge ?? 0)
+        return Math.round(totalCharge * 100)
+      },
+      async applyById(pendingActionId) {
+        const { pendingActionUseCase } = await import("@/app/api/useCases/pendingActions/PendingActionUseCase")
+        return pendingActionUseCase.applyPendingActionById(pendingActionId)
+      },
+    },
   })
 }
