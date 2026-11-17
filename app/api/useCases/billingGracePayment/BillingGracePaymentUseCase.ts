@@ -27,6 +27,20 @@ export class BillingGracePaymentUseCase implements IBillingGracePaymentUseCase {
     }
   }
 
+  async createCardPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }): Promise<Output> {
+    try {
+      if (!input.idempotencyKey.trim() || !input.cycle.trim() || !input.cardToken.startsWith("ctok_")) {
+        return new Output(false, [], ["Dados do pagamento com cartão inválidos"], null)
+      }
+      if (!Number.isInteger(input.installments) || input.installments < 1 || input.installments > 12) {
+        return new Output(false, [], ["Parcelamento inválido"], null)
+      }
+      return new Output(true, ["Pagamento com cartão iniciado"], [], await this.service.createCardPayment(input))
+    } catch (error) {
+      return this.failure("createCardPayment", error)
+    }
+  }
+
   async getPayment(input: { id: string; supabaseId: string }): Promise<Output> {
     try {
       return new Output(true, [], [], await this.service.getPayment(input))

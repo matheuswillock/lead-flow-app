@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { AlertCircle, CreditCard } from "lucide-react"
+import { AlertCircle, CreditCard, Plus, Save, Trash2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,13 +16,15 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CARD_CONFIG_ENVIRONMENTS, useCardConfig } from "./CardConfigContext"
 import type { CardToggleOutcome } from "./cardConfigToggle"
-import type { CardConfigEnvironment } from "./ICardConfigService"
+import type { CardConfigEnvironment, ProviderVariablesConfig } from "./ICardConfigService"
 
 const ENVIRONMENT_LABELS: Record<CardConfigEnvironment, { title: string; hint: string }> = {
   DEV: { title: "Desenvolvimento", hint: "Ambiente de testes" },
@@ -49,7 +51,7 @@ function notifyOutcome(outcome: CardToggleOutcome | null, cardEnabled: boolean) 
 }
 
 export function CardConfigCard() {
-  const { configs, isLoading, loadError, saving, canManage, reload, toggleCard } = useCardConfig()
+  const { configs, providerConfigs, isLoading, loadError, saving, canManage, reload, toggleCard, saveProviderVariables } = useCardConfig()
   const [pendingEnable, setPendingEnable] = useState<CardConfigEnvironment | null>(null)
 
   async function applyToggle(environment: CardConfigEnvironment, cardEnabled: boolean) {
@@ -141,6 +143,18 @@ export function CardConfigCard() {
                     />
                   </label>
                 )}
+                {providerConfigs[environment].map((providerConfig) => (
+                  <ProviderVariablesEditor
+                    key={`${environment}:${providerConfig.provider}`}
+                    config={providerConfig}
+                    disabled={!canManage || saving[environment]}
+                    onSave={async (variables) => {
+                      const saved = await saveProviderVariables(providerConfig.provider, environment, variables)
+                      if (saved) toast.success("Variáveis salvas.")
+                      else toast.error("Não foi possível salvar as variáveis.")
+                    }}
+                  />
+                ))}
               </div>
             )
           })}
@@ -168,5 +182,90 @@ export function CardConfigCard() {
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+  )
+}
+
+type VariableRow = {
+  name: string
+  visibility: "PUBLIC" | "SECRET"
+  configured: boolean
+  value: string
+}
+
+function ProviderVariablesEditor({
+  config,
+  disabled,
+  onSave,
+}: {
+  config: ProviderVariablesConfig
+  disabled: boolean
+  onSave: (variables: Array<{ name: string; visibility: "PUBLIC" | "SECRET"; value?: string }>) => Promise<void>
+}) {
+  const [rows, setRows] = useState<VariableRow[]>([])
+
+  useEffect(() => {
+    setRows(config.variables.map((variable) => ({
+      ...variable,
+      value: variable.value ?? "",
+    })))
+  }, [config.variables])
+
+  function addVariable() {
+    const prefix = `${config.provider}_${config.environment}_`
+    setRows((current) => [...current, { name: `${prefix}NEW_VARIABLE`, visibility: "SECRET", configured: false, value: "" }])
+  }
+
+  return (
+    <section aria-label={`Variáveis ${config.provider} ${config.environment}`} className="flex flex-col gap-3 rounded-md border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-medium">Variáveis · {config.provider}</h3>
+          <p className="text-xs text-muted-foreground">Segredos são cifrados e nunca voltam na resposta da API.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="max-lg:min-h-11" disabled={disabled} onClick={addVariable}>
+          <Plus data-icon="inline-start" className="size-4" aria-hidden="true" />Adicionar variável
+        </Button>
+      </div>
+      {rows.map((row, index) => (
+        <div key={`${row.name}:${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_minmax(0,1fr)_auto]">
+          <Input
+            aria-label="Nome da variável"
+            value={row.name}
+            className="max-lg:min-h-11"
+            disabled={disabled || row.configured}
+            onChange={(event) => setRows((current) => current.map((item, i) => i === index ? { ...item, name: event.target.value.toUpperCase() } : item))}
+            autoComplete="off"
+          />
+          <Select value={row.visibility} disabled={disabled} onValueChange={(visibility: "PUBLIC" | "SECRET") => setRows((current) => current.map((item, i) => i === index ? { ...item, visibility, value: "" } : item))}>
+          <SelectTrigger aria-label="Visibilidade da variável" className="max-lg:min-h-11"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="PUBLIC">Pública</SelectItem>
+              <SelectItem value="SECRET">Secreta</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            aria-label={`Valor de ${row.name}`}
+            type={row.visibility === "SECRET" ? "password" : "text"}
+            value={row.value}
+            className="max-lg:min-h-11"
+            placeholder={row.visibility === "SECRET" && row.configured ? "Cadastrado; vazio mantém o valor" : "Valor"}
+            onChange={(event) => setRows((current) => current.map((item, i) => i === index ? { ...item, value: event.target.value } : item))}
+            autoComplete="new-password"
+          />
+          <Button type="button" variant="ghost" size="icon" className="max-lg:size-11" aria-label={`Remover ${row.name}`} disabled={disabled} onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>
+            <Trash2 className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
+      ))}
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" className="max-lg:min-h-11" disabled={disabled} onClick={() => void onSave(rows.map(({ name, visibility, value }) => ({
+          name: name.trim(),
+          visibility,
+          ...(value ? { value } : {}),
+        })))}>
+          <Save data-icon="inline-start" className="size-4" aria-hidden="true" />Salvar variáveis
+        </Button>
+      </div>
+    </section>
   )
 }

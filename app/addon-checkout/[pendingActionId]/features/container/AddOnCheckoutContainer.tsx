@@ -48,11 +48,11 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     return () => clearPolling()
   }, [pendingActionId, fetchCheckoutData, clearPolling])
 
-  // Compra de plataforma é sempre PIX (Abacate); os demais seguem o que o servidor declarou.
+  // Compras de plataforma usam AbacatePay; os fluxos legados seguem os métodos autorizados pelo servidor.
   const availableMethods = useMemo(
     () =>
       state.data?.checkoutSource === "platform_purchase"
-        ? (["PIX"] as AvailableBillingTypes)
+        ? normalizeAvailableBillingTypes(state.data.availableBillingTypes)
         : normalizeAvailableBillingTypes(state.data?.availableBillingTypes),
     [state.data?.checkoutSource, state.data?.availableBillingTypes]
   )
@@ -170,7 +170,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
           ? "error"
           : "pending"
 
-    const amount = typeof paymentData?.amount === "number" ? paymentData.amount : typeof paymentStatus?.amount === "number" ? paymentStatus.amount : 0
+    const amount = typeof paymentData?.amount === "number" ? paymentData.amount : typeof paymentData?.amountInCents === "number" ? paymentData.amountInCents / 100 : typeof paymentStatus?.amount === "number" ? paymentStatus.amount : 0
 
     return {
       status,
@@ -200,14 +200,13 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     }
   }, [state.data])
 
-  const maxInstallments =
-    mappedDetails?.presetBillingType === "PIX" ? 1 : state.data?.pricing.maxInstallments ?? 1
+  const maxInstallments = state.data?.pricing.maxInstallments ?? 1
 
   const error = state.step === "error" ? state.error ?? "Erro ao carregar checkout" : null
   const isPlatformPurchase = state.data?.checkoutSource === "platform_purchase"
   const isLoading = state.step === "loading"
   const isSubmitting = state.isProcessing
-  // platform_purchase paga PIX no Abacate; fluxos legados seguem no Asaas. Sem dados, sem marca.
+  // platform_purchase usa AbacatePay; fluxos legados seguem no Asaas. Sem dados, sem marca.
   const provider: CheckoutPaymentProvider | null = state.data
     ? isPlatformPurchase
       ? "ABACATE_PAY"
@@ -226,7 +225,8 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       error={error}
       maxInstallments={maxInstallments}
       prefill={prefill}
-      pixOnly={isPlatformPurchase}
+      skipAddress={isPlatformPurchase}
+      abacatePublicKey={isPlatformPurchase ? state.data?.cardCheckout?.publicKey : null}
       availableMethods={availableMethods}
       successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
       onSubmit={async (input) => {
@@ -250,6 +250,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
           cardExpiryMonth: input.creditCard.expiryMonth,
           cardExpiryYear: input.creditCard.expiryYear,
           cardCcv: input.creditCard.ccv,
+          cardToken: input.cardToken,
         }
         await submitPayment(payload)
       }}
