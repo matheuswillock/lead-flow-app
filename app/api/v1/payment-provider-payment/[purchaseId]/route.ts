@@ -38,7 +38,7 @@ export async function POST(
 
     const body = (await request.json()) as PaymentRequestBody
     const customer = body.customer
-    const useCase = getPaymentProviderPaymentUseCase()
+    const useCase = await getPaymentProviderPaymentUseCase()
     const output = await useCase.execute({
       purchaseId,
       supabaseId,

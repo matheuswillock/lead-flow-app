@@ -16,7 +16,8 @@ const DEFAULT_BATCH_SIZE = 50
 type QueryProviderResolver = (input: {
   readonly provider: StoredPaymentProviderAttemptRecord["provider"]
   readonly environment: StoredPaymentProviderAttemptRecord["environment"]
-}) => PaymentQueryCapability
+  readonly externalAccountContext: string
+}) => PaymentQueryCapability | Promise<PaymentQueryCapability>
 
 /** Owners sem compra (adesão, regularização): reparo do efeito de domínio e reconciliação. */
 export type PaymentProviderOwnerMaintenance = {
@@ -101,9 +102,10 @@ export class PaymentProviderMaintenanceService {
         const result = await this.dependencies.reconciliation.reconcile({
           attempt,
           method,
-          provider: this.dependencies.resolveQueryProvider({
+          provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (result.requiresReconciliation) stillUnknown += 1
@@ -225,8 +227,7 @@ export class PaymentProviderMaintenanceService {
     return { ownerAttemptsReconciled, ...repair }
   }
 
-  // Tentativas UNKNOWN de adesão/regularização: sempre PIX. A reconciliação aplica o efeito
-  // de domínio antes de fechar a tentativa quando o provider confirma o pagamento.
+  // O método da tentativa fica no fingerprint para preservar o contrato persistido.
   private async reconcileOwnerAttempts(limit: number): Promise<number> {
     const attempts = await this.owners.sessions.listOwnerAttemptsPendingReconciliation({ limit })
     let reconciled = 0
@@ -234,10 +235,11 @@ export class PaymentProviderMaintenanceService {
       try {
         const result = await this.dependencies.reconciliation.reconcile({
           attempt,
-          method: "PIX",
-          provider: this.dependencies.resolveQueryProvider({
+          method: paymentMethodFromFingerprint(attempt.requestFingerprint) ?? "PIX",
+          provider: await this.dependencies.resolveQueryProvider({
             provider: attempt.provider,
             environment: attempt.environment,
+            externalAccountContext: attempt.externalAccountContext,
           }),
         })
         if (!result.requiresReconciliation) reconciled += 1
@@ -262,9 +264,11 @@ export class PaymentProviderMaintenanceService {
       if (!attempt.externalId) continue
       try {
         // O valor pago vem da consulta ao provider (a tentativa persistida não guarda o valor).
-        const remote = await this.dependencies
-          .resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment })
-          .getStatus({ externalId: attempt.externalId, method: "PIX" })
+        const queryProvider = await this.dependencies.resolveQueryProvider({ provider: attempt.provider, environment: attempt.environment, externalAccountContext: attempt.externalAccountContext })
+        const remote = await queryProvider.getStatus({
+          externalId: attempt.externalId,
+          method: paymentMethodFromFingerprint(attempt.requestFingerprint) ?? "PIX",
+        })
         if (remote.status !== "CONFIRMED") {
           throw new Error(`Provider não confirma o pagamento (${remote.status})`)
         }
@@ -293,4 +297,13 @@ function paymentMethodFromBillingType(billingType: string | null): PaymentMethod
   if (billingType === "PIX") return "PIX"
   if (billingType === "CREDIT_CARD") return "CARD"
   return null
+}
+
+function paymentMethodFromFingerprint(fingerprint: string): PaymentMethod | null {
+  try {
+    const parsed = JSON.parse(fingerprint) as { method?: unknown }
+    return parsed.method === "CARD" || parsed.method === "PIX" ? parsed.method : null
+  } catch {
+    return null
+  }
 }

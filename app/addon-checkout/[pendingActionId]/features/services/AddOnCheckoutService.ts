@@ -68,6 +68,24 @@ export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
     return paymentData
   }
 
+  async createPlatformCardPayment(purchaseId: string, input: AddOnCheckoutSubmitInput): Promise<PlatformPixPaymentData> {
+    const idempotencyKey = resolvePixIdempotencyKey(this.getStorage(), purchaseId, Date.now(), this.createId, "CARD")
+    const response = await fetch(`${API_CLIENT_BASE}/payment-provider-payment/${purchaseId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({
+        method: "CARD",
+        customer: { name: input.fullName, email: input.email, taxId: input.cpfCnpj, cellphone: input.phone },
+        cardToken: input.cardToken,
+        tokenIssuedAt: new Date().toISOString(),
+        installments: input.installments,
+      }),
+    })
+    const result = await response.json()
+    if (!response.ok || !result.isValid) throw new ApiRequestError(result.errorMessages?.[0] || "Erro ao cobrar o cartão", response.status)
+    return result.result as PlatformPixPaymentData
+  }
+
   private async tryFetchPlatformCheckout(
     checkoutId: string
   ): Promise<AddOnCheckoutData | null> {

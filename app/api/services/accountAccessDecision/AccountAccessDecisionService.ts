@@ -2,15 +2,11 @@ import type {
   AccountAccessDecision,
   AccountAccessRecord,
 } from "@/app/api/shared/accountAccessDecision/types"
+import { resolveBillingGraceUntil as resolveDueDateGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
 import type { IAccountAccessDecisionService } from "./IAccountAccessDecisionService"
 
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 const RESTRICTED_SUBSCRIPTION_STATUSES = new Set(["past_due", "suspended", "canceled"])
-// Calendário a partir do vencimento (o dia 1 começa no vencimento):
-// dias 1 a 5 carência, dias 6 a 15 somente leitura, a partir do dia 16 acesso pausado.
-const BILLING_GRACE_DAYS = 5
-const READ_ONLY_DAYS = 15
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
   const today = now.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
@@ -23,16 +19,10 @@ function resolveBillingGraceUntil(account: AccountAccessRecord): Date | null {
   if (account.temporaryAccessGranted === true && account.temporaryAccessUntil) {
     return account.temporaryAccessUntil
   }
-  if (account.subscriptionStatus !== "past_due" || !account.subscriptionNextDueDate) {
-    return null
-  }
-  return new Date(account.subscriptionNextDueDate.getTime() + BILLING_GRACE_DAYS * DAY_MS)
-}
-
-function isReadOnlyWindowOver(account: AccountAccessRecord, now: Date): boolean {
-  // Sem data de vencimento (ex.: só uma concessão do Backoffice) não há como contar os 15 dias.
-  if (!account.subscriptionNextDueDate) return false
-  return account.subscriptionNextDueDate.getTime() + READ_ONLY_DAYS * DAY_MS <= now.getTime()
+  return resolveDueDateGraceUntil({
+    subscriptionStatus: account.subscriptionStatus,
+    subscriptionNextDueDate: account.subscriptionNextDueDate ?? null,
+  })
 }
 
 export class AccountAccessDecisionService implements IAccountAccessDecisionService {
@@ -72,8 +62,9 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       }
       // Somente past_due degrada para leitura; uma concessão expirada não transforma
       // suspended/canceled em read_only: elas seguem para as regras restritivas abaixo.
-      // Passados os 15 dias do vencimento a leitura também acaba e vale o acesso pausado.
-      if (account.subscriptionStatus === "past_due" && !isReadOnlyWindowOver(account, now)) {
+      // Sem corte fixo de dias: a leitura dura enquanto a conta continuar past_due;
+      // a transição para suspended/canceled é decidida pelo motor de assinatura.
+      if (account.subscriptionStatus === "past_due") {
         return { state: "read_only", reason: "past_due", temporaryAccessUntil }
       }
     }

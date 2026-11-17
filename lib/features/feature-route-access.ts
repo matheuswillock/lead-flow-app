@@ -21,7 +21,7 @@ const PREFIX_TO_FEATURE_SLUGS: Record<string, string | string[]> = {
   "/integrations/api-catalog": FEATURE_SLUGS.API_CATALOG,
   "/integrations/pixel": FEATURE_SLUGS.PIXEL,
   "/integrations/lead-form": FEATURE_SLUGS.LEAD_FORM,
-  "/integrations": [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR],
+  "/integrations": [FEATURE_SLUGS.CONFIGURATION, FEATURE_SLUGS.RADAR, FEATURE_SLUGS.LEAD_FORM],
   "/forms": FEATURE_SLUGS.PUBLIC_FORMS,
   "/landing-pages": FEATURE_SLUGS.EMAIL_LANDING_PAGES,
   "/whatsapp/configuracoes": FEATURE_SLUGS.WHATSAPP_SETTINGS,

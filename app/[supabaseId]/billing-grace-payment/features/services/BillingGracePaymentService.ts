@@ -25,7 +25,11 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       throw new Error(result.errorMessages?.join(", ") ?? "Request failed");
     }
 
-    return result.result as T;
+    const value = result.result as T & { paymentInstructions?: { method?: string } | null; method?: string }
+    if (value && typeof value === "object" && "paymentInstructions" in value && value.paymentInstructions?.method === "CARD") {
+      value.method = "CREDIT_CARD"
+    }
+    return value;
   }
 
   getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {

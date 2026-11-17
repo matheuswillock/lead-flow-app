@@ -2,6 +2,8 @@
 
 Leia este runbook somente para executar ou diagnosticar E2E local.
 
+> O caminho padrão agora é o stack em container: `bun run test:compose:e2e` (ver `.governance/ai/local-stack.md`). Os passos abaixo valem para iterar num spec com `next dev` no host, quando o stack já está de pé ou o spec é de depuração.
+
 1. Se `.env.test` não existir, copie de `.env.test.example`. O Playwright carrega esse arquivo sem sobrescrever variáveis já exportadas.
 2. `bun run test:e2e:local` reutiliza um servidor e não inicia o Next. Exporte o mesmo ambiente no processo do servidor:
 

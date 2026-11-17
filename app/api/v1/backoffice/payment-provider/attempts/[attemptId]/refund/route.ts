@@ -17,7 +17,8 @@ export async function POST(
 
     const { attemptId } = await params
     const body = (await request.json().catch(() => ({}))) as { reason?: string }
-    const output = await getPaymentProviderRefundUseCase().execute({
+    const useCase = await getPaymentProviderRefundUseCase()
+    const output = await useCase.execute({
       attemptId,
       reason: typeof body.reason === "string" ? body.reason : undefined,
     })

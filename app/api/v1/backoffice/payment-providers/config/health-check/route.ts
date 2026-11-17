@@ -4,12 +4,15 @@ import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManag
 import { paymentProviderHealthCheckUseCase } from "@/app/api/useCases/paymentProviderConfig/paymentProviderConfigComposition"
 import { Output } from "@/lib/output"
 import type { PaymentProviderEnvironment, PaymentProviderKey } from "@/lib/payment-provider/types"
+import { protectPaymentProviderWrite } from "../../protectWrite"
 
 export async function POST(request: NextRequest) {
   const access = await getBackofficeAccess(request)
   if (access.error) return NextResponse.json(access.error, { status: access.status })
   const denied = requireManagerAccess(access.access)
   if (denied) return denied
+  const protection = await protectPaymentProviderWrite(request, access.access.profileId)
+  if (protection) return protection
 
   try {
     const body = await request.json()

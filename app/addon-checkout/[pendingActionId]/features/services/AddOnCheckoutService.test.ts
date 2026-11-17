@@ -104,3 +104,16 @@ describe("AddOnCheckoutService.createPlatformPixPayment", () => {
     )
   })
 })
+
+describe("AddOnCheckoutService.createPlatformCardPayment", () => {
+  it("envia somente o token efêmero e os dados do cliente ao provider", async () => {
+    const calls = mockFetch({ body: { isValid: true, result: { status: "PENDING", amountInCents: 10000 } } })
+    const service = new AddOnCheckoutServiceImpl(makeStorage, () => "uuid-card")
+    await service.createPlatformCardPayment("purchase-1", { ...input, billingType: "CREDIT_CARD", cardToken: "ctok_once" })
+    expect(calls[0].init.headers).toMatchObject({ "Idempotency-Key": "platform-card:purchase-1:uuid-card" })
+    const body = JSON.parse(calls[0].init.body as string)
+    expect(body).toMatchObject({ method: "CARD", cardToken: "ctok_once", installments: 1 })
+    expect(body.customer).toEqual({ name: input.fullName, email: input.email, taxId: input.cpfCnpj, cellphone: input.phone })
+    expect(body).not.toHaveProperty("creditCard")
+  })
+})

@@ -59,7 +59,8 @@ Load only the rows relevant to the task:
 | API, UseCase, Service, Repository, webhook, backoffice | `.governance/ai/backend.md` |
 | Prisma, SQL, Supabase, migration, RLS, seed | `.governance/ai/database.md` |
 | Page, component, form, style, browser interaction | `.governance/ai/frontend.md`, `DESIGN.md`, `PRODUCT.md` |
-| Tests, E2E or visual verification | `.governance/ai/testing.md` |
+| Tests, E2E or visual verification | `.governance/ai/testing.md`, `.governance/ai/local-stack.md` |
+| Local environment, compose, running or validating a feature end to end | `.governance/ai/local-stack.md` |
 | Local Playwright setup failure | `.governance/ai/playwright-runbook.md` |
 | Branch, commit, push, PR or conflict | `.governance/ai/delivery.md` |
 | What automation guarantees | `.governance/ai/automated-enforcement.md` |
@@ -89,6 +90,7 @@ bun run lint:pt-br:strict
 - AI-governance changes require `governance:sync`; shared skill changes require `skills:sync`. Run each sync twice and ensure the second run is idempotent.
 - Critical tests require a temporary negative control that is restored exactly before completion.
 - Bug fixes (debug workflow) MUST, before delivery: (1) write the regression test first (E2E in `e2e/specs/**` for UI/flow bugs, `bun test` for logic) and prove it fails on the unfixed code; (2) reproduce the bug in the rendered app with `browser-harness` and record the failing signal; (3) apply the fix and show the same test and the same `browser-harness` scenario green; (4) for UI bugs, run an `impeccable` audit. Run Playwright with `node` against a dev server built from the current tree (not a stale `next start`); a spec that was never seen failing is not a regression test. Report each step, or state which could not run.
+- Local validation MUST run in the container stack (`podman compose`, `bun run test:compose[:unit|:integration|:e2e]`), not against ad hoc host servers or databases. If a change needs a service, variable, volume or seed to be testable, add it to `docker-compose.test.yml` (and `docker-compose.local.yml` when `bun run dev` needs it) in the same change. Report what the stack could not verify (real Supabase Auth/Storage, external providers). Details: `.governance/ai/local-stack.md`.
 - Never hide a command's exit code behind a pipe.
 
 ## Automated coverage

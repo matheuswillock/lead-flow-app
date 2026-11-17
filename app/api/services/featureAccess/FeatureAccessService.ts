@@ -19,6 +19,7 @@ import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
+import { resolveBillingGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 
@@ -138,6 +139,7 @@ export class FeatureAccessService implements IFeatureAccessService {
       ownerUserType,
       ownerBanned,
       hasTemporaryBillingGrace,
+      hasActiveExpiredMemberProCrmGrace,
     ] = await Promise.all([
       this.repository.listActiveFeatures(),
       this.repository.findOwnerProfile(ownerProfileId),
@@ -151,6 +153,9 @@ export class FeatureAccessService implements IFeatureAccessService {
       isAccountMasterBanned(ownerProfileId),
       data.activeTeamId
         ? this.repository.hasActiveTemporaryBillingGrace(data.activeTeamId)
+        : Promise.resolve(false),
+      data.activeTeamId
+        ? this.repository.hasActiveExpiredMemberProCrmGrace(data.activeTeamId)
         : Promise.resolve(false),
     ])
 
@@ -200,10 +205,38 @@ export class FeatureAccessService implements IFeatureAccessService {
       ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfile?.subscriptionStatus ?? "") ||
       ACTIVE_SUBSCRIPTION_STATUSES.has(ownerProfileSubscription?.subscriptionStatus ?? "")
 
+    const now = new Date()
+    const memberProExpired =
+      ownerUserType?.slug === "member_pro" &&
+      ownerUserType.accessExpiresAt !== null &&
+      ownerUserType.accessExpiresAt !== undefined &&
+      new Date(ownerUserType.accessExpiresAt).getTime() <= now.getTime() &&
+      (!ownerUserType.accessStartsAt ||
+        new Date(ownerUserType.accessStartsAt).getTime() <= now.getTime())
+
+    // Mesma janela de carência (vencimento + BILLING_GRACE_DAYS) que AccountAccessDecisionService
+    // já usa pro banner "regularize até" — calculada aqui em vez de depender de uma
+    // BillingAccessGrace manual, pra não deixar os dois sistemas divergirem sobre até quando
+    // o Member PRO expirado continua com CRM liberado.
+    const dynamicGraceUntil = resolveBillingGraceUntil({
+      subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus ?? null,
+      subscriptionNextDueDate:
+        ownerProfileSubscription?.subscriptionNextDueDate ?? ownerProfile?.subscriptionNextDueDate ?? null,
+    })
+    const hasDynamicMemberProCrmGrace = dynamicGraceUntil !== null && dynamicGraceUntil.getTime() > now.getTime()
+
+    const memberProGraceOverride =
+      memberProExpired &&
+      !hasPermanentAccess &&
+      !hasActiveMainSubscription &&
+      ownerProfileSubscription?.product?.featureSlugs.includes("crm") === true &&
+      (hasDynamicMemberProCrmGrace || (hasTemporaryBillingGrace && hasActiveExpiredMemberProCrmGrace))
+
     // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
     // ownerProfile + ownerProfileSubscription já foram buscados acima.
     const accountSubscriptionActive =
       hasPermanentAccess ||
+      memberProGraceOverride ||
       (!memberProBlocked && (hasActiveMainSubscription || memberProActive || hasTemporaryBillingGrace))
     if (!accountSubscriptionActive && !ownerBanned && !memberProBlocked) {
       // Dias 6 a 15 de atraso: somente leitura. O acesso às telas some, só CRM e Carteira ficam.
@@ -330,6 +363,10 @@ export class FeatureAccessService implements IFeatureAccessService {
     const resolvedUserPrincipals = principalsForUser(safeUserRole)
 
     for (const feature of features) {
+      if (memberProGraceOverride && feature.slug !== "crm") {
+        continue
+      }
+
       if (
         (feature.slug === "email" || feature.slug.startsWith("email-")) &&
         !safeUserRole.isMaster &&

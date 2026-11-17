@@ -16,7 +16,8 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const selected = await composition.createPaymentProviderRouter(environment).select({
+      const router = await composition.createPaymentProviderRouter(environment)
+      const selected = await router.select({
         environment,
         requiredCapabilities: ["ONE_TIME_PAYMENT", method],
       })
@@ -31,23 +32,34 @@ export function createAbacateAdhesionPixGateway(): AdhesionPixGateway {
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      return composition.createAbacatePayProvider(environment).createPixPayment(input)
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
+        environment,
+        requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
+      })
+      return (await composition.createAbacatePayProvider(environment, selected.externalAccountContext)).createPixPayment(input)
     },
     async createCard(input) {
       const composition = await import(
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      return composition.createAbacatePayProvider(environment).createCardPayment(input)
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
+        environment,
+        requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"],
+      })
+      return (await composition.createAbacatePayProvider(environment, selected.externalAccountContext)).createCardPayment(input)
     },
     async getCardStatus(externalId) {
       const composition = await import(
         "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
       )
       const environment = composition.resolvePaymentProviderEnvironment()
-      const status = await composition
-        .createAbacatePayProvider(environment)
-        .getStatus({ externalId, method: "CARD" })
+      const selected = await (await composition.createPaymentProviderRouter(environment)).select({
+        environment,
+        requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"],
+      })
+      const provider = await composition.createAbacatePayProvider(environment, selected.externalAccountContext)
+      const status = await provider.getStatus({ externalId, method: "CARD" })
       return { status: status.status, amountInCents: status.amountInCents }
     },
   }

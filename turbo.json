@@ -32,7 +32,11 @@
     "lint:pt-br": {
       "tags": ["ci"]
     },
-    "build": {
+    "e2e:ci": {
+      "passThroughEnv": ["ASAAS_SANDBOX_API_KEY", "DOCKER_HOST"],
+      "tags": ["ci", "ci:os:ubuntu", "ci:cpus:8"]
+    },
+    "build:ci": {
       "env": [
         "NEXT_PUBLIC_SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",

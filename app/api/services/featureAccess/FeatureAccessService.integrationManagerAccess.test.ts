@@ -105,6 +105,10 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
     return false
   }
 
+  async hasActiveExpiredMemberProCrmGrace() {
+    return false
+  }
+
   async findTeamMasterId() {
     return null
   }

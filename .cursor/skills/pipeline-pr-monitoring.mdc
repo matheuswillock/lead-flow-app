@@ -1,5 +1,5 @@
 ---
-description: "Monitor the CI pipeline and pull request of the lead-flow-app after an authorized commit and push, fix failures, answer PR review comments and stop when everything is green, never merging. Use whenever the user asks to monitor, watch or follow a pipeline, run or PR (monitore a pipeline, acompanhe o PR, lance o agente de monitoramento, suba e monitore), or asks to commit and push and then check the CI, even if they do not name this skill."
+description: "Monitor the CI pipeline and pull request of the corretor-studio-app after an authorized commit and push, fix failures, answer PR review comments and stop when everything is green, never merging. Use whenever the user asks to monitor, watch or follow a pipeline, run or PR (monitore a pipeline, acompanhe o PR, lance o agente de monitoramento, suba e monitore), or asks to commit and push and then check the CI, even if they do not name this skill."
 alwaysApply: false
 ---
 

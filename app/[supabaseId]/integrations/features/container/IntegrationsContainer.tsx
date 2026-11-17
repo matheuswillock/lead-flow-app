@@ -22,15 +22,15 @@ export function IntegrationsContainer() {
   const hasRadarAccess = hasAccess(FEATURE_SLUGS.RADAR);
   const hasPixelAccess = hasAccess(FEATURE_SLUGS.PIXEL);
   const hasLeadFormAccess = hasAccess(FEATURE_SLUGS.LEAD_FORM);
-  const { apiCatalogLocked, webhooksLocked, pixelLocked } = resolveIntegrationsHubAccess({
+  const { apiCatalogLocked, webhooksLocked, pixelLocked, leadFormLocked } = resolveIntegrationsHubAccess({
     hasApiCatalogAccess,
     hasWebhooksAccess,
     hasRadarAccess,
     hasPixelAccess,
+    hasLeadFormAccess,
   });
 
   const webhooksSummary = useIntegrationsHubWebhooksSummary(supabaseId, !webhooksLocked);
-  const leadFormLocked = !hasLeadFormAccess;
 
   if (isTeamLoading || integrationsBootstrapLoading) {
     return <IntegrationsPageSkeleton />;
