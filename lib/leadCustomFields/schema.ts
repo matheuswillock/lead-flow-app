@@ -18,7 +18,8 @@ function buildFieldSchema(definition: LeadCustomFieldDefinitionDTO): z.ZodTypeAn
       const base = z
         .number({ error: `${definition.label} deve ser um número` })
         .finite(`${definition.label} deve ser um número válido`);
-      return definition.isRequired ? base : base.optional();
+      if (definition.isRequired) return base;
+      return z.preprocess((value) => (value === "" ? undefined : value), base.optional());
     }
     case "date": {
       const base = z
@@ -39,7 +40,8 @@ function buildFieldSchema(definition: LeadCustomFieldDefinitionDTO): z.ZodTypeAn
           : z.enum(optionValues as [string, ...string[]], {
               message: `${definition.label} possui valor inválido`,
             });
-      return definition.isRequired ? base : base.optional();
+      if (definition.isRequired) return base;
+      return z.preprocess((value) => (value === "" ? undefined : value), base.optional());
     }
     case "multi_select": {
       if (optionValues.length === 0) {
@@ -107,6 +109,7 @@ export function validateLeadCustomFieldsPayload(
       errors: parsed.error.issues.map((issue) => issue.message),
     };
   }
+  const normalizedCustomFields = (parsed.data.customFields as Record<string, unknown> | undefined) ?? {};
 
   if (enforceRequired) {
     const missingRequired = definitions
@@ -124,5 +127,5 @@ export function validateLeadCustomFieldsPayload(
     }
   }
 
-  return { success: true, data: customFields };
+  return { success: true, data: normalizedCustomFields };
 }

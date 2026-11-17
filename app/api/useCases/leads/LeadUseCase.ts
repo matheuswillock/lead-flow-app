@@ -1528,7 +1528,12 @@ export class LeadUseCase implements ILeadUseCase {
           rule.requiredStatus
       );
 
-      if (combinedTransitionRules.length > 0) {
+      // Lead sem reunião realizada (No Show) sempre pode ser reagendado para Agendado,
+      // independente de regras combined_transition configuradas pelo time.
+      const isNoShowReschedule =
+        status === LeadStatus.scheduled && existingLead.status === LeadStatus.no_show;
+
+      if (combinedTransitionRules.length > 0 && !isNoShowReschedule) {
         // OR logic: transition is allowed when the current status satisfies ANY rule.
         const anySatisfied = combinedTransitionRules.some(
           (rule) => existingLead.status === rule.requiredStatus
