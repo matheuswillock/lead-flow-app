@@ -89,8 +89,10 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
 
 Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobrança Asaas só roda quando há `paymentId`, então é ignorado para add-on AbacatePay. Trocar PIX por cartão depois de gerar PIX deixa a cobrança PIX aberta no AbacatePay, o que é um risco de cobrança dupla. Ver [04-progresso.md](04-progresso.md), decisões pendentes.
 
-- [ ] B5.G1: ao trocar PIX por cartão, ou cartão por PIX, a cobrança anterior é cancelada no AbacatePay antes da nova ser criada (decisão D2).
-  - EVIDENCE: decidido em 2026-11-17, não implementado. O cancelamento usa a tentativa atual (`providerAttemptId`).
+- [x] B5.G1: a troca de forma é recusada quando a tentativa AbacatePay atual está `CONFIRMED` (D2).
+  - CHECK: `bun test app/api/useCases/addOnCheckout/AddOnCheckoutUseCase.billingTypeSwitch.test.ts`
+  - EVIDENCE: 3 testes passam isolados. Typecheck exit 0. O AbacatePay não tem cancelamento para cobrança transparente, então a cobrança anterior não é cancelada na API.
+  - Risco residual em aberto: pagamento de tentativa substituída. Ver D2 em 05-decisoes.md.
 
 ## B6. Webhook do AbacatePay para ação pendente
 

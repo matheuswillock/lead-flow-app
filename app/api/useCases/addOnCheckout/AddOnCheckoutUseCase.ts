@@ -476,6 +476,13 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Esta ação já foi processada"], null);
       }
 
+      if (pendingAction.provider === "ABACATE_PAY" && pendingAction.providerAttemptId) {
+        const attempt = await paymentProviderSessionRepository.findAttemptById(pendingAction.providerAttemptId);
+        if (attempt?.status === "CONFIRMED") {
+          return new Output(false, [], ["Pagamento já confirmado; a forma de pagamento não pode ser trocada"], null);
+        }
+      }
+
       if (nextBillingType === "CREDIT_CARD") {
         const withMaster = await pendingActionRepository.findById(pendingActionId);
         await assertCardChoiceAllowedForMaster(nextBillingType, withMaster?.master);
