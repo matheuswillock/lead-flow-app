@@ -77,6 +77,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
 import { cn } from "@/lib/utils"
+import { canCancelInvoice } from "../utils/invoiceActions"
 import {
   MEMBER_PRO_MAX_DAYS,
   memberProExpiresAtFromDays,
@@ -108,19 +109,6 @@ const INVOICE_STATUS_BADGES: Record<
     className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
   },
   other: { label: "Em processamento", variant: "secondary" },
-}
-
-/** Mesma regra da página de detalhe da fatura (`canRemoveCharge`): nunca para paga,
- * dispensada ou pago externamente; sempre para ação pendente sem cobrança ainda. */
-function canCancelInvoice(invoice: BackofficeClientInvoice): boolean {
-  return (
-    invoice.source !== "adhesion_external" &&
-    invoice.statusGroup !== "paid" &&
-    invoice.status !== "WAIVED" &&
-    (invoice.statusGroup === "upcoming" ||
-      invoice.statusGroup === "overdue" ||
-      invoice.source === "pending_action")
-  )
 }
 
 const TEAM_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
