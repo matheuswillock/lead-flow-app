@@ -24,5 +24,8 @@ export interface IBillingGracePaymentService {
     /** Usuários adicionais que o master mantém; ausente = todos. */
     keptUserIds?: string[]
   }): Promise<BillingGracePayment>
+  createCardPayment(input: {
+    supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number
+  }): Promise<BillingGracePayment>
   getPayment(input: { id: string; supabaseId: string }): Promise<BillingGracePayment>
 }

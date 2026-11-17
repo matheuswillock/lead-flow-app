@@ -105,6 +105,15 @@ describe("provider routing config", () => {
     expect(next).toEqual({ ...existing, cardEnabled: true, revision: 2 })
   })
 
+  it("atualiza a chave pública sem expor dados secretos no registro", () => {
+    const next = applyProviderRoutingConfigPatch(existing, {
+      publicKey: "pk_public_key_12345678",
+      expectedRevision: 1,
+    })
+    expect(next).toMatchObject({ publicKey: "pk_public_key_12345678", revision: 2 })
+    expect("apiKey" in next).toBe(false)
+  })
+
   it("mantém o cartão desligado quando o patch não menciona cardEnabled", () => {
     const next = applyProviderRoutingConfigPatch(existing, { enabled: true, expectedRevision: 1 })
 

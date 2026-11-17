@@ -45,7 +45,15 @@ const findByIdempotencyKey = mock(async (_input: { accountId: string; idempotenc
 const create = mock(async (input: { accountId: string }) => ({ id: `payment-of-${input.accountId}` }))
 const attachProviderAttempt = mock(async (input: { id: string }) => ({ id: input.id, attached: true }))
 mock.module("@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository", () => ({
-  billingGracePaymentRepository: { findAccountContext, findByIdempotencyKey, create, attachProviderAttempt },
+  billingGracePaymentRepository: {
+    findAccountContext, findByIdempotencyKey, create, attachProviderAttempt,
+    markFailed: mock(async () => null), markConfirmed: mock(async () => null), completeAndRestoreAccess: mock(async () => null),
+  },
+}))
+mock.module("@/lib/payment-methods/availability", () => ({
+  readConfiguredAbacatePublicKey: mock(async () => "pk_dev_12345678"),
+  assertBillingTypeAllowed: mock(async () => undefined),
+  resolveCardAvailability: mock(async () => ({ card: true, reason: "AVAILABLE", availableBillingTypes: ["PIX", "CREDIT_CARD"] })),
 }))
 
 const createSession = mock(async (_input: { idempotencyKey: string }) => ({ id: "session-1" }))
@@ -67,17 +75,18 @@ const select = mock(async (input: { environment: string }) => ({
 }))
 const createPaymentProviderRouter = mock((_environment: string) => ({ select }))
 const createPixPayment = mock(async (_input: unknown) => ({ status: "PENDING", externalId: "ext-1", pix: { brCode: "000201" } }))
+const createCardPayment = mock(async (_input: unknown) => ({ status: "PENDING", externalId: "card-ext-1", method: "CARD", amountInCents: 10000, currency: "BRL" }))
 mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
   resolvePaymentProviderEnvironment: () => configuredEnvironment,
   createPaymentProviderRouter,
-  createAbacatePayProvider: () => ({ createPixPayment }),
+  createAbacatePayProvider: () => ({ createPixPayment, createCardPayment }),
 }))
 
 const { BillingGracePaymentService } = await import("./BillingGracePaymentService")
 const newService = () => new BillingGracePaymentService(async () => CYCLE_OPTIONS)
 
 beforeEach(() => {
-  for (const fn of [findAccountContext, findByIdempotencyKey, create, attachProviderAttempt, createSession, createAttempt, select, createPaymentProviderRouter, createPixPayment]) fn.mockClear()
+  for (const fn of [findAccountContext, findByIdempotencyKey, create, attachProviderAttempt, createSession, createAttempt, select, createPaymentProviderRouter, createPixPayment, createCardPayment]) fn.mockClear()
   configuredEnvironment = "DEV"
   findAccountContext.mockResolvedValue(accountA)
   findByIdempotencyKey.mockResolvedValue(null)
@@ -170,6 +179,20 @@ describe("BillingGracePaymentService.createPixPayment — escopo da chave de ide
 })
 
 describe("BillingGracePaymentService — prazo escolhido", () => {
+  it("cobra a renovação no cartão pelo valor de cartão e associa a tentativa", async () => {
+    const service = new BillingGracePaymentService(async () => CYCLE_OPTIONS.map((option) => ({
+      ...option,
+      creditCardTotal: option.pixTotal + 2,
+      maxInstallments: 3,
+    })))
+    await service.createCardPayment({
+      supabaseId: "sb-a", idempotencyKey: "card-key", cycle: "monthly", cardToken: "ctok_ephemeral", installments: 1,
+    })
+    expect(select).toHaveBeenCalledWith(expect.objectContaining({ requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"] }))
+    expect(createCardPayment).toHaveBeenCalledWith(expect.objectContaining({ amountInCents: 10170, token: "ctok_ephemeral", installments: 1 }))
+    expect(attachProviderAttempt).toHaveBeenCalledWith(expect.objectContaining({ paymentInstructions: { method: "CARD" } }))
+  })
+
   it("cobra o prazo escolhido com os adicionais nominais e grava o ciclo", async () => {
     await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-2", cycle: "quarterly" })
 

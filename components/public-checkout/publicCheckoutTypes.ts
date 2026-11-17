@@ -78,6 +78,7 @@ export interface PublicCheckoutPaymentInput extends PublicCheckoutPayerPrefill {
     expiryYear: string
     ccv: string
   }
+  cardToken?: string
 }
 
 export interface PublicCheckoutPixData {

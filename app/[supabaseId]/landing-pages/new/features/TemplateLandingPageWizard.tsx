@@ -337,7 +337,8 @@ export function TemplateLandingPageWizard() {
     }
   }
   return (
-    <main className="container mx-auto flex max-w-4xl flex-1 flex-col gap-8 p-4 md:p-8">
+    // O shell do produto já é o <main>: um segundo landmark aninhado confunde leitores de tela.
+    <div className="container mx-auto flex max-w-4xl flex-1 flex-col gap-8 p-4 md:p-8">
       <div className="grid gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">
           {editingLandingId ? "Editar landing de cotação" : "Criar landing de cotação"}
@@ -394,7 +395,7 @@ export function TemplateLandingPageWizard() {
               </div>
             </Field>
             <div className="flex justify-end">
-              <Button type="button" disabled={isLoadingEdit} onClick={() => setStep(2)}>
+              <Button type="button" className="min-h-11" disabled={isLoadingEdit} onClick={() => setStep(2)}>
                 {isLoadingEdit ? "Carregando..." : "Continuar"}
               </Button>
             </div>
@@ -494,6 +495,6 @@ export function TemplateLandingPageWizard() {
           </FieldGroup>
         </section>
       )}
-    </main>
+    </div>
   )
 }

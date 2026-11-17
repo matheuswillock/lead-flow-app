@@ -101,7 +101,7 @@ export async function resolveCardAvailability(
   readPublicKey: (
     environment: PaymentProviderEnvironment,
     env: Env,
-  ) => Promise<string | null> = readConfiguredAbacatePublicKey,
+  ) => Promise<string | null> = readConfiguredAbacatePublicKeyForEnvironment,
 ): Promise<CardAvailability> {
   const environment = resolveEnvironment(env)
   if (!environment) return build(false, "PROVIDER_WITHOUT_CARD")
@@ -123,10 +123,14 @@ export async function resolveCardAvailability(
  */
 export async function resolveConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
   const environment = resolveEnvironment(env)
-  return environment ? readConfiguredAbacatePublicKey(environment, env) : null
+  return environment ? readConfiguredAbacatePublicKeyForEnvironment(environment, env) : null
 }
 
-async function readConfiguredAbacatePublicKey(environment: PaymentProviderEnvironment, env: Env): Promise<string | null> {
+export async function readConfiguredAbacatePublicKey(env: Env = process.env): Promise<string | null> {
+  return resolveConfiguredAbacatePublicKey(env)
+}
+
+async function readConfiguredAbacatePublicKeyForEnvironment(environment: PaymentProviderEnvironment, env: Env): Promise<string | null> {
   const envFallback = () => readAbacatePublicKey(environment, env)
   let modules: Awaited<ReturnType<typeof loadCredentialModules>>
   try {
@@ -144,6 +148,17 @@ async function readConfiguredAbacatePublicKey(environment: PaymentProviderEnviro
   }
   const configuration = configurations.find((item) => item.provider === "ABACATE_PAY" && item.isDefault)
   if (!configuration) return envFallback()
+  try {
+    const configured = await modules.paymentProviderConfigRepository.readPublicVariable(
+      "ABACATE_PAY",
+      environment,
+      `ABACATE_PAY_${environment}_PUBLIC_KEY`,
+      configuration.externalAccountContext,
+    )
+    if (configured?.trim()) return configured.trim()
+  } catch {
+    return envFallback()
+  }
   try {
     const resolved = await modules.resolveOptionalProviderCredential({
       // Erro de leitura (infra) vira "não cadastrada" e cai no fallback de env; só uma

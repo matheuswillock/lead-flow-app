@@ -15,6 +15,7 @@ import {
   resolveCardAvailability,
 } from "@/lib/payment-methods/availability"
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
+import { readConfiguredAbacatePublicKey } from "@/lib/payment-methods/availability"
 
 export type CreatePlatformCheckoutInput = {
   productSlug: string
@@ -158,9 +159,11 @@ export class PlatformCheckoutUseCase {
         return new Output(false, [], ["Checkout não encontrado"], null)
       }
 
+      const availability = await resolveCardAvailability()
       return new Output(true, [], [], {
         ...toDetails(purchase),
-        availableBillingTypes: (await resolveCardAvailability()).availableBillingTypes,
+        availableBillingTypes: availability.availableBillingTypes,
+        cardCheckout: availability.card ? { provider: "ABACATE_PAY", publicKey: await readConfiguredAbacatePublicKey() } : null,
       })
     } catch (error) {
       console.error("[PlatformCheckoutUseCase][getCheckoutDetails]", error)

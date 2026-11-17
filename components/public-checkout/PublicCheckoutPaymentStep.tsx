@@ -15,6 +15,8 @@ import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
 import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
 import { Field, FieldGroup } from "./PublicCheckoutField"
 import { PixPaymentBlock } from "./PixPaymentBlock"
+import { AbacateCardField } from "@/app/adesao/[token]/features/components/AbacateCardField"
+import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook"
 import type { PublicCheckoutBillingType, PublicCheckoutDetails, PublicCheckoutPaymentInput, PublicCheckoutPaymentView, PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
 
 function onlyDigits(value: string, maxLength: number): string {
@@ -53,10 +55,14 @@ export function PublicCheckoutPaymentStep({
   isPixExpired = false,
   isRegeneratingPix = false,
   onRegeneratePix,
+  abacatePublicKey,
+  skipAddress = false,
 }: {
   isPixExpired?: boolean
   isRegeneratingPix?: boolean
   onRegeneratePix?: () => Promise<void>
+  abacatePublicKey?: string | null
+  skipAddress?: boolean
   /** Legado: não coleta endereço. */
   pixOnly?: boolean
   /** Ausente = somente PIX. O cartão nunca é renderizado se não estiver aqui. */
@@ -70,6 +76,7 @@ export function PublicCheckoutPaymentStep({
   onSubmit: (input: PublicCheckoutPaymentInput) => Promise<void>
   onRefreshStatus?: (options?: { sync?: boolean }) => Promise<void>
 }) {
+  const abacateCard = useAbacateCard()
   const billingType = pickBillingType(
     requestedBillingType,
     resolveCheckoutMethods({ availableMethods, pixOnly })
@@ -80,7 +87,7 @@ export function PublicCheckoutPaymentStep({
   const [cepResolved, setCepResolved] = useState(false)
   const [lastResolvedCep, setLastResolvedCep] = useState<string | null>(null)
 
-  const hasPayment = Boolean(payment?.invoiceUrl || payment?.pix)
+  const hasPayment = Boolean(payment?.invoiceUrl || payment?.pix || (payment?.billingType === "CREDIT_CARD" && payment.status === "pending"))
   const isLocked = isSubmitting || hasPayment
   const isAddressLocked = isLocked || !cepResolved
 
@@ -107,9 +114,16 @@ export function PublicCheckoutPaymentStep({
     if (isLocked) return
 
     try {
+      let cardToken: string | undefined
+      if (billingType === "CREDIT_CARD" && abacatePublicKey) {
+        const token = await abacateCard.tokenizeCard({ fullName: form.fullName, email: form.email, cnpj: form.cpfCnpj, phone: form.phone })
+        if (!token) return
+        cardToken = token
+      }
       await onSubmit({
         ...form,
         billingType,
+        ...(cardToken ? { cardToken } : {}),
         phone: onlyDigits(form.phone, 11),
         cpfCnpj: onlyDigits(form.cpfCnpj, 14),
         postalCode: onlyDigits(form.postalCode, 8),
@@ -261,6 +275,9 @@ export function PublicCheckoutPaymentStep({
           ) : null}
         </>
       ) : null}
+      {payment?.billingType === "CREDIT_CARD" && payment.status === "pending" ? (
+        <p role="status" className="text-sm text-muted-foreground">Pagamento enviado. Aguardando confirmação do banco.</p>
+      ) : null}
     </div>
   )
 
@@ -280,9 +297,10 @@ export function PublicCheckoutPaymentStep({
       form.state.trim().length === 2
 
     if (!fullName || !email || !phone || !cpfCnpj) return false
-    if (!pixOnly && (!postalCode || !addressOk)) return false
+    if (!pixOnly && !skipAddress && (!postalCode || !addressOk)) return false
 
     if (billingType === "CREDIT_CARD") {
+      if (abacatePublicKey) return true
       const cc = form.creditCard
       const holder = cc.holderName.trim().length >= 2
       const number = onlyDigits(cc.number, 19).length >= 13
@@ -293,7 +311,7 @@ export function PublicCheckoutPaymentStep({
     }
 
     return true
-  }, [billingType, cepResolved, form, pixOnly])
+  }, [billingType, cepResolved, form, pixOnly, skipAddress, abacatePublicKey])
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
@@ -345,7 +363,7 @@ export function PublicCheckoutPaymentStep({
           />
         </Field>
 
-      {pixOnly ? null : (
+      {pixOnly || skipAddress ? null : (
       <>
       <Separator />
 
@@ -431,7 +449,9 @@ export function PublicCheckoutPaymentStep({
             <p className="text-sm text-muted-foreground">Preencha os dados do cartão para cobrar agora.</p>
           </div>
 
-          <FieldGroup>
+          {abacatePublicKey ? (
+            <AbacateCardField ref={abacateCard.cardFieldRef} publicKey={abacatePublicKey} amountInCents={Math.round(details.billingTypePrices.CREDIT_CARD.total * 100)} />
+          ) : <FieldGroup>
             <Field label="Nome do titular">
               <Input
                 value={form.creditCard.holderName}
@@ -512,7 +532,8 @@ export function PublicCheckoutPaymentStep({
                 </div>
               )}
             </Field>
-          </FieldGroup>
+          </FieldGroup>}
+          {abacateCard.cardError ? <p role="alert" className="text-sm text-destructive">{abacateCard.cardError}</p> : null}
         </div>
       ) : null}
 
@@ -522,11 +543,11 @@ export function PublicCheckoutPaymentStep({
           size="lg"
           className="max-lg:min-h-11"
           onClick={submit}
-          disabled={isLocked || isResolvingCep || !isFormValid || isSubmitting}
+          disabled={isLocked || isResolvingCep || !isFormValid || isSubmitting || abacateCard.isTokenizing}
         >
           {isSubmitting ? (
             <>
-              {billingType === "PIX" ? "Gerando pagamento..." : "Verificando pagamento..."}
+              {billingType === "PIX" ? "Gerando pagamento..." : abacateCard.isTokenizing ? "Validando cartão..." : "Verificando pagamento..."}
               <Loader2 data-icon="inline-end" className={cn("animate-spin")} aria-hidden="true" />
             </>
           ) : (
