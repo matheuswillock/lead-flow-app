@@ -1,28 +1,27 @@
 /**
- * Somente leitura (dias 6 a 15 do vencimento): a plataforma "some". Só ficam o CRM e a
- * Carteira, para visualização, e a página de pagamento para o master.
+ * Somente leitura (carência de cobrança expirada): continua tudo que a conta já tinha
+ * contratado antes, só em modo leitura. A rota é liberada quando ela não exige nenhum
+ * slug de feature, ou quando a conta tem acesso a pelo menos um dos slugs que ela exige
+ * (mesma regra que `LayoutContent` já usa pra decidir `shouldBlockByFeature`, pra não
+ * duplicar essa lógica uma terceira vez). A página de pagamento fica liberada só pro
+ * master (quem resolve a cobrança).
  */
+import { getFeatureSlugsForAppPath } from "@/lib/features/feature-route-access"
 
-export type ReadOnlyNavItem = { title: string; url: string }
-
-const READ_ONLY_VIEW_PATH_PATTERN = /^\/[^/]+\/(crm|carteira)(\/.*)?$/
 const PAYMENT_PATH_PATTERN = /^\/[^/]+\/billing-grace-payment\/?$/
 
 export function isReadOnlyAllowedPath(
   pathname: string | null | undefined,
-  isBillingOwner: boolean
+  isBillingOwner: boolean,
+  hasAccess: (slug: string) => boolean
 ): boolean {
   if (!pathname) return false
-  if (READ_ONLY_VIEW_PATH_PATTERN.test(pathname)) return true
-  return isBillingOwner && PAYMENT_PATH_PATTERN.test(pathname)
+  if (PAYMENT_PATH_PATTERN.test(pathname)) return isBillingOwner
+  const requiredSlugs = getFeatureSlugsForAppPath(pathname)
+  if (requiredSlugs.length === 0) return true
+  return requiredSlugs.some(hasAccess)
 }
 
 export function getReadOnlyHomeHref(supabaseId: string): string {
   return `/${supabaseId}/crm`
-}
-
-export function getReadOnlyNavItems(supabaseId: string, canSeeWallet: boolean): ReadOnlyNavItem[] {
-  const items: ReadOnlyNavItem[] = [{ title: "CRM", url: `/${supabaseId}/crm` }]
-  if (canSeeWallet) items.push({ title: "Carteira", url: `/${supabaseId}/carteira` })
-  return items
 }

@@ -18,6 +18,7 @@ import type {
 
 const PLAN_SUBSCRIPTION_SELECT = {
   subscriptionCycle: true,
+  subscriptionNextDueDate: true,
   product: {
     select: {
       name: true,
@@ -383,6 +384,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         subscriptionPlan: true,
         subscriptionStatus: true,
         subscriptionId: true,
+        subscriptionNextDueDate: true,
         subscription: { select: PLAN_SUBSCRIPTION_SELECT },
         operatorCount: true,
         googleConnection: {
@@ -553,6 +555,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       subscriptionPlan: master.subscriptionPlan,
       subscriptionStatus: master.subscriptionStatus,
       subscriptionId: master.subscriptionId,
+      subscriptionNextDueDate: master.subscriptionNextDueDate,
+      profileSubscriptionNextDueDate: master.subscription?.subscriptionNextDueDate ?? null,
       planSubscription: mapPlanSubscription(master.subscription),
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),

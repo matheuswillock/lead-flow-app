@@ -9,6 +9,14 @@ mock.module("next/navigation", () => ({
   useParams: () => ({ supabaseId: "conta-1" }),
   useRouter: () => ({ replace: () => undefined }),
 }))
+
+// Por padrão, nenhum slug concedido (mesmo fallback "falha fechado" do componente quando
+// o provedor real não está montado); testes de somente leitura sobrescrevem por caso.
+let currentHasAccess: (slug: string) => boolean = () => false
+mock.module("@/app/context/FeatureAccessContext", () => ({
+  useOptionalFeatureAccess: () => ({ hasAccess: currentHasAccess }),
+}))
+
 const { AccountAccessGate } = await import("./AccountAccessGate")
 
 const PAYMENT_PATH = "/conta-1/billing-grace-payment"
@@ -191,23 +199,39 @@ function renderReadOnlyGate({ pathname, isBillingOwner }: { pathname: string; is
   )
 }
 
-test("somente leitura mantém o CRM e a Carteira visíveis", () => {
-  for (const pathname of ["/conta-1/crm", "/conta-1/carteira", "/conta-1/carteira/lead-9"]) {
-    const markup = renderReadOnlyGate({ pathname, isBillingOwner: false })
+test("somente leitura mantém visível o que a conta já tinha contratado (CRM e Carteira)", () => {
+  currentHasAccess = (slug) => slug === "crm" || slug === "crm-wallet"
+  try {
+    for (const pathname of ["/conta-1/crm", "/conta-1/carteira", "/conta-1/carteira/lead-9"]) {
+      const markup = renderReadOnlyGate({ pathname, isBillingOwner: false })
 
-    expect(markup).toContain("conteúdo da rota")
-    expect(markup).not.toContain("read-only-redirect")
+      expect(markup).toContain("conteúdo da rota")
+      expect(markup).not.toContain("read-only-redirect")
+    }
+  } finally {
+    currentHasAccess = () => false
   }
 })
 
-test("somente leitura esconde qualquer outra funcionalidade e leva ao CRM", () => {
-  for (const pathname of ["/conta-1/dashboard", "/conta-1/email/campanhas", "/conta-1/whatsapp", "/conta-1/subscription"]) {
-    const markup = renderReadOnlyGate({ pathname, isBillingOwner: true })
+test("somente leitura esconde o que a conta não tinha contratado e leva ao CRM", () => {
+  currentHasAccess = (slug) => slug === "crm" || slug === "crm-wallet"
+  try {
+    for (const pathname of ["/conta-1/dashboard", "/conta-1/email/campanhas", "/conta-1/whatsapp"]) {
+      const markup = renderReadOnlyGate({ pathname, isBillingOwner: true })
 
-    expect(markup).not.toContain("conteúdo da rota")
-    expect(markup).toContain("read-only-redirect")
-    expect(markup).toContain('data-href="/conta-1/crm"')
+      expect(markup).not.toContain("conteúdo da rota")
+      expect(markup).toContain("read-only-redirect")
+      expect(markup).toContain('data-href="/conta-1/crm"')
+    }
+  } finally {
+    currentHasAccess = () => false
   }
+})
+
+test("somente leitura libera rotas sem slug de feature (ex.: assinatura), mesmo sem nada contratado", () => {
+  const markup = renderReadOnlyGate({ pathname: "/conta-1/subscription", isBillingOwner: true })
+
+  expect(markup).toContain("conteúdo da rota")
 })
 
 test("somente leitura libera a página de pagamento só para o master", () => {

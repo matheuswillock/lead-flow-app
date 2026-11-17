@@ -4,6 +4,7 @@ import { useParams, usePathname } from "next/navigation"
 
 import type { AccountAccessDecision } from "@/app/api/shared/accountAccessDecision/types"
 import { useOptionalTeamContext } from "@/app/context/TeamContext"
+import { useOptionalFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { AccountAccessPausedScreen } from "./AccountAccessPausedScreen"
 import { BillingGraceBanner } from "./BillingGraceBanner"
 import { getAccessPausedAction, getPaymentRecoveryHref, isPaymentRecoveryPath } from "./accountAccessRecovery"
@@ -26,6 +27,10 @@ function billingOwnerOf(
 
 export function AccountAccessGate({ decision, decisionResolved = false, children }: AccountAccessGateProps) {
   const teamContext = useOptionalTeamContext()
+  // Falha fechado: sem o provedor montado (não deveria acontecer em produção,
+  // já que FeatureAccessProvider envolve este gate em layout.tsx), nenhuma rota
+  // com slug exigido é liberada — só a de pagamento e as sem slug nenhum.
+  const hasAccess = useOptionalFeatureAccess()?.hasAccess ?? (() => false)
   const pathname = usePathname()
   const params = useParams<{ supabaseId: string }>()
   const supabaseId = params?.supabaseId
@@ -44,14 +49,15 @@ export function AccountAccessGate({ decision, decisionResolved = false, children
     )
   }
 
-  // read_only (dias 6 a 15 do vencimento): só o CRM e a Carteira (visualização) e, para o master,
-  // a página de pagamento. As gravações são barradas na camada de rotas da API.
+  // read_only (carência expirada, sem corte fixo de dias): continua tudo que a conta já
+  // tinha contratado, só em visualização, e a página de pagamento para o master. As
+  // gravações são barradas na camada de rotas da API.
   if (effectiveDecision?.state === "read_only") {
     if (!supabaseId) {
       return <AccountAccessPausedScreen reason={effectiveDecision.reason} isBillingOwner={isBillingOwner} />
     }
 
-    if (isReadOnlyAllowedPath(pathname, isBillingOwner)) return children
+    if (isReadOnlyAllowedPath(pathname, isBillingOwner, hasAccess)) return children
 
     return <ReadOnlyRedirect href={getReadOnlyHomeHref(supabaseId)} />
   }

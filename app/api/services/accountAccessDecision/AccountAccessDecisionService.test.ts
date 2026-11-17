@@ -245,7 +245,7 @@ describe("AccountAccessDecisionService", () => {
     expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
   })
 
-  describe("calendário do vencimento: carência, somente leitura e bloqueio total", () => {
+  describe("calendário do vencimento: carência e somente leitura sem corte fixo", () => {
     const pastDue = {
       billingOwnerId: "owner-1",
       subscriptionStatus: "past_due",
@@ -254,7 +254,7 @@ describe("AccountAccessDecisionService", () => {
       isBanned: false,
     }
 
-    it("segue em somente leitura até o dia 15 após o vencimento", () => {
+    it("segue em somente leitura a partir do dia 6 após o vencimento", () => {
       const decision = new AccountAccessDecisionService().decide(
         pastDue,
         new Date("2026-10-24T23:59:59.999Z"),
@@ -263,25 +263,25 @@ describe("AccountAccessDecisionService", () => {
       expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
     })
 
-    it("do dia 16 em diante bloqueia tudo com a tela de acesso pausado", () => {
+    it("não existe corte para bloqueio total por dias de atraso: continua em read_only", () => {
       const decision = new AccountAccessDecisionService().decide(
         pastDue,
         new Date("2026-10-25T00:00:00.000Z"),
       )
 
-      expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
     })
 
-    it("não volta a liberar leitura depois do dia 16, nem meses depois", () => {
+    it("continua em read_only meses depois, enquanto o status seguir past_due", () => {
       const decision = new AccountAccessDecisionService().decide(
         pastDue,
         new Date("2027-03-01T12:00:00.000Z"),
       )
 
-      expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
     })
 
-    it("uma concessão expirada não estende o prazo além do dia 15", () => {
+    it("uma concessão expirada cede lugar à carência por vencimento (leitura, não bloqueio)", () => {
       const decision = new AccountAccessDecisionService().decide(
         {
           ...pastDue,
@@ -291,10 +291,10 @@ describe("AccountAccessDecisionService", () => {
         new Date("2026-10-26T12:00:00.000Z"),
       )
 
-      expect(decision).toEqual({ state: "restricted", reason: "past_due" })
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
     })
 
-    it("a carência de cinco dias e a somente leitura dos dias 6 a 15 seguem iguais", () => {
+    it("a carência de cinco dias e a somente leitura a partir do dia 6 seguem iguais", () => {
       const service = new AccountAccessDecisionService()
 
       expect(service.decide(pastDue, new Date("2026-10-14T23:59:59.999Z"))).toMatchObject({

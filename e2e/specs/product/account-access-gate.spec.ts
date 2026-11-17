@@ -11,6 +11,11 @@ async function createPastDueMaster(dueDaysAgo: number) {
   const prisma = getPrisma()
   const supabaseId = randomUUID()
   const email = `e2e.account-access.${randomUUID()}@example.com`
+  // Conta real sempre teve um produto contratado antes de cair em atraso — sem isso,
+  // a carência genérica não tem o que liberar em modo leitura (nada em paidProductSlugs).
+  const crmProduct = await prisma.backofficeProduct.findFirstOrThrow({
+    where: { isActive: true, featureSlugs: { has: "crm" } },
+  })
   const profile = await prisma.profile.create({
     data: {
       email,
@@ -28,6 +33,7 @@ async function createPastDueMaster(dueDaysAgo: number) {
   await prisma.profileSubscription.create({
     data: {
       profileId: profile.id,
+      productId: crmProduct.id,
       subscriptionStatus: "past_due",
       subscriptionNextDueDate: new Date(Date.now() - dueDaysAgo * DAY_MS),
     },
@@ -90,7 +96,9 @@ test.describe.serial("gate de acesso da conta", () => {
     })
 
     readOnlyAccount = await createPastDueMaster(10)
-    overdueAccount = await createPastDueMaster(16)
+    // Bem além do antigo corte de 15 dias: sem data fixa de bloqueio, continua em
+    // somente leitura (não vira "acesso pausado" só por tempo de atraso).
+    overdueAccount = await createPastDueMaster(60)
   })
 
   test.afterAll(async () => {
@@ -102,7 +110,7 @@ test.describe.serial("gate de acesso da conta", () => {
     await disconnectPrisma()
   })
 
-  test("vencido há 10 dias: somente leitura, só CRM e Carteira; o resto some", async ({ baseURL, context, page }) => {
+  test("vencido há 10 dias: somente leitura em tudo que já tinha contratado (CRM); o que não tinha segue de fora", async ({ baseURL, context, page }) => {
     test.setTimeout(240_000)
     await injectE2eAuthCookie(context, { supabaseId: readOnlyAccount.supabaseId, email: readOnlyAccount.email })
     // O app abre a barra lateral pelo cookie; num navegador novo ela começa recolhida.
@@ -116,19 +124,26 @@ test.describe.serial("gate de acesso da conta", () => {
     await page.setViewportSize({ width: 1280, height: 800 })
 
     await page.goto(`/${readOnlyAccount.supabaseId}/crm`, { waitUntil: "domcontentloaded" })
-    const sidebar = page.getByTestId("read-only-sidebar")
-    await expect(sidebar).toBeVisible({ timeout: 45_000 })
-    await expect(sidebar.getByRole("link")).toHaveText(["CRM", "Carteira"])
+    // Sidebar normal (não mais uma barra restrita dedicada): mostra tudo que o produto
+    // CRM contratado inclui, e nada do que não foi contratado (ex.: WhatsApp).
+    await expect(page.getByRole("link", { name: "CRM" })).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByRole("link", { name: "Carteira" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Inbox" })).toHaveCount(0)
     await expect(page.getByTestId("read-only-banner")).toBeVisible()
     await expect(page.getByRole("link", { name: "Regularizar pagamento" })).toHaveAttribute(
       "href",
       `/${readOnlyAccount.supabaseId}/billing-grace-payment`
     )
 
+    // Dashboard faz parte do produto CRM contratado: continua acessível em leitura.
     await page.goto(`/${readOnlyAccount.supabaseId}/dashboard`, { waitUntil: "domcontentloaded" })
-    await expect(page).toHaveURL(new RegExp(`/${readOnlyAccount.supabaseId}/crm$`), { timeout: 120_000 })
-    await expect(page.getByText("Próximas Reuniões")).toHaveCount(0)
+    await expect(page.getByText("Próximas Reuniões")).toBeVisible({ timeout: 120_000 })
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
+
+    // WhatsApp não faz parte do que a conta tinha contratado: redireciona pro CRM.
+    await page.goto(`/${readOnlyAccount.supabaseId}/whatsapp`, { waitUntil: "domcontentloaded" })
+    await expect(page).toHaveURL(new RegExp(`/${readOnlyAccount.supabaseId}/crm$`), { timeout: 30_000 })
   })
 
   test("somente leitura: CRM e Carteira sem ações de escrita e o lead abre só para ler", async ({ baseURL, context, page }) => {
@@ -238,7 +253,7 @@ test.describe.serial("gate de acesso da conta", () => {
     }
   })
 
-  test("vencido há 16 dias: nada fica visível, só a tela de acesso pausado", async ({ context, page }) => {
+  test("vencido há 60 dias: sem corte fixo, continua em somente leitura (não vira acesso pausado)", async ({ context, page }) => {
     test.setTimeout(90_000)
     await injectE2eAuthCookie(context, { supabaseId: overdueAccount.supabaseId, email: overdueAccount.email })
     await context.addInitScript(
@@ -249,12 +264,12 @@ test.describe.serial("gate de acesso da conta", () => {
     )
 
     await page.goto(`/${overdueAccount.supabaseId}/crm`, { waitUntil: "domcontentloaded" })
-    await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByTestId("read-only-sidebar")).toHaveCount(0)
-    await expect(page.getByTestId("read-only-banner")).toHaveCount(0)
+    await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
+    await expect(page.getByTestId("read-only-banner")).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole("link", { name: "CRM" })).toBeVisible()
   })
 
-  test("a API recusa escrita de leads e carteira em somente leitura e após o dia 16, e deixa ler", async ({ context }) => {
+  test("a API recusa escrita de leads e carteira em somente leitura, mesmo muito vencida, e deixa ler", async ({ context }) => {
     test.setTimeout(90_000)
 
     for (const account of [readOnlyAccount, overdueAccount]) {
@@ -396,7 +411,8 @@ test.describe.serial("gate de acesso da conta", () => {
     // instante exato em que a tela de transição (TeamSwitchingScreen) ainda
     // está visível neste ambiente de teste.
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
-    await expect(page.locator("header")).toHaveCount(1)
+    // A troca recarrega acessos e dados do time; o time liberado abre o app normal.
+    await expect(page.locator("header")).toHaveCount(1, { timeout: 150_000 })
 
     const dimensions = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

@@ -55,6 +55,7 @@ export interface BackofficeClientDetails {
   }
   subscription: {
     hasAccess: boolean
+    accessMode: "full" | "read_only" | "none"
     status: string | null
   }
   teams: BackofficeClientTeam[]

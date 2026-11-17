@@ -1,15 +1,11 @@
-// 20 — Assinaturas — Backend E9 (Fase 4 do plano de Assinaturas, E1 do
-// plano: "Inadimplência em degraus"). Predicado puro que resolve o degrau de
-// acesso de uma conta a partir de `subscriptionStatus` +
-// `subscriptionNextDueDate` da `ProfileSubscription`. Hoje `past_due` está
-// dentro de `ACTIVE_SUBSCRIPTION_STATUSES` (lib/billing/active-subscription-statuses.ts)
-// e dá acesso total para sempre (Diagnóstico §7.5) — este módulo não altera
-// esse gate binário (conta continua "ativa" para o teamAccess), mas alimenta
-// um segundo degrau, mais fino, consumido por FeatureAccessService: a partir
-// do dia 5 de atraso a conta perde acesso a tudo que não seja CRM; a partir
-// do dia 15, perde tudo (o corte de fato ainda depende do PaymentValidationService
-// solicitar INACTIVE no Asaas via PAST_DUE_INACTIVE_AFTER_DAYS — este módulo
-// só resolve o degrau local, não a chamada ao Asaas).
+// 20 — Assinaturas — Backend E9. Predicado puro que resolve o degrau de
+// comunicação de uma conta a partir de `subscriptionStatus` +
+// `subscriptionNextDueDate` da `ProfileSubscription`, consumido pelo e-mail
+// de dunning (OverdueReminderUseCase) para escolher o tom do aviso: "reduced"
+// a partir do dia 5, "cut" a partir do dia 15. Não decide acesso real — quem
+// decide isso é AccountAccessDecisionService/FeatureAccessService, via a
+// janela de carência (BILLING_GRACE_DAYS, billingGraceWindow.ts), que não tem
+// corte fixo de dias.
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { FEATURE_PRODUCT_SLUG_MAP } from "@/lib/features/feature-product-slug-map";
 
@@ -32,16 +28,6 @@ export const CRM_ONLY_ALLOWED_FEATURE_SLUGS: ReadonlySet<string> = new Set(
     .filter(([key]) => key === "CRM" || key.startsWith("CRM_"))
     .map(([, slug]) => slug),
 );
-
-/**
- * Modo somente leitura (dias 6 a 15 de atraso): a plataforma "some" e só ficam o CRM
- * (leads) e a Carteira, apenas para visualização. Mais restrito que `crm_only`, que
- * mantém todas as funcionalidades `CRM_*` (dashboard, calendário, automações...).
- */
-export const READ_ONLY_ALLOWED_FEATURE_SLUGS: ReadonlySet<string> = new Set([
-  FEATURE_SLUGS.CRM,
-  FEATURE_SLUGS.CRM_WALLET,
-]);
 
 /** Slug continua acessível no degrau `crm_only`? */
 export function isAllowedUnderCrmOnly(slug: string): boolean {

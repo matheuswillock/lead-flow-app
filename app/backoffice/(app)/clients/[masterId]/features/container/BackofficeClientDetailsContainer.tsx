@@ -68,6 +68,7 @@ import { BackofficeClientEmailsShell } from "../emails/container/BackofficeClien
 import type { EmailSection } from "../emails/context/BackofficeClientEmailsTypes"
 import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
 import type {
+  BackofficeClientInvoice,
   BackofficeClientPendingAction,
   BackofficeClientTeam,
   BackofficeClientTeamMember,
@@ -107,6 +108,19 @@ const INVOICE_STATUS_BADGES: Record<
     className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
   },
   other: { label: "Em processamento", variant: "secondary" },
+}
+
+/** Mesma regra da página de detalhe da fatura (`canRemoveCharge`): nunca para paga,
+ * dispensada ou pago externamente; sempre para ação pendente sem cobrança ainda. */
+function canCancelInvoice(invoice: BackofficeClientInvoice): boolean {
+  return (
+    invoice.source !== "adhesion_external" &&
+    invoice.statusGroup !== "paid" &&
+    invoice.status !== "WAIVED" &&
+    (invoice.statusGroup === "upcoming" ||
+      invoice.statusGroup === "overdue" ||
+      invoice.source === "pending_action")
+  )
 }
 
 const TEAM_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -236,6 +250,7 @@ export function BackofficeClientDetailsContainer() {
     isInvoicesLoading,
     isPendingActionsLoading,
     isCancelingPendingAction,
+    isCancelingInvoice,
     error,
     teamsError,
     invoicesError,
@@ -249,6 +264,7 @@ export function BackofficeClientDetailsContainer() {
     setInvoicesFilters,
     setInvoicesPage,
     cancelPendingAction,
+    cancelInvoice,
     reload,
     clearFilters,
   } = useBackofficeClientDetails()
@@ -284,6 +300,7 @@ export function BackofficeClientDetailsContainer() {
   const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
   const [addingMasterTeamId, setAddingMasterTeamId] = useState<string | null>(null)
   const [selectedEmailTeamId, setSelectedEmailTeamId] = useState<string | null>(null)
+  const [invoiceToCancel, setInvoiceToCancel] = useState<BackofficeClientInvoice | null>(null)
   const [pendingActionToCancel, setPendingActionToCancel] =
     useState<BackofficeClientPendingAction | null>(null)
   const emailSection = parseEmailSection(searchParams.get("emailSection"))
@@ -616,10 +633,15 @@ export function BackofficeClientDetailsContainer() {
                   {details.hasUnlimitedUsers ? (
                     <Badge variant="secondary">Usuários ilimitados</Badge>
                   ) : null}
-                  {details.subscription.hasAccess ? (
+                  {details.subscription.accessMode === "full" ? (
                     <Badge className="gap-1 border-transparent bg-semantic-success-surface text-foreground hover:bg-semantic-success-surface">
                       <ShieldCheck className="h-3 w-3 text-semantic-success" />
                       Acesso ativo
+                    </Badge>
+                  ) : details.subscription.accessMode === "read_only" ? (
+                    <Badge className="gap-1 border-transparent bg-semantic-warning-surface text-foreground hover:bg-semantic-warning-surface">
+                      <ShieldCheck className="h-3 w-3 text-semantic-warning" />
+                      Acesso (leitura)
                     </Badge>
                   ) : (
                     <Badge className="gap-1 border-transparent bg-semantic-danger-surface text-foreground hover:bg-semantic-danger-surface">
@@ -1278,6 +1300,16 @@ export function BackofficeClientDetailsContainer() {
                                           </a>
                                         </Button>
                                       ) : null}
+                                      {canCancelInvoice(invoice) ? (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="text-destructive hover:text-destructive"
+                                          onClick={() => setInvoiceToCancel(invoice)}
+                                        >
+                                          Cancelar
+                                        </Button>
+                                      ) : null}
                                     </div>
                                   </TableCell>
                                 </TableRow>
@@ -1602,6 +1634,52 @@ export function BackofficeClientDetailsContainer() {
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   {isCancelingPendingAction ? "Cancelando..." : "Cancelar cobrança"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog
+            open={invoiceToCancel !== null}
+            onOpenChange={(open) => {
+              if (isCancelingInvoice) return
+              if (!open) setInvoiceToCancel(null)
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancelar esta fatura?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  A cobrança será cancelada primeiro no provider (Asaas, se existir) e, depois da
+                  confirmação, a fatura é marcada como cancelada aqui. Essa ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isCancelingInvoice}>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (!invoiceToCancel || isCancelingInvoice) return
+                    void (async () => {
+                      try {
+                        const message = invoiceToCancel.pendingActionId
+                          ? await cancelPendingAction(invoiceToCancel.pendingActionId)
+                          : await cancelInvoice(invoiceToCancel.id)
+                        toast.success(message)
+                        setInvoiceToCancel(null)
+                      } catch (cancelError) {
+                        const message =
+                          cancelError instanceof Error
+                            ? cancelError.message
+                            : "Erro ao cancelar a fatura"
+                        toast.error(message)
+                      }
+                    })()
+                  }}
+                  disabled={isCancelingInvoice}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isCancelingInvoice ? "Cancelando..." : "Cancelar fatura"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

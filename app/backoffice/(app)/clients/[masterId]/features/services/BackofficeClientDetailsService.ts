@@ -210,6 +210,25 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
   }
 
+  async cancelInvoice(
+    masterId: string,
+    invoiceId: string
+  ): Promise<{ message: string }> {
+    const res = await fetch(
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}`,
+      { method: "DELETE" }
+    )
+    const data = await res.json()
+
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao cancelar a cobrança")
+    }
+
+    return {
+      message: data.successMessages?.[0] ?? "Cobrança cancelada com sucesso",
+    }
+  }
+
   async updateClient(
     masterId: string,
     data: {

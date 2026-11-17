@@ -81,6 +81,9 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   async hasActiveTemporaryBillingGrace() {
     return false
   }
+  async hasActiveExpiredMemberProCrmGrace() {
+    return false
+  }
   async listActiveBetaGrantsForProfile() {
     return []
   }
@@ -95,9 +98,20 @@ class FakeFeatureAccessRepository implements IFeatureAccessRepository {
   }
 }
 
-describe("FeatureAccessService.resolveAllowedSlugs — janela de somente leitura (dias 6 a 15)", () => {
+describe("FeatureAccessService.resolveAllowedSlugs — carência genérica (allowed com aviso / read_only)", () => {
   let repository: FakeFeatureAccessRepository
   let service: InstanceType<typeof FeatureAccessService>
+
+  const ALL_SLUGS = [
+    "crm",
+    "crm-wallet",
+    "crm-dashboard",
+    "crm-calendar",
+    "crm-automations",
+    "email",
+    "whatsapp",
+    "radar",
+  ]
 
   const resolve = () =>
     service.resolveAllowedSlugs({ profileId: PROFILE_ID, managerId: PROFILE_ID, activeTeamId: TEAM_ID })
@@ -105,47 +119,32 @@ describe("FeatureAccessService.resolveAllowedSlugs — janela de somente leitura
 
   beforeEach(() => {
     repository = new FakeFeatureAccessRepository()
-    repository.features = [
-      "crm",
-      "crm-wallet",
-      "crm-dashboard",
-      "crm-calendar",
-      "crm-automations",
-      "email",
-      "whatsapp",
-      "radar",
-    ].map(makeFeature)
+    repository.features = ALL_SLUGS.map(makeFeature)
     service = new FeatureAccessService(repository)
   })
 
-  it("libera só o CRM e a Carteira, nada mais", async () => {
-    repository.subscriptionDueDate = daysAgo(10)
+  it("dentro do prazo de carência (dias 1 a 5): acesso total a tudo que já tinha, modo full", async () => {
+    repository.subscriptionDueDate = daysAgo(2)
 
     const access = await resolve()
 
-    expect([...access.slugs].sort()).toEqual(["crm", "crm-wallet"])
-    expect(access.betaSlugs).toEqual([])
-    expect(access.betaLabelSlugs).toEqual([])
+    expect([...access.slugs].sort()).toEqual([...ALL_SLUGS].sort())
+    expect(access.mode).toBe("full")
   })
 
-  it("vale a partir do dia 6 e até o dia 15", async () => {
-    repository.subscriptionDueDate = daysAgo(5.5)
-    expect([...(await resolve()).slugs].sort()).toEqual(["crm", "crm-wallet"])
+  it("carência expirada (a partir do dia 6, sem corte superior): leitura em tudo que já tinha, modo read_only", async () => {
+    repository.subscriptionDueDate = daysAgo(10)
+    expect([...(await resolve()).slugs].sort()).toEqual([...ALL_SLUGS].sort())
+    expect((await resolve()).mode).toBe("read_only")
 
-    repository.subscriptionDueDate = daysAgo(14.5)
-    expect([...(await resolve()).slugs].sort()).toEqual(["crm", "crm-wallet"])
+    // Sem corte fixo: mesmo muito depois do vencimento, continua leitura (não bloqueio total) —
+    // a transição para bloqueio depende do motor de assinatura marcar suspended/canceled.
+    repository.subscriptionDueDate = daysAgo(60)
+    expect([...(await resolve()).slugs].sort()).toEqual([...ALL_SLUGS].sort())
+    expect((await resolve()).mode).toBe("read_only")
   })
 
-  it("do dia 16 em diante não libera nada", async () => {
-    repository.subscriptionDueDate = daysAgo(15.5)
-
-    expect((await resolve()).slugs).toEqual([])
-  })
-
-  it("não altera a regra atual dentro da carência nem sem data de vencimento", async () => {
-    repository.subscriptionDueDate = daysAgo(2)
-    expect((await resolve()).slugs).toEqual([])
-
+  it("sem data de vencimento não há carência nem leitura — continua sem acesso", async () => {
     repository.subscriptionDueDate = null
     repository.profileDueDate = null
     expect((await resolve()).slugs).toEqual([])
@@ -161,25 +160,21 @@ describe("FeatureAccessService.resolveAllowedSlugs — janela de somente leitura
   })
 
   it("conta o vencimento a partir da data mais antiga entre perfil e assinatura", async () => {
-    // A mais antiga (20 dias) já passou do dia 15: nada liberado, mesmo com a outra data recente.
-    repository.subscriptionDueDate = daysAgo(20)
+    // A mais antiga (10 dias) já expirou a carência, mesmo com a outra data ainda recente (3 dias):
+    // usar a data errada (a mais recente) mostraria "full" em vez de "read_only".
+    repository.subscriptionDueDate = daysAgo(3)
     repository.profileDueDate = daysAgo(10)
-    expect((await resolve()).slugs).toEqual([])
+    expect((await resolve()).mode).toBe("read_only")
 
     repository.subscriptionDueDate = daysAgo(10)
-    repository.profileDueDate = daysAgo(20)
-    expect((await resolve()).slugs).toEqual([])
-
-    // A mais antiga (10 dias) está na janela de somente leitura.
-    repository.subscriptionDueDate = daysAgo(10)
-    repository.profileDueDate = daysAgo(2)
-    expect([...(await resolve()).slugs].sort()).toEqual(["crm", "crm-wallet"])
+    repository.profileDueDate = daysAgo(3)
+    expect((await resolve()).mode).toBe("read_only")
   })
 
   it("não inventa uma funcionalidade que não existe no catálogo", async () => {
     repository.features = ["crm", "email"].map(makeFeature)
     repository.subscriptionDueDate = daysAgo(10)
 
-    expect((await resolve()).slugs).toEqual(["crm"])
+    expect([...(await resolve()).slugs].sort()).toEqual(["crm", "email"])
   })
 })

@@ -16,7 +16,6 @@ import { getFeatureSlugsForAppPath, isAssociadosAppPath } from "@/lib/features/f
 import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
 import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
 import { TeamSwitchingScreen } from "./TeamSwitchingScreen";
-import { ReadOnlySidebar } from "./ReadOnlySidebar";
 import { ReadOnlyAccessBanner } from "./ReadOnlyAccessBanner";
 import { shouldContainLayoutContent } from "@/lib/layout/layout-content-overflow";
 
@@ -153,7 +152,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
         } as React.CSSProperties
       }
     >
-      {isReadOnlyAccess ? <ReadOnlySidebar supabaseId={supabaseId} /> : <AppSidebar supabaseId={supabaseId} />}
+      <AppSidebar supabaseId={supabaseId} />
       <SidebarInset>
         <SiteHeader />
         {isReadOnlyAccess ? (

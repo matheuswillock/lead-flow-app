@@ -1,75 +1,53 @@
 import { describe, expect, test } from "bun:test"
-import {
-  getReadOnlyHomeHref,
-  getReadOnlyNavItems,
-  isReadOnlyAllowedPath,
-} from "./accountAccessReadOnly"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
+import { getReadOnlyHomeHref, isReadOnlyAllowedPath } from "./accountAccessReadOnly"
+
+const hasOnlyCrmAndWallet = (slug: string) =>
+  slug === FEATURE_SLUGS.CRM || slug === FEATURE_SLUGS.CRM_WALLET
+const hasNothing = () => false
+const hasEverything = () => true
 
 describe("isReadOnlyAllowedPath", () => {
-  test("libera o CRM e a Carteira, com as subrotas", () => {
-    expect(isReadOnlyAllowedPath("/conta-1/crm", false)).toBe(true)
-    expect(isReadOnlyAllowedPath("/conta-1/crm/", false)).toBe(true)
-    expect(isReadOnlyAllowedPath("/conta-1/carteira", false)).toBe(true)
-    expect(isReadOnlyAllowedPath("/conta-1/carteira/lead-9", false)).toBe(true)
+  test("libera uma rota só se a conta tem pelo menos um dos slugs que ela exige", () => {
+    expect(isReadOnlyAllowedPath("/conta-1/crm", false, hasOnlyCrmAndWallet)).toBe(true)
+    expect(isReadOnlyAllowedPath("/conta-1/carteira", false, hasOnlyCrmAndWallet)).toBe(true)
+    expect(isReadOnlyAllowedPath("/conta-1/carteira/lead-9", false, hasOnlyCrmAndWallet)).toBe(true)
+    // Dashboard exige crm-dashboard, que não está no conjunto contratado deste teste —
+    // prova de que a generalização olha o slug exigido, não um prefixo fixo de rota.
+    expect(isReadOnlyAllowedPath("/conta-1/dashboard", false, hasOnlyCrmAndWallet)).toBe(false)
+    expect(isReadOnlyAllowedPath("/conta-1/whatsapp", false, hasOnlyCrmAndWallet)).toBe(false)
   })
 
-  test("libera a página de pagamento só para o master", () => {
-    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", true)).toBe(true)
-    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", false)).toBe(false)
-    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment/extra", true)).toBe(false)
-  })
-
-  test("bloqueia todo o resto da plataforma, inclusive para o master", () => {
-    for (const area of [
-      "dashboard",
-      "board",
-      "pipeline",
-      "calendar",
-      "performance",
-      "pme-simulador",
-      "automations",
-      "radar",
-      "forms",
-      "landing-pages",
-      "email/campanhas",
-      "whatsapp",
-      "integrations/webhooks",
-      "teams",
-      "manager-users",
-      "associados",
-      "lead-transfers",
-      "notifications",
-      "subscription",
-      "account",
-      "docs",
-    ]) {
-      expect(isReadOnlyAllowedPath(`/conta-1/${area}`, true)).toBe(false)
-      expect(isReadOnlyAllowedPath(`/conta-1/${area}`, false)).toBe(false)
+  test("generaliza: com tudo contratado, tudo que exige slug fica visível", () => {
+    for (const area of ["crm", "carteira", "dashboard", "whatsapp", "radar", "email/campanhas"]) {
+      expect(isReadOnlyAllowedPath(`/conta-1/${area}`, false, hasEverything)).toBe(true)
     }
   })
 
-  test("não confunde rotas parecidas nem caminhos fora do padrão", () => {
-    expect(isReadOnlyAllowedPath("/conta-1/crm-extra", false)).toBe(false)
-    expect(isReadOnlyAllowedPath("/conta-1/carteirax", false)).toBe(false)
-    expect(isReadOnlyAllowedPath("/conta-1/x/crm", false)).toBe(false)
-    expect(isReadOnlyAllowedPath("/crm", false)).toBe(false)
-    expect(isReadOnlyAllowedPath("", false)).toBe(false)
-    expect(isReadOnlyAllowedPath(null, false)).toBe(false)
-    expect(isReadOnlyAllowedPath(undefined, true)).toBe(false)
-  })
-})
-
-describe("getReadOnlyNavItems", () => {
-  test("quem gerencia vê CRM e Carteira, nada mais", () => {
-    expect(getReadOnlyNavItems("conta-1", true).map((item) => item.title)).toEqual(["CRM", "Carteira"])
-    expect(getReadOnlyNavItems("conta-1", true).map((item) => item.url)).toEqual([
-      "/conta-1/crm",
-      "/conta-1/carteira",
-    ])
+  test("sem nada contratado, só a rota de pagamento (pro master) e rotas sem slug obrigatório ficam de pé", () => {
+    for (const area of ["crm", "carteira", "dashboard", "whatsapp"]) {
+      expect(isReadOnlyAllowedPath(`/conta-1/${area}`, false, hasNothing)).toBe(false)
+    }
+    // Rotas sem slug de feature associado (ex.: notificações, conta) nunca são bloqueadas por feature.
+    for (const area of ["notifications", "account", "docs", "subscription"]) {
+      expect(isReadOnlyAllowedPath(`/conta-1/${area}`, false, hasNothing)).toBe(true)
+    }
   })
 
-  test("quem não gerencia vê só o CRM", () => {
-    expect(getReadOnlyNavItems("conta-1", false).map((item) => item.title)).toEqual(["CRM"])
+  test("libera uma rota com múltiplos slugs aceitos quando a conta tem qualquer um deles", () => {
+    const hasOnlyRadar = (slug: string) => slug === FEATURE_SLUGS.RADAR
+    expect(isReadOnlyAllowedPath("/conta-1/integrations/webhooks", false, hasOnlyRadar)).toBe(true)
+  })
+
+  test("libera a página de pagamento só para o master", () => {
+    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", true, hasNothing)).toBe(true)
+    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", false, hasNothing)).toBe(false)
+  })
+
+  test("não confunde caminhos fora do padrão", () => {
+    expect(isReadOnlyAllowedPath("", false, hasEverything)).toBe(false)
+    expect(isReadOnlyAllowedPath(null, false, hasEverything)).toBe(false)
+    expect(isReadOnlyAllowedPath(undefined, true, hasEverything)).toBe(false)
   })
 })
 
