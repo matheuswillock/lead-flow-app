@@ -12,6 +12,7 @@ describe("BillingGracePaymentUseCase", () => {
         cardCheckout: null,
       })),
       createPixPayment: mock(async () => ({} as never)),
+      createCardPayment: mock(async () => ({} as never)),
       getPayment: mock(async () => ({} as never)),
     }
 
@@ -26,6 +27,7 @@ describe("BillingGracePaymentUseCase", () => {
     const service = {
       getQuote: mock(async () => ({} as never)),
       createPixPayment: mock(async () => ({} as never)),
+      createCardPayment: mock(async () => ({} as never)),
       getPayment: mock(async () => ({} as never)),
     }
 
@@ -44,6 +46,7 @@ describe("BillingGracePaymentUseCase", () => {
     const service = {
       getQuote: mock(async () => ({} as never)),
       createPixPayment: mock(async () => ({} as never)),
+      createCardPayment: mock(async () => ({} as never)),
       getPayment: mock(async () => ({} as never)),
     }
 
@@ -55,5 +58,19 @@ describe("BillingGracePaymentUseCase", () => {
 
     expect(output.errorMessages).toContain("Escolha o prazo da renovação")
     expect(service.createPixPayment).not.toHaveBeenCalled()
+  })
+
+  it("rejeita cartão sem ctok efêmero válido", async () => {
+    const service = {
+      getQuote: mock(async () => ({} as never)),
+      createPixPayment: mock(async () => ({} as never)),
+      createCardPayment: mock(async () => ({} as never)),
+      getPayment: mock(async () => ({} as never)),
+    }
+    const output = await new BillingGracePaymentUseCase(service).createCardPayment({
+      supabaseId: "sb-1", idempotencyKey: "k", cycle: "monthly", cardToken: "pan-data", installments: 1,
+    })
+    expect(output.isValid).toBe(false)
+    expect(service.createCardPayment).not.toHaveBeenCalled()
   })
 })

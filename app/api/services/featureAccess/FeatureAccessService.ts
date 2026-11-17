@@ -14,6 +14,7 @@ import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
+import { resolveBillingGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 
@@ -208,13 +209,23 @@ export class FeatureAccessService implements IFeatureAccessService {
       (!ownerUserType.accessStartsAt ||
         new Date(ownerUserType.accessStartsAt).getTime() <= now.getTime())
 
+    // Mesma janela de carência (vencimento + BILLING_GRACE_DAYS) que AccountAccessDecisionService
+    // já usa pro banner "regularize até" — calculada aqui em vez de depender de uma
+    // BillingAccessGrace manual, pra não deixar os dois sistemas divergirem sobre até quando
+    // o Member PRO expirado continua com CRM liberado.
+    const dynamicGraceUntil = resolveBillingGraceUntil({
+      subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus ?? null,
+      subscriptionNextDueDate:
+        ownerProfileSubscription?.subscriptionNextDueDate ?? ownerProfile?.subscriptionNextDueDate ?? null,
+    })
+    const hasDynamicMemberProCrmGrace = dynamicGraceUntil !== null && dynamicGraceUntil.getTime() > now.getTime()
+
     const memberProGraceOverride =
       memberProExpired &&
-      hasTemporaryBillingGrace &&
-      hasActiveExpiredMemberProCrmGrace &&
       !hasPermanentAccess &&
       !hasActiveMainSubscription &&
-      ownerProfileSubscription?.product?.featureSlugs.includes("crm") === true
+      ownerProfileSubscription?.product?.featureSlugs.includes("crm") === true &&
+      (hasDynamicMemberProCrmGrace || (hasTemporaryBillingGrace && hasActiveExpiredMemberProCrmGrace))
 
     // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
     // ownerProfile + ownerProfileSubscription já foram buscados acima.

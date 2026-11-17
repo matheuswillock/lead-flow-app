@@ -2,12 +2,11 @@ import type {
   AccountAccessDecision,
   AccountAccessRecord,
 } from "@/app/api/shared/accountAccessDecision/types"
+import { resolveBillingGraceUntil as resolveDueDateGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
 import type { IAccountAccessDecisionService } from "./IAccountAccessDecisionService"
 
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 const RESTRICTED_SUBSCRIPTION_STATUSES = new Set(["past_due", "suspended", "canceled"])
-const BILLING_GRACE_DAYS = 5
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
   const today = now.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
@@ -20,10 +19,10 @@ function resolveBillingGraceUntil(account: AccountAccessRecord): Date | null {
   if (account.temporaryAccessGranted === true && account.temporaryAccessUntil) {
     return account.temporaryAccessUntil
   }
-  if (account.subscriptionStatus !== "past_due" || !account.subscriptionNextDueDate) {
-    return null
-  }
-  return new Date(account.subscriptionNextDueDate.getTime() + BILLING_GRACE_DAYS * DAY_MS)
+  return resolveDueDateGraceUntil({
+    subscriptionStatus: account.subscriptionStatus,
+    subscriptionNextDueDate: account.subscriptionNextDueDate ?? null,
+  })
 }
 
 export class AccountAccessDecisionService implements IAccountAccessDecisionService {

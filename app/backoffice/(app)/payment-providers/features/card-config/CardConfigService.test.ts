@@ -16,6 +16,7 @@ const abacate = (environment: string, cardEnabled: boolean, revision: number) =>
   isDefault: true,
   cardEnabled,
   revision,
+  publicKey: null,
 })
 
 describe("CardConfigService", () => {
@@ -31,7 +32,7 @@ describe("CardConfigService", () => {
       })
     )
     const result = await new CardConfigService().getAbacateCardConfig("PRODUCTION")
-    expect(result).toEqual({ environment: "PRODUCTION", cardEnabled: true, revision: 5 })
+    expect(result).toEqual({ environment: "PRODUCTION", cardEnabled: true, publicKey: null, revision: 5 })
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "/backoffice/payment-providers/config?environment=PRODUCTION"
     )
@@ -49,6 +50,7 @@ describe("CardConfigService", () => {
     expect(await new CardConfigService().getAbacateCardConfig("PRODUCTION")).toEqual({
       environment: "PRODUCTION",
       cardEnabled: true,
+      publicKey: null,
       revision: 7,
     })
   })
@@ -73,7 +75,64 @@ describe("CardConfigService", () => {
       provider: "ABACATE_PAY",
       patch: { cardEnabled: true, expectedRevision: 6 },
     })
-    expect(result).toEqual({ environment: "PRODUCTION", cardEnabled: true, revision: 7 })
+    expect(result).toEqual({ environment: "PRODUCTION", cardEnabled: true, publicKey: null, revision: 7 })
+  })
+
+  it("salva chave pública específica por ambiente", async () => {
+    let body: unknown
+    stubFetch((_url, init) => {
+      body = JSON.parse(String(init?.body))
+      return Response.json({ isValid: true, result: { ...abacate("DEV", false, 3), publicKey: "pk_dev_12345678" } })
+    })
+    const result = await new CardConfigService().setPublicKey("DEV", "pk_dev_12345678", 2)
+    expect(body).toEqual({ environment: "DEV", provider: "ABACATE_PAY", patch: { publicKey: "pk_dev_12345678", expectedRevision: 2 } })
+    expect(result.publicKey).toBe("pk_dev_12345678")
+  })
+
+  it("lista configurações genéricas sem receber valores secretos", async () => {
+    stubFetch(() => Response.json({ isValid: true, result: [
+      {
+        provider: "ABACATE_PAY",
+        environment: "DEV",
+        isDefault: true,
+        revision: 3,
+        variables: [
+          { name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", configured: true },
+          { name: "ABACATE_PAY_DEV_PUBLIC_KEY", visibility: "PUBLIC", configured: true, value: "pk_public_test" },
+        ],
+      },
+    ] }))
+    expect(await new CardConfigService().getProviderConfigs("DEV")).toEqual([{
+      provider: "ABACATE_PAY",
+      environment: "DEV",
+      revision: 3,
+      variables: [
+        { name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", configured: true },
+        { name: "ABACATE_PAY_DEV_PUBLIC_KEY", visibility: "PUBLIC", configured: true, value: "pk_public_test" },
+      ],
+    }])
+  })
+
+  it("salva variáveis por provider e revisão sem retornar o segredo", async () => {
+    let body: unknown
+    stubFetch((_url, init) => {
+      body = JSON.parse(String(init?.body))
+      return Response.json({ isValid: true, result: {
+        provider: "ABACATE_PAY",
+        environment: "DEV",
+        revision: 4,
+        variables: [{ name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", configured: true }],
+      } })
+    })
+    const result = await new CardConfigService().setProviderVariables("ABACATE_PAY", "DEV", [
+      { name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", value: "secret-value" },
+    ], 3)
+    expect(body).toEqual({ environment: "DEV", provider: "ABACATE_PAY", patch: {
+      variables: [{ name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", value: "secret-value" }],
+      expectedRevision: 3,
+    } })
+    expect(result.variables).toEqual([{ name: "ABACATE_PAY_DEV_API_KEY", visibility: "SECRET", configured: true }])
+    expect(JSON.stringify(result)).not.toContain("secret-value")
   })
 
   it("409 vira erro tipado com o status e a mensagem do servidor", async () => {

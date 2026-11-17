@@ -11,6 +11,8 @@ function setup(options: { provider?: HealthCheckCapability; factoryError?: Error
   const recorded: RecordProviderHealthCheckInput[] = []
   const repository = {
     list: async () => [],
+    readPublicVariable: async () => null,
+    readRuntimeVariables: async () => ({}),
     update: async () => {
       throw new Error("not used")
     },
