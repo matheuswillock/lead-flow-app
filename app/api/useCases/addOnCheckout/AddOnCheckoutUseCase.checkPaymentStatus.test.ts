@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 
 // T-40.19/T-40.20 de [[40 — Checkout, Adesões e Add-ons — Backend]] (E6/C32):
 // checkPaymentStatus roteia por conta e nunca vira "pendente para sempre"
@@ -6,14 +6,6 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 const findApplicableByIdMock = mock(async (_id: string) => baseAction)
 const updateStatusMock = mock(async () => {})
-const applyPendingActionByPaymentIdMock = mock(async () => {
-  const { Output } = await import("@/lib/output")
-  return new Output(true, [], [], null)
-})
-const applyPendingActionByIdMock = mock(async () => {
-  const { Output } = await import("@/lib/output")
-  return new Output(true, [], [], null)
-})
 const findAttemptByIdMock = mock(async (_id: string) => null as any)
 
 mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionRepository", () => ({
@@ -29,12 +21,6 @@ mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentPro
   },
 }))
 
-mock.module("@/app/api/useCases/pendingActions/PendingActionUseCase", () => ({
-  pendingActionUseCase: {
-    applyPendingActionByPaymentId: applyPendingActionByPaymentIdMock,
-    applyPendingActionById: applyPendingActionByIdMock,
-  },
-}))
 
 mock.module("@/app/api/services/billing/IncrementalBillingService", () => ({
   incrementalBillingService: {},
@@ -59,6 +45,26 @@ mock.module("@/lib/asaas", () => ({
     },
   }),
 }))
+
+const { pendingActionUseCase } = await import("@/app/api/useCases/pendingActions/PendingActionUseCase")
+const { Output } = await import("@/lib/output")
+
+let applyPendingActionByPaymentIdMock: any
+let applyPendingActionByIdMock: any
+
+beforeEach(() => {
+  applyPendingActionByPaymentIdMock = spyOn(pendingActionUseCase, "applyPendingActionByPaymentId").mockImplementation(
+    async () => new Output(true, [], [], null)
+  )
+  applyPendingActionByIdMock = spyOn(pendingActionUseCase, "applyPendingActionById").mockImplementation(
+    async () => new Output(true, [], [], null)
+  )
+})
+
+afterEach(() => {
+  applyPendingActionByPaymentIdMock.mockRestore()
+  applyPendingActionByIdMock.mockRestore()
+})
 
 const { AddOnCheckoutUseCase } = await import("./AddOnCheckoutUseCase")
 
