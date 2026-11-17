@@ -124,9 +124,12 @@ const buildTemplateWebhookUrl = (appUrl: string, teamId: string, tokenMode: Disp
   return `${normalized}/api/webhooks/studio/${teamId}/[token]`;
 };
 
-const buildLeadFormUrl = (appUrl: string, teamId: string): string => {
+const buildLeadFormUrl = (appUrl: string, supabaseId: string | null, teamId: string): string => {
   const normalized = normalizeAppUrl(appUrl);
-  return `${normalized}/lead-form/${teamId}`;
+  if (!supabaseId) {
+    return `${normalized}/lead-form/${teamId}`;
+  }
+  return `${normalized}/lead-form/${supabaseId}/${teamId}`;
 };
 
 const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: DisplayTokenMode, token?: string): string => {
@@ -159,7 +162,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         return new Output(false, [], ["Time não encontrado"], null);
       }
 
-      const leadFormFullUrl = buildLeadFormUrl(input.appUrl, input.teamId);
+      const leadFormFullUrl = buildLeadFormUrl(input.appUrl, team.master.supabaseId, input.teamId);
       const leadFormUrl = await shortLinkService.getOrCreate({ targetUrl: leadFormFullUrl });
 
       // DA1: TeamWebhook (inbound) é a única fonte de verdade. O legado só é
