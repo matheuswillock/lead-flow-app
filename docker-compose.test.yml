@@ -18,6 +18,12 @@
 #
 # SELinux (Fedora): o repo é montado com `label=disable` em vez de `:Z`, para
 # não reetiquetar (nem varrer) o checkout e o node_modules do host.
+#
+# Default só para invocação manual. `scripts/lib/test-compose.ts` sempre passa
+# `-p leadflow-test-<worktree>` (sobrepõe este `name`), porque duas worktrees
+# com este mesmo nome fixo compartilhariam container_name e os volumes
+# test_next_cache/test_node_modules — um `next build` de uma worktree
+# corrompendo o `.next` que a outra está lendo/escrevendo ao mesmo tempo.
 # =============================================================================
 
 name: leadflow-test

@@ -355,6 +355,7 @@ export function CarteiraDetailModal({
     setIsSaving(true);
     try {
       await onSave(detail.leadId, {
+        contractType: data.contractType,
         operadora: data.operadora,
         productName: data.productName ?? null,
         amount: data.amount,
@@ -364,6 +365,7 @@ export function CarteiraDetailModal({
         notes: data.notes ?? null,
         holder: {
           name: data.contractHolder.name,
+          razaoSocial: data.contractHolder.razaoSocial ?? null,
           birthDate: data.contractHolder.birthDate.toISOString(),
           document: sanitizeRgCpfDigits(data.contractHolder.document),
           cnpj: data.contractHolder.cnpj ?? null,
