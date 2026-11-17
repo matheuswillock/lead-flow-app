@@ -6,7 +6,7 @@ Leia este arquivo somente para páginas, componentes, formulários, estilos ou i
 
 - Leia `DESIGN.md` e `PRODUCT.md` antes de UI ou copy.
 - Use `docs/design/ROTEAMENTO-SKILLS-DESIGN.md` para escolher skills; não escolha por semelhança de descrição.
-- Para tela/componente novo, use `corretor-studio-design` e o workflow shadcn antes do JSX.
+- Para tela ou componente visual novo ou alterado, siga `.claude/skills/screen-design-gate/SKILL.md`: briefing `impeccable shape` aprovado antes do JSX e validação completa depois da implementação. Depois do briefing aprovado, use `corretor-studio-design` e o workflow shadcn.
 - Landing pública exige o gate e a aprovação de copy definidos em `docs/design/METODO-LANDING-PAGE.md`.
 
 ## Arquitetura

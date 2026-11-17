@@ -17,7 +17,7 @@ motion, e o modelo oscila entre direções incompatíveis.
 |---|---|---|
 | **Landing nova** | `corretor-studio-design` → `corretor-studio-ui` → `design-system-guard` | `design-taste-frontend` (só composição) |
 | **Redesign de landing** | `corretor-studio-design` → `corretor-studio-ui` → `design-system-guard` | `design-taste-frontend` (preserve vs overhaul) |
-| **Tela nova no app** | `corretor-studio-design` → `corretor-studio-frontend` → `corretor-studio-ui` → `design-system-guard` | `visual-feature-planner` (4+ componentes) |
+| **Tela nova no app** | `impeccable shape` (briefing aprovado) → `corretor-studio-design` → `corretor-studio-frontend` → `corretor-studio-ui` → `design-system-guard` → `impeccable` (harden, clarify, adapt, typeset, colorize, polish) → verificação renderizada. Gate completo em `.claude/skills/screen-design-gate/SKILL.md` | `visual-feature-planner` (4+ componentes) |
 | **Componente / polimento** | `design-system-guard` | `make-interfaces-feel-better`, `emil-design-eng` (só motion) |
 | **Tokens / design system** | `corretor-studio-design` → editar `DESIGN.md` §9 → `bun run design:sync` → `design-system-guard` | — |
 | **Marca / logo / brand kit** | `brandkit` | `imagegen-frontend-web` |
