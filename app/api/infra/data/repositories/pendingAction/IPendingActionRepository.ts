@@ -20,6 +20,9 @@ export const applicablePendingActionSelect = {
   // paymentId nasceu — master.asaasCustomerAccount pode migrar depois
   // (E4, checkout de operador). Ver comentário no schema.
   asaasAccount: true,
+  provider: true,
+  providerAttemptId: true,
+  providerExternalId: true,
   createdAt: true,
   updatedAt: true,
   master: {

@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
@@ -298,7 +299,9 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Checkout expirado. Gere um novo link de pagamento."], null);
       }
 
-      if (!pendingAction.paymentId) {
+      const isAbacatePay = pendingAction.provider === "ABACATE_PAY";
+
+      if (!isAbacatePay && !pendingAction.paymentId) {
         return new Output(
           false,
           [],
@@ -307,68 +310,133 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         );
       }
 
-      // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
-      // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
-      // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
-      // desde então (E4, checkout de operador migra o master de conta).
-      const account = pendingAction.asaasAccount;
+      const paymentId = pendingAction.paymentId ?? `provider-${pendingAction.providerExternalId}`;
+
       let payment: { status?: string; value?: number; dueDate?: string } | null = null;
+      let wasConfirmed = false;
 
-      try {
-        const client = createAsaasClient(account);
-        payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
-          method: "GET",
-        });
-      } catch (error) {
-        // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
-        // pode virar "pendente para sempre" nem 500 — degrada para o
-        // status persistido pelo webhook (última verdade conhecida).
-        console.error(
-          "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
-          { pendingActionId, paymentId: pendingAction.paymentId, account, error }
-        );
+      if (isAbacatePay) {
+        // Buscar status da tentativa no PaymentProviderSessionRepository
+        if (!pendingAction.providerAttemptId) {
+          return new Output(
+            false,
+            [],
+            ["Tentativa de pagamento não foi registrada"],
+            null
+          );
+        }
 
-        const persistedStatus =
-          pendingAction.status === "applied"
-            ? "CONFIRMED"
-            : pendingAction.status === "canceled"
-              ? "CANCELED"
-              : "PENDING";
+        try {
+          const attempt = await paymentProviderSessionRepository.findAttemptById(
+            pendingAction.providerAttemptId
+          );
+          if (!attempt) {
+            return new Output(
+              false,
+              [],
+              ["Tentativa de pagamento não encontrada"],
+              null
+            );
+          }
 
-        const degradedResponse: PaymentStatusResponse = {
-          paymentId: pendingAction.paymentId,
-          status: persistedStatus,
-          amount: null,
-          dueDate: null,
-          pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
-        };
+          // Status da tentativa: CREATED, PENDING, CONFIRMED, FAILED, REFUNDED, etc.
+          wasConfirmed = attempt.status === "CONFIRMED";
+          payment = { status: attempt.status };
+        } catch (error) {
+          console.error(
+            "[AddOnCheckoutUseCase][checkPaymentStatus] Erro ao buscar status AbacatePay",
+            { pendingActionId, providerAttemptId: pendingAction.providerAttemptId, error }
+          );
 
-        return new Output(true, [], [], degradedResponse);
+          // Degradação: usar status persistido
+          const persistedStatus =
+            pendingAction.status === "applied"
+              ? "CONFIRMED"
+              : pendingAction.status === "canceled"
+                ? "CANCELED"
+                : "PENDING";
+
+          const degradedResponse: PaymentStatusResponse = {
+            paymentId,
+            status: persistedStatus,
+            amount: null,
+            dueDate: null,
+            pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+          };
+
+          return new Output(true, [], [], degradedResponse);
+        }
+      } else {
+        // Fluxo Asaas (padrão)
+        // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
+        // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
+        // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
+        // desde então (E4, checkout de operador migra o master de conta).
+        const account = pendingAction.asaasAccount;
+
+        try {
+          const client = createAsaasClient(account);
+          payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
+            method: "GET",
+          });
+        } catch (error) {
+          // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
+          // pode virar "pendente para sempre" nem 500 — degrada para o
+          // status persistido pelo webhook (última verdade conhecida).
+          console.error(
+            "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
+            { pendingActionId, paymentId: pendingAction.paymentId, account, error }
+          );
+
+          const persistedStatus =
+            pendingAction.status === "applied"
+              ? "CONFIRMED"
+              : pendingAction.status === "canceled"
+                ? "CANCELED"
+                : "PENDING";
+
+          const degradedResponse: PaymentStatusResponse = {
+            paymentId,
+            status: persistedStatus,
+            amount: null,
+            dueDate: null,
+            pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+          };
+
+          return new Output(true, [], [], degradedResponse);
+        }
+
+        if (!payment) {
+          return new Output(
+            false,
+            [],
+            ["Erro ao buscar status do pagamento"],
+            null
+          );
+        }
+
+        // Check if payment was received/confirmed
+        // Asaas status: PENDING, RECEIVED, CONFIRMED, FAILED, EXPIRED, CANCELED
+        wasConfirmed = payment.status === "RECEIVED" || payment.status === "CONFIRMED";
       }
-
-      if (!payment) {
-        return new Output(
-          false,
-          [],
-          ["Erro ao buscar status do pagamento"],
-          null
-        );
-      }
-
-      // Check if payment was received/confirmed
-      // Asaas status: PENDING, RECEIVED, CONFIRMED, FAILED, EXPIRED, CANCELED
-      const wasConfirmed = payment.status === "RECEIVED" || payment.status === "CONFIRMED";
 
       // If payment was confirmed and PendingAction is still pending, run the full apply flow
       // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, account);
+        if (isAbacatePay) {
+          await pendingActionUseCase.applyPendingActionById(pendingAction.id);
+        } else if (pendingAction.paymentId) {
+          await pendingActionUseCase.applyPendingActionByPaymentId(
+            pendingAction.paymentId,
+            pendingAction.asaasAccount
+          );
+        }
         currentStatus = "applied";
       }
 
       const statusResponse: PaymentStatusResponse = {
-        paymentId: pendingAction.paymentId,
+        paymentId,
         status: payment.status ?? "PENDING",
         amount: payment.value ?? null,
         dueDate: payment.dueDate ?? null,

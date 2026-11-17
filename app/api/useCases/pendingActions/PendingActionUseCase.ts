@@ -73,6 +73,15 @@ export class PendingActionUseCase {
     return this.applyResolvedPendingAction(action, paymentId);
   }
 
+  async applyPendingActionById(id: string): Promise<Output> {
+    const action = await pendingActionRepository.findApplicableById(id);
+    if (!action) {
+      return new Output(false, [], ["Ação pendente não encontrada"], null);
+    }
+
+    return this.applyResolvedPendingAction(action);
+  }
+
   // account: conta Asaas de onde o evento se origina (E3 de
   // [[40 — Checkout, Adesões e Add-ons — Backend]]) — propagada pelo chamador
   // (webhook, rota de confirmação), nunca lida do transporte global.
