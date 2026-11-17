@@ -241,6 +241,16 @@ export class IncrementalBillingService implements IIncrementalBillingService {
   }
 
   async createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult> {
+    // TODO(Fase B-1): Reescrever este método para usar PaymentProviderRouter + AbacatePayProvider direto.
+    // Padrão: BillingGracePaymentService.startPayment() linhas 102-187.
+    // - Chamar createPaymentProviderRouter(environment) → router.select({capabilities: ["ONE_TIME_PAYMENT", "PIX"/"CARD"]})
+    // - Criar PaymentProviderSession + Attempt via paymentProviderSessionRepository
+    // - Chamar provider.createPixPayment() ou provider.createCardPayment()
+    // - Suportar PIX/CARD; remover BOLETO (AbacatePay não suporta)
+    // - Registrar provider* fields via pendingActionRepository.attachProviderAttempt()
+    // - Nenhum fallback para Asaas: sempre AbacatePay para cobrança nova
+    // - Preservar backward-compat: cobrança Asaas antiga (paymentId já existe) não muda provider
+
     const customerId = await this.ensureCustomer(input.master, input.customerOverride);
 
     let billingType: IncrementalBillingType = "UNDEFINED";

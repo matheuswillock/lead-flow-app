@@ -152,6 +152,21 @@ export interface IPendingActionRepository {
   findProfileContact(profileId: string): Promise<PendingActionProfileContact | null>;
   linkProfileSupabaseIdentity(profileId: string, supabaseId: string): Promise<void>;
 
+  // Fase B: registra a tentativa do provider após criação bem-sucedida.
+  attachProviderAttempt(input: {
+    id: string;
+    provider: string;
+    providerEnvironment: string;
+    providerSessionId: string;
+    providerAttemptId: string;
+    providerExternalId: string;
+  }): Promise<PendingAction | null>;
+  // Fase B: atualiza a tentativa do provider durante polling.
+  updateProviderAttempt(input: {
+    id: string;
+    providerExternalId?: string;
+  }): Promise<void>;
+
   /**
    * Executa a orquestração da aplicação numa única transação. O UseCase mantém a
    * ordem das operações; o cliente Prisma não sai desta camada.
