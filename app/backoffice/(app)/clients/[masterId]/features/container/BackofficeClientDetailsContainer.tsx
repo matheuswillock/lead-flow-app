@@ -1692,6 +1692,7 @@ export function BackofficeClientDetailsContainer() {
         masterId={masterId}
         teams={details?.allTeams ?? []}
         masterUserType={details?.userType}
+        hasUnlimitedUsers={details?.hasUnlimitedUsers}
         service={service}
         onOpenChange={setAddMemberOpen}
         onSaved={reload}
