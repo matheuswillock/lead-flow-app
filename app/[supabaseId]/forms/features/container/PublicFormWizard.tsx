@@ -76,7 +76,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { usePublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
 import type { PublicFormDomainStatus } from "@/lib/public-forms/share-base-url/usePublicFormDomainStatus"
 import {
@@ -2803,7 +2802,8 @@ function Review({
   const hasMappedContactQuestion = d.questions.some(
     (question) => question.mappingTarget === "native_field" && question.mappingKey === "phone",
   )
-  const checks = [
+  type Check = { ok: boolean; text: string } & ({ step: number } | { href: string })
+  const checks: Check[] = [
     { ok: Boolean(d.name.trim()), text: "Nome definido", step: 0 },
     { ok: d.questions.length > 0, text: "Ao menos uma pergunta", step: 2 },
     {
@@ -2852,6 +2852,15 @@ function Review({
       text: "Página de agradecimento definida",
       step: 3,
     },
+    ...(isCatalogTemplate
+      ? []
+      : [
+          {
+            ok: formDomain.isVerified,
+            text: "Subdomínio de formulários verificado",
+            href: formSettingsHref,
+          },
+        ]),
   ]
   const ready = checks.every((c) => c.ok)
   return (
@@ -2860,13 +2869,19 @@ function Review({
         <ul className="flex flex-col gap-2 text-sm">
           {checks.map((c) => (
             <li key={c.text} className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                className="text-left hover:underline"
-                onClick={() => onGoToStep(c.step)}
-              >
-                {c.text}
-              </button>
+              {"href" in c ? (
+                <Link href={c.href} className="text-left hover:underline">
+                  {c.text}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="text-left hover:underline"
+                  onClick={() => onGoToStep(c.step)}
+                >
+                  {c.text}
+                </button>
+              )}
               <Badge variant={c.ok ? "secondary" : "destructive"}>{c.ok ? "Ok" : "Pendente"}</Badge>
             </li>
           ))}
@@ -2892,27 +2907,9 @@ function Review({
           <AlertDescription>Conclua os itens pendentes antes de publicar.</AlertDescription>
         </Alert>
       ) : null}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button
-                disabled={!ready || publishing || (!isCatalogTemplate && !formDomain.isVerified)}
-                onClick={onPublish}
-              >
-                {publishing ? "Publicando..." : isCatalogTemplate ? "Publicar template" : "Publicar formulário"}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          {!isCatalogTemplate && !formDomain.isVerified ? (
-            <TooltipContent>
-              <Link href={formSettingsHref}>
-                Configure e verifique o subdomínio dos formulários para publicar.
-              </Link>
-            </TooltipContent>
-          ) : null}
-        </Tooltip>
-      </TooltipProvider>
+      <Button disabled={!ready || publishing} onClick={onPublish}>
+        {publishing ? "Publicando..." : isCatalogTemplate ? "Publicar template" : "Publicar formulário"}
+      </Button>
     </div>
   )
 }

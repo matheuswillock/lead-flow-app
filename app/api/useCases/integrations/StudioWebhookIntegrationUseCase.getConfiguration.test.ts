@@ -135,4 +135,17 @@ describe("StudioWebhookIntegrationUseCase.getConfiguration (SPEC 10, DA1)", () =
     expect((output.result as { configured: boolean }).configured).toBe(true);
     expect((output.result as { tokenPreview: string }).tokenPreview).toBe("Sem token");
   });
+
+  it("link do formulário inclui supabaseId do master e teamId → /lead-form/[supabaseId]/[teamId]", async () => {
+    findInboundByTeamIdMock.mockClear();
+    findInboundByTeamIdMock.mockImplementation(async () => null);
+
+    const useCase = new StudioWebhookIntegrationUseCase(makeService());
+
+    const output = await useCase.getConfiguration({ teamId: "team-1", appUrl: "https://app.test" });
+
+    expect((output.result as { leadFormFullUrl: string }).leadFormFullUrl).toBe(
+      "https://app.test/lead-form/supabase-1/team-1"
+    );
+  });
 });
