@@ -15,6 +15,7 @@ export type PlatformCheckoutApiResult = {
   teamId: string | null
   metadata?: unknown
   availableBillingTypes?: unknown
+  cardCheckout?: { provider: "ABACATE_PAY"; publicKey: string } | null
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -66,6 +67,7 @@ export function mapPlatformPurchaseToCheckoutData(
     paymentId: null,
     presetBillingType: billingType,
     availableBillingTypes: normalizeAvailableBillingTypes(purchase.availableBillingTypes),
+    cardCheckout: purchase.cardCheckout ?? null,
     addonType: "user",
     addonLabel: planLabel,
     addonDetail: [

@@ -152,12 +152,13 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "SET_PROCESSING", payload: true });
       try {
         if (state.data.checkoutSource === "platform_purchase") {
-          // Compra genérica: só PIX; o status vem de refreshPaymentStatus (sem polling legado).
-          const pixPayment = await addOnCheckoutService.createPlatformPixPayment(
-            state.data.pendingActionId,
-            input
-          );
-          dispatch({ type: "SET_PAYMENT_DATA", payload: pixPayment });
+          if (input.billingType !== state.data.presetBillingType) {
+            dispatch({ type: "SET_BILLING_TYPE", payload: input.billingType })
+          }
+          const payment = input.billingType === "CREDIT_CARD"
+            ? await addOnCheckoutService.createPlatformCardPayment(state.data.pendingActionId, input)
+            : await addOnCheckoutService.createPlatformPixPayment(state.data.pendingActionId, input)
+          dispatch({ type: "SET_PAYMENT_DATA", payload: payment });
           dispatch({ type: "SET_STEP", payload: "payment" });
           return;
         }

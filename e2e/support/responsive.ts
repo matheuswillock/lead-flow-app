@@ -125,10 +125,52 @@ export async function assertNoHorizontalOverflow(
   for (const width of widths) {
     await page.setViewportSize({ width, height: 800 });
     await waitForLayoutSettle(page);
-    const noOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-    );
-    expect(noOverflow, `sem overflow horizontal em ${width}px`).toBe(true);
+    // Em caso de overflow, nomeia quem passa da borda direita da janela: sem
+    // isso a falha só diz "false" e o elemento é caçado às cegas em CI.
+    const overflow = await page.evaluate(() => {
+      const viewportWidth = window.innerWidth;
+      const describe = (element: Element) => {
+        const id = element.id ? `#${element.id}` : "";
+        const classes = (element.getAttribute("class") ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 3);
+        const rect = element.getBoundingClientRect();
+        return `${element.tagName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join("")} (esquerda ${rect.left.toFixed(0)}, direita ${rect.right.toFixed(0)}, largura ${rect.width.toFixed(0)})`;
+      };
+      const hasOverflow = document.documentElement.scrollWidth > viewportWidth + 1;
+      const offenders = hasOverflow
+        ? Array.from(document.querySelectorAll("body *"))
+            .filter((element) => element.getBoundingClientRect().right > viewportWidth + 1)
+            .slice(0, 8)
+            .map(describe)
+        : [];
+      return { hasOverflow, scrollWidth: document.documentElement.scrollWidth, viewportWidth, offenders };
+    });
+    // Sem elemento fora da borda, o overflow vem de pseudo-elemento ou de
+    // transform (o scroll horizontal conta os dois, getBoundingClientRect não).
+    // Esconde um elemento por vez e lista os que fazem o overflow sumir: a
+    // cadeia de ancestrais em ordem de documento, terminando no culpado.
+    const hidingFixes =
+      overflow.hasOverflow && overflow.offenders.length === 0
+        ? await page.evaluate(() => {
+            const limit = window.innerWidth + 1;
+            const found: string[] = [];
+            for (const element of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+              const previous = element.style.display;
+              element.style.display = "none";
+              const fixed = document.documentElement.scrollWidth <= limit;
+              element.style.display = previous;
+              if (!fixed) continue;
+              const id = element.id ? `#${element.id}` : "";
+              const classes = (element.getAttribute("class") ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 3);
+              found.push(`${element.tagName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join("")}`);
+              if (found.length >= 15) break;
+            }
+            return found;
+          })
+        : [];
+    expect(
+      overflow.hasOverflow,
+      `sem overflow horizontal em ${width}px (scrollWidth ${overflow.scrollWidth} > ${overflow.viewportWidth}); passam da borda: ${overflow.offenders.join(" | ") || "nenhum elemento identificado"}${hidingFixes.length > 0 ? `; esconder resolve (do ancestral ao culpado): ${hidingFixes.join(" > ")}` : ""}`,
+    ).toBe(false);
   }
 }
 
@@ -226,8 +268,7 @@ export async function assertReducedMotion(
   options: ReducedMotionOptions = {},
 ): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.reload();
-  await page.waitForLoadState("load");
+  await page.reload({ waitUntil: "domcontentloaded" });
   await waitForLayoutSettle(page);
 
   const infiniteAnimations = await page.evaluate(

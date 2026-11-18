@@ -8,10 +8,26 @@
  *   container Stage -> lista de comandos, com o mesmo ambiente do `e2e:ci`.
  */
 
+import { basename } from "node:path";
 import { buildE2eEnv, parseEnvFile, type EnvMap } from "../ci-e2e";
 
 export const COMPOSE_FILE = "docker-compose.test.yml";
-export const COMPOSE_PROJECT = "leadflow-test";
+
+/**
+ * Nome do projeto isolado por worktree. O `name: leadflow-test` fixo no YAML
+ * faz duas worktrees (sessões Claude em paralelo) caírem no mesmo projeto —
+ * mesmos container_name e mesmos volumes nomeados (.next, node_modules).
+ * Um `next build` de uma worktree escrevendo no `.next` compartilhado
+ * enquanto outra lê/escreve o mesmo volume corrompe o manifest de rotas ao
+ * acaso ("client reference manifest does not exist" em rotas não relacionadas
+ * à mudança sendo testada). `-p` sobrepõe o `name:` do YAML.
+ */
+export function projectNameFor(cwd: string): string {
+  const slug = basename(cwd).toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  return `leadflow-test-${slug || "default"}`;
+}
+
+export const COMPOSE_PROJECT = projectNameFor(process.cwd());
 
 export const SUITES = ["unit", "integration", "e2e", "all"] as const;
 export type Suite = (typeof SUITES)[number];
@@ -38,7 +54,7 @@ export function isStage(value: string | undefined): value is Stage {
 // ---------------------------------------------------------------------------
 
 function compose(args: string[]): string[] {
-  return ["compose", "-f", COMPOSE_FILE, ...args];
+  return ["compose", "-p", COMPOSE_PROJECT, "-f", COMPOSE_FILE, ...args];
 }
 
 /** `build` da imagem do runner — barato quando já está em cache. */

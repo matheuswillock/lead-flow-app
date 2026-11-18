@@ -4,9 +4,12 @@ import { main, runSuite, type ComposeDeps } from "../test-compose";
 import {
   buildTestEnv,
   commandsForStage,
+  COMPOSE_FILE,
+  COMPOSE_PROJECT,
   downArgs,
   isStage,
   isSuite,
+  projectNameFor,
   runStage,
   runSuiteArgs,
   type Command,
@@ -39,7 +42,7 @@ describe("validação de suíte e etapa", () => {
 describe("argumentos do podman compose", () => {
   it("roda a suíte no serviço tests com o profile certo", () => {
     expect(runSuiteArgs("e2e")).toEqual([
-      "compose", "-f", "docker-compose.test.yml", "--profile", "tests",
+      "compose", "-p", COMPOSE_PROJECT, "-f", COMPOSE_FILE, "--profile", "tests",
       "run", "--rm", "tests", "bun", "scripts/test-compose-entry.ts", "e2e",
     ]);
   });
@@ -47,6 +50,22 @@ describe("argumentos do podman compose", () => {
   it("só apaga volumes quando pedido", () => {
     expect(downArgs({ volumes: false })).not.toContain("--volumes");
     expect(downArgs({ volumes: true })).toContain("--volumes");
+  });
+});
+
+describe("projectNameFor", () => {
+  it("isola o projeto por worktree (basename do cwd)", () => {
+    expect(projectNameFor("/home/dev/.claude/worktrees/great-golick-bc23ab")).toBe(
+      "leadflow-test-great-golick-bc23ab",
+    );
+  });
+
+  it("sanitiza nomes com caracteres fora de a-z0-9-", () => {
+    expect(projectNameFor("/home/dev/Lead Flow App")).toBe("leadflow-test-lead-flow-app");
+  });
+
+  it("cai para 'default' se o basename sanitizar para vazio", () => {
+    expect(projectNameFor("/")).toBe("leadflow-test-default");
   });
 });
 

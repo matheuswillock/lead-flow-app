@@ -24,6 +24,8 @@ const includeSlow = process.env.E2E_INCLUDE_SLOW === "true";
 export default defineConfig({
   testDir: "e2e/specs",
   testIgnore: ["**/_template.spec.ts"],
+  // Prepara dados compartilhados entre specs (landing pages publicadas).
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

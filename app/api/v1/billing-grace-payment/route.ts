@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     : await useCase.getQuote(supabaseId)
   return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
 }
-
 export async function POST(request: NextRequest) {
   const supabaseId = request.headers.get("x-supabase-user-id")
   if (!supabaseId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
