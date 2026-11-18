@@ -63,6 +63,7 @@ import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDial
 import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
+import { BackofficeInvoiceActionsMenu } from "../components/BackofficeInvoiceActionsMenu"
 import { BackofficeClientEmailsProvider } from "../emails/context/BackofficeClientEmailsContext"
 import { BackofficeClientEmailsShell } from "../emails/container/BackofficeClientEmailsShell"
 import type { EmailSection } from "../emails/context/BackofficeClientEmailsTypes"
@@ -77,7 +78,6 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
 import { cn } from "@/lib/utils"
-import { canCancelInvoice } from "../utils/invoiceActions"
 import {
   MEMBER_PRO_MAX_DAYS,
   memberProExpiresAtFromDays,
@@ -109,6 +109,24 @@ const INVOICE_STATUS_BADGES: Record<
     className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
   },
   other: { label: "Em processamento", variant: "secondary" },
+}
+
+function getInvoiceStatusLabel(invoice: BackofficeClientInvoice): string {
+  if (invoice.status === "WAIVED") return "Dispensada"
+  if (invoice.source === "adhesion_external") return "Pago externamente"
+  if (invoice.status === "PENDING" && invoice.source === "pending_action") {
+    return "Aguardando checkout"
+  }
+  return INVOICE_STATUS_BADGES[invoice.statusGroup].label
+}
+
+function InvoiceStatusBadge({ invoice }: { invoice: BackofficeClientInvoice }) {
+  const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
+  return (
+    <Badge variant={statusInfo.variant} className={statusInfo.className}>
+      {getInvoiceStatusLabel(invoice)}
+    </Badge>
+  )
 }
 
 const TEAM_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -1178,7 +1196,45 @@ export function BackofficeClientDetailsContainer() {
                     <p className="text-sm text-muted-foreground">Nenhuma fatura encontrada.</p>
                   ) : (
                     <div className="space-y-3">
-                      <div className="rounded-md border overflow-hidden">
+                      <ul className="flex flex-col gap-3 md:hidden">
+                        {invoices.map((invoice) => (
+                          <li
+                            key={invoice.id}
+                            className="flex flex-col gap-3 rounded-lg border bg-card p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{invoice.invoiceName}</p>
+                                <p
+                                  className="truncate font-mono text-xs text-muted-foreground"
+                                  title={invoice.invoiceIdDisplay}
+                                >
+                                  {invoice.invoiceIdDisplay}
+                                </p>
+                              </div>
+                              <BackofficeInvoiceActionsMenu
+                                invoice={invoice}
+                                clientId={details.id}
+                                onCancel={setInvoiceToCancel}
+                                triggerClassName="size-11 shrink-0"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <InvoiceStatusBadge invoice={invoice} />
+                              <span className="font-medium tabular-nums">
+                                {formatCurrency(invoice.value)}
+                              </span>
+                            </div>
+                            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                              <dt className="text-muted-foreground">Data</dt>
+                              <dd>{formatNullableDate(invoice.dateCreated, tz)}</dd>
+                              <dt className="text-muted-foreground">Vencimento</dt>
+                              <dd>{formatNullableDate(invoice.dueDate, tz)}</dd>
+                            </dl>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="hidden rounded-md border overflow-hidden md:block">
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
@@ -1228,16 +1284,6 @@ export function BackofficeClientDetailsContainer() {
                           </TableHeader>
                           <TableBody>
                             {invoices.map((invoice) => {
-                              const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
-                              const statusLabel =
-                                invoice.status === "WAIVED"
-                                  ? "Dispensada"
-                                  : invoice.source === "adhesion_external"
-                                    ? "Pago externamente"
-                                    : invoice.status === "PENDING" && invoice.source === "pending_action"
-                                      ? "Aguardando checkout"
-                                      : statusInfo.label
-
                               return (
                                 <TableRow key={invoice.id} className="h-12">
                                   <TableCell
@@ -1259,47 +1305,14 @@ export function BackofficeClientDetailsContainer() {
                                     {formatCurrency(invoice.value)}
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <Badge
-                                      variant={statusInfo.variant}
-                                      className={statusInfo.className}
-                                    >
-                                      {statusLabel}
-                                    </Badge>
+                                    <InvoiceStatusBadge invoice={invoice} />
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm" className="size-8">
-                                          <MoreHorizontal />
-                                          <span className="sr-only">Ações da fatura</span>
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem asChild>
-                                          <Link href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}>
-                                            <Eye />
-                                            Visualizar
-                                          </Link>
-                                        </DropdownMenuItem>
-                                        {invoice.checkoutUrl ? (
-                                          <DropdownMenuItem asChild>
-                                            <a href={invoice.checkoutUrl} target="_blank" rel="noopener noreferrer">
-                                              <ExternalLink />
-                                              Checkout
-                                            </a>
-                                          </DropdownMenuItem>
-                                        ) : null}
-                                        {canCancelInvoice(invoice) ? (
-                                          <DropdownMenuItem
-                                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                            onClick={() => setInvoiceToCancel(invoice)}
-                                          >
-                                            <X />
-                                            Cancelar
-                                          </DropdownMenuItem>
-                                        ) : null}
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    <BackofficeInvoiceActionsMenu
+                                      invoice={invoice}
+                                      clientId={details.id}
+                                      onCancel={setInvoiceToCancel}
+                                    />
                                   </TableCell>
                                 </TableRow>
                               )
