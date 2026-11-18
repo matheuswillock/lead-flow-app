@@ -21,7 +21,7 @@ const paymentCreatePixMock = mock(async (_input: unknown) => ({
 const cardCreateMock = mock(async (_input: unknown) => ({}))
 const sessionCreateMock = mock(async (_input: unknown) => ({ id: "session-1" }))
 const attemptCreateMock = mock(async (_input: unknown) => ({ id: "attempt-1" }))
-const leaseMock = mock(async (_input: unknown) => ({ id: "attempt-1", lease: { token: "lease" } }))
+const leaseMock = mock(async (_input: unknown) => ({ id: "attempt-1", status: "CREATED", lease: { token: "lease" } }))
 const updateAttemptMock = mock(async (_input: unknown) => ({
   id: "attempt-1",
   externalId: "bill_1",

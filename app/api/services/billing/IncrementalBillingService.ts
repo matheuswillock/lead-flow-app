@@ -312,6 +312,10 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       now: new Date(),
       ttlMs: 60_000,
     });
+    // Achado Codex (PR #1407): PENDING já foi aceita pelo provedor (corrida ou retry); cobrar de novo duplica a cobrança.
+    if (leased.status !== "CREATED") {
+      throw new Error("Cobrança já enviada ao provedor para esta ação; atualize a página para ver o pagamento");
+    }
 
     const common = {
       amountInCents,
