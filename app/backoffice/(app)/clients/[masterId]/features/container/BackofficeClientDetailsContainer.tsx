@@ -1182,13 +1182,13 @@ export function BackofficeClientDetailsContainer() {
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[14%] px-4 text-left">
+                              <TableHead className="w-[18%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   ID
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[12%] px-4 text-left">
+                              <TableHead className="w-[16%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Nome
@@ -1212,13 +1212,13 @@ export function BackofficeClientDetailsContainer() {
                                   Valor
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[12%] px-4 text-center">
+                              <TableHead className="w-[14%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Status
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[26%] px-4 text-center">
+                              <TableHead className="w-[16%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Eye className="h-3.5 w-3.5" />
                                   Ações
@@ -1267,38 +1267,39 @@ export function BackofficeClientDetailsContainer() {
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <div className="inline-flex flex-wrap items-center justify-center gap-2">
-                                      <Button asChild variant="outline" size="sm">
-                                        <Link
-                                          href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
-                                          className="inline-flex items-center gap-1"
-                                        >
-                                          <Eye className="h-3.5 w-3.5" />
-                                          Visualizar
-                                        </Link>
-                                      </Button>
-                                      {invoice.checkoutUrl ? (
-                                        <Button asChild variant="default" size="sm">
-                                          <a
-                                            href={invoice.checkoutUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="size-8">
+                                          <MoreHorizontal />
+                                          <span className="sr-only">Ações da fatura</span>
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem asChild>
+                                          <Link href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}>
+                                            <Eye />
+                                            Visualizar
+                                          </Link>
+                                        </DropdownMenuItem>
+                                        {invoice.checkoutUrl ? (
+                                          <DropdownMenuItem asChild>
+                                            <a href={invoice.checkoutUrl} target="_blank" rel="noopener noreferrer">
+                                              <ExternalLink />
+                                              Checkout
+                                            </a>
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                        {canCancelInvoice(invoice) ? (
+                                          <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                            onClick={() => setInvoiceToCancel(invoice)}
                                           >
-                                            Checkout
-                                          </a>
-                                        </Button>
-                                      ) : null}
-                                      {canCancelInvoice(invoice) ? (
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          className="text-destructive hover:text-destructive"
-                                          onClick={() => setInvoiceToCancel(invoice)}
-                                        >
-                                          Cancelar
-                                        </Button>
-                                      ) : null}
-                                    </div>
+                                            <X />
+                                            Cancelar
+                                          </DropdownMenuItem>
+                                        ) : null}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   </TableCell>
                                 </TableRow>
                               )
