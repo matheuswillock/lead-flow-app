@@ -41,6 +41,24 @@ describe("skills sync", () => {
     ]);
   });
 
+  test("rejects frontmatter that is not valid YAML, naming the source", () => {
+    expect(() =>
+      parseFrontmatter(
+        "---\ndescription: Usar quando: pede tela\n---\nBody",
+        "bad-skill.md",
+      ),
+    ).toThrow("frontmatter YAML inválido em bad-skill.md");
+  });
+
+  test("keeps boolean frontmatter as the string the adapters compare against", () => {
+    const parsed = parseFrontmatter(
+      '---\ndescription: "Usar quando: pede tela"\nalwaysApply: true\n---\nBody',
+    );
+
+    expect(parsed.frontmatter.description).toBe("Usar quando: pede tela");
+    expect(parsed.frontmatter.alwaysApply).toBe("true");
+  });
+
   test("rejects an unknown target", () => {
     expect(() => resolveSkillTargets("claude,unknown")).toThrow(
       "Unknown skill target: unknown",

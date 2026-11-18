@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
+import { useIsReadOnlyAccess } from "@/app/[supabaseId]/components/useIsReadOnlyAccess";
 import { cn } from "@/lib/utils";
 import {
     isMeetingFollowUpOverdue,
@@ -56,6 +57,7 @@ function LeadCardComponent({
     attachmentCount = 0,
 }: LeadCardProps) {
     const { leadCardDisplay } = useBoardContext();
+    const isReadOnlyAccess = useIsReadOnlyAccess();
     const { tz } = useTimezone();
     const showName = leadCardDisplay.name;
     const showId = leadCardDisplay.id;
@@ -67,14 +69,16 @@ function LeadCardComponent({
     const hasHeaderInfo = showName || showId || showEntryDate;
 
     // Verifica se o lead está em uma coluna que permite finalizar contrato
-    const canFinalizeContract = columnKey === 'invoicePayment' || 
+    // Em somente leitura nenhuma ação de escrita aparece no cartão.
+    const canWrite = !isReadOnlyAccess;
+    const canFinalizeContract = canWrite && (columnKey === 'invoicePayment' ||
                                 columnKey === 'dps_agreement' ||
-                                columnKey === 'offerSubmission';
+                                columnKey === 'offerSubmission');
 
     // Verifica se o lead está na coluna de nova oportunidade (pode agendar)
-    const canScheduleMeeting = columnKey === 'new_opportunity';
+    const canScheduleMeeting = canWrite && columnKey === 'new_opportunity';
     const isScheduled = columnKey === 'scheduled';
-    const isNoShow = columnKey === 'no_show';
+    const isNoShow = canWrite && columnKey === 'no_show';
     const canMarkNoShow =
         isScheduled && isMeetingOverdue(lead.meetingDate) && lead.meetingHeald !== "yes";
     const isFollowUpOverdue = isMeetingFollowUpOverdue({
@@ -83,6 +87,7 @@ function LeadCardComponent({
         meetingHeald: lead.meetingHeald,
     });
     const canConfirmPresence =
+        canWrite &&
         isScheduled &&
         !lead.isTransfer &&
         canConfirmMeetingPresence({
@@ -173,7 +178,7 @@ function LeadCardComponent({
     return (
         <Card
             key={lead.id}
-            draggable
+            draggable={!isReadOnlyAccess}
             onMouseDown={handleCardMouseDown}
             onDragStart={(e) => handleCardDragStart(e, lead.id, columnKey)}
             onClick={() => handleCardClick(lead)}
@@ -275,7 +280,7 @@ function LeadCardComponent({
                         Reagendar Reunião
                     </Button>
                 )}
-                {isScheduled && lead.meetingDate && (
+                {canWrite && isScheduled && lead.meetingDate && (
                     <Button
                         size="sm"
                         variant="outline"
@@ -309,14 +314,16 @@ function LeadCardComponent({
                 )}
                 {canMarkNoShow && (
                     <div className="flex flex-col gap-2">
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full cursor-pointer"
-                            onClick={handleNoShowClick}
-                        >
-                            Marcar No-show
-                        </Button>
+                        {canWrite && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full cursor-pointer"
+                                onClick={handleNoShowClick}
+                            >
+                                Marcar No-show
+                            </Button>
+                        )}
                         {lead.meetingLink && (
                             <Button
                                 size="sm"

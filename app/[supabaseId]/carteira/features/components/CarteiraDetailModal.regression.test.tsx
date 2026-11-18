@@ -11,6 +11,7 @@ import type { CarteiraDetailData, UpdateCarteiraDetailPayload } from "../context
 
 mock.module("@/app/context/TeamContext", () => ({
   useTeamContext: () => ({ activeTeamId: "team-1" }),
+  useOptionalTeamContext: () => ({ activeTeamId: "team-1" }),
 }))
 mock.module("@/app/context/TimezoneContext", () => ({
   useTimezone: () => ({ tz: "America/Sao_Paulo" }),

@@ -1,4 +1,6 @@
 import type { SubscriptionPlan } from "@prisma/client"
+import { resolveBillingGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
+import { resolveEffectiveNextDueDate } from "@/lib/billing/delinquency-tier"
 import { createSupabaseAdmin as createGuardedSupabaseAdmin } from "@/lib/supabase/server"
 import { Output } from "@/lib/output"
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas"
@@ -721,6 +723,36 @@ export function resolveBackofficeHasAccess(input: {
     (!!input.subscriptionId && input.subscriptionStatus === "active")
 }
 
+/**
+ * Tri-estado do badge do backoffice ("Acesso total"/"Acesso (leitura)"/"Sem acesso"),
+ * considerando a mesma janela de carência (vencimento + BILLING_GRACE_DAYS) que
+ * AccountAccessDecisionService/FeatureAccessService já usam — sem isso, o badge
+ * mostra "Sem acesso" para contas que já têm acesso liberado (full ou read_only).
+ */
+export function resolveBackofficeAccessMode(input: {
+  hasPermanentSubscription: boolean
+  subscriptionId: string | null
+  subscriptionStatus: string | null
+  subscriptionNextDueDate: Date | null
+  profileSubscriptionNextDueDate: Date | null
+  memberProActive: boolean
+  memberProBlocked?: boolean
+  isBanned: boolean
+}): "full" | "read_only" | "none" {
+  if (resolveBackofficeHasAccess(input)) return "full"
+  if (input.isBanned || input.memberProBlocked) return "none"
+
+  const graceUntil = resolveBillingGraceUntil({
+    subscriptionStatus: input.subscriptionStatus,
+    subscriptionNextDueDate: resolveEffectiveNextDueDate(
+      input.profileSubscriptionNextDueDate,
+      input.subscriptionNextDueDate
+    ),
+  })
+  if (!graceUntil) return "none"
+  return graceUntil.getTime() > Date.now() ? "full" : "read_only"
+}
+
 export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersUseCase {
   constructor(
     private readonly platformUsersRepository: IBackofficePlatformUsersRepository,
@@ -836,14 +868,17 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         }
 
       const activeBan = await backofficeBannedUsersRepository.findActiveByProfileId(masterProfileId)
-      const hasAccess = resolveBackofficeHasAccess({
+      const accessMode = resolveBackofficeAccessMode({
         hasPermanentSubscription: master.hasPermanentSubscription,
         subscriptionId: master.subscriptionId,
         subscriptionStatus: master.subscriptionStatus,
+        subscriptionNextDueDate: master.subscriptionNextDueDate,
+        profileSubscriptionNextDueDate: master.profileSubscriptionNextDueDate,
         memberProActive: master.userType.isActive,
         memberProBlocked: master.userType.slug === "member_pro" && !master.userType.isActive,
         isBanned: Boolean(activeBan),
       })
+      const hasAccess = accessMode !== "none"
 
       return new Output(true, [], [], {
         id: master.id,
@@ -865,6 +900,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         plan,
         subscription: {
           hasAccess,
+          accessMode,
           status: master.subscriptionStatus,
         },
         accessStatus: masterAccess.accessStatus,

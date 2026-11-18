@@ -5,6 +5,7 @@ describe("mapPlanSubscription — normalização de ciclo legado (achado cursor[
   it("sem adesão, subscriptionCycle=SEMIANNUALLY (enum legado) → cycle normalizado 'semiannual', listAmount preenchido", () => {
     const result = mapPlanSubscription({
       subscriptionCycle: "SEMIANNUALLY",
+      subscriptionNextDueDate: null,
       product: {
         name: "CRM",
         priceMonthly: null,
@@ -23,6 +24,7 @@ describe("mapPlanSubscription — normalização de ciclo legado (achado cursor[
   it("sem adesão, subscriptionCycle=YEARLY (enum legado) → cycle normalizado 'annual', listAmount preenchido", () => {
     const result = mapPlanSubscription({
       subscriptionCycle: "YEARLY",
+      subscriptionNextDueDate: null,
       product: {
         name: "CRM",
         priceMonthly: null,
@@ -41,6 +43,7 @@ describe("mapPlanSubscription — normalização de ciclo legado (achado cursor[
   it("com adesão vinculada → cycle vem da adesão (fonte da venda), ignora subscriptionCycle legado", () => {
     const result = mapPlanSubscription({
       subscriptionCycle: "MONTHLY",
+      subscriptionNextDueDate: null,
       product: { name: "Member PRO", priceMonthly: null, priceQuarterly: { toString: () => "274.20" } as never, priceQuadrimester: null, priceSemiannual: null, priceAnnual: null },
       adhesion: { cycle: "quarterly", totalAmount: { toString: () => "91.40" } as never, negotiatedTotalAmount: null },
     })

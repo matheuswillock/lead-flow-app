@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useIsReadOnlyAccess } from '@/app/[supabaseId]/components/useIsReadOnlyAccess';
 import { AlertCircle, GripVertical, Settings, Upload, UserPlus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -90,6 +91,7 @@ export function CarteiraContainer() {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
 
@@ -148,14 +150,18 @@ export function CarteiraContainer() {
 
           <TabsContent value="clientes" className="m-0">
             <div className="flex items-center gap-2">
-              <Button type="button" onClick={() => setIsAddOpen(true)}>
-                <UserPlus data-icon="inline-start" />
-                Adicionar cliente
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setIsImportOpen(true)}>
-                <Upload data-icon="inline-start" />
-                Importar clientes
-              </Button>
+              {isReadOnlyAccess ? null : (
+                <>
+                  <Button type="button" onClick={() => setIsAddOpen(true)}>
+                    <UserPlus data-icon="inline-start" />
+                    Adicionar cliente
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setIsImportOpen(true)}>
+                    <Upload data-icon="inline-start" />
+                    Importar clientes
+                  </Button>
+                </>
+              )}
               <Sheet>
                 <TooltipProvider delayDuration={0}>
                   <Tooltip>

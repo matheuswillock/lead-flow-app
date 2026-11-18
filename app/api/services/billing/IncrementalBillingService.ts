@@ -1,9 +1,16 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
+import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch, createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
+import {
+  createAbacatePayProvider,
+  createPaymentProviderRouter,
+  resolvePaymentProviderEnvironment,
+} from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition";
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
@@ -241,123 +248,134 @@ export class IncrementalBillingService implements IIncrementalBillingService {
   }
 
   async createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult> {
-    const customerId = await this.ensureCustomer(input.master, input.customerOverride);
-
-    let billingType: IncrementalBillingType = "UNDEFINED";
-    let creditCardToken: string | undefined;
-    const hasCreditCardForm = input.billingType === "CREDIT_CARD" && Boolean(input.creditCard);
-
-    if (input.billingType === "PIX") {
-      billingType = "PIX";
-    } else if (input.billingType === "CREDIT_CARD") {
-      billingType = "CREDIT_CARD";
-      if (!hasCreditCardForm && input.master.asaasSubscriptionId) {
-        const subscription = await this.getCurrentSubscription(input.master);
-        if (subscription.billingType === "CREDIT_CARD") {
-          assertCreditCardTokenTransferable(input.master.asaasSubscriptionAccount);
-          creditCardToken = subscription.creditCard?.creditCardToken;
-        }
-      }
-    } else if (input.master.asaasSubscriptionId) {
-      const subscription = await this.getCurrentSubscription(input.master);
-      billingType = normalizeBillingType(subscription.billingType);
-      if (billingType === "CREDIT_CARD") {
-        assertCreditCardTokenTransferable(input.master.asaasSubscriptionAccount);
-        creditCardToken = subscription.creditCard?.creditCardToken;
-        if (!creditCardToken) {
-          throw new Error(
-            "A assinatura em cartão não possui tokenização ativa para cobrança incremental imediata."
-          );
-        }
-      }
+    if (!input.billingType) {
+      throw new Error("billingType é obrigatório; use PIX ou CREDIT_CARD");
     }
 
+    const billingType: IncrementalBillingType = input.billingType;
+    if (billingType === "CREDIT_CARD" && !input.cardToken) {
+      throw new Error("Token do cartão ausente: o checkout precisa tokenizar o cartão antes de cobrar");
+    }
     const ownerTz = input.master.timezone ?? DEFAULT_TZ;
     const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
     const externalReference = `pending-action-${input.pendingActionId}`;
-    const paymentPayload: Record<string, unknown> = {
-      customer: customerId,
-      billingType,
-      value: roundCurrency(input.amount),
-      dueDate,
-      description: input.description,
-      externalReference,
-    };
+    const amountInCents = Math.round(input.amount * 100);
 
-    if (billingType === "CREDIT_CARD") {
-      if (hasCreditCardForm && input.creditCard) {
-        const holder = input.customerOverride ?? {
-          fullName: input.master.fullName ?? "",
-          email: input.master.email,
-          cpfCnpj: input.master.cpfCnpj ?? "",
-          phone: input.master.phone ?? "",
-          postalCode: input.master.postalCode ?? "",
-          addressNumber: input.master.addressNumber ?? "",
-          complement: input.master.complement ?? undefined,
-        };
-        paymentPayload.creditCard = {
-          holderName: input.creditCard.holderName,
-          number: input.creditCard.number,
-          expiryMonth: input.creditCard.expiryMonth,
-          expiryYear: input.creditCard.expiryYear,
-          ccv: input.creditCard.ccv,
-        };
-        paymentPayload.creditCardHolderInfo = {
-          name: holder.fullName,
-          email: holder.email,
-          cpfCnpj: holder.cpfCnpj,
-          postalCode: holder.postalCode,
-          addressNumber: holder.addressNumber,
-          addressComplement: holder.complement,
-          phone: holder.phone,
-          mobilePhone: holder.phone,
-        };
-        if (input.remoteIp) {
-          paymentPayload.remoteIp = input.remoteIp;
-        }
-        if ((input.installments ?? 1) > 1) {
-          paymentPayload.installmentCount = input.installments;
-          paymentPayload.installmentValue = roundCurrency(
-            input.amount / Math.max(input.installments ?? 1, 1)
-          );
-        }
-      } else if (creditCardToken) {
-        paymentPayload.creditCardToken = creditCardToken;
-      }
-    }
-
-    // O pagamento pertence ao customer resolvido em ensureCustomer — precisa
-    // ir para a mesma conta onde esse customer vive (DA2), nunca para o
-    // transporte global primary-only.
-    const chargeAccount = input.master.asaasCustomerAccount;
-    const chargeClient = createAsaasClient(chargeAccount);
-    const payment = await chargeClient.request(chargeClient.endpoints.payments, {
-      method: "POST",
-      body: JSON.stringify(paymentPayload),
+    const environment = resolvePaymentProviderEnvironment();
+    const router = await createPaymentProviderRouter(environment);
+    const capability = billingType === "PIX" ? "PIX" : "CARD";
+    const selected = await router.select({
+      environment,
+      requiredCapabilities: ["ONE_TIME_PAYMENT", capability],
     });
 
+    const provider = await createAbacatePayProvider(environment, selected.externalAccountContext);
+    const idempotencyKey = `add-on-charge-${input.pendingActionId}-${billingType}`;
+    const session = await paymentProviderSessionRepository.createSession({
+      tenantId: input.master.id,
+      ownerType: "PENDING_ACTION_ADDON",
+      ownerId: input.pendingActionId,
+      idempotencyKey,
+      provider: selected.provider,
+      environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
+      route: "NEW_ROUTER",
+      routeVersion: "ADD-ON-CHARGE-PHASE-1",
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+    });
+
+    const attempt = await paymentProviderSessionRepository.createAttempt({
+      sessionId: session.id,
+      tenantId: input.master.id,
+      ownerType: "PENDING_ACTION_ADDON",
+      ownerId: input.pendingActionId,
+      now: new Date(),
+      attemptNumber: 1,
+      idempotencyKey,
+      requestFingerprint: JSON.stringify({
+        amountInCents,
+        billingType,
+        externalReference,
+        installments: input.installments ?? 1,
+      }),
+      provider: selected.provider,
+      environment: selected.environment,
+      externalAccountContext: selected.externalAccountContext,
+    });
+
+    const leased = await paymentProviderSessionRepository.acquireAttemptLease({
+      attemptId: attempt.id,
+      tenantId: input.master.id,
+      ownerType: "PENDING_ACTION_ADDON",
+      ownerId: input.pendingActionId,
+      purpose: "PAYMENT",
+      now: new Date(),
+      ttlMs: 60_000,
+    });
+
+    const common = {
+      amountInCents,
+      customer: {
+        name: input.customerOverride?.fullName || input.master.fullName || input.master.email,
+        email: input.customerOverride?.email || input.master.email,
+        taxId: input.customerOverride?.cpfCnpj || input.master.cpfCnpj || "",
+        cellphone: input.customerOverride?.phone || input.master.phone || "",
+      },
+      externalReference,
+      metadata: { pendingActionId: input.pendingActionId, attemptId: attempt.id },
+    };
+
+    const outcome =
+      billingType === "PIX"
+        ? await provider.createPixPayment(common)
+        : await provider.createCardPayment({
+            ...common,
+            token: input.cardToken!,
+            tokenIssuedAt: new Date(),
+            installments: input.installments ?? 1,
+          });
+
+    const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
+      attemptId: leased.id,
+      tenantId: input.master.id,
+      ownerType: "PENDING_ACTION_ADDON",
+      ownerId: input.pendingActionId,
+      lease: leased.lease,
+      now: new Date(),
+      status: outcome.status,
+      expectedStatus: "CREATED",
+      operation: "PAYMENT",
+      externalId: "externalId" in outcome ? outcome.externalId : null,
+      ...(outcome.status === "PENDING" && "pix" in outcome ? { paymentInstructions: outcome.pix } : {}),
+    });
+
+    // Registrar provider + attempt no PendingAction
+    await pendingActionRepository.attachProviderAttempt({
+      id: input.pendingActionId,
+      provider: selected.provider,
+      providerEnvironment: selected.environment,
+      providerSessionId: session.id,
+      providerAttemptId: updated.id,
+      providerExternalId: updated.externalId || "",
+    });
+
+    // Resultado espelhando AbacatePay (sem Asaas)
     const result: IncrementalChargeResult = {
-      paymentId: payment.id,
-      paymentStatus: payment.status || "PENDING",
+      paymentId: `provider-${updated.externalId}`,
+      paymentStatus: outcome.status,
       billingType,
       amount: roundCurrency(input.amount),
       dueDate,
       externalReference,
     };
 
-    if (billingType === "PIX") {
-      result.pix = await getPixQrCode(payment.id, chargeAccount);
-      result.invoiceUrl = payment.invoiceUrl || null;
-    }
-
-    if (billingType === "BOLETO") {
-      const boleto = await getBoletoIdentificationField(payment.id, chargeAccount);
-      result.boleto = {
-        bankSlipUrl: payment.bankSlipUrl || payment.invoiceUrl || null,
-        identificationField: boleto.identificationField,
-        barCode: boleto.barCode,
-        dueDate: payment.dueDate || null,
+    if (billingType === "PIX" && "pix" in outcome && outcome.pix) {
+      result.pix = {
+        encodedImage: outcome.pix.brCodeBase64,
+        payload: outcome.pix.brCode,
+        expirationDate: outcome.pix.expiresAt,
       };
+      result.invoiceUrl = updated.externalId ? `https://pay.abacate.app/invoice/${updated.externalId}` : null;
     }
 
     return result;

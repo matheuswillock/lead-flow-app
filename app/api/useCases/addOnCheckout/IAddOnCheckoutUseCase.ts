@@ -61,13 +61,7 @@ export interface AddOnCheckoutPaymentInput {
   city?: string;
   state?: string;
   installments?: number;
-  creditCard?: {
-    holderName: string;
-    number: string;
-    expiryMonth: string;
-    expiryYear: string;
-    ccv: string;
-  };
+  cardToken?: string;
   remoteIp?: string;
 }
 
