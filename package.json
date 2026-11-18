@@ -1,6 +1,6 @@
 {
   "name": "corretor-studio-app",
-  "version": "0.355.0",
+  "version": "0.356.0",
   "private": true,
   "packageManager": "bun@1.3.14",
   "engines": {
