@@ -10,6 +10,7 @@ import {
 } from "@/app/api/services/billing/ExistingCardSubscriberService";
 import {
   PaymentMethodUnavailableError,
+  readConfiguredAbacatePublicKey,
 } from "@/lib/payment-methods/availability";
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import type {
@@ -30,6 +31,37 @@ function normalizeBillingType(value: unknown): "PIX" | "CREDIT_CARD" | null {
     return value;
   }
   return null;
+}
+
+// Achado Codex (PR #1407, P2): a cobrança AbacatePay não existe no Asaas; devolve a tentativa guardada.
+async function storedAbacatePayCharge(input: {
+  attemptId: string | null;
+  paymentId: string;
+  billingType: "PIX" | "CREDIT_CARD";
+  amount: number;
+}): Promise<Output> {
+  const attempt = input.attemptId
+    ? await paymentProviderSessionRepository.findAttemptById(input.attemptId)
+    : null;
+  if (!attempt) {
+    return new Output(false, [], ["Tentativa de pagamento não encontrada"], null);
+  }
+  const response: Record<string, unknown> = {
+    paymentId: input.paymentId,
+    paymentStatus: attempt.status,
+    billingType: input.billingType,
+    amount: input.amount,
+    dueDate: null,
+  };
+  if (attempt.paymentInstructions) {
+    response.pix = {
+      encodedImage: attempt.paymentInstructions.brCodeBase64,
+      payload: attempt.paymentInstructions.brCode,
+      expirationDate: attempt.paymentInstructions.expiresAt,
+    };
+    response.invoiceUrl = attempt.externalId ? `https://pay.abacate.app/invoice/${attempt.externalId}` : null;
+  }
+  return new Output(true, ["Cobrança já criada"], [], response);
 }
 
 export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
@@ -78,11 +110,16 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       const m = pendingAction.master as Record<string, any>;
       const availableBillingTypes = await resolveAvailableBillingTypesForMaster(m);
+      // Achado Codex (PR #1407, P2): sem a chave pública o cartão não é tokenizado e a cobrança é recusada.
+      const cardPublicKey = availableBillingTypes.includes("CREDIT_CARD")
+        ? await readConfiguredAbacatePublicKey()
+        : null;
       const checkoutDetails: CheckoutDetailsResponse = {
         pendingActionId,
         paymentId: pendingAction.paymentId ?? null,
         presetBillingType,
         availableBillingTypes,
+        cardCheckout: cardPublicKey ? { provider: "ABACATE_PAY", publicKey: cardPublicKey } : null,
         addonType,
         addonLabel,
         addonDetail,
@@ -141,6 +178,15 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       }
 
       if (pendingAction.paymentId) {
+        if (pendingAction.provider === "ABACATE_PAY") {
+          const storedPayload = pendingAction.payload as Record<string, unknown>;
+          return storedAbacatePayCharge({
+            attemptId: pendingAction.providerAttemptId ?? null,
+            paymentId: pendingAction.paymentId,
+            billingType: normalizeBillingType(storedPayload.billingType) ?? "PIX",
+            amount: (storedPayload.totalCharge as number) ?? 0,
+          });
+        }
         // Achado Codex (PR #1137, P2): pendingAction.asaasAccount é a conta
         // PERSISTIDA no instante em que este paymentId nasceu — nunca o
         // helper asaas() legado (sempre primary), que devolvia 404 para
