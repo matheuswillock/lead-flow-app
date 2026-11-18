@@ -49,6 +49,8 @@ test.describe.serial("gate de acesso da conta", () => {
   let isolatedProfileId: string
   let allowedMasterProfileId: string
   let allowedTeamName: string
+  let readOnlyLeadName: string
+  let readOnlyLeadIds: string[]
 
   test.beforeAll(async () => {
     const prisma = getPrisma()
@@ -99,6 +101,36 @@ test.describe.serial("gate de acesso da conta", () => {
     // Bem além do antigo corte de 15 dias: sem data fixa de bloqueio, continua em
     // somente leitura (não vira "acesso pausado" só por tempo de atraso).
     overdueAccount = await createPastDueMaster(60)
+
+    // Leads criados antes de qualquer visita ao CRM: a lista do time (use cache) já nasce
+    // com eles. Criados só dentro do teste, ficariam invisíveis por causa do cache que o
+    // teste anterior aqueceu (ver crm.spec.ts, invalidateTeamLeadsCache).
+    const readOnlyTeam = await prisma.team.findFirstOrThrow({ where: { masterId: readOnlyAccount.profileId } })
+    readOnlyLeadName = `Lead Somente Leitura ${randomUUID().slice(0, 6)}`
+    const lead = await prisma.lead.create({
+      data: {
+        leadCode: `E2ERO${randomUUID().slice(0, 8).toUpperCase()}`,
+        managerId: readOnlyAccount.profileId,
+        teamId: readOnlyTeam.id,
+        name: readOnlyLeadName,
+        status: "new_opportunity",
+      },
+    })
+    // Cliente da Carteira (sai do CRM): dá conteúdo à aba Renovações.
+    const clientLead = await prisma.lead.create({
+      data: {
+        leadCode: `E2ERC${randomUUID().slice(0, 8).toUpperCase()}`,
+        managerId: readOnlyAccount.profileId,
+        teamId: readOnlyTeam.id,
+        name: `Cliente Renovação ${randomUUID().slice(0, 6)}`,
+        status: "contract_finalized",
+        contractDueDate: new Date(Date.now() + 30 * DAY_MS),
+      },
+    })
+    await prisma.leadPortfolio.create({
+      data: { leadId: clientLead.id, teamId: readOnlyTeam.id, renewalStatus: "to_renew", renewalAmount: 1000 },
+    })
+    readOnlyLeadIds = [lead.id, clientLead.id]
   })
 
   test.afterAll(async () => {
@@ -150,31 +182,8 @@ test.describe.serial("gate de acesso da conta", () => {
     test.setTimeout(360_000)
     const prisma = getPrisma()
     // Sem nenhuma liberação manual: em somente leitura a própria regra de cobrança abre CRM e Carteira.
-    const team = await prisma.team.findFirstOrThrow({ where: { masterId: readOnlyAccount.profileId } })
-    const leadName = `Lead Somente Leitura ${randomUUID().slice(0, 6)}`
-    const lead = await prisma.lead.create({
-      data: {
-        leadCode: `E2ERO${randomUUID().slice(0, 8).toUpperCase()}`,
-        managerId: readOnlyAccount.profileId,
-        teamId: team.id,
-        name: leadName,
-        status: "new_opportunity",
-      },
-    })
-    // Cliente da Carteira (sai do CRM): dá conteúdo à aba Renovações.
-    const clientLead = await prisma.lead.create({
-      data: {
-        leadCode: `E2ERC${randomUUID().slice(0, 8).toUpperCase()}`,
-        managerId: readOnlyAccount.profileId,
-        teamId: team.id,
-        name: `Cliente Renovação ${randomUUID().slice(0, 6)}`,
-        status: "contract_finalized",
-        contractDueDate: new Date(Date.now() + 30 * DAY_MS),
-      },
-    })
-    await prisma.leadPortfolio.create({
-      data: { leadId: clientLead.id, teamId: team.id, renewalStatus: "to_renew", renewalAmount: 1000 },
-    })
+    // Leads criados no beforeAll, antes de qualquer visita ao CRM.
+    const leadName = readOnlyLeadName
 
     try {
       await injectE2eAuthCookie(context, { supabaseId: readOnlyAccount.supabaseId, email: readOnlyAccount.email })
@@ -249,7 +258,7 @@ test.describe.serial("gate de acesso da conta", () => {
       await expect(page.getByText("A renovar").first()).toBeVisible({ timeout: 30_000 })
       await expect(page.getByText("Soltar aqui")).toHaveCount(0)
     } finally {
-      await prisma.lead.deleteMany({ where: { id: { in: [lead.id, clientLead.id] } } })
+      await prisma.lead.deleteMany({ where: { id: { in: readOnlyLeadIds } } })
     }
   })
 
