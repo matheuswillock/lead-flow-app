@@ -3166,6 +3166,11 @@ fixed fixed
     String checkoutId "❓"
     String paymentId "❓"
     AsaasAccount asaasAccount 
+    String provider "❓"
+    String provider_environment "❓"
+    String provider_session_id "❓"
+    String provider_attempt_id "❓"
+    String provider_external_id "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

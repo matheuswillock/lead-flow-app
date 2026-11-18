@@ -50,11 +50,11 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
         initialHasActiveSubscription={bootstrap?.hasActiveSubscription ?? null}
         initialUserRole={bootstrap?.userRole ?? null}
       >
-      <AccountAccessGate
-        decision={bootstrap?.accountAccessDecision}
-        decisionResolved={bootstrap !== null}
-      >
-        <FeatureAccessProvider initialAccess={bootstrap?.featureAccess ?? null}>
+      <FeatureAccessProvider initialAccess={bootstrap?.featureAccess ?? null}>
+        <AccountAccessGate
+          decision={bootstrap?.accountAccessDecision}
+          decisionResolved={bootstrap !== null}
+        >
           <OperationalAccessProvider initialAccess={bootstrap?.operationalAccess ?? null}>
             <NotificationsProvider supabaseId={supabaseId}>
               <InAppNotificationProvider>
@@ -68,8 +68,8 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
               </InAppNotificationProvider>
             </NotificationsProvider>
           </OperationalAccessProvider>
-        </FeatureAccessProvider>
-      </AccountAccessGate>
+        </AccountAccessGate>
+      </FeatureAccessProvider>
       </UserProvider>
     </TeamProvider>
   )

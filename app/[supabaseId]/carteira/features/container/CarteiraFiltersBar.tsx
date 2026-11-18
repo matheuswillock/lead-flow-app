@@ -17,6 +17,7 @@ import { isManagerLikeRole } from '@/lib/roles';
 import { useTeamSdrs, useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { useCarteiraContext } from '../context/CarteiraContext';
 import { DEFAULT_CARTEIRA_FILTERS, isCarteiraFiltersChanged, type CarteiraFiltersState } from '../context/CarteiraTypes';
+import { splitUnifiedSearch } from '../utils/unifiedSearch';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Ativo' },
@@ -130,8 +131,9 @@ export function CarteiraFiltersBar() {
     (value: string) => {
       if (unifiedSearchDebounceRef.current) clearTimeout(unifiedSearchDebounceRef.current);
       unifiedSearchDebounceRef.current = setTimeout(() => {
-        setFilter('search', value);
-        setFilter('documentSearch', value);
+        const { search, documentSearch } = splitUnifiedSearch(value);
+        setFilter('search', search);
+        setFilter('documentSearch', documentSearch);
       }, 300);
     },
     [setFilter]
@@ -178,7 +180,8 @@ export function CarteiraFiltersBar() {
 
   const presetDescriptionLabel = (queryJson: CarteiraFiltersState) => {
     const parts: string[] = [];
-    if (queryJson.search?.trim()) parts.push(`Busca: "${queryJson.search.trim()}"`);
+    const searchTerm = queryJson.search?.trim() || queryJson.documentSearch?.trim();
+    if (searchTerm) parts.push(`Busca: "${searchTerm}"`);
     if (queryJson.portfolioStatuses.length) parts.push(`Status: ${queryJson.portfolioStatuses.length}`);
     if (queryJson.sources.length) parts.push(`Origem: ${queryJson.sources.length}`);
     if (queryJson.sdrIds.length) parts.push(`SDRs: ${queryJson.sdrIds.length}`);

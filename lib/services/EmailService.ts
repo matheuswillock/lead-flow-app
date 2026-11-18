@@ -25,6 +25,7 @@ import {
   buildLeadTransferActivatedEmailTemplate,
 } from "@/lib/email/lead-notification-templates";
 import { escapeIcsText } from "@/lib/email/escape-ics-text";
+import { getDelinquencyReminderCopy } from "@/lib/billing/delinquency-reminder-copy";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -1126,9 +1127,7 @@ export class EmailService {
     const appUrl = getAppUrl({ removeTrailingSlash: true });
     const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
 
-    const subject = 'Corretor Studio — Acesso pausado por falta de pagamento';
-    const headline = 'Seu acesso está pausado';
-    const bodyText = 'Sua assinatura está em atraso e o acesso à plataforma está pausado. Fale com o time de assinaturas para receber orientação e renovar o Corretor Studio.';
+    const { subject, headline, bodyText } = getDelinquencyReminderCopy(data.tier);
 
     const html = `
       <!DOCTYPE html>

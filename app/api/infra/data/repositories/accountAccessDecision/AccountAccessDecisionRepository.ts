@@ -5,6 +5,7 @@ import {
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
 import { isValidAnnualSubscription } from "@/app/api/shared/billing/annualSubscriptionRules"
+import { resolveEffectiveNextDueDate } from "@/lib/billing/delinquency-tier"
 import type {
   AccountAccessRecord,
   IAccountAccessDecisionRepository,
@@ -101,9 +102,11 @@ export class AccountAccessDecisionRepository implements IAccountAccessDecisionRe
     return {
       billingOwnerId,
       subscriptionStatus: subscription ? subscription.subscriptionStatus : billingOwner.subscriptionStatus,
-      subscriptionNextDueDate: subscription
-        ? subscription.subscriptionNextDueDate
-        : billingOwner.subscriptionNextDueDate,
+      // O atraso é sempre contado a partir da data de vencimento mais antiga (assinatura ou perfil).
+      subscriptionNextDueDate: resolveEffectiveNextDueDate(
+        subscription?.subscriptionNextDueDate,
+        billingOwner.subscriptionNextDueDate,
+      ),
       hasPermanentSubscription: subscription
         ? subscription.hasPermanentSubscription
         : billingOwner.hasPermanentSubscription,

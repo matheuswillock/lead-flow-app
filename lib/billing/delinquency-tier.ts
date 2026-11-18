@@ -1,15 +1,11 @@
-// 20 — Assinaturas — Backend E9 (Fase 4 do plano de Assinaturas, E1 do
-// plano: "Inadimplência em degraus"). Predicado puro que resolve o degrau de
-// acesso de uma conta a partir de `subscriptionStatus` +
-// `subscriptionNextDueDate` da `ProfileSubscription`. Hoje `past_due` está
-// dentro de `ACTIVE_SUBSCRIPTION_STATUSES` (lib/billing/active-subscription-statuses.ts)
-// e dá acesso total para sempre (Diagnóstico §7.5) — este módulo não altera
-// esse gate binário (conta continua "ativa" para o teamAccess), mas alimenta
-// um segundo degrau, mais fino, consumido por FeatureAccessService: a partir
-// do dia 5 de atraso a conta perde acesso a tudo que não seja CRM; a partir
-// do dia 15, perde tudo (o corte de fato ainda depende do PaymentValidationService
-// solicitar INACTIVE no Asaas via PAST_DUE_INACTIVE_AFTER_DAYS — este módulo
-// só resolve o degrau local, não a chamada ao Asaas).
+// 20 — Assinaturas — Backend E9. Predicado puro que resolve o degrau de
+// comunicação de uma conta a partir de `subscriptionStatus` +
+// `subscriptionNextDueDate` da `ProfileSubscription`, consumido pelo e-mail
+// de dunning (OverdueReminderUseCase) para escolher o tom do aviso: "reduced"
+// a partir do dia 5, "cut" a partir do dia 15. Não decide acesso real — quem
+// decide isso é AccountAccessDecisionService/FeatureAccessService, via a
+// janela de carência (BILLING_GRACE_DAYS, billingGraceWindow.ts), que não tem
+// corte fixo de dias.
 import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 import { FEATURE_PRODUCT_SLUG_MAP } from "@/lib/features/feature-product-slug-map";
 
@@ -39,13 +35,12 @@ export function isAllowedUnderCrmOnly(slug: string): boolean {
 }
 
 /**
- * Vencimento efetivo. `ProfileSubscription` é a verdade viva, mas o webhook
- * do Asaas (`processAsaasWebhookEvent.ts`, SUBSCRIPTION_UPDATED) atualiza
- * **só** `Profile.subscriptionNextDueDate` — conta que ainda não passou pelo
- * `AsaasSubscriptionSyncService` tem data fresca no Profile e nula/velha na
- * ProfileSubscription (achado codex P1 no PR #1198). Usa a **mais recente**
- * das duas: data mais nova = menos punição, então a dessincronia nunca corta
- * ninguém antes da hora.
+ * Vencimento efetivo. A data de vencimento existe em dois lugares (`Profile` e
+ * `ProfileSubscription`) e o webhook do Asaas (`processAsaasWebhookEvent.ts`,
+ * SUBSCRIPTION_UPDATED) atualiza só o `Profile`. Decisão da Nathiele (11/11/2026): o
+ * atraso é **sempre contado a partir da data mais antiga** das duas. Se só uma
+ * existe, vale ela; sem nenhuma, não há como medir atraso (null, sem punição).
+ * Todo cálculo de carência, somente leitura e pausa deve usar esta função.
  */
 export function resolveEffectiveNextDueDate(
   subscriptionDate: Date | null | undefined,
@@ -53,7 +48,7 @@ export function resolveEffectiveNextDueDate(
 ): Date | null {
   if (!subscriptionDate) return profileDate ?? null;
   if (!profileDate) return subscriptionDate;
-  return profileDate.getTime() > subscriptionDate.getTime() ? profileDate : subscriptionDate;
+  return profileDate.getTime() < subscriptionDate.getTime() ? profileDate : subscriptionDate;
 }
 
 export type DelinquencyTier = "full_access" | "crm_only" | "cut_off";
