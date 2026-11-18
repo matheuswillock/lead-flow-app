@@ -14,6 +14,7 @@ export const PUBLIC_PAGE_ROUTES = [
   "/cookies",
   "/recursos",
   "/prime",
+  "/entregas",
   "/checkout-return",
   "/lead-form",
   "/backoffice-lead-form",

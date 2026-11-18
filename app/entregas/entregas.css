@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;500;600;700&display=swap');
+
+/* Proposta de assessoria comercial. Estrutura do HTML original, cores do Corretor Studio.
+   Degradê = cores do logo (laranja → rosa). Destaque de texto = peso (200 leve, 600 forte). */
+.entregas {
+  --laranja: #ff6900;
+  --laranja-escuro: #c94f0c;
+  --pessego: #fff3ea;
+  --pessego-2: #ffe4d1;
+  --pessego-3: #f8c7a5;
+  --escuro: #17171c;
+  --escuro-2: #2a2a33;
+  --texto: #17171c;
+  --texto-2: #66666f;
+  --linha: #e4e4e8;
+  --branco: #ffffff;
+  --off: #f4f4f6;
+  --degrade: linear-gradient(120deg, #ff6900 0%, #e57082 55%, #cd6cdd 100%);
+  --font-d: 'Poppins', system-ui, sans-serif;
+  --font-b: 'Inter', system-ui, sans-serif;
+
+  background: var(--off);
+  color: var(--texto);
+  font-family: var(--font-b);
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+.entregas *,
+.entregas *::before,
+.entregas *::after { box-sizing: border-box; }
+/* :where mantém especificidade zero: utilitárias do footer compartilhado continuam valendo */
+.entregas :where(h1, h2, h3, p, ul, ol, figure, blockquote, dl, dd) { margin: 0; padding: 0; }
+.entregas a { color: inherit; text-decoration: none; }
+.entregas ::selection { background: var(--laranja); color: var(--escuro); }
+.entregas :focus-visible { outline: 2px solid var(--laranja); outline-offset: 3px; border-radius: 6px; }
+.entregas .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+.entregas section { padding: 120px 0; }
+
+/* cabeçalho aprovado */
+.entregas .site-header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(244, 244, 246, 0.88);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--linha);
+}
+.entregas .site-header-inner { display: flex; align-items: center; justify-content: space-between; height: 76px; }
+.entregas .logo { display: flex; align-items: center; gap: 12px; font-family: var(--font-d); font-weight: 500; font-size: 18px; letter-spacing: -0.02em; }
+.entregas .logo img { width: 36px; height: 36px; border-radius: 50%; display: block; }
+.entregas .logo b { font-weight: 600; }
+.entregas .logo i { font-style: normal; font-weight: 200; }
+.entregas .tag-header { font-size: 13px; color: var(--texto-2); border: 1px solid var(--linha); padding: 8px 16px; border-radius: 999px; background: var(--branco); }
+
+/* tipografia: leve + forte, mesma cor */
+.entregas .sobre { display: inline-block; font-size: 14px; font-weight: 500; color: var(--laranja-escuro); letter-spacing: 0.01em; margin-bottom: 20px; }
+.entregas h1, .entregas h2, .entregas h3 { font-family: var(--font-d); letter-spacing: -0.035em; line-height: 1.08; color: var(--texto); }
+.entregas h1 { font-size: clamp(40px, 5.4vw, 68px); font-weight: 200; }
+.entregas h2 { font-size: clamp(32px, 4vw, 50px); font-weight: 200; }
+.entregas h1 strong, .entregas h2 strong { font-weight: 600; }
+.entregas .lead { font-size: 18px; color: var(--texto-2); max-width: 560px; margin-top: 24px; }
+.entregas .destaque { font-weight: 600; color: var(--texto); }
+.entregas .cabecalho { max-width: 720px; margin-bottom: 64px; border-top: 1px solid var(--texto); padding-top: 28px; }
+
+/* botões */
+.entregas .btn { display: inline-flex; align-items: center; gap: 10px; padding: 18px 32px; border-radius: 999px; font-family: var(--font-d); font-weight: 500; font-size: 16px; transition: all 0.25s ease; cursor: pointer; border: none; }
+.entregas .btn-primario { background: var(--escuro); color: var(--branco); }
+.entregas .btn-primario:hover { background: var(--laranja); }
+.entregas .btn-branco { background: var(--branco); color: var(--laranja-escuro); }
+.entregas .btn-branco:hover { background: var(--escuro); color: var(--branco); }
+
+/* seções de fundo */
+.entregas .bg-branco { background: var(--branco); }
+.entregas .bg-pessego { background: var(--pessego); }
+
+/* hero */
+.entregas .hero { padding: 96px 0 120px; }
+.entregas .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 64px; align-items: center; }
+.entregas .acoes { margin-top: 40px; display: flex; gap: 16px; flex-wrap: wrap; }
+.entregas .card-proposta { background: var(--branco); border: 1px solid var(--linha); border-radius: 40px; padding: 44px; }
+.entregas .card-proposta .topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+.entregas .pilula { display: inline-block; font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: 999px; background: var(--pessego); color: var(--laranja-escuro); }
+.entregas .linha-item { display: flex; align-items: baseline; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid var(--linha); }
+.entregas .linha-item:last-of-type { border-bottom: none; }
+.entregas .rotulo { font-size: 15px; color: var(--texto-2); }
+.entregas .valor { font-family: var(--font-d); font-size: 30px; font-weight: 200; letter-spacing: -0.03em; }
+.entregas .valor b { font-weight: 600; }
+.entregas .total { margin-top: 16px; background: var(--pessego); border-radius: 24px; padding: 24px 28px; display: flex; align-items: center; justify-content: space-between; }
+.entregas .total .valor { color: var(--laranja-escuro); }
+
+/* como funciona: 4 caixas originais */
+.entregas .etapas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.entregas .etapa { background: var(--off); border: 1px solid var(--linha); border-radius: 32px; padding: 36px 30px; display: flex; flex-direction: column; }
+.entregas .etapa .num { font-family: var(--font-d); font-size: 56px; font-weight: 200; color: var(--pessego-3); letter-spacing: -0.04em; line-height: 1; margin-bottom: 28px; }
+.entregas .icone { width: 52px; height: 52px; border-radius: 16px; background: var(--pessego); display: grid; place-items: center; margin-bottom: 22px; }
+.entregas .icone svg { width: 24px; height: 24px; stroke: var(--laranja); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.entregas .etapa h3 { font-size: 21px; font-weight: 500; margin-bottom: 10px; letter-spacing: -0.02em; }
+.entregas .etapa p { font-size: 15px; color: var(--texto-2); }
+.entregas .etapa.escura { background: var(--escuro); border-color: var(--escuro); }
+.entregas .etapa.escura h3 { color: var(--branco); }
+.entregas .etapa.escura p { color: #cbcbd3; }
+.entregas .etapa.escura .num { background: var(--degrade); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.entregas .etapa.escura .icone { background: var(--degrade); }
+.entregas .etapa.escura .icone svg { stroke: var(--branco); }
+
+/* números */
+.entregas .numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.entregas .metric { background: var(--branco); border-radius: 32px; padding: 40px 32px; }
+.entregas .metric .n { font-family: var(--font-d); font-size: 64px; font-weight: 200; letter-spacing: -0.045em; line-height: 1; color: var(--texto); }
+.entregas .metric .n small { font-size: 28px; font-weight: 300; }
+.entregas .metric .d { margin-top: 14px; font-size: 15px; color: var(--texto-2); }
+.entregas .metric.laranja { background: var(--laranja); }
+.entregas .metric.laranja .n, .entregas .metric.laranja .d { color: var(--branco); }
+
+/* régua */
+.entregas .regua-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; flex-wrap: wrap; margin-bottom: 56px; }
+.entregas .regua-topo .cabecalho { margin-bottom: 0; }
+.entregas .seletor { display: inline-flex; background: var(--off); border: 1px solid var(--linha); border-radius: 999px; padding: 6px; }
+.entregas .seletor button { font-family: var(--font-b); font-size: 14px; font-weight: 500; border: none; background: transparent; color: var(--texto-2); padding: 12px 22px; border-radius: 999px; cursor: pointer; transition: all 0.2s; min-height: 44px; }
+.entregas .seletor button.ativo { background: var(--escuro); color: var(--branco); }
+.entregas .funil { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.entregas .funil-item { border: 1px solid var(--linha); border-radius: 28px; padding: 28px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--off); }
+.entregas .funil-item .valor { font-size: 40px; font-weight: 200; letter-spacing: -0.04em; }
+.entregas .funil-item .valor b { font-weight: 600; }
+.entregas .trilho-box { border: 1px solid var(--linha); border-radius: 40px; padding: 48px 48px 40px; background: var(--branco); }
+.entregas .trilho-legenda { display: flex; justify-content: space-between; font-size: 13px; color: var(--texto-2); margin-bottom: 14px; }
+.entregas .trilho { position: relative; height: 14px; border-radius: 999px; background: var(--pessego); }
+.entregas .trilho-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 65%; border-radius: 999px; background: var(--degrade); }
+.entregas .marco { position: absolute; top: 50%; width: 26px; height: 26px; margin-left: -13px; margin-top: -13px; border-radius: 50%; background: var(--branco); border: 2px solid var(--laranja); }
+.entregas .niveis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+.entregas .tier { border-radius: 32px; padding: 36px 32px; background: var(--off); border: 1px solid var(--linha); }
+.entregas .topo-tier { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.entregas .tier h3 { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+.entregas .conv { font-size: 14px; font-weight: 500; color: var(--laranja-escuro); background: var(--pessego); padding: 6px 14px; border-radius: 999px; }
+.entregas .vendas { font-family: var(--font-d); font-size: 64px; font-weight: 200; letter-spacing: -0.045em; line-height: 1; color: var(--texto); }
+.entregas .vendas-d { font-size: 15px; color: var(--texto-2); margin-top: 10px; }
+.entregas .tier.escuro { background: var(--escuro); border-color: var(--escuro); }
+.entregas .tier.escuro h3, .entregas .tier.escuro .vendas { color: var(--branco); }
+.entregas .tier.escuro .vendas-d { color: #cbcbd3; }
+.entregas .tier.escuro .conv { background: var(--laranja); color: var(--branco); }
+.entregas .nota { margin-top: 28px; font-size: 13px; color: var(--texto-2); }
+
+/* bônus */
+.entregas .bonus { background: var(--escuro); border-radius: 48px; padding: 72px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
+.entregas .bonus .sobre { color: var(--laranja); }
+.entregas .bonus h2 { color: var(--branco); }
+.entregas .bonus p { color: #cbcbd3; font-size: 17px; margin-top: 22px; max-width: 520px; }
+.entregas .bonus .pilula { background: var(--laranja); color: var(--branco); margin-bottom: 24px; }
+.entregas .caixa-preta { background: var(--escuro-2); border-radius: 36px; padding: 40px; }
+.entregas .caixa-preta ul { list-style: none; display: flex; flex-direction: column; gap: 20px; }
+.entregas .caixa-preta li { display: flex; align-items: center; gap: 16px; color: var(--branco); font-size: 16px; font-weight: 400; }
+.entregas .check { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%; background: rgba(255, 105, 0, 0.18); display: grid; place-items: center; }
+.entregas .check svg { width: 16px; height: 16px; stroke: var(--laranja); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.entregas .caixa-preta .gratis { margin-top: 32px; padding-top: 28px; border-top: 1px solid #4a4a55; display: flex; justify-content: space-between; align-items: baseline; }
+.entregas .caixa-preta .gratis span { color: #cbcbd3; font-size: 15px; }
+.entregas .caixa-preta .gratis b { font-family: var(--font-d); color: var(--laranja); font-weight: 600; font-size: 28px; letter-spacing: -0.03em; }
+
+/* investimento */
+.entregas .invest-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 24px; align-items: stretch; }
+.entregas .composicao { background: var(--branco); border: 1px solid var(--linha); border-radius: 40px; padding: 44px; }
+.entregas .composicao h3, .entregas .option h3 { font-family: var(--font-d); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 28px; }
+.entregas .comp-linha { display: flex; justify-content: space-between; align-items: baseline; padding: 18px 0; border-bottom: 1px solid var(--linha); font-size: 15px; color: var(--texto-2); }
+.entregas .comp-linha b { white-space: nowrap; margin-left: 16px; font-weight: 600; color: var(--texto); font-size: 17px; }
+.entregas .comp-linha.soma { border-bottom: none; padding-top: 24px; }
+.entregas .comp-linha.soma b { font-size: 24px; color: var(--laranja-escuro); }
+.entregas .option { border-radius: 40px; padding: 44px; display: flex; flex-direction: column; background: var(--branco); border: 1px solid var(--linha); }
+.entregas .option .preco { font-family: var(--font-d); font-size: 52px; font-weight: 200; letter-spacing: -0.045em; line-height: 1; }
+.entregas .option .preco small { font-size: 18px; font-weight: 300; color: var(--texto-2); letter-spacing: 0; }
+.entregas .option .sub { margin-top: 14px; font-size: 15px; color: var(--texto-2); }
+.entregas .option.destaque-op { background: var(--degrade); border: none; }
+.entregas .option.destaque-op h3, .entregas .option.destaque-op .preco { color: var(--branco); }
+.entregas .option.destaque-op .preco { font-weight: 600; }
+.entregas .option.destaque-op .sub { color: #fff5f0; }
+.entregas .option.destaque-op .pilula { background: var(--branco); color: var(--laranja-escuro); }
+.entregas .riscado { text-decoration: line-through; opacity: 0.75; }
+.entregas .topo-op { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.entregas .topo-op h3 { margin-bottom: 0; }
+
+/* cta */
+.entregas .cta { background: linear-gradient(120deg, #e05400 0%, #b9466d 55%, #9440a8 100%); border-radius: 48px; padding: 88px 72px; text-align: center; }
+.entregas .cta h2 { color: var(--branco); max-width: 760px; margin: 0 auto; }
+.entregas .cta h2 strong { font-weight: 600; }
+.entregas .cta p { color: #fff5f0; font-size: 18px; margin: 22px auto 40px; max-width: 560px; }
+
+/* aparição ao rolar (mesma do HTML original) */
+/* conteúdo visível por padrão; a ocultação só vale depois que o observer está instalado (classe reveal-ready) */
+.entregas.reveal-ready .rev { opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; }
+.entregas .rev.on { opacity: 1; transform: none; }
+
+@media (max-width: 1024px) {
+  .entregas .hero-grid, .entregas .bonus { grid-template-columns: 1fr; }
+  .entregas .etapas, .entregas .numeros { grid-template-columns: 1fr 1fr; }
+  .entregas .invest-grid { grid-template-columns: 1fr; }
+  .entregas .niveis { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .entregas .wrap { padding: 0 22px; }
+  .entregas section { padding: 88px 0; }
+  .entregas .etapas, .entregas .numeros, .entregas .funil { grid-template-columns: 1fr; }
+  .entregas .bonus, .entregas .cta { padding: 48px 28px; border-radius: 36px; }
+  .entregas .trilho-box { padding: 32px 24px; }
+  .entregas .card-proposta, .entregas .composicao, .entregas .option { padding: 32px; }
+  .entregas .tag-header { display: none; }
+  .entregas .seletor button { padding: 10px 16px; }
+  .entregas .acoes .btn { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .entregas .rev { opacity: 1; transform: none; transition: none; }
+  .entregas .btn { transition: none; }
+}
