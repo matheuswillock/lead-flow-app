@@ -117,3 +117,28 @@ describe("AddOnCheckoutService.createPlatformCardPayment", () => {
     expect(body).not.toHaveProperty("creditCard")
   })
 })
+
+describe("AddOnCheckoutService.createPayment (cobrança de PendingAction)", () => {
+  // Achado Codex (PR #1407, P2): o cartão precisa seguir como token; dados crus do cartão não saem do navegador.
+  it("cartão envia o token ao backend e nunca os dados crus do cartão", async () => {
+    const calls = mockFetch({ body: { isValid: true, errorMessages: [], result: { paymentId: "provider-bill_1" } } })
+    const service = new AddOnCheckoutServiceImpl(makeStorage, () => "uuid-pa")
+    await service.createPayment("pa-1", {
+      ...input,
+      billingType: "CREDIT_CARD",
+      installments: 2,
+      cardToken: "tok_123",
+      cardHolderName: "MARIA SOUZA",
+      cardNumber: "4111111111111111",
+      cardExpiryMonth: "12",
+      cardExpiryYear: "2030",
+      cardCcv: "123",
+    })
+
+    const rawBody = String(calls[0].init.body)
+    const body = JSON.parse(rawBody)
+    expect(body).toMatchObject({ billingType: "CREDIT_CARD", cardToken: "tok_123", installments: 2 })
+    expect(body).not.toHaveProperty("creditCard")
+    expect(rawBody).not.toContain("4111111111111111")
+  })
+})

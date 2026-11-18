@@ -91,6 +91,9 @@ export interface MasterPlatformUserDetailsRecord {
   subscriptionPlan: SubscriptionPlan | null
   subscriptionStatus: SubscriptionStatus | null
   subscriptionId: string | null
+  subscriptionNextDueDate: Date | null
+  /** Vencimento na própria `ProfileSubscription` (pode divergir do de `Profile` acima). */
+  profileSubscriptionNextDueDate: Date | null
   planSubscription: MasterPlatformUserPlanSubscriptionRecord | null
   operatorCount: number
   googleCalendarConnected: boolean

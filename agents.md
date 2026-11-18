@@ -61,9 +61,13 @@ Load only the rows relevant to the task:
 | Branch, commit, push, PR or conflict | `.governance/ai/delivery.md` |
 | What automation guarantees | `.governance/ai/automated-enforcement.md` |
 | Landing page | `docs/design/METODO-LANDING-PAGE.md` and `docs/design/ROTEAMENTO-SKILLS-DESIGN.md` |
+| New or changed screen or visual component | `.claude/skills/screen-design-gate/SKILL.md`, `DESIGN.md`, `PRODUCT.md` |
+| Feature documentation, SPECs or progress note | `.claude/skills/feature-implementation-docs/SKILL.md` |
 | Radar | `RADAR_SPEC.md` plus the files touched by the task |
 
 Landing work MUST complete the method's briefing gate and copy approval before JSX. Visual work MUST use the design routing document rather than selecting a design skill by description alone.
+
+Every new or changed screen MUST follow `screen-design-gate`: an approved `impeccable shape` brief before JSX, then the sequential `impeccable` validation, `design:check` and rendered verification before delivery. Feature documentation under `DOC/Implementation/<feature>/` MUST follow `feature-implementation-docs` when it is requested.
 
 ## Validation cadence
 

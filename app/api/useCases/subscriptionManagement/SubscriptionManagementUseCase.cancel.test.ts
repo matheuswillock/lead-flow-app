@@ -17,6 +17,7 @@ const prismaMock = {
 mock.module("@/app/api/infra/data/prisma", () => ({
   prisma: prismaMock,
   default: prismaMock,
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
 }))
 
 const cancelSubscriptionMock = mock(async () => ({ deleted: true }))

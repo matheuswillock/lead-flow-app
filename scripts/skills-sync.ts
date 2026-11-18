@@ -14,6 +14,9 @@
  * Copilot adapter:   .github/prompts/<name>.prompt.md
  * Codex adapter:     .agents/skills/<name>/SKILL.md (opt-in via targets)
  * Manus adapter:     skills/<name>/SKILL.md (opt-in via targets)
+ *
+ * OpenCode reads .claude/skills/ and .agents/skills/ natively at project scope,
+ * so it has no adapter here. It needs valid frontmatter, which this script enforces.
  */
 
 import { promises as fs } from "node:fs";
@@ -82,7 +85,10 @@ interface SkillFrontmatter {
   targets?: string;
 }
 
-export function parseFrontmatter(content: string): {
+export function parseFrontmatter(
+  content: string,
+  label = "skill",
+): {
   frontmatter: SkillFrontmatter;
   body: string;
 } {
@@ -95,11 +101,21 @@ export function parseFrontmatter(content: string): {
   const body = fmMatch[2] ?? "";
   const frontmatter: SkillFrontmatter = {};
 
-  for (const line of rawFm.split("\n")) {
-    const match = line.match(/^(\w+)\s*:\s*['"]?(.*?)['"]?\s*$/);
-    if (match) {
-      const key = match[1] as keyof SkillFrontmatter;
-      frontmatter[key] = match[2];
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(rawFm);
+  } catch (error) {
+    throw new Error(
+      `frontmatter YAML inválido em ${label}: ${(error as Error).message}`,
+    );
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`frontmatter em ${label} precisa ser um mapa chave: valor`);
+  }
+
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value !== null && value !== undefined) {
+      frontmatter[key as keyof SkillFrontmatter] = String(value);
     }
   }
 
@@ -315,7 +331,7 @@ async function syncSkills(): Promise<void> {
 
   for (const { baseName, sourcePath, sourceLabel } of entries) {
     const rawContent = await fs.readFile(sourcePath, "utf8");
-    const { frontmatter, body } = parseFrontmatter(rawContent);
+    const { frontmatter, body } = parseFrontmatter(rawContent, sourceLabel);
 
     const description = frontmatter.description ?? baseName;
     const alwaysApply = frontmatter.alwaysApply === "true";

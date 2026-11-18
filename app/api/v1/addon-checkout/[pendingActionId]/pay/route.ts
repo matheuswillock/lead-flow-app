@@ -29,7 +29,7 @@ export async function POST(
       city: body.city,
       state: body.state,
       installments: body.installments,
-      creditCard: body.creditCard,
+      cardToken: body.cardToken,
       remoteIp,
     });
 

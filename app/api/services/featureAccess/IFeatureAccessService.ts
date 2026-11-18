@@ -27,6 +27,8 @@ export interface FeatureAccessResult {
   betaSlugs: string[]
   betaLabelSlugs: string[]
   userRole: UserRoleInfo
+  /** Ausente/"full" = acesso normal. "read_only" = carência expirada; API recusa mutações. */
+  mode?: "full" | "read_only"
 }
 
 export interface IFeatureAccessService {

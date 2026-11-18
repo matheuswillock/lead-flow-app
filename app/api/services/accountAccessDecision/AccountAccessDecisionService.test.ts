@@ -245,6 +245,69 @@ describe("AccountAccessDecisionService", () => {
     expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
   })
 
+  describe("calendário do vencimento: carência e somente leitura sem corte fixo", () => {
+    const pastDue = {
+      billingOwnerId: "owner-1",
+      subscriptionStatus: "past_due",
+      subscriptionNextDueDate: new Date("2026-10-10T00:00:00.000Z"),
+      hasPermanentSubscription: false,
+      isBanned: false,
+    }
+
+    it("segue em somente leitura a partir do dia 6 após o vencimento", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        pastDue,
+        new Date("2026-10-24T23:59:59.999Z"),
+      )
+
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
+    })
+
+    it("não existe corte para bloqueio total por dias de atraso: continua em read_only", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        pastDue,
+        new Date("2026-10-25T00:00:00.000Z"),
+      )
+
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
+    })
+
+    it("continua em read_only meses depois, enquanto o status seguir past_due", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        pastDue,
+        new Date("2027-03-01T12:00:00.000Z"),
+      )
+
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
+    })
+
+    it("uma concessão expirada cede lugar à carência por vencimento (leitura, não bloqueio)", () => {
+      const decision = new AccountAccessDecisionService().decide(
+        {
+          ...pastDue,
+          temporaryAccessGranted: true,
+          temporaryAccessUntil: new Date("2026-10-12T03:00:00.000Z"),
+        },
+        new Date("2026-10-26T12:00:00.000Z"),
+      )
+
+      expect(decision).toMatchObject({ state: "read_only", reason: "past_due" })
+    })
+
+    it("a carência de cinco dias e a somente leitura a partir do dia 6 seguem iguais", () => {
+      const service = new AccountAccessDecisionService()
+
+      expect(service.decide(pastDue, new Date("2026-10-14T23:59:59.999Z"))).toMatchObject({
+        state: "allowed",
+        temporaryAccessGranted: true,
+      })
+      expect(service.decide(pastDue, new Date("2026-10-15T00:00:00.000Z"))).toMatchObject({
+        state: "read_only",
+        reason: "past_due",
+      })
+    })
+  })
+
   describe("endurecimento da concessão temporária", () => {
     const base = {
       billingOwnerId: "owner-1",

@@ -33,6 +33,11 @@ export class PendingActionRepository implements IPendingActionRepository {
         checkoutId: true,
         paymentId: true,
         asaasAccount: true,
+        provider: true,
+        providerEnvironment: true,
+        providerSessionId: true,
+        providerAttemptId: true,
+        providerExternalId: true,
         createdAt: true,
         updatedAt: true,
         master: {
@@ -122,6 +127,40 @@ export class PendingActionRepository implements IPendingActionRepository {
     await prisma.pendingAction.update({
       where: { id },
       data: { payload: payload as Prisma.InputJsonValue },
+    });
+  }
+
+  // Fase B: registra a tentativa do provider após criação bem-sucedida.
+  async attachProviderAttempt(input: {
+    id: string;
+    provider: string;
+    providerEnvironment: string;
+    providerSessionId: string;
+    providerAttemptId: string;
+    providerExternalId: string;
+  }): Promise<PendingAction | null> {
+    return prisma.pendingAction.update({
+      where: { id: input.id },
+      data: {
+        provider: input.provider,
+        providerEnvironment: input.providerEnvironment,
+        providerSessionId: input.providerSessionId,
+        providerAttemptId: input.providerAttemptId,
+        providerExternalId: input.providerExternalId,
+      },
+    });
+  }
+
+  // Fase B: atualiza a tentativa do provider durante polling.
+  async updateProviderAttempt(input: {
+    id: string;
+    providerExternalId?: string;
+  }): Promise<void> {
+    await prisma.pendingAction.update({
+      where: { id: input.id },
+      data: {
+        ...(input.providerExternalId && { providerExternalId: input.providerExternalId }),
+      },
     });
   }
 
