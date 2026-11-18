@@ -119,6 +119,7 @@ function useRevelarAoRolar(ref: React.RefObject<HTMLDivElement | null>) {
       },
       { threshold: 0.12 },
     )
+    raiz.classList.add("reveal-ready")
     elementos.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
   }, [ref])

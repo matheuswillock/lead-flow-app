@@ -30,7 +30,9 @@
 }
 .entregas *,
 .entregas *::before,
-.entregas *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.entregas *::after { box-sizing: border-box; }
+/* :where mantém especificidade zero: utilitárias do footer compartilhado continuam valendo */
+.entregas :where(h1, h2, h3, p, ul, ol, figure, blockquote, dl, dd) { margin: 0; padding: 0; }
 .entregas a { color: inherit; text-decoration: none; }
 .entregas ::selection { background: var(--laranja); color: var(--escuro); }
 .entregas :focus-visible { outline: 2px solid var(--laranja); outline-offset: 3px; border-radius: 6px; }
@@ -182,7 +184,8 @@
 .entregas .cta p { color: #fff5f0; font-size: 18px; margin: 22px auto 40px; max-width: 560px; }
 
 /* aparição ao rolar (mesma do HTML original) */
-.entregas .rev { opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; }
+/* conteúdo visível por padrão; a ocultação só vale depois que o observer está instalado (classe reveal-ready) */
+.entregas.reveal-ready .rev { opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; }
 .entregas .rev.on { opacity: 1; transform: none; }
 
 @media (max-width: 1024px) {
