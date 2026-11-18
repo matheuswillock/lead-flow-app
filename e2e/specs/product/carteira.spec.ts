@@ -116,11 +116,16 @@ async function invalidatePortfolioEntryCache(page: Page, teamId: string) {
     .toBe(true);
 }
 
+/**
+ * Sem filtro de nome: a busca unificada da carteira envia o mesmo texto em
+ * `search` e `documentSearch`, e o servidor exige os dois. Para um nome,
+ * `documentSearch` nunca casa e a lista zera depois do debounce, o que deixa a
+ * linha que o teste clica ser desmontada antes do clique. A linha semeada é a
+ * mais recente (createdAt desc), então fica na primeira página sem filtro.
+ */
 async function waitForSeededPortfolioRow(page: Page, name: string) {
   await expect(async () => {
     await page.reload({ waitUntil: "domcontentloaded" });
-    const nameFilter = page.getByPlaceholder("Nome do cliente ou CPF / CNPJ / RG...");
-    await nameFilter.fill(name);
     await expect(page.getByRole("row", { name: `Abrir ${name}` })).toBeVisible({
       timeout: 10_000,
     });
@@ -206,5 +211,35 @@ test.describe("app/[supabaseId]/carteira", () => {
     ).not.toContain("O CPF do titular é obrigatório");
     expect(body.isValid).toBe(true);
     await expect(page.getByText("Dados atualizados com sucesso")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("busca unificada encontra o cliente pelo nome e pelo CNPJ", async ({ page }) => {
+    const { teamId } = await seedCorporatePortfolioEntry();
+    await invalidatePortfolioEntryCache(page, teamId);
+
+    await page.goto(`/${E2E_MASTER_SUPABASE_ID}/carteira`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("h1", { hasText: "Carteira" })).toBeVisible({ timeout: 30_000 });
+    const search = page.getByPlaceholder("Nome do cliente ou CPF / CNPJ / RG...");
+
+    // Espera a resposta da própria busca: a linha sem filtro já aparece antes do debounce e não prova nada.
+    const responseFor = (param: string, value: string) =>
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname.endsWith("/portfolio") && url.searchParams.get(param) === value;
+      });
+
+    const byName = responseFor("search", CORPORATE_RAZAO_SOCIAL);
+    await search.fill(CORPORATE_RAZAO_SOCIAL);
+    await byName;
+    await expect(page.getByRole("row", { name: `Abrir ${CORPORATE_RAZAO_SOCIAL}` })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const byDocument = responseFor("documentSearch", "12345678000199");
+    await search.fill("12345678000199");
+    await byDocument;
+    await expect(page.getByRole("row", { name: `Abrir ${CORPORATE_RAZAO_SOCIAL}` })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });
