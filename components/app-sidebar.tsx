@@ -228,6 +228,12 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       icon: Radio,
       lockFeatureSlugs: [FEATURE_SLUGS.PIXEL],
     },
+    {
+      title: "Formulário de Captação",
+      url: `/${supabaseId}/integrations/lead-form`,
+      icon: FileText,
+      lockFeatureSlugs: [FEATURE_SLUGS.LEAD_FORM],
+    },
   ];
 
   const { members: teamMembersWithPresence, isLoadingMembers } = useTeamPresence({
@@ -363,7 +369,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   // "Acesso não liberado" tornaria o badge "Bloqueado" enganoso — por isso o
   // grupo só aparece pra quem realmente alcança o hub.
   const canAccessIntegrationsArea =
-    (isManager || isTeamMaster) && (hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR))
+    (isManager || isTeamMaster) &&
+    (hasAccess(FEATURE_SLUGS.CONFIGURATION) || hasAccess(FEATURE_SLUGS.RADAR) || hasAccess(FEATURE_SLUGS.LEAD_FORM))
   const visibleIntegrationsItems = canAccessIntegrationsArea ? integrationsItems.filter(canShowItem) : []
 
   return (
