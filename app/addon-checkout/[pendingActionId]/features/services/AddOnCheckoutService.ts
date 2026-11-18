@@ -148,14 +148,9 @@ export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
     };
 
     if (input.billingType === "CREDIT_CARD") {
+      // Achado Codex (PR #1407, P2): o cartão vai tokenizado no navegador; dados crus nunca saem daqui.
       body.installments = input.installments;
-      body.creditCard = {
-        holderName: input.cardHolderName,
-        number: input.cardNumber,
-        expiryMonth: input.cardExpiryMonth,
-        expiryYear: input.cardExpiryYear,
-        ccv: input.cardCcv,
-      };
+      body.cardToken = input.cardToken;
     }
 
     const response = await fetch(`${API_CLIENT_BASE}/addon-checkout/${pendingActionId}/pay`, {
