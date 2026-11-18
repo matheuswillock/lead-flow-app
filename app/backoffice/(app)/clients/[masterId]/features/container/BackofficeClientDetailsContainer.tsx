@@ -1182,13 +1182,13 @@ export function BackofficeClientDetailsContainer() {
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[16%] px-4 text-left">
+                              <TableHead className="w-[14%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   ID
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[14%] px-4 text-left">
+                              <TableHead className="w-[12%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Nome
@@ -1218,7 +1218,7 @@ export function BackofficeClientDetailsContainer() {
                                   Status
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[22%] px-4 text-center">
+                              <TableHead className="w-[26%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Eye className="h-3.5 w-3.5" />
                                   Ações
@@ -1267,7 +1267,7 @@ export function BackofficeClientDetailsContainer() {
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <div className="inline-flex items-center gap-2">
+                                    <div className="inline-flex flex-wrap items-center justify-center gap-2">
                                       <Button asChild variant="outline" size="sm">
                                         <Link
                                           href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
@@ -1638,8 +1638,9 @@ export function BackofficeClientDetailsContainer() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Cancelar esta fatura?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  A cobrança será cancelada primeiro no provider (Asaas, se existir) e, depois da
-                  confirmação, a fatura é marcada como cancelada aqui. Essa ação não pode ser desfeita.
+                  {invoiceToCancel?.pendingActionId
+                    ? "A ação pendente será cancelada aqui. Se já houver cobrança aberta no provider de pagamento, ela continua aberta lá e precisa ser cancelada manualmente. Essa ação não pode ser desfeita."
+                    : "A cobrança será cancelada primeiro no provider (Asaas) e, depois da confirmação, a fatura é marcada como cancelada aqui. Essa ação não pode ser desfeita."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
