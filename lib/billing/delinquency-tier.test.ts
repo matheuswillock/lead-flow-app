@@ -176,12 +176,16 @@ describe("resolveEffectiveNextDueDate — dessincronia Profile × ProfileSubscri
     expect(resolveEffectiveNextDueDate(newer, null)).toEqual(newer);
   });
 
-  it("ProfileSubscription velha e Profile fresca → usa a mais recente (não pune por dado velho)", () => {
-    expect(resolveEffectiveNextDueDate(older, newer)).toEqual(newer);
+  it("ProfileSubscription velha e Profile fresca → a data é sempre contada a partir da mais antiga", () => {
+    expect(resolveEffectiveNextDueDate(older, newer)).toEqual(older);
   });
 
-  it("ProfileSubscription fresca e Profile velha → usa a mais recente", () => {
-    expect(resolveEffectiveNextDueDate(newer, older)).toEqual(newer);
+  it("ProfileSubscription fresca e Profile velha → também vale a mais antiga", () => {
+    expect(resolveEffectiveNextDueDate(newer, older)).toEqual(older);
+  });
+
+  it("datas iguais → a mesma data", () => {
+    expect(resolveEffectiveNextDueDate(older, new Date(older))).toEqual(older);
   });
 
   it("ambas nulas → null (sem evidência, sem punição)", () => {

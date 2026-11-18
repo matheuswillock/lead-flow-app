@@ -56,6 +56,12 @@ export interface IBackofficeClientDetailsService {
     pendingActionId: string
   ): Promise<{ message: string }>
 
+  /** Cancela uma fatura com cobrança real já criada (Asaas); cancela no provider antes da baixa local. */
+  cancelInvoice(
+    masterId: string,
+    invoiceId: string
+  ): Promise<{ message: string }>
+
   updateClient(
     masterId: string,
     data: {

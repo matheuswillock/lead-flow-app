@@ -63,11 +63,13 @@ import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDial
 import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
+import { BackofficeInvoiceActionsMenu } from "../components/BackofficeInvoiceActionsMenu"
 import { BackofficeClientEmailsProvider } from "../emails/context/BackofficeClientEmailsContext"
 import { BackofficeClientEmailsShell } from "../emails/container/BackofficeClientEmailsShell"
 import type { EmailSection } from "../emails/context/BackofficeClientEmailsTypes"
 import { BackofficeClientPublicFormsPanel } from "../components/BackofficeClientPublicFormsPanel"
 import type {
+  BackofficeClientInvoice,
   BackofficeClientPendingAction,
   BackofficeClientTeam,
   BackofficeClientTeamMember,
@@ -107,6 +109,24 @@ const INVOICE_STATUS_BADGES: Record<
     className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
   },
   other: { label: "Em processamento", variant: "secondary" },
+}
+
+function getInvoiceStatusLabel(invoice: BackofficeClientInvoice): string {
+  if (invoice.status === "WAIVED") return "Dispensada"
+  if (invoice.source === "adhesion_external") return "Pago externamente"
+  if (invoice.status === "PENDING" && invoice.source === "pending_action") {
+    return "Aguardando checkout"
+  }
+  return INVOICE_STATUS_BADGES[invoice.statusGroup].label
+}
+
+function InvoiceStatusBadge({ invoice }: { invoice: BackofficeClientInvoice }) {
+  const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
+  return (
+    <Badge variant={statusInfo.variant} className={statusInfo.className}>
+      {getInvoiceStatusLabel(invoice)}
+    </Badge>
+  )
 }
 
 const TEAM_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
@@ -236,6 +256,7 @@ export function BackofficeClientDetailsContainer() {
     isInvoicesLoading,
     isPendingActionsLoading,
     isCancelingPendingAction,
+    isCancelingInvoice,
     error,
     teamsError,
     invoicesError,
@@ -249,6 +270,7 @@ export function BackofficeClientDetailsContainer() {
     setInvoicesFilters,
     setInvoicesPage,
     cancelPendingAction,
+    cancelInvoice,
     reload,
     clearFilters,
   } = useBackofficeClientDetails()
@@ -284,6 +306,7 @@ export function BackofficeClientDetailsContainer() {
   const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
   const [addingMasterTeamId, setAddingMasterTeamId] = useState<string | null>(null)
   const [selectedEmailTeamId, setSelectedEmailTeamId] = useState<string | null>(null)
+  const [invoiceToCancel, setInvoiceToCancel] = useState<BackofficeClientInvoice | null>(null)
   const [pendingActionToCancel, setPendingActionToCancel] =
     useState<BackofficeClientPendingAction | null>(null)
   const emailSection = parseEmailSection(searchParams.get("emailSection"))
@@ -616,10 +639,15 @@ export function BackofficeClientDetailsContainer() {
                   {details.hasUnlimitedUsers ? (
                     <Badge variant="secondary">Usuários ilimitados</Badge>
                   ) : null}
-                  {details.subscription.hasAccess ? (
+                  {details.subscription.accessMode === "full" ? (
                     <Badge className="gap-1 border-transparent bg-semantic-success-surface text-foreground hover:bg-semantic-success-surface">
                       <ShieldCheck className="h-3 w-3 text-semantic-success" />
                       Acesso ativo
+                    </Badge>
+                  ) : details.subscription.accessMode === "read_only" ? (
+                    <Badge className="gap-1 border-transparent bg-semantic-warning-surface text-foreground hover:bg-semantic-warning-surface">
+                      <ShieldCheck className="h-3 w-3 text-semantic-warning" />
+                      Acesso (leitura)
                     </Badge>
                   ) : (
                     <Badge className="gap-1 border-transparent bg-semantic-danger-surface text-foreground hover:bg-semantic-danger-surface">
@@ -1168,17 +1196,55 @@ export function BackofficeClientDetailsContainer() {
                     <p className="text-sm text-muted-foreground">Nenhuma fatura encontrada.</p>
                   ) : (
                     <div className="space-y-3">
-                      <div className="rounded-md border overflow-hidden">
+                      <ul className="flex flex-col gap-3 md:hidden">
+                        {invoices.map((invoice) => (
+                          <li
+                            key={invoice.id}
+                            className="flex flex-col gap-3 rounded-lg border bg-card p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{invoice.invoiceName}</p>
+                                <p
+                                  className="truncate font-mono text-xs text-muted-foreground"
+                                  title={invoice.invoiceIdDisplay}
+                                >
+                                  {invoice.invoiceIdDisplay}
+                                </p>
+                              </div>
+                              <BackofficeInvoiceActionsMenu
+                                invoice={invoice}
+                                clientId={details.id}
+                                onCancel={setInvoiceToCancel}
+                                triggerClassName="size-11 shrink-0"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <InvoiceStatusBadge invoice={invoice} />
+                              <span className="font-medium tabular-nums">
+                                {formatCurrency(invoice.value)}
+                              </span>
+                            </div>
+                            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                              <dt className="text-muted-foreground">Data</dt>
+                              <dd>{formatNullableDate(invoice.dateCreated, tz)}</dd>
+                              <dt className="text-muted-foreground">Vencimento</dt>
+                              <dd>{formatNullableDate(invoice.dueDate, tz)}</dd>
+                            </dl>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="hidden rounded-md border overflow-hidden md:block">
                         <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-[16%] px-4 text-left">
+                              <TableHead className="w-[18%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   ID
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[14%] px-4 text-left">
+                              <TableHead className="w-[16%] px-4 text-left">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Nome
@@ -1202,13 +1268,13 @@ export function BackofficeClientDetailsContainer() {
                                   Valor
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[12%] px-4 text-center">
+                              <TableHead className="w-[14%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Tag className="h-3.5 w-3.5" />
                                   Status
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[22%] px-4 text-center">
+                              <TableHead className="w-[16%] px-4 text-center">
                                 <span className="inline-flex items-center gap-1">
                                   <Eye className="h-3.5 w-3.5" />
                                   Ações
@@ -1218,16 +1284,6 @@ export function BackofficeClientDetailsContainer() {
                           </TableHeader>
                           <TableBody>
                             {invoices.map((invoice) => {
-                              const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
-                              const statusLabel =
-                                invoice.status === "WAIVED"
-                                  ? "Dispensada"
-                                  : invoice.source === "adhesion_external"
-                                    ? "Pago externamente"
-                                    : invoice.status === "PENDING" && invoice.source === "pending_action"
-                                      ? "Aguardando checkout"
-                                      : statusInfo.label
-
                               return (
                                 <TableRow key={invoice.id} className="h-12">
                                   <TableCell
@@ -1249,36 +1305,14 @@ export function BackofficeClientDetailsContainer() {
                                     {formatCurrency(invoice.value)}
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <Badge
-                                      variant={statusInfo.variant}
-                                      className={statusInfo.className}
-                                    >
-                                      {statusLabel}
-                                    </Badge>
+                                    <InvoiceStatusBadge invoice={invoice} />
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <div className="inline-flex items-center gap-2">
-                                      <Button asChild variant="outline" size="sm">
-                                        <Link
-                                          href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
-                                          className="inline-flex items-center gap-1"
-                                        >
-                                          <Eye className="h-3.5 w-3.5" />
-                                          Visualizar
-                                        </Link>
-                                      </Button>
-                                      {invoice.checkoutUrl ? (
-                                        <Button asChild variant="default" size="sm">
-                                          <a
-                                            href={invoice.checkoutUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            Checkout
-                                          </a>
-                                        </Button>
-                                      ) : null}
-                                    </div>
+                                    <BackofficeInvoiceActionsMenu
+                                      invoice={invoice}
+                                      clientId={details.id}
+                                      onCancel={setInvoiceToCancel}
+                                    />
                                   </TableCell>
                                 </TableRow>
                               )
@@ -1606,6 +1640,53 @@ export function BackofficeClientDetailsContainer() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          <AlertDialog
+            open={invoiceToCancel !== null}
+            onOpenChange={(open) => {
+              if (isCancelingInvoice) return
+              if (!open) setInvoiceToCancel(null)
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancelar esta fatura?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {invoiceToCancel?.pendingActionId
+                    ? "A ação pendente será cancelada aqui. Se já houver cobrança aberta no provider de pagamento, ela continua aberta lá e precisa ser cancelada manualmente. Essa ação não pode ser desfeita."
+                    : "A cobrança será cancelada primeiro no provider (Asaas) e, depois da confirmação, a fatura é marcada como cancelada aqui. Essa ação não pode ser desfeita."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isCancelingInvoice}>Voltar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (!invoiceToCancel || isCancelingInvoice) return
+                    void (async () => {
+                      try {
+                        const message = invoiceToCancel.pendingActionId
+                          ? await cancelPendingAction(invoiceToCancel.pendingActionId)
+                          : await cancelInvoice(invoiceToCancel.id)
+                        toast.success(message)
+                        setInvoiceToCancel(null)
+                      } catch (cancelError) {
+                        const message =
+                          cancelError instanceof Error
+                            ? cancelError.message
+                            : "Erro ao cancelar a fatura"
+                        toast.error(message)
+                      }
+                    })()
+                  }}
+                  disabled={isCancelingInvoice}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isCancelingInvoice ? "Cancelando..." : "Cancelar fatura"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
 
@@ -1692,6 +1773,7 @@ export function BackofficeClientDetailsContainer() {
         masterId={masterId}
         teams={details?.allTeams ?? []}
         masterUserType={details?.userType}
+        hasUnlimitedUsers={details?.hasUnlimitedUsers}
         service={service}
         onOpenChange={setAddMemberOpen}
         onSaved={reload}

@@ -25,7 +25,10 @@ export function SubscriptionGuard({ children, hasActiveSubscription, isLoading, 
     return <>{children}</>
   }
 
-  const hasTeamAccess = teamContext?.accountAccessDecision?.state === "allowed"
+  // Somente leitura (dias 6 a 15 do vencimento) também passa: o gate de acesso da conta já
+  // restringe as rotas ao CRM, à Carteira e ao pagamento, e a API barra a gravação.
+  const accessState = teamContext?.accountAccessDecision?.state
+  const hasTeamAccess = accessState === "allowed" || accessState === "read_only"
 
   if (hasActiveSubscription || hasTeamAccess) {
     return <>{children}</>

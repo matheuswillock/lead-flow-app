@@ -53,6 +53,22 @@ describe("resolveMemberProBypass", () => {
   });
 });
 
+describe("resolveMemberProBypass com tag de ilimitado e forceCharge", () => {
+  it("tag de ilimitado ativa ignora forceCharge (Gerar cobrança não cobra usuário)", () => {
+    expect(
+      resolveMemberProBypass(
+        {
+          slug: "member_pro",
+          isActive: true,
+          accessExpiresAt: new Date(Date.now() + 86_400_000),
+          hasUnlimitedUsers: true,
+        },
+        { forceCharge: true }
+      )
+    ).toBe(true);
+  });
+});
+
 describe("isActiveMemberProAssignment", () => {
   const now = new Date("2026-07-09T12:00:00.000Z");
 

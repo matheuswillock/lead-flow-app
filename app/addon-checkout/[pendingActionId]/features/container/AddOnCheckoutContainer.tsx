@@ -226,7 +226,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       maxInstallments={maxInstallments}
       prefill={prefill}
       skipAddress={isPlatformPurchase}
-      abacatePublicKey={isPlatformPurchase ? state.data?.cardCheckout?.publicKey : null}
+      abacatePublicKey={state.data?.cardCheckout?.publicKey ?? null}
       availableMethods={availableMethods}
       successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
       onSubmit={async (input) => {

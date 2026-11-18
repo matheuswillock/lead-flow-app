@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 // T-20.7 de [[20 — Assinaturas — Backend]] E2 (C16/DA2).
 const findUniqueMock = mock(async () => null as Record<string, unknown> | null)
 const prismaMock = { profile: { findUnique: findUniqueMock } }
-mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaMock,
+  default: prismaMock,
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
+}))
 
 mock.module("@/app/api/services/AsaasSubscription/AsaasSubscriptionService", () => ({
   AsaasSubscriptionService: {},

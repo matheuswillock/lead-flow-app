@@ -62,6 +62,8 @@ export class AccountAccessDecisionService implements IAccountAccessDecisionServi
       }
       // Somente past_due degrada para leitura; uma concessão expirada não transforma
       // suspended/canceled em read_only: elas seguem para as regras restritivas abaixo.
+      // Sem corte fixo de dias: a leitura dura enquanto a conta continuar past_due;
+      // a transição para suspended/canceled é decidida pelo motor de assinatura.
       if (account.subscriptionStatus === "past_due") {
         return { state: "read_only", reason: "past_due", temporaryAccessUntil }
       }

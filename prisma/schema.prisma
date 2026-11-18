@@ -3701,8 +3701,15 @@ model PendingAction {
   // Profile.asaasCustomerAccount; só passa a valer algo quando paymentId é
   // preenchido (updatePaymentId grava os dois juntos).
   asaasAccount AsaasAccount        @default(primary)
-  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+  // Fase B: rastreamento do provider AbacatePay. Novo para cobrança = ABACATE_PAY;
+  // cobrança Asaas antiga (paymentId já gravado) não muda o campo (null/vazio).
+  provider             String?        @db.Text
+  providerEnvironment  String?        @map("provider_environment") @db.Text
+  providerSessionId    String?        @map("provider_session_id") @db.Uuid
+  providerAttemptId    String?        @map("provider_attempt_id") @db.Uuid
+  providerExternalId   String?        @map("provider_external_id") @db.Text
+  createdAt            DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(6)
 
   master Profile @relation("PendingActionMaster", fields: [masterId], references: [id], onDelete: Cascade)
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -3710,6 +3717,7 @@ model PendingAction {
   @@index([masterId])
   @@index([checkoutId])
   @@index([paymentId])
+  @@index([providerExternalId])
   @@map("corretor_studio_pending_actions")
 }
 

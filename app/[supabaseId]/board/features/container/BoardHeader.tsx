@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import useBoardContext from "../context/BoardHook";
 import type { LeadCardField } from "../context/BoardContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
+import { useIsReadOnlyAccess } from "@/app/[supabaseId]/components/useIsReadOnlyAccess";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
@@ -88,6 +89,7 @@ export default function BoardHeader({
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeRole } = useTeamContext();
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const { user } = useUser();
   const isManager = isManagerLikeRole(activeRole ?? undefined);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
@@ -264,11 +266,15 @@ export default function BoardHeader({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer max-lg:h-11">
-            <Plus className="mr-2 size-4" />
-            Adicionar novo lead
-          </Button>
-          <LeadImportButton onImportComplete={refreshLeads} />
+          {isReadOnlyAccess ? null : (
+            <>
+              <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer max-lg:h-11">
+                <Plus className="mr-2 size-4" />
+                Adicionar novo lead
+              </Button>
+              <LeadImportButton onImportComplete={refreshLeads} />
+            </>
+          )}
           <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>

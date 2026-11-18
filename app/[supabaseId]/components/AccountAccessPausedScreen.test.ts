@@ -31,7 +31,7 @@ test("o master reativa a assinatura pagando a renovação, com uma única ação
   expect(markup).not.toContain("wa.me")
 })
 
-test("o membro não paga: só é avisado de que o acesso volta sozinho, sem ações", () => {
+test("o membro não paga: só é orientado a avisar o administrador, sem ações", () => {
   const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
     isBillingOwner: false,
     reason: "past_due",
@@ -40,7 +40,36 @@ test("o membro não paga: só é avisado de que o acesso volta sozinho, sem aç�
 
   expect(markup).not.toContain("Reativar assinatura")
   expect(markup).not.toContain("wa.me")
-  expect(markup).toContain("Seu acesso volta automaticamente assim que a assinatura desta conta for regularizada.")
+  expect(markup).toContain(
+    "Avise o administrador desta conta para que ele entre em contato com o time de assinaturas."
+  )
+})
+
+test("master com assinatura indisponível não tem pagamento a fazer: fala com o time de assinaturas", () => {
+  const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
+    isBillingOwner: true,
+    reason: "subscription_unavailable",
+    reactivateHref: REACTIVATE_HREF,
+  }))
+
+  expect(markup).not.toContain("Reativar assinatura")
+  expect(markup).toContain("Falar com o time de assinaturas")
+})
+
+test("cada motivo tem seu texto: suspenso e cancelado orientam o master a reativar", () => {
+  for (const [reason, text] of [
+    ["suspended", "Reative a assinatura para liberar o acesso desta conta."],
+    ["canceled", "Reative a assinatura para voltar a usar a conta."],
+  ] as const) {
+    const markup = renderToStaticMarkup(createElement(AccountAccessPausedScreen, {
+      isBillingOwner: true,
+      reason,
+      reactivateHref: REACTIVATE_HREF,
+    }))
+
+    expect(markup).toContain(text)
+    expect(markup).toContain("Reativar assinatura")
+  }
 })
 
 test("conta banida não se reativa com pagamento: só o time de assinaturas", () => {

@@ -1,14 +1,33 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 // T-40.4 a T-40.8 de [[40 — Checkout, Adesões e Add-ons — Backend]] (E2):
-// ensureCustomer nunca recria em erro (DA1); GET/PUT/DELETE de assinatura
-// roteiam pela conta do master; cartão de assinatura legacy é bloqueado.
+// GET/PUT/DELETE de assinatura roteiam pela conta do master; ensureCustomer
+// nunca recria em erro (DA1). Cobrança nova de add-on vai para AbacatePay (Fase B-1).
 
 const createCustomerMock = mock(async (_input: unknown) => ({ id: "cus_gateway" }))
 const updateAsaasCustomerIdMock = mock(async () => {})
 const updateSubscriptionDataMock = mock(async () => {})
 const getBillingSnapshotMock = mock(async () => null)
 const getSubscriptionEndDateMock = mock(async () => null)
+
+const paymentCreatePixMock = mock(async (_input: unknown) => ({
+  status: "PENDING",
+  externalId: "bill_1",
+  method: "PIX",
+  amountInCents: 1000,
+  currency: "BRL",
+  pix: { brCode: "copia-cola", brCodeBase64: "img", expiresAt: "2026-12-01T00:00:00.000Z" },
+}))
+const cardCreateMock = mock(async (_input: unknown) => ({}))
+const sessionCreateMock = mock(async (_input: unknown) => ({ id: "session-1" }))
+const attemptCreateMock = mock(async (_input: unknown) => ({ id: "attempt-1" }))
+const leaseMock = mock(async (_input: unknown) => ({ id: "attempt-1", status: "CREATED", lease: { token: "lease" } }))
+const updateAttemptMock = mock(async (_input: unknown) => ({
+  id: "attempt-1",
+  externalId: "bill_1",
+  status: "PENDING",
+}))
+const attachProviderAttemptMock = mock(async (_input: unknown) => ({}))
 
 mock.module("@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway", () => ({
   asaasCustomerGateway: { createCustomer: createCustomerMock },
@@ -21,6 +40,30 @@ mock.module("@/app/api/infra/data/repositories/billing/BillingRepository", () =>
     updateSubscriptionData: updateSubscriptionDataMock,
     getSubscriptionEndDate: getSubscriptionEndDateMock,
   },
+}))
+
+mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
+  resolvePaymentProviderEnvironment: () => "DEV",
+  createPaymentProviderRouter: async () => ({
+    select: async () => ({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "ctx-dev" }),
+  }),
+  createAbacatePayProvider: async () => ({
+    createPixPayment: paymentCreatePixMock,
+    createCardPayment: cardCreateMock,
+  }),
+}))
+
+mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository", () => ({
+  paymentProviderSessionRepository: {
+    createSession: sessionCreateMock,
+    createAttempt: attemptCreateMock,
+    acquireAttemptLease: leaseMock,
+    updateAttemptWithLease: updateAttemptMock,
+  },
+}))
+
+mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionRepository", () => ({
+  pendingActionRepository: { attachProviderAttempt: attachProviderAttemptMock },
 }))
 
 type RequestCall = { account: string; url: string; init?: RequestInit }
@@ -80,12 +123,6 @@ const baseMaster = {
   timezone: "America/Sao_Paulo",
 }
 
-function statusError(statusCode: number, message = "erro"): Error {
-  const error = new Error(message)
-  ;(error as { statusCode?: number }).statusCode = statusCode
-  return error
-}
-
 describe("IncrementalBillingService — roteamento por conta e fim do self-heal (E2)", () => {
   beforeEach(() => {
     requestLog.length = 0
@@ -95,51 +132,83 @@ describe("IncrementalBillingService — roteamento por conta e fim do self-heal 
     updateAsaasCustomerIdMock.mockClear()
     updateSubscriptionDataMock.mockClear()
     asaasFetchMock.mockClear()
+    paymentCreatePixMock.mockClear()
+    cardCreateMock.mockClear()
+    sessionCreateMock.mockClear()
+    attemptCreateMock.mockClear()
+    leaseMock.mockClear()
+    updateAttemptMock.mockClear()
+    attachProviderAttemptMock.mockClear()
   })
 
-  it("T-40.4: 404 em cus_ legacy não recria, não chama updateAsaasCustomerId, roteia GET para o transporte legacy", async () => {
-    requestImplByAccount.legacy = async () => {
-      throw statusError(404, "Customer not found")
-    }
-
+  it("T-40.4: PIX de add-on vai ao AbacatePay e não toca o Asaas (customer nem assinatura)", async () => {
     const service = new IncrementalBillingService()
 
-    await expect(
-      service.createIncrementalCharge({
-        master: baseMaster,
-        pendingActionId: "pa-1",
-        amount: 10,
-        description: "teste",
-        billingType: "PIX",
-      })
-    ).rejects.toThrow(/não pôde ser lido/)
+    const result = await service.createIncrementalCharge({
+      master: baseMaster,
+      pendingActionId: "pa-1",
+      amount: 10,
+      description: "teste",
+      billingType: "PIX",
+    })
 
+    expect(paymentCreatePixMock).toHaveBeenCalledTimes(1)
+    expect(requestLog).toHaveLength(0)
     expect(createCustomerMock).not.toHaveBeenCalled()
     expect(updateAsaasCustomerIdMock).not.toHaveBeenCalled()
-
-    const customerGet = requestLog.find((call) => call.url.includes("/customers?"))
-    expect(customerGet?.account).toBe("legacy")
+    expect(attachProviderAttemptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "pa-1", provider: "ABACATE_PAY", providerExternalId: "bill_1" })
+    )
+    expect(result.paymentId).toBe("provider-bill_1")
+    expect(result.pix?.payload).toBe("copia-cola")
   })
 
-  it("T-40.5: erro != 404 (500) também propaga e não recria, para qualquer conta", async () => {
-    requestImplByAccount.legacy = async () => {
-      throw statusError(500, "Internal error")
-    }
-
+  it("T-40.5: cartão de add-on sem token é recusado antes de qualquer escrita ou chamada ao provedor", async () => {
     const service = new IncrementalBillingService()
 
     await expect(
       service.createIncrementalCharge({
         master: baseMaster,
         pendingActionId: "pa-2",
-        amount: 10,
-        description: "teste",
-        billingType: "PIX",
+        amount: 50,
+        description: "cobrança cartão",
+        billingType: "CREDIT_CARD",
       })
-    ).rejects.toThrow(/não pôde ser lido/)
+    ).rejects.toThrow(/Token do cartão ausente/)
 
+    expect(cardCreateMock).not.toHaveBeenCalled()
+    expect(paymentCreatePixMock).not.toHaveBeenCalled()
+    expect(sessionCreateMock).not.toHaveBeenCalled()
+    expect(requestLog).toHaveLength(0)
+  })
+
+  it("T-40.9: cartão com token ctok_ cobra pelo AbacatePay com o token recebido, sem tocar no Asaas", async () => {
+    cardCreateMock.mockImplementationOnce(async () => ({
+      status: "PENDING",
+      externalId: "bill_card",
+      method: "CARD",
+      amountInCents: 5000,
+      currency: "BRL",
+    }))
+
+    const service = new IncrementalBillingService()
+
+    await service.createIncrementalCharge({
+      master: baseMaster,
+      pendingActionId: "pa-5",
+      amount: 50,
+      description: "cobrança cartão",
+      billingType: "CREDIT_CARD",
+      cardToken: "ctok_abc",
+      installments: 3,
+    })
+
+    expect(cardCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "ctok_abc", installments: 3, tokenIssuedAt: expect.any(Date) })
+    )
+    expect(paymentCreatePixMock).not.toHaveBeenCalled()
+    expect(requestLog).toHaveLength(0)
     expect(createCustomerMock).not.toHaveBeenCalled()
-    expect(updateAsaasCustomerIdMock).not.toHaveBeenCalled()
   })
 
   it("T-40.6: GET/PUT/DELETE de assinatura usam o transporte da asaasSubscriptionAccount (legacy)", async () => {
@@ -166,55 +235,6 @@ describe("IncrementalBillingService — roteamento por conta e fim do self-heal 
     expect(requestLog.some((call) => call.url.includes("/subscriptions?") && call.account === "primary")).toBe(
       false
     )
-  })
-
-  it("T-40.7: cobrança CREDIT_CARD com assinatura legacy é recusada com mensagem de reautorização; PIX segue permitido", async () => {
-    requestImplByAccount.legacy = async (url: string) => {
-      if (url.includes("/customers?")) return {}
-      if (url.includes("/subscriptions?")) {
-        return {
-          id: "sub_legacy_1",
-          billingType: "CREDIT_CARD",
-          cycle: "MONTHLY",
-          creditCard: { creditCardToken: "tok_legacy" },
-        }
-      }
-      return {}
-    }
-
-    const service = new IncrementalBillingService()
-
-    await expect(
-      service.createIncrementalCharge({
-        master: baseMaster,
-        pendingActionId: "pa-3",
-        amount: 50,
-        description: "cobrança cartão",
-        billingType: "CREDIT_CARD",
-      })
-    ).rejects.toThrow(/reautorização/)
-
-    // PIX não toca getCurrentSubscription — não é bloqueado
-    requestImplByAccount.primary = async (url: string) => {
-      if (url.includes("/payments?")) return { id: "pay_1", status: "PENDING" }
-      if (url.includes("/pixQrCode")) return { encodedImage: "img", payload: "copia-cola", expirationDate: "" }
-      return {}
-    }
-    const primaryMaster = {
-      ...baseMaster,
-      asaasCustomerAccount: "primary" as const,
-      asaasSubscriptionAccount: "primary" as const,
-    }
-
-    const pixResult = await service.createIncrementalCharge({
-      master: primaryMaster,
-      pendingActionId: "pa-4",
-      amount: 50,
-      description: "cobrança pix",
-      billingType: "PIX",
-    })
-
-    expect(pixResult.billingType).toBe("PIX")
   })
 
   it("achado P1 PRRT_...CUk4: syncRecurringSubscription com override de data grava a MESMA conta da assinatura reaproveitada (legacy)", async () => {

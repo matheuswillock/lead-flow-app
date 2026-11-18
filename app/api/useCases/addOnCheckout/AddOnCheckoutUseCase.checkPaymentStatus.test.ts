@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 
 // T-40.19/T-40.20 de [[40 — Checkout, Adesões e Add-ons — Backend]] (E6/C32):
 // checkPaymentStatus roteia por conta e nunca vira "pendente para sempre"
@@ -6,10 +6,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 
 const findApplicableByIdMock = mock(async (_id: string) => baseAction)
 const updateStatusMock = mock(async () => {})
-const applyPendingActionByPaymentIdMock = mock(async () => {
-  const { Output } = await import("@/lib/output")
-  return new Output(true, [], [], null)
-})
+const findAttemptByIdMock = mock(async (_id: string) => null as any)
 
 mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionRepository", () => ({
   pendingActionRepository: {
@@ -18,11 +15,12 @@ mock.module("@/app/api/infra/data/repositories/pendingAction/PendingActionReposi
   },
 }))
 
-mock.module("@/app/api/useCases/pendingActions/PendingActionUseCase", () => ({
-  pendingActionUseCase: {
-    applyPendingActionByPaymentId: applyPendingActionByPaymentIdMock,
+mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository", () => ({
+  paymentProviderSessionRepository: {
+    findAttemptById: findAttemptByIdMock,
   },
 }))
+
 
 mock.module("@/app/api/services/billing/IncrementalBillingService", () => ({
   incrementalBillingService: {},
@@ -47,6 +45,26 @@ mock.module("@/lib/asaas", () => ({
     },
   }),
 }))
+
+const { pendingActionUseCase } = await import("@/app/api/useCases/pendingActions/PendingActionUseCase")
+const { Output } = await import("@/lib/output")
+
+let applyPendingActionByPaymentIdMock: any
+let applyPendingActionByIdMock: any
+
+beforeEach(() => {
+  applyPendingActionByPaymentIdMock = spyOn(pendingActionUseCase, "applyPendingActionByPaymentId").mockImplementation(
+    async () => new Output(true, [], [], null)
+  )
+  applyPendingActionByIdMock = spyOn(pendingActionUseCase, "applyPendingActionById").mockImplementation(
+    async () => new Output(true, [], [], null)
+  )
+})
+
+afterEach(() => {
+  applyPendingActionByPaymentIdMock.mockRestore()
+  applyPendingActionByIdMock.mockRestore()
+})
 
 const { AddOnCheckoutUseCase } = await import("./AddOnCheckoutUseCase")
 
@@ -128,5 +146,58 @@ describe("AddOnCheckoutUseCase.checkPaymentStatus — polling roteado por conta 
     expect(payload.status).toBe("CONFIRMED")
     expect(payload.pendingActionStatus).toBe("applied")
     expect(payload.amount).toBeNull()
+  })
+})
+
+describe("AddOnCheckoutUseCase.checkPaymentStatus — AbacatePay (Fase B-2)", () => {
+  const abacateAction = {
+    ...baseAction,
+    paymentId: null,
+    asaasAccount: null,
+    provider: "ABACATE_PAY",
+    providerAttemptId: "att-1",
+    providerExternalId: "bill_1",
+  }
+
+  beforeEach(() => {
+    requestLog.length = 0
+    findApplicableByIdMock.mockClear()
+    findApplicableByIdMock.mockImplementation(async () => ({ ...abacateAction }))
+    applyPendingActionByIdMock.mockClear()
+    applyPendingActionByPaymentIdMock.mockClear()
+    findAttemptByIdMock.mockClear()
+  })
+
+  it("CONFIRMED na tentativa AbacatePay aplica por id e nunca consulta o Asaas", async () => {
+    findAttemptByIdMock.mockImplementation(async () => ({ id: "att-1", status: "CONFIRMED" }))
+
+    const result = await new AddOnCheckoutUseCase().checkPaymentStatus("pa-1")
+
+    expect(result.isValid).toBe(true)
+    expect(findAttemptByIdMock).toHaveBeenCalledWith("att-1")
+    expect(applyPendingActionByIdMock).toHaveBeenCalledWith("pa-1")
+    expect(applyPendingActionByPaymentIdMock).not.toHaveBeenCalled()
+    expect(requestLog).toHaveLength(0)
+    expect((result.result as any).pendingActionStatus).toBe("applied")
+  })
+
+  it("PENDING na tentativa AbacatePay não aplica nada", async () => {
+    findAttemptByIdMock.mockImplementation(async () => ({ id: "att-1", status: "PENDING" }))
+
+    const result = await new AddOnCheckoutUseCase().checkPaymentStatus("pa-1")
+
+    expect(result.isValid).toBe(true)
+    expect(applyPendingActionByIdMock).not.toHaveBeenCalled()
+    expect((result.result as any).status).toBe("PENDING")
+    expect((result.result as any).paymentId).toBe("provider-bill_1")
+  })
+
+  it("sem providerAttemptId devolve erro explícito, sem consultar o Asaas", async () => {
+    findApplicableByIdMock.mockImplementation(async () => ({ ...abacateAction, providerAttemptId: null }))
+
+    const result = await new AddOnCheckoutUseCase().checkPaymentStatus("pa-1")
+
+    expect(result.isValid).toBe(false)
+    expect(requestLog).toHaveLength(0)
   })
 })

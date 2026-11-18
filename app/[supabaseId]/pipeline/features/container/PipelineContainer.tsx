@@ -25,6 +25,7 @@ import {
   DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY,
 } from "../context/PipelineContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
+import { useIsReadOnlyAccess } from "@/app/[supabaseId]/components/useIsReadOnlyAccess";
 
 const PIPELINE_TABLE_COLUMN_OPTIONS = [
   { key: "name", label: "Nome" },
@@ -124,6 +125,7 @@ export function PipelineContainer({
     tableColumnOrder,
     setTableColumnOrder,
   } = usePipelineContext();
+  const isReadOnlyAccess = useIsReadOnlyAccess();
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -184,10 +186,12 @@ export function PipelineContainer({
         </div>
         <div className="flex items-center gap-2">
           {viewModeToggle}
-          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer max-lg:h-11">
-            <Plus className="mr-2 size-4" />
-            Adicionar novo lead
-          </Button>
+          {isReadOnlyAccess ? null : (
+            <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer max-lg:h-11">
+              <Plus className="mr-2 size-4" />
+              Adicionar novo lead
+            </Button>
+          )}
           <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>
@@ -262,7 +266,7 @@ export function PipelineContainer({
               </div>
             </SheetContent>
           </Sheet>
-          <LeadImportButton onImportComplete={refreshLeads} />
+          {isReadOnlyAccess ? null : <LeadImportButton onImportComplete={refreshLeads} />}
         </div>
       </div>
 

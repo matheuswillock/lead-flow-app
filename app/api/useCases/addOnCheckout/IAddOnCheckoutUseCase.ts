@@ -21,6 +21,8 @@ export interface CheckoutDetailsResponse {
   presetBillingType: "PIX" | "CREDIT_CARD";
   /** Métodos que esta conta pode escolher agora (cartão só volta com o Abacate, salvo assinante com cartão). */
   availableBillingTypes: AvailableBillingTypes;
+  /** Chave pública para tokenizar o cartão no navegador; null quando o cartão não está disponível. */
+  cardCheckout?: { provider: "ABACATE_PAY"; publicKey: string } | null;
   addonType: "user" | "team";
   addonLabel: string;
   addonDetail: string;
@@ -61,13 +63,7 @@ export interface AddOnCheckoutPaymentInput {
   city?: string;
   state?: string;
   installments?: number;
-  creditCard?: {
-    holderName: string;
-    number: string;
-    expiryMonth: string;
-    expiryYear: string;
-    ccv: string;
-  };
+  cardToken?: string;
   remoteIp?: string;
 }
 
