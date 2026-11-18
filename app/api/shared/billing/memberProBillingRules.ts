@@ -31,12 +31,17 @@ export function resolveMemberProBypass(
   context: MemberProBillingContext,
   options?: MemberProBypassOptions
 ): boolean {
+  // Tag de ilimitado válida (já validada por resolveHasUnlimitedUsers) não cobra usuário,
+  // nem com "Gerar cobrança" ligado.
+  const hasValidUnlimitedGrant =
+    context.slug !== MEMBER_PRO_SLUG || context.isActive;
+  if (hasValidUnlimitedGrant && context.hasUnlimitedUsers === true) {
+    return true;
+  }
   if (options?.forceCharge === true) {
     return false;
   }
-  const hasValidUnlimitedGrant =
-    context.slug !== MEMBER_PRO_SLUG || context.isActive;
-  return context.isActive || (hasValidUnlimitedGrant && context.hasUnlimitedUsers === true);
+  return context.isActive;
 }
 
 export function isActiveMemberProAssignment(
