@@ -231,7 +231,7 @@ export class PendingActionRepository implements IPendingActionRepository {
   ): Promise<PendingActionOwnershipLookup | null> {
     return prisma.pendingAction.findFirst({
       where: { paymentId, masterId },
-      select: { id: true, masterId: true, status: true, asaasAccount: true },
+      select: { id: true, masterId: true, status: true, asaasAccount: true, provider: true },
     });
   }
 
