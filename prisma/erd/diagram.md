@@ -2157,6 +2157,7 @@ fixed fixed
     String id "🗝️"
     String asaasPaymentId "❓"
     AsaasAccount asaasAccount 
+    String provider "❓"
     String billingType 
     String status 
     Decimal amount 
@@ -3734,6 +3735,7 @@ fixed fixed
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
     String asaasSubscriptionId "❓"
+    String provider "❓"
     AsaasAccount asaasSubscriptionAccount 
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
