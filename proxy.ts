@@ -12,6 +12,7 @@ import {
   requiresManagerRole,
 } from "@/lib/proxy/route-access"
 import { resolveProfileRoleForProxy } from "@/lib/proxy/resolve-profile-role"
+import { guardAccountWrite, shouldGuardAccountWrite } from "@/lib/proxy/account-write-guard"
 import { isBackofficeRole, isManagerLikeRole } from "@/lib/roles"
 import {
   nextWithSession,
@@ -204,6 +205,18 @@ export async function proxy(request: NextRequest) {
         requestHeaders.set("x-supabase-user-id", user.id)
       } else if (isE2eTestMode() && incomingHeader) {
         requestHeaders.set("x-supabase-user-id", incomingHeader)
+      }
+
+      const realApiPath = isClientApiSlug
+        ? REAL_API_PREFIX + pathname.slice(SLUG_PREFIX.length)
+        : pathname
+      if (
+        user &&
+        realApiPath.startsWith(REAL_API_PREFIX) &&
+        shouldGuardAccountWrite(realApiPath.slice(REAL_API_PREFIX.length), request.method)
+      ) {
+        const blocked = await guardAccountWrite(user.id)
+        if (blocked) return blocked
       }
 
       if (isClientApiSlug) {

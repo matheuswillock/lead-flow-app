@@ -16,7 +16,11 @@ const prismaMock = {
   profile: { findUnique: findUniqueMock },
   profileSubscription: { findUnique: findUniqueSubscriptionMock },
 }
-mock.module("@/app/api/infra/data/prisma", () => ({ prisma: prismaMock, default: prismaMock }))
+mock.module("@/app/api/infra/data/prisma", () => ({
+  prisma: prismaMock,
+  default: prismaMock,
+  withPrismaRetry: async <T>(operation: () => Promise<T>) => operation(),
+}))
 
 mock.module("@/app/api/services/AsaasSubscription/AsaasSubscriptionService", () => ({
   AsaasSubscriptionService: {},

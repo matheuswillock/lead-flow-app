@@ -2,7 +2,9 @@ import { describe, expect, it, mock } from "bun:test"
 
 mock.module("server-only", () => ({}))
 
-const { getPlanInfo, resolveBackofficeHasAccess } = await import("./BackofficePlatformUsersUseCase")
+const { getPlanInfo, resolveBackofficeHasAccess, resolveBackofficeAccessMode } = await import(
+  "./BackofficePlatformUsersUseCase"
+)
 
 describe("resolveBackofficeHasAccess", () => {
   it("mantém acesso para Member PRO vigente mesmo com assinatura suspensa", () => {
@@ -34,6 +36,79 @@ describe("resolveBackofficeHasAccess", () => {
       memberProBlocked: true,
       isBanned: false,
     })).toBe(false)
+  })
+})
+
+describe("resolveBackofficeAccessMode", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS)
+  const base = {
+    hasPermanentSubscription: false,
+    subscriptionId: null as string | null,
+    memberProActive: false,
+    isBanned: false,
+  }
+
+  it("conta ativa → full", () => {
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionId: "subscription-1",
+        subscriptionStatus: "active",
+        subscriptionNextDueDate: null,
+        profileSubscriptionNextDueDate: null,
+      })
+    ).toBe("full")
+  })
+
+  it("past_due dentro da carência (dia 2) → full, não 'Sem acesso'", () => {
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: daysAgo(2),
+        profileSubscriptionNextDueDate: null,
+      })
+    ).toBe("full")
+  })
+
+  it("past_due com carência expirada (dia 10, sem corte superior) → read_only", () => {
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: daysAgo(10),
+        profileSubscriptionNextDueDate: null,
+      })
+    ).toBe("read_only")
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: daysAgo(60),
+        profileSubscriptionNextDueDate: null,
+      })
+    ).toBe("read_only")
+  })
+
+  it("sem data de vencimento ou banido/bloqueado → none", () => {
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: null,
+        profileSubscriptionNextDueDate: null,
+      })
+    ).toBe("none")
+    expect(
+      resolveBackofficeAccessMode({
+        ...base,
+        subscriptionStatus: "past_due",
+        subscriptionNextDueDate: daysAgo(10),
+        profileSubscriptionNextDueDate: null,
+        isBanned: true,
+      })
+    ).toBe("none")
   })
 })
 

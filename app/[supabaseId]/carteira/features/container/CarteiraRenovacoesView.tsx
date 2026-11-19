@@ -5,6 +5,7 @@ import { CheckCircle2, Clock, Info, RefreshCw, TrendingDown, TrendingUp } from '
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useIsReadOnlyAccess } from '@/app/[supabaseId]/components/useIsReadOnlyAccess';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -311,12 +312,13 @@ function KanbanCard({
   onCardClick: (row: CarteiraRow) => void;
   onDragStart: (e: React.DragEvent, portfolioId: string) => void;
 }) {
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const reajuste = computeReajustePercent(row.saleValue, row.renewalAmount);
   const displayValue = row.renewalAmount ?? row.saleValue;
 
   return (
     <Card
-      draggable
+      draggable={!isReadOnlyAccess}
       onDragStart={(e) => onDragStart(e, row.portfolioId)}
       onClick={() => onCardClick(row)}
       className="cursor-grab shadow-none transition-shadow hover:shadow-md active:cursor-grabbing active:opacity-50"
@@ -361,9 +363,11 @@ function KanbanColumn({
   onCardClick: (row: CarteiraRow) => void;
   onDragStart: (e: React.DragEvent, portfolioId: string) => void;
 }) {
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const [isOver, setIsOver] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (isReadOnlyAccess) return;
     e.preventDefault();
     setIsOver(true);
   };
@@ -373,6 +377,7 @@ function KanbanColumn({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsOver(false);
+    if (isReadOnlyAccess) return;
     const portfolioId = e.dataTransfer.getData('portfolioId');
     if (portfolioId) onStatusChange(portfolioId, col);
   };
@@ -413,7 +418,7 @@ function KanbanColumn({
             'flex h-14 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground transition-colors',
             isOver && 'border-primary/50 bg-primary/5 text-primary',
           )}>
-            Soltar aqui
+            {isReadOnlyAccess ? 'Nenhum cliente' : 'Soltar aqui'}
           </div>
         )}
       </div>

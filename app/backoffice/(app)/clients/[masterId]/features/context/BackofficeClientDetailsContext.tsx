@@ -71,6 +71,7 @@ interface BackofficeClientDetailsContextValue {
   isInvoicesLoading: boolean
   isPendingActionsLoading: boolean
   isCancelingPendingAction: boolean
+  isCancelingInvoice: boolean
   error: string | null
   teamsError: string | null
   invoicesError: string | null
@@ -95,6 +96,7 @@ interface BackofficeClientDetailsContextValue {
   setInvoicesFilters: (filters: Partial<BackofficeClientInvoiceFilters>) => Promise<void>
   fetchPendingActions: () => Promise<void>
   cancelPendingAction: (pendingActionId: string) => Promise<string>
+  cancelInvoice: (invoiceId: string) => Promise<string>
   reload: () => Promise<void>
   clearFilters: () => Promise<void>
 }
@@ -135,6 +137,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
   const [isInvoicesLoading, setIsInvoicesLoading] = useState(true)
   const [isPendingActionsLoading, setIsPendingActionsLoading] = useState(true)
   const [isCancelingPendingAction, setIsCancelingPendingAction] = useState(false)
+  const [isCancelingInvoice, setIsCancelingInvoice] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [teamsError, setTeamsError] = useState<string | null>(null)
   const [invoicesError, setInvoicesError] = useState<string | null>(null)
@@ -354,6 +357,29 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     service,
   ])
 
+  const cancelInvoice = useCallback(async (invoiceId: string) => {
+    if (isCancelingInvoice) {
+      throw new Error("Cancelamento já em andamento")
+    }
+
+    setIsCancelingInvoice(true)
+    try {
+      const result = await service.cancelInvoice(masterId, invoiceId)
+      await loadInvoices(invoicesPagination.page, invoicesPagination.pageSize, invoiceFilters)
+      return result.message
+    } finally {
+      setIsCancelingInvoice(false)
+    }
+  }, [
+    invoiceFilters,
+    invoicesPagination.page,
+    invoicesPagination.pageSize,
+    isCancelingInvoice,
+    loadInvoices,
+    masterId,
+    service,
+  ])
+
   const reload = useCallback(async () => {
     await Promise.all([
       loadDetails(filters, teamsPagination.page, teamsPagination.pageSize),
@@ -405,6 +431,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         isInvoicesLoading,
         isPendingActionsLoading,
         isCancelingPendingAction,
+        isCancelingInvoice,
         error,
         teamsError,
         invoicesError,
@@ -421,6 +448,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         setInvoicesFilters,
         fetchPendingActions,
         cancelPendingAction,
+        cancelInvoice,
         reload,
         clearFilters,
       }}

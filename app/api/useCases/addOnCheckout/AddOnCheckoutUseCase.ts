@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
@@ -9,6 +10,7 @@ import {
 } from "@/app/api/services/billing/ExistingCardSubscriberService";
 import {
   PaymentMethodUnavailableError,
+  readConfiguredAbacatePublicKey,
 } from "@/lib/payment-methods/availability";
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
 import type {
@@ -29,6 +31,37 @@ function normalizeBillingType(value: unknown): "PIX" | "CREDIT_CARD" | null {
     return value;
   }
   return null;
+}
+
+// Achado Codex (PR #1407, P2): a cobrança AbacatePay não existe no Asaas; devolve a tentativa guardada.
+async function storedAbacatePayCharge(input: {
+  attemptId: string | null;
+  paymentId: string;
+  billingType: "PIX" | "CREDIT_CARD";
+  amount: number;
+}): Promise<Output> {
+  const attempt = input.attemptId
+    ? await paymentProviderSessionRepository.findAttemptById(input.attemptId)
+    : null;
+  if (!attempt) {
+    return new Output(false, [], ["Tentativa de pagamento não encontrada"], null);
+  }
+  const response: Record<string, unknown> = {
+    paymentId: input.paymentId,
+    paymentStatus: attempt.status,
+    billingType: input.billingType,
+    amount: input.amount,
+    dueDate: null,
+  };
+  if (attempt.paymentInstructions) {
+    response.pix = {
+      encodedImage: attempt.paymentInstructions.brCodeBase64,
+      payload: attempt.paymentInstructions.brCode,
+      expirationDate: attempt.paymentInstructions.expiresAt,
+    };
+    response.invoiceUrl = attempt.externalId ? `https://pay.abacate.app/invoice/${attempt.externalId}` : null;
+  }
+  return new Output(true, ["Cobrança já criada"], [], response);
 }
 
 export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
@@ -77,11 +110,16 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       const m = pendingAction.master as Record<string, any>;
       const availableBillingTypes = await resolveAvailableBillingTypesForMaster(m);
+      // Achado Codex (PR #1407, P2): sem a chave pública o cartão não é tokenizado e a cobrança é recusada.
+      const cardPublicKey = availableBillingTypes.includes("CREDIT_CARD")
+        ? await readConfiguredAbacatePublicKey()
+        : null;
       const checkoutDetails: CheckoutDetailsResponse = {
         pendingActionId,
         paymentId: pendingAction.paymentId ?? null,
         presetBillingType,
         availableBillingTypes,
+        cardCheckout: cardPublicKey ? { provider: "ABACATE_PAY", publicKey: cardPublicKey } : null,
         addonType,
         addonLabel,
         addonDetail,
@@ -140,6 +178,15 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       }
 
       if (pendingAction.paymentId) {
+        if (pendingAction.provider === "ABACATE_PAY") {
+          const storedPayload = pendingAction.payload as Record<string, unknown>;
+          return storedAbacatePayCharge({
+            attemptId: pendingAction.providerAttemptId ?? null,
+            paymentId: pendingAction.paymentId,
+            billingType: normalizeBillingType(storedPayload.billingType) ?? "PIX",
+            amount: (storedPayload.totalCharge as number) ?? 0,
+          });
+        }
         // Achado Codex (PR #1137, P2): pendingAction.asaasAccount é a conta
         // PERSISTIDA no instante em que este paymentId nasceu — nunca o
         // helper asaas() legado (sempre primary), que devolvia 404 para
@@ -211,7 +258,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
           city: input.city,
           state: input.state,
         },
-        creditCard: input.creditCard,
+        cardToken: input.cardToken,
         installments: input.installments,
         remoteIp: input.remoteIp,
       });
@@ -298,7 +345,9 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Checkout expirado. Gere um novo link de pagamento."], null);
       }
 
-      if (!pendingAction.paymentId) {
+      const isAbacatePay = pendingAction.provider === "ABACATE_PAY";
+
+      if (!isAbacatePay && !pendingAction.paymentId) {
         return new Output(
           false,
           [],
@@ -307,68 +356,133 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         );
       }
 
-      // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
-      // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
-      // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
-      // desde então (E4, checkout de operador migra o master de conta).
-      const account = pendingAction.asaasAccount;
+      const paymentId = pendingAction.paymentId ?? `provider-${pendingAction.providerExternalId}`;
+
       let payment: { status?: string; value?: number; dueDate?: string } | null = null;
+      let wasConfirmed = false;
 
-      try {
-        const client = createAsaasClient(account);
-        payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
-          method: "GET",
-        });
-      } catch (error) {
-        // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
-        // pode virar "pendente para sempre" nem 500 — degrada para o
-        // status persistido pelo webhook (última verdade conhecida).
-        console.error(
-          "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
-          { pendingActionId, paymentId: pendingAction.paymentId, account, error }
-        );
+      if (isAbacatePay) {
+        // Buscar status da tentativa no PaymentProviderSessionRepository
+        if (!pendingAction.providerAttemptId) {
+          return new Output(
+            false,
+            [],
+            ["Tentativa de pagamento não foi registrada"],
+            null
+          );
+        }
 
-        const persistedStatus =
-          pendingAction.status === "applied"
-            ? "CONFIRMED"
-            : pendingAction.status === "canceled"
-              ? "CANCELED"
-              : "PENDING";
+        try {
+          const attempt = await paymentProviderSessionRepository.findAttemptById(
+            pendingAction.providerAttemptId
+          );
+          if (!attempt) {
+            return new Output(
+              false,
+              [],
+              ["Tentativa de pagamento não encontrada"],
+              null
+            );
+          }
 
-        const degradedResponse: PaymentStatusResponse = {
-          paymentId: pendingAction.paymentId,
-          status: persistedStatus,
-          amount: null,
-          dueDate: null,
-          pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
-        };
+          // Status da tentativa: CREATED, PENDING, CONFIRMED, FAILED, REFUNDED, etc.
+          wasConfirmed = attempt.status === "CONFIRMED";
+          payment = { status: attempt.status };
+        } catch (error) {
+          console.error(
+            "[AddOnCheckoutUseCase][checkPaymentStatus] Erro ao buscar status AbacatePay",
+            { pendingActionId, providerAttemptId: pendingAction.providerAttemptId, error }
+          );
 
-        return new Output(true, [], [], degradedResponse);
+          // Degradação: usar status persistido
+          const persistedStatus =
+            pendingAction.status === "applied"
+              ? "CONFIRMED"
+              : pendingAction.status === "canceled"
+                ? "CANCELED"
+                : "PENDING";
+
+          const degradedResponse: PaymentStatusResponse = {
+            paymentId,
+            status: persistedStatus,
+            amount: null,
+            dueDate: null,
+            pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+          };
+
+          return new Output(true, [], [], degradedResponse);
+        }
+      } else {
+        // Fluxo Asaas (padrão)
+        // Achado Codex (PR #1137, P1): usa a conta PERSISTIDA no instante em
+        // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
+        // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
+        // desde então (E4, checkout de operador migra o master de conta).
+        const account = pendingAction.asaasAccount;
+
+        try {
+          const client = createAsaasClient(account);
+          payment = await client.request(`${client.endpoints.payments}/${pendingAction.paymentId}`, {
+            method: "GET",
+          });
+        } catch (error) {
+          // E6/DA4: o provedor caindo (ou um pay_ legado 404 na janela) não
+          // pode virar "pendente para sempre" nem 500 — degrada para o
+          // status persistido pelo webhook (última verdade conhecida).
+          console.error(
+            "[AddOnCheckoutUseCase][checkPaymentStatus] Asaas indisponível, usando status persistido",
+            { pendingActionId, paymentId: pendingAction.paymentId, account, error }
+          );
+
+          const persistedStatus =
+            pendingAction.status === "applied"
+              ? "CONFIRMED"
+              : pendingAction.status === "canceled"
+                ? "CANCELED"
+                : "PENDING";
+
+          const degradedResponse: PaymentStatusResponse = {
+            paymentId,
+            status: persistedStatus,
+            amount: null,
+            dueDate: null,
+            pendingActionStatus: pendingAction.status as "pending" | "applied" | "failed" | "canceled",
+          };
+
+          return new Output(true, [], [], degradedResponse);
+        }
+
+        if (!payment) {
+          return new Output(
+            false,
+            [],
+            ["Erro ao buscar status do pagamento"],
+            null
+          );
+        }
+
+        // Check if payment was received/confirmed
+        // Asaas status: PENDING, RECEIVED, CONFIRMED, FAILED, EXPIRED, CANCELED
+        wasConfirmed = payment.status === "RECEIVED" || payment.status === "CONFIRMED";
       }
-
-      if (!payment) {
-        return new Output(
-          false,
-          [],
-          ["Erro ao buscar status do pagamento"],
-          null
-        );
-      }
-
-      // Check if payment was received/confirmed
-      // Asaas status: PENDING, RECEIVED, CONFIRMED, FAILED, EXPIRED, CANCELED
-      const wasConfirmed = payment.status === "RECEIVED" || payment.status === "CONFIRMED";
 
       // If payment was confirmed and PendingAction is still pending, run the full apply flow
       // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId, account);
+        if (isAbacatePay) {
+          await pendingActionUseCase.applyPendingActionById(pendingAction.id);
+        } else if (pendingAction.paymentId) {
+          await pendingActionUseCase.applyPendingActionByPaymentId(
+            pendingAction.paymentId,
+            pendingAction.asaasAccount
+          );
+        }
         currentStatus = "applied";
       }
 
       const statusResponse: PaymentStatusResponse = {
-        paymentId: pendingAction.paymentId,
+        paymentId,
         status: payment.status ?? "PENDING",
         amount: payment.value ?? null,
         dueDate: payment.dueDate ?? null,
@@ -406,6 +520,13 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       if (pendingAction.status !== "pending") {
         return new Output(false, [], ["Esta ação já foi processada"], null);
+      }
+
+      if (pendingAction.provider === "ABACATE_PAY" && pendingAction.providerAttemptId) {
+        const attempt = await paymentProviderSessionRepository.findAttemptById(pendingAction.providerAttemptId);
+        if (attempt?.status === "CONFIRMED") {
+          return new Output(false, [], ["Pagamento já confirmado; a forma de pagamento não pode ser trocada"], null);
+        }
       }
 
       if (nextBillingType === "CREDIT_CARD") {

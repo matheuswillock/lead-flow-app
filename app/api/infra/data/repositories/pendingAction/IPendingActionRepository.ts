@@ -20,6 +20,9 @@ export const applicablePendingActionSelect = {
   // paymentId nasceu — master.asaasCustomerAccount pode migrar depois
   // (E4, checkout de operador). Ver comentário no schema.
   asaasAccount: true,
+  provider: true,
+  providerAttemptId: true,
+  providerExternalId: true,
   createdAt: true,
   updatedAt: true,
   master: {
@@ -151,6 +154,21 @@ export interface IPendingActionRepository {
   markFailed(params: MarkPendingActionFailedParams): Promise<void>;
   findProfileContact(profileId: string): Promise<PendingActionProfileContact | null>;
   linkProfileSupabaseIdentity(profileId: string, supabaseId: string): Promise<void>;
+
+  // Fase B: registra a tentativa do provider após criação bem-sucedida.
+  attachProviderAttempt(input: {
+    id: string;
+    provider: string;
+    providerEnvironment: string;
+    providerSessionId: string;
+    providerAttemptId: string;
+    providerExternalId: string;
+  }): Promise<PendingAction | null>;
+  // Fase B: atualiza a tentativa do provider durante polling.
+  updateProviderAttempt(input: {
+    id: string;
+    providerExternalId?: string;
+  }): Promise<void>;
 
   /**
    * Executa a orquestração da aplicação numa única transação. O UseCase mantém a

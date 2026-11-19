@@ -76,6 +76,7 @@ interface BackofficeAddMemberDialogProps {
   masterId: string
   teams: { id: string; name: string }[]
   masterUserType?: { slug: "common" | "member_pro"; isExpired: boolean }
+  hasUnlimitedUsers?: boolean
   service: IBackofficeClientDetailsService
   onOpenChange: (open: boolean) => void
   onSaved?: () => Promise<void> | void
@@ -92,6 +93,7 @@ export function BackofficeAddMemberDialog({
   masterId,
   teams,
   masterUserType,
+  hasUnlimitedUsers,
   service,
   onOpenChange,
   onSaved,
@@ -99,8 +101,9 @@ export function BackofficeAddMemberDialog({
   const [values, setValues] = useState<FormValues>(defaultValues)
   const [generateCharge, setGenerateCharge] = useState(() => defaultGenerateCharge(masterUserType))
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Com a tag de ilimitado ativa a criação não cobra usuário: o switch não tem efeito.
   const showChargeToggle =
-    masterUserType?.slug === "member_pro" && !masterUserType.isExpired
+    masterUserType?.slug === "member_pro" && !masterUserType.isExpired && !hasUnlimitedUsers
 
   function handleOpenChange(next: boolean) {
     if (!next && isSubmitting) return

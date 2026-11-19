@@ -10,6 +10,7 @@ import type {
 import { FeatureAccessRepository } from "@/app/api/infra/data/repositories/featureAccess/FeatureAccessRepository"
 import { addProductFeatureSlugsToSet } from "@/lib/backoffice-products/product-feature-slugs"
 import { isAccountMasterBanned } from "@/lib/account/isAccountMasterBanned"
+import { resolveEffectiveNextDueDate } from "@/lib/billing/delinquency-tier"
 import {
   isActiveMemberProAssignment,
   isBlockingMemberProAssignment,
@@ -210,13 +211,17 @@ export class FeatureAccessService implements IFeatureAccessService {
         new Date(ownerUserType.accessStartsAt).getTime() <= now.getTime())
 
     // Mesma janela de carência (vencimento + BILLING_GRACE_DAYS) que AccountAccessDecisionService
-    // já usa pro banner "regularize até" — calculada aqui em vez de depender de uma
-    // BillingAccessGrace manual, pra não deixar os dois sistemas divergirem sobre até quando
-    // o Member PRO expirado continua com CRM liberado.
+    // já usa pro banner "regularize até"/estado read_only — calculada aqui em vez de depender
+    // de uma BillingAccessGrace manual, pra não deixar os sistemas divergirem. O vencimento é a
+    // data mais antiga entre perfil e assinatura (resolveEffectiveNextDueDate) — mesma regra que
+    // AccountAccessDecisionRepository já aplica antes de decide(); usar qualquer outra combinação
+    // aqui faria os dois decisores divergirem sobre quando a conta entrou em atraso.
     const dynamicGraceUntil = resolveBillingGraceUntil({
       subscriptionStatus: ownerProfileSubscription?.subscriptionStatus ?? ownerProfile?.subscriptionStatus ?? null,
-      subscriptionNextDueDate:
-        ownerProfileSubscription?.subscriptionNextDueDate ?? ownerProfile?.subscriptionNextDueDate ?? null,
+      subscriptionNextDueDate: resolveEffectiveNextDueDate(
+        ownerProfileSubscription?.subscriptionNextDueDate,
+        ownerProfile?.subscriptionNextDueDate
+      ),
     })
     const hasDynamicMemberProCrmGrace = dynamicGraceUntil !== null && dynamicGraceUntil.getTime() > now.getTime()
 
@@ -227,15 +232,35 @@ export class FeatureAccessService implements IFeatureAccessService {
       ownerProfileSubscription?.product?.featureSlugs.includes("crm") === true &&
       (hasDynamicMemberProCrmGrace || (hasTemporaryBillingGrace && hasActiveExpiredMemberProCrmGrace))
 
+    // Carência de cobrança, dentro ou fora do prazo (mesma janela de AccountAccessDecisionService:
+    // "allowed" com aviso dentro do prazo, "read_only" depois dele): a conta não está ativa, mas
+    // continua past_due — acesso a tudo que já tinha contratado, sem lista fixa de módulos.
+    // Generaliza o que antes só valia pro caso Member PRO + CRM (memberProGraceOverride, mantido
+    // acima intacto — é o fix já validado em produção do PR #1395).
+    const isGenericBillingGrace =
+      !memberProBlocked &&
+      !hasPermanentAccess &&
+      !hasActiveMainSubscription &&
+      !memberProActive &&
+      dynamicGraceUntil !== null
+    const isGenericBillingGraceExpired = isGenericBillingGrace && dynamicGraceUntil!.getTime() <= now.getTime()
+
     // Mesmo critério de isAccountSubscriptionActive, sem repetir as queries:
     // ownerProfile + ownerProfileSubscription já foram buscados acima.
     const accountSubscriptionActive =
       hasPermanentAccess ||
       memberProGraceOverride ||
+      isGenericBillingGrace ||
       (!memberProBlocked && (hasActiveMainSubscription || memberProActive || hasTemporaryBillingGrace))
     if (!accountSubscriptionActive || ownerBanned) {
       return { slugs: [], betaSlugs: [], betaLabelSlugs: [], userRole: safeUserRole }
     }
+
+    // Fora do caso Member PRO + CRM (que já é full access) e só depois que a carência expira,
+    // o acesso vira somente leitura: a API recusa mutações (requireWritableAccountAccess/
+    // getTeamAccess), este campo só informa o front.
+    const accessMode: "full" | "read_only" =
+      isGenericBillingGraceExpired && !memberProGraceOverride ? "read_only" : "full"
 
     const temporaryBillingGraceIsOnlyAccess =
       hasTemporaryBillingGrace &&
@@ -259,12 +284,17 @@ export class FeatureAccessService implements IFeatureAccessService {
       addProductFeatureSlugsToSet(paidProductSlugs, item.product)
     }
 
-    // Member PRO vigente mantém o produto do plano mesmo com a assinatura principal em past_due,
+    // isGenericBillingGrace entra aqui: a carência (dentro ou fora do prazo) dá acesso ao
+    // que a conta já tinha contratado, e isso vem do produto da própria assinatura do dono —
+    // sem isso, "leitura em tudo que já tinha" nunca inclui as features PAID/ADDON reais.
+    // Member PRO vigente também mantém o produto do plano com a assinatura em past_due,
     // senão a conta fica "ativa" mas sem nenhum item pago (CRM some do menu).
-    if (
-      (hasActiveMainSubscription || hasTemporaryBillingGrace || (memberProActive && !memberProBlocked)) &&
-      ownerProfileSubscription?.product
-    ) {
+    const keepsOwnerPlanProduct =
+      hasActiveMainSubscription ||
+      hasTemporaryBillingGrace ||
+      isGenericBillingGrace ||
+      (memberProActive && !memberProBlocked)
+    if (keepsOwnerPlanProduct && ownerProfileSubscription?.product) {
       addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
     }
 
@@ -432,7 +462,7 @@ export class FeatureAccessService implements IFeatureAccessService {
       })
       .map((feature) => feature.slug)
 
-    return { slugs: Array.from(allowedSlugs), betaSlugs, betaLabelSlugs, userRole: safeUserRole }
+    return { slugs: Array.from(allowedSlugs), betaSlugs, betaLabelSlugs, userRole: safeUserRole, mode: accessMode }
   }
 
   /**

@@ -269,8 +269,9 @@ export class OverdueReminderUseCase {
         return;
       }
 
+      // Com a conta em somente leitura ou pausada, o master só alcança a página de pagamento.
       const manageUrl = row.profile.supabaseId
-        ? `${context.appUrl}/${row.profile.supabaseId}/subscription`
+        ? `${context.appUrl}/${row.profile.supabaseId}/billing-grace-payment`
         : `${context.appUrl}/sign-in`;
 
       const res = await context.emailService.sendDelinquencyReminderEmail({

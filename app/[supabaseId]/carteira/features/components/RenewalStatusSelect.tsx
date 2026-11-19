@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useIsReadOnlyAccess } from '@/app/[supabaseId]/components/useIsReadOnlyAccess';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,6 +39,7 @@ interface RenewalStatusButtonProps {
 }
 
 export function RenewalStatusButton({ portfolioId, value, onStatusChange }: RenewalStatusButtonProps) {
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selection, setSelection] = useState<RenewalStatus>(value);
 
@@ -54,7 +56,13 @@ export function RenewalStatusButton({ portfolioId, value, onStatusChange }: Rene
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={isReadOnlyAccess}
+        onClick={() => setDialogOpen(true)}
+      >
         <span className={cn('size-2 shrink-0 rounded-full', STATUS_DOT_BG[value])} />
         {RENEWAL_STATUS_LABELS[value]}
       </Button>

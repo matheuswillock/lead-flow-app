@@ -7,6 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { ExternalLink, File, FileText, Image, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { toastUserError } from '@/lib/ui/to-user-toast-message';
+import { useIsReadOnlyAccess } from '@/app/[supabaseId]/components/useIsReadOnlyAccess';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -278,6 +279,7 @@ export function CarteiraDetailModal({
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
   const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
 
+  const isReadOnlyAccess = useIsReadOnlyAccess();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
@@ -741,7 +743,7 @@ export function CarteiraDetailModal({
             </>
           ) : (
             <>
-              {detail?.contract && (
+              {detail?.contract && !isReadOnlyAccess && (
                 <Button variant="outline" onClick={startEditing}>
                   <Pencil className="mr-1.5 size-3.5" />
                   Editar
