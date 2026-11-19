@@ -38,6 +38,7 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/addon-checkout/",
   "/oferta/",
   "/adesao/",
+  "/cotacao/",
   "/documentos/",
 ] as const
 

@@ -7,6 +7,6 @@ import { LeadUseCase } from "./LeadUseCase";
  *
  * Existe para que as rotas importem apenas o use case ja montado, sem precisar
  * conhecer o repositorio concreto — mesmo padrao de `listTasksUseCase`
- * (ListTasksUseCase.ts) e `pmePlanSimulatorUseCase`.
+ * (ListTasksUseCase.ts) e `PlanSimulatorUseCase`.
  */
 export const leadUseCase = new LeadUseCase(new LeadRepository(), new RegisterNewUserProfile());
