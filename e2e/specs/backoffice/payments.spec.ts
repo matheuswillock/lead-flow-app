@@ -49,6 +49,8 @@ test.describe("app/backoffice/(app)/payments", () => {
       data: {
         fullName: clientName,
         email: `e2e.payments.client.${suffix}@example.com`,
+        // CPF válido: sem documento o dialog pede o CPF antes do POST (cobrança AbacatePay exige taxId).
+        cpfCnpj: "52998224725",
         asaasCustomerId: `cus_e2e_${suffix}`,
       },
       select: { id: true },
