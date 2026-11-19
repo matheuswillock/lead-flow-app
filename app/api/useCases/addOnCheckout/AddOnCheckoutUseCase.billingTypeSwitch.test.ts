@@ -49,12 +49,15 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma com pagament
     findAttemptByIdMock.mockClear()
   })
 
-  it("permite trocar a forma enquanto a cobrança AbacatePay não foi paga", async () => {
+  // Regressão (Codex P2, PR #1413): attachProviderAttempt grava providerExternalId antes do updatePaymentId.
+  // Nessa janela paymentId ainda é null, mas a cobrança já existe e segue pagável: a troca não pode passar.
+  it("recusa a troca quando a cobrança AbacatePay já existe antes de gravar paymentId", async () => {
     const result = await new AddOnCheckoutUseCase().updateBillingType("pa-1", "PIX")
 
-    expect(result.isValid).toBe(true)
+    expect(result.isValid).toBe(false)
     expect(findAttemptByIdMock).toHaveBeenCalledWith("att-1")
-    expect(updatePayloadMock).toHaveBeenCalledTimes(1)
+    expect(result.errorMessages).toEqual(["Cobrança AbacatePay já criada; a forma de pagamento não pode ser trocada"])
+    expect(updatePayloadMock).not.toHaveBeenCalled()
   })
 
   it("recusa a troca quando a tentativa AbacatePay já está confirmada", async () => {
