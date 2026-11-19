@@ -287,7 +287,14 @@ export class FeatureAccessService implements IFeatureAccessService {
     // isGenericBillingGrace entra aqui: a carência (dentro ou fora do prazo) dá acesso ao
     // que a conta já tinha contratado, e isso vem do produto da própria assinatura do dono —
     // sem isso, "leitura em tudo que já tinha" nunca inclui as features PAID/ADDON reais.
-    if ((hasActiveMainSubscription || hasTemporaryBillingGrace || isGenericBillingGrace) && ownerProfileSubscription?.product) {
+    // Member PRO vigente também mantém o produto do plano com a assinatura em past_due,
+    // senão a conta fica "ativa" mas sem nenhum item pago (CRM some do menu).
+    const keepsOwnerPlanProduct =
+      hasActiveMainSubscription ||
+      hasTemporaryBillingGrace ||
+      isGenericBillingGrace ||
+      (memberProActive && !memberProBlocked)
+    if (keepsOwnerPlanProduct && ownerProfileSubscription?.product) {
       addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
     }
 

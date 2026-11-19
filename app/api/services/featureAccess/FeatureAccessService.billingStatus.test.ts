@@ -360,6 +360,39 @@ describe("FeatureAccessService.resolveAllowedSlugs — bloqueio imediato por sta
     expect(access.slugs).toContain("crm")
   })
 
+  it("Member PRO vigente com assinatura past_due e sem carência mantém os itens CRM pagos (caso YOU POP)", async () => {
+    // Fixture fiel ao banco: crm e filhos são PAID com productSlug "crm".
+    repository.features = [
+      makeFeature({ id: "feature-crm", slug: "crm", accessMode: "PAID", productSlug: "crm" }),
+      makeFeature({
+        id: "feature-crm-dashboard",
+        slug: "crm-dashboard",
+        accessMode: "PAID",
+        productSlug: "crm",
+        parentId: "feature-crm",
+        inheritParentSettings: true,
+      }),
+      makeFeature({ id: "feature-public-forms", slug: "public-forms", accessMode: "PUBLIC" }),
+    ]
+    repository.ownerUserTypeAssignment = {
+      slug: "member_pro",
+      accessStartsAt: new Date(Date.now() - 1_000).toISOString(),
+      accessExpiresAt: new Date(Date.now() + 100 * 24 * 60 * 60 * 1_000).toISOString(),
+    }
+    repository.ownerSubscriptionStatus = "past_due"
+    repository.ownerProductFeatureSlugs = ["crm"]
+    // listActiveUserSubscriptions vazio: o plano CRM venceu (endDate no passado).
+
+    const access = await service.resolveAllowedSlugs({
+      profileId: PROFILE_ID,
+      managerId: MANAGER_ID,
+      activeTeamId: TEAM_ID,
+    })
+
+    expect(access.slugs).toContain("crm")
+    expect(access.slugs).toContain("crm-dashboard")
+  })
+
   it("bloqueia Member PRO expirado", async () => {
     repository.ownerUserTypeAssignment = {
       slug: "member_pro",
