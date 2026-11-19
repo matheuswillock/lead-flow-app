@@ -50,6 +50,15 @@ describe("PaymentOwnerSettlementService — BACKOFFICE_PAYMENT", () => {
     expect(markPaid).not.toHaveBeenCalled()
   })
 
+  it("recusa e não baixa quando o provider não informa o valor pago (mesma regra do add-on)", async () => {
+    const { service, markPaid } = makeService()
+
+    await expect(service.settleConfirmed({ ...event, amountInCents: null })).rejects.toThrow(
+      "Pagamento de cobrança avulsa sem valor informado pelo provider",
+    )
+    expect(markPaid).not.toHaveBeenCalled()
+  })
+
   it("não repete a baixa quando a cobrança já está recebida", async () => {
     const { service, markPaid } = makeService({ settled: true })
 

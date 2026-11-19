@@ -92,7 +92,10 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
     const { backofficePayments } = this.dependencies
     const expected = await backofficePayments.expectedAmountInCents(input.ownerId)
     if (expected === null) throw new Error("Cobrança avulsa não encontrada")
-    if (input.amountInCents !== null && input.amountInCents !== expected) {
+    if (input.amountInCents === null) {
+      throw new Error("Pagamento de cobrança avulsa sem valor informado pelo provider")
+    }
+    if (input.amountInCents !== expected) {
       throw new Error("Valor pago não confere com a cobrança avulsa")
     }
     if (await backofficePayments.isSettled(input.ownerId)) return
