@@ -34,12 +34,19 @@ export type PaymentOwnerSettlementDependencies = {
     expectedAmountInCents(pendingActionId: string): Promise<number | null>
     applyById(pendingActionId: string): Promise<Output>
   }
+  readonly backofficePayments: {
+    /** Valor em centavos da cobrança avulsa; null quando ela não existe. */
+    expectedAmountInCents(paymentId: string): Promise<number | null>
+    isSettled(paymentId: string): Promise<boolean>
+    markPaid(paymentId: string): Promise<void>
+  }
 }
 
 export const SETTLED_OWNER_TYPES: ReadonlySet<string> = new Set([
   PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION,
   PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT,
   PAYMENT_PROVIDER_OWNER_TYPES.PENDING_ACTION_ADDON,
+  PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_PAYMENT,
 ])
 
 export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
@@ -56,6 +63,10 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
     }
     if (input.ownerType === PAYMENT_PROVIDER_OWNER_TYPES.PENDING_ACTION_ADDON) {
       await this.settleAddOn(input)
+      return "settled"
+    }
+    if (input.ownerType === PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_PAYMENT) {
+      await this.settleBackofficePayment(input)
       return "settled"
     }
     return "unsupported"
@@ -75,6 +86,17 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
     if (!applied.isValid) {
       throw new Error(applied.errorMessages.join("; ") || "Ação pendente não aplicada")
     }
+  }
+
+  private async settleBackofficePayment(input: OwnerSettlementInput): Promise<void> {
+    const { backofficePayments } = this.dependencies
+    const expected = await backofficePayments.expectedAmountInCents(input.ownerId)
+    if (expected === null) throw new Error("Cobrança avulsa não encontrada")
+    if (input.amountInCents !== null && input.amountInCents !== expected) {
+      throw new Error("Valor pago não confere com a cobrança avulsa")
+    }
+    if (await backofficePayments.isSettled(input.ownerId)) return
+    await backofficePayments.markPaid(input.ownerId)
   }
 
   private async settleAdhesion(input: OwnerSettlementInput): Promise<void> {

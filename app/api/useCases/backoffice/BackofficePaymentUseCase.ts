@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
-import { asaasFetch, asaasApi } from "@/lib/asaas"
 import { PaymentMethodUnavailableError, assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
+import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
+import { createRoutedProviderCharge } from "@/lib/payment-provider/routed-charge"
 import { IBackofficePaymentRepository } from "../../infra/data/repositories/backoffice/PaymentRepository/IBackofficePaymentRepository"
 import { IBackofficeClientRepository } from "../../infra/data/repositories/backoffice/ClientRepository/IBackofficeClientRepository"
 
@@ -12,90 +13,122 @@ export interface CreatePaymentInput {
   amount: number
   dueDate?: string // ISO string
   description?: string
+  /** CPF ou CNPJ do cliente, exigido pelo provedor; salvo no cadastro quando o cliente não tinha. */
+  cpfCnpj?: string
+  /** Token de uso único gerado no navegador pelo abacatepay.js (nunca dados do cartão). */
+  cardToken?: string
 }
+
+const DEFAULT_DUE_DAYS = 7
+const ABACATE_PROVIDER = "ABACATE_PAY"
+const BILLING_TYPES_NEW_CHARGES = new Set(["PIX", "CREDIT_CARD"])
+
+const digitsOnly = (value: string) => value.replace(/\D/g, "")
+const isValidDocument = (digits: string) => digits.length === 11 || digits.length === 14
+
+const failure = (message: string) => new Output(false, [], [message], null)
 
 export class BackofficePaymentUseCase {
   constructor(
     private paymentRepo: IBackofficePaymentRepository,
-    private clientRepo: IBackofficeClientRepository
+    private clientRepo: IBackofficeClientRepository,
+    private charge: typeof createRoutedProviderCharge = createRoutedProviderCharge,
+    private assertCardAllowed: (billingType: string) => Promise<void> = (billingType) =>
+      assertBillingTypeAllowed(billingType)
   ) {}
 
   async createPayment(data: CreatePaymentInput, createdByProfileId: string): Promise<Output> {
     try {
       if (!data.clientId) {
-        return new Output(false, [], ["Cliente é obrigatório"], null)
+        return failure("Cliente é obrigatório")
       }
       if (!data.amount || data.amount <= 0) {
-        return new Output(false, [], ["Valor deve ser maior que zero"], null)
+        return failure("Valor deve ser maior que zero")
+      }
+
+      const billingType = data.billingType ?? "PIX"
+      if (!BILLING_TYPES_NEW_CHARGES.has(billingType)) {
+        return failure("Boleto não está disponível para novas cobranças")
       }
 
       const client = await this.clientRepo.findById(data.clientId)
       if (!client) {
-        return new Output(false, [], ["Cliente não encontrado"], null)
-      }
-      if (!client.asaasCustomerId) {
-        return new Output(
-          false,
-          [],
-          ["Cliente não possui integração Asaas. Crie o cliente com CPF/CNPJ para gerar cobranças."],
-          null
-        )
+        return failure("Cliente não encontrado")
       }
 
-      const billingType = data.billingType ?? "PIX"
-      await assertBillingTypeAllowed(billingType)
-      const id = randomUUID()
-
-      // Criar cobrança no Asaas
-      const asaasPayload = {
-        customer: client.asaasCustomerId,
-        billingType,
-        value: data.amount,
-        dueDate: data.dueDate
-          ? new Date(data.dueDate).toISOString().split("T")[0]
-          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        description: data.description,
-        externalReference: id,
+      const taxId = digitsOnly(data.cpfCnpj ?? client.cpfCnpj ?? "")
+      if (!isValidDocument(taxId)) {
+        return failure("Informe um CPF ou CNPJ válido para o cliente")
+      }
+      if (!client.email) {
+        return failure("Cadastre o e-mail do cliente antes de cobrar")
       }
 
-      const asaasPayment = await asaasFetch(asaasApi.payments, {
-        method: "POST",
-        body: JSON.stringify(asaasPayload),
-      })
-
-      let pixQrCode: string | undefined
-      let pixPayload: string | undefined
-
-      // Buscar QR Code PIX se for pagamento PIX
-      if (billingType === "PIX" && asaasPayment.id) {
-        try {
-          const pixData = await asaasFetch(asaasApi.pixQrCode(asaasPayment.id))
-          pixQrCode = pixData.encodedImage
-          pixPayload = pixData.payload
-        } catch (pixError) {
-          console.error("[BackofficePaymentUseCase] Erro ao buscar QR PIX:", pixError)
+      if (billingType === "CREDIT_CARD") {
+        await this.assertCardAllowed(billingType)
+        if (!data.cardToken) {
+          return failure("Confirme os dados do cartão antes de cobrar")
         }
       }
+
+      if (!client.cpfCnpj) {
+        await this.clientRepo.updateCpfCnpj(client.id, taxId)
+      }
+
+      const id = randomUUID()
+      const amountInCents = Math.round(data.amount * 100)
+      const charged = await this.charge({
+        ownerType: PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_PAYMENT,
+        ownerId: id,
+        tenantId: client.id,
+        idempotencyKey: `backoffice-payment-${id}`,
+        routeVersion: "BACKOFFICE-PAYMENT-PHASE-1",
+        billingType: billingType as "PIX" | "CREDIT_CARD",
+        amountInCents,
+        externalReference: `backoffice-payment-${id}`,
+        customer: {
+          name: client.fullName,
+          email: client.email,
+          taxId,
+          cellphone: digitsOnly(client.phone ?? ""),
+        },
+        metadata: { backofficePaymentId: id },
+        cardToken: data.cardToken,
+        installments: 1,
+      })
+
+      const providerResult = charged.outcome
+      const pix = "pix" in providerResult && providerResult.pix ? providerResult.pix : null
+      const status =
+        providerResult.status === "CONFIRMED" ? "RECEIVED" : providerResult.status === "FAILED" ? "FAILED" : "PENDING"
+      const dueDate = data.dueDate
+        ? new Date(data.dueDate)
+        : new Date(Date.now() + DEFAULT_DUE_DAYS * 24 * 60 * 60 * 1000)
 
       const payment = await this.paymentRepo.create({
         id,
         clientId: data.clientId,
         billingType,
         amount: data.amount,
-        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+        dueDate,
         description: data.description,
-        asaasPaymentId: asaasPayment.id,
-        invoiceUrl: asaasPayment.invoiceUrl,
-        pixQrCode,
-        pixPayload,
+        provider: ABACATE_PROVIDER,
+        status,
+        invoiceUrl: pix && charged.attempt.externalId ? `https://pay.abacate.app/invoice/${charged.attempt.externalId}` : undefined,
+        // O provedor devolve o PNG já com prefixo data:; a tela monta o prefixo, então guardamos só o base64.
+        pixQrCode: pix?.brCodeBase64?.replace(/^data:image\/png;base64,/, ""),
+        pixPayload: pix?.brCode,
         createdByProfileId,
       })
 
+      if (status === "FAILED") {
+        return failure("Cartão recusado pelo provedor")
+      }
       return new Output(true, ["Cobrança criada com sucesso"], [], payment)
     } catch (error) {
       if (error instanceof PaymentMethodUnavailableError) return markedUnavailableOutput(error)
       console.error("[BackofficePaymentUseCase][createPayment]", error)
-      return new Output(false, [], ["Erro ao criar cobrança"], null)
+      return failure("Erro ao criar cobrança")
     }
   }
 
