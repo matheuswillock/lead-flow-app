@@ -49,12 +49,15 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma com pagament
     findAttemptByIdMock.mockClear()
   })
 
-  it("permite trocar a forma enquanto a cobrança AbacatePay não foi paga", async () => {
+  // Regressão (Codex P2, PR #1413): attachProviderAttempt grava providerExternalId antes do updatePaymentId.
+  // Nessa janela paymentId ainda é null, mas a cobrança já existe e segue pagável: a troca não pode passar.
+  it("recusa a troca quando a cobrança AbacatePay já existe antes de gravar paymentId", async () => {
     const result = await new AddOnCheckoutUseCase().updateBillingType("pa-1", "PIX")
 
-    expect(result.isValid).toBe(true)
+    expect(result.isValid).toBe(false)
     expect(findAttemptByIdMock).toHaveBeenCalledWith("att-1")
-    expect(updatePayloadMock).toHaveBeenCalledTimes(1)
+    expect(result.errorMessages).toEqual(["Cobrança AbacatePay já criada; a forma de pagamento não pode ser trocada"])
+    expect(updatePayloadMock).not.toHaveBeenCalled()
   })
 
   it("recusa a troca quando a tentativa AbacatePay já está confirmada", async () => {
@@ -75,4 +78,17 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma com pagament
     expect(result.isValid).toBe(true)
     expect(findAttemptByIdMock).not.toHaveBeenCalled()
   })
+
+  // Regressão: createPayment grava paymentId = "provider-<id>" numa cobrança AbacatePay. Antes, a troca
+  // consultava esse id no Asaas (404) e falhava com erro genérico; agora recusa com motivo claro e sem Asaas.
+  it("recusa a troca quando a cobrança AbacatePay já foi criada, sem consultar o Asaas", async () => {
+    findByIdSimpleMock.mockImplementation(async () => ({ ...abacateAction, paymentId: "provider-bill_1" }) as any)
+
+    const result = await new AddOnCheckoutUseCase().updateBillingType("pa-1", "PIX")
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Cobrança AbacatePay já criada; a forma de pagamento não pode ser trocada"])
+    expect(updatePayloadMock).not.toHaveBeenCalled()
+  })
+
 })

@@ -158,6 +158,16 @@ export class PendingActionUseCase {
       );
     }
 
+    // paymentId AbacatePay (`provider-<id>`) não existe no Asaas: consultar lá daria 404 e o fail-open abaixo aplicaria sem cobrança verificada.
+    if (action.provider === "ABACATE_PAY") {
+      return new Output(
+        false,
+        [],
+        ["Cobrança AbacatePay não pode ser dispensada por este fluxo"],
+        null
+      );
+    }
+
     const bypass = await memberProBillingUseCase.shouldBypassIncrementalCharge(action.masterId);
     if (!bypass) {
       return new Output(
