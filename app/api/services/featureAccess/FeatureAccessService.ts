@@ -259,7 +259,12 @@ export class FeatureAccessService implements IFeatureAccessService {
       addProductFeatureSlugsToSet(paidProductSlugs, item.product)
     }
 
-    if ((hasActiveMainSubscription || hasTemporaryBillingGrace) && ownerProfileSubscription?.product) {
+    // Member PRO vigente mantém o produto do plano mesmo com a assinatura principal em past_due,
+    // senão a conta fica "ativa" mas sem nenhum item pago (CRM some do menu).
+    if (
+      (hasActiveMainSubscription || hasTemporaryBillingGrace || (memberProActive && !memberProBlocked)) &&
+      ownerProfileSubscription?.product
+    ) {
       addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
     }
 
