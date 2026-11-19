@@ -30,6 +30,11 @@ function makeHarness(
     adhesions: { markPaidFromProvider },
     gracePayments: { findById: graseFind, markConfirmed, completeAndRestoreAccess } as never,
     pendingActions: { expectedAmountInCents, applyById },
+    backofficePayments: {
+      expectedAmountInCents: mock(async () => null),
+      isSettled: mock(async () => false),
+      markPaid: mock(async () => undefined),
+    },
   })
   return { service, markPaidFromProvider, markConfirmed, completeAndRestoreAccess, graseFind, expectedAmountInCents, applyById }
 }

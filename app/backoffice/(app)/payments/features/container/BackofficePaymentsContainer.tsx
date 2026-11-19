@@ -1,9 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { AlertCircle, Plus, ExternalLink } from "lucide-react"
-import { useAvailableBillingTypes } from "@/lib/payment-methods/useAvailableBillingTypes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,7 +32,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useBackofficePayments } from "../context/BackofficePaymentsContext"
-import type { CreatePaymentFormData } from "../services/IBackofficePaymentsService"
+import type {
+  BackofficeCardCheckout,
+  CreatePaymentFormData,
+} from "../services/IBackofficePaymentsService"
+import { AbacateCardField } from "@/app/adesao/[token]/features/components/AbacateCardField"
+import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
@@ -46,14 +50,18 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
   OVERDUE: { label: "Vencido", variant: "destructive" },
   REFUNDED: { label: "Reembolsado", variant: "secondary" },
   CANCELED: { label: "Cancelado", variant: "secondary" },
+  FAILED: { label: "Recusado", variant: "destructive" },
 }
 
+// Boleto continua aqui para as cobranças antigas; novas cobranças só saem em PIX ou cartão.
 const BILLING_LABELS: Record<string, string> = {
   PIX: "PIX",
   BOLETO: "Boleto",
   CREDIT_CARD: "Cartão",
   UNDEFINED: "A definir",
 }
+
+const NO_CARD_CHECKOUT: BackofficeCardCheckout = { cardOffered: false, publicKey: null }
 
 function formatCurrency(value: string | number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -65,6 +73,9 @@ function formatDate(value: string | null, tz: string) {
   if (!value) return "—"
   return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
+
+const digitsOnly = (value: string) => value.replace(/\D/g, "")
+const isValidDocument = (digits: string) => digits.length === 11 || digits.length === 14
 
 interface PixDialogProps {
   open: boolean
@@ -117,18 +128,26 @@ const initialForm: CreatePaymentFormData = {
   amount: 0,
   dueDate: "",
   description: "",
+  cpfCnpj: "",
 }
 
 export function BackofficePaymentsContainer() {
-  const { payments, clients, isLoading, isCreating, error, canManage, createPayment, fetchPayments } =
-    useBackofficePayments()
+  const {
+    payments,
+    clients,
+    isLoading,
+    isCreating,
+    error,
+    canManage,
+    createPayment,
+    fetchPayments,
+    loadCardCheckout,
+  } = useBackofficePayments()
   const { tz } = useTimezone()
   const [open, setOpen] = useState(false)
-  const { cardOffered } = useAvailableBillingTypes(open)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
-  // Cartão indisponível nunca fica selecionado nem é enviado (BOLETO continua como está).
-  const effectiveBillingType =
-    form.billingType === "CREDIT_CARD" && !cardOffered ? "PIX" : form.billingType
+  const [cardCheckout, setCardCheckout] = useState<BackofficeCardCheckout>(NO_CARD_CHECKOUT)
+  const abacateCard = useAbacateCard()
   const [pixDialog, setPixDialog] = useState<{
     open: boolean
     pixQrCode: string | null
@@ -136,14 +155,43 @@ export function BackofficePaymentsContainer() {
   }>({ open: false, pixQrCode: null, pixPayload: null })
   const submitLock = useRef(false)
 
+  const selectedClient = clients.find((c) => c.id === form.clientId) ?? null
+  const needsDocument = Boolean(selectedClient) && !selectedClient?.cpfCnpj
+  // Cartão indisponível nunca fica selecionado nem é enviado.
+  const effectiveBillingType =
+    form.billingType === "CREDIT_CARD" && !cardCheckout.cardOffered ? "PIX" : form.billingType
+  const isCard = effectiveBillingType === "CREDIT_CARD"
+  const amountNumber = Number(form.amount) || 0
+  const amountInCents = Math.round(amountNumber * 100)
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    loadCardCheckout()
+      .then((data) => {
+        if (active) setCardCheckout(data)
+      })
+      .catch(() => {
+        if (active) setCardCheckout(NO_CARD_CHECKOUT)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, loadCardCheckout])
+
   function handleChange(field: keyof CreatePaymentFormData, value: string | number) {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next)
+    if (!next) setForm(initialForm)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (submitLock.current) return
-    if (!form.clientId) {
+    if (!form.clientId || !selectedClient) {
       toast.error("Selecione um cliente")
       return
     }
@@ -151,13 +199,38 @@ export function BackofficePaymentsContainer() {
       toast.error("Valor deve ser maior que zero")
       return
     }
+    const document = digitsOnly(form.cpfCnpj ?? "")
+    if (needsDocument && !isValidDocument(document)) {
+      toast.error("Informe um CPF ou CNPJ válido para o cliente")
+      return
+    }
+    if (!selectedClient.email) {
+      toast.error("Cadastre o e-mail do cliente antes de cobrar")
+      return
+    }
 
     submitLock.current = true
     try {
+      let cardToken: string | undefined
+      if (isCard) {
+        const token = await abacateCard.tokenizeCard({
+          fullName: selectedClient.fullName,
+          email: selectedClient.email,
+          cnpj: needsDocument ? document : (selectedClient.cpfCnpj ?? ""),
+          phone: selectedClient.phone ?? "",
+        })
+        if (!token) return
+        cardToken = token
+      }
+
       const created = await createPayment({
-        ...form,
+        clientId: form.clientId,
         billingType: effectiveBillingType,
         amount: Number(form.amount),
+        dueDate: form.dueDate || undefined,
+        description: form.description || undefined,
+        cpfCnpj: needsDocument ? document : undefined,
+        cardToken,
       })
       toast.success("Cobrança criada com sucesso")
       setOpen(false)
@@ -172,11 +245,8 @@ export function BackofficePaymentsContainer() {
       }
     } catch (err) {
       // `toastUserError` só manda para o console o que NÃO é ApiRequestError.
-      // Rejeição 4xx de negócio (cliente sem Asaas, acesso negado, valor
-      // inválido) é resultado esperado: com o Sentry
-      // `consoleLoggingIntegration({levels:["warn","error"]})` ligado em
-      // `instrumentation-client.ts`, um console.error incondicional mandaria
-      // toda validação de rotina para a telemetria de erro.
+      // Rejeição 4xx de negócio (cliente sem CPF, valor inválido, cartão
+      // recusado) é resultado esperado, não erro de sistema.
       toastUserError(err)
     } finally {
       submitLock.current = false
@@ -281,7 +351,7 @@ export function BackofficePaymentsContainer() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Cobrança</DialogTitle>
@@ -293,33 +363,50 @@ export function BackofficePaymentsContainer() {
                 value={form.clientId}
                 onValueChange={(v) => handleChange("clientId", v)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="max-lg:h-11">
                   <SelectValue placeholder="Selecione um cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clients
-                    .filter((c) => c.asaasCustomerId)
-                    .map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.fullName}
-                      </SelectItem>
-                    ))}
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.fullName}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+            {needsDocument && (
+              <div className="space-y-2">
+                <Label htmlFor="cpfCnpj">CPF ou CNPJ do cliente *</Label>
+                <Input
+                  id="cpfCnpj"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="max-lg:h-11"
+                  maxLength={18}
+                  value={form.cpfCnpj ?? ""}
+                  onChange={(e) => handleChange("cpfCnpj", e.target.value)}
+                  placeholder="000.000.000-00"
+                  aria-describedby="cpfCnpj-help"
+                  required
+                />
+                <p id="cpfCnpj-help" className="text-xs text-muted-foreground">
+                  Este cliente não tem CPF ou CNPJ cadastrado. O documento será salvo no cadastro.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Tipo de cobrança</Label>
               <Select
                 value={effectiveBillingType}
                 onValueChange={(v) => handleChange("billingType", v)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="max-lg:h-11">
                   <SelectValue />
-                </SelectTrigger>
+</SelectTrigger>
                 <SelectContent>
                   <SelectItem value="PIX">PIX</SelectItem>
-                  <SelectItem value="BOLETO">Boleto</SelectItem>
-                  {cardOffered && <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>}
+                  {cardCheckout.cardOffered && <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -328,6 +415,7 @@ export function BackofficePaymentsContainer() {
               <Input
                 id="amount"
                 type="number"
+                className="max-lg:h-11"
                 min="0.01"
                 step="0.01"
                 value={form.amount || ""}
@@ -336,11 +424,33 @@ export function BackofficePaymentsContainer() {
                 required
               />
             </div>
+            {isCard && (
+              <div className="space-y-2">
+                <Label>Dados do cartão *</Label>
+                {cardCheckout.publicKey && amountInCents >= 100 ? (
+                  <AbacateCardField
+                    ref={abacateCard.cardFieldRef}
+                    publicKey={cardCheckout.publicKey}
+                    amountInCents={amountInCents}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Informe o valor (mínimo R$ 1,00) para carregar o formulário do cartão.
+                  </p>
+                )}
+                {abacateCard.cardError && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {abacateCard.cardError}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="dueDate">Vencimento</Label>
               <Input
                 id="dueDate"
                 type="date"
+                className="max-lg:h-11"
                 value={form.dueDate}
                 onChange={(e) => handleChange("dueDate", e.target.value)}
               />
@@ -349,17 +459,27 @@ export function BackofficePaymentsContainer() {
               <Label htmlFor="description">Descrição</Label>
               <Input
                 id="description"
+                className="max-lg:h-11"
                 value={form.description}
                 onChange={(e) => handleChange("description", e.target.value)}
                 placeholder="Descrição opcional"
               />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="max-lg:h-11"
+                onClick={() => handleOpenChange(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isCreating}>
-                {isCreating ? "Criando..." : "Criar Cobrança"}
+              <Button type="submit" className="max-lg:h-11" disabled={isCreating || abacateCard.isTokenizing}>
+                {abacateCard.isTokenizing
+                  ? "Validando cartão..."
+                  : isCreating
+                    ? "Criando..."
+                    : "Criar Cobrança"}
               </Button>
             </DialogFooter>
           </form>

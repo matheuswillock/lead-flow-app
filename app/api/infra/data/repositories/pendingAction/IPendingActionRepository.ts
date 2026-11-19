@@ -111,6 +111,7 @@ export type PendingActionOwnershipLookup = {
   masterId: string;
   status: string;
   asaasAccount: AsaasAccountId;
+  provider?: string | null;
 };
 
 export interface IPendingActionRepository {
