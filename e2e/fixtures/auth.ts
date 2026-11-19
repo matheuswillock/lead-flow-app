@@ -1,4 +1,5 @@
 import {
+  E2E_CLIENT_SESSION_COOKIE_NAME,
   E2E_COOKIE_NAME,
   E2E_MASTER_EMAIL,
   E2E_MASTER_SUPABASE_ID,
@@ -108,6 +109,37 @@ export function buildE2eAddCookiesPayload(
   };
 }
 
+/**
+ * Cookie NÃO httpOnly com só {id, email} — nunca um segredo. Lido pelo
+ * client (AuthContext, via readE2eClientSessionCookie) quando
+ * NEXT_PUBLIC_E2E_TEST_MODE=true, para popular `useAuth().user` em specs
+ * Playwright. `sb-e2e-auth-token` (o JWT assinado) fica httpOnly de
+ * propósito e não pode ser lido por JS de página — ver
+ * lib/e2e/is-e2e-test-mode-client.ts.
+ */
+export function buildE2eClientSessionCookiePayload(
+  supabaseId: string = E2E_MASTER_SUPABASE_ID,
+  email: string = E2E_MASTER_EMAIL,
+  baseUrl: string = resolveE2eBaseUrl(),
+): {
+  name: string;
+  value: string;
+  url: string;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Lax";
+} {
+  const url = new URL("/", baseUrl).href;
+  return {
+    name: E2E_CLIENT_SESSION_COOKIE_NAME,
+    value: encodeURIComponent(JSON.stringify({ id: supabaseId, email })),
+    url,
+    httpOnly: false,
+    secure: url.startsWith("https://"),
+    sameSite: "Lax",
+  };
+}
+
 export async function injectE2eAuthCookie(
   context: CookieInjectableContext,
   options?: {
@@ -119,12 +151,17 @@ export async function injectE2eAuthCookie(
   },
 ): Promise<void> {
   const baseUrl = options?.baseUrl ?? resolveE2eBaseUrl();
+  const supabaseId = options?.supabaseId ?? E2E_MASTER_SUPABASE_ID;
+  const email = options?.email ?? E2E_MASTER_EMAIL;
   const token =
     options?.token ??
     (options?.supabaseId || options?.email
       ? signE2eJwt({ supabaseId: options.supabaseId, email: options.email })
       : signE2eSessionToken());
-  await context.addCookies([buildE2eAddCookiesPayload(token, baseUrl)]);
+  await context.addCookies([
+    buildE2eAddCookiesPayload(token, baseUrl),
+    buildE2eClientSessionCookiePayload(supabaseId, email, baseUrl),
+  ]);
 }
 
 export const E2E_AUTH_USER = {
