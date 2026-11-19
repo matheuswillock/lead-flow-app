@@ -543,6 +543,12 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         });
       }
 
+      // Cobrança AbacatePay já criada não tem cancelamento neste fluxo: trocar deixaria o PIX antigo
+      // pagável junto com o cartão. O id "provider-…" não existe no Asaas, então não se consulta lá.
+      if (pendingAction.provider === "ABACATE_PAY" && pendingAction.paymentId) {
+        return new Output(false, [], ["Cobrança AbacatePay já criada; a forma de pagamento não pode ser trocada"], null);
+      }
+
       if (pendingAction.paymentId) {
         // Mesmo achado Codex (PR #1137, P2) de createPayment: a conta
         // persistida em pendingAction.asaasAccount, não o helper asaas()

@@ -75,4 +75,17 @@ describe("AddOnCheckoutUseCase.updateBillingType — troca de forma com pagament
     expect(result.isValid).toBe(true)
     expect(findAttemptByIdMock).not.toHaveBeenCalled()
   })
+
+  // Regressão: createPayment grava paymentId = "provider-<id>" numa cobrança AbacatePay. Antes, a troca
+  // consultava esse id no Asaas (404) e falhava com erro genérico; agora recusa com motivo claro e sem Asaas.
+  it("recusa a troca quando a cobrança AbacatePay já foi criada, sem consultar o Asaas", async () => {
+    findByIdSimpleMock.mockImplementation(async () => ({ ...abacateAction, paymentId: "provider-bill_1" }) as any)
+
+    const result = await new AddOnCheckoutUseCase().updateBillingType("pa-1", "PIX")
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Cobrança AbacatePay já criada; a forma de pagamento não pode ser trocada"])
+    expect(updatePayloadMock).not.toHaveBeenCalled()
+  })
+
 })
