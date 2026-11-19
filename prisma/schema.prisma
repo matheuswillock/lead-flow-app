@@ -1867,6 +1867,9 @@ model BackofficePayment {
   // asaasPaymentId MUST filtrar por esta coluna também.
   // Default primary — mesmo motivo de Profile.asaasCustomerAccount.
   asaasAccount       AsaasAccount @default(primary) @map("asaasAccount")
+  // Fase B: rastreamento do provider de cobrança. null = Asaas legado ou ainda
+  // não rastreado; "ABACATE_PAY" = cobrado pela AbacatePay. Sem backfill e sem default.
+  provider           String?      @map("provider") @db.Text
   billingType        String       @default("PIX") @map("billingType") @db.Text
   status             String       @default("PENDING") @db.Text
   amount             Decimal      @db.Decimal(12, 2)
@@ -4807,6 +4810,9 @@ model ProfileSubscription {
   adhesionId               String?             @unique @db.Uuid
   productId                String?             @db.Uuid
   asaasSubscriptionId      String?             @db.Text
+  // Fase B: rastreamento do provider de cobrança. null = Asaas legado ou ainda
+  // não rastreado; "ABACATE_PAY" = cobrado pela AbacatePay. Sem backfill e sem default.
+  provider                 String?             @db.Text
   // Conta Asaas dona do asaasSubscriptionId acima — 30 — Migração de Conta
   // (execução) E3 (M2.2, §9.2). Coluna própria porque este pointer é
   // distinto de Profile.asaasSubscriptionId (fluxo de adesão a produto via
