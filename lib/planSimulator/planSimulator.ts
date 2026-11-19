@@ -94,14 +94,17 @@ export function isEligibleByLives(table: Pick<CatalogTable, "vidasMin" | "vidasM
 }
 
 /** Filtros de atributos (acomodação, coparticipação, contratação, MEI) e de rede. */
+export type FilterKey = "acomodacoes" | "coparticipacoes" | "contratacoes"
+
 export function passesFilters<T extends CatalogTable>(
   table: T,
   filters: SimulationFilters,
   hospitalsByPlano: ReadonlyMap<number, ReadonlySet<number>>,
+  skip?: FilterKey,
 ): boolean {
-  if (filters.acomodacoes.length && !filters.acomodacoes.includes(table.acomodacao)) return false
-  if (filters.coparticipacoes.length && !filters.coparticipacoes.includes(table.coparticipacao)) return false
-  if (filters.contratacoes.length && !filters.contratacoes.includes(table.contratacao)) return false
+  if (skip !== "acomodacoes" && filters.acomodacoes.length && !filters.acomodacoes.includes(table.acomodacao)) return false
+  if (skip !== "coparticipacoes" && filters.coparticipacoes.length && !filters.coparticipacoes.includes(table.coparticipacao)) return false
+  if (skip !== "contratacoes" && filters.contratacoes.length && !filters.contratacoes.includes(table.contratacao)) return false
   if (filters.mei && !table.aceitaMei) return false
   if (filters.hospitalIds.length) {
     const network = hospitalsByPlano.get(table.planoId)
@@ -153,4 +156,33 @@ export function simulate<T extends CatalogTable>(
 
   rows.sort((a, b) => a.total - b.total)
   return { rows, totalVidas, ocultosPorVidas, ocultosPorValor }
+}
+
+export type Facets = Record<FilterKey, Record<string, number>>
+
+/**
+ * Quantos planos de cada opção dos chips existem no estado, respeitando os
+ * outros filtros (mas não o próprio). Mesma regra do protótipo.
+ */
+export function facetCounts<T extends CatalogTable>(
+  tables: readonly T[],
+  uf: string,
+  filters: SimulationFilters,
+  hospitalsByPlano: ReadonlyMap<number, ReadonlySet<number>>,
+): Facets {
+  const field: Record<FilterKey, keyof CatalogTable> = {
+    acomodacoes: "acomodacao",
+    coparticipacoes: "coparticipacao",
+    contratacoes: "contratacao",
+  }
+  const facets: Facets = { acomodacoes: {}, coparticipacoes: {}, contratacoes: {} }
+  const inState = tables.filter((t) => t.estado === uf)
+  for (const key of Object.keys(field) as FilterKey[]) {
+    for (const table of inState) {
+      if (!passesFilters(table, filters, hospitalsByPlano, key)) continue
+      const value = String(table[field[key]])
+      facets[key][value] = (facets[key][value] ?? 0) + 1
+    }
+  }
+  return facets
 }

@@ -49,14 +49,20 @@ export type SnapshotPlan = {
   chave: string
   operadora: string
   logoPath: string
+  produto: string
+  precos: Record<string, number>
   plano: string
   tabela: string
   acomodacao: string
   contratacao: string
   coparticipacao: string
+  coparticipacaoTabela: string
+  aceitaMei: boolean
+  vidasMin: number
+  vidasMax: number
   total: number
   regras: { tipo: string; texto: string }[]
-  rede: { hospitais: { nome: string; cidade: string | null; uf: string | null; siglas: string[] }[]; laboratorios: { nome: string; cidade: string | null; uf: string | null }[] }
+  rede: { hospitais: { id: number; nome: string; bairro: string | null; cidade: string | null; uf: string | null; siglas: string[] }[]; laboratorios: { id: number; nome: string; bairro: string | null; cidade: string | null; uf: string | null }[] }
 }
 
 export type ShareSnapshot = {

@@ -47,10 +47,17 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [sendOpen, setSendOpen] = useState(false);
+  const [sendOpen, setSendOpenState] = useState(false);
+  /** Fechar o envio descarta o link: a próxima abertura gera um link com o estado atual. */
+  const setSendOpen = useCallback((open: boolean) => {
+    setSendOpenState(open);
+    if (!open) setShareUrl(null);
+  }, []);
   const [message, setMessage] = useState<string | null>(null);
   // Linhas já vistas em alguma simulação: mantém o nome dos planos incluídos quando os filtros os escondem.
   const [seenRows, setSeenRows] = useState<Record<string, SimulationRow>>({});
+  // Nome dos hospitais já escolhidos como referência (para os chips).
+  const [hospNames, setHospNames] = useState<Record<number, string>>({});
   const dirty = useRef(false);
   const nameDirty = useRef(false);
 
@@ -78,7 +85,7 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
 
   // Simulação com debounce: só roda na tela de resultados, e só quando há UF e vidas.
   useEffect(() => {
-    if (view !== "results" || !headers || !draft.uf || draft.lives.every((n) => n === 0)) {
+    if (view === "home" || !headers || !draft.uf || draft.lives.every((n) => n === 0)) {
       setSim(null);
       return;
     }
@@ -151,7 +158,9 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
   /** Passo 1 → 2 → resultados: cria a cotação no primeiro "Continuar" com UF e vidas. */
   const finishWizard = useCallback(async () => {
     if (!headers) return;
-    const created = await run(() => service.createQuote(headers, nome.trim() || "Sem nome", draft));
+    const now = new Date();
+    const defaultName = `Cotação ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    const created = await run(() => service.createQuote(headers, nome.trim() || defaultName, draft));
     if (!created) return;
     setQuoteId(created.id);
     setNomeState(created.nome);
@@ -186,7 +195,13 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
 
   const searchHospitals = useCallback(async (q: string) => {
     if (!headers || !draft.uf) return [];
-    return (await run(() => service.searchProviders(headers, q, draft.uf))) ?? [];
+    const hits = (await run(() => service.searchProviders(headers, q, draft.uf))) ?? [];
+    setHospNames((prev) => {
+      const next = { ...prev };
+      for (const h of hits) next[h.id] = h.nome;
+      return next;
+    });
+    return hits;
   }, [draft.uf, headers, run, service]);
 
   const openDetail = useCallback(async (chave: string) => {
@@ -218,9 +233,30 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
     edit((current) => ({ ...current, filters: { ...current.filters, ...patch } }));
   }, [edit]);
 
+  const clearFilters = useCallback(() => {
+    edit((current) => ({ ...current, filters: { ...EMPTY_FILTERS, respeitarMinimoVidas: current.filters.respeitarMinimoVidas } }));
+  }, [edit]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      draft.filters.acomodacoes.length > 0 ||
+      draft.filters.coparticipacoes.length > 0 ||
+      draft.filters.contratacoes.length > 0 ||
+      draft.filters.hospitalIds.length > 0 ||
+      draft.filters.mei ||
+      draft.filters.valorMin != null ||
+      draft.filters.valorMax != null,
+    [draft.filters],
+  );
+
   const setUf = useCallback((uf: string) => {
     edit((current) => ({ ...current, uf, sel: [] }));
   }, [edit]);
+
+  const goHome = useCallback(() => {
+    setView("home");
+    setSim(null);
+  }, []);
 
   const totalVidas = useMemo(() => draft.lives.reduce((a, b) => a + b, 0), [draft.lives]);
 
@@ -256,14 +292,14 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
     openDetail,
     searchHospitals,
     seenRows,
+    hospNames,
     toggleSel,
     setLives,
     patchFilters,
     setUf,
-    goHome: () => {
-      setView("home");
-      setSim(null);
-    },
+    clearFilters,
+    hasActiveFilters,
+    goHome,
   };
 }
 

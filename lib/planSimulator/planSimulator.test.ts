@@ -110,3 +110,20 @@ describe("simulate", () => {
     expect(result.rows).toHaveLength(0)
   })
 })
+
+import { facetCounts } from "./planSimulator"
+
+describe("facetCounts", () => {
+  it("conta cada opção ignorando o próprio filtro", () => {
+    const tables = [
+      table({ chave: "a", acomodacao: "Apartamento", contratacao: "Livre" }),
+      table({ chave: "b", acomodacao: "Enfermaria", contratacao: "Livre" }),
+      table({ chave: "c", acomodacao: "Enfermaria", contratacao: "Compulsória", estado: "RJ" }),
+    ]
+    const facets = facetCounts(tables, "SP", { ...EMPTY_FILTERS, contratacoes: ["Compulsória"] }, noNetwork)
+    // Com "Compulsória" ativa, nenhuma tabela de SP passa nos outros chips: acomodação fica vazia.
+    expect(facets.acomodacoes).toEqual({})
+    // Contratação ignora o próprio filtro: as duas tabelas Livre de SP continuam contadas.
+    expect(facets.contratacoes).toEqual({ Livre: 2 })
+  })
+})

@@ -1,80 +1,148 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
+import { BAND_KEYS, FAIXAS, brl } from "@/components/plan-simulator/format";
+import { IconPlus } from "@/components/plan-simulator/Icons";
+import { PlanSheet } from "@/components/plan-simulator/PlanSheet";
+import { PlanSimulatorShell } from "@/components/plan-simulator/PlanSimulatorShell";
+import { ProposalPanel, type ProposalItem } from "@/components/plan-simulator/ProposalPanel";
 import { useClientQuote } from "../context/ClientQuoteContext";
+import type { ClientQuotePlan } from "../context/ClientQuoteTypes";
 
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const UF_NOME: Record<string, string> = { SP: "São Paulo", RJ: "Rio de Janeiro", BA: "Bahia", MG: "Minas Gerais", DF: "Distrito Federal" };
 
-/** Visão do cliente. Somente leitura: o cliente vê os planos incluídos e os detalhes. */
+/** Visão do cliente: a mesma tela de resultados em modo somente leitura (markup do protótipo). */
 export function ClientQuoteContainer() {
   const { snapshot, message, vidas, geradoEmLabel } = useClientQuote();
+  const [open, setOpen] = useState<ClientQuotePlan | null>(null);
+
   if (!snapshot) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl items-center justify-center p-6">
-        <p className="text-center text-muted-foreground">{message}</p>
-      </main>
+      <PlanSimulatorShell client>
+        <main className="wrap narrow" style={{ minHeight: "60vh", display: "flex", alignItems: "center" }}>
+          <div className="empty" style={{ width: "100%" }}>
+            <h3>Cotação indisponível</h3>
+            <p>{message}</p>
+          </div>
+        </main>
+      </PlanSimulatorShell>
     );
   }
 
+  const lives = snapshot.lives;
+  const ufNome = UF_NOME[snapshot.uf] ?? snapshot.uf;
+  const f = snapshot.filters;
+  const meta = [
+    `${vidas} ${vidas === 1 ? "vida" : "vidas"}`,
+    ufNome,
+    ...(f.acomodacoes.length ? [f.acomodacoes.join(" ou ")] : []),
+    ...(f.contratacoes.length ? [f.contratacoes.join(" ou ")] : []),
+    ...(f.hospitalIds.length ? [`${f.hospitalIds.length} ${f.hospitalIds.length === 1 ? "hospital de referência" : "hospitais de referência"}`] : []),
+    ...(f.mei ? ["aceita MEI"] : []),
+  ].join(" · ");
+
+  const items: ProposalItem[] = snapshot.plans.map((p) => ({
+    chave: p.chave,
+    operadora: p.operadora,
+    logoPath: p.logoPath,
+    plano: p.plano,
+    tabela: p.tabela,
+    acomodacao: p.acomodacao,
+    contratacao: p.contratacao,
+    coparticipacao: p.coparticipacao,
+    coparticipacaoTabela: p.coparticipacaoTabela,
+    aceitaMei: p.aceitaMei,
+    vidasMin: p.vidasMin,
+    vidasMax: p.vidasMax,
+    precos: p.precos,
+    regras: p.regras,
+    total: p.total,
+  }));
+
+  const openPlan = (chave: string) => {
+    const plan = snapshot.plans.find((p) => p.chave === chave);
+    if (plan) setOpen(plan);
+  };
+
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-8">
-      <header className="flex flex-col gap-1">
-        <p className="text-sm text-muted-foreground">Cotação de planos de saúde</p>
-        <h1 className="text-3xl font-semibold tracking-tight">{snapshot.nome}</h1>
-        <p className="text-sm text-muted-foreground">
-          {vidas} {vidas === 1 ? "vida" : "vidas"} · {snapshot.uf} · gerada em {geradoEmLabel}
-        </p>
+    <PlanSimulatorShell client>
+      <header className="topbar">
+        <div className="brand" style={{ cursor: "default" }}>
+          <span className="mark"><IconPlus /></span>
+          <span className="bt"><b>Simulador</b> de Planos de Saúde</span>
+        </div>
       </header>
 
-      <ul className="flex flex-col gap-4">
-        {snapshot.plans.map((plan) => (
-          <li key={plan.chave} className="flex flex-col gap-4 rounded-xl border p-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="relative h-8 w-20 shrink-0">
-                  <Image src={plan.logoPath} alt={plan.operadora} fill sizes="80px" className="object-contain" unoptimized />
-                </span>
-                <div>
-                  <p className="font-semibold">{plan.plano}</p>
-                  <p className="text-sm text-muted-foreground">{plan.operadora} · {plan.tabela}</p>
-                </div>
+      <div className="cinfo" style={{ margin: "12px 16px 0" }}>
+        Cotação para <b>{snapshot.nome}</b>
+        <br />
+        Enviada em {geradoEmLabel} · tabelas de {geradoEmLabel}
+      </div>
+
+      <div className="rlay" style={{ marginTop: 16 }}>
+        <aside className="side" aria-label="Resumo da cotação">
+          <div className="sideh"><span>Resumo da cotação</span></div>
+          <div>
+            <div className="sblk">
+              <div className="sbt"><span>Beneficiários</span><span className="pill sm"><b>{vidas}</b><span>{vidas === 1 ? "vida" : "vidas"}</span></span></div>
+              <div className="box">
+                <table className="kv">
+                  <tbody>
+                    {BAND_KEYS.map((band, i) =>
+                      lives[i] > 0 ? (
+                        <tr key={band}><th>{FAIXAS[i]} anos</th><td>{lives[i]} {lives[i] === 1 ? "vida" : "vidas"}</td></tr>
+                      ) : null,
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <p className="text-right">
-                <span className="block text-2xl font-semibold tabular-nums">{brl.format(plan.total)}</span>
-                <span className="text-xs text-muted-foreground">por mês</span>
-              </p>
             </div>
+            <div className="sblk">
+              <div className="sbt"><span>Perfil do cliente</span></div>
+              <div className="box">
+                <table className="kv">
+                  <tbody>
+                    <tr><th>Estado</th><td>{ufNome}</td></tr>
+                    <tr><th>Acomodação</th><td>{f.acomodacoes.join(", ") || "Todas"}</td></tr>
+                    <tr><th>Coparticipação</th><td>{f.coparticipacoes.join(", ") || "Todas"}</td></tr>
+                    <tr><th>Contratação</th><td>{f.contratacoes.join(", ") || "Todas"}</td></tr>
+                    {f.valorMin != null || f.valorMax != null ? (
+                      <tr><th>Valor mensal</th><td>{[f.valorMin != null ? `de ${brl(f.valorMin)}` : "", f.valorMax != null ? `até ${brl(f.valorMax)}` : ""].filter(Boolean).join(" ")}</td></tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </aside>
 
-            <p className="text-sm text-muted-foreground">
-              {plan.acomodacao} · {plan.contratacao} · {plan.coparticipacao}
-            </p>
+        <div className="rmain">
+          <div className="rhd">
+            <div className="grow">
+              <h1 className="qtitle" style={{ border: 0, padding: 0 }}>{snapshot.nome}</h1>
+              <div className="rmeta">{meta}</div>
+            </div>
+          </div>
 
-            <details className="rounded-lg border p-3 text-sm">
-              <summary className="cursor-pointer font-medium">Regras do plano</summary>
-              <ul className="mt-3 flex flex-col gap-3">
-                {plan.regras.map((regra) => (
-                  <li key={regra.tipo}>
-                    <p className="font-medium">{regra.tipo}</p>
-                    <p className="whitespace-pre-line text-muted-foreground">{regra.texto}</p>
-                  </li>
-                ))}
-              </ul>
-            </details>
+          <ProposalPanel client items={items} lives={lives} onOpen={openPlan} />
 
-            <details className="rounded-lg border p-3 text-sm">
-              <summary className="cursor-pointer font-medium">Rede credenciada ({plan.rede.hospitais.length} hospitais)</summary>
-              <ul className="mt-3 flex flex-col gap-2">
-                {plan.rede.hospitais.map((h) => (
-                  <li key={`${h.nome}-${h.cidade}`} className="flex justify-between gap-3">
-                    <span>{h.nome} <span className="text-muted-foreground">{[h.cidade, h.uf].filter(Boolean).join(" - ")}</span></span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{h.siglas.join(", ")}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </li>
-        ))}
-      </ul>
-    </main>
+          <p className="foot">Valores mensais de planos conforme tabelas de {geradoEmLabel}. Confirme valores, rede e regras com a operadora antes de contratar.</p>
+        </div>
+      </div>
+
+      {open ? (
+        <PlanSheet
+          plan={open}
+          uf={snapshot.uf}
+          ufNome={ufNome}
+          lives={lives}
+          total={open.total}
+          client
+          included
+          refIds={f.hospitalIds}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
+    </PlanSimulatorShell>
   );
 }

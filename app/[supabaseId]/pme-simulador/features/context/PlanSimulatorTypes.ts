@@ -1,4 +1,5 @@
 import type { SimulationFilters } from "@/lib/planSimulator/planSimulator";
+import type { SheetPlan } from "@/components/plan-simulator/PlanSheet";
 
 export type QuoteState = {
   lives: number[];
@@ -32,6 +33,8 @@ export type SimulationRow = {
   chave: string;
   operadora: string;
   logoPath: string;
+  produto: string;
+  precos: Record<string, number>;
   plano: string;
   tabela: string;
   acomodacao: string;
@@ -44,39 +47,33 @@ export type SimulationRow = {
   total: number;
 };
 
+export type FacetCounts = {
+  acomodacoes: Record<string, number>;
+  coparticipacoes: Record<string, number>;
+  contratacoes: Record<string, number>;
+};
+
 export type SimulationResponse = {
   rows: SimulationRow[];
   totalVidas: number;
   ocultosPorVidas: number;
   ocultosPorValor: number;
+  facets: FacetCounts;
 };
 
-export type PlanDetail = {
-  chave: string;
-  operadora: string;
-  logoPath: string;
-  plano: string;
-  tabela: string;
-  acomodacao: string;
-  contratacao: string;
-  coparticipacao: string;
-  regras: { tipo: string; texto: string }[];
-  rede: {
-    hospitais: { nome: string; cidade: string | null; uf: string | null; siglas: string[] }[];
-    laboratorios: { nome: string; cidade: string | null; uf: string | null }[];
-  };
-};
+/** Detalhe do plano: mesmo formato da folha de detalhes. */
+export type PlanDetail = SheetPlan;
 
 export type ProviderHit = { id: number; nome: string; cidade: string | null; uf: string | null; bairro: string | null };
 
 export type PlanSimulatorView = "home" | "wizard" | "results";
 
 export const UF_OPTIONS = [
-  { uf: "SP", nome: "São Paulo" },
-  { uf: "RJ", nome: "Rio de Janeiro" },
-  { uf: "BA", nome: "Salvador" },
-  { uf: "MG", nome: "Belo Horizonte" },
-  { uf: "DF", nome: "Brasília" },
+  { uf: "SP", nome: "São Paulo", capital: "São Paulo" },
+  { uf: "RJ", nome: "Rio de Janeiro", capital: "Rio de Janeiro" },
+  { uf: "BA", nome: "Bahia", capital: "Salvador" },
+  { uf: "MG", nome: "Minas Gerais", capital: "Belo Horizonte" },
+  { uf: "DF", nome: "Distrito Federal", capital: "Brasília" },
 ] as const;
 
 export const AGE_BAND_LABELS = ["00 a 18", "19 a 23", "24 a 28", "29 a 33", "34 a 38", "39 a 43", "44 a 48", "49 a 53", "54 a 58", "59 ou mais"] as const;

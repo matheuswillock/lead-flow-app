@@ -40,8 +40,8 @@ describe("buildShareSnapshot", () => {
       filters: EMPTY_FILTERS,
       now: new Date("2026-11-19T10:00:00.000Z"),
       plans: [
-        { chave: "caro", operadora: "A", logoPath: "/a", plano: "P", tabela: "T", acomodacao: "Apartamento", contratacao: "Livre", coparticipacao: "Sem", total: 900, regras: [], rede: { hospitais: [], laboratorios: [] } },
-        { chave: "barato", operadora: "B", logoPath: "/b", plano: "P", tabela: "T", acomodacao: "Apartamento", contratacao: "Livre", coparticipacao: "Sem", total: 200, regras: [], rede: { hospitais: [], laboratorios: [] } },
+        { chave: "caro", operadora: "A", logoPath: "/a", produto: "Pr", precos: {}, plano: "P", tabela: "T", acomodacao: "Apartamento", contratacao: "Livre", coparticipacao: "Sem", coparticipacaoTabela: "Completa", aceitaMei: false, vidasMin: 1, vidasMax: 29, total: 900, regras: [], rede: { hospitais: [], laboratorios: [] } },
+        { chave: "barato", operadora: "B", logoPath: "/b", produto: "Pr", precos: {}, plano: "P", tabela: "T", acomodacao: "Apartamento", contratacao: "Livre", coparticipacao: "Sem", coparticipacaoTabela: "Completa", aceitaMei: false, vidasMin: 1, vidasMax: 29, total: 200, regras: [], rede: { hospitais: [], laboratorios: [] } },
       ],
     })
     expect(snap.nome).toHaveLength(QUOTE_LIMITS.maxNome)

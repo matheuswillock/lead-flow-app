@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output"
-import { priceFor, simulate, type LivesByBand, type SimulationFilters } from "@/lib/planSimulator/planSimulator"
+import { facetCounts, priceFor, simulate, type Facets, type LivesByBand, type SimulationFilters } from "@/lib/planSimulator/planSimulator"
 import type { SnapshotPlan } from "@/lib/planSimulator/quote"
 import { PrismaPlanCatalogReadRepository, type CatalogTableRecord } from "@/app/api/infra/data/repositories/planCatalog/PrismaPlanCatalogReadRepository"
 
@@ -21,8 +21,9 @@ export interface IPlanCatalogReader {
 
 export type NetworkRow = {
   kind: "HOSPITAL" | "LAB"
+  providerId: number
   atendimento: string[]
-  provider: { nome: string; cidade: string | null; uf: string | null }
+  provider: { nome: string; bairro: string | null; cidade: string | null; uf: string | null }
 }
 
 export type SimulateInput = { uf: string; lives: LivesByBand; filters: SimulationFilters }
@@ -38,12 +39,16 @@ export class PlanSimulatorUseCase {
         : new Map<number, Set<number>>()
 
       const result = simulate(tables, { uf: input.uf, lives: input.lives, filters: input.filters }, hospitals)
+      // Contagens dos chips usam o estado inteiro, sem a regra de vidas (como no protótipo).
+      const facets: Facets = facetCounts(tables, input.uf, input.filters, hospitals)
       const rows = result.rows.map(({ table, total }) => {
         const record = table
         return {
           chave: record.chave,
           operadora: record.operatorName,
           logoPath: record.operatorLogoPath,
+          produto: record.produto,
+          precos: record.precos,
           plano: record.plano,
           tabela: record.tabela,
           acomodacao: record.acomodacao,
@@ -62,6 +67,7 @@ export class PlanSimulatorUseCase {
         totalVidas: result.totalVidas,
         ocultosPorVidas: result.ocultosPorVidas,
         ocultosPorValor: result.ocultosPorValor,
+        facets,
       })
     } catch (error) {
       console.error("[PlanSimulatorUseCase][simulate]", error)
@@ -111,19 +117,25 @@ export class PlanSimulatorUseCase {
       chave: table.chave,
       operadora: table.operatorName,
       logoPath: table.operatorLogoPath,
+      produto: table.produto,
       plano: table.plano,
       tabela: table.tabela,
       acomodacao: table.acomodacao,
       contratacao: table.contratacao,
       coparticipacao: table.coparticipacao,
+      coparticipacaoTabela: table.coparticipacaoTabela,
+      aceitaMei: table.aceitaMei,
+      vidasMin: table.vidasMin,
+      vidasMax: table.vidasMax,
+      precos: table.precos,
       regras: regras.map(([tipo, id]) => ({ tipo, texto: texts.get(id) ?? "" })),
       rede: {
         hospitais: network
           .filter((n) => n.kind === "HOSPITAL")
-          .map((n) => ({ nome: n.provider.nome, cidade: n.provider.cidade, uf: n.provider.uf, siglas: n.atendimento })),
+          .map((n) => ({ id: n.providerId, nome: n.provider.nome, bairro: n.provider.bairro, cidade: n.provider.cidade, uf: n.provider.uf, siglas: n.atendimento })),
         laboratorios: network
           .filter((n) => n.kind === "LAB")
-          .map((n) => ({ nome: n.provider.nome, cidade: n.provider.cidade, uf: n.provider.uf })),
+          .map((n) => ({ id: n.providerId, nome: n.provider.nome, bairro: n.provider.bairro, cidade: n.provider.cidade, uf: n.provider.uf })),
       },
     }
   }

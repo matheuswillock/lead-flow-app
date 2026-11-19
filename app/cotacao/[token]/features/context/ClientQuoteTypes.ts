@@ -1,24 +1,23 @@
+import type { SheetPlan } from "@/components/plan-simulator/PlanSheet";
+
+/** Snapshot congelado no envio: o cliente vê exatamente o que foi enviado. */
+export type ClientQuotePlan = SheetPlan & { total: number };
+
 export type ClientQuoteSnapshot = {
   nome: string;
   geradoEm: string;
   uf: string;
   lives: number[];
-  plans: {
-    chave: string;
-    operadora: string;
-    logoPath: string;
-    plano: string;
-    tabela: string;
-    acomodacao: string;
-    contratacao: string;
-    coparticipacao: string;
-    total: number;
-    regras: { tipo: string; texto: string }[];
-    rede: {
-      hospitais: { nome: string; cidade: string | null; uf: string | null; siglas: string[] }[];
-      laboratorios: { nome: string; cidade: string | null; uf: string | null }[];
-    };
-  }[];
+  filters: {
+    acomodacoes: string[];
+    coparticipacoes: string[];
+    contratacoes: string[];
+    hospitalIds: number[];
+    mei: boolean;
+    valorMin: number | null;
+    valorMax: number | null;
+  };
+  plans: ClientQuotePlan[];
 };
 
 export type ClientQuoteResult =

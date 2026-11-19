@@ -2,6 +2,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import type { CatalogTable } from "@/lib/planSimulator/planSimulator"
 
 export type CatalogTableRecord = CatalogTable & {
+  produto: string
   coparticipacaoTabela: string
   cidade: string
   remissao: boolean
@@ -13,6 +14,7 @@ const tableSelect = {
   chave: true,
   estado: true,
   cidade: true,
+  produto: true,
   planoId: true,
   plano: true,
   tabela: true,
@@ -33,6 +35,7 @@ type TableRow = {
   chave: string;
   estado: string;
   cidade: string;
+  produto: string;
   planoId: number;
   plano: string;
   tabela: string;
@@ -54,6 +57,7 @@ function toRecord(r: TableRow): CatalogTableRecord {
     chave: r.chave,
     estado: r.estado,
     cidade: r.cidade,
+    produto: r.produto,
     operatorName: r.operator.name,
     operatorLogoPath: r.operator.logoPath,
     planoId: r.planoId,
@@ -113,8 +117,9 @@ export class PrismaPlanCatalogReadRepository {
       where: { planoId },
       select: {
         kind: true,
+        providerId: true,
         atendimento: true,
-        provider: { select: { nome: true, cidade: true, uf: true } },
+        provider: { select: { nome: true, bairro: true, cidade: true, uf: true } },
       },
       orderBy: [{ kind: "asc" }, { providerId: "asc" }],
     })
