@@ -139,6 +139,10 @@ async function openEditDialog(page: Page) {
 }
 
 test.describe("app/[supabaseId]/carteira", () => {
+  // Os testes recriam o mesmo lead fixo (deleteMany + create) e o afterAll o apaga. Em paralelo,
+  // um worker apagava o lead do outro no meio do teste (linha some, PATCH inválido).
+  test.describe.configure({ mode: "serial" });
+
   // 240s: o fluxo reabre o diálogo e espera a linha semeada duas vezes
   // (antes e depois do reload interno de assertReducedMotion em
   // runResponsiveChecks) — mesma fronteira SWR de revalidate:60 do CRM
