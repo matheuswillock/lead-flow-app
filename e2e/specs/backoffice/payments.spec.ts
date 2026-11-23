@@ -89,6 +89,26 @@ test.describe("app/backoffice/(app)/payments", () => {
     await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
   });
 
+  test("lista cobrança com vencimento sem derrubar a página", async ({ page }) => {
+    // A API devolve dueDate em ISO completo; o formatter esperava só YYYY-MM-DD e lançava
+    // "Invalid local datetime", derrubando a rota inteira.
+    const prisma = getPrisma();
+    await prisma.backofficePayment.create({
+      data: {
+        clientId: clientId as string,
+        amount: 199.9,
+        billingType: "PIX",
+        status: "PENDING",
+        dueDate: new Date("2026-12-10"),
+      },
+    });
+
+    await page.goto("/backoffice/payments");
+    const main = page.locator("#backoffice-main-content");
+    await expect(main.getByRole("heading", { name: "Pagamentos" })).toBeVisible({ timeout: 60_000 });
+    await expect(main.getByText("10/12/2026").first()).toBeVisible();
+  });
+
   test("cartão: ligar pede confirmação e usa a revisão atual; desligar é direto", async ({ page }) => {
     const abacate = (environment: string, cardEnabled: boolean, revision: number) => ({
       provider: "ABACATE_PAY",

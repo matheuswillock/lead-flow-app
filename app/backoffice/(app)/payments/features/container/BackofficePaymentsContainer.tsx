@@ -71,7 +71,8 @@ function formatCurrency(value: string | number) {
 
 function formatDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
+  // A API serializa dueDate como ISO completo; parseDateKeyToUtc espera só YYYY-MM-DD.
+  return formatIntimezone(parseDateKeyToUtc(value.slice(0, 10), tz), "dd/MM/yyyy", tz)
 }
 
 const digitsOnly = (value: string) => value.replace(/\D/g, "")
