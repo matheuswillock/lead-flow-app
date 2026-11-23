@@ -524,3 +524,10 @@
 .psim .trow>svg{display:none}
 .psim .xh .minilogo{display:none}
 }
+
+/* Alvos de toque de pelo menos 44px em telas pequenas (acessibilidade). Fora do protótipo original. */
+@media (max-width:640px){
+  .psim .btn, .psim .qact button, .psim .chip, .psim .uf, .psim .inc, .psim .pdel, .psim .ibtn, .psim .x{min-height:44px}
+  .psim .pdel, .psim .ibtn, .psim .x{min-width:44px}
+  .psim .rb{width:44px;height:44px}
+}

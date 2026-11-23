@@ -28,12 +28,13 @@ test.describe("app/[supabaseId]/pme-simulador", () => {
   test("abre a lista de cotações com a ação de nova cotação", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/pme-simulador`);
     await expect(page.getByRole("heading", { name: "Cotações" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Nova cotação" })).toBeVisible();
+    // Lista vazia: o botão do topo e o do estado vazio.
+    await expect(page.getByRole("button", { name: "Nova cotação" }).first()).toBeVisible();
   });
 
   test("assistente leva das vidas aos resultados da cotação", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/pme-simulador`);
-    await page.getByRole("button", { name: "Nova cotação" }).click();
+    await page.getByRole("button", { name: "Nova cotação" }).first().click();
 
     await page.getByLabel("Nome da cotação").fill(QUOTE_NAME);
     await page.getByRole("button", { name: "Adicionar uma vida de 00 a 18 anos" }).click();
@@ -48,7 +49,7 @@ test.describe("app/[supabaseId]/pme-simulador", () => {
 
   test("breadcrumb do header global leva de volta à lista de cotações", async ({ page }) => {
     await page.goto(`/${E2E_MASTER_SUPABASE_ID}/pme-simulador`);
-    await page.getByRole("button", { name: "Nova cotação" }).click();
+    await page.getByRole("button", { name: "Nova cotação" }).first().click();
 
     const header = page.locator("header").first();
     await expect(header.getByText("Nova cotação")).toBeVisible();

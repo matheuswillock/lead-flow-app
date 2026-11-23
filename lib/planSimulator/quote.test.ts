@@ -64,3 +64,25 @@ describe("quoteStateSchema", () => {
     expect(quoteStateSchema.safeParse({ ...valid, sel: tooMany }).success).toBe(false)
   })
 })
+
+import { shareSnapshotSchema } from "./quote"
+
+describe("shareSnapshotSchema", () => {
+  const entry = { id: 1, nome: "Hospital", bairro: null, cidade: "São Paulo", uf: "SP" }
+  const plan = {
+    chave: "abc", operadora: "Amil", logoPath: "/operadoras/amil.svg", produto: "P", precos: { "00-18": 100 }, plano: "Plano",
+    tabela: "T", acomodacao: "Apartamento", contratacao: "Livre", coparticipacao: "Sem coparticipação", coparticipacaoTabela: "Completa",
+    aceitaMei: false, vidasMin: 1, vidasMax: 29, total: 100, regras: [{ tipo: "Carências", texto: "x" }],
+    rede: { hospitais: [{ ...entry, siglas: ["H"] }], laboratorios: [entry] },
+  }
+  const valid = { v: 1, nome: "x", geradoEm: "2026-11-19T10:00:00.000Z", uf: "SP", lives: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0], filters: EMPTY_FILTERS, plans: [plan] }
+
+  it("aceita o snapshot no formato atual", () => {
+    expect(shareSnapshotSchema.safeParse(valid).success).toBe(true)
+  })
+
+  it("recusa snapshot de formato antigo (sem preços por faixa e filtros completos)", () => {
+    const old = { ...valid, filters: {}, plans: [{ ...plan, precos: undefined }] }
+    expect(shareSnapshotSchema.safeParse(old).success).toBe(false)
+  })
+})

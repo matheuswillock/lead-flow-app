@@ -44,6 +44,48 @@ export function newShareToken(): string {
   return randomBytes(24).toString("base64url")
 }
 
+const networkEntrySchema = z.object({
+  id: z.number().int(),
+  nome: z.string(),
+  bairro: z.string().nullable(),
+  cidade: z.string().nullable(),
+  uf: z.string().nullable(),
+})
+
+const snapshotPlanSchema = z.object({
+  chave: z.string(),
+  operadora: z.string(),
+  logoPath: z.string(),
+  produto: z.string(),
+  precos: z.record(z.string(), z.number()),
+  plano: z.string(),
+  tabela: z.string(),
+  acomodacao: z.string(),
+  contratacao: z.string(),
+  coparticipacao: z.string(),
+  coparticipacaoTabela: z.string(),
+  aceitaMei: z.boolean(),
+  vidasMin: z.number(),
+  vidasMax: z.number(),
+  total: z.number(),
+  regras: z.array(z.object({ tipo: z.string(), texto: z.string() })),
+  rede: z.object({
+    hospitais: z.array(networkEntrySchema.extend({ siglas: z.array(z.string()) })),
+    laboratorios: z.array(networkEntrySchema),
+  }),
+})
+
+/** Formato do snapshot do link público. Valida na leitura: um snapshot fora do formato vira "link indisponível". */
+export const shareSnapshotSchema = z.object({
+  v: z.literal(1),
+  nome: z.string(),
+  geradoEm: z.string(),
+  uf: z.string().length(2),
+  lives: z.array(z.number().int().min(0)).length(AGE_BANDS.length),
+  filters: filtersSchema,
+  plans: z.array(snapshotPlanSchema),
+})
+
 /** Detalhe de um plano incluído, congelado no momento do envio. */
 export type SnapshotPlan = {
   chave: string

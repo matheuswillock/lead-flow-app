@@ -1,4 +1,5 @@
 import { PlanQuoteUseCase } from "@/app/api/useCases/planSimulator/PlanQuoteUseCase";
+import { shareSnapshotSchema } from "@/lib/planSimulator/quote";
 import type { ClientQuoteResult, ClientQuoteSnapshot } from "../context/ClientQuoteTypes";
 import type { IClientQuoteService } from "./IClientQuoteService";
 
@@ -19,7 +20,11 @@ class ClientQuoteService implements IClientQuoteService {
         ? { status: "expired", message: "Este link expirou. Peça ao seu corretor um novo link." }
         : { status: "invalid", message: "Este link não existe ou foi removido." };
     }
-    return { status: "ok", snapshot: output.result as ClientQuoteSnapshot };
+    const parsed = shareSnapshotSchema.safeParse(output.result);
+    if (!parsed.success) {
+      return { status: "invalid", message: "Não foi possível abrir esta cotação. Peça ao seu corretor um novo link." };
+    }
+    return { status: "ok", snapshot: parsed.data as ClientQuoteSnapshot };
   }
 }
 
