@@ -21,9 +21,14 @@
 #
 # Default só para invocação manual. `scripts/lib/test-compose.ts` sempre passa
 # `-p leadflow-test-<worktree>` (sobrepõe este `name`), porque duas worktrees
-# com este mesmo nome fixo compartilhariam container_name e os volumes
+# com este mesmo nome fixo compartilhariam os volumes
 # test_next_cache/test_node_modules — um `next build` de uma worktree
 # corrompendo o `.next` que a outra está lendo/escrevendo ao mesmo tempo.
+#
+# Não fixe `container_name` aqui: nomes de container são globais no Podman e
+# um nome fixo faria o stack de uma worktree tomar o de outra. Sem ele o
+# compose nomeia `<projeto>-<serviço>-1`. Opere sempre por
+# `podman compose -p <projeto> ...`, nunca por nome de container.
 # =============================================================================
 
 name: leadflow-test
@@ -46,7 +51,6 @@ x-test-service: &test-service
 services:
   db:
     image: supabase/postgres:17.6.1.149
-    container_name: leadflow-test-db
     security_opt:
       - label=disable
     environment:
@@ -83,7 +87,6 @@ services:
   # mas o projeto fala com 127.0.0.1:55322. Mesmo encaminhador do `e2e:ci`.
   forward:
     <<: *test-service
-    container_name: leadflow-test-forward
     network_mode: "service:db"
     depends_on:
       db:
@@ -97,7 +100,6 @@ services:
 
   setup:
     <<: *test-service
-    container_name: leadflow-test-setup
     network_mode: "service:db"
     depends_on:
       forward:
@@ -107,7 +109,6 @@ services:
 
   app:
     <<: *test-service
-    container_name: leadflow-test-app
     network_mode: "service:db"
     depends_on:
       setup:
@@ -121,7 +122,6 @@ services:
 
   tests:
     <<: *test-service
-    container_name: leadflow-test-runner
     profiles: ["tests"]
     network_mode: "service:db"
     depends_on:
