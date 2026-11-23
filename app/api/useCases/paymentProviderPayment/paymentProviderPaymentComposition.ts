@@ -128,9 +128,8 @@ export async function createAbacatePayProvider(
       publicKey,
       webhookSecret,
       webhookSecretPrevious,
-      // AbacatePay signs webhook payloads with the store public key. There is
-      // no separate webhook-signing credential in the dashboard.
-      webhookSigningKey: publicKey,
+      // A Abacate não envia assinatura HMAC nos webhooks: a origem é provada só pelo segredo da URL.
+      webhookSigningKey: null,
       environment,
       devMode: environment === "DEV",
     }),
