@@ -14,7 +14,7 @@ const { isMethodUnavailableOutput } = await import("@/lib/payment-methods/route-
 
 const originalEnv = { ...process.env }
 
-const client = { id: "c1", fullName: "Cliente", email: "c@example.com", phone: null, cpfCnpj: "52998224725" }
+const client = { id: "c1", fullName: "Cliente", email: "c@example.com", phone: "11999999999", cpfCnpj: "52998224725" }
 
 function makeUseCase() {
   const paymentRepo = { create: mock(async (data: Record<string, unknown>) => data) }

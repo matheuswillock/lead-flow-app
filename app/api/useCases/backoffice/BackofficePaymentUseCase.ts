@@ -63,6 +63,10 @@ export class BackofficePaymentUseCase {
       if (!client.email) {
         return failure("Cadastre o e-mail do cliente antes de cobrar")
       }
+      // A AbacatePay recusa cliente sem celular; sem esta checagem o operador só veria "Erro ao criar cobrança".
+      if (!digitsOnly(client.phone ?? "")) {
+        return failure("Cadastre o telefone do cliente antes de cobrar")
+      }
 
       if (billingType === "CREDIT_CARD") {
         await this.assertCardAllowed(billingType)

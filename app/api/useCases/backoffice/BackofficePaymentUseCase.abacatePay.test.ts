@@ -156,4 +156,14 @@ describe("BackofficePaymentUseCase.createPayment — AbacatePay", () => {
     expect(result.errorMessages).toEqual(["Cadastre o e-mail do cliente antes de cobrar"])
     expect(charge).not.toHaveBeenCalled()
   })
+
+  it("exige telefone no cadastro do cliente: a AbacatePay rejeita o cliente sem celular", async () => {
+    const { useCase, charge } = makeUseCase({ client: { ...client, phone: null } })
+
+    const result = await useCase.createPayment(pixInput, "profile-1")
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Cadastre o telefone do cliente antes de cobrar"])
+    expect(charge).not.toHaveBeenCalled()
+  })
 })
