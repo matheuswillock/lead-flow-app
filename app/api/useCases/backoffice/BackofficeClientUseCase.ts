@@ -24,6 +24,11 @@ export class BackofficeClientUseCase {
         return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
       }
 
+      // Telefone é obrigatório no cadastro: o contrato de pagamento exige celular em qualquer cobrança.
+      if ((data.phone ?? "").replace(/\D/g, "").length < 10) {
+        return new Output(false, [], ["Telefone é obrigatório"], null)
+      }
+
       const id = randomUUID()
 
       const input: CreateBackofficeClientInput = {
