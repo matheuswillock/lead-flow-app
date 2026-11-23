@@ -80,11 +80,12 @@ export class ConfirmTeamPaymentUseCase {
 
     let payment: AsaasPaymentLookup | null = null;
 
-    // Fase B: paymentId "provider-…" não existe no Asaas; a confirmação AbacatePay vem do webhook do provedor.
-    if (action?.provider === "ABACATE_PAY") {
+    // Ação com provedor registrado (qualquer um) é confirmada pelo webhook dele; o Asaas só vale para
+    // ação legada, sem provedor, e não conhece o paymentId "provider-…".
+    if (action?.provider) {
       return failure(
         "payment_not_confirmed",
-        "Cobrança AbacatePay é confirmada pelo provedor; a confirmação não passa por esta rota"
+        "Cobrança do provedor de pagamento é confirmada pelo provedor; a confirmação não passa por esta rota"
       );
     }
 

@@ -60,8 +60,21 @@ describe("ConfirmTeamPaymentUseCase — cobrança AbacatePay não vai ao Asaas",
     expect(result.isValid).toBe(false)
     expect(result.result).toMatchObject({ reason: "payment_not_confirmed" })
     expect(result.errorMessages).toEqual([
-      "Cobrança AbacatePay é confirmada pelo provedor; a confirmação não passa por esta rota",
+      "Cobrança do provedor de pagamento é confirmada pelo provedor; a confirmação não passa por esta rota",
     ])
+    expect(createAsaasClientMock).not.toHaveBeenCalled()
+    expect(applyPendingActionByPaymentIdMock).not.toHaveBeenCalled()
+  })
+
+  it("qualquer provedor registrado na ação é confirmado pelo webhook, nunca pelo Asaas", async () => {
+    pendingActionRepo.findByPaymentIdAndMasterId.mockImplementation(
+      async () => ({ ...abacateLookup, provider: "OUTRO_PSP" }) as any,
+    )
+
+    const result = await build().confirmTeamPayment({ supabaseId: "sb-1", paymentId: "provider-x" })
+
+    expect(result.isValid).toBe(false)
+    expect(result.result).toMatchObject({ reason: "payment_not_confirmed" })
     expect(createAsaasClientMock).not.toHaveBeenCalled()
     expect(applyPendingActionByPaymentIdMock).not.toHaveBeenCalled()
   })

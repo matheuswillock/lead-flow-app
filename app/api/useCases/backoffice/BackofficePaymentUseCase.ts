@@ -15,12 +15,11 @@ export interface CreatePaymentInput {
   description?: string
   /** CPF ou CNPJ do cliente, exigido pelo provedor; salvo no cadastro quando o cliente não tinha. */
   cpfCnpj?: string
-  /** Token de uso único gerado no navegador pelo abacatepay.js (nunca dados do cartão). */
+  /** Token de uso único gerado no navegador pelo SDK do provedor (nunca dados do cartão). */
   cardToken?: string
 }
 
 const DEFAULT_DUE_DAYS = 7
-const ABACATE_PROVIDER = "ABACATE_PAY"
 const BILLING_TYPES_NEW_CHARGES = new Set(["PIX", "CREDIT_CARD"])
 
 const digitsOnly = (value: string) => value.replace(/\D/g, "")
@@ -63,7 +62,7 @@ export class BackofficePaymentUseCase {
       if (!client.email) {
         return failure("Cadastre o e-mail do cliente antes de cobrar")
       }
-      // A AbacatePay recusa cliente sem celular; sem esta checagem o operador só veria "Erro ao criar cobrança".
+      // O contrato de pagamento (PaymentCustomer) exige celular; sem esta checagem o operador só veria "Erro ao criar cobrança".
       if (!digitsOnly(client.phone ?? "")) {
         return failure("Cadastre o telefone do cliente antes de cobrar")
       }
@@ -116,9 +115,8 @@ export class BackofficePaymentUseCase {
         amount: data.amount,
         dueDate,
         description: data.description,
-        provider: ABACATE_PROVIDER,
+        provider: charged.selected.provider,
         status,
-        invoiceUrl: pix && charged.attempt.externalId ? `https://pay.abacate.app/invoice/${charged.attempt.externalId}` : undefined,
         // O provedor devolve o PNG já com prefixo data:; a tela monta o prefixo, então guardamos só o base64.
         pixQrCode: pix?.brCodeBase64?.replace(/^data:image\/png;base64,/, ""),
         pixPayload: pix?.brCode,

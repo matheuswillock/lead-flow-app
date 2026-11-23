@@ -24,9 +24,9 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
         pixQrCode: data.pixQrCode,
         pixPayload: data.pixPayload,
         createdByProfileId: data.createdByProfileId,
-        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): cobrança Asaas
-        // nasce na conta primary (asaasFetch aponta para ela), e o lookup do webhook
-        // filtra por conta. Cobrança AbacatePay não tem id Asaas: fica no default.
+        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): só a cobrança legada com id
+        // Asaas nasce na conta primary, porque o lookup do webhook legado filtra por conta.
+        // Cobrança de qualquer outro provedor não tem id Asaas e fica no default.
         ...(data.asaasPaymentId ? { asaasAccount: "primary" as const } : {}),
       },
     })

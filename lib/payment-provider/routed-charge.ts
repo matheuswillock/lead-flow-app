@@ -1,5 +1,5 @@
 import {
-  createAbacatePayProvider,
+  resolvePaymentProvider,
   createPaymentProviderRouter,
   resolvePaymentProviderEnvironment,
 } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition";
@@ -45,7 +45,11 @@ export async function createRoutedProviderCharge(input: RoutedChargeInput) {
     requiredCapabilities: ["ONE_TIME_PAYMENT", capability],
   });
 
-  const provider = await createAbacatePayProvider(environment, selected.externalAccountContext);
+  const provider = await resolvePaymentProvider({
+    provider: selected.provider,
+    environment: selected.environment,
+    externalAccountContext: selected.externalAccountContext,
+  });
   const session = await paymentProviderSessionRepository.createSession({
     tenantId: input.tenantId,
     ownerType: input.ownerType,

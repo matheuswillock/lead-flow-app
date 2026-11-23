@@ -2,16 +2,13 @@ import { NextResponse, type NextRequest, connection } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { requireManagerAccess } from "@/app/api/v1/backoffice/utils/requireManagerAccess"
-import {
-  readConfiguredAbacatePublicKey,
-  resolveCardAvailability,
-} from "@/lib/payment-methods/availability"
+import { defaultCardCheckoutDeps, resolveCardCheckout } from "@/lib/payment-provider/card-checkout"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
 
 /**
  * GET /api/v1/backoffice/payments/card-checkout
- * Informa se a cobrança avulsa pode oferecer cartão e a chave pública que o abacatepay.js usa para
- * tokenizar no navegador. A chave pública não é segredo (o checkout público também a expõe).
+ * Informa se a cobrança avulsa pode oferecer cartão, qual provedor tokeniza no navegador e a chave
+ * pública do SDK dele. A chave pública não é segredo (o checkout público também a expõe).
  */
 export async function GET(request: NextRequest) {
   await connection()
@@ -27,10 +24,9 @@ export async function GET(request: NextRequest) {
       return managerDenied
     }
 
-    const { card } = await resolveCardAvailability()
-    const publicKey = card ? await readConfiguredAbacatePublicKey() : null
+    const checkout = await resolveCardCheckout(defaultCardCheckoutDeps)
     return NextResponse.json(
-      new Output(true, [], [], { cardOffered: card && Boolean(publicKey), publicKey }),
+      new Output(true, [], [], checkout),
       { status: 200, headers: { "Cache-Control": "no-store" } },
     )
   } catch (error) {

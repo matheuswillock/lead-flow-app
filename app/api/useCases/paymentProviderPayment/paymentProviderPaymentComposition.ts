@@ -7,6 +7,7 @@ import { AbacatePayProvider } from "@/app/api/infra/providers/AbacatePayProvider
 import { PaymentProviderConfig } from "@/lib/payment-provider/config"
 import { PaymentProviderRegistry } from "@/lib/payment-provider/registry"
 import { PaymentProviderRouter } from "@/lib/payment-provider/router"
+import { createProviderResolver } from "@/lib/payment-provider/provider-resolver"
 import type { PaymentProviderEnvironment } from "@/lib/payment-provider/types"
 import { PaymentProviderPaymentService } from "@/app/api/services/PaymentProviderPayment/PaymentProviderPaymentService"
 import { PaymentProviderPaymentUseCase } from "./PaymentProviderPaymentUseCase"
@@ -159,6 +160,11 @@ export async function createPaymentProviderRouter(
   )
 }
 
+/** Registro de provedores: o resto do sistema só conhece a chave que o roteador escolheu. */
+export const resolvePaymentProvider = createProviderResolver({
+  ABACATE_PAY: (environment, externalAccountContext) => createAbacatePayProvider(environment, externalAccountContext),
+})
+
 async function createUseCase() {
   const environment = resolvePaymentProviderEnvironment()
   const router = await createPaymentProviderRouter(environment)
@@ -170,10 +176,7 @@ async function createUseCase() {
     sessions: paymentProviderSessionRepository,
     identities: paymentProviderIdentityRepository,
     environment,
-    resolveProvider: ({ provider, environment: providerEnvironment, externalAccountContext }) => {
-      if (provider !== "ABACATE_PAY") throw new Error("Provider não suportado nesta fase")
-      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
-    },
+    resolveProvider: resolvePaymentProvider,
   })
   return new PaymentProviderPaymentUseCase(service)
 }

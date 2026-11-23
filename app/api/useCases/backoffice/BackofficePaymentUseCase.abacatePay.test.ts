@@ -23,7 +23,7 @@ const pixOutcome = {
   pix: { brCode: "copia-cola", brCodeBase64: "data:image/png;base64,AAA", expiresAt: "2026-11-20T12:00:00.000Z" },
 }
 
-function makeUseCase(overrides: { client?: unknown; outcome?: unknown } = {}) {
+function makeUseCase(overrides: { client?: unknown; outcome?: unknown; provider?: string } = {}) {
   const findById = mock(async (_id: string) => ("client" in overrides ? overrides.client : client) as never)
   const updateCpfCnpj = mock(async (_id: string, _cpf: string) => ({}) as never)
   const created: unknown[] = []
@@ -32,7 +32,7 @@ function makeUseCase(overrides: { client?: unknown; outcome?: unknown } = {}) {
     return { id: "bp-1", ...(data as object) } as never
   })
   const charge = mock(async (_input: unknown) => ({
-    selected: { provider: "ABACATE_PAY" },
+    selected: { provider: overrides.provider ?? "ABACATE_PAY" },
     session: { id: "session-1" },
     attempt: { id: "attempt-1", externalId: "pix_char_1" },
     outcome: "outcome" in overrides ? overrides.outcome : pixOutcome,
@@ -77,6 +77,16 @@ describe("BackofficePaymentUseCase.createPayment — AbacatePay", () => {
       createdByProfileId: "profile-1",
     })
     expect(asaasFetchMock).not.toHaveBeenCalled()
+  })
+
+  it("grava o provedor escolhido pelo roteador, sem presumir nenhum provedor", async () => {
+    const { useCase, created } = makeUseCase({ provider: "OUTRO_PSP" })
+
+    const result = await useCase.createPayment(pixInput, "profile-1")
+
+    expect(result.isValid).toBe(true)
+    expect(created[0]).toMatchObject({ provider: "OUTRO_PSP" })
+    expect((created[0] as { invoiceUrl?: string }).invoiceUrl).toBeUndefined()
   })
 
   it("recusa boleto, que não existe mais para novas cobranças", async () => {

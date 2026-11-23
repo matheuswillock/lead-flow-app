@@ -36,8 +36,8 @@ import type {
   BackofficeCardCheckout,
   CreatePaymentFormData,
 } from "../services/IBackofficePaymentsService"
-import { AbacateCardField } from "@/app/adesao/[token]/features/components/AbacateCardField"
-import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook"
+import { CardTokenizationField } from "@/components/payments/CardTokenizationField"
+import { useCardTokenization } from "@/components/payments/useCardTokenization"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
@@ -61,7 +61,7 @@ const BILLING_LABELS: Record<string, string> = {
   UNDEFINED: "A definir",
 }
 
-const NO_CARD_CHECKOUT: BackofficeCardCheckout = { cardOffered: false, publicKey: null }
+const NO_CARD_CHECKOUT: BackofficeCardCheckout = { cardOffered: false, provider: null, publicKey: null }
 
 function formatCurrency(value: string | number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -148,7 +148,7 @@ export function BackofficePaymentsContainer() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
   const [cardCheckout, setCardCheckout] = useState<BackofficeCardCheckout>(NO_CARD_CHECKOUT)
-  const abacateCard = useAbacateCard()
+  const cardTokenization = useCardTokenization(cardCheckout.provider)
   const [pixDialog, setPixDialog] = useState<{
     open: boolean
     pixQrCode: string | null
@@ -214,7 +214,7 @@ export function BackofficePaymentsContainer() {
     try {
       let cardToken: string | undefined
       if (isCard) {
-        const token = await abacateCard.tokenizeCard({
+        const token = await cardTokenization.tokenizeCard({
           fullName: selectedClient.fullName,
           email: selectedClient.email,
           cnpj: needsDocument ? document : (selectedClient.cpfCnpj ?? ""),
@@ -429,8 +429,9 @@ export function BackofficePaymentsContainer() {
               <div className="space-y-2">
                 <Label>Dados do cartão *</Label>
                 {cardCheckout.publicKey && amountInCents >= 100 ? (
-                  <AbacateCardField
-                    ref={abacateCard.cardFieldRef}
+                  <CardTokenizationField
+                    ref={cardTokenization.cardFieldRef}
+                    provider={cardCheckout.provider}
                     publicKey={cardCheckout.publicKey}
                     amountInCents={amountInCents}
                   />
@@ -439,9 +440,9 @@ export function BackofficePaymentsContainer() {
                     Informe o valor (mínimo R$ 1,00) para carregar o formulário do cartão.
                   </p>
                 )}
-                {abacateCard.cardError && (
+                {cardTokenization.cardError && (
                   <p role="alert" className="text-xs text-destructive">
-                    {abacateCard.cardError}
+                    {cardTokenization.cardError}
                   </p>
                 )}
               </div>
@@ -475,8 +476,8 @@ export function BackofficePaymentsContainer() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" className="max-lg:h-11" disabled={isCreating || abacateCard.isTokenizing}>
-                {abacateCard.isTokenizing
+              <Button type="submit" className="max-lg:h-11" disabled={isCreating || cardTokenization.isTokenizing}>
+                {cardTokenization.isTokenizing
                   ? "Validando cartão..."
                   : isCreating
                     ? "Criando..."

@@ -49,6 +49,7 @@ Detailed database and Git procedures are in `.governance/ai/database.md` and `.g
 - Routes handle HTTP only. UseCases orchestrate one business use case and return `Output`. Services hold complex domain logic. Repositories own data access.
 - UseCases MUST depend on interfaces and MUST NOT call Prisma or raw SQL directly.
 - Frontend flow: `page -> context -> service` and `page -> container -> context`. Browser components do not call product APIs outside the feature service.
+- Payments MUST be provider-agnostic: the product may run several providers at once and swap them at any time. Outside the provider adapters (`app/api/infra/providers/**`) and the single provider registry (`resolvePaymentProvider`), code MUST NOT name a concrete provider in branches, URLs, copy or stored values. Resolve the provider by the key the router selects from configuration, persist that key, and depend on the neutral contracts in `lib/payment-provider/`. Legacy provider code stays isolated until migrated. Details: `.governance/ai/backend.md`.
 - Prefer meaningful names, small single-purpose functions, lean interfaces and composition over growing conditionals.
 - Do not abstract a few similar lines; remove duplicated business knowledge, not every repeated token.
 - Every operational execution script MUST be testable: keep its business behavior in testable functions or modules, isolate the CLI/entrypoint and external side effects behind explicit dependencies, and add automated coverage for its relevant success and failure paths before considering it complete.

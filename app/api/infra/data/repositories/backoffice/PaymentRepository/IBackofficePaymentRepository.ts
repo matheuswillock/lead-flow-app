@@ -9,7 +9,7 @@ export interface CreateBackofficePaymentInput {
   dueDate?: Date
   description?: string
   asaasPaymentId?: string
-  /** Provider que cobrou (ex.: "ABACATE_PAY"); null/omitido = legado Asaas. */
+  /** Chave do provedor que cobrou; null/omitido = cobrança legada, anterior ao rastreamento por provedor. */
   provider?: string
   status?: string
   invoiceUrl?: string

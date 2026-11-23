@@ -8,9 +8,11 @@ export interface BackofficeClientItem {
 }
 
 export interface BackofficeCardCheckout {
-  /** Cartão liberado na configuração do provider (e com chave pública disponível). */
+  /** Cartão liberado na configuração do provedor (e com chave pública disponível). */
   cardOffered: boolean
-  /** Chave pública do abacatepay.js, usada só para tokenizar no navegador. */
+  /** Provedor que tokeniza o cartão no navegador (escolhe o campo de cartão). */
+  provider: string | null
+  /** Chave pública do SDK do provedor, usada só para tokenizar no navegador. */
   publicKey: string | null
 }
 

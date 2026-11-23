@@ -13,6 +13,19 @@ Leia este arquivo somente para mudanças em APIs, UseCases, Services, Repositori
 - Queries Prisma preferem `select`; use `include` somente quando a entidade relacionada completa for necessária.
 - Logs de rota usam nome estável e método, `console.info` para fluxo e `console.error` para erros.
 
+## Pagamentos (agnósticos ao provedor)
+
+O produto pode operar vários provedores ao mesmo tempo e trocá-los a qualquer momento. Nenhum código de produto presume um provedor.
+
+- Só dois lugares conhecem um provedor concreto: o adapter em `app/api/infra/providers/**` e o registro único `resolvePaymentProvider` (`lib/payment-provider/provider-resolver.ts`). Somar ou trocar um provedor é escrever o adapter e registrar a fábrica.
+- Quem cobra usa `createRoutedProviderCharge` (`lib/payment-provider/routed-charge.ts`): o roteador escolhe o provedor pela configuração e o código segue a chave escolhida, nunca um nome fixo.
+- Grave `provider` a partir da chave escolhida pelo roteador (`selected.provider`), nunca de constante. Cobrança sem `provider` é legada.
+- Não monte URL, texto de interface, mensagem de erro nem regra de negócio com o nome de um provedor. Dados que só um provedor devolve entram no contrato neutro (`lib/payment-provider/contracts.ts`) ou ficam de fora.
+- Liquidação, confirmação e webhook decidem pelo dono do pagamento (`ownerType`/`ownerId` da tentativa), não pelo provedor.
+- Front: telas conhecem só o contrato `CardTokenizerHandle` (`lib/payment-provider/card-tokenization.ts`). O campo de cartão do provedor é escolhido em `components/payments/CardTokenizationField.tsx` pela chave que a API devolve.
+- Teste de regressão de código novo de pagamento inclui um provedor que não é o atual (por exemplo, a chave `OUTRO_PSP`), para provar que nada presume o vigente.
+- Código legado de um provedor antigo (Asaas) fica isolado e identificado como legado até ser migrado. Não o replique em fluxo novo.
+
 ## Autorização e contexto
 
 - Rotas de produto usam os helpers de acesso existentes e propagam o contexto resolvido pela cadeia, sem repetir consultas de identidade/time.
