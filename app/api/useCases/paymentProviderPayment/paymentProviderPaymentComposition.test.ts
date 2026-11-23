@@ -97,6 +97,16 @@ describe("createAbacatePayProvider", () => {
     await expect(createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository, emptyConfigRepository)).resolves.toBeDefined()
   })
 
+  it("com PUBLIC_KEY configurada, aceita o webhook autenticado só pelo segredo da URL (Abacate não envia HMAC)", async () => {
+    setProductionSecrets()
+    process.env.ABACATE_PAY_PRODUCTION_PUBLIC_KEY = "prod-public-key"
+    const provider = await createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository, emptyConfigRepository)
+
+    expect(
+      provider.verifyRequest({ rawBody: "{}", signature: null, query: { webhookSecret: "prod-webhook-secret" } }).environment,
+    ).toBe("PRODUCTION")
+  })
+
   it("lança quando o segredo API_KEY está ausente", async () => {
     process.env.ABACATE_PAY_PRODUCTION_WEBHOOK_SECRET = "prod-webhook-secret"
     await expect(createAbacatePayProvider("PRODUCTION", "test-production", emptyCredentialRepository, emptyConfigRepository)).rejects.toThrow(
