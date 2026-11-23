@@ -1,5 +1,6 @@
 "use client"
 
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
@@ -49,6 +50,7 @@ export function SiteHeader() {
   const isPerformanceSection = section === 'performance'
   const isFormsSection = section === 'forms'
   const isLandingPagesSection = section === 'landing-pages'
+  const isPlanSimulatorSection = section === 'pme-simulador'
   const isBackofficeClientDetails =
     pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
   const isBackofficeStudioBot =
@@ -215,6 +217,8 @@ export function SiteHeader() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+        ) : isPlanSimulatorSection ? (
+          <PlanSimulatorBreadcrumb />
         ) : (
           <h1 className="text-sm font-semibold">{currentTitle}</h1>
         )}
@@ -224,5 +228,29 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
+  )
+}
+
+/** Breadcrumb do simulador: itens linkáveis (trilha) e a tela atual, definidos pela própria página via contexto. */
+function PlanSimulatorBreadcrumb() {
+  const { override } = usePageBreadcrumb()
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        {(override?.trail ?? []).map((item) => (
+          <Fragment key={item.href + item.label}>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink asChild>
+                <Link href={item.href} onClick={item.onClick}>{item.label}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+          </Fragment>
+        ))}
+        <BreadcrumbItem>
+          <BreadcrumbPage>{override?.label ?? 'Simulador de Planos'}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
   )
 }

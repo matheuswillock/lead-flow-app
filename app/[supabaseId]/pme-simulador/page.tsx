@@ -1,13 +1,10 @@
-"use client";
+import { PlanSimulatorProvider } from "./features/context/PlanSimulatorContext";
+import { PlanSimulatorContainer } from "./features/container/PlanSimulatorContainer";
 
-import { PmeSimulatorProvider } from "./features/context/PmeSimulatorContext";
-import { PmeSimulatorContainer } from "./features/container/PmeSimulatorContainer";
-
-export default function PmeSimulatorPage() {
+export default function PlanSimulatorPage() {
   return (
-    <PmeSimulatorProvider>
-      <PmeSimulatorContainer />
-    </PmeSimulatorProvider>
+    <PlanSimulatorProvider>
+      <PlanSimulatorContainer />
+    </PlanSimulatorProvider>
   );
 }
-
