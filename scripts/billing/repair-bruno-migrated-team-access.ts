@@ -7,7 +7,7 @@ import { TEAM_OWNERSHIP_TRANSFER_TARGETS, BRUNO_PROFILE_ID } from "./lib/teamOwn
 
 export const REPAIR_ID = "bruno-migrated-team-access-repair-2026-10-19"
 export const REPAIR_APPLY_ENV = "BRUNO_MIGRATED_ACCESS_APPLY"
-export const REPAIR_EXPIRY = "2026-11-19T03:00:00.000Z"
+export const REPAIR_EXPIRY = "2026-12-06T03:00:00.000Z"
 export const CRM_PRODUCT_ID = "afc702a8-c991-4432-8cca-3e95757f7ca1"
 export const ACTOR_PROFILE_ID = "f88f2b3b-3f45-4170-83e1-4e7999d2c012"
 

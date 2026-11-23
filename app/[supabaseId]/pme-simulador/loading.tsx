@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function PmeSimulatorLoading() {
+export default function PlanSimulatorLoading() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
       <Skeleton className="h-8 w-72 rounded-md" />
