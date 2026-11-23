@@ -51,10 +51,16 @@ describe("PaymentProviderConfig", () => {
       expect(config.fingerprint()).toBe("PRODUCTION:production:no-public-key")
     })
 
-    it("still requires public key and signing key in DEV", () => {
+    it("still requires the public key in DEV", () => {
       expect(() =>
         PaymentProviderConfig.create({ ...validConfig, publicKey: null, webhookSigningKey: null }),
       ).toThrow("incompleta")
+    })
+
+    it("accepts DEV without a webhook signing key, since the provider sends no HMAC", () => {
+      const config = PaymentProviderConfig.create({ ...validConfig, webhookSigningKey: null })
+      expect(config.webhookSigningKey).toBeNull()
+      expect(config.publicKey).toBe("pk_test_provider")
     })
 
     it("treats a blank key as broken configuration, not as absent", () => {
