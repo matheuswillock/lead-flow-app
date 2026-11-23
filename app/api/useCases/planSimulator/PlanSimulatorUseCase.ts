@@ -49,6 +49,7 @@ export class PlanSimulatorUseCase {
           logoPath: record.operatorLogoPath,
           produto: record.produto,
           precos: record.precos,
+          regrasTipos: Object.keys(record.regras),
           plano: record.plano,
           tabela: record.tabela,
           acomodacao: record.acomodacao,

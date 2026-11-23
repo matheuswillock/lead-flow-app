@@ -35,6 +35,8 @@ export type SimulationRow = {
   logoPath: string;
   produto: string;
   precos: Record<string, number>;
+  /** Tipos de regra do plano (ex.: "Exemplos de Reembolso"), sem os textos. */
+  regrasTipos: string[];
   plano: string;
   tabela: string;
   acomodacao: string;

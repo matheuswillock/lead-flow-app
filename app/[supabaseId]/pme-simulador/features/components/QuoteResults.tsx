@@ -60,6 +60,7 @@ export function QuoteResults() {
       chave, operadora: row.operadora, logoPath: row.logoPath, plano: row.plano, tabela: row.tabela, acomodacao: row.acomodacao,
       contratacao: row.contratacao, coparticipacao: row.coparticipacao, coparticipacaoTabela: row.coparticipacaoTabela,
       aceitaMei: row.aceitaMei, vidasMin: row.vidasMin, vidasMax: row.vidasMax, precos: row.precos,
+      regras: row.regrasTipos.map((tipo) => ({ tipo, texto: "" })),
       total: priceFor({ precos: row.precos }, lives), foraDosFiltros: !rows.some((r) => r.chave === chave),
     };
   });
@@ -123,7 +124,7 @@ export function QuoteResults() {
 
         <div className="rmain">
           <div className="rhd">
-            <button type="button" className="ibtn wide" aria-label="Mostrar vidas e filtros" onClick={() => { setCollapsed(false); setDrawer(true); }}>
+            <button type="button" id="sideShow" className="ibtn wide" aria-label="Mostrar vidas e filtros" onClick={() => { setCollapsed(false); setDrawer(true); }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16M13.5 10l2 2-2 2" /></svg>
               <span>Vidas e filtros</span>
             </button>
@@ -132,7 +133,7 @@ export function QuoteResults() {
               <input className="qtitle" aria-label="Nome da cotação" value={ctx.nome} maxLength={80} onChange={(e) => ctx.renameQuote(e.target.value)} />
               <div className="rmeta">{meta.join(" · ")}{ctx.saving ? " · salvando…" : ""}</div>
             </div>
-            <button type="button" className="btn pri big" disabled={ctx.draft.sel.length === 0} onClick={() => ctx.setSendOpen(true)}>
+            <button type="button" id="sendQ" className="btn pri big" disabled={ctx.draft.sel.length === 0} onClick={() => ctx.setSendOpen(true)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></svg>
               Enviar ao cliente
             </button>

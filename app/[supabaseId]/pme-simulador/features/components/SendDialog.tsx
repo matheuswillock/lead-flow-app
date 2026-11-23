@@ -40,7 +40,7 @@ export function SendDialog() {
 
   return (
     <>
-      <div className="scrim" onClick={() => ctx.setSendOpen(false)} />
+      <div className="scrim" id="dScrim" onClick={() => ctx.setSendOpen(false)} />
       <div className="dlg" role="dialog" aria-modal="true" aria-labelledby="dTitle">
         <div className="dh">
           <h3 id="dTitle">Enviar ao cliente</h3>

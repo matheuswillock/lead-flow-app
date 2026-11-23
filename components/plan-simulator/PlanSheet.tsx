@@ -237,7 +237,7 @@ export function PlanSheet(props: Props) {
                 <div className="pnote">{n} {n === 1 ? "vida" : "vidas"} · {plan.contratacao}</div>
                 {!client && onToggle ? (
                   <div className="pact">
-                    <button type="button" className={`bigbtn${included ? " on" : ""}`} aria-pressed={included} onClick={onToggle}>
+                    <button type="button" id="sInc" className={`bigbtn${included ? " on" : ""}`} aria-pressed={included} onClick={onToggle}>
                       {included ? <><IconCheck /><span>Incluído na proposta</span></> : <><IconPlus /><span>Incluir na proposta</span></>}
                     </button>
                     <button type="button" className="bigbtn ghost" onClick={() => { onCopy?.(); setCopied(true); setTimeout(() => setCopied(false), 2200); }}>
