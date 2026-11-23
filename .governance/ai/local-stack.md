@@ -20,7 +20,28 @@ Leia este arquivo antes de testar qualquer implementação localmente: suíte, E
 | Derrubar e apagar caches (`node_modules`, `.next`) | `bun run test:compose:down` |
 | Manter o stack de pé entre execuções | `KEEP_STACK=1 bun run test:compose:e2e` |
 
-Para um spec específico, rode `podman compose -f docker-compose.test.yml --profile tests run --rm tests bunx playwright test e2e/specs/<arquivo>.spec.ts` com o stack já de pé (`KEEP_STACK=1`).
+Para um spec específico, rode `podman compose -p <projeto> -f docker-compose.test.yml --profile tests run --rm tests bunx playwright test e2e/specs/<arquivo>.spec.ts` com o stack já de pé (`KEEP_STACK=1`).
+
+### Nunca opere o stack por nome de container
+
+O projeto compose é `leadflow-test-<basename da worktree>` (`projectNameFor` em `scripts/lib/test-compose.ts`, passado com `-p`) e os containers se chamam `<projeto>-<serviço>-1`. Não há `container_name` fixo: nomes de container são globais no Podman, e `leadflow-test-app` já foi, em 2026-11-23, o app de **outra** worktree (`podman stop`/`start` por nome parou o app e reexecutou o `setup` alheio).
+
+- Use sempre `podman compose -p <projeto> -f docker-compose.test.yml ...` (`exec`, `logs`, `ps`, `stop`, `start`, `down`). Nunca `podman stop|start|exec|rm <nome>`.
+- Descubra o projeto com `bun -e 'import {COMPOSE_PROJECT} from "./scripts/lib/test-compose"; console.log(COMPOSE_PROJECT)'` na raiz da worktree.
+- `down --volumes` e `bun run test:compose:down` só no seu próprio projeto.
+
+### Inspecionar o app no navegador
+
+O stack não publica porta no host (e não deve, por padrão). Para abrir o app no navegador, crie **fora do repositório** um override que publica a porta só no seu projeto, p. ex. `~/override-test-ports.yml`:
+
+```yaml
+services:
+  db:
+    ports:
+      - "127.0.0.1:3100:3000"   # porta do host livre; o app compartilha a rede do db
+```
+
+e suba com `podman compose -p <projeto> -f docker-compose.test.yml -f ~/override-test-ports.yml up -d app`. A porta vai no `db` porque `app` usa `network_mode: service:db`. Escolha uma porta distinta por worktree.
 
 Primeira execução: o build da imagem (~2,6 GB, Playwright) e do `next build` leva minutos. Reexecuções usam o cache dos volumes.
 

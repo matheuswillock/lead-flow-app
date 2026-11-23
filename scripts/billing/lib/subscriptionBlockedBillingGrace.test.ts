@@ -428,7 +428,7 @@ describe("subscription-blocked billing grace policy", () => {
   })
 
   it("formata a data final da grace em São Paulo", () => {
-    expect(buildGraceReason()).toContain("18/11/2026")
+    expect(buildGraceReason()).toContain("05/12/2026")
   })
 
   it("rejeita política fora do aprovado ou expirada", () => {
@@ -445,7 +445,7 @@ describe("subscription-blocked billing grace policy", () => {
     expect(() =>
       assertApprovedCensusPolicy(
         DEFAULT_CENSUS_POLICY,
-        new Date("2026-11-20T00:00:00.000Z")
+        new Date("2026-12-07T00:00:00.000Z")
       )
     ).toThrow("expirada")
     expect(() =>
