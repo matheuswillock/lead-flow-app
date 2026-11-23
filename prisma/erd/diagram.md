@@ -1120,6 +1120,13 @@ high high
     
 
 
+        corretor_studio_health_plan_network_kind {
+            HOSPITAL HOSPITAL
+LAB LAB
+        }
+    
+
+
         BackofficeOperationalCapability {
             ASSOCIADOS_QUEUE ASSOCIADOS_QUEUE
 MULTISKILL_TRANSFER_ORIGIN MULTISKILL_TRANSFER_ORIGIN
@@ -1920,6 +1927,91 @@ fixed fixed
     DateTime updatedAt 
     DateTime activatedAt "❓"
     DateTime deactivatedAt "❓"
+    }
+  
+
+  "corretor_studio_health_plan_operators" {
+    String id "🗝️"
+    String name 
+    String logoPath 
+    }
+  
+
+  "corretor_studio_health_plan_tables" {
+    String id "🗝️"
+    String chave 
+    String estado 
+    String cidade 
+    String produto 
+    Int planoId 
+    String plano 
+    String tabela 
+    String acomodacao 
+    String contratacao 
+    String contratacaoPainel 
+    String coparticipacao 
+    String coparticipacaoTabela 
+    Boolean aceitaMei 
+    Boolean remissao 
+    Int vidasMin 
+    Int vidasMinPainel 
+    Int vidasMax 
+    Json precos 
+    Json regras 
+    }
+  
+
+  "corretor_studio_health_plan_rule_texts" {
+    String id "🗝️"
+    String texto 
+    }
+  
+
+  "corretor_studio_health_plan_providers" {
+    Int id "🗝️"
+    String nome 
+    String bairro "❓"
+    String cidade "❓"
+    String uf "❓"
+    String regiao "❓"
+    String endereco "❓"
+    String site "❓"
+    }
+  
+
+  "corretor_studio_health_plan_network_entries" {
+    String id "🗝️"
+    Int planoId 
+    HealthPlanNetworkKind kind 
+    String atendimento 
+    }
+  
+
+  "corretor_studio_health_plan_catalog_imports" {
+    String id "🗝️"
+    String source 
+    DateTime generatedAt 
+    Json counts 
+    DateTime importedAt 
+    }
+  
+
+  "corretor_studio_plan_quotes" {
+    String id "🗝️"
+    String nome 
+    Json state 
+    Json resumo "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "corretor_studio_plan_quote_shares" {
+    String id "🗝️"
+    String token 
+    Json payload 
+    DateTime createdAt 
+    DateTime expiresAt "❓"
     }
   
 
@@ -5302,6 +5394,12 @@ fixed fixed
     "password_reset_events" |o--|| "PasswordResetEventType" : "enum:type"
     "password_reset_events" }o--|| password_reset_flows : "flow"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
+    "corretor_studio_health_plan_tables" }o--|| corretor_studio_health_plan_operators : "operator"
+    "corretor_studio_health_plan_network_entries" |o--|| "HealthPlanNetworkKind" : "enum:kind"
+    "corretor_studio_health_plan_network_entries" }o--|| corretor_studio_health_plan_providers : "provider"
+    "corretor_studio_plan_quotes" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_plan_quotes" }o--|| corretor_studio_profiles : "owner"
+    "corretor_studio_plan_quote_shares" }o--|| corretor_studio_plan_quotes : "quote"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
