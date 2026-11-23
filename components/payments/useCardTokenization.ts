@@ -2,10 +2,8 @@
 
 import { useCallback, useRef, useState } from "react"
 
-import {
-  describeCardTokenizationError,
-  type CardTokenizerHandle,
-} from "@/lib/payment-provider/card-tokenization"
+import type { CardTokenizerHandle } from "@/lib/payment-provider/card-tokenization"
+import { GENERIC_CARD_ERROR, getCardProviderClient } from "./cardProviders"
 
 type Payer = { fullName: string; email: string; cnpj: string; phone: string }
 
@@ -37,7 +35,7 @@ export function useCardTokenization(provider: string | null) {
         })
         return result.token
       } catch (error) {
-        setCardError(describeCardTokenizationError(provider, error))
+        setCardError(getCardProviderClient(provider)?.describeError(error) ?? GENERIC_CARD_ERROR)
         return null
       } finally {
         setIsTokenizing(false)

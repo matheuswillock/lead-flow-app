@@ -10,7 +10,7 @@ describe("resolveCardCheckout", () => {
 
     const result = await resolveCardCheckout({
       resolveCardAvailability: available,
-      readDefaultProvider: async () => "ABACATE_PAY",
+      selectCardProvider: async () => "ABACATE_PAY",
       publicKeyReaders: { ABACATE_PAY: readKey },
     })
 
@@ -22,7 +22,7 @@ describe("resolveCardCheckout", () => {
 
     const result = await resolveCardCheckout({
       resolveCardAvailability: unavailable,
-      readDefaultProvider: async () => "ABACATE_PAY",
+      selectCardProvider: async () => "ABACATE_PAY",
       publicKeyReaders: { ABACATE_PAY: readKey },
     })
 
@@ -33,17 +33,30 @@ describe("resolveCardCheckout", () => {
   it("não oferece cartão para provedor sem leitor de chave de tokenização", async () => {
     const result = await resolveCardCheckout({
       resolveCardAvailability: available,
-      readDefaultProvider: async () => "ASAAS",
+      selectCardProvider: async () => "ASAAS",
       publicKeyReaders: { ABACATE_PAY: async () => "pk_test" },
     })
 
     expect(result).toEqual({ cardOffered: false, provider: null, publicKey: null })
   })
 
+  it("não oferece cartão quando o roteador não tem provedor elegível para cartão", async () => {
+    const readKey = mock(async () => "pk_test")
+
+    const result = await resolveCardCheckout({
+      resolveCardAvailability: available,
+      selectCardProvider: async () => null,
+      publicKeyReaders: { ABACATE_PAY: readKey },
+    })
+
+    expect(result).toEqual({ cardOffered: false, provider: null, publicKey: null })
+    expect(readKey).not.toHaveBeenCalled()
+  })
+
   it("não oferece cartão quando o provedor não tem chave pública configurada", async () => {
     const result = await resolveCardCheckout({
       resolveCardAvailability: available,
-      readDefaultProvider: async () => "ABACATE_PAY",
+      selectCardProvider: async () => "ABACATE_PAY",
       publicKeyReaders: { ABACATE_PAY: async () => null },
     })
 
