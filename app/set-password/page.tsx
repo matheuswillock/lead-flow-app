@@ -13,8 +13,34 @@ import { Eye, EyeOff, Lock, Mail, CheckCircle2, AlertCircle, ShieldCheck } from 
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 type PendingEmailAuth = {
-  tokenHash: string
+  /** Token do Supabase (recovery e links de convite já enviados antes da troca). */
+  tokenHash?: string
+  /** Token assinado do convite: vira tokenHash só no clique em "Continuar". */
+  inviteToken?: string
   type: 'invite' | 'recovery'
+}
+
+const INVITE_EXCHANGE_ENDPOINT = `${API_CLIENT_BASE}/auth/invite/exchange`
+const INVITE_EXCHANGE_FALLBACK_ERROR = 'Não foi possível validar o link agora. Tente novamente.'
+
+async function exchangeInviteToken(
+  inviteToken: string
+): Promise<{ tokenHash: string } | { errorMessage: string }> {
+  try {
+    const response = await fetch(INVITE_EXCHANGE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invite: inviteToken }),
+    })
+    const json = await response.json().catch(() => null)
+    const tokenHash = json?.result?.tokenHash
+    if (response.ok && json?.isValid && typeof tokenHash === 'string') {
+      return { tokenHash }
+    }
+    return { errorMessage: json?.errorMessages?.[0] ?? INVITE_EXCHANGE_FALLBACK_ERROR }
+  } catch {
+    return { errorMessage: INVITE_EXCHANGE_FALLBACK_ERROR }
+  }
 }
 
 type SupabaseBrowserClient = NonNullable<ReturnType<typeof createSupabaseBrowser>>
@@ -136,8 +162,19 @@ function SetPasswordContent() {
         return
       }
 
+      const inviteToken = searchParams.get('invite')
       const tokenHash = searchParams.get('token_hash')
       const queryType = searchParams.get('type')
+
+      // Mesma regra abaixo: a página só guarda o convite; a troca acontece no clique.
+      if (inviteToken) {
+        if (handledAuthTokenRef.current === inviteToken) return
+        handledAuthTokenRef.current = inviteToken
+
+        setPendingEmailAuth({ inviteToken, type: 'invite' })
+        setIsInitializing(false)
+        return
+      }
 
       if (tokenHash && (queryType === 'invite' || queryType === 'recovery')) {
         // NÃO validar o token aqui: scanners de e-mail (ex.: Safe Links do
@@ -265,8 +302,21 @@ function SetPasswordContent() {
     setError(null)
 
     try {
+      let tokenHash = pendingEmailAuth.tokenHash
+      if (!tokenHash && pendingEmailAuth.inviteToken) {
+        const exchange = await exchangeInviteToken(pendingEmailAuth.inviteToken)
+        if ('errorMessage' in exchange) {
+          recordTelemetry('token_rejected')
+          setError(exchange.errorMessage)
+          setIsTokenError(true)
+          setPendingEmailAuth(null)
+          return
+        }
+        tokenHash = exchange.tokenHash
+      }
+
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        token_hash: pendingEmailAuth.tokenHash,
+        token_hash: tokenHash ?? '',
         type: pendingEmailAuth.type,
       })
 

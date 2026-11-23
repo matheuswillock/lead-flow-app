@@ -231,6 +231,25 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     )
   }
 
+  /** Gera link de convite novo sem disparar e-mail, para copiar no clipboard. */
+  async generateInviteLink(input: {
+    memberId: string
+    accountMasterId: string
+  }): Promise<{ actionLink: string; email: string }> {
+    return parseOutput<{ actionLink: string; email: string }>(
+      await fetch(`${API_CLIENT_BASE}/backoffice/members/${input.memberId}/access-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "invite",
+          deliver: "link",
+          accountMasterId: input.accountMasterId,
+        }),
+      }),
+      "Erro ao gerar link de convite"
+    )
+  }
+
   async updateUserType(
     profileId: string,
     payload: BackofficeAllUsersUpdateUserTypeInput

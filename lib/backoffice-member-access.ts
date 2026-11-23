@@ -2,6 +2,7 @@ import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { getDispatchId } from "@/lib/email/dispatch-id"
 import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
 import { createEmailService } from "@/lib/services/EmailService"
+import { signInviteLinkToken } from "@/lib/auth/invite-link-token"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
@@ -175,31 +176,22 @@ function assertEmailSendSucceeded(result: { success: boolean; error?: string }):
   }
 }
 
-async function generateInviteActionLink(
-  profile: BackofficeMemberAccessIdentity,
-  supabaseAdmin: SupabaseAdminHandle
-): Promise<{ actionLink: string; displayName: string }> {
+/**
+ * Link de convite reutilizável: token assinado pelo servidor, sem chamar o Supabase.
+ * O token do Supabase só é gerado no clique, em `InviteLinkExchangeUseCase`, então
+ * reenvios e cópias não invalidam o link que já está na caixa de entrada.
+ */
+export function generateInviteActionLink(profile: BackofficeMemberAccessIdentity): {
+  actionLink: string
+  displayName: string
+} {
   const displayName = profile.fullName?.trim() || profile.email
-  const redirectTo = getFullUrl("/set-password")
+  const inviteToken = signInviteLinkToken({ email: profile.email, name: displayName })
 
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: "invite",
-    email: profile.email,
-    options: {
-      redirectTo,
-      data: {
-        name: displayName,
-        invited: true,
-        first_access: true,
-      },
-    },
-  })
+  const actionLink = new URL(getFullUrl("/set-password"))
+  actionLink.searchParams.set("invite", inviteToken)
 
-  if (error || !data?.properties?.action_link) {
-    throw new Error(error?.message || "Erro ao gerar link de convite")
-  }
-
-  return { actionLink: buildSetPasswordEmailAuthLink(data, "invite"), displayName }
+  return { actionLink: actionLink.toString(), displayName }
 }
 
 function buildE2eInviteActionLink(profileId: string): string {
@@ -245,7 +237,7 @@ export async function sendBackofficeMemberAccessEmail(input: {
       throw new Error("Convite disponível apenas para usuários sem primeiro acesso concluído.")
     }
 
-    const { actionLink } = await generateInviteActionLink(input.profile, supabaseAdmin)
+    const { actionLink } = generateInviteActionLink(input.profile)
 
     const sendResult = await emailService.sendOperatorInviteEmail({
       operatorName: displayName,
@@ -351,11 +343,6 @@ export async function generateBackofficeInviteAccessLink(
     throw new Error("Link de convite disponível apenas para usuários sem primeiro acesso concluído.")
   }
 
-  const supabaseAdmin = createSupabaseAdmin()
-  if (!supabaseAdmin) {
-    throw new Error("Erro ao conectar com o Supabase Admin")
-  }
-
-  const { actionLink } = await generateInviteActionLink(profile, supabaseAdmin)
+  const { actionLink } = generateInviteActionLink(profile)
   return { actionLink, email: profile.email }
 }
