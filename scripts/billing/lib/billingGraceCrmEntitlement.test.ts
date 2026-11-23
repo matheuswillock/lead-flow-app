@@ -279,7 +279,7 @@ describe("relatório e checksum do grant CRM", () => {
       assertApprovedCrmEntitlementPolicy(
         createCrmEntitlementPolicy(OPERATOR_ID),
         PRODUCT,
-        new Date("2026-11-20T00:00:00.000Z")
+        new Date("2026-12-07T00:00:00.000Z")
       )
     ).toThrow("expirada")
   })
