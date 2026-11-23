@@ -29,7 +29,7 @@ describe("buildRepairActions", () => {
       { kind: "expire_grace", teamId: "27edf455-e61a-48a9-a846-e2c6f42999b5", graceId: "grace-1" },
       { kind: "update_membership", teamId: "27edf455-e61a-48a9-a846-e2c6f42999b5", membershipId: "membership-1" },
     ])
-    expect(REPAIR_EXPIRY).toBe("2026-11-19T03:00:00.000Z")
+    expect(REPAIR_EXPIRY).toBe("2026-12-06T03:00:00.000Z")
   })
 
   it("plans CRM, grace, and membership creation for the missing Renata path", () => {
