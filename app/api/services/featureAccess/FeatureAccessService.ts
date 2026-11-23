@@ -287,8 +287,17 @@ export class FeatureAccessService implements IFeatureAccessService {
     // isGenericBillingGrace entra aqui: a carência (dentro ou fora do prazo) dá acesso ao
     // que a conta já tinha contratado, e isso vem do produto da própria assinatura do dono —
     // sem isso, "leitura em tudo que já tinha" nunca inclui as features PAID/ADDON reais.
-    if ((hasActiveMainSubscription || hasTemporaryBillingGrace || isGenericBillingGrace) && ownerProfileSubscription?.product) {
+    const keepsOwnerPlanProduct =
+      hasActiveMainSubscription || hasTemporaryBillingGrace || isGenericBillingGrace
+    if (keepsOwnerPlanProduct && ownerProfileSubscription?.product) {
       addProductFeatureSlugsToSet(paidProductSlugs, ownerProfileSubscription.product)
+    }
+
+    // Member PRO vigente é uma concessão de CRM feita por admin: vale mesmo com a assinatura em
+    // past_due, sem produto na assinatura ou com o plano CRM vencido. Libera só o CRM, nunca
+    // add-ons de outros produtos (email, radar...).
+    if (memberProActive && !memberProBlocked) {
+      paidProductSlugs.add("crm")
     }
 
     const featureById = new Map(features.map((f) => [f.id, f]))
