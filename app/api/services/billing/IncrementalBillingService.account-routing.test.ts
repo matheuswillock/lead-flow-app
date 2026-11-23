@@ -47,7 +47,7 @@ mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentCom
   createPaymentProviderRouter: async () => ({
     select: async () => ({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "ctx-dev" }),
   }),
-  createAbacatePayProvider: async () => ({
+  resolvePaymentProvider: async () => ({
     createPixPayment: paymentCreatePixMock,
     createCardPayment: cardCreateMock,
   }),
