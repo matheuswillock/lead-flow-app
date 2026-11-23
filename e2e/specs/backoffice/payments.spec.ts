@@ -110,6 +110,27 @@ test.describe("app/backoffice/(app)/payments", () => {
     await expect(main.getByText("10/12/2026").first()).toBeVisible();
   });
 
+  test("cobrança PIX pendente reabre o PIX para o operador enviar ao cliente", async ({ page }) => {
+    // O provedor não devolve URL de pagamento para PIX: o que o operador envia é o copia e cola.
+    const pixPayload = `00020126E2E${suffix}`;
+    await getPrisma().backofficePayment.create({
+      data: {
+        clientId: clientId as string,
+        amount: 42.5,
+        billingType: "PIX",
+        status: "PENDING",
+        pixPayload,
+        pixQrCode: "iVBORw0KGgo=",
+      },
+    });
+
+    await page.goto("/backoffice/payments");
+    const row = page.getByRole("row", { name: new RegExp(`${clientName}.*R\\$\\s*42,50`) });
+    await row.getByRole("button", { name: "Ver PIX" }).click({ timeout: 60_000 });
+
+    await expect(page.getByRole("dialog").getByRole("textbox")).toHaveValue(pixPayload);
+  });
+
   test("cartão: ligar pede confirmação e usa a revisão atual; desligar é direto", async ({ page }) => {
     const abacate = (environment: string, cardEnabled: boolean, revision: number) => ({
       provider: "ABACATE_PAY",

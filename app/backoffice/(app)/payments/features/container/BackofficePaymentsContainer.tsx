@@ -297,7 +297,7 @@ export function BackofficePaymentsContainer() {
               <TableHead>Tipo</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Vencimento</TableHead>
-              <TableHead>Invoice</TableHead>
+              <TableHead>Pagamento</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -340,6 +340,23 @@ export function BackofficePaymentsContainer() {
                         >
                           Ver <ExternalLink className="h-3 w-3" />
                         </a>
+                      ) : payment.status === "PENDING" && payment.pixPayload ? (
+                        // O provedor não devolve URL de pagamento para PIX: o operador envia o copia e cola.
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs max-lg:h-11 max-lg:min-w-11"
+                          onClick={() =>
+                            setPixDialog({
+                              open: true,
+                              pixQrCode: payment.pixQrCode,
+                              pixPayload: payment.pixPayload,
+                            })
+                          }
+                        >
+                          Ver PIX
+                        </Button>
                       ) : (
                         "—"
                       )}
