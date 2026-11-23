@@ -87,11 +87,16 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
   useEffect(() => {
     if (view === "home" || !headers || !draft.uf || draft.lives.every((n) => n === 0)) {
       setSim(null);
+      setSimLoading(false);
       return;
     }
+    // Uma resposta só vale se nenhuma entrada mudou depois que a requisição saiu:
+    // o debounce cancela só o timer, não a requisição já em voo.
+    let superseded = false;
     const timer = setTimeout(() => {
       setSimLoading(true);
       void run(() => service.simulate(headers, { uf: draft.uf, lives: draft.lives, filters: draft.filters })).then((result) => {
+        if (superseded) return;
         if (result) {
           setSim(result);
           setSeenRows((prev) => {
@@ -103,7 +108,10 @@ export function usePlanSimulatorHook(service: IPlanSimulatorService) {
         setSimLoading(false);
       });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      superseded = true;
+      clearTimeout(timer);
+    };
     // headers é recriado a cada render; usamos seus campos.
   }, [view, draft, headers?.supabaseId, headers?.teamId, run, service]);
 

@@ -10,6 +10,7 @@ export const PLAN_QUOTE_MESSAGES = {
   NOT_FOUND: "Cotação não encontrada.",
   NAME_REQUIRED: "Dê um nome à cotação.",
   NO_PLANS: "Escolha ao menos um plano para enviar ao cliente.",
+  NO_LIVES: "Informe ao menos uma vida para enviar a cotação ao cliente.",
   LINK_NOT_FOUND: "Este link não existe ou foi removido.",
   LINK_EXPIRED: "Este link expirou.",
   INTERNAL: "Erro ao processar a cotação.",
@@ -136,6 +137,8 @@ export class PlanQuoteUseCase {
       const state = parseState(existing.state)
       if (!state) return new Output(false, [], [PLAN_QUOTE_MESSAGES.INVALID_INPUT], null)
       if (state.sel.length === 0) return new Output(false, [], [PLAN_QUOTE_MESSAGES.NO_PLANS], null)
+      // Sem vidas os totais saem zerados: recusa antes de congelar um snapshot inválido.
+      if (state.lives.every((n) => n === 0)) return new Output(false, [], [PLAN_QUOTE_MESSAGES.NO_LIVES], null)
 
       const plans = await this.simulator.snapshotPlans(state.sel, state.lives)
       if (plans.length === 0) return new Output(false, [], [PLAN_QUOTE_MESSAGES.NO_PLANS], null)
