@@ -50,6 +50,11 @@ export interface IBackofficeAllUsersService {
     mode: "invite" | "reset_password"
   }): Promise<{ email: string }>
 
+  generateInviteLink(input: {
+    memberId: string
+    accountMasterId: string
+  }): Promise<{ actionLink: string; email: string }>
+
   updateUserType(profileId: string, data: BackofficeAllUsersUpdateUserTypeInput): Promise<BackofficeAllUsersUserType>
 
   listSponsorMasters(): Promise<BackofficeSponsorMasterOption[]>

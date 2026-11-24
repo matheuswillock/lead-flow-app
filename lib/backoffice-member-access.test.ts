@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 
 /**
  * Bug reenvio de convite (2026-08-27), duas falhas de propagação distintas:
@@ -45,6 +45,13 @@ mock.module("@/lib/utils/app-url", () => ({
   getFullUrl: (path: string) => `https://app.local${path}`,
 }))
 
+// Versão do convite no banco: null simula perfil inexistente.
+let inviteLinkVersionFromDb: number | null = 0
+
+mock.module("@/app/api/infra/data/repositories/auth/InviteLinkRepository", () => ({
+  findInviteLinkVersion: async () => inviteLinkVersionFromDb,
+}))
+
 const sendOperatorInviteEmailMock = mock(
   async (_data: unknown) =>
     ({ success: true as const, data: { data: { id: "resend-1" } } }) as unknown,
@@ -87,6 +94,11 @@ const pendingProfile = {
   role: "operator" as const,
   managerName: "Carlos Mestre",
 }
+
+// O link de convite é assinado com INVITE_LINK_SECRET; sem ele o envio falha fechado.
+beforeEach(() => {
+  process.env.INVITE_LINK_SECRET = "test-secret-with-at-least-32-characters-x"
+})
 
 describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa", () => {
   afterEach(() => {
@@ -211,32 +223,34 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
 describe("generateBackofficeInviteAccessLink — Entregável 3 (copiar link, sem enviar e-mail)", () => {
   afterEach(() => {
     e2eTestModeEnabled = false
+    inviteLinkVersionFromDb = 0
     generateLinkMock.mockClear()
     sendOperatorInviteEmailMock.mockClear()
   })
 
-  it("gera o link novo e NÃO dispara e-mail", async () => {
+  it("perfil sem versão no banco falha fechado, sem gerar link", async () => {
+    inviteLinkVersionFromDb = null
+
+    await expect(generateBackofficeInviteAccessLink(pendingProfile)).rejects.toThrow(
+      "Perfil do convite não encontrado",
+    )
+  })
+
+  it("gera link de convite assinado, sem Supabase Admin e sem disparar e-mail", async () => {
     const result = await generateBackofficeInviteAccessLink(pendingProfile)
 
-    expect(result.actionLink).toBe("https://app.local/set-password?token=NEW")
+    expect(result.actionLink).toMatch(/^https:\/\/app\.local\/set-password\?invite=/)
     expect(result.email).toBe("ana@example.com")
+    expect(generateLinkMock).not.toHaveBeenCalled()
     expect(sendOperatorInviteEmailMock).not.toHaveBeenCalled()
   })
 
-  it("propaga erro do Supabase Admin em vez de devolver link vazio", async () => {
-    generateLinkMock.mockImplementation(async () => ({
-      data: null,
-      error: { message: "Erro ao gerar link de convite" },
-    }))
+  it("sem INVITE_LINK_SECRET falha fechado em vez de devolver link vazio", async () => {
+    delete process.env.INVITE_LINK_SECRET
 
-    let caught: unknown = null
-    try {
-      await generateBackofficeInviteAccessLink(pendingProfile)
-    } catch (err) {
-      caught = err
-    }
-
-    expect(caught).not.toBeNull()
+    await expect(generateBackofficeInviteAccessLink(pendingProfile)).rejects.toThrow(
+      "INVITE_LINK_SECRET",
+    )
   })
 
   it("em modo E2E retorna link local sem acessar o Supabase Admin", async () => {
