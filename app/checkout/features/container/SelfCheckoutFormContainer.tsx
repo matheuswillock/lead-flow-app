@@ -9,22 +9,27 @@ import {
   AbacateCardField,
   type AbacateCardFieldHandle,
 } from "@/app/adesao/[token]/features/components/AbacateCardField"
-import { AdhesionInstallmentsField } from "@/app/adesao/[token]/features/components/AdhesionPaymentFields"
 import { toCents } from "@/app/adesao/[token]/features/utils/adhesionPayment"
 import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook"
 import { PublicAdhesionProvider } from "@/app/adesao/[token]/features/context/PublicAdhesionContext"
 import { buildAdhesionCheckoutInput } from "@/app/adesao/[token]/features/utils/adhesionCheckoutInput"
 import type { PublicAdhesionCheckoutInput } from "@/app/adesao/[token]/features/context/PublicAdhesionTypes"
+import { CheckoutInstallmentsSelect } from "@/components/checkout/CheckoutInstallmentsSelect"
+import { CheckoutPhaseNav } from "@/components/checkout/CheckoutPhaseNav"
+import { CheckoutStepper } from "@/components/checkout/CheckoutStepper"
+import {
+  clampPhaseIndex,
+  nextPhaseIndex,
+  phaseIndexForField,
+  previousPhaseIndex,
+} from "@/components/checkout/checkoutPhases"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { SelfCheckoutAddons } from "../components/SelfCheckoutAddons"
 import { SelfCheckoutBuyerFields } from "../components/SelfCheckoutBuyerFields"
 import { SelfCheckoutCoupon } from "../components/SelfCheckoutCoupon"
 import { SelfCheckoutCycleSelector } from "../components/SelfCheckoutCycleSelector"
 import { SelfCheckoutHoneypot } from "../components/SelfCheckoutHoneypot"
 import { SelfCheckoutOrderBreakdown } from "../components/SelfCheckoutOrderBreakdown"
-import { SelfCheckoutPaymentMethod } from "../components/SelfCheckoutPaymentMethod"
 import { SelfCheckoutSubmitFailureAlert } from "../components/SelfCheckoutSubmitFailureAlert"
 import { SelfCheckoutTermsAcceptance } from "../components/SelfCheckoutTermsAcceptance"
 import { useSelfCheckout } from "../context/SelfCheckoutHook"
@@ -34,11 +39,29 @@ import type {
   SelfCheckoutCouponQuote,
   SelfCheckoutCycleOption,
 } from "@/lib/self-checkout/contracts"
-import { SelfCheckoutMobilePayBar } from "../components/SelfCheckoutMobilePayBar"
-import { SelfCheckoutOrderSummaryCard } from "../components/SelfCheckoutOrderSummaryCard"
 import { SelfCheckoutPaymentStage } from "./SelfCheckoutPaymentStage"
-import { AdhesionSuccessScreen } from "@/app/adesao/[token]/features/components/AdhesionSuccessScreen"
+import { CheckoutMobilePayBar } from "@/components/checkout/CheckoutMobilePayBar"
+import { CheckoutOrderSummary } from "@/components/checkout/CheckoutOrderSummary"
+import { CheckoutPaymentMethod } from "@/components/checkout/CheckoutPaymentMethod"
+import { CheckoutSuccess } from "@/components/checkout/CheckoutSuccess"
+import { pixSavingsAmount } from "@/components/checkout/checkoutPaymentMath"
 import { computeOrderAmounts, formatBRL } from "../utils/selfCheckoutForm"
+import { formatDocumentInput } from "@/lib/masks"
+
+type PhaseId = "plan" | "data" | "card"
+
+const PHASE_LABEL: Record<PhaseId, string> = {
+  plan: "Período do plano",
+  data: "Seus dados",
+  card: "Dados do cartão",
+}
+
+/** Campos que cada fase valida ao continuar. Termos e honeypot ficam na lateral. */
+const PHASE_FIELDS: Record<PhaseId, SelfCheckoutFieldName[]> = {
+  plan: ["cycle"],
+  data: ["cnpj", "phone", "companyLegalName", "companyTradeName", "fullName", "email"],
+  card: [],
+}
 
 function maxInstallmentsOf(option: SelfCheckoutCycleOption | null): number {
   return Math.max(1, option?.maxInstallments ?? option?.months ?? 1)
@@ -110,20 +133,32 @@ function focusElement(id: string) {
   element.focus()
 }
 
-function StepHeading({ number, id, title, description }: { number: number; id: string; title: string; description?: string }) {
+/** A fase nova só monta depois da animação de saída; espera o campo aparecer antes de focar. */
+function focusWhenReady(id: string, attempts = 30) {
+  if (document.getElementById(id)) return focusElement(id)
+  if (attempts > 0) requestAnimationFrame(() => focusWhenReady(id, attempts - 1))
+}
+
+/** Quem contrata, no topo do resumo do pedido criado. */
+function CompanyHeader({ companyName, cnpj }: { companyName: string; cnpj: string }) {
+  const cnpjDigits = cnpj.replace(/\D/g, "")
+  if (!companyName) return null
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="break-words font-display text-lg font-bold text-foreground">{companyName}</span>
+      {cnpjDigits.length === 14 ? (
+        <span className="text-sm text-muted-foreground tabular-nums">CNPJ {formatDocumentInput(cnpjDigits)}</span>
+      ) : null}
+    </div>
+  )
+}
+
+function PhaseHeading({ id, title, description }: { id: string; title: string; description?: string }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-bold text-primary"
-        >
-          {number}
-        </span>
-        <h2 id={id} className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground">
-          {title}
-        </h2>
-      </div>
+      <h2 id={id} className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground">
+        {title}
+      </h2>
       {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
     </div>
   )
@@ -151,8 +186,7 @@ function CardPaymentSection({
 }) {
   return (
     <section aria-labelledby="adhesion-card-title" className="flex flex-col gap-5">
-      <StepHeading
-        number={3}
+      <PhaseHeading
         id="adhesion-card-title"
         title="Dados do cartão"
         description="Crédito Visa ou Mastercard. O banco pode pedir uma confirmação no app."
@@ -163,10 +197,9 @@ function CardPaymentSection({
           {error}
         </p>
       ) : null}
-      <AdhesionInstallmentsField
+      <CheckoutInstallmentsSelect
         total={total}
         maxInstallments={maxInstallments}
-        fixedSchedule={null}
         value={installments}
         disabled={disabled}
         onChange={onInstallmentsChange}
@@ -216,7 +249,7 @@ function OrderOutcome({
   const isCard = billingType === "CREDIT_CARD"
   if (isPaid || !orderToken) {
     return (
-      <AdhesionSuccessScreen
+      <CheckoutSuccess
         companyName={companyName}
         email={email}
         planLabel={planLabelFor(option)}
@@ -236,7 +269,7 @@ function OrderOutcome({
         onEditCard={onEditCard}
         onPayWithPix={onPayWithPix}
         summary={
-          <SelfCheckoutOrderSummaryCard companyName={companyName} cnpj={cnpj}>
+          <CheckoutOrderSummary header={<CompanyHeader companyName={companyName} cnpj={cnpj} />}>
             <SelfCheckoutOrderBreakdown
               option={option}
               billingType={billingType}
@@ -245,7 +278,7 @@ function OrderOutcome({
               extraTeams={extras.extraTeams}
               installments={isCard ? installments : undefined}
             />
-          </SelfCheckoutOrderSummaryCard>
+          </CheckoutOrderSummary>
         }
       />
     </PublicAdhesionProvider>
@@ -253,8 +286,9 @@ function OrderOutcome({
 }
 
 /**
- * Contratação em uma tela só: período, dados da empresa e pagamento, com o resumo sempre à vista.
- * O pedido é criado ao enviar; depois disso o pagamento é gerado na mesma tela.
+ * Contratação em fases: período do plano, seus dados e, no cartão, os dados do cartão. O resumo
+ * e a forma de pagamento ficam sempre na lateral. O pedido é criado ao enviar; depois disso o
+ * pagamento é gerado na mesma tela.
  */
 export function SelfCheckoutFormContainer() {
   const {
@@ -281,6 +315,7 @@ export function SelfCheckoutFormContainer() {
     applyCoupon,
     removeCoupon,
     validate,
+    validatePhase,
     submit,
   } = useSelfCheckout()
 
@@ -302,6 +337,7 @@ export function SelfCheckoutFormContainer() {
   const [isEditingPayment, setIsEditingPayment] = useState(false)
   // Cada nova tentativa remonta a etapa de pagamento, que gera a cobrança de novo.
   const [paymentAttempt, setPaymentAttempt] = useState(0)
+  const [phaseIndex, setPhaseIndex] = useState(0)
 
   // Ao trocar entre formulário e pagamento a página volta ao topo.
   useEffect(() => {
@@ -339,6 +375,17 @@ export function SelfCheckoutFormContainer() {
   const submitText = submitLabelFor({ isTokenizing, isBusy, isCard, isRetry: isEditingPayment })
   const companyName = values.companyTradeName.trim() || values.companyLegalName.trim()
 
+  // Fases da forma escolhida: no cartão há uma fase a mais, a dos dados do cartão.
+  const hasCardPhase = isCard && Boolean(options.cardCheckout)
+  const phaseIds: PhaseId[] = hasCardPhase ? ["plan", "data", "card"] : ["plan", "data"]
+  const phases = phaseIds.map((id) => ({ label: PHASE_LABEL[id], fields: PHASE_FIELDS[id] }))
+  const cycles = options.cycles
+  const cardPublicKey = options.cardCheckout?.publicKey ?? null
+  const activePhaseIndex = clampPhaseIndex(phaseIndex, phaseIds.length)
+  const activePhaseId = phaseIds[activePhaseIndex]
+  const isLastPhase = activePhaseIndex === phaseIds.length - 1
+  const isLocked = isBusy || Boolean(orderToken)
+
   function retryPayment() {
     setIsEditingPayment(false)
     setPaymentAttempt((current) => current + 1)
@@ -351,6 +398,23 @@ export function SelfCheckoutFormContainer() {
     return Boolean(token)
   }
 
+  /** Leva à fase do campo com erro e foca o campo. Termos ficam na lateral, então não mudam de fase. */
+  function goToField(field: SelfCheckoutFieldName) {
+    const index = phaseIndexForField(phases, field)
+    if (index >= 0) setPhaseIndex(index)
+    focusWhenReady(FIELD_ELEMENT_ID[field])
+  }
+
+  function goNext() {
+    const invalidField = validatePhase(PHASE_FIELDS[activePhaseId])
+    if (invalidField) return focusWhenReady(FIELD_ELEMENT_ID[invalidField])
+    setPhaseIndex(nextPhaseIndex(activePhaseIndex, phaseIds.length))
+  }
+
+  function goBack() {
+    setPhaseIndex(previousPhaseIndex(activePhaseIndex))
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isBusy) return
@@ -359,11 +423,13 @@ export function SelfCheckoutFormContainer() {
       if (isCard && !(await tokenizeCard())) return
       return retryPayment()
     }
-    const companyInvalid = validate()
-    if (companyInvalid) return focusElement(FIELD_ELEMENT_ID[companyInvalid])
+    const invalidField = validate()
+    if (invalidField) return goToField(invalidField)
+    // No cartão, o pagamento só é enviado da fase dos dados do cartão.
+    if (hasCardPhase && activePhaseId !== "card") return setPhaseIndex(phaseIds.length - 1)
     if (isCard && !(await tokenizeCard())) return
     const outcome = await submit()
-    if (outcome.kind === "invalid") focusElement(FIELD_ELEMENT_ID[outcome.firstInvalidField])
+    if (outcome.kind === "invalid") goToField(outcome.firstInvalidField)
   }
 
   const showOutcome = isPaid || (Boolean(orderToken) && !isEditingPayment)
@@ -385,7 +451,10 @@ export function SelfCheckoutFormContainer() {
         paymentInput={paymentInput}
         cardLastFour={cardLastFour}
         onPaid={handlePaid}
-        onEditCard={() => setIsEditingPayment(true)}
+        onEditCard={() => {
+          setIsEditingPayment(true)
+          setPhaseIndex(phaseIds.length - 1)
+        }}
         onPayWithPix={() => {
           setBillingType("PIX")
           retryPayment()
@@ -394,10 +463,63 @@ export function SelfCheckoutFormContainer() {
     )
   }
 
-  const locked = isBusy || Boolean(orderToken)
+  function renderPhase(id: PhaseId) {
+    if (id === "plan") {
+      return (
+        <div className="flex flex-col gap-6">
+          <SelfCheckoutCycleSelector
+            cycles={cycles}
+            value={selectedCycle}
+            billingType={values.billingType}
+            onChange={selectCycle}
+            disabled={isLocked}
+            error={fieldErrors.cycle}
+          />
+          <SelfCheckoutAddons
+            option={selectedOption}
+            extraUsers={values.extraUsers}
+            extraTeams={values.extraTeams}
+            disabled={isLocked}
+            onChange={setExtraQuantity}
+          />
+        </div>
+      )
+    }
+    if (id === "data") {
+      return (
+        <section aria-labelledby="self-checkout-data-title" className="flex flex-col gap-5">
+          <PhaseHeading
+            id="self-checkout-data-title"
+            title="Seus dados"
+            description="Campos marcados com * são obrigatórios."
+          />
+          <SelfCheckoutBuyerFields
+            values={values}
+            errors={fieldErrors}
+            disabled={isLocked}
+            onChange={setFieldValue}
+            onFieldBlur={markFieldTouched}
+            isLookingUpCompany={isLookingUpCompany}
+          />
+        </section>
+      )
+    }
+    return (
+      <CardPaymentSection
+        cardFieldRef={cardFieldRef}
+        publicKey={cardPublicKey ?? ""}
+        total={cardTotal}
+        maxInstallments={maxInstallments}
+        installments={installments}
+        error={cardError}
+        disabled={isBusy}
+        onInstallmentsChange={setInstallmentsChoice}
+      />
+    )
+  }
 
   return (
-    <div className="flex w-full flex-col gap-8 max-lg:pb-20">
+    <div className="flex w-full flex-col gap-8">
       <div className="flex flex-col gap-2">
         <h1 className="font-display text-3xl leading-tight font-extrabold tracking-[-0.03em] text-foreground md:text-4xl">
           Contrate o Corretor Studio
@@ -422,145 +544,101 @@ export function SelfCheckoutFormContainer() {
         noValidate
         className="relative grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_380px]"
       >
-        <div className="flex flex-col gap-10">
-          <div className="flex flex-col gap-3">
-            <SelfCheckoutCycleSelector
-              cycles={options.cycles}
-              value={selectedCycle}
-              billingType={values.billingType}
-              onChange={selectCycle}
-              disabled={locked}
-              error={fieldErrors.cycle}
-            />
-            <SelfCheckoutAddons
-              option={selectedOption}
-              extraUsers={values.extraUsers}
-              extraTeams={values.extraTeams}
-              disabled={locked}
-              onChange={setExtraQuantity}
-            />
-          </div>
+        <div className="flex min-w-0 flex-col gap-6">
+          <CheckoutStepper labels={phases.map((phase) => phase.label)} currentIndex={activePhaseIndex}>
+            {renderPhase(activePhaseId)}
+          </CheckoutStepper>
 
-          <section aria-labelledby="self-checkout-data-title" className="flex flex-col gap-5">
-            <StepHeading
-              number={2}
-              id="self-checkout-data-title"
-              title="Seus dados"
-              description="Campos marcados com * são obrigatórios."
-            />
-            <SelfCheckoutBuyerFields
-              values={values}
-              errors={fieldErrors}
-              disabled={locked}
-              onChange={setFieldValue}
-              onFieldBlur={markFieldTouched}
-              isLookingUpCompany={isLookingUpCompany}
-            />
-          </section>
-
-          {isCard && options.cardCheckout ? (
-            <CardPaymentSection
-              cardFieldRef={cardFieldRef}
-              publicKey={options.cardCheckout.publicKey}
-              total={cardTotal}
-              maxInstallments={maxInstallments}
-              installments={installments}
-              error={cardError}
+          {orderToken ? null : (
+            <CheckoutPhaseNav
+              onBack={activePhaseIndex > 0 ? goBack : undefined}
+              onNext={isLastPhase ? undefined : goNext}
               disabled={isBusy}
-              onInstallmentsChange={setInstallmentsChoice}
             />
-          ) : null}
+          )}
         </div>
 
         <aside aria-label="Resumo do pedido" className="lg:sticky lg:top-6">
-          <Card className="gap-0 py-0 shadow-sm">
-            <CardHeader className="gap-1 border-b border-border px-6 py-5">
-              <CardTitle className="text-sm font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Resumo do pedido
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-5 px-6 py-5">
-              {selectedOption ? (
-                <SelfCheckoutPaymentMethod
-                  option={selectedOption}
-                  value={values.billingType}
-                  onChange={setBillingType}
-                  disabled={isBusy}
-                />
-              ) : null}
-
-              {selectedOption ? (
-                <SelfCheckoutOrderBreakdown
-                  option={selectedOption}
-                  billingType={values.billingType}
-                  couponQuote={couponQuote}
-                  extraUsers={values.extraUsers}
-                  extraTeams={values.extraTeams}
-                  installments={isCard ? installments : undefined}
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">Selecione um período para ver o total.</p>
-              )}
-
-              {options.couponsEnabled && selectedOption && !orderToken ? (
-                <SelfCheckoutCoupon
-                  input={couponInput}
-                  status={couponStatus}
-                  quote={couponQuote}
-                  message={couponMessage}
-                  disabled={locked}
-                  onInputChange={setCouponInput}
-                  onApply={() => void applyCoupon()}
-                  onRemove={removeCoupon}
-                />
-              ) : null}
-
-              <Separator />
-
+          <CheckoutOrderSummary
+            footer={
               <>
-                  <SelfCheckoutTermsAcceptance
-                    checked={values.termsAccepted}
-                    error={fieldErrors.termsAccepted}
-                    disabled={isBusy}
-                    onChange={setTermsAccepted}
-                  />
+                <SelfCheckoutTermsAcceptance
+                  checked={values.termsAccepted}
+                  error={fieldErrors.termsAccepted}
+                  disabled={isBusy}
+                  onChange={setTermsAccepted}
+                />
 
-                  <SelfCheckoutHoneypot value={values.website} onChange={(next) => setFieldValue("website", next)} />
+                <SelfCheckoutHoneypot value={values.website} onChange={(next) => setFieldValue("website", next)} />
 
-                  {submitFailure ? <SelfCheckoutSubmitFailureAlert failure={submitFailure} /> : null}
+                {submitFailure ? <SelfCheckoutSubmitFailureAlert failure={submitFailure} /> : null}
 
-                  <div className="flex flex-col gap-3">
-                    {/* No celular o botão fica na barra fixa do rodapé, junto com o total. */}
-                    <Button
-                      type="submit"
-                      size="lg"
-                      className="w-full max-lg:hidden"
-                      disabled={isBusy}
-                      aria-busy={isBusy}
-                    >
-                      {isBusy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
-                      {submitText}
-                    </Button>
-                    <p className="flex items-center justify-center gap-1.5 text-center text-sm text-muted-foreground">
-                      <Lock className="size-3.5 shrink-0" aria-hidden />
-                      {isCard
-                        ? "Seus dados do cartão são enviados com segurança e não ficam salvos conosco."
-                        : "O QR Code vale por tempo limitado. O acesso chega por e-mail após a confirmação."}
-                    </p>
-                  </div>
+                <div className="flex flex-col gap-3">
+                  {/* No celular o botão fica na barra fixa do rodapé, junto com o total. */}
+                  <Button type="submit" size="lg" className="w-full max-lg:hidden" disabled={isBusy} aria-busy={isBusy}>
+                    {isBusy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+                    {submitText}
+                  </Button>
+                  <p className="flex items-center justify-center gap-1.5 text-center text-sm text-muted-foreground">
+                    <Lock className="size-3.5 shrink-0" aria-hidden />
+                    {isCard
+                      ? "Seus dados do cartão são enviados com segurança e não ficam salvos conosco."
+                      : "O QR Code vale por tempo limitado. O acesso chega por e-mail após a confirmação."}
+                  </p>
+                </div>
               </>
-            </CardContent>
-          </Card>
+            }
+          >
+            {selectedOption?.creditCardTotal ? (
+              <CheckoutPaymentMethod
+                methods={["PIX", "CREDIT_CARD"]}
+                value={values.billingType}
+                pixTotal={selectedOption.pixTotal}
+                cardTotal={selectedOption.creditCardTotal}
+                pixSavings={pixSavingsAmount(selectedOption)}
+                maxInstallments={maxInstallments}
+                disabled={isBusy}
+                onChange={setBillingType}
+              />
+            ) : null}
+
+            {selectedOption ? (
+              <SelfCheckoutOrderBreakdown
+                option={selectedOption}
+                billingType={values.billingType}
+                couponQuote={couponQuote}
+                extraUsers={values.extraUsers}
+                extraTeams={values.extraTeams}
+                installments={isCard ? installments : undefined}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Selecione um período para ver o total.</p>
+            )}
+
+            {options.couponsEnabled && selectedOption && !orderToken ? (
+              <SelfCheckoutCoupon
+                input={couponInput}
+                status={couponStatus}
+                quote={couponQuote}
+                message={couponMessage}
+                disabled={isLocked}
+                onInputChange={setCouponInput}
+                onApply={() => void applyCoupon()}
+                onRemove={removeCoupon}
+              />
+            ) : null}
+          </CheckoutOrderSummary>
         </aside>
 
-        {/* Celular: total e botão sempre à vista, sem precisar rolar até o fim da página. */}
+        {/* Celular: total e ação sempre à vista. Nas fases intermediárias a ação é Continuar. */}
         {(orderToken && !isEditingPayment) || orderTotal == null ? null : (
-          <SelfCheckoutMobilePayBar
+          <CheckoutMobilePayBar
             total={orderTotal}
             caption={payCaption(isCard, installments)}
-            label={submitText}
+            label={isLastPhase ? submitText : "Continuar"}
             isBusy={isBusy}
             disabled={isBusy}
+            onContinue={isLastPhase ? undefined : goNext}
           />
         )}
       </form>

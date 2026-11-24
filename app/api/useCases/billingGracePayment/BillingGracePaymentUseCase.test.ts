@@ -35,6 +35,8 @@ describe("BillingGracePaymentUseCase", () => {
       supabaseId: "supabase-1",
       idempotencyKey: "",
       cycle: "monthly",
+      termsAcceptedAt: "2026-11-23T12:00:00.000Z",
+      termsVersion: "2026-08-27",
     })
 
     expect(output.isValid).toBe(false)
@@ -54,6 +56,8 @@ describe("BillingGracePaymentUseCase", () => {
       supabaseId: "supabase-1",
       idempotencyKey: "k-1",
       cycle: " ",
+      termsAcceptedAt: "2026-11-23T12:00:00.000Z",
+      termsVersion: "2026-08-27",
     })
 
     expect(output.errorMessages).toContain("Escolha o prazo da renovação")
@@ -69,6 +73,7 @@ describe("BillingGracePaymentUseCase", () => {
     }
     const output = await new BillingGracePaymentUseCase(service).createCardPayment({
       supabaseId: "sb-1", idempotencyKey: "k", cycle: "monthly", cardToken: "pan-data", installments: 1,
+      termsAcceptedAt: "2026-11-23T12:00:00.000Z", termsVersion: "2026-08-27",
     })
     expect(output.isValid).toBe(false)
     expect(service.createCardPayment).not.toHaveBeenCalled()

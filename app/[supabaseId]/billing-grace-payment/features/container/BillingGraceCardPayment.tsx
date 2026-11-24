@@ -1,30 +1,37 @@
 'use client';
 
-import { CreditCard, Loader2, QrCode, ShieldCheck, XCircle } from "lucide-react";
+import type { ReactNode, RefObject } from "react";
+import { CreditCard, Loader2, QrCode } from "lucide-react";
 
-import { AbacateCardField } from "@/app/adesao/[token]/features/components/AbacateCardField";
-import { AdhesionInstallmentsField } from "@/app/adesao/[token]/features/components/AdhesionPaymentFields";
-import { AdhesionPaymentMethod } from "@/app/adesao/[token]/features/components/AdhesionPaymentMethod";
-import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook";
+import {
+  AbacateCardField,
+  type AbacateCardFieldHandle,
+} from "@/app/adesao/[token]/features/components/AbacateCardField";
+import { CheckoutInstallmentsSelect } from "@/components/checkout/CheckoutInstallmentsSelect";
 import { Button } from "@/components/ui/button";
-import type {
-  BillingGraceCardCheckout,
-  BillingGraceCardInput,
-  BillingGracePaymentMethod,
-} from "../context/BillingGracePaymentTypes";
 
-function PanelShell({ icon, title, description, children }: {
-  icon: React.ReactNode
+/** Seção de uma fase: título e uma linha de apoio, sem número. */
+export function BillingGraceSection({
+  id,
+  title,
+  description,
+  pill,
+  children,
+}: {
+  id: string
   title: string
   description: string
-  children?: React.ReactNode
+  pill?: ReactNode
+  children?: ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
-      <div className="flex items-start gap-4">
-        {icon}
+    <section aria-labelledby={id} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        {pill}
         <div className="flex flex-col gap-1">
-          <h2 className="font-display text-2xl leading-tight font-extrabold tracking-[-0.02em] text-foreground">{title}</h2>
+          <h2 id={id} className="font-display text-xl leading-tight font-extrabold tracking-[-0.02em] text-foreground">
+            {title}
+          </h2>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </div>
@@ -33,128 +40,95 @@ function PanelShell({ icon, title, description, children }: {
   );
 }
 
-const ICON_BOX = "flex size-12 shrink-0 items-center justify-center rounded-xl";
-
-/** PIX ou cartão. Só aparece quando a renovação aceita cartão. */
-export function BillingGraceMethodChoice({ value, pixAmount, cardAmount, maxInstallments, disabled, onChange }: {
-  value: BillingGracePaymentMethod
-  pixAmount: number
-  cardAmount: number
-  maxInstallments: number
-  disabled: boolean
-  onChange: (method: BillingGracePaymentMethod) => void
-}) {
-  return (
-    <section aria-labelledby="adhesion-method-title" className="flex flex-col gap-3">
-      <h2 id="adhesion-method-title" className="text-sm font-semibold text-foreground">Forma de pagamento</h2>
-      <AdhesionPaymentMethod
-        methods={["PIX", "CREDIT_CARD"]}
-        value={value}
-        pixTotal={pixAmount}
-        cardTotal={cardAmount}
-        pixSavings={Math.max(0, Math.round((cardAmount - pixAmount) * 100) / 100)}
-        maxInstallments={maxInstallments}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    </section>
-  );
-}
-
 /**
- * Cartão pelo Abacate Pay: os campos vêm num iframe seguro e o token (uso único, 60s) só é
- * gerado no clique em pagar.
+ * Dados do cartão pelo Abacate Pay: os campos ficam no iframe seguro e o token só é gerado no
+ * envio, na lateral. Aqui ficam as parcelas.
  */
-export function BillingGraceCardForm({ cardCheckout, cycle, keptUserIds, amount, maxInstallments, isPaying, error, onBeforePay, onPay }: {
-  cardCheckout: BillingGraceCardCheckout
-  cycle: string
-  keptUserIds: string[]
+export function BillingGraceCardForm({
+  cardFieldRef,
+  publicKey,
+  amount,
+  maxInstallments,
+  installments,
+  disabled,
+  onInstallmentsChange,
+}: {
+  cardFieldRef: RefObject<AbacateCardFieldHandle | null>
+  publicKey: string
   amount: number
   /** Parcelas até o número de meses do prazo escolhido. */
   maxInstallments: number
-  isPaying: boolean
-  error: string | null
-  /** Confirmações antes de cobrar (ex.: perda do ilimitado); `false` cancela sem validar o cartão. */
-  onBeforePay: () => Promise<boolean>
-  onPay: (input: BillingGraceCardInput) => Promise<void>
+  installments: number
+  disabled: boolean
+  onInstallmentsChange: (installments: number) => void
 }) {
-  const { cardFieldRef, installmentsChoice, setInstallmentsChoice, cardError, isTokenizing, tokenizeCard } = useAbacateCard();
-  const isBusy = isPaying || isTokenizing;
-  const message = cardError ?? error;
-  const installments = Math.min(installmentsChoice, maxInstallments);
-
-  const handlePay = async () => {
-    // O token vale 60 segundos: só valida o cartão depois das confirmações.
-    if (!(await onBeforePay())) return;
-    const { payer } = cardCheckout;
-    const cardToken = await tokenizeCard({ fullName: payer.name, email: payer.email, cnpj: payer.taxId, phone: payer.cellphone });
-    if (cardToken) await onPay({ cycle, keptUserIds, cardToken, installments });
-  };
-
   return (
-    <PanelShell
-      icon={<span className={`${ICON_BOX} bg-primary/10 text-primary`}><CreditCard className="size-6" aria-hidden /></span>}
-      title="Pague com cartão"
+    <BillingGraceSection
+      id="billing-grace-card-title"
+      title="Dados do cartão"
       description="Crédito Visa ou Mastercard. O banco pode pedir uma confirmação no app."
     >
-      <AbacateCardField ref={cardFieldRef} publicKey={cardCheckout.publicKey} amountInCents={Math.round(amount * 100)} />
+      <AbacateCardField ref={cardFieldRef} publicKey={publicKey} amountInCents={Math.round(amount * 100)} />
       {maxInstallments > 1 ? (
-        <AdhesionInstallmentsField
+        <CheckoutInstallmentsSelect
           total={amount}
           maxInstallments={maxInstallments}
-          fixedSchedule={null}
           value={installments}
-          disabled={isBusy}
-          onChange={setInstallmentsChoice}
+          disabled={disabled}
+          onChange={onInstallmentsChange}
         />
       ) : null}
-      {message ? <p role="alert" className="text-sm font-medium text-destructive">{message}</p> : null}
-      <Button type="button" size="lg" className="w-full sm:w-fit max-lg:min-h-11" onClick={() => void handlePay()} disabled={isBusy} aria-busy={isBusy}>
-        {isBusy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
-        {isTokenizing ? "Validando o cartão..." : isPaying ? "Processando..." : "Pagar com cartão"}
-      </Button>
-    </PanelShell>
+    </BillingGraceSection>
   );
 }
 
 /** Cartão enviado e aguardando a resposta do banco; a tela atualiza sozinha. */
 export function BillingGraceCardAnalysis() {
   return (
-    <PanelShell
-      icon={<span className={`${ICON_BOX} bg-primary/10 text-primary`}><ShieldCheck className="size-6" aria-hidden /></span>}
-      title="Pagamento em análise"
-      description="O banco está confirmando a cobrança no seu cartão. Isso costuma levar poucos segundos e a tela atualiza sozinha."
+    <BillingGraceSection
+      id="billing-grace-analysis-title"
+      title="Estamos confirmando seu cartão"
+      description="Costuma levar poucos segundos. Esta tela atualiza sozinha; pode deixá-la aberta."
+      pill={
+        <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+          Em análise pela operadora
+        </span>
+      }
     >
-      <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
+      <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
+        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
         Aguardando a confirmação do banco...
       </p>
-    </PanelShell>
+    </BillingGraceSection>
   );
 }
 
-/** Cartão recusado: tentar de novo ou trocar para PIX, sem perder a página. */
-export function BillingGraceCardDeclined({ reason, onRetry, onUsePix }: {
+/** Cartão recusado: corrigir os dados ou trocar para PIX, sem perder o prazo escolhido. */
+export function BillingGraceCardDeclined({
+  reason,
+  onRetry,
+  onUsePix,
+}: {
   reason?: string | null
   onRetry: () => void
   onUsePix: () => void
 }) {
   return (
-    <PanelShell
-      icon={<span className={`${ICON_BOX} bg-destructive/10 text-destructive`}><XCircle className="size-6" aria-hidden /></span>}
-      title="O cartão não foi aprovado"
-      description={reason ?? "O banco recusou a cobrança. Nada foi cobrado. Confira os dados ou use outra forma de pagamento."}
+    <BillingGraceSection
+      id="billing-grace-declined-title"
+      title="Não conseguimos aprovar o cartão"
+      description={reason ?? "O banco recusou a cobrança. Nada foi cobrado. Corrija os dados ou use outra forma de pagamento."}
     >
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button type="button" size="lg" className="max-lg:min-h-11" onClick={onRetry}>
           <CreditCard data-icon="inline-start" aria-hidden />
-          Tentar outro cartão
+          Corrigir dados do cartão
         </Button>
         <Button type="button" size="lg" variant="outline" className="max-lg:min-h-11" onClick={onUsePix}>
           <QrCode data-icon="inline-start" aria-hidden />
           Pagar com PIX
         </Button>
       </div>
-    </PanelShell>
+    </BillingGraceSection>
   );
 }

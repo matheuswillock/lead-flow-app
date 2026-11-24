@@ -5,6 +5,7 @@ import type { BillingRateLimitOptions, BillingRateLimitResult } from "@/lib/bill
 import { hashBackofficeAdhesionToken } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import { getTrustedClientIp } from "@/lib/http/get-trusted-client-ip"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { hasTermsAcceptance, TERMS_ACCEPTANCE_REQUIRED_MESSAGE } from "@/lib/legal/terms-acceptance"
 
 const IP_RATE_LIMIT: BillingRateLimitOptions = { limit: 20, windowMs: 10 * 60_000 }
 // Um token não pode gerar cobranças ilimitadas, de qualquer IP.
@@ -73,6 +74,7 @@ function buildCheckoutInput(data: Record<string, unknown>, billingType: Checkout
       : undefined
 
   return {
+    termsAccepted: true as const,
     fullName: readString(data.fullName),
     email: readString(data.email),
     phone: readString(data.phone),
@@ -116,6 +118,9 @@ export function createPublicAdhesionCheckoutHandler(dependencies: PublicAdhesion
       }
 
       const data = body as Record<string, unknown>
+      if (!hasTermsAcceptance(data.termsAccepted)) {
+        return NextResponse.json(new Output(false, [], [TERMS_ACCEPTANCE_REQUIRED_MESSAGE], null), { status: 400 })
+      }
       const billingType = readBillingType(data.billingType)
       if (!billingType) {
         return NextResponse.json(

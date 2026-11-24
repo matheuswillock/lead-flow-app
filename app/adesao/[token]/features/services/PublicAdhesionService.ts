@@ -37,7 +37,8 @@ export class PublicAdhesionService implements IPublicAdhesionService {
       await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        // Pagar implica o aceite dos termos (aviso ao lado do botão de pagar).
+        body: JSON.stringify({ ...input, termsAccepted: true }),
       })
     )
   }
@@ -50,7 +51,8 @@ export class PublicAdhesionService implements IPublicAdhesionService {
       await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/pix`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        // Pagar implica o aceite dos termos (aviso ao lado do botão de pagar).
+        body: JSON.stringify({ ...input, termsAccepted: true }),
       })
     )
   }
@@ -63,7 +65,8 @@ export class PublicAdhesionService implements IPublicAdhesionService {
       await fetch(`${API_CLIENT_BASE}/public-adhesions/${token}/card`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        // Pagar implica o aceite dos termos (aviso ao lado do botão de pagar).
+        body: JSON.stringify({ ...input, termsAccepted: true }),
       })
     )
   }

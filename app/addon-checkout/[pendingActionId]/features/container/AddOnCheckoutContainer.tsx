@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo } from "react"
 
-import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
 import { coerceBillingType, normalizeAvailableBillingTypes } from "@/lib/payment-methods/availability-client"
 import { PublicCheckoutFlow } from "@/components/public-checkout/PublicCheckoutFlow"
 import type { CheckoutPaymentProvider } from "@/components/public-checkout/providerBranding"
@@ -40,6 +39,11 @@ interface AddOnCheckoutContainerProps {
   pendingActionId: string
 }
 
+/** Meses podem ser fracionários (cobrança por dias): mostra até 2 casas, sem zeros à direita. */
+function formatMonths(months: number): string {
+  return months.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
 export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContainerProps) {
   const { state, fetchCheckoutData, submitPayment, refreshPaymentStatus, clearPolling } = useAddOnCheckout()
 
@@ -64,21 +68,18 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     // Cartão indisponível nunca é o método pré-selecionado.
     const preset = coerceBillingType(data.presetBillingType, availableMethods)
     const startDate = new Date()
-    const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
+    const remainingMonths = data.pricing.remainingMonths ?? 1
+    const dueDate = addMonths(startDate, Math.max(1, Math.ceil(remainingMonths)))
     const totalCharge = data.pricing.totalCharge ?? 0
     const isPlatformPurchase = data.checkoutSource === "platform_purchase"
 
-    const title = isPlatformPurchase
-      ? "Finalizar compra"
-      : data.addonType === "team"
-        ? "Add-on Time"
-        : "Add-on Usuário"
+    const title = "Finalizar compra"
     const subtitle = isPlatformPurchase
       ? data.purchaseType === "email_credits"
         ? `Créditos de e-mail — ${data.addonLabel}`
         : data.addonDetail || data.addonLabel
-      : data.pricing.remainingMonths > 1
-        ? `Cobrança proporcional por ${data.pricing.remainingMonths} meses`
+      : remainingMonths > 1
+        ? `Cobrança proporcional por ${formatMonths(remainingMonths)} meses`
         : "Cobrança proporcional"
 
     const invoiceItems = [
@@ -106,7 +107,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
           })),
           {
             label: "Meses restantes",
-            value: `${data.pricing.remainingMonths} mês${data.pricing.remainingMonths === 1 ? "" : "es"}`,
+            value: `${formatMonths(remainingMonths)} ${remainingMonths === 1 ? "mês" : "meses"}`,
           },
           { label: "Total", value: formatCurrency(totalCharge), emphasize: true },
         ]
@@ -121,7 +122,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       subtitle,
       includedTitle: data.addonLabel,
       includedSubtitle: data.activationHint ?? data.addonDetail,
-      compositionTitle: isPlatformPurchase ? "Resumo" : "COMPOSIÇÃO DO PLANO",
+      compositionTitle: "Seu plano",
       compositionRows,
       invoiceItems,
       invoiceSummary: {
@@ -143,8 +144,9 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       startValue: formatDate(startDate),
       dueLabel: "Vencimento",
       dueValue: formatDate(dueDate),
-      issuedLabel: "Emitido por Corretor Studio",
-      issuedValue: formatDate(new Date()),
+      // Rodapé sem data: o add-on é vendido pelo Corretor Studio, não emitido em uma data específica.
+      issuedLabel: "Vendido por Corretor Studio",
+      issuedValue: "",
     }
   }, [state.data, availableMethods])
 
@@ -228,7 +230,9 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       skipAddress={isPlatformPurchase}
       abacatePublicKey={state.data?.cardCheckout?.publicKey ?? null}
       availableMethods={availableMethods}
+      successVariant="addon"
       successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
+      onRetry={() => void fetchCheckoutData(pendingActionId)}
       onSubmit={async (input) => {
         if (!mappedDetails) return
         const payload: AddOnCheckoutSubmitInput = {
@@ -245,11 +249,12 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
           city: input.city.trim(),
           state: input.state.trim(),
           installments: input.billingType === "CREDIT_CARD" ? input.installments : 1,
-          cardHolderName: input.creditCard.holderName.trim(),
-          cardNumber: input.creditCard.number,
-          cardExpiryMonth: input.creditCard.expiryMonth,
-          cardExpiryYear: input.creditCard.expiryYear,
-          cardCcv: input.creditCard.ccv,
+          // O cartão segue só como token do Abacate Pay; os campos crus do contrato ficam vazios.
+          cardHolderName: "",
+          cardNumber: "",
+          cardExpiryMonth: "",
+          cardExpiryYear: "",
+          cardCcv: "",
           cardToken: input.cardToken,
         }
         await submitPayment(payload)

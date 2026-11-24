@@ -3,6 +3,7 @@ import { BackofficeAdhesionUseCase } from "./BackofficeAdhesionUseCase"
 import type { IBackofficeAdhesionService } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
 
 const INPUT = {
+  termsAccepted: true as const,
   cardToken: "ctok_abc",
   installments: 3,
   payer: { fullName: "Maria Souza", email: "maria@example.com", phone: "11999999999", cpfCnpj: "11222333000181" },

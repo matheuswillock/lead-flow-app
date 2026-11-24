@@ -1,5 +1,7 @@
 /**
- * Checkout público da "Nova adesão" do backoffice (`/adesao/[token]`) com PIX cobrado pelo Abacate.
+ * Checkout público de `/adesao/[token]` com PIX cobrado pelo Abacate, nos dois fluxos:
+ * - "adesão compartilhada" (adesões do cadastro administrativo, sem `isSelfCheckout`);
+ * - "self-checkout" (`isSelfCheckout: true`), em fases: seus dados, endereço ou cartão.
  *
  * O proxy valida o token no banco, então a adesão pendente é semeada via Prisma. Todo o backend
  * de pagamento é mockado com `page.route`: nenhum pagamento, cliente ou cobrança é criado em
@@ -23,7 +25,7 @@ function envelope(result: unknown) {
   return JSON.stringify({ isValid: true, successMessages: [], errorMessages: [], result })
 }
 
-function detailsPayload() {
+function detailsPayload(overrides: Record<string, unknown> = {}) {
   return {
     id: "e2e-adhesion",
     fullName: "Maria Souza",
@@ -58,6 +60,7 @@ function detailsPayload() {
     createdAt: new Date().toISOString(),
     paidAt: null,
     expiresAt: FAR_FUTURE,
+    ...overrides,
   }
 }
 
@@ -75,7 +78,11 @@ function pixPayload(expiresAt: string, status: "pending" | "paid" = "pending") {
   }
 }
 
-async function mockAdhesionApi(page: Page, pixExpirations: string[] = [FAR_FUTURE]) {
+async function mockAdhesionApi(
+  page: Page,
+  pixExpirations: string[] = [FAR_FUTURE],
+  details: Record<string, unknown> = {},
+) {
   const state = {
     status: "pending" as "pending" | "paid",
     pixRequests: [] as { body: Record<string, unknown> }[],
@@ -84,7 +91,7 @@ async function mockAdhesionApi(page: Page, pixExpirations: string[] = [FAR_FUTUR
   }
 
   await page.route(`**/api/**/public-adhesions/${TOKEN}`, async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: envelope(detailsPayload()) })
+    await route.fulfill({ status: 200, contentType: "application/json", body: envelope(detailsPayload(details)) })
   })
 
   await page.route(`**/api/**/public-adhesions/${TOKEN}/checkout`, async (route) => {
@@ -109,17 +116,25 @@ async function mockAdhesionApi(page: Page, pixExpirations: string[] = [FAR_FUTUR
   return state
 }
 
-async function fillPayer(page: Page) {
-  const fields = page.getByRole("textbox")
-  await fields.nth(0).fill("Maria Souza")
-  await fields.nth(1).fill("maria@example.com")
-  await fields.nth(2).fill("11999998888")
-  await fields.nth(3).fill("52998224725")
+/** Adesão compartilhada (sem isSelfCheckout): Resumo é a primeira fase; Continuar leva a Pagamento. */
+async function openSharedPaymentPhase(page: Page) {
+  await page.goto(`/adesao/${TOKEN}`)
+  await page.getByRole("button", { name: "Continuar" }).click()
+  await expect(page.getByLabel("Nome completo")).toBeVisible()
 }
 
-async function openPaymentStep(page: Page) {
-  await page.goto(`/adesao/${TOKEN}`)
-  await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+async function fillSharedPayer(page: Page) {
+  await page.getByLabel("Nome completo").fill("Maria Souza")
+  await page.getByLabel("E-mail").fill("maria@example.com")
+  await page.getByLabel("Telefone").fill("11999998888")
+  await page.getByLabel("CPF ou CNPJ").fill("52998224725")
+}
+
+/** Self-checkout PIX: fase única "Seus dados" (o WhatsApp no lugar do telefone); o envio fica na lateral. */
+async function fillSelfPayer(page: Page) {
+  await page.getByLabel("Nome completo").fill("Maria Souza")
+  await page.getByLabel("E-mail").fill("maria@example.com")
+  await page.getByLabel("WhatsApp").fill("11999998888")
 }
 
 test.describe("adesao — PIX Abacate no checkout público", () => {
@@ -169,19 +184,23 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
   test("oferece só PIX, gera QR e copia-e-cola pelo Abacate e confirma o pagamento", async ({ page }) => {
     const mock = await mockAdhesionApi(page)
 
-    await openPaymentStep(page)
+    await openSharedPaymentPhase(page)
 
     await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
     await expect(page.getByText("CEP")).toHaveCount(0)
 
-    const submit = page.getByRole("button", { name: "Gerar QR Code Pix" })
-    await fillPayer(page)
+    // Aceite implícito: aviso ao lado do botão, sem caixa de aceite.
+    await expect(page.getByText("Ao pagar, você concorda com os")).toBeVisible()
+    await expect(page.getByRole("checkbox")).toHaveCount(0)
+
+    const submit = page.getByRole("button", { name: "Gerar QR Code PIX" })
+    await fillSharedPayer(page)
     await expect(submit).toBeEnabled()
     await submit.click()
 
     await expect(page.getByText(PIX_CODE)).toBeVisible()
     await expect(page.getByAltText("QR Code PIX")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Copiar código PIX" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Gerar novo PIX" })).toHaveCount(0)
     await expect(page.getByText("Pagamento processado pela AbacatePay")).toBeVisible()
     await expect(page.getByAltText("Asaas Pagamentos")).toHaveCount(0)
@@ -193,6 +212,7 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
       email: "maria@example.com",
       phone: "11999998888",
       cpfCnpj: "52998224725",
+      termsAccepted: true,
     })
     expect(String(mock.pixRequests[0].body.idempotencyKey)).toContain("adhesion-pix:")
     expect(mock.pixRequests[0].body).not.toHaveProperty("amount")
@@ -200,6 +220,8 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
     // A confirmação chega pelo auto-refresh do fluxo (GET payment-status, a cada 8s).
     mock.status = "paid"
     await expect(page.getByText("Pagamento confirmado")).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText("Boas-vindas ao Corretor Studio.")).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Seu acesso foi enviado" })).toBeVisible()
 
     await runResponsiveChecks(page)
   })
@@ -207,14 +229,14 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
   test("PIX expirado oferece Gerar novo PIX com chave de idempotência nova", async ({ page }) => {
     const mock = await mockAdhesionApi(page, [PAST, FAR_FUTURE])
 
-    await openPaymentStep(page)
-    await fillPayer(page)
-    await page.getByRole("button", { name: "Gerar QR Code Pix" }).click()
+    await openSharedPaymentPhase(page)
+    await fillSharedPayer(page)
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
 
-    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toBeVisible()
+    await expect(page.getByText("Este PIX expirou")).toBeVisible()
     await page.getByRole("button", { name: "Gerar novo PIX" }).click()
 
-    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toHaveCount(0)
+    await expect(page.getByText("Este PIX expirou")).toHaveCount(0)
     expect(mock.pixRequests).toHaveLength(2)
     expect(mock.pixRequests[1].body.idempotencyKey).not.toBe(mock.pixRequests[0].body.idempotencyKey)
     expect(mock.pixRequests[1].body.cpfCnpj).toBe(mock.pixRequests[0].body.cpfCnpj)
@@ -225,9 +247,9 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
   test("mantém o layout sem overflow em 360px e no desktop com o PIX exibido", async ({ page }) => {
     await mockAdhesionApi(page)
 
-    await openPaymentStep(page)
-    await fillPayer(page)
-    await page.getByRole("button", { name: "Gerar QR Code Pix" }).click()
+    await openSharedPaymentPhase(page)
+    await fillSharedPayer(page)
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
     await expect(page.getByText(PIX_CODE)).toBeVisible()
 
     await page.setViewportSize({ width: 360, height: 800 })
@@ -240,5 +262,65 @@ test.describe("adesao — PIX Abacate no checkout público", () => {
     await expect(page.getByText(PIX_CODE)).toBeVisible()
 
     await runResponsiveChecks(page)
+  })
+
+  test("self-checkout PIX Abacate: uma fase de dados, forma de pagamento na lateral e QR no envio", async ({ page }) => {
+    const mock = await mockAdhesionApi(page, [FAR_FUTURE], { isSelfCheckout: true, companyName: "Imobiliária Exemplo" })
+
+    await page.goto(`/adesao/${TOKEN}`)
+
+    await expect(page.getByRole("heading", { name: "Contrate o Corretor Studio" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Seus dados" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Forma de pagamento" })).toBeVisible()
+    await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
+    await expect(page.getByText("CEP")).toHaveCount(0)
+    // Uma única fase: não há Continuar, o envio fica na lateral.
+    await expect(page.getByRole("button", { name: "Continuar" })).toHaveCount(0)
+    await expect(page.getByText("Ao pagar, você concorda com os")).toBeVisible()
+    await expect(page.getByRole("checkbox")).toHaveCount(0)
+
+    await fillSelfPayer(page)
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
+
+    await expect(page.getByText(PIX_CODE)).toBeVisible()
+    await expect(page.getByAltText("QR Code PIX")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible()
+    expect(mock.checkoutRequests).toBe(0)
+    expect(mock.pixRequests).toHaveLength(1)
+    expect(mock.pixRequests[0].body).toMatchObject({
+      fullName: "Maria Souza",
+      email: "maria@example.com",
+      phone: "11999998888",
+      cpfCnpj: "52998224725",
+      termsAccepted: true,
+    })
+
+    mock.status = "paid"
+    await expect(page.getByRole("heading", { name: "Pagamento confirmado" })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText("Boas-vindas ao Corretor Studio, Imobiliária Exemplo.")).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Seu acesso foi enviado" })).toBeVisible()
+
+    await runResponsiveChecks(page)
+  })
+
+  test("self-checkout PIX legado: endereço numa fase própria, valida antes de avançar e volta sem perder dados", async ({ page }) => {
+    await mockAdhesionApi(page, [FAR_FUTURE], { isSelfCheckout: true, pixProvider: "ASAAS" })
+
+    await page.goto(`/adesao/${TOKEN}`)
+
+    const name = page.getByLabel(/Nome completo/)
+    await name.fill("")
+    await page.getByRole("button", { name: "Continuar" }).click()
+    await expect(page.getByText("Informe o nome completo.")).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Seus dados" })).toBeVisible()
+
+    await name.fill("Maria Souza")
+    await page.getByRole("button", { name: "Continuar" }).click()
+    await expect(page.getByRole("heading", { name: "Endereço de cobrança" })).toBeVisible()
+    await expect(page.getByLabel(/CEP/)).toBeVisible()
+
+    await page.getByRole("button", { name: "Voltar" }).click()
+    await expect(page.getByRole("heading", { name: "Seus dados" })).toBeVisible()
+    await expect(name).toHaveValue("Maria Souza")
   })
 })

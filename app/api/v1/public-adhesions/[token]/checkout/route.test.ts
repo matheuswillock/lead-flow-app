@@ -37,7 +37,8 @@ function checkoutRequest(body: Record<string, unknown>) {
   })
 }
 
-const call = (body: Record<string, unknown>) => handler(checkoutRequest(body) as never, { params: Promise.resolve({ token: TOKEN }) })
+const call = (body: Record<string, unknown>) =>
+  handler(checkoutRequest({ termsAccepted: true, ...body }) as never, { params: Promise.resolve({ token: TOKEN }) })
 
 beforeEach(() => {
   env.VERCEL = "1"
@@ -121,6 +122,27 @@ describe("POST /api/v1/public-adhesions/[token]/checkout — PIX do Abacate (A5b
     await call({ billingType: "CREDIT_CARD" })
 
     expect(getPublicDetails).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/v1/public-adhesions/[token]/checkout — aceite dos termos", () => {
+  it.each([
+    ["ausente", undefined],
+    ["false", false],
+    ["texto 'true'", "true"],
+  ])("termsAccepted %s: 400 com a mensagem de aceite e nenhuma cobrança", async (_label, termsAccepted) => {
+    const response = await call({ billingType: "PIX", termsAccepted })
+
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as Output).errorMessages).toEqual(["Aceite os termos de uso para continuar."])
+    expect(createCheckout).not.toHaveBeenCalled()
+  })
+
+  it("termsAccepted true segue para o caso de uso com o aceite carimbável", async () => {
+    const response = await call({ billingType: "PIX" })
+
+    expect(response.status).toBe(201)
+    expect(createCheckout.mock.calls[0]?.[1]).toMatchObject({ termsAccepted: true })
   })
 })
 

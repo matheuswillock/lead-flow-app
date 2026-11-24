@@ -56,6 +56,7 @@ mock.module("@/lib/asaas", () => ({ createAsaasClient: createAsaasClientMock }))
 const { AddOnCheckoutUseCase } = await import("./AddOnCheckoutUseCase")
 
 const PIX_INPUT = {
+  termsAccepted: true as const,
   billingType: "PIX" as const,
   fullName: "Fulano",
   email: "f@x.com",

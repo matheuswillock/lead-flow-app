@@ -21,11 +21,13 @@ const TOKEN_KEY = `public-adhesion-pix-token:${createHash("sha256").update(TOKEN
 const env = process.env as Record<string, string | undefined>
 const savedEnv = { NODE_ENV: process.env.NODE_ENV, VERCEL: process.env.VERCEL }
 
-function pixRequest(headers: Record<string, string> = {}) {
+const PIX_BODY = { fullName: "Maria", email: "m@example.com", phone: "11999999999", cpfCnpj: "52998224725", idempotencyKey: "k" }
+
+function pixRequest(headers: Record<string, string> = {}, body: Record<string, unknown> = { ...PIX_BODY, termsAccepted: true }) {
   return new Request(`https://app.example.com/api/v1/public-adhesions/${TOKEN}/pix`, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify({ fullName: "Maria", email: "m@example.com", phone: "11999999999", cpfCnpj: "52998224725", idempotencyKey: "k" }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -100,8 +102,18 @@ describe("POST /api/v1/public-adhesions/[token]/pix — rate limit", () => {
     expect(response.status).toBe(201)
     expect(createPixCheckout).toHaveBeenCalledWith(
       TOKEN,
-      { fullName: "Maria", email: "m@example.com", phone: "11999999999", cpfCnpj: "52998224725" },
+      { termsAccepted: true, fullName: "Maria", email: "m@example.com", phone: "11999999999", cpfCnpj: "52998224725" },
       "k",
     )
+  })
+
+  it("sem aceite dos termos responde 400 e não cria a cobrança", async () => {
+    const response = await call(pixRequest({}, PIX_BODY))
+
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as { errorMessages: string[] }).errorMessages).toEqual([
+      "Aceite os termos de uso para continuar.",
+    ])
+    expect(createPixCheckout).not.toHaveBeenCalled()
   })
 })

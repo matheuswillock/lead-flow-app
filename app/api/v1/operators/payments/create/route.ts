@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import prisma from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { ProportionalChargeError } from "@/app/api/services/billing/proportionalAddonCharge";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { rejectUnavailableBillingTypeForMaster } from "@/app/api/services/billing/ExistingCardSubscriberService";
 import { emailService } from "@/lib/services/EmailService";
@@ -224,6 +225,9 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error: any) {
+    if (error instanceof ProportionalChargeError) {
+      return NextResponse.json(new Output(false, [], [error.message], null), { status: 422 });
+    }
     console.error("[POST /api/v1/operators/payments/create] Erro:", error);
     return NextResponse.json(
       new Output(false, [], [error.message || "Erro ao criar pagamento"], null),

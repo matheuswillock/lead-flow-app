@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output"
-import type { IBillingGracePaymentService } from "@/app/api/services/BillingGracePayment/IBillingGracePaymentService"
+import type { BillingGraceTermsAcceptance, IBillingGracePaymentService } from "@/app/api/services/BillingGracePayment/IBillingGracePaymentService"
 import type { IBillingGracePaymentUseCase } from "./IBillingGracePaymentUseCase"
 
 export class BillingGracePaymentUseCase implements IBillingGracePaymentUseCase {
@@ -13,7 +13,7 @@ export class BillingGracePaymentUseCase implements IBillingGracePaymentUseCase {
     }
   }
 
-  async createPixPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }): Promise<Output> {
+  async createPixPayment(input: BillingGraceTermsAcceptance & { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }): Promise<Output> {
     try {
       if (!input.idempotencyKey.trim()) {
         return new Output(false, [], ["Idempotency key é obrigatória"], null)
@@ -27,7 +27,7 @@ export class BillingGracePaymentUseCase implements IBillingGracePaymentUseCase {
     }
   }
 
-  async createCardPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }): Promise<Output> {
+  async createCardPayment(input: BillingGraceTermsAcceptance & { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }): Promise<Output> {
     try {
       if (!input.idempotencyKey.trim() || !input.cycle.trim() || !input.cardToken.startsWith("ctok_")) {
         return new Output(false, [], ["Dados do pagamento com cartão inválidos"], null)
