@@ -90,13 +90,41 @@ describe("SubscriptionUpgradeUseCase.createOperatorPayment — checkout roteado 
     })
   })
 
+  it("operador sem telefone é recusado antes de qualquer gravação", async () => {
+    const useCase = new SubscriptionUpgradeUseCase()
+
+    const result = await useCase.createOperatorPayment({
+      managerId: "sb-manager-op-1",
+      operatorData: { name: "Novo Op", email: "sem-fone@example.test", role: "operator", functions: [] },
+      paymentMethod: "PIX",
+    } as any)
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Telefone é obrigatório"])
+    expect(pendingOperatorCreateMock).not.toHaveBeenCalled()
+  })
+
+  it("grava o telefone no PendingOperator", async () => {
+    profileFindUniqueMock.mockImplementationOnce(async () => buildManager())
+    const useCase = new SubscriptionUpgradeUseCase()
+
+    await useCase.createOperatorPayment({
+      managerId: "sb-manager-op-1",
+      operatorData: { name: "Novo Op", email: "com-fone@example.test", phone: "(11) 99999-8888", role: "operator", functions: [] },
+      paymentMethod: "PIX",
+    } as any)
+
+    const created = pendingOperatorCreateMock.mock.calls[0] as unknown as [{ data: { phone?: string } }]
+    expect(created[0].data.phone).toBe("(11) 99999-8888")
+  })
+
   it("manager legacy: valida customer E cria o payment do checkout na conta legacy (não primary)", async () => {
     profileFindUniqueMock.mockImplementationOnce(async () => buildManager({ asaasCustomerAccount: "legacy", asaasCustomerId: "cus_legacy_ok" }))
 
     const useCase = new SubscriptionUpgradeUseCase()
     const result = await useCase.createOperatorPayment({
       managerId: "sb-manager-op-1",
-      operatorData: { name: "Novo Op", email: "novo-op@example.test", role: "operator", functions: [] },
+      operatorData: { name: "Novo Op", email: "novo-op@example.test", phone: "11999998888", role: "operator", functions: [] },
       paymentMethod: "PIX",
     } as any)
 
@@ -117,7 +145,7 @@ describe("SubscriptionUpgradeUseCase.createOperatorPayment — checkout roteado 
     const useCase = new SubscriptionUpgradeUseCase()
     const result = await useCase.createOperatorPayment({
       managerId: "sb-manager-op-1",
-      operatorData: { name: "Novo Op", email: "novo-op2@example.test", role: "operator", functions: [] },
+      operatorData: { name: "Novo Op", email: "novo-op2@example.test", phone: "11999998888", role: "operator", functions: [] },
       paymentMethod: "PIX",
     } as any)
 

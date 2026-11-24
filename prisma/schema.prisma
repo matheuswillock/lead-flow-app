@@ -3119,6 +3119,9 @@ model PendingOperator {
   teamId          String?        @db.Uuid
   name            String         @db.Text
   email           String         @db.Text
+  // Telefone do operador, levado ao perfil criado quando o pagamento confirma. Nulo só em
+  // pendências criadas antes de o telefone ser obrigatório.
+  phone           String?        @db.Text
   role            String         @db.Text // "operator" geralmente
   functions       UserFunction[] @default([])
   paymentId       String?        @db.Text // checkoutSessionId no Asaas (opcional para assinaturas)

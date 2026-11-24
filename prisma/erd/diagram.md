@@ -2902,6 +2902,7 @@ fixed fixed
     String id "🗝️"
     String name 
     String email 
+    String phone "❓"
     String role 
     UserFunction functions 
     String paymentId "❓"

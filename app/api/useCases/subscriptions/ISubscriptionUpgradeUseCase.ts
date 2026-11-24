@@ -5,6 +5,7 @@ export interface AddOperatorPaymentData {
   operatorData: {
     name: string;
     email: string;
+    phone: string;
     role: string;
     functions?: ("SDR" | "CLOSER")[];
   };
