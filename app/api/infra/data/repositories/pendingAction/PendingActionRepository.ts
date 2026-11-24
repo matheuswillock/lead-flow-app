@@ -449,6 +449,7 @@ export class PendingActionRepository implements IPendingActionRepository {
     params: {
       fullName: string;
       email: string;
+      phone?: string;
       role: UserRole;
       functions: UserFunction[];
       managerId: string;
@@ -458,6 +459,7 @@ export class PendingActionRepository implements IPendingActionRepository {
       data: {
         fullName: params.fullName,
         email: params.email,
+        phone: params.phone,
         role: params.role,
         functions: params.functions,
         managerId: params.managerId,

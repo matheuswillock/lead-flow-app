@@ -222,6 +222,8 @@ export interface IPendingActionRepository {
     params: {
       fullName: string;
       email: string;
+      /** Ausente só em ações pendentes criadas antes de o telefone ser obrigatório. */
+      phone?: string;
       role: UserRole;
       functions: UserFunction[];
       managerId: string;

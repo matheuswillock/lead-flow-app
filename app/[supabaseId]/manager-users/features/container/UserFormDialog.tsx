@@ -50,6 +50,7 @@ import { useUserContext } from "@/app/context/UserContext";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
+import { maskPhone, unmask } from "@/lib/masks";
 import { API_CLIENT_BASE } from "@/lib/route-map";
 
 interface UserFormDialogProps {
@@ -109,6 +110,7 @@ export function UserFormDialog({
       : {
           name: "",
           email: "",
+          phone: "",
           role: "operator",
           functions: [],
           billingType: "PIX",
@@ -144,6 +146,7 @@ export function UserFormDialog({
         form.reset({
           name: "",
           email: "",
+          phone: "",
           role: "operator",
           functions: [],
           billingType: "PIX",
@@ -359,6 +362,35 @@ export function UserFormDialog({
                 </FormItem>
               )}
             />
+
+            {!isEditing ? (
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Telefone</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="(11) 99999-9999"
+                        className="max-lg:h-11"
+                        {...field}
+                        value={maskPhone(field.value ?? "")}
+                        onChange={(event) => field.onChange(unmask(maskPhone(event.target.value)))}
+                        disabled={loading}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Usamos para contato e cobranças desta licença.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <FormField
               control={form.control}

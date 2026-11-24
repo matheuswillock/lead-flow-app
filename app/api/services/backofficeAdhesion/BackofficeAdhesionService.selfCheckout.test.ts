@@ -373,6 +373,15 @@ describe("achado crítico: ledger e provider do PIX", () => {
     return h
   }
 
+  it("create() recusa nova adesão sem telefone, sem gravar nada", async () => {
+    const h = createOperatorAdhesion()
+    const input = { leadId: "lead-op", fullName: "Cliente Operador", email: "op@example.com", cycle: "monthly" as const, extraTeams: 0, extraUsers: 0 }
+
+    await expect(h.service.create(input, "op-1")).rejects.toThrow("Celular é obrigatório")
+    await expect(h.service.create({ ...input, phone: "" }, "op-1")).rejects.toThrow("Celular é obrigatório")
+    expect(h.repo.createAndMoveLeadToAdhesion).not.toHaveBeenCalled()
+  })
+
   it("âncora do operador: create() em modo checkout grava parcela ASAAS pendente e o PIX Abacate é recusado", async () => {
     const h = createOperatorAdhesion()
 

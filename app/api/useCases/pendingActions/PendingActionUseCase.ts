@@ -483,6 +483,7 @@ export class PendingActionUseCase {
     const teamId = action.teamId || payload.teamId;
     const email = (payload.email as string | undefined)?.trim().toLowerCase();
     const name = payload.name as string | undefined;
+    const phone = (payload.phone as string | undefined)?.trim() || undefined;
     const role = (payload.role || "operator") as UserRole;
     const functions = (payload.functions as UserFunction[] | undefined) ?? [];
     const paymentStatus = applyOptions?.paymentStatus ?? "CONFIRMED";
@@ -509,6 +510,7 @@ export class PendingActionUseCase {
       profile = await pendingActionRepository.createManagedProfile(tx, {
         fullName: name,
         email,
+        phone,
         role,
         functions,
         managerId: action.masterId,

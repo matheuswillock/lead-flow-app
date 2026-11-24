@@ -411,6 +411,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       masterId: managerId,
       fullName: validatedData.name,
       email,
+      phone: validatedData.phone,
       role: validatedData.role as UserRole,
       functions: validatedData.functions ?? [],
       hasPermanentSubscription: validatedData.hasPermanentSubscription ?? false,
@@ -522,6 +523,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     const payload = {
       name: validatedData.name,
       email,
+      phone: validatedData.phone,
       role: validatedData.role,
       functions: validatedData.functions ?? [],
       teamId,

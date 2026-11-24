@@ -463,7 +463,7 @@ describe("BackofficeAdhesionService — cartão e preset", () => {
     const h = makeHarness(buildAdhesion())
 
     await expect(
-      h.service.create({ leadId: "l", fullName: "Maria Souza", cycle: "monthly", extraTeams: 0, extraUsers: 0, billingType: "CREDIT_CARD" }, null),
+      h.service.create({ leadId: "l", fullName: "Maria Souza", phone: "11988887777", cycle: "monthly", extraTeams: 0, extraUsers: 0, billingType: "CREDIT_CARD" }, null),
     ).rejects.toThrow("cartão")
   })
 

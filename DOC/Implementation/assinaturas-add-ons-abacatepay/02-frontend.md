@@ -96,3 +96,13 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - EVIDENCE: ver B3.G6. O front ainda precisa parar de enviar o cartão (F7.G1).
 - [ ] F7.G3: briefing `impeccable shape`, validação no navegador e revisão `impeccable`.
   - EVIDENCE: pendente.
+
+## F8. Telefone obrigatório no cadastro (usuário adicional e nova adesão)
+
+**Briefing:** `design/telefone-obrigatorio-cadastro.md` (aprovado em 2026-11-24).
+
+- [x] F8.G1: `UserFormDialog` pede "Telefone" no modo criar; `BackofficeAdhesionDialog` exige telefone ao criar adesão.
+  - CHECK: `e2e/specs/product/manager-users-phone.spec.ts` (vermelho sem o campo, verde com ele); `BackofficeAdhesionService.selfCheckout.test.ts` ("create() recusa nova adesão sem telefone").
+  - EVIDENCE: verificação renderizada em 375 px e 1280 px no stack em container (campo com 44 px no celular, erro no próprio campo). O E2E achou que `useManagerUsers` montava o corpo sem `phone`; corrigido.
+- [ ] F8.G2: sequência `impeccable` (harden, clarify, adapt, typeset, colorize, polish).
+  - EVIDENCE: não executada como passos separados. O hook de design do `impeccable` varreu os dois arquivos de tela editados e não achou problema determinístico. Diálogo de adesão do backoffice não foi renderizado (precisa de lead elegível).
