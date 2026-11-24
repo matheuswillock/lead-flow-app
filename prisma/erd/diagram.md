@@ -1843,6 +1843,7 @@ fixed fixed
   "corretor_studio_profiles" {
     String id "🗝️"
     String email 
+    Int inviteLinkVersion 
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"

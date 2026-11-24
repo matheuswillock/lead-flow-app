@@ -1,9 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Mail, MoreHorizontal, Pencil, Send, Sparkles, X } from "lucide-react"
+import { AlertCircle, CalendarRange, Crown, Eye, KeyRound, Link2, Mail, MoreHorizontal, Pencil, Send, Sparkles, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -146,6 +153,7 @@ export function BackofficeAllUsersContainer() {
   const [userTypeDialogItem, setUserTypeDialogItem] = useState<BackofficeAllUsersItem | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const [accessActionKey, setAccessActionKey] = useState<string | null>(null)
+  const [manualCopyInviteLink, setManualCopyInviteLink] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -398,6 +406,39 @@ export function BackofficeAllUsersContainer() {
     }
   }
 
+  /** Link de convite é credencial de uso único: nunca vai para console, só clipboard ou campo manual. */
+  async function handleCopyInviteLink(item: BackofficeAllUsersItem) {
+    if (accessActionKey) return
+
+    const accountMasterId = getMasterId(item)
+    if (!accountMasterId) {
+      toast.error("Usuário sem cliente vinculado para gerar o link.")
+      return
+    }
+
+    setAccessActionKey(`${item.id}:copy_link`)
+    const toastId = toast.loading("Gerando link de convite...")
+
+    try {
+      const result = await service.generateInviteLink({
+        memberId: item.id,
+        accountMasterId,
+      })
+      try {
+        await navigator.clipboard.writeText(result.actionLink)
+        toast.success("Link de convite copiado para a área de transferência.", { id: toastId })
+      } catch {
+        toast.dismiss(toastId)
+        setManualCopyInviteLink(result.actionLink)
+      }
+    } catch (error) {
+      console.error("[BackofficeAllUsersContainer][handleCopyInviteLink]", error)
+      toastUserError(error, { id: toastId })
+    } finally {
+      setAccessActionKey(null)
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -574,6 +615,12 @@ export function BackofficeAllUsersContainer() {
                             Reenviar convite
                           </DropdownMenuItem>
                         ) : null}
+                        {canManage && item.accessStatus === "pending_first_access" ? (
+                          <DropdownMenuItem onClick={() => void handleCopyInviteLink(item)}>
+                            <Link2 />
+                            Copiar link do convite
+                          </DropdownMenuItem>
+                        ) : null}
                         {canManage && item.accessStatus === "active" ? (
                           <DropdownMenuItem onClick={() => void handleSendAccessEmail(item, "reset_password")}>
                             <KeyRound />
@@ -668,6 +715,27 @@ export function BackofficeAllUsersContainer() {
         item={userTypeDialogItem}
         onSuccess={() => void handleUserTypeDialogSuccess()}
       />
+      <Dialog
+        open={manualCopyInviteLink !== null}
+        onOpenChange={(open) => {
+          if (!open) setManualCopyInviteLink(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copie o link do convite</DialogTitle>
+            <DialogDescription>
+              Não foi possível copiar automaticamente. O link é de uso único e expira em 24 horas.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            aria-label="Link do convite"
+            readOnly
+            value={manualCopyInviteLink ?? ""}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

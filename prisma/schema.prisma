@@ -1153,6 +1153,7 @@ model Profile {
   id                       String              @id @unique @default(uuid()) @db.Uuid
   planQuotes               PlanQuote[]         @relation("PlanQuoteOwner")
   email                    String              @unique @db.Text
+  inviteLinkVersion        Int                 @default(0)
   supabaseId               String?             @unique @db.Uuid
   fullName                 String?             @db.Text
   phone                    String?             @db.Text
