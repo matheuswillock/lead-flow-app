@@ -1,5 +1,6 @@
 import type { UserFunction, UserRole } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { removedProfileEmailFor } from "@/lib/account/removed-profile-email"
 import type {
   IBackofficeMemberRepository,
   MemberAccountMembershipTemplate,
@@ -179,9 +180,14 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         })
       }
 
+      // Libera o e-mail: sem o tombstone, o endereço segue preso e bloqueia nova adesão.
       await tx.profile.update({
         where: { id: memberId },
-        data: { deletedAt: now, deletedByProfileId: actorProfileId },
+        data: {
+          deletedAt: now,
+          deletedByProfileId: actorProfileId,
+          email: removedProfileEmailFor(memberId),
+        },
       })
 
       await tx.backofficeDeletionAuditLog.create({
