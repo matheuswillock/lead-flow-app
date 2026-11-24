@@ -1,12 +1,15 @@
 "use client"
 
+import { useId } from "react"
+
+import type { PublicAdhesionBillingType } from "@/app/adesao/[token]/features/context/PublicAdhesionTypes"
+import { formatBRL, installmentAmounts } from "@/app/adesao/[token]/features/utils/adhesionPayment"
 import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { cn } from "@/lib/utils"
-import type { PublicAdhesionBillingType } from "../context/PublicAdhesionTypes"
-import { formatBRL, installmentAmounts } from "../utils/adhesionPayment"
 
 function MethodRow({
+  idPrefix,
   value,
   label,
   detail,
@@ -15,6 +18,7 @@ function MethodRow({
   selected,
   disabled,
 }: {
+  idPrefix: string
   value: PublicAdhesionBillingType
   label: string
   detail: string
@@ -23,13 +27,13 @@ function MethodRow({
   selected: boolean
   disabled: boolean
 }) {
-  const labelId = `adhesion-method-${value}-label`
-  const detailId = `adhesion-method-${value}-detail`
+  const labelId = `${idPrefix}-${value}-label`
+  const detailId = `${idPrefix}-${value}-detail`
 
   return (
     <div
       className={cn(
-        "relative flex items-center gap-3 rounded-xl border bg-card px-4 py-3.5 transition-colors duration-[var(--motion-duration-base)]",
+        "relative flex items-center gap-3 rounded-xl border bg-card px-4 py-3.5 max-lg:min-h-11 transition-colors duration-[var(--motion-duration-base)]",
         selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/40",
         disabled && "opacity-60",
       )}
@@ -77,8 +81,11 @@ function MethodRow({
   )
 }
 
-/** Forma de pagamento: PIX com o desconto em destaque e cartão com a parcela máxima. */
-export function AdhesionPaymentMethod({
+/**
+ * Forma de pagamento do kit: PIX com a economia em destaque e cartão com a parcela máxima.
+ * Forma de pagamento: título e cards de rádio, com a mesma API usada pelo adesão antes da migração.
+ */
+export function CheckoutPaymentMethod({
   methods,
   value,
   pixTotal,
@@ -97,40 +104,52 @@ export function AdhesionPaymentMethod({
   disabled: boolean
   onChange: (billingType: PublicAdhesionBillingType) => void
 }) {
+  const idPrefix = useId()
+  const titleId = `${idPrefix}-title`
+
+  if (methods.length === 0) return null
+
   const cardDetail =
     maxInstallments > 1
       ? `Em até ${maxInstallments}x de ${formatBRL(installmentAmounts(cardTotal, maxInstallments)[0])}`
       : "Pagamento em 1x"
 
   return (
-    <RadioGroup
-      aria-labelledby="adhesion-method-title"
-      value={value}
-      onValueChange={(next) => onChange(next as PublicAdhesionBillingType)}
-      disabled={disabled}
-      className="grid-cols-1 gap-2.5"
-    >
-      {methods.includes("PIX") ? (
-        <MethodRow
-          value="PIX"
-          label="PIX"
-          detail="À vista, com desconto"
-          price={formatBRL(pixTotal)}
-          badge={pixSavings > 0 ? `Economize ${formatBRL(pixSavings)}` : undefined}
-          selected={value === "PIX"}
-          disabled={disabled}
-        />
-      ) : null}
-      {methods.includes("CREDIT_CARD") ? (
-        <MethodRow
-          value="CREDIT_CARD"
-          label="Cartão de crédito"
-          detail={cardDetail}
-          price={formatBRL(cardTotal)}
-          selected={value === "CREDIT_CARD"}
-          disabled={disabled}
-        />
-      ) : null}
-    </RadioGroup>
+    <div className="flex flex-col gap-2.5">
+      <h3 id={titleId} className="text-sm font-semibold text-foreground">
+        Forma de pagamento
+      </h3>
+      <RadioGroup
+        aria-labelledby={titleId}
+        value={value}
+        onValueChange={(next) => onChange(next as PublicAdhesionBillingType)}
+        disabled={disabled}
+        className="grid-cols-1 gap-2"
+      >
+        {methods.includes("PIX") ? (
+          <MethodRow
+            idPrefix={idPrefix}
+            value="PIX"
+            label="PIX"
+            detail="À vista, com desconto"
+            price={formatBRL(pixTotal)}
+            badge={pixSavings > 0 ? `Economize ${formatBRL(pixSavings)}` : undefined}
+            selected={value === "PIX"}
+            disabled={disabled}
+          />
+        ) : null}
+        {methods.includes("CREDIT_CARD") ? (
+          <MethodRow
+            idPrefix={idPrefix}
+            value="CREDIT_CARD"
+            label="Cartão de crédito"
+            detail={cardDetail}
+            price={formatBRL(cardTotal)}
+            selected={value === "CREDIT_CARD"}
+            disabled={disabled}
+          />
+        ) : null}
+      </RadioGroup>
+    </div>
   )
 }

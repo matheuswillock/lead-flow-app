@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addOnCheckoutUseCase } from "@/app/api/useCases/addOnCheckout/AddOnCheckoutUseCase";
 import { failedOutputStatus } from "@/lib/payment-methods/route-guard";
+import { Output } from "@/lib/output";
+import { hasTermsAcceptance, TERMS_ACCEPTANCE_REQUIRED_MESSAGE } from "@/lib/legal/terms-acceptance";
 
 export async function POST(
   request: NextRequest,
@@ -10,12 +12,17 @@ export async function POST(
     const { pendingActionId } = await params;
     const body = await request.json();
 
+    if (!hasTermsAcceptance(body.termsAccepted)) {
+      return NextResponse.json(new Output(false, [], [TERMS_ACCEPTANCE_REQUIRED_MESSAGE], null), { status: 400 });
+    }
+
     const remoteIp =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       request.headers.get("x-real-ip") ??
       "0.0.0.0";
 
     const result = await addOnCheckoutUseCase.createPayment(pendingActionId, {
+      termsAccepted: true,
       billingType: body.billingType,
       fullName: body.fullName ?? "",
       email: body.email ?? "",

@@ -1812,6 +1812,9 @@ model BillingGracePayment {
   confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
   completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason         String?   @map("failure_reason") @db.Text
+  /// Aceite dos documentos legais na renovação, carimbado pela rota no momento da cobrança.
+  termsAcceptedAt       DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  termsVersion          String?   @map("terms_version") @db.Text
   /// Usuários que o master não manteve na renovação; saem dos times da conta ao confirmar o pagamento.
   revokedProfileIds     String[]  @default([]) @map("revoked_profile_ids") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

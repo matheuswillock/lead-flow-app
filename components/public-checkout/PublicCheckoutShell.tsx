@@ -99,7 +99,7 @@ export function PublicCheckoutShell({
                   Ambiente seguro
                 </span>
                 <span>
-                  {issuedLabel || "Emitido por"}{" "}
+                  {issuedLabel || "Vendido por"}{" "}
                   <span className="font-semibold text-foreground">{issuedValue}</span>
                 </span>
               </footer>
@@ -120,7 +120,7 @@ export function PublicCheckoutShell({
                   ) : null}
                 </div>
                 <div>
-                  {(issuedLabel || "Emitido por Corretor Studio")}:{" "}
+                  {(issuedLabel || "Vendido por Corretor Studio")}:{" "}
                   <span className="font-medium text-foreground">{issuedValue}</span>
                 </div>
               </footer>

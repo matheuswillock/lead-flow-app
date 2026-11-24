@@ -136,7 +136,15 @@ async function mockSelfCheckoutApi(
   return { createBodies, pixBodies, optionsCalls: () => optionsCalls };
 }
 
+/** Os dados da empresa só aparecem na fase "Seus dados": Continuar a partir do período. */
+async function goToBuyerData(page: Page) {
+  if ((await page.getByLabel("Razão social").count()) === 0) {
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  }
+}
+
 async function fillBuyer(page: Page) {
+  await goToBuyerData(page);
   await page.getByLabel("Razão social").fill("Corretora Exemplo Ltda");
   await page.getByLabel("CNPJ").fill("11222333000181");
   await page.getByLabel("Nome completo").fill("Maria Souza");
@@ -194,14 +202,32 @@ test.describe("app/checkout", () => {
     expect(box === null || box.x + box.width < 0).toBe(true);
   });
 
-  test("período, dados da empresa e pagamento ficam na mesma tela, com adicionais recolhidos", async ({ page }) => {
+  test("fases na mesma página: dados só depois de Continuar, e Voltar mantém o período", async ({ page }) => {
     await mockSelfCheckoutApi(page);
     await page.goto("/checkout");
 
     await expect(page.getByRole("radio", { name: "Anual" })).toBeChecked();
-    await expect(page.getByLabel("Razão social")).toBeVisible();
+    await expect(page.getByLabel("Razão social")).toHaveCount(0);
     await expect(payButton(page)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Continuar para o pagamento" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
+    await expect(page.getByLabel("Razão social")).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Voltar", exact: true }).click();
+    await expect(page.getByRole("radio", { name: "Anual" })).toBeChecked();
+    await expect(page.getByLabel("Razão social")).toHaveCount(0);
+  });
+
+  test("PIX tem duas fases no stepper e o celular mostra a fase atual em texto", async ({ page }) => {
+    await mockSelfCheckoutApi(page);
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto("/checkout");
+
+    await expect(page.getByText("Passo 1 de 2: Período do plano")).toBeVisible();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
+    await expect(page.getByText("Passo 2 de 2: Seus dados")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Gerar QR Code PIX" })).toBeVisible();
   });
 
   test("seleciona outro ciclo, cria o pedido só ao enviar os dados e gera o PIX na mesma tela", async ({
@@ -268,6 +294,7 @@ test.describe("app/checkout", () => {
   test("valida os campos inline sem chamar a API", async ({ page }) => {
     const mocks = await mockSelfCheckoutApi(page);
     await page.goto("/checkout");
+    await goToBuyerData(page);
 
     await page.getByLabel("E-mail").fill("nao-e-email");
     await payButton(page).click();

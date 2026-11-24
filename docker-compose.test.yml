@@ -47,6 +47,10 @@ x-test-service: &test-service
     - test_node_modules:/app/node_modules
     - test_next_cache:/app/.next
     - test_bun_cache:/usr/local/bun/install/cache
+  # Telemetria do CLI do Supabase: o shutdown com timeout fazia `migration up` sair com código 1.
+  environment:
+    DO_NOT_TRACK: "1"
+    SUPABASE_TELEMETRY_DISABLED: "1"
 
 services:
   db:

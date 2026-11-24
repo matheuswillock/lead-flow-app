@@ -49,6 +49,7 @@ export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({
+        termsAccepted: true,
         method: "PIX",
         customer: {
           name: input.fullName,
@@ -74,6 +75,7 @@ export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({
+        termsAccepted: true,
         method: "CARD",
         customer: { name: input.fullName, email: input.email, taxId: input.cpfCnpj, cellphone: input.phone },
         cardToken: input.cardToken,
@@ -133,6 +135,8 @@ export class AddOnCheckoutServiceImpl implements IAddOnCheckoutService {
 
   async createPayment(pendingActionId: string, input: AddOnCheckoutSubmitInput): Promise<any> {
     const body: Record<string, unknown> = {
+      // Pagar implica o aceite dos termos (aviso ao lado do botão de pagar).
+      termsAccepted: true,
       billingType: input.billingType,
       fullName: input.fullName,
       email: input.email,

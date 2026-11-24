@@ -69,6 +69,7 @@ describe("AddOnCheckoutService.createPlatformPixPayment", () => {
     expect(init.method).toBe("POST")
     expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("platform-pix:purchase-1:uuid-1")
     expect(JSON.parse(init.body as string)).toEqual({
+      termsAccepted: true,
       method: "PIX",
       customer: {
         name: "Maria Souza",

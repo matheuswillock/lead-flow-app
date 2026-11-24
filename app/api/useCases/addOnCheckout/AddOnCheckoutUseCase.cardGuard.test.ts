@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
 import { stubCardEnabledConfig } from "@/test/support/card-enabled-config"
+import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types"
 
 const baseAction = {
   id: "pa-1",
@@ -59,6 +60,7 @@ mock.module("@/lib/asaas", () => ({
 const { AddOnCheckoutUseCase } = await import("./AddOnCheckoutUseCase")
 
 const PAYMENT_INPUT = {
+  termsAccepted: true as const,
   billingType: "CREDIT_CARD" as const,
   fullName: "Fulano",
   email: "f@x.com",
@@ -124,6 +126,17 @@ describe("AddOnCheckoutUseCase — guard de cartão desligado", () => {
 
     expect(output.isValid).toBe(true)
     expect(createIncrementalChargeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("grava o aceite dos termos no payload da ação antes de cobrar", async () => {
+    withSubscriber()
+
+    const output = await new AddOnCheckoutUseCase().createPayment("pa-1", PAYMENT_INPUT)
+
+    expect(output.isValid).toBe(true)
+    const [[, payload]] = updatePayloadMock.mock.calls as unknown as Array<[string, Record<string, unknown>]>
+    expect(payload).toMatchObject({ billingType: "CREDIT_CARD", totalCharge: 100, termsVersion: LEGAL_DOCUMENTS_VERSION })
+    expect(typeof payload.termsAcceptedAt).toBe("string")
   })
 
   it("assinatura do tipo PIX não é isenção", async () => {

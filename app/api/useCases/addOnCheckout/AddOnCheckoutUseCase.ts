@@ -13,6 +13,7 @@ import {
   readConfiguredAbacatePublicKey,
 } from "@/lib/payment-methods/availability";
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
+import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -231,6 +232,13 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       }
 
       await assertCardChoiceAllowedForMaster(input.billingType, pendingAction.master);
+
+      // Carimbo do aceite no próprio payload da ação pendente (JSON), sem coluna nova.
+      await pendingActionRepository.updatePayload(pendingActionId, {
+        ...payload,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: LEGAL_DOCUMENTS_VERSION,
+      });
 
       const addonLabel =
         pendingAction.actionType === "create_team"

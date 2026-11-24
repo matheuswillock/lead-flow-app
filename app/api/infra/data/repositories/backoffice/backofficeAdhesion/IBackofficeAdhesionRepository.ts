@@ -273,6 +273,8 @@ export interface IBackofficeAdhesionRepository {
   findProfileIdByEmail(email: string): Promise<string | null>
   /** Sempre cria um lead novo (origem landing_page); nunca reaproveita o de outra pessoa pelo e-mail. */
   createSelfCheckoutLead(input: SelfCheckoutLeadContact): Promise<BackofficeAdhesionLeadRelation>
+  /** Acrescenta uma linha às notas do lead, sem apagar o que já existe (ex.: aceite dos termos). */
+  appendLeadNote(leadId: string, note: string): Promise<void>
   createPaidManagerProfile(
     data: CreateBackofficeAdhesionManagerProfileInput
   ): Promise<{ profileId: string; supabaseId: string }>
