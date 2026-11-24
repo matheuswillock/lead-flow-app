@@ -44,7 +44,8 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
   ): Promise<BillingGracePaymentRecord> {
     return this.request<BillingGracePaymentRecord>(supabaseId, {
       method: "POST",
-      body: JSON.stringify({ idempotencyKey, cycle, keptUserIds }),
+      // Pagar implica o aceite dos termos (aviso ao lado do botão de pagar).
+      body: JSON.stringify({ idempotencyKey, cycle, keptUserIds, termsAccepted: true }),
     })
   }
 
@@ -64,6 +65,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
           keptUserIds: input.keptUserIds,
           cardToken: input.cardToken,
           installments: input.installments,
+          termsAccepted: true,
         }),
       },
       { path: "/card" }

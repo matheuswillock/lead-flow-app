@@ -1,36 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 
-import type { PublicCheckoutDetails, PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
+import type { PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
 import { PublicCheckoutPaymentStep } from "./PublicCheckoutPaymentStep"
-
-const details: PublicCheckoutDetails = {
-  presetBillingType: "CREDIT_CARD",
-  billingTypePrices: {
-    PIX: { monthly: 100, total: 100 },
-    CREDIT_CARD: { monthly: 100, total: 100 },
-  },
-  title: "t",
-  subtitle: "s",
-  includedTitle: "i",
-  includedSubtitle: "is",
-  compositionTitle: "c",
-  compositionRows: [],
-  invoiceItems: [],
-  invoiceSummary: { monthlyTotal: 100, totalDueNow: 100, billingHint: "" },
-  monthlyTotalLabel: "m",
-  monthlyTotalValue: "v",
-  totalTitle: "t",
-  totalSubtitle: "s",
-  totalValue: "v",
-  totalHint: "h",
-  startLabel: "a",
-  startValue: "b",
-  dueLabel: "c",
-  dueValue: "d",
-  issuedLabel: "e",
-  issuedValue: "f",
-}
 
 const prefill: PublicCheckoutPayerPrefill = {
   fullName: "",
@@ -46,41 +18,49 @@ const prefill: PublicCheckoutPayerPrefill = {
   state: "",
 }
 
-function render(props: { availableMethods?: ("PIX" | "CREDIT_CARD")[]; pixOnly?: boolean }) {
+function render(props: Partial<Parameters<typeof PublicCheckoutPaymentStep>[0]> = {}) {
   return renderToStaticMarkup(
     <PublicCheckoutPaymentStep
-      details={details}
-      billingType="CREDIT_CARD"
-      prefill={prefill}
-      maxInstallments={12}
-      isSubmitting={false}
-      payment={null}
-      onSubmit={async () => {}}
+      form={prefill}
+      errors={{}}
+      disabled={false}
+      addressLocked={false}
+      showAddress
+      onFieldChange={() => {}}
       {...props}
-    />
+    />,
   )
 }
 
-describe("PublicCheckoutPaymentStep card availability", () => {
-  it("não renderiza cartão, parcelas nem CTA de cartão quando só PIX está disponível, mesmo com cartão solicitado", () => {
-    for (const html of [render({}), render({ availableMethods: ["PIX"] }), render({ pixOnly: true })]) {
-      expect(html).toContain("Gerar QR Code Pix")
-      expect(html).not.toContain("Pagar com cartão")
-      expect(html).not.toContain("Número do cartão")
-      expect(html).not.toContain("Parcelas")
-    }
+describe("PublicCheckoutPaymentStep", () => {
+  it("coleta endereço quando o fluxo exige", () => {
+    const html = render()
+
+    expect(html).toContain("CEP")
+    expect(html).toContain("Endereço")
   })
 
-  it("renderiza o formulário de cartão apenas quando o cartão é declarado disponível", () => {
-    const html = render({ availableMethods: ["PIX", "CREDIT_CARD"] })
-
-    expect(html).toContain("Pagar com cartão")
-    expect(html).toContain("Número do cartão")
-    expect(html).toContain("Parcelas")
+  it("omite endereço nos fluxos sem coleta (PIX do Abacate)", () => {
+    expect(render({ showAddress: false })).not.toContain("CEP")
   })
 
-  it("mantém a coleta de endereço nos fluxos legados que não usam pixOnly", () => {
-    expect(render({ availableMethods: ["PIX"] })).toContain("CEP")
-    expect(render({ pixOnly: true })).not.toContain("CEP")
+  it("nunca renderiza campos crus de cartão: o cartão só entra pelo campo seguro passado como filho", () => {
+    const html = render({ showAddress: false })
+
+    expect(html).not.toContain("Número do cartão")
+    expect(html).not.toContain("CVV")
+    expect(html).not.toContain("Nome do titular")
+  })
+
+  it("mostra o erro do campo ao lado dele", () => {
+    const html = render({ errors: { email: "Informe um e-mail válido." } })
+
+    expect(html).toContain("Informe um e-mail válido.")
+  })
+
+  it("renderiza a seção do cartão quando ela é passada como filho", () => {
+    const html = render({ showAddress: false, children: <p>Formulário seguro do cartão</p> })
+
+    expect(html).toContain("Formulário seguro do cartão")
   })
 })

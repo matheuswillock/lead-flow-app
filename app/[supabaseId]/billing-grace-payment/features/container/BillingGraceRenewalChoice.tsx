@@ -33,7 +33,7 @@ export function BillingGraceCycleChoice({ cycles, value, disabled, onChange }: {
   return (
     <section aria-labelledby="renewal-cycle-title" className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 id="renewal-cycle-title" className="text-sm font-semibold text-foreground">Prazo da renovação</h2>
+        <h2 id="renewal-cycle-title" className="font-display text-xl leading-tight font-extrabold tracking-[-0.02em] text-foreground">Período do plano</h2>
         <p className="text-sm text-muted-foreground">O novo período começa no seu último vencimento.</p>
       </div>
       <RadioGroup

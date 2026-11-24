@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
-import { cardInstallmentAmount, pixSavingsAmount } from "./SelfCheckoutPaymentMethod"
+import { cardInstallmentAmount, pixSavingsAmount } from "./checkoutPaymentMath"
 
 const annual: SelfCheckoutCycleOption = {
   cycle: "annual",

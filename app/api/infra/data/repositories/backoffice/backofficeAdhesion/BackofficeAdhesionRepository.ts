@@ -1,6 +1,7 @@
 import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { escapeLikePattern } from "@/lib/prisma/escape-like-pattern"
+import { buildTermsAcceptanceNote } from "@/lib/legal/terms-acceptance"
 import type { AsaasAccountId } from "@/lib/asaas"
 import type {
   BackofficeAdhesionLeadRelation,
@@ -421,7 +422,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           input.companyTradeName ? `Nome fantasia: ${input.companyTradeName}` : null,
           input.cnpj ? `CNPJ: ${input.cnpj}` : null,
           input.termsAcceptedAt
-            ? `Aceite dos Termos de Uso, da Política de Privacidade e da Política de Cookies da contratação (versão ${input.termsVersion ?? "não informada"}) em ${input.termsAcceptedAt}`
+            ? buildTermsAcceptanceNote(input.termsAcceptedAt, input.termsVersion ?? "não informada")
             : null,
         ]
           .filter((line): line is string => Boolean(line))
@@ -429,6 +430,18 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         createdByProfileId: null,
       },
       select: backofficeAdhesionLeadSelect,
+    })
+  }
+
+  async appendLeadNote(leadId: string, note: string): Promise<void> {
+    // shortcut: leitura e escrita separadas; duas tentativas simultâneas podem perder uma linha de aceite. Upgrade: concatenar no SQL.
+    const lead = await prisma.backofficeLead.findUniqueOrThrow({
+      where: { id: leadId },
+      select: { notes: true },
+    })
+    await prisma.backofficeLead.update({
+      where: { id: leadId },
+      data: { notes: [lead.notes, note].filter(Boolean).join("\n") },
     })
   }
 

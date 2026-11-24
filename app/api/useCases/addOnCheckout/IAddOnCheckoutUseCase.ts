@@ -50,6 +50,8 @@ export interface PaymentStatusResponse {
 }
 
 export interface AddOnCheckoutPaymentInput {
+  /** Aceite dos documentos legais; o caso de uso grava o carimbo no payload da ação pendente. */
+  termsAccepted: true;
   billingType: "PIX" | "CREDIT_CARD";
   fullName: string;
   email: string;

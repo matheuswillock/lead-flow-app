@@ -35,7 +35,8 @@ mock.module("@/app/api/services/billing/SubscriptionCreditService", () => ({
 }))
 mock.module("@/app/api/services/billing/IncrementalBillingService", () => ({ incrementalBillingService: {} }))
 mock.module("@/app/api/infra/data/repositories/billing/BillingRepository", () => ({
-  billingRepository: { getSubscriptionEndDate: mock(async () => null) },
+  // Ciclo com fim em 1 ano: sem data de fim o caso agora é erro (ProportionalChargeError), não cobrança.
+  billingRepository: { getSubscriptionEndDate: mock(async () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)) },
 }))
 mock.module("@/app/api/services/AsaasSubscription/AsaasSubscriptionService", () => ({ AsaasSubscriptionService: {} }))
 
