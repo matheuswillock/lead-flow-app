@@ -3,9 +3,15 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 /** Mesmo prazo anunciado no e-mail de convite ("válido por 24 horas"). */
 export const INVITE_LINK_TTL_SECONDS = 86_400
 
-export interface InviteLinkPayload {
+export interface InviteLinkIdentity {
   email: string
   name: string | null
+  profileId: string
+  /** Versão do perfil no momento da geração. Remoções de vínculo a incrementam e revogam o link. */
+  inviteLinkVersion: number
+}
+
+export interface InviteLinkPayload extends InviteLinkIdentity {
   expiresAt: number
 }
 
@@ -28,7 +34,7 @@ function signPayload(encodedPayload: string, secret: string): string {
  * `exchangeInviteLinkToken`).
  */
 export function signInviteLinkToken(
-  input: { email: string; name: string | null },
+  input: InviteLinkIdentity,
   options: { nowMs?: number; secret?: string } = {}
 ): string {
   const nowSeconds = Math.floor((options.nowMs ?? Date.now()) / 1000)
@@ -36,6 +42,8 @@ export function signInviteLinkToken(
     e: input.email.trim().toLowerCase(),
     n: input.name,
     x: nowSeconds + INVITE_LINK_TTL_SECONDS,
+    p: input.profileId,
+    v: input.inviteLinkVersion,
   }
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url")
   return `${encoded}.${signPayload(encoded, options.secret ?? getInviteLinkSecret())}`
@@ -62,11 +70,19 @@ export function verifyInviteLinkToken(
   }
   if (!parsed || typeof parsed !== "object") return null
 
-  const { e, n, x } = parsed as { e?: unknown; n?: unknown; x?: unknown }
+  const { e, n, x, p, v } = parsed as { e?: unknown; n?: unknown; x?: unknown; p?: unknown; v?: unknown }
   if (typeof e !== "string" || e.length === 0 || typeof x !== "number") return null
+  // Token sem perfil e versão é de formato anterior: não é aceito.
+  if (typeof p !== "string" || p.length === 0 || typeof v !== "number" || !Number.isInteger(v)) return null
 
   const nowSeconds = Math.floor((options.nowMs ?? Date.now()) / 1000)
   if (nowSeconds >= x) return null
 
-  return { email: e, name: typeof n === "string" ? n : null, expiresAt: x }
+  return {
+    email: e,
+    name: typeof n === "string" ? n : null,
+    profileId: p,
+    inviteLinkVersion: v,
+    expiresAt: x,
+  }
 }

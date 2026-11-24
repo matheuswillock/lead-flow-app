@@ -265,8 +265,15 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   }
 
   async deleteTeamMembership(teamId: string, profileId: string): Promise<void> {
-    await prisma.teamMember.delete({
-      where: { teamId_profileId: { teamId, profileId } },
+    // Remover o vínculo revoga o convite pendente: a versão sobe na mesma transação.
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.delete({
+        where: { teamId_profileId: { teamId, profileId } },
+      })
+      await tx.profile.update({
+        where: { id: profileId },
+        data: { inviteLinkVersion: { increment: 1 } },
+      })
     })
   }
 
@@ -278,6 +285,10 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     await prisma.$transaction(async (tx) => {
       await tx.teamMember.delete({
         where: { teamId_profileId: { teamId: input.teamId, profileId: input.profileId } },
+      })
+      await tx.profile.update({
+        where: { id: input.profileId },
+        data: { inviteLinkVersion: { increment: 1 } },
       })
       await tx.backofficeDeletionAuditLog.create({
         data: {

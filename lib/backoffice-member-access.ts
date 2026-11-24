@@ -1,3 +1,4 @@
+import { findInviteLinkVersion } from "@/app/api/infra/data/repositories/auth/InviteLinkRepository"
 import { isE2eTestMode } from "@/lib/e2e/is-e2e-test-mode"
 import { getDispatchId } from "@/lib/email/dispatch-id"
 import { passwordResetAuditService } from "@/app/api/services/passwordResetAudit/PasswordResetAuditService"
@@ -181,12 +182,20 @@ function assertEmailSendSucceeded(result: { success: boolean; error?: string }):
  * O token do Supabase só é gerado no clique, em `InviteLinkExchangeUseCase`, então
  * reenvios e cópias não invalidam o link que já está na caixa de entrada.
  */
-export function generateInviteActionLink(profile: BackofficeMemberAccessIdentity): {
+export function generateInviteActionLink(
+  profile: BackofficeMemberAccessIdentity,
+  inviteLinkVersion: number
+): {
   actionLink: string
   displayName: string
 } {
   const displayName = profile.fullName?.trim() || profile.email
-  const inviteToken = signInviteLinkToken({ email: profile.email, name: displayName })
+  const inviteToken = signInviteLinkToken({
+    email: profile.email,
+    name: displayName,
+    profileId: profile.profileId,
+    inviteLinkVersion,
+  })
 
   const actionLink = new URL(getFullUrl("/set-password"))
   actionLink.searchParams.set("invite", inviteToken)
@@ -237,7 +246,8 @@ export async function sendBackofficeMemberAccessEmail(input: {
       throw new Error("Convite disponível apenas para usuários sem primeiro acesso concluído.")
     }
 
-    const { actionLink } = generateInviteActionLink(input.profile)
+    const inviteLinkVersion = await requireInviteLinkVersion(input.profile.profileId)
+    const { actionLink } = generateInviteActionLink(input.profile, inviteLinkVersion)
 
     const sendResult = await emailService.sendOperatorInviteEmail({
       operatorName: displayName,
@@ -343,6 +353,14 @@ export async function generateBackofficeInviteAccessLink(
     throw new Error("Link de convite disponível apenas para usuários sem primeiro acesso concluído.")
   }
 
-  const { actionLink } = generateInviteActionLink(profile)
+  const inviteLinkVersion = await requireInviteLinkVersion(profile.profileId)
+  const { actionLink } = generateInviteActionLink(profile, inviteLinkVersion)
   return { actionLink, email: profile.email }
+}
+
+/** Sem perfil não há versão para assinar: falha fechado em vez de gerar link sem revogação. */
+async function requireInviteLinkVersion(profileId: string): Promise<number> {
+  const version = await findInviteLinkVersion(profileId)
+  if (version === null) throw new Error("Perfil do convite não encontrado")
+  return version
 }

@@ -29,8 +29,8 @@ describe("generateInviteActionLink (link de convite reutilizável)", () => {
     else process.env.NEXT_PUBLIC_APP_URL = previousAppUrl
   })
 
-  it("gera link com token assinado e sem token_hash do Supabase", () => {
-    const { actionLink, displayName } = generateInviteActionLink(profile)
+  it("gera link com token assinado, perfil e versão, sem token_hash do Supabase", () => {
+    const { actionLink, displayName } = generateInviteActionLink(profile, 4)
     const url = new URL(actionLink)
 
     expect(url.pathname).toBe("/set-password")
@@ -40,11 +40,13 @@ describe("generateInviteActionLink (link de convite reutilizável)", () => {
     const payload = verifyInviteLinkToken(url.searchParams.get("invite") ?? "", { secret: SECRET })
     expect(payload?.email).toBe("ana@example.com")
     expect(payload?.name).toBe("Ana Souza")
+    expect(payload?.profileId).toBe("profile-1")
+    expect(payload?.inviteLinkVersion).toBe(4)
   })
 
   it("gerar de novo não invalida o anterior: ambos verificam", () => {
-    const first = new URL(generateInviteActionLink(profile).actionLink).searchParams.get("invite") ?? ""
-    const second = new URL(generateInviteActionLink(profile).actionLink).searchParams.get("invite") ?? ""
+    const first = new URL(generateInviteActionLink(profile, 4).actionLink).searchParams.get("invite") ?? ""
+    const second = new URL(generateInviteActionLink(profile, 4).actionLink).searchParams.get("invite") ?? ""
 
     expect(verifyInviteLinkToken(first, { secret: SECRET })).not.toBeNull()
     expect(verifyInviteLinkToken(second, { secret: SECRET })).not.toBeNull()

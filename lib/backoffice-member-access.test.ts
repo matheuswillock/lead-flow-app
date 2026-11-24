@@ -45,6 +45,13 @@ mock.module("@/lib/utils/app-url", () => ({
   getFullUrl: (path: string) => `https://app.local${path}`,
 }))
 
+// Versão do convite no banco: null simula perfil inexistente.
+let inviteLinkVersionFromDb: number | null = 0
+
+mock.module("@/app/api/infra/data/repositories/auth/InviteLinkRepository", () => ({
+  findInviteLinkVersion: async () => inviteLinkVersionFromDb,
+}))
+
 const sendOperatorInviteEmailMock = mock(
   async (_data: unknown) =>
     ({ success: true as const, data: { data: { id: "resend-1" } } }) as unknown,
@@ -216,8 +223,17 @@ describe("sendBackofficeMemberAccessEmail — falha de envio nunca é silenciosa
 describe("generateBackofficeInviteAccessLink — Entregável 3 (copiar link, sem enviar e-mail)", () => {
   afterEach(() => {
     e2eTestModeEnabled = false
+    inviteLinkVersionFromDb = 0
     generateLinkMock.mockClear()
     sendOperatorInviteEmailMock.mockClear()
+  })
+
+  it("perfil sem versão no banco falha fechado, sem gerar link", async () => {
+    inviteLinkVersionFromDb = null
+
+    await expect(generateBackofficeInviteAccessLink(pendingProfile)).rejects.toThrow(
+      "Perfil do convite não encontrado",
+    )
   })
 
   it("gera link de convite assinado, sem Supabase Admin e sem disparar e-mail", async () => {

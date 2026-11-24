@@ -1,3 +1,4 @@
+import { findInviteLinkProfile } from "@/app/api/infra/data/repositories/auth/InviteLinkRepository"
 import { verifyInviteLinkToken } from "@/lib/auth/invite-link-token"
 import { Output } from "@/lib/output"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
@@ -5,7 +6,15 @@ import { getFullUrl } from "@/lib/utils/app-url"
 
 export type InviteLinkExchangeFailure = "invalid" | "already_used" | "unavailable"
 
+export interface InviteLinkProfile {
+  email: string
+  inviteLinkVersion: number
+  deleted: boolean
+}
+
 export interface InviteLinkExchangeDeps {
+  /** Perfil atual do convite. Null se não existir. Lança se a consulta falhar. */
+  findProfileById(profileId: string): Promise<InviteLinkProfile | null>
   /** Usuário do Supabase Auth pelo e-mail, ou null se ainda não existir. Lança se a consulta falhar. */
   findAuthUserByEmail(email: string): Promise<{ last_sign_in_at?: string | null } | null>
   /** Gera o token de convite no momento do clique (cria o usuário se ainda não existir). */
@@ -44,6 +53,21 @@ export class InviteLinkExchangeUseCase {
     const payload = verifyInviteLinkToken(inviteToken, this.options)
     if (!payload) return failure("invalid")
 
+    let profile: InviteLinkProfile | null
+    try {
+      profile = await this.deps.findProfileById(payload.profileId)
+    } catch (error) {
+      console.error("[InviteLinkExchangeUseCase][exchange] Falha ao consultar o perfil", error)
+      return failure("unavailable")
+    }
+    // Revogado: vínculo removido (versão incrementada), perfil excluído, perfil sem esse e-mail.
+    const revoked =
+      !profile ||
+      profile.deleted ||
+      profile.email.trim().toLowerCase() !== payload.email ||
+      profile.inviteLinkVersion !== payload.inviteLinkVersion
+    if (revoked) return failure("invalid")
+
     let authUser: { last_sign_in_at?: string | null } | null
     try {
       authUser = await this.deps.findAuthUserByEmail(payload.email)
@@ -69,6 +93,7 @@ export class InviteLinkExchangeUseCase {
 /** Implementação com Supabase Admin. Consultas e geração acontecem só no clique, nunca ao carregar a página. */
 export function createInviteLinkExchangeUseCase(): InviteLinkExchangeUseCase {
   return new InviteLinkExchangeUseCase({
+    findProfileById: findInviteLinkProfile,
     findAuthUserByEmail: async (email) => {
       const supabaseAdmin = createSupabaseAdmin()
       if (!supabaseAdmin) throw new Error("Erro ao conectar com o Supabase Admin")
