@@ -1151,6 +1151,7 @@ enum EmailImportRiskLevel {
 
 model Profile {
   id                       String              @id @unique @default(uuid()) @db.Uuid
+  planQuotes               PlanQuote[]         @relation("PlanQuoteOwner")
   email                    String              @unique @db.Text
   inviteLinkVersion        Int                 @default(0)
   supabaseId               String?             @unique @db.Uuid
@@ -1462,6 +1463,131 @@ model HealthPlanOption {
 }
 
 // -----------------------------
+// SIMULADOR DE PLANOS (catálogo importado da base + cotações)
+// Catálogo: somente leitura para o app; escrita apenas pelo importador.
+// -----------------------------
+
+model HealthPlanOperator {
+  id      String            @id @default(uuid()) @db.Uuid
+  name    String            @unique @db.Text
+  logoPath String           @db.Text
+  tables  HealthPlanTable[]
+
+  @@map("corretor_studio_health_plan_operators")
+}
+
+model HealthPlanTable {
+  id                   String             @id @default(uuid()) @db.Uuid
+  chave                String             @unique @db.Text
+  estado               String             @db.VarChar(2)
+  cidade               String             @db.Text
+  operatorId           String             @db.Uuid
+  produto              String             @db.Text
+  planoId              Int
+  plano                String             @db.Text
+  tabela               String             @db.Text
+  acomodacao           String             @db.Text
+  contratacao          String             @db.Text
+  contratacaoPainel    String             @db.Text
+  coparticipacao       String             @db.Text
+  coparticipacaoTabela String             @db.Text
+  aceitaMei            Boolean
+  remissao             Boolean
+  vidasMin             Int
+  vidasMinPainel       Int
+  vidasMax             Int
+  precos               Json
+  regras               Json
+  operator             HealthPlanOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+
+  @@index([estado])
+  @@index([estado, operatorId])
+  @@index([planoId])
+  @@map("corretor_studio_health_plan_tables")
+}
+
+model HealthPlanRuleText {
+  id    String @id @db.VarChar(64)
+  texto String @db.Text
+
+  @@map("corretor_studio_health_plan_rule_texts")
+}
+
+model HealthPlanProvider {
+  id       Int                   @id
+  nome     String                @db.Text
+  bairro   String?               @db.Text
+  cidade   String?               @db.Text
+  uf       String?               @db.VarChar(2)
+  regiao   String?               @db.Text
+  endereco String?               @db.Text
+  site     String?               @db.Text
+  network  HealthPlanNetworkEntry[]
+
+  @@map("corretor_studio_health_plan_providers")
+}
+
+enum HealthPlanNetworkKind {
+  HOSPITAL
+  LAB
+
+  @@map("corretor_studio_health_plan_network_kind")
+}
+
+model HealthPlanNetworkEntry {
+  id          String                @id @default(uuid()) @db.Uuid
+  planoId     Int
+  providerId  Int
+  kind        HealthPlanNetworkKind
+  atendimento String[]              @default([])
+  provider    HealthPlanProvider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@unique([planoId, providerId, kind])
+  @@index([planoId])
+  @@map("corretor_studio_health_plan_network_entries")
+}
+
+model HealthPlanCatalogImport {
+  id          String   @id @default(uuid()) @db.Uuid
+  source      String   @db.Text
+  generatedAt DateTime @db.Timestamptz(6)
+  counts      Json
+  importedAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("corretor_studio_health_plan_catalog_imports")
+}
+
+model PlanQuote {
+  id             String           @id @default(uuid()) @db.Uuid
+  teamId         String           @db.Uuid
+  ownerProfileId String           @db.Uuid
+  nome           String           @db.Text
+  state          Json
+  resumo         Json?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner          Profile          @relation("PlanQuoteOwner", fields: [ownerProfileId], references: [id], onDelete: Cascade)
+  shares         PlanQuoteShare[]
+
+  @@index([teamId, ownerProfileId])
+  @@map("corretor_studio_plan_quotes")
+}
+
+model PlanQuoteShare {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique @db.VarChar(64)
+  quoteId   String    @db.Uuid
+  payload   Json
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt DateTime? @db.Timestamptz(6)
+  quote     PlanQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("corretor_studio_plan_quote_shares")
+}
+
+// -----------------------------
 // BACKOFFICE MODULE (public.backoffice_*)
 // -----------------------------
 
@@ -1687,6 +1813,9 @@ model BillingGracePayment {
   confirmedAt           DateTime? @map("confirmed_at") @db.Timestamptz(6)
   completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason         String?   @map("failure_reason") @db.Text
+  /// Aceite dos documentos legais na renovação, carimbado pela rota no momento da cobrança.
+  termsAcceptedAt       DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  termsVersion          String?   @map("terms_version") @db.Text
   /// Usuários que o master não manteve na renovação; saem dos times da conta ao confirmar o pagamento.
   revokedProfileIds     String[]  @default([]) @map("revoked_profile_ids") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -3029,6 +3158,7 @@ model PendingOperator {
 
 model Team {
   id                     String    @id @default(uuid()) @db.Uuid
+  planQuotes             PlanQuote[]
   name                   String    @db.Text
   masterId               String    @db.Uuid
   isDefault              Boolean   @default(false)

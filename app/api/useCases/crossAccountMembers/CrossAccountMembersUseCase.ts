@@ -3,6 +3,7 @@ import { createEmailService } from "@/lib/services/EmailService";
 import { getAppUrl } from "@/lib/utils/app-url";
 import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { ProportionalChargeError } from "@/app/api/services/billing/proportionalAddonCharge";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
 import { backofficeIncrementalBillingCoordinator } from "@/app/api/useCases/backoffice/BackofficeIncrementalBillingCoordinator";
 import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository";
@@ -264,6 +265,7 @@ export class CrossAccountMembersUseCase implements ICrossAccountMembersUseCase {
         teamId,
       });
     } catch (error) {
+      if (error instanceof ProportionalChargeError) return new Output(false, [], [error.message], null);
       console.error("[CrossAccountMembersUseCase][inviteExternalMember]", error);
       return new Output(false, [], ["Erro ao convidar membro externo"], null);
     }

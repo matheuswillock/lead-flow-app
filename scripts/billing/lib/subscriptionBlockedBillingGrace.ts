@@ -10,7 +10,7 @@ import {
   isBlockingMemberProAssignment,
 } from "@/app/api/shared/billing/memberProBillingRules"
 
-export const SUBSCRIPTION_BLOCKED_GRACE_EXPIRY = "2026-11-19T03:00:00.000Z"
+export const SUBSCRIPTION_BLOCKED_GRACE_EXPIRY = "2026-12-06T03:00:00.000Z"
 export const SUBSCRIPTION_BLOCKED_GRACE_POLICY_VERSION = 2
 export const SUBSCRIPTION_BLOCKED_GRACE_SOURCE = "bulk_subscription_billing_grace"
 export const SUBSCRIPTION_BLOCKED_GRACE_REASON_PREFIX = "bulk_subscription_billing_grace"

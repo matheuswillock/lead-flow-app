@@ -5,6 +5,7 @@ import { consumeBillingRateLimit } from "@/lib/billing/billing-rate-limit"
 import { getTrustedClientIp } from "@/lib/http/get-trusted-client-ip"
 import { hashBackofficeAdhesionToken } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted"
+import { hasTermsAcceptance, TERMS_ACCEPTANCE_REQUIRED_MESSAGE } from "@/lib/legal/terms-acceptance"
 
 const IP_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 }
 // Um token não pode gerar cobranças ilimitadas no cartão, de qualquer IP.
@@ -47,6 +48,9 @@ export async function POST(
     }
 
     const data = body as Record<string, unknown>
+    if (!hasTermsAcceptance(data.termsAccepted)) {
+      return NextResponse.json(new Output(false, [], [TERMS_ACCEPTANCE_REQUIRED_MESSAGE], null), { status: 400 })
+    }
     const payer = (data.payer && typeof data.payer === "object" ? data.payer : {}) as Record<string, unknown>
     const cardToken = readString(data.cardToken)
     if (!cardToken.startsWith("ctok_")) {
@@ -56,6 +60,7 @@ export async function POST(
     const output = await backofficeAdhesionUseCase.createCardCheckout(
       token,
       {
+        termsAccepted: true,
         cardToken,
         installments: typeof data.installments === "number" ? data.installments : Number.NaN,
         payer: {

@@ -18,7 +18,7 @@ import type { Prisma } from "@prisma/client"
 import { readConfiguredAbacatePublicKey } from "@/lib/payment-methods/availability"
 import { assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
 import { resolveCardAvailability } from "@/lib/payment-methods/availability"
-import type { BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
+import type { BillingGraceTermsAcceptance, BillingGracePaymentQuote, IBillingGracePaymentService } from "./IBillingGracePaymentService"
 
 const QUOTE_TTL_MS = 10 * 60 * 1000
 const SESSION_TTL_MS = 30 * 60 * 1000
@@ -70,17 +70,17 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     return quoteRenewalCycle(option, account, new Date(), keptUserIds)
   }
 
-  async createPixPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }) {
+  async createPixPayment(input: BillingGraceTermsAcceptance & { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[] }) {
     return this.startPayment({ ...input, method: "PIX" })
   }
 
-  async createCardPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }) {
+  async createCardPayment(input: BillingGraceTermsAcceptance & { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number }) {
     if (!input.cardToken.startsWith("ctok_")) throw new Error("Token de cartão inválido")
     await assertBillingTypeAllowed("CREDIT_CARD")
     return this.startPayment({ ...input, method: "CARD" })
   }
 
-  private async startPayment(input: { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; method: "PIX" | "CARD"; cardToken?: string; installments?: number }) {
+  private async startPayment(input: BillingGraceTermsAcceptance & { supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; method: "PIX" | "CARD"; cardToken?: string; installments?: number }) {
     // Resolve a conta antes de qualquer consulta: a chave é do cliente e não pode revelar
     // nem devolver o pagamento (e o PIX) de outra conta.
     const account = await billingGracePaymentRepository.findAccountContext(input.supabaseId)
@@ -131,6 +131,8 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       providerEnvironment: environment,
       idempotencyKey: input.idempotencyKey,
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
+      termsAcceptedAt: input.termsAcceptedAt,
+      termsVersion: input.termsVersion,
     })
 
     const provider = await createAbacatePayProvider(environment, selected.externalAccountContext)

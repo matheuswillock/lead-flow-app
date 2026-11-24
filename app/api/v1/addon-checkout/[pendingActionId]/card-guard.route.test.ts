@@ -26,7 +26,7 @@ function makeRequest(method: string, body: unknown) {
 
 describe("addon-checkout — mapeamento do método indisponível", () => {
   it("POST /pay -> 422 quando o UseCase recusa o cartão", async () => {
-    const response = await pay(makeRequest("POST", { billingType: "CREDIT_CARD" }), params)
+    const response = await pay(makeRequest("POST", { billingType: "CREDIT_CARD", termsAccepted: true }), params)
     const json = await response.json()
 
     expect(response.status).toBe(422)
@@ -43,7 +43,7 @@ describe("addon-checkout — mapeamento do método indisponível", () => {
   it("falhas comuns continuam 400", async () => {
     createPaymentMock.mockResolvedValueOnce(new Output(false, [], ["Esta ação já foi processada"], null))
 
-    const response = await pay(makeRequest("POST", { billingType: "PIX" }), params)
+    const response = await pay(makeRequest("POST", { billingType: "PIX", termsAccepted: true }), params)
 
     expect(response.status).toBe(400)
   })
@@ -51,8 +51,19 @@ describe("addon-checkout — mapeamento do método indisponível", () => {
   it("sucesso continua 201", async () => {
     createPaymentMock.mockResolvedValueOnce(new Output(true, ["ok"], [], { paymentId: "pay_1" }))
 
-    const response = await pay(makeRequest("POST", { billingType: "PIX" }), params)
+    const response = await pay(makeRequest("POST", { billingType: "PIX", termsAccepted: true }), params)
 
     expect(response.status).toBe(201)
+  })
+
+  it("sem aceite dos termos responde 400 e não cria cobrança", async () => {
+    createPaymentMock.mockClear()
+
+    const response = await pay(makeRequest("POST", { billingType: "PIX" }), params)
+    const json = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(json.errorMessages).toEqual(["Aceite os termos de uso para continuar."])
+    expect(createPaymentMock).not.toHaveBeenCalled()
   })
 })

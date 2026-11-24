@@ -16,7 +16,7 @@ export const COMPOSE_FILE = "docker-compose.test.yml";
 /**
  * Nome do projeto isolado por worktree. O `name: leadflow-test` fixo no YAML
  * faz duas worktrees (sessões Claude em paralelo) caírem no mesmo projeto —
- * mesmos container_name e mesmos volumes nomeados (.next, node_modules).
+ * mesmos volumes nomeados (.next, node_modules) e mesmos nomes de container.
  * Um `next build` de uma worktree escrevendo no `.next` compartilhado
  * enquanto outra lê/escreve o mesmo volume corrompe o manifest de rotas ao
  * acaso ("client reference manifest does not exist" em rotas não relacionadas

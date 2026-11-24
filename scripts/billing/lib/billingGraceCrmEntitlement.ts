@@ -5,7 +5,7 @@ export const BILLING_GRACE_CRM_ENTITLEMENT_POLICY_VERSION = 1
 export const BILLING_GRACE_CRM_ENTITLEMENT_SOURCE =
   "billing_grace_crm_entitlement"
 export const BILLING_GRACE_CRM_ENTITLEMENT_EXPIRY =
-  "2026-11-19T03:00:00.000Z"
+  "2026-12-06T03:00:00.000Z"
 export const BILLING_GRACE_CRM_ENTITLEMENT_CHANGE_TYPE =
   "temporary_crm_entitlement_granted"
 export const BILLING_GRACE_CRM_ENTITLEMENT_APPLY_ENV =

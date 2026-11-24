@@ -2,9 +2,18 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 
+/** Item linkável antes da página atual. `onClick` permite navegação interna (estado da tela) sem trocar de rota. */
+export interface BreadcrumbTrailItem {
+  label: string;
+  href: string;
+  onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+}
+
 export interface BreadcrumbOverride {
   label: string;
   href?: string;
+  /** Itens linkáveis exibidos antes de `label`, do mais externo para o mais interno. */
+  trail?: BreadcrumbTrailItem[];
 }
 
 interface PageBreadcrumbContextValue {

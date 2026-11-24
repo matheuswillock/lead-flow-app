@@ -15,16 +15,19 @@ export type BillingGracePaymentQuote = {
   } | null
 }
 
+/** Carimbo do aceite dos termos na renovação; a rota grava o mesmo par que o add-on grava. */
+export type BillingGraceTermsAcceptance = { termsAcceptedAt: string; termsVersion: string }
+
 export interface IBillingGracePaymentService {
   getQuote(supabaseId: string): Promise<BillingGracePaymentQuote>
-  createPixPayment(input: {
+  createPixPayment(input: BillingGraceTermsAcceptance & {
     supabaseId: string
     idempotencyKey: string
     cycle: string
     /** Usuários adicionais que o master mantém; ausente = todos. */
     keptUserIds?: string[]
   }): Promise<BillingGracePayment>
-  createCardPayment(input: {
+  createCardPayment(input: BillingGraceTermsAcceptance & {
     supabaseId: string; idempotencyKey: string; cycle: string; keptUserIds?: string[]; cardToken: string; installments: number
   }): Promise<BillingGracePayment>
   getPayment(input: { id: string; supabaseId: string }): Promise<BillingGracePayment>

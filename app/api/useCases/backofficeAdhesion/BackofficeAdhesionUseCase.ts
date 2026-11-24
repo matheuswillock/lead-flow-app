@@ -24,7 +24,7 @@ import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
   BackofficeAdhesionPaymentWebhookInput,
-  BackofficeAdhesionPixCheckoutInput,
+  BackofficeAdhesionPixCheckoutRequest,
   BackofficeAdhesionUpdateInput,
   IBackofficeAdhesionService,
 } from "@/app/api/services/backofficeAdhesion/IBackofficeAdhesionService"
@@ -419,7 +419,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
 
   async createPixCheckout(
     token: string,
-    input: BackofficeAdhesionPixCheckoutInput,
+    input: BackofficeAdhesionPixCheckoutRequest,
     idempotencyKey: string
   ): Promise<Output> {
     try {

@@ -162,20 +162,12 @@ export function SelfCheckoutCycleSelector({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-bold text-primary"
-        >
-          1
-        </span>
-        <h2
-          id="self-checkout-cycles-title"
-          className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground"
-        >
-          Período do plano
-        </h2>
-      </div>
+      <h2
+        id="self-checkout-cycles-title"
+        className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground"
+      >
+        Período do plano
+      </h2>
       <RadioGroup
         aria-labelledby="self-checkout-cycles-title"
         value={value ?? ""}
