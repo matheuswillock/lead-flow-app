@@ -83,6 +83,7 @@ import type { IBackofficeAdhesionPixPaymentService } from "./IBackofficeAdhesion
 import { createBackofficeAdhesionPixPaymentService } from "./backofficeAdhesionPixPaymentComposition"
 import { isCardProviderPayment, resolvePixProvider, toAdhesionPixView } from "./backofficeAdhesionPixHelpers"
 import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types"
+import { buildTermsAcceptanceNote } from "@/lib/legal/terms-acceptance"
 import type {
   BackofficeAdhesionCardCheckoutInput,
   BackofficeAdhesionCheckoutInput,
@@ -94,6 +95,7 @@ import type {
   BackofficeAdhesionPaymentDTO,
   BackofficeAdhesionPaymentWebhookInput,
   BackofficeAdhesionPixCheckoutInput,
+  BackofficeAdhesionPixCheckoutRequest,
   BackofficeAdhesionProviderPaymentInput,
   BackofficeAdhesionPublicDTO,
   BackofficeAdhesionTokenError,
@@ -1617,6 +1619,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     })
   }
 
+  /** Carimba o aceite dos documentos legais nas notas do lead, mesmo lugar do auto-checkout. */
+  private async registerTermsAcceptance(leadId: string): Promise<void> {
+    await this.repo.appendLeadNote(
+      leadId,
+      buildTermsAcceptanceNote(new Date().toISOString(), LEGAL_DOCUMENTS_VERSION)
+    )
+  }
+
   async createCheckout(
     token: string,
     input: BackofficeAdhesionCheckoutInput
@@ -1647,6 +1657,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(PIX_PENDING_SWITCH_BLOCKED_MESSAGE)
     }
 
+    await this.registerTermsAcceptance(adhesion.leadId)
     if (adhesion.asaasPaymentId) {
       if (adhesion.status === "paid") {
         return mapPayment(adhesion)
@@ -1834,7 +1845,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
    */
   async createPixCheckout(
     token: string,
-    input: BackofficeAdhesionPixCheckoutInput,
+    input: BackofficeAdhesionPixCheckoutRequest,
     idempotencyKey: string
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError> {
     const validation = await validateBackofficeAdhesionToken(token)
@@ -1853,6 +1864,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(ASAAS_ADHESION_PIX_MISMATCH_MESSAGE)
     }
 
+    await this.registerTermsAcceptance(adhesion.leadId)
     const payer = this.normalizePixPayer(input)
     const existingProfileId = await this.repo.findProfileIdByEmail(payer.email)
     if (existingProfileId) {
@@ -1925,6 +1937,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error(ASAAS_ADHESION_PIX_MISMATCH_MESSAGE)
     }
 
+    await this.registerTermsAcceptance(adhesion.leadId)
     const payer = this.normalizePixPayer(input.payer)
     const existingProfileId = await this.repo.findProfileIdByEmail(payer.email)
     if (existingProfileId) {

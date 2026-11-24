@@ -2142,6 +2142,8 @@ fixed fixed
     DateTime confirmed_at "❓"
     DateTime completed_at "❓"
     String failure_reason "❓"
+    DateTime terms_accepted_at "❓"
+    String terms_version "❓"
     String revoked_profile_ids 
     DateTime created_at 
     DateTime updated_at 

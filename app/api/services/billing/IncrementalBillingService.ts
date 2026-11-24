@@ -5,6 +5,7 @@ import { asaasApi, asaasFetch, createAsaasClient, type AsaasAccountId } from "@/
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
+import { calculateProportionalAddonCharge } from "./proportionalAddonCharge";
 import {
   createAbacatePayProvider,
   createPaymentProviderRouter,
@@ -666,24 +667,15 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     });
     const billingDelta = projection.billingDelta;
 
+    // Lança ProportionalChargeError quando o master não tem data de fim do ciclo.
     const endDate = await billingRepository.getSubscriptionEndDate(masterId);
-    const now = new Date();
-
-    let remainingMonths = 1;
-    if (endDate && !Number.isNaN(endDate.getTime())) {
-      const monthsRemaining = Math.round(
-        (endDate.getFullYear() - now.getFullYear()) * 12 + (endDate.getMonth() - now.getMonth())
-      );
-      remainingMonths = Math.max(1, monthsRemaining);
-    }
-
-    const totalCharge = roundCurrency(billingDelta * remainingMonths);
+    const { remainingMonths, totalCharge } = calculateProportionalAddonCharge({ billingDelta, endDate });
 
     return {
       billingDelta,
       remainingMonths,
       totalCharge,
-      maxInstallments: remainingMonths,
+      maxInstallments: Math.floor(remainingMonths),
     };
   }
 }

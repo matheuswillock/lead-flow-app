@@ -4,6 +4,10 @@ import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService
 import { asaasSubscriptionSyncService } from "@/app/api/services/billing/AsaasSubscriptionSyncService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import {
+  calculateProportionalAddonCharge,
+  ProportionalChargeError,
+} from "@/app/api/services/billing/proportionalAddonCharge";
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { getFullUrl } from "@/lib/utils/app-url";
 import {
@@ -80,8 +84,6 @@ function shouldSync(lastSyncedAt: Date | null | undefined): boolean {
   if (!lastSyncedAt) return true;
   return Date.now() - lastSyncedAt.getTime() > SYNC_STALE_MS;
 }
-
-const roundCurrency = (value: number) => Number(value.toFixed(2));
 
 export class SubscriptionManagementUseCase implements ISubscriptionManagementUseCase {
   private async getBillingOwnerBySupabaseId(supabaseId: string, options?: { masterOnly?: boolean }) {
@@ -302,11 +304,16 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       const endDate = await billingRepository.getSubscriptionEndDate(owner.id);
-      const now = new Date();
-      const remainingMonths = endDate
-        ? Math.max(1, Math.round((endDate.getFullYear() - now.getFullYear()) * 12 + (endDate.getMonth() - now.getMonth())))
-        : 1;
-      const totalCharge = roundCurrency(projection.billingDelta * remainingMonths);
+      let charge: ReturnType<typeof calculateProportionalAddonCharge>;
+      try {
+        charge = calculateProportionalAddonCharge({ billingDelta: projection.billingDelta, endDate });
+      } catch (error) {
+        if (error instanceof ProportionalChargeError) {
+          return new Output(false, [], [error.message], null);
+        }
+        throw error;
+      }
+      const { remainingMonths, totalCharge } = charge;
       const addonLabel = resource === "team" ? "Créditos de times" : "Créditos de usuários";
       const addonDetail = `${quantity} ${quantity === 1 ? "crédito" : "créditos"} de ${
         resource === "team" ? "time" : "usuário"

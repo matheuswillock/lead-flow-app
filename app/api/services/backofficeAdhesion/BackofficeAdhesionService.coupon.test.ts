@@ -172,6 +172,7 @@ function makeHarness(coupons: CouponRow[] = [buildCoupon()], validationEnabled =
   const repo = {
     findProfileIdByEmail: mock(async (_email: string): Promise<string | null> => null),
     createSelfCheckoutLead: mock(async (_input: unknown) => ({ id: "lead-new" })),
+    appendLeadNote: mock(async (_leadId: string, _note: string) => {}),
     createAndMoveLeadToAdhesion: mock(async (data: Record<string, unknown>) => buildAdhesion({ ...data, id: "adhesion-1" })),
     findById: mock(async (_id: string): Promise<BackofficeAdhesionWithRelations | null> => null),
     updateCheckoutData: mock(async (_id: string, data: Record<string, unknown>) => buildAdhesion({ totalAmount: "0", ...data })),
@@ -216,7 +217,8 @@ function makeHarness(coupons: CouponRow[] = [buildCoupon()], validationEnabled =
 }
 
 const payer = { fullName: "Maria Souza", email: "maria@example.com", phone: "11999999999", cpfCnpj: "52998224725" }
-const cardInput = (installments: number) => ({ cardToken: "ctok_test", installments, payer })
+const acceptedPayer = { ...payer, termsAccepted: true as const }
+const cardInput = (installments: number) => ({ cardToken: "ctok_test", installments, payer, termsAccepted: true as const })
 
 let checkoutEmail: ReturnType<typeof spyOn>
 const processEnv = process.env as Record<string, string | undefined>
@@ -402,7 +404,7 @@ describe("auto-checkout: o valor COBRADO leva o desconto (achado crítico)", () 
         monthlyTotalAmount: String(created.monthlyTotalAmount),
       }),
     )
-    await h.service.createPixCheckout("tok", payer, "idem-1")
+    await h.service.createPixCheckout("tok", acceptedPayer, "idem-1")
 
     const [pixInput] = (h.pixPayments.createPixPayment.mock.calls as unknown[][])[0]
     expect(pixInput).toMatchObject({ adhesionId: "adhesion-1", amountCents: 24273 })
@@ -418,7 +420,7 @@ describe("auto-checkout: o valor COBRADO leva o desconto (achado crítico)", () 
       buildAdhesion({ ...created, totalAmount: String(created.totalAmount), monthlyTotalAmount: String(created.monthlyTotalAmount) }),
     )
 
-    await h.service.createPixCheckout("tok", payer, "idem-2")
+    await h.service.createPixCheckout("tok", acceptedPayer, "idem-2")
 
     expect((h.pixPayments.createPixPayment.mock.calls as unknown[][])[0][0]).toMatchObject({ amountCents: 26970 })
     expect(created).not.toHaveProperty("couponId")
@@ -573,7 +575,7 @@ describe("auto-checkout: usuários e times adicionais", () => {
     h.repo.findById.mockResolvedValue(
       buildAdhesion({ ...created, totalAmount: String(created.totalAmount), monthlyTotalAmount: String(created.monthlyTotalAmount) }),
     )
-    await h.service.createPixCheckout("tok", payer, "idem-extras")
+    await h.service.createPixCheckout("tok", acceptedPayer, "idem-extras")
     expect((h.pixPayments.createPixPayment.mock.calls as unknown[][])[0][0]).toMatchObject({ amountCents: 41900 })
   })
 

@@ -179,7 +179,7 @@ function SharedPublicAdhesionContainer() {
       startValue: startDate ? formatDate(startDate) : "—",
       dueLabel: "Vencimento",
       dueValue: dueDate ? formatDate(dueDate) : "—",
-      issuedLabel: "Emitido por Corretor Studio",
+      issuedLabel: "Vendido por Corretor Studio",
       issuedValue: formatDate(new Date()),
     }
   }, [details])
@@ -250,6 +250,7 @@ function SharedPublicAdhesionContainer() {
       // 4xx (assertBillingTypeAllowed). Sem o campo, a falha é fechada em PIX.
       pixOnly={usesProviderPix}
       availableMethods={details?.availableBillingTypes}
+      abacatePublicKey={details?.cardPublicKey ?? null}
       attemptStorageKey={getAttemptStorageKey(token)}
       details={mappedDetails}
       payment={mappedPayment}
@@ -274,17 +275,8 @@ function SharedPublicAdhesionContainer() {
           state: input.state.trim(),
           billingType: input.billingType,
           installments: input.billingType === "CREDIT_CARD" ? input.installments : 1,
-          ...(input.billingType === "CREDIT_CARD"
-            ? {
-                creditCard: {
-                  holderName: input.creditCard.holderName.trim(),
-                  number: input.creditCard.number,
-                  expiryMonth: input.creditCard.expiryMonth,
-                  expiryYear: input.creditCard.expiryYear,
-                  ccv: input.creditCard.ccv,
-                },
-              }
-            : {}),
+          // Cartão só como token do Abacate Pay: o número nunca passa pela página nem pelo servidor.
+          ...(input.cardToken ? { cardToken: input.cardToken } : {}),
         }
         await submitCheckout(payload)
       }}

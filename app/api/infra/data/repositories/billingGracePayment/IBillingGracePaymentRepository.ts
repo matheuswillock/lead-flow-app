@@ -14,6 +14,9 @@ export type CreateBillingGracePaymentInput = {
   quoteExpiresAt: Date
   /** Usuários que o master não manteve; saem dos times ao confirmar o pagamento. */
   revokedProfileIds: string[]
+  /** Aceite dos documentos legais (ISO), carimbado pela rota de renovação. */
+  termsAcceptedAt?: string
+  termsVersion?: string
 }
 
 export interface IBillingGracePaymentRepository {
