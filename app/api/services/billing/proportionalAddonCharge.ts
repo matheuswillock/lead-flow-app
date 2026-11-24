@@ -43,12 +43,14 @@ function monthsUntil(today: number, endDay: number): number {
 }
 
 // Sem data de fim não há cobrança possível: lança em vez de cobrar um mês por suposição.
+// Sem delta (assinatura permanente) não há cobrança a calcular, então não exige a data.
 export function calculateProportionalAddonCharge({
   billingDelta,
   endDate,
   now = new Date(),
 }: ProportionalAddonChargeInput): ProportionalAddonCharge {
   if (!endDate || Number.isNaN(endDate.getTime())) {
+    if (billingDelta <= 0) return { remainingMonths: 0, totalCharge: 0 };
     throw new ProportionalChargeError();
   }
 

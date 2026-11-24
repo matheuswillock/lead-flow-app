@@ -1,6 +1,6 @@
 # Briefing de design: checkouts em fases
 
-Status: **aguardando confirmação do usuário.** Nenhum JSX foi escrito. Este briefing cobre o kit compartilhado e as quatro jornadas com formulário.
+Status: **aprovado pelo usuário** (confirmado na conversa antes da implementação). O JSX foi escrito depois dessa aprovação. Este briefing cobre o kit compartilhado e as quatro jornadas com formulário.
 
 ## 1. Trabalho e público
 
@@ -71,4 +71,4 @@ Status: **aguardando confirmação do usuário.** Nenhum JSX foi escrito. Este b
 
 ## 8. Confirmação
 
-Confirme este briefing ou peça uma correção. Depois disso, a implementação começa pelo kit compartilhado e pela jornada A, com JSX só depois da aprovação.
+Briefing aprovado pelo usuário. A implementação seguiu pelo kit compartilhado e pela jornada A, com o JSX escrito só depois dessa aprovação.

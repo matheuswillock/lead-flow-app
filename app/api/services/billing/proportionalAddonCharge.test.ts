@@ -72,6 +72,13 @@ describe("calculateProportionalAddonCharge", () => {
     expect(charge.totalCharge).toBe(10);
   });
 
+  it("sem data de fim e sem delta (assinatura permanente) devolve cobrança zero, sem lançar", () => {
+    expect(calculateProportionalAddonCharge({ billingDelta: 0, endDate: null, now })).toEqual({
+      remainingMonths: 0,
+      totalCharge: 0,
+    });
+  });
+
   it("sem data de fim lança ProportionalChargeError (nunca cobra 1 mês em silêncio)", () => {
     expect(() => calculateProportionalAddonCharge({ billingDelta: 40, endDate: null, now })).toThrow(
       ProportionalChargeError
