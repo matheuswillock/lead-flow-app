@@ -81,10 +81,19 @@ test.describe("cadastro de usuário adicional exige telefone", () => {
 
     await dialog.getByLabel("Telefone").fill("11999998888");
     await expect(dialog.getByLabel("Telefone")).toHaveValue("(11) 99999-8888");
+    // Dígito a mais digitado num número completo não pode trocar o DDD.
+    await dialog.getByLabel("Telefone").press("End");
+    await page.keyboard.type("7");
+    await expect(dialog.getByLabel("Telefone")).toHaveValue("(11) 99999-8888");
+    // O telefone é de outra pessoa: o navegador não pode autopreencher o de quem está logado.
+    await expect(dialog.getByLabel("Telefone")).toHaveAttribute("autocomplete", "off");
     // Alvo de toque do campo novo em 375px, com o diálogo aberto (os demais controles já existiam).
     await page.setViewportSize({ width: 375, height: 812 });
     const box = await dialog.getByLabel("Telefone").boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    // Abaixo de 16px o Safari do iPhone dá zoom ao focar o campo e quebra o layout do diálogo.
+    const fontSize = await dialog.getByLabel("Telefone").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(fontSize).toBeGreaterThanOrEqual(16);
     await page.setViewportSize({ width: 1280, height: 720 });
 
     await dialog.getByRole("button", { name: "Criar Usuário" }).click();

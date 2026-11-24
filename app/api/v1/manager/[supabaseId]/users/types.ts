@@ -1,16 +1,14 @@
 // DTOs para os endpoints de Manager Users
 import { z } from "zod";
 import { UserRole, UserFunction } from "@prisma/client";
+import { isRegistrationPhone } from "@/lib/masks";
 
 // Request Schemas
 export const CreateUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("Email inválido"),
   // Telefone é obrigatório no cadastro: o contrato de pagamento exige celular em qualquer cobrança.
-  phone: z.string().trim().refine((value) => {
-    const digits = value.replace(/\D/g, "");
-    return digits.length >= 10 && digits.length <= 13;
-  }, "Telefone inválido"),
+  phone: z.string().trim().refine(isRegistrationPhone, "Telefone inválido"),
   role: z.enum(["manager", "backoffice", "operator"], {
     message: "Role deve ser 'manager', 'backoffice' ou 'operator'"
   }),

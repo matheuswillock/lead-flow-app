@@ -140,6 +140,30 @@ export function isValidPhone(phone: string): boolean {
   return numbers.length === 10 || numbers.length === 11;
 }
 
+/**
+ * Telefone exigido no cadastro de usuário: 10 a 13 dígitos (nacional, com ou sem +55).
+ * Regra única dos caminhos que criam usuário; não repetir a contagem de dígitos.
+ */
+export function isRegistrationPhone(phone: string | null | undefined): boolean {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 13;
+}
+
+/**
+ * Dígitos do telefone depois de uma edição no campo. Digitar além de 11 dígitos é ignorado:
+ * o `maskPhone` ficaria com os 11 últimos e trocaria o DDD sem avisar. Colar segue normalizando (+55…).
+ */
+export function applyPhoneInput(previousDigits: string, rawInput: string, isTyping: boolean): string {
+  const overflowsWhileTyping = isTyping && previousDigits.length >= 11 && unmask(rawInput).length > 11;
+  return overflowsWhileTyping ? previousDigits : unmask(maskPhone(rawInput));
+}
+
+/** Mensagem de recusa do telefone de cadastro, ou null quando ele é válido. */
+export function registrationPhoneError(phone: string | null | undefined): string | null {
+  if (!(phone ?? "").trim()) return "Telefone é obrigatório";
+  return isRegistrationPhone(phone) ? null : "Telefone inválido";
+}
+
 
 /**
  * Retorna o documento formatado com máscara de CPF ou CNPJ, dependendo do número de dígitos

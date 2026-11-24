@@ -56,7 +56,7 @@ Reuso total de `Input`, `Form*` e `Label`. Alvo de toque: os controles do diálo
 
 ## Fora de escopo e riscos
 
-- Rota legada `operators/payments/create` e o upgrade legado (`SubscriptionUpgradeUseCase`): sem chamador na interface. Não alterados.
+- Caminhos legados sem chamador na interface (`operators/payments/create`, `SubscriptionUpgradeUseCase.createOperatorPayment` e `CheckoutAsaasUseCase.createOperatorCheckout`): **também exigem telefone no servidor** (decisão posterior do responsável). O `PendingOperator` ganhou a coluna `phone` (migration `20261124120000_add-phone-pending-operator.sql`) e o telefone vai para o perfil quando o pagamento confirma. Pendências antigas ficam sem telefone.
 - Usuários adicionais com cobrança pendente: o telefone vai no `payload` do `PendingAction`, sem migration. Ações pendentes criadas antes do deploy não têm telefone e continuam sendo concluídas sem ele.
 - Cadastro de usuário do backoffice (staff): não alterado.
 - Duplicidade de telefone: não bloqueio no cadastro do usuário adicional. A edição de perfil já recusa telefone usado por outro perfil, então quem tiver o mesmo número de outra pessoa encontrará esse erro ao editar o próprio telefone.
