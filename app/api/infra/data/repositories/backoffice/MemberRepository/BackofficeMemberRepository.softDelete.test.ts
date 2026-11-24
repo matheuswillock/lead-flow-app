@@ -9,7 +9,7 @@ const tx = {
       email: "closer@example.com",
       fullName: "Closer Exemplo",
     })),
-    update: mock(async () => ({})),
+    update: mock(async (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) => ({})),
   },
   lead: { updateMany: mock(async (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) => ({ count: 0 })) },
   teamMember: { deleteMany: mock(async () => ({ count: 1 })) },
@@ -21,9 +21,25 @@ mock.module("@/app/api/infra/data/prisma", () => ({
 }))
 
 const { BackofficeMemberRepository } = await import("./BackofficeMemberRepository")
+const { removedProfileEmailFor } = await import("@/lib/account/removed-profile-email")
 
 beforeEach(() => {
   tx.lead.updateMany.mockClear()
+})
+
+describe("BackofficeMemberRepository.softDeleteMemberCascade — libera o e-mail do removido", () => {
+  it("troca o e-mail do perfil removido por um tombstone, senão o e-mail fica preso para nova adesão", async () => {
+    tx.profile.update.mockClear()
+
+    await new BackofficeMemberRepository().softDeleteMemberCascade("closer-1", "admin-1")
+
+    const profileCall = tx.profile.update.mock.calls
+      .map(([args]) => args)
+      .find((args) => args.where.id === "closer-1")
+
+    expect(profileCall?.data).toMatchObject({ email: removedProfileEmailFor("closer-1") })
+    expect(profileCall?.data.deletedAt).toBeInstanceOf(Date)
+  })
 })
 
 describe("BackofficeMemberRepository.softDeleteMemberCascade — closer que sai da corretora", () => {
