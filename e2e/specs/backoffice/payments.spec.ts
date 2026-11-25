@@ -340,14 +340,7 @@ test.describe("app/backoffice/(app)/payments", () => {
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0]).toMatchObject({ clientId: noPhoneClientId, billingType: "PIX", amount: 150, phone: "11988887777" });
     expect(posts[0]).not.toHaveProperty("cpfCnpj");
-
-    await page.goto("/backoffice/payments");
-    await expect(page.getByRole("button", { name: "Nova Cobrança" })).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Nova Cobrança" }).click();
-    await dialog.getByRole("combobox").first().click();
-    await page.getByRole("option", { name: noPhoneClientName }).click();
-    // O número ficou salvo no cadastro: o campo não volta a aparecer.
-    await expect(phone).toHaveCount(0);
+    // O salvamento no cadastro é coberto pelos testes unitários (updatePhone); aqui o POST é interceptado, então o cadastro não muda.
     // Touch target e overflow com o dialog aberto; este passo vem por último porque recarrega a página.
     await runResponsiveChecks(page);
   });
