@@ -155,6 +155,8 @@ export interface IProfileRepository {
     supabaseId: string;
     fullName: string;
     email: string;
+    /** Ausente só em PendingOperator criado antes de o telefone ser obrigatório. */
+    phone?: string | null;
     role: UserRole;
     functions: ("SDR" | "CLOSER")[];
     managerId: string;

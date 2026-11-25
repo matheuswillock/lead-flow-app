@@ -3123,6 +3123,9 @@ model PendingOperator {
   teamId          String?        @db.Uuid
   name            String         @db.Text
   email           String         @db.Text
+  // Telefone do operador, levado ao perfil criado quando o pagamento confirma. Nulo só em
+  // pendências criadas antes de o telefone ser obrigatório.
+  phone           String?        @db.Text
   role            String         @db.Text // "operator" geralmente
   functions       UserFunction[] @default([])
   paymentId       String?        @db.Text // checkoutSessionId no Asaas (opcional para assinaturas)
@@ -3833,8 +3836,9 @@ model PendingAction {
   // instante em que o paymentId é atribuído) deixaria um pay_ colidindo
   // entre contas aplicar a ação errada. Default primary — mesmo motivo de
   // Profile.asaasCustomerAccount; só passa a valer algo quando paymentId é
-  // preenchido (updatePaymentId grava os dois juntos).
-  asaasAccount AsaasAccount        @default(primary)
+  // preenchido (updatePaymentId grava os dois juntos). Nullable: ação de
+  // provedor (provider preenchido) não tem conta Asaas — fica null.
+  asaasAccount AsaasAccount?       @default(primary)
   // Fase B: rastreamento do provider AbacatePay. Novo para cobrança = ABACATE_PAY;
   // cobrança Asaas antiga (paymentId já gravado) não muda o campo (null/vazio).
   provider             String?        @db.Text

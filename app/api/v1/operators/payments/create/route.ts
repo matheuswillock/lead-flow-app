@@ -8,6 +8,7 @@ import { rejectUnavailableBillingTypeForMaster } from "@/app/api/services/billin
 import { emailService } from "@/lib/services/EmailService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { registrationPhoneError } from "@/lib/masks";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
         new Output(false, [], ["Nome e e-mail do operador sao obrigatorios"], null),
         { status: 400 }
       );
+    }
+
+    const phoneError = registrationPhoneError(operatorData.phone);
+    if (phoneError) {
+      return NextResponse.json(new Output(false, [], [phoneError], null), { status: 400 });
     }
 
     const manager = await prisma.profile.findUnique({
@@ -117,6 +123,7 @@ export async function POST(request: NextRequest) {
           supabaseId: crypto.randomUUID(),
           email: operatorData.email,
           fullName: operatorData.name,
+          phone: operatorData.phone,
           role: operatorData.role || "operator",
           functions: operatorData.functions ?? [],
         },
@@ -156,6 +163,7 @@ export async function POST(request: NextRequest) {
           supabaseId: crypto.randomUUID(),
           email: operatorData.email,
           fullName: operatorData.name,
+          phone: operatorData.phone,
           role: operatorData.role || "operator",
           functions: operatorData.functions ?? [],
         },
@@ -193,6 +201,7 @@ export async function POST(request: NextRequest) {
         payload: {
           operatorName: operatorData.name,
           operatorEmail: operatorData.email,
+          phone: operatorData.phone,
           operatorRole: operatorData.role || "operator",
           operatorFunctions: operatorData.functions ?? [],
           billingType,

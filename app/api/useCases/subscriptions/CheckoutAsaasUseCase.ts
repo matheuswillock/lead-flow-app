@@ -7,6 +7,7 @@ import { getFullUrl } from "@/lib/utils/app-url";
 import { toBillingCycle } from "@/lib/billing/resolvePrice";
 import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import { invalidateAccountAccessStatusCache } from "@/lib/cache/invalidation";
+import { registrationPhoneError } from "@/lib/masks";
 import type { UserRole } from "@prisma/client";
 import {
   profileRepository as defaultProfileRepository,
@@ -81,6 +82,7 @@ export interface CreateOperatorCheckoutData {
   operatorData: {
     name: string;
     email: string;
+    phone: string;
     role: string;
     functions?: ("SDR" | "CLOSER")[];
   };
@@ -409,6 +411,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         operatorEmail: data.operatorData.email
       });
 
+      const phoneError = registrationPhoneError(data.operatorData.phone);
+      if (phoneError) {
+        return new Output(false, [], [phoneError], null);
+      }
+
       // 1. Buscar manager e validar
       const manager = await this.profileRepository.findBySupabaseId(data.managerId);
 
@@ -488,6 +495,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           teamId: resolvedTeamId ?? null,
           name: data.operatorData.name,
           email: data.operatorData.email,
+          phone: data.operatorData.phone,
           role: data.operatorData.role,
           functions: data.operatorData.functions ?? [],
           paymentId: 'pending',
@@ -931,6 +939,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           supabaseId: authUserId,
           fullName: pendingOperator.name,
           email: pendingOperator.email,
+          phone: pendingOperator.phone,
           role: pendingOperator.role as UserRole,
           functions: (pendingOperator.functions ?? []) as ("SDR" | "CLOSER")[],
           managerId: manager.id,

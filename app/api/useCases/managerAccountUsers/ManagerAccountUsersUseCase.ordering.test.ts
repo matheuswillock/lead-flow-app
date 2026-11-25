@@ -62,6 +62,7 @@ mock.module("@/lib/supabase/server", () => ({
 // classe; um mock.module parcial faz o Bun reclamar de export ausente.
 const emailServiceStub = {
   sendOperatorInviteEmail: async () => { eventos.push("email:send") },
+  sendAddOnPendingPaymentEmail: async () => {},
   sendGenericEmail: async () => { eventos.push("email:send") },
   sendEmail: async () => { eventos.push("email:send") },
 }
@@ -208,5 +209,33 @@ describe("ManagerAccountUsersUseCase.createAccountUser — ordem e atomicidade",
     expect(deps.repository.createAccountUserRecords).not.toHaveBeenCalled()
     expect(eventos).not.toContain("supabase:generateLink")
     expect(eventos).not.toContain("tx:commit")
+  })
+})
+
+describe("ManagerAccountUsersUseCase.createAccountUser — telefone do usuário", () => {
+  const COM_TELEFONE = {
+    ...PARAMS,
+    userData: { ...PARAMS.userData, phone: "11999998888" },
+  }
+
+  it("grava o telefone no perfil criado sem cobrança adicional", async () => {
+    eventos.length = 0
+    const deps = montarDependencias()
+    await novoUseCase(deps).createAccountUser(COM_TELEFONE as never)
+
+    const params = deps.repository.createAccountUserRecords.mock.calls[0]?.[0] as { phone?: string }
+    expect(params.phone).toBe("11999998888")
+  })
+
+  it("leva o telefone no payload da cobrança pendente, para o perfil nascer com ele", async () => {
+    eventos.length = 0
+    const deps = montarDependencias()
+    deps.billing.projectBilling = mock(async () => ({ billingDelta: 50, targetRecurringTotal: 150 })) as never
+    deps.billing.calculateProportionalAmount = mock(async () => ({ billingDelta: 50, totalCharge: 50 })) as never
+    const result = await novoUseCase(deps).createAccountUser(COM_TELEFONE as never)
+
+    expect(result.status).toBe(202)
+    const action = deps.repository.createPendingAddUserAction.mock.calls[0] as unknown as [{ payload: { phone?: string } }]
+    expect(action[0].payload.phone).toBe("11999998888")
   })
 })

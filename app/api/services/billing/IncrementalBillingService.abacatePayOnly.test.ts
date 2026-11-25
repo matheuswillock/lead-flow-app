@@ -63,7 +63,7 @@ const cardPaymentMock = mock(async (_input: unknown) => ({
   externalId: "bill_1",
   method: "CARD",
 }))
-const abacatePayProviderFactoryMock = mock(async (_environment: string, _externalAccountContext?: string) => ({
+const abacatePayProviderFactoryMock = mock(async (_selection: { provider: string; environment: string; externalAccountContext: string }) => ({
   createPixPayment: pixPaymentMock,
   createCardPayment: cardPaymentMock,
 }))
@@ -105,7 +105,7 @@ mock.module("@/app/api/infra/data/repositories/billing/BillingRepository", () =>
 mock.module("@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition", () => ({
   resolvePaymentProviderEnvironment: () => "DEV",
   createPaymentProviderRouter: async () => ({ select: routerSelectMock }),
-  createAbacatePayProvider: abacatePayProviderFactoryMock,
+  resolvePaymentProvider: abacatePayProviderFactoryMock,
 }))
 
 mock.module("@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository", () => ({
@@ -199,7 +199,7 @@ describe("IncrementalBillingService — cobrança nova de add-on só via ABACATE
       environment: "DEV",
       requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"],
     })
-    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith("DEV", "abacate-dev")
+    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "abacate-dev" })
     expect(pixPaymentMock).toHaveBeenCalledTimes(1)
     expect(cardPaymentMock).not.toHaveBeenCalled()
     expect(result.paymentId).toBe("provider-bill_1")
@@ -216,7 +216,7 @@ describe("IncrementalBillingService — cobrança nova de add-on só via ABACATE
       environment: "DEV",
       requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"],
     })
-    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith("DEV", "abacate-dev")
+    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "abacate-dev" })
     expect(cardPaymentMock).toHaveBeenCalledTimes(1)
     expect(pixPaymentMock).not.toHaveBeenCalled()
     expect(result.paymentId).toBe("provider-bill_1")
@@ -236,7 +236,7 @@ describe("IncrementalBillingService — cobrança nova de add-on só via ABACATE
       externalAccountContext: "abacate-dev",
     })
     expect(attachProviderAttemptMock.mock.calls[0]?.[0]).toMatchObject({ provider: "ABACATE_PAY" })
-    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith("DEV", "abacate-dev")
+    expect(abacatePayProviderFactoryMock).toHaveBeenCalledWith({ provider: "ABACATE_PAY", environment: "DEV", externalAccountContext: "abacate-dev" })
     expectNoAsaasCall()
   })
 

@@ -40,7 +40,8 @@ export class PaymentProviderConfig {
     const isBlank = (value: unknown) => typeof value !== "string" || value.trim() === ""
     const requiresPublicKey = input.environment !== "PRODUCTION"
     const required = [input.apiKey, input.webhookSecret]
-    if (requiresPublicKey) required.push(input.publicKey as string, input.webhookSigningKey as string)
+    // A chave de assinatura é opcional: o provedor não envia HMAC, e a origem do webhook é provada pelo segredo da URL.
+    if (requiresPublicKey) required.push(input.publicKey as string)
     if (required.some(isBlank)) {
       throw new PaymentProviderError("CONFIGURATION_INVALID", "Configuração do provedor incompleta")
     }

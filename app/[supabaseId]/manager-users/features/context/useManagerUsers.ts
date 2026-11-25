@@ -199,6 +199,7 @@ export function useManagerUsers({
         body: JSON.stringify({
           name: userData.name,
           email: userData.email,
+          phone: userData.phone,
           role: userData.role || 'operator',
           functions: userData.functions,
           billingType: (userData as any).billingType,

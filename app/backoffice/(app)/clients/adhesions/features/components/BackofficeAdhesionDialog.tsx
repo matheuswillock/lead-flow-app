@@ -444,7 +444,7 @@ export function BackofficeAdhesionDialog({
   const isDocRequired = mode === "create" && !isGuest || isExternalBilling
   const canSubmit =
     values.fullName.trim().length >= 2 &&
-    (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
+    ((mode === "edit" && sanitizePhone(values.phone).length === 0) || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
     (!isDocRequired ? hasValidOptionalCpfCnpj : /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (!(isExternalPaid || isExternalBilling || isGuest) || isValidEmail(values.email.trim())) &&
@@ -1047,13 +1047,14 @@ export function BackofficeAdhesionDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-phone">Telefone</Label>
+                <Label htmlFor="adhesion-phone">Telefone{mode === "create" ? " *" : ""}</Label>
                 <Input
                   id="adhesion-phone"
                   placeholder="(99) 99999-9999"
                   value={maskPhone(values.phone)}
                   onChange={(event) => updateValue("phone", sanitizePhone(event.target.value))}
                   disabled={isSubmitting}
+                  required={mode === "create"}
                 />
               </div>
             </div>

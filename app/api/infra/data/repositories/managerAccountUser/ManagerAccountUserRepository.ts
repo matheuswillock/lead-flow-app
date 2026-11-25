@@ -115,6 +115,7 @@ export class ManagerAccountUserRepository implements IManagerAccountUserReposito
       data: {
         fullName: params.fullName,
         email: params.email,
+        phone: params.phone,
         role: params.role,
         functions: params.functions,
         managerId: params.masterId,

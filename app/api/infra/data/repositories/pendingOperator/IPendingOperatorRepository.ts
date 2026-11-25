@@ -21,6 +21,7 @@ export interface CreatePendingOperatorInput {
   teamId?: string | null
   name: string
   email: string
+  phone: string
   role: string
   functions: UserFunction[]
   paymentId: string

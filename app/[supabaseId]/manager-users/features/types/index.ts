@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isRegistrationPhone } from "@/lib/masks";
 
 export type UserFunction = "SDR" | "CLOSER";
 
@@ -82,6 +83,11 @@ export interface ManagerUserTeamSummary {
 export const CreateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo"),
   email: z.string().email("Email inválido"),
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Telefone é obrigatório")
+    .refine(isRegistrationPhone, "Telefone inválido"),
   role: z.enum(["manager", "backoffice", "operator"], {
     message: "Selecione um nível de acesso válido"
   }),

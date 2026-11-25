@@ -993,6 +993,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult> {
     const normalized = this.normalizeCommercialInput(input)
+    // Só a criação exige: editar adesões antigas sem celular não pode travar por isso.
+    if (!normalized.phone) throw new Error("Celular é obrigatório")
     await assertBillingTypeAllowed(normalized.billingType)
     const crmWithRules = await this.getProductForAdhesion(CRM_PRODUCT_SLUG, normalized.productId)
     const options = await this.repo.getOptions()

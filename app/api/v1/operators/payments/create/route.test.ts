@@ -56,7 +56,8 @@ const { POST } = await import("./route")
 
 const originalEnv = { ...process.env }
 
-function makeRequest(billingType: string) {
+// `null` omite o telefone (um `undefined` aqui acionaria o valor padrão do parâmetro).
+function makeRequest(billingType: string, phone: string | null = "11999998888") {
   return new NextRequest("http://localhost/api/v1/operators/payments/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -64,10 +65,41 @@ function makeRequest(billingType: string) {
       managerId: "sb-1",
       teamId: "t1",
       billingType,
-      operatorData: { name: "Op", email: "op@x.com" },
+      operatorData: { name: "Op", email: "op@x.com", ...(phone === null ? {} : { phone }) },
     }),
   })
 }
+
+describe("POST /operators/payments/create — telefone obrigatório", () => {
+  beforeEach(() => {
+    manager.asaasSubscriptionId = null
+    pendingActionCreate.mockClear()
+    sendPendingEmail.mockClear()
+  })
+
+  it("recusa sem telefone, sem criar ação pendente nem enviar e-mail", async () => {
+    const response = await POST(makeRequest("PIX", null))
+
+    expect(response.status).toBe(400)
+    expect(pendingActionCreate).not.toHaveBeenCalled()
+    expect(sendPendingEmail).not.toHaveBeenCalled()
+  })
+
+  it("recusa telefone curto demais", async () => {
+    const response = await POST(makeRequest("PIX", "1199"))
+
+    expect(response.status).toBe(400)
+    expect(pendingActionCreate).not.toHaveBeenCalled()
+  })
+
+  it("leva o telefone no payload da cobrança pendente", async () => {
+    const response = await POST(makeRequest("PIX"))
+
+    expect(response.status).toBe(201)
+    const created = pendingActionCreate.mock.calls[0] as unknown as [{ data: { payload: { phone?: string } } }]
+    expect(created[0].data.payload.phone).toBe("11999998888")
+  })
+})
 
 describe("POST /operators/payments/create — cartão desligado", () => {
   beforeEach(() => {

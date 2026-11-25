@@ -5,13 +5,9 @@ import { asaasApi, asaasFetch, createAsaasClient, type AsaasAccountId } from "@/
 import { asaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/AsaasCustomerGateway";
 import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
-import { calculateProportionalAddonCharge } from "./proportionalAddonCharge";
-import {
-  createAbacatePayProvider,
-  createPaymentProviderRouter,
-  resolvePaymentProviderEnvironment,
-} from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition";
-import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository";
+import { createRoutedProviderCharge } from "@/lib/payment-provider/routed-charge";
+import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types";
+import { calculateProportionalAddonCharge, resolveAddonMaxInstallments } from "./proportionalAddonCharge";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
@@ -262,96 +258,24 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     const externalReference = `pending-action-${input.pendingActionId}`;
     const amountInCents = Math.round(input.amount * 100);
 
-    const environment = resolvePaymentProviderEnvironment();
-    const router = await createPaymentProviderRouter(environment);
-    const capability = billingType === "PIX" ? "PIX" : "CARD";
-    const selected = await router.select({
-      environment,
-      requiredCapabilities: ["ONE_TIME_PAYMENT", capability],
-    });
-
-    const provider = await createAbacatePayProvider(environment, selected.externalAccountContext);
-    const idempotencyKey = `add-on-charge-${input.pendingActionId}-${billingType}`;
-    const session = await paymentProviderSessionRepository.createSession({
-      tenantId: input.master.id,
-      ownerType: "PENDING_ACTION_ADDON",
+    const { selected, session, attempt: updated, outcome } = await createRoutedProviderCharge({
+      ownerType: PAYMENT_PROVIDER_OWNER_TYPES.PENDING_ACTION_ADDON,
       ownerId: input.pendingActionId,
-      idempotencyKey,
-      provider: selected.provider,
-      environment: selected.environment,
-      externalAccountContext: selected.externalAccountContext,
-      route: "NEW_ROUTER",
+      tenantId: input.master.id,
+      idempotencyKey: `add-on-charge-${input.pendingActionId}-${billingType}`,
       routeVersion: "ADD-ON-CHARGE-PHASE-1",
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-    });
-
-    const attempt = await paymentProviderSessionRepository.createAttempt({
-      sessionId: session.id,
-      tenantId: input.master.id,
-      ownerType: "PENDING_ACTION_ADDON",
-      ownerId: input.pendingActionId,
-      now: new Date(),
-      attemptNumber: 1,
-      idempotencyKey,
-      requestFingerprint: JSON.stringify({
-        amountInCents,
-        billingType,
-        externalReference,
-        installments: input.installments ?? 1,
-      }),
-      provider: selected.provider,
-      environment: selected.environment,
-      externalAccountContext: selected.externalAccountContext,
-    });
-
-    const leased = await paymentProviderSessionRepository.acquireAttemptLease({
-      attemptId: attempt.id,
-      tenantId: input.master.id,
-      ownerType: "PENDING_ACTION_ADDON",
-      ownerId: input.pendingActionId,
-      purpose: "PAYMENT",
-      now: new Date(),
-      ttlMs: 60_000,
-    });
-    // Achado Codex (PR #1407): PENDING já foi aceita pelo provedor (corrida ou retry); cobrar de novo duplica a cobrança.
-    if (leased.status !== "CREATED") {
-      throw new Error("Cobrança já enviada ao provedor para esta ação; atualize a página para ver o pagamento");
-    }
-
-    const common = {
+      billingType,
       amountInCents,
+      externalReference,
       customer: {
         name: input.customerOverride?.fullName || input.master.fullName || input.master.email,
         email: input.customerOverride?.email || input.master.email,
         taxId: input.customerOverride?.cpfCnpj || input.master.cpfCnpj || "",
         cellphone: input.customerOverride?.phone || input.master.phone || "",
       },
-      externalReference,
-      metadata: { pendingActionId: input.pendingActionId, attemptId: attempt.id },
-    };
-
-    const outcome =
-      billingType === "PIX"
-        ? await provider.createPixPayment(common)
-        : await provider.createCardPayment({
-            ...common,
-            token: input.cardToken!,
-            tokenIssuedAt: new Date(),
-            installments: input.installments ?? 1,
-          });
-
-    const updated = await paymentProviderSessionRepository.updateAttemptWithLease({
-      attemptId: leased.id,
-      tenantId: input.master.id,
-      ownerType: "PENDING_ACTION_ADDON",
-      ownerId: input.pendingActionId,
-      lease: leased.lease,
-      now: new Date(),
-      status: outcome.status,
-      expectedStatus: "CREATED",
-      operation: "PAYMENT",
-      externalId: "externalId" in outcome ? outcome.externalId : null,
-      ...(outcome.status === "PENDING" && "pix" in outcome ? { paymentInstructions: outcome.pix } : {}),
+      metadata: { pendingActionId: input.pendingActionId },
+      cardToken: input.cardToken,
+      installments: input.installments,
     });
 
     // Registrar provider + attempt no PendingAction
@@ -670,12 +594,13 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     // Lança ProportionalChargeError quando o master não tem data de fim do ciclo.
     const endDate = await billingRepository.getSubscriptionEndDate(masterId);
     const { remainingMonths, totalCharge } = calculateProportionalAddonCharge({ billingDelta, endDate });
+    const cycle = await billingRepository.getSubscriptionCycle(masterId);
 
     return {
       billingDelta,
       remainingMonths,
       totalCharge,
-      maxInstallments: Math.floor(remainingMonths),
+      maxInstallments: resolveAddonMaxInstallments({ cycle, remainingMonths }),
     };
   }
 }

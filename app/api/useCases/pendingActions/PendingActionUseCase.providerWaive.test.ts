@@ -74,7 +74,7 @@ const baseAction = {
   payload: { email: "novo@example.test", name: "Novo", role: "operator", teamId: "team-1" },
   checkoutId: null,
   paymentId: "provider-xyz",
-  asaasAccount: "legacy" as const,
+  asaasAccount: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   master: {
@@ -124,7 +124,7 @@ describe("PendingActionUseCase — dispensa não aceita cobrança AbacatePay", (
     const result = await useCase.forceApplyPendingActionWithoutCharge("pa-1", { reason: "teste" })
 
     expect(result.isValid).toBe(false)
-    expect(result.errorMessages).toContain("Cobrança AbacatePay não pode ser dispensada por este fluxo")
+    expect(result.errorMessages).toContain("Cobrança do provedor de pagamento não pode ser dispensada por este fluxo")
     expect(requestLog).toHaveLength(0)
     expect(runInTransactionMock).not.toHaveBeenCalled()
     expect(clearPaymentIdMock).not.toHaveBeenCalled()
