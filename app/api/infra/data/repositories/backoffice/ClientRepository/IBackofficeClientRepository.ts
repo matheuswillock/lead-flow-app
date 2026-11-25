@@ -16,4 +16,5 @@ export interface IBackofficeClientRepository {
   findById(id: string): Promise<BackofficeClient | null>
   updateAsaasCustomerId(id: string, asaasCustomerId: string): Promise<BackofficeClient>
   updateCpfCnpj(id: string, cpfCnpj: string): Promise<BackofficeClient>
+  updatePhone(id: string, phone: string): Promise<BackofficeClient>
 }

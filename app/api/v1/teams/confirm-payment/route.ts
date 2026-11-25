@@ -12,6 +12,8 @@ const STATUS_BY_FAILURE_REASON: Record<ConfirmTeamPaymentFailureReason, number> 
   action_not_found: 404,
   action_not_owned: 403,
   action_canceled: 400,
+  payment_unverifiable: 502,
+  settlement_failed: 422,
 };
 
 /**

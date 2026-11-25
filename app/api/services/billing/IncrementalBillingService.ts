@@ -7,7 +7,7 @@ import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
 import { createRoutedProviderCharge } from "@/lib/payment-provider/routed-charge";
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types";
-import { calculateProportionalAddonCharge } from "./proportionalAddonCharge";
+import { calculateProportionalAddonCharge, resolveAddonMaxInstallments } from "./proportionalAddonCharge";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
@@ -594,12 +594,13 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     // Lança ProportionalChargeError quando o master não tem data de fim do ciclo.
     const endDate = await billingRepository.getSubscriptionEndDate(masterId);
     const { remainingMonths, totalCharge } = calculateProportionalAddonCharge({ billingDelta, endDate });
+    const cycle = await billingRepository.getSubscriptionCycle(masterId);
 
     return {
       billingDelta,
       remainingMonths,
       totalCharge,
-      maxInstallments: Math.floor(remainingMonths),
+      maxInstallments: resolveAddonMaxInstallments({ cycle, remainingMonths }),
     };
   }
 }

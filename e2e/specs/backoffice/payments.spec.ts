@@ -19,6 +19,8 @@ test.describe("app/backoffice/(app)/payments", () => {
   let backofficeSupabaseId = "";
   let backofficeEmail = "";
   let clientId: string | null = null;
+  const noPhoneClientName = `E2E Payments No Phone ${suffix}`;
+  let noPhoneClientId: string | null = null;
 
   test.beforeAll(async () => {
     const prisma = getPrisma();
@@ -57,13 +59,25 @@ test.describe("app/backoffice/(app)/payments", () => {
       select: { id: true },
     });
     clientId = client.id;
+
+    // Sem telefone: o dialog pede o número antes do POST (o provedor exige celular).
+    const noPhoneClient = await prisma.backofficeClient.create({
+      data: {
+        fullName: noPhoneClientName,
+        email: `e2e.payments.nophone.${suffix}@example.com`,
+        cpfCnpj: "52998224725",
+      },
+      select: { id: true },
+    });
+    noPhoneClientId = noPhoneClient.id;
   });
 
   test.afterAll(async () => {
     const prisma = getPrisma();
-    if (clientId) {
-      await prisma.backofficePayment.deleteMany({ where: { clientId } }).catch(() => null);
-      await prisma.backofficeClient.deleteMany({ where: { id: clientId } }).catch(() => null);
+    const clientIds = [clientId, noPhoneClientId].filter((id): id is string => Boolean(id));
+    if (clientIds.length) {
+      await prisma.backofficePayment.deleteMany({ where: { clientId: { in: clientIds } } }).catch(() => null);
+      await prisma.backofficeClient.deleteMany({ where: { id: { in: clientIds } } }).catch(() => null);
     }
     if (backofficeProfileId) {
       await prisma.backofficeUser.deleteMany({ where: { profileId: backofficeProfileId } }).catch(() => null);
@@ -272,6 +286,70 @@ test.describe("app/backoffice/(app)/payments", () => {
     // legítimo: aparece só durante o carregamento transitório do usuário
     // backoffice logo após o reload, não é decoração persistente.
     await runResponsiveChecks(page, { reducedMotion: { ignoreSelector: "svg.animate-spin" } });
+  });
+
+  test("Nova Cobrança: telefone só aparece sem cadastro, valida e vai só com dígitos no POST", async ({ page }) => {
+    const posts: Array<Record<string, unknown>> = [];
+    await page.route("**/api/*/backoffice/payments", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      posts.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ isValid: true, successMessages: ["ok"], errorMessages: [], result: { id: "e2e-bp", pixQrCode: null, pixPayload: null } }),
+      });
+    });
+
+    await page.goto("/backoffice/payments");
+    await expect(page.getByRole("button", { name: "Nova Cobrança" })).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Nova Cobrança" }).click();
+    const dialog = page.getByRole("dialog");
+    const phone = dialog.getByLabel("Telefone do cliente *");
+
+    // Cliente com telefone: sem campo.
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: clientName }).click();
+    await expect(phone).toHaveCount(0);
+
+    // Cliente sem telefone: campo obrigatório com aviso de que será salvo.
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: noPhoneClientName }).click();
+    await expect(phone).toBeVisible();
+    await expect(phone).toHaveAttribute("autocomplete", "off");
+    await expect(dialog.getByText("O número será salvo no cadastro.")).toBeVisible();
+    await dialog.getByLabel("Valor (R$) *").fill("150");
+
+    await dialog.getByRole("button", { name: "Criar Cobrança" }).click();
+    await expect(dialog.getByRole("alert").filter({ hasText: "Telefone é obrigatório" })).toBeVisible();
+    await expect(phone).toBeFocused();
+    expect(posts).toHaveLength(0);
+
+    await phone.fill("119");
+    await dialog.getByRole("button", { name: "Criar Cobrança" }).click();
+    await expect(dialog.getByRole("alert").filter({ hasText: "Telefone inválido" })).toBeVisible();
+    expect(posts).toHaveLength(0);
+
+    await phone.fill("11988887777");
+    await expect(phone).toHaveValue("(11) 98888-7777");
+    await expect(dialog.getByText("Telefone inválido")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Criar Cobrança" }).click();
+
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toMatchObject({ clientId: noPhoneClientId, billingType: "PIX", amount: 150, phone: "11988887777" });
+    expect(posts[0]).not.toHaveProperty("cpfCnpj");
+
+    await page.goto("/backoffice/payments");
+    await expect(page.getByRole("button", { name: "Nova Cobrança" })).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Nova Cobrança" }).click();
+    await dialog.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: noPhoneClientName }).click();
+    // O número ficou salvo no cadastro: o campo não volta a aparecer.
+    await expect(phone).toHaveCount(0);
+    // Touch target e overflow com o dialog aberto; este passo vem por último porque recarrega a página.
+    await runResponsiveChecks(page);
   });
 
   test("T-51.1: 500 na listagem mostra banner de erro + retry, nunca empty state", async ({

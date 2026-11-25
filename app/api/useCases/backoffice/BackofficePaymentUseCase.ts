@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
+import { registrationPhoneError } from "@/lib/masks"
 import { PaymentMethodUnavailableError, assertBillingTypeAllowed } from "@/lib/payment-methods/availability"
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard"
 import { PAYMENT_PROVIDER_OWNER_TYPES } from "@/lib/payment-provider/owner-types"
@@ -15,6 +16,8 @@ export interface CreatePaymentInput {
   description?: string
   /** CPF ou CNPJ do cliente, exigido pelo provedor; salvo no cadastro quando o cliente não tinha. */
   cpfCnpj?: string
+  /** Telefone (celular) do cliente, exigido pelo provedor; salvo no cadastro quando o cliente não tinha. */
+  phone?: string
   /** Token de uso único gerado no navegador pelo SDK do provedor (nunca dados do cartão). */
   cardToken?: string
 }
@@ -63,9 +66,13 @@ export class BackofficePaymentUseCase {
         return failure("Cadastre o e-mail do cliente antes de cobrar")
       }
       // O contrato de pagamento (PaymentCustomer) exige celular; sem esta checagem o operador só veria "Erro ao criar cobrança".
-      if (!digitsOnly(client.phone ?? "")) {
-        return failure("Cadastre o telefone do cliente antes de cobrar")
+      const registeredPhone = digitsOnly(client.phone ?? "")
+      const phoneNeedsSaving = !registeredPhone
+      if (phoneNeedsSaving) {
+        const phoneError = registrationPhoneError(data.phone)
+        if (phoneError) return failure(phoneError)
       }
+      const cellphone = phoneNeedsSaving ? digitsOnly(data.phone ?? "") : registeredPhone
 
       if (billingType === "CREDIT_CARD") {
         await this.assertCardAllowed(billingType)
@@ -76,6 +83,9 @@ export class BackofficePaymentUseCase {
 
       if (!client.cpfCnpj) {
         await this.clientRepo.updateCpfCnpj(client.id, taxId)
+      }
+      if (phoneNeedsSaving) {
+        await this.clientRepo.updatePhone(client.id, cellphone)
       }
 
       const id = randomUUID()
@@ -93,7 +103,7 @@ export class BackofficePaymentUseCase {
           name: client.fullName,
           email: client.email,
           taxId,
-          cellphone: digitsOnly(client.phone ?? ""),
+          cellphone,
         },
         metadata: { backofficePaymentId: id },
         cardToken: data.cardToken,

@@ -37,6 +37,10 @@ export async function createRoutedProviderCharge(input: RoutedChargeInput) {
     throw new Error("Token do cartão ausente: o checkout precisa tokenizar o cartão antes de cobrar");
   }
 
+  if (input.installments !== undefined && (!Number.isInteger(input.installments) || input.installments < 1)) {
+    throw new Error("Número de parcelas inválido");
+  }
+
   const environment = resolvePaymentProviderEnvironment();
   const router = await createPaymentProviderRouter(environment);
   const capability = input.billingType === "PIX" ? "PIX" : "CARD";

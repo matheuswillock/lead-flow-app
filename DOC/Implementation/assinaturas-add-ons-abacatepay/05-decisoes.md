@@ -52,3 +52,22 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
   - o teste de carência de cartão em `AddOnCheckoutUseCase.cardGuard.test.ts` ainda descreve o comportamento antigo e precisa ser revisado quando a tela de cartão for implementada;
   - a comunicação ao cliente sobre o recadastro precisa ser definida junto com a tela.
 - **Status:** decidido pelo usuário em 2026-11-17.
+
+## D6. Parcelamento no cartão limitado pelo ciclo de cobrança
+
+- **Decisão:** o máximo de parcelas no cartão depende do ciclo do contrato, e o cálculo fica em `maxInstallmentsForCycle` (`app/api/services/billing/proportionalAddonCharge.ts`):
+
+| Ciclo (`BackofficeAdhesionBillingCycle` / legado) | Máximo de parcelas |
+|---|---|
+| monthly (`MONTHLY`) | 1x |
+| quarterly (`QUARTERLY`) | 3x |
+| quadrimester | 4x |
+| semiannual (`SEMIANNUALLY`) | 6x |
+| annual (`YEARLY`) | 12x |
+| ausente ou desconhecido | 1x |
+
+- **Add-on proporcional:** o máximo é `min(máximo do ciclo, meses restantes do contrato arredondados para baixo)`, piso de 1x. Parcelar além do fim do contrato faria o add-on vencer depois do ciclo.
+- **Cobrança avulsa do backoffice:** 1x (decisão do dono em 2026-11-24, tomada sob urgência). Já é o comportamento de `BackofficePaymentUseCase` (`installments: 1`).
+- **Validação:** `AddOnCheckoutUseCase.createPayment` rejeita parcelas acima de `payload.maxInstallments`, com mensagem em PT-BR, antes de gravar o aceite e de chamar o provedor.
+- **Status:** decidido pelo dono em 2026-11-24.
+- **Limite conhecido:** ações pendentes criadas antes desta mudança mantêm o `maxInstallments` antigo no payload (`floor(meses restantes)`) até expirar, que é o TTL de 24 h do checkout.

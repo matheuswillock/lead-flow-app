@@ -5,6 +5,7 @@ import { platformPurchaseRepository } from "@/app/api/infra/data/repositories/pl
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import { AbacatePayProvider } from "@/app/api/infra/providers/AbacatePayProvider"
 import { PaymentProviderConfig } from "@/lib/payment-provider/config"
+import type { PaymentQueryCapability } from "@/lib/payment-provider/contracts"
 import { PaymentProviderRegistry } from "@/lib/payment-provider/registry"
 import { PaymentProviderRouter } from "@/lib/payment-provider/router"
 import { createProviderResolver } from "@/lib/payment-provider/provider-resolver"
@@ -198,8 +199,23 @@ export async function getPaymentProviderRefundUseCase(): Promise<PaymentProvider
   })
 }
 
+/** Consulta de status de uma tentativa persistida: resolve o provedor pela chave guardada na tentativa. */
+export async function resolvePaymentQueryProvider({
+  provider,
+  environment: providerEnvironment,
+  externalAccountContext,
+}: {
+  readonly provider: string
+  readonly environment: PaymentProviderEnvironment
+  readonly externalAccountContext: string
+}): Promise<PaymentQueryCapability> {
+  if (provider !== "ABACATE_PAY" || providerEnvironment !== resolvePaymentProviderEnvironment()) {
+    throw new Error("Provider não suportado nesta fase")
+  }
+  return createAbacatePayProvider(providerEnvironment, externalAccountContext)
+}
+
 export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenanceUseCase {
-  const environment = resolvePaymentProviderEnvironment()
   const reconciliation = new PaymentProviderReconciliationService({
     sessions: paymentProviderSessionRepository,
     identities: paymentProviderIdentityRepository,
@@ -212,12 +228,7 @@ export function getPaymentProviderMaintenanceUseCase(): PaymentProviderMaintenan
       markPaidOnceForProvider: platformPurchaseRepository.markPaidOnceForProvider.bind(platformPurchaseRepository),
     },
     reconciliation,
-    resolveQueryProvider: ({ provider, environment: providerEnvironment, externalAccountContext }) => {
-      if (provider !== "ABACATE_PAY" || providerEnvironment !== environment) {
-        throw new Error("Provider não suportado nesta fase")
-      }
-      return createAbacatePayProvider(providerEnvironment, externalAccountContext)
-    },
+    resolveQueryProvider: resolvePaymentQueryProvider,
     applyEmailCredits: ({ paymentId, checkoutId, productSlug }) =>
       applyEmailCreditsPaidPurchaseUseCase.apply({
         paymentId,

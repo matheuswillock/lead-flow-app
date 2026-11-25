@@ -158,12 +158,12 @@ export class PendingActionUseCase {
       );
     }
 
-    // paymentId AbacatePay (`provider-<id>`) não existe no Asaas: consultar lá daria 404 e o fail-open abaixo aplicaria sem cobrança verificada.
-    if (action.provider === "ABACATE_PAY") {
+    // paymentId de provedor (`provider-<id>`) não existe no Asaas: consultar lá daria 404 e o fail-open abaixo aplicaria sem cobrança verificada.
+    if (action.provider) {
       return new Output(
         false,
         [],
-        ["Cobrança AbacatePay não pode ser dispensada por este fluxo"],
+        ["Cobrança do provedor de pagamento não pode ser dispensada por este fluxo"],
         null
       );
     }
@@ -189,7 +189,7 @@ export class PendingActionUseCase {
       // errar" — só ficou a exceção legítima: 404 na conta certa (payment
       // pode ter sido cancelado/expirado do lado do Asaas) trata como já
       // cancelado (fail-open), não tenta adivinhar em outra conta.
-      const account: AsaasAccountId = action.asaasAccount;
+      const account: AsaasAccountId = action.asaasAccount ?? "primary";
 
       let payment: { status?: string } | null = null;
 

@@ -26,6 +26,7 @@ const pixOutcome = {
 function makeUseCase(overrides: { client?: unknown; outcome?: unknown; provider?: string } = {}) {
   const findById = mock(async (_id: string) => ("client" in overrides ? overrides.client : client) as never)
   const updateCpfCnpj = mock(async (_id: string, _cpf: string) => ({}) as never)
+  const updatePhone = mock(async (_id: string, _phone: string) => ({}) as never)
   const created: unknown[] = []
   const create = mock(async (data: unknown) => {
     created.push(data)
@@ -40,11 +41,11 @@ function makeUseCase(overrides: { client?: unknown; outcome?: unknown; provider?
   const cardGuard = mock(async (_billingType: string) => undefined)
   const useCase = new BackofficePaymentUseCase(
     { create, findMany: mock(async () => []), findById: mock(async () => null), findByAsaasPaymentId: mock(async () => null), updateStatus: mock(async () => ({})) } as never,
-    { findById, updateCpfCnpj, updateAsaasCustomerId: mock(async () => ({})) } as never,
+    { findById, updateCpfCnpj, updatePhone, updateAsaasCustomerId: mock(async () => ({})) } as never,
     charge as never,
     cardGuard,
   )
-  return { useCase, charge, create, updateCpfCnpj, created }
+  return { useCase, charge, create, updateCpfCnpj, updatePhone, created }
 }
 
 const pixInput = { clientId: "client-1", amount: 10, billingType: "PIX", description: "Cobrança teste" }
@@ -167,13 +168,45 @@ describe("BackofficePaymentUseCase.createPayment — AbacatePay", () => {
     expect(charge).not.toHaveBeenCalled()
   })
 
-  it("exige telefone no cadastro do cliente: a AbacatePay rejeita o cliente sem celular", async () => {
-    const { useCase, charge } = makeUseCase({ client: { ...client, phone: null } })
+  it("recusa quando o cliente não tem telefone e nenhum foi informado", async () => {
+    const { useCase, charge, updatePhone } = makeUseCase({ client: { ...client, phone: null } })
 
     const result = await useCase.createPayment(pixInput, "profile-1")
 
     expect(result.isValid).toBe(false)
-    expect(result.errorMessages).toEqual(["Cadastre o telefone do cliente antes de cobrar"])
+    expect(result.errorMessages).toEqual(["Telefone é obrigatório"])
     expect(charge).not.toHaveBeenCalled()
+    expect(updatePhone).not.toHaveBeenCalled()
+  })
+
+  it("recusa o telefone informado quando ele é inválido", async () => {
+    const { useCase, charge, updatePhone } = makeUseCase({ client: { ...client, phone: null } })
+
+    const result = await useCase.createPayment({ ...pixInput, phone: "(11) 9999" }, "profile-1")
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorMessages).toEqual(["Telefone inválido"])
+    expect(charge).not.toHaveBeenCalled()
+    expect(updatePhone).not.toHaveBeenCalled()
+  })
+
+  it("salva o telefone informado no cadastro e o usa na cobrança quando o cliente não tinha", async () => {
+    const { useCase, charge, updatePhone } = makeUseCase({ client: { ...client, phone: null } })
+
+    const result = await useCase.createPayment({ ...pixInput, phone: "(11) 98888-7777" }, "profile-1")
+
+    expect(result.isValid).toBe(true)
+    expect(updatePhone).toHaveBeenCalledWith("client-1", "11988887777")
+    expect(charge.mock.calls[0]?.[0]).toMatchObject({ customer: { cellphone: "11988887777" } })
+  })
+
+  it("não pede nem sobrescreve o telefone quando o cadastro já tem um", async () => {
+    const { useCase, charge, updatePhone } = makeUseCase()
+
+    const result = await useCase.createPayment({ ...pixInput, phone: "(21) 97777-6666" }, "profile-1")
+
+    expect(result.isValid).toBe(true)
+    expect(updatePhone).not.toHaveBeenCalled()
+    expect(charge.mock.calls[0]?.[0]).toMatchObject({ customer: { cellphone: "11999999999" } })
   })
 })

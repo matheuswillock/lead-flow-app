@@ -112,3 +112,17 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - colorize: nenhuma cor nova. Estado de erro usa os tokens `destructive` do `Form*` (rótulo, borda e mensagem) e o erro também é texto, então não depende só de cor. O contraste do placeholder é do `Input` compartilhado e não foi medido aqui.
   - polish: foco visível (anel do `--ring`) e erro no próprio campo conferidos nos prints; sem código de depuração; diff final sem churn. Diálogo de adesão do backoffice não foi renderizado (precisa de lead elegível): a mudança nele é o asterisco do rótulo e a regra do botão.
   - Limite: o detector roda só por regex nos `.tsx` (sem DOM renderizado autenticado); regras de elemento (contraste, tiny-text) não rodaram.
+
+## F9. Telefone do cliente na Nova Cobrança (backoffice)
+
+**Briefing:** `design/cobranca-avulsa-backoffice.md`, seção 10 "Telefone do cliente" (aprovado por instrução do dono em 2026-11-24, antes do JSX).
+
+- [x] F9.G1: campo "Telefone do cliente *" aparece só quando o cliente selecionado não tem telefone; valida com `registrationPhoneError`; vai só com dígitos no POST; o backend valida de novo, usa o número na criação do cliente no provedor e salva no cadastro.
+  - CHECK: `BackofficePaymentUseCase.abacatePay.test.ts` (13 testes: sem telefone no cadastro nem no corpo recusa com "Telefone é obrigatório"; inválido recusa com "Telefone inválido"; informado salva e cobra; cadastro com telefone não pede nem sobrescreve); `BackofficePaymentUseCase.cardGuard.test.ts` (2); `app/api/v1/backoffice/payments/route.test.ts` (2).
+  - CHECK: `e2e/specs/backoffice/payments.spec.ts` lista 9 testes (`playwright test --list`, exit 0). O teste novo "Nova Cobrança: telefone só aparece sem cadastro…" cobre: campo só sem telefone, obrigatório, inválido, foco no campo, payload só com dígitos e o campo sumir depois de salvo. Execução: NÃO verificado (ver F9.G3).
+- [x] F9.G2: `impeccable detect` no `BackofficePaymentsContainer.tsx` devolveu `[]`. Revisão de harden, clarify, adapt, typeset, colorize e polish feita no código: tokens e componentes dos campos vizinhos (`Input`, `Label`, `max-lg:h-11`), `type="tel"`, `inputMode="tel"`, `autoComplete="off"`, erro em `role="alert"` com `aria-invalid` e `aria-describedby`, `text-destructive`. Nenhuma cor, família ou tamanho novo. Divergências para decisão: nenhuma.
+- [ ] F9.G3: verificação renderizada em 375 px e 1280 px (browser-harness), estados vazio, carregando e erro, console limpo e foco visível: NÃO verificado. O stack de testes em container não foi subido nesta rodada e a tela exige sessão de backoffice com cliente sem telefone.
+- Comandos desta rodada:
+  - `bun run design:check`: exit 0.
+  - `bun run lint:pt-br:strict`: exit 0 (1259 arquivos).
+  - `bun run typecheck`: NÃO concluído nesta rodada. A execução ficou na fila por outros `tsc` do mesmo worktree (máquina com 27 GB de 30 em uso) e não gravou código de saída até o registro. Pendente: repetir e ler o EXIT.

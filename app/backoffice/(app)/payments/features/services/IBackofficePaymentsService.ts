@@ -39,6 +39,8 @@ export interface CreatePaymentFormData {
   description?: string
   /** Preenchido só quando o cliente não tem CPF ou CNPJ cadastrado. */
   cpfCnpj?: string
+  /** Só dígitos; preenchido só quando o cliente não tem telefone cadastrado. */
+  phone?: string
   /** Token de uso único do cartão, gerado no navegador. */
   cardToken?: string
 }

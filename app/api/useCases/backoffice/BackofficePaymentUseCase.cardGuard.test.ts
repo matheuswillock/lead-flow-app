@@ -18,7 +18,7 @@ const client = { id: "c1", fullName: "Cliente", email: "c@example.com", phone: "
 
 function makeUseCase() {
   const paymentRepo = { create: mock(async (data: Record<string, unknown>) => data) }
-  const clientRepo = { findById: mock(async () => client), updateCpfCnpj: mock(async () => client) }
+  const clientRepo = { findById: mock(async () => client), updateCpfCnpj: mock(async () => client), updatePhone: mock(async () => client) }
   const charge = mock(async () => ({
     selected: { provider: "ABACATE_PAY" },
     session: { id: "s1" },

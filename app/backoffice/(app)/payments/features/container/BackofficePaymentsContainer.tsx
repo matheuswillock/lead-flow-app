@@ -41,6 +41,7 @@ import { useCardTokenization } from "@/components/payments/useCardTokenization"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { toastUserError } from "@/lib/ui/to-user-toast-message"
+import { applyPhoneInput, maskPhone, registrationPhoneError } from "@/lib/masks"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -130,6 +131,7 @@ const initialForm: CreatePaymentFormData = {
   dueDate: "",
   description: "",
   cpfCnpj: "",
+  phone: "",
 }
 
 export function BackofficePaymentsContainer() {
@@ -154,10 +156,14 @@ export function BackofficePaymentsContainer() {
     pixQrCode: string | null
     pixPayload: string | null
   }>({ open: false, pixQrCode: null, pixPayload: null })
+  const [phoneAttempted, setPhoneAttempted] = useState(false)
   const submitLock = useRef(false)
+  const phoneInputRef = useRef<HTMLInputElement>(null)
 
   const selectedClient = clients.find((c) => c.id === form.clientId) ?? null
   const needsDocument = Boolean(selectedClient) && !selectedClient?.cpfCnpj
+  const needsPhone = Boolean(selectedClient) && !digitsOnly(selectedClient?.phone ?? "")
+  const phoneError = needsPhone && phoneAttempted ? registrationPhoneError(form.phone) : null
   // Cartão indisponível nunca fica selecionado nem é enviado.
   const effectiveBillingType =
     form.billingType === "CREDIT_CARD" && !cardCheckout.cardOffered ? "PIX" : form.billingType
@@ -184,9 +190,18 @@ export function BackofficePaymentsContainer() {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  function handleClientChange(clientId: string) {
+    // Documento e telefone digitados valiam para o cliente anterior.
+    setForm((prev) => ({ ...prev, clientId, cpfCnpj: "", phone: "" }))
+    setPhoneAttempted(false)
+  }
+
   function handleOpenChange(next: boolean) {
     setOpen(next)
-    if (!next) setForm(initialForm)
+    if (!next) {
+      setForm(initialForm)
+      setPhoneAttempted(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -205,6 +220,11 @@ export function BackofficePaymentsContainer() {
       toast.error("Informe um CPF ou CNPJ válido para o cliente")
       return
     }
+    if (needsPhone && registrationPhoneError(form.phone)) {
+      setPhoneAttempted(true)
+      phoneInputRef.current?.focus()
+      return
+    }
     if (!selectedClient.email) {
       toast.error("Cadastre o e-mail do cliente antes de cobrar")
       return
@@ -218,7 +238,7 @@ export function BackofficePaymentsContainer() {
           fullName: selectedClient.fullName,
           email: selectedClient.email,
           cnpj: needsDocument ? document : (selectedClient.cpfCnpj ?? ""),
-          phone: selectedClient.phone ?? "",
+          phone: needsPhone ? (form.phone ?? "") : (selectedClient.phone ?? ""),
         })
         if (!token) return
         cardToken = token
@@ -231,6 +251,7 @@ export function BackofficePaymentsContainer() {
         dueDate: form.dueDate || undefined,
         description: form.description || undefined,
         cpfCnpj: needsDocument ? document : undefined,
+        phone: needsPhone ? form.phone : undefined,
         cardToken,
       })
       toast.success("Cobrança criada com sucesso")
@@ -379,7 +400,7 @@ export function BackofficePaymentsContainer() {
               <Label>Cliente *</Label>
               <Select
                 value={form.clientId}
-                onValueChange={(v) => handleChange("clientId", v)}
+                onValueChange={handleClientChange}
               >
                 <SelectTrigger className="max-lg:h-11">
                   <SelectValue placeholder="Selecione um cliente" />
@@ -411,6 +432,44 @@ export function BackofficePaymentsContainer() {
                 <p id="cpfCnpj-help" className="text-xs text-muted-foreground">
                   Este cliente não tem CPF ou CNPJ cadastrado. O documento será salvo no cadastro.
                 </p>
+              </div>
+            )}
+            {needsPhone && (
+              <div className="space-y-2">
+                <Label htmlFor="phone">Telefone do cliente *</Label>
+                <Input
+                  ref={phoneInputRef}
+                  id="phone"
+                  type="tel"
+                  inputMode="tel"
+                  // É o telefone de outra pessoa: o autopreenchimento colocaria o de quem está logado.
+                  autoComplete="off"
+                  className="max-lg:h-11"
+                  value={maskPhone(form.phone ?? "")}
+                  onChange={(e) =>
+                    handleChange(
+                      "phone",
+                      applyPhoneInput(
+                        form.phone ?? "",
+                        e.target.value,
+                        (e.nativeEvent as InputEvent).inputType === "insertText"
+                      )
+                    )
+                  }
+                  onBlur={() => setPhoneAttempted(true)}
+                  placeholder="(11) 99999-9999"
+                  aria-invalid={Boolean(phoneError)}
+                  aria-describedby={phoneError ? "phone-error" : "phone-help"}
+                />
+                {phoneError ? (
+                  <p id="phone-error" role="alert" className="text-xs text-destructive">
+                    {phoneError}
+                  </p>
+                ) : (
+                  <p id="phone-help" className="text-xs text-muted-foreground">
+                    Este cliente não tem telefone cadastrado. O número será salvo no cadastro.
+                  </p>
+                )}
               </div>
             )}
             <div className="space-y-2">

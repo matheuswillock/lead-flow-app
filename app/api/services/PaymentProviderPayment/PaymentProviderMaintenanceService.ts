@@ -6,6 +6,7 @@ import type {
 } from "@/app/api/infra/data/repositories/paymentProviderSession/IPaymentProviderSessionRepository"
 import type { PaymentQueryCapability } from "@/lib/payment-provider/contracts"
 import type { PaymentMethod } from "@/lib/payment-provider/types"
+import { paymentMethodFromFingerprint } from "@/lib/payment-provider/attempt-method"
 import { PaymentProviderReconciliationService } from "./PaymentProviderReconciliationService"
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
 import { createPaymentOwnerSettlement } from "./paymentOwnerSettlementComposition"
@@ -297,13 +298,4 @@ function paymentMethodFromBillingType(billingType: string | null): PaymentMethod
   if (billingType === "PIX") return "PIX"
   if (billingType === "CREDIT_CARD") return "CARD"
   return null
-}
-
-function paymentMethodFromFingerprint(fingerprint: string): PaymentMethod | null {
-  try {
-    const parsed = JSON.parse(fingerprint) as { method?: unknown }
-    return parsed.method === "CARD" || parsed.method === "PIX" ? parsed.method : null
-  } catch {
-    return null
-  }
 }

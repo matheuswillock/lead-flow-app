@@ -74,6 +74,26 @@ Tela afetada: `app/backoffice/(app)/payments/features/container/BackofficePaymen
 
 Enquanto você não responder, implemento a Opção A.
 
+## 10. Telefone do cliente
+
+Status: **aprovado por instrução do dono em 2026-11-24** (implementação urgente, sem nova rodada de aprovação).
+
+Superfície: backoffice, modo Operate. Mesma tela e mesmo dialog "Nova Cobrança"; nenhuma tela nova.
+
+- **Job:** o operador escolhe um cliente que não tem telefone cadastrado e precisa cobrar mesmo assim. O provedor exige celular para criar o cliente na cobrança, então sem o telefone a criação falhava no servidor. O operador informa o telefone ali, na hora, e ele fica salvo no cadastro (mesmo padrão do CPF ou CNPJ).
+- **Campo:** "Telefone do cliente *", logo abaixo do campo de CPF ou CNPJ (se ambos faltarem, CPF ou CNPJ vem primeiro). Aparece só quando o cliente selecionado não tem telefone. Máscara `(11) 99999-9999` de `lib/masks.ts` (`applyPhoneInput` e `maskPhone`), igual ao telefone de `UserFormDialog`. `type="tel"`, `inputMode="tel"`, `autoComplete="off"` (é o telefone de outra pessoa), `max-lg:h-11`, fonte de pelo menos 16 px no mobile (o `Input` do shadcn já entrega).
+- **Texto de apoio:** "Este cliente não tem telefone cadastrado. O número será salvo no cadastro." (`text-xs text-muted-foreground`, ligado por `aria-describedby`).
+- **Regras:** obrigatório quando o campo aparece. Validação por `registrationPhoneError`: vazio mostra "Telefone é obrigatório"; fora de 10 a 13 dígitos mostra "Telefone inválido". O envio só leva os dígitos. O servidor valida de novo com a mesma regra e salva no cadastro antes de cobrar. Cliente que já tem telefone: o campo não aparece e o telefone do cadastro nunca é sobrescrito.
+- **Estados:**
+  - Vazio: campo vazio, sem erro até a primeira tentativa de envio ou saída do campo.
+  - Erro: mensagem abaixo do campo (`role="alert"`, `text-xs text-destructive`), `aria-invalid` no input, foco vai para o campo; o dialog não fecha e nada é enviado.
+  - Enviando: campo bloqueado junto com o resto, sem duplo clique (`submitLock` existente).
+  - Falha do servidor: toast com a mensagem devolvida; o dialog fica aberto e o valor digitado é mantido.
+  - Sucesso: dialog fecha; a lista de clientes recarrega e o cliente passa a ter telefone, então o campo não volta a aparecer.
+  - Trocar de cliente: o valor digitado é descartado quando o cliente selecionado muda.
+- **Cartão:** a tokenização do cartão usa o telefone digitado quando o cadastro não tem.
+- **Fora:** edição de telefone de cliente que já tem um; verificação do número; novo endpoint (o telefone vai no mesmo POST de criação da cobrança).
+
 ## Registro de achados do contexto (Impeccable)
 
 - `PRODUCT.md` ainda tem a seção `## Register`, que o modo por superfície substituiu. Não influenciou este briefing.
