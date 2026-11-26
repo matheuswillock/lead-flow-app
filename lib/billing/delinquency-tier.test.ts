@@ -6,6 +6,7 @@ import {
   isAllowedUnderCrmOnly,
   resolveDelinquencyTier,
   resolveEffectiveNextDueDate,
+  resolveGraceNotice,
 } from "./delinquency-tier";
 
 const NOW = new Date("2026-09-17T12:00:00.000Z");
@@ -190,5 +191,35 @@ describe("resolveEffectiveNextDueDate — dessincronia Profile × ProfileSubscri
 
   it("ambas nulas → null (sem evidência, sem punição)", () => {
     expect(resolveEffectiveNextDueDate(null, null)).toBeNull();
+  });
+});
+
+describe("resolveGraceNotice", () => {
+  const pastDue = (daysLate: number) => ({
+    subscriptionStatus: "past_due",
+    subscriptionNextDueDate: daysAgo(daysLate),
+    now: NOW,
+  });
+
+  it("dias 0 a 3 de atraso → aviso do início da carência", () => {
+    for (const days of [0, 1, 2, 3]) {
+      expect(resolveGraceNotice(pastDue(days))).toBe("grace_started");
+    }
+  });
+
+  it("dia 4 (último antes do somente leitura) → aviso do último dia", () => {
+    expect(resolveGraceNotice(pastDue(DELINQUENCY_CRM_ONLY_AFTER_DAYS - 1))).toBe("grace_last_day");
+  });
+
+  it("a partir do dia 5 a carência acabou → nenhum aviso de carência", () => {
+    expect(resolveGraceNotice(pastDue(DELINQUENCY_CRM_ONLY_AFTER_DAYS))).toBeNull();
+    expect(resolveGraceNotice(pastDue(20))).toBeNull();
+  });
+
+  it("vencimento no futuro, status diferente de past_due, sem data ou vitalício → nenhum aviso", () => {
+    expect(resolveGraceNotice({ subscriptionStatus: "past_due", subscriptionNextDueDate: daysAgo(-2), now: NOW })).toBeNull();
+    expect(resolveGraceNotice({ subscriptionStatus: "active", subscriptionNextDueDate: daysAgo(1), now: NOW })).toBeNull();
+    expect(resolveGraceNotice({ subscriptionStatus: "past_due", subscriptionNextDueDate: null, now: NOW })).toBeNull();
+    expect(resolveGraceNotice({ ...pastDue(1), hasPermanentSubscription: true })).toBeNull();
   });
 });

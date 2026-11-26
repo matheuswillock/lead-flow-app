@@ -112,17 +112,28 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
 
 ## B8. Campo `provider` em `BackofficePayment` e `ProfileSubscription` (Fase B)
 
-**Estado:** não encontrado no schema. O plano pede o campo, mas ele não existe nos modelos citados.
+**Estado:** parcial. `ProfileSubscription.provider` existe no schema (comentário "Fase B: rastreamento do provider de cobrança"; `null` = Asaas legado) e a Fase C o usa no corte do Asaas (D10). `BackofficePayment` não foi reverificado nesta data.
 
 - [ ] B8.G1: campo adicionado e migrado, ou decisão registrada de não adicionar.
   - EVIDENCE: pendente.
 
-## B9. Assinatura e renovação via router (Fase C)
+## B9. Renovação reativa pelo roteador (Fase C)
 
-**Estado:** não iniciado. `app/api/useCases/subscriptions/CheckoutAsaasUseCase.ts` tem 1270 linhas, todas Asaas.
+**Estado:** implementado na branch `feature/assinaturas-fase-c-renovacao-abacatepay` em 2026-11-25, sem sandbox. A renovação é reativa (D8): ciclo vence, carência de 5 dias, somente leitura, e o master paga na página de pagamento. Não há cron de cobrança antecipada. Detalhe em [06-fase-c-renovacao.md](06-fase-c-renovacao.md). `CheckoutAsaasUseCase` (1270 linhas, todas Asaas) não foi alterado.
 
-- [ ] B9.G1: renovação via router, com cron e idempotência.
-  - EVIDENCE: pendente. Validação só em sandbox, com kill switch.
+- [x] B9.G1: o pagamento da renovação usa o roteador e grava o provedor escolhido por ele (D9).
+  - CHECK: `bun test app/api/services/BillingGracePayment/BillingGracePaymentService.test.ts`
+  - EVIDENCE: EXIT=0, 16 testes. O literal `ABACATE_PAY` saiu do serviço.
+- [x] B9.G2: conta do roteador vira `past_due` por data, só dentro da carência, sem reverter quem pagou (D14).
+  - CHECK: `bun test app/api/useCases/providerRenewal/SubscriptionOverdueTransitionUseCase.test.ts`
+  - EVIDENCE: EXIT=0, 7 testes. As consultas ao banco (`listActiveRouterSubscriptionsDueBetween`, `markPastDueIfStillDue`) passaram no teste de integração contra o Postgres local: `bun run test:integration:provider-renewal` (8 testes, ver [06-fase-c-renovacao.md](06-fase-c-renovacao.md)).
+- [x] B9.G3: corte do Asaas na confirmação do pagamento, atrás do kill switch, com repetição na reentrega do evento (D10, D11).
+  - CHECK: `bun test app/api/useCases/providerRenewal/LegacyAsaasRenewalCutover.test.ts` e `bun test app/api/services/PaymentProviderPayment/PaymentOwnerSettlementService.test.ts`
+  - EVIDENCE: EXIT=0, 5 e 12 testes. O caminho do cartão aprovado na hora não tem teste dedicado.
+- [ ] B9.G4: validação em sandbox do AbacatePay (aprovação e recusa) e do Asaas (cancelamento remove cobranças pendentes).
+  - EVIDENCE: pendente. A documentação do Asaas confirma o comportamento, mas o sandbox não foi executado.
+- [x] B9.G5: cartão na renovação e no `/checkout` já passa pelo AbacatePay. Esta pendência estava errada e foi retirada em 2026-11-26.
+  - EVIDENCE: a rota `app/api/v1/public-adhesions/[token]/card/route.ts` cobra "pelo Abacate (cartão transparente)" e só aceita o token `ctok_`; a oferta de cartão do `/checkout` vem de `resolveCardCheckout` (`provider: "ABACATE_PAY"`, só com cartão ligado e chave pública configurada); a renovação já tinha cartão pelo roteador. O comentário na linha 48 de `SelfCheckoutUseCase.ts` ("o cartão é cobrado pelo Asaas") só trata do portão da criação do pedido e induziu a nota errada. O comentário continua desatualizado no código.
 
 ## B10. Ações de fatura do backoffice (Fase D)
 
@@ -142,10 +153,13 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
 
 ## B12. Alertas de inadimplência (Fase F)
 
-**Estado:** não verificado. `OverdueReminderUseCase` existe. Os textos e a faixa de cada degrau vêm de `lib/billing/delinquency-tier.ts`, que ainda usa janelas fixas.
+**Estado:** parcial. `OverdueReminderUseCase` existe. Os textos e a faixa de cada degrau vêm de `lib/billing/delinquency-tier.ts`, que ainda usa janelas fixas. Em 2026-11-25 a Fase C acrescentou os dois avisos da carência (D12): início (dias 0 a 3) e último dia (dia 4), com dedupe por ciclo e link para `/billing-grace-payment`.
 
+- [x] B12.G0: os avisos da carência saem uma vez por ciclo, com a data limite e o link do pagamento.
+  - CHECK: `bun test app/api/useCases/billing/OverdueReminderUseCase.test.ts` e `bun test lib/billing/delinquency-tier.test.ts`
+  - EVIDENCE: EXIT=0, 30 e 26 testes (6 do aviso da carência no caso de uso, 4 da regra dos dias). A consulta `findPastDueSubscriptionsInGrace` passou na integração contra o Postgres local, depois de corrigir um defeito de nulos (ver [06-fase-c-renovacao.md](06-fase-c-renovacao.md)). O e-mail não foi renderizado nem enviado de verdade.
 - [ ] B12.G1: e-mail vai ao responsável financeiro correto, com um único envio em duas execuções do cron.
-  - EVIDENCE: pendente.
+  - EVIDENCE: pendente. Hoje o destinatário é o e-mail do perfil da assinatura (`profile.email`). Não foi confirmado que ele é o responsável financeiro.
 
 ## B13. Confirmação de time agnóstica e conta Asaas nullable
 

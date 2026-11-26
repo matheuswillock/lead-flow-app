@@ -46,6 +46,12 @@ import { CheckoutPaymentMethod } from "@/components/checkout/CheckoutPaymentMeth
 import { CheckoutSuccess } from "@/components/checkout/CheckoutSuccess"
 import { pixSavingsAmount } from "@/components/checkout/checkoutPaymentMath"
 import { computeOrderAmounts, formatBRL } from "../utils/selfCheckoutForm"
+import {
+  isPayBlockedByTerms,
+  isTermsAcceptanceRequired,
+  MOBILE_TERMS_HINT,
+  termsHintFor,
+} from "../utils/selfCheckoutTermsGate"
 import { formatDocumentInput } from "@/lib/masks"
 
 type PhaseId = "plan" | "data" | "card"
@@ -121,6 +127,8 @@ const FIELD_ELEMENT_ID: Record<SelfCheckoutFieldName, string> = {
   phone: "self-checkout-phone",
   termsAccepted: "self-checkout-terms",
 }
+
+const TERMS_HINT_ID = "self-checkout-terms-hint"
 
 function focusElement(id: string) {
   const element = document.getElementById(id)
@@ -385,6 +393,7 @@ export function SelfCheckoutFormContainer() {
   const activePhaseId = phaseIds[activePhaseIndex]
   const isLastPhase = activePhaseIndex === phaseIds.length - 1
   const isLocked = isBusy || Boolean(orderToken)
+  const payBlockedByTerms = isPayBlockedByTerms({ termsAccepted: values.termsAccepted, hasOrder: Boolean(orderToken) })
 
   function retryPayment() {
     setIsEditingPayment(false)
@@ -562,12 +571,15 @@ export function SelfCheckoutFormContainer() {
           <CheckoutOrderSummary
             footer={
               <>
-                <SelfCheckoutTermsAcceptance
-                  checked={values.termsAccepted}
-                  error={fieldErrors.termsAccepted}
-                  disabled={isBusy}
-                  onChange={setTermsAccepted}
-                />
+                {/* Com o pedido criado o aceite já foi enviado (o servidor o exige): o retry não pede de novo. */}
+                {isTermsAcceptanceRequired({ hasOrder: Boolean(orderToken) }) ? (
+                  <SelfCheckoutTermsAcceptance
+                    checked={values.termsAccepted}
+                    error={fieldErrors.termsAccepted}
+                    disabled={isBusy}
+                    onChange={setTermsAccepted}
+                  />
+                ) : null}
 
                 <SelfCheckoutHoneypot value={values.website} onChange={(next) => setFieldValue("website", next)} />
 
@@ -575,7 +587,19 @@ export function SelfCheckoutFormContainer() {
 
                 <div className="flex flex-col gap-3">
                   {/* No celular o botão fica na barra fixa do rodapé, junto com o total. */}
-                  <Button type="submit" size="lg" className="w-full max-lg:hidden" disabled={isBusy} aria-busy={isBusy}>
+                  {payBlockedByTerms ? (
+                    <p id={TERMS_HINT_ID} className="text-center text-sm text-muted-foreground max-lg:hidden">
+                      {termsHintFor(isCard)}
+                    </p>
+                  ) : null}
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full max-lg:hidden"
+                    disabled={isBusy || payBlockedByTerms}
+                    aria-busy={isBusy}
+                    aria-describedby={payBlockedByTerms ? TERMS_HINT_ID : undefined}
+                  >
                     {isBusy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
                     {submitText}
                   </Button>
@@ -637,8 +661,14 @@ export function SelfCheckoutFormContainer() {
             caption={payCaption(isCard, installments)}
             label={isLastPhase ? submitText : "Continuar"}
             isBusy={isBusy}
-            disabled={isBusy}
+            // "Continuar" só avança de fase, então só a última fase (a que paga) espera o aceite.
+            disabled={isBusy || (isLastPhase && payBlockedByTerms)}
             onContinue={isLastPhase ? undefined : goNext}
+            hint={
+              isLastPhase && payBlockedByTerms
+                ? { label: MOBILE_TERMS_HINT, onAction: () => focusElement(FIELD_ELEMENT_ID.termsAccepted) }
+                : undefined
+            }
           />
         )}
       </form>

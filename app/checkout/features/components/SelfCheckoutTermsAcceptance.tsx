@@ -27,6 +27,7 @@ export function SelfCheckoutTermsAcceptance({
           checked={checked}
           onChange={(event) => onChange(event.target.checked)}
           disabled={disabled}
+          aria-required="true"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "self-checkout-terms-error" : undefined}
           className="mt-[3px] size-4 shrink-0 cursor-pointer rounded accent-primary disabled:cursor-not-allowed"

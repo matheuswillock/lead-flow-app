@@ -22,6 +22,27 @@ describe("getDelinquencyReminderCopy", () => {
     expect(copy.bodyText).toContain("Regularize o pagamento para reativar")
   })
 
+  test("aviso do início da carência diz que o acesso segue completo, até quando, e o que a renovação mostra", () => {
+    const copy = getDelinquencyReminderCopy("grace_started", { graceUntilLabel: "10/12/2026" })
+
+    expect(copy.subject).toBe("Corretor Studio — O período do seu plano está se encerrando")
+    expect(copy.bodyText).toContain("acesso completo até 10/12/2026")
+    expect(copy.bodyText).toContain("mensal, trimestral, semestral ou anual")
+    expect(copy.bodyText).toContain("usuários e times adicionais")
+  })
+
+  test("aviso do último dia da carência avisa do modo somente leitura", () => {
+    const copy = getDelinquencyReminderCopy("grace_last_day", { graceUntilLabel: "10/12/2026" })
+
+    expect(copy.headline).toBe("Último dia antes do modo somente leitura")
+    expect(copy.bodyText).toContain("último dia do período de carência (até 10/12/2026)")
+    expect(copy.bodyText).toContain("somente leitura")
+  })
+
+  test("sem a data, o aviso da carência ainda faz sentido", () => {
+    expect(getDelinquencyReminderCopy("grace_started").bodyText).toContain("até o fim da carência")
+  })
+
   test("os dois degraus têm texto diferente", () => {
     expect(getDelinquencyReminderCopy("crm_only")).not.toEqual(getDelinquencyReminderCopy("cut_off"))
   })

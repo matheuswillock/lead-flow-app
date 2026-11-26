@@ -239,4 +239,12 @@ describe("BillingGracePaymentService — prazo escolhido", () => {
     expect(quote.cycles[0].billedUsers.map((user) => user.id)).toEqual(["u-ana", "u-bia"])
     expect(quote.cycles[0].periodStart).toBe("2026-11-01T03:00:00.000Z")
   })
+
+  it("devolve o ciclo anterior no vocabulário do checkout para conta legada", async () => {
+    findAccountContext.mockResolvedValueOnce({ ...accountA, currentCycle: "YEARLY" })
+
+    const quote = await newService().getQuote("sb-a")
+
+    expect(quote.currentCycle).toBe("annual")
+  })
 })

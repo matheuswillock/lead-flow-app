@@ -15,9 +15,11 @@ function makeHarness(
   const findAdhesionPayment = mock(async (_id: string) =>
     "adhesionPayment" in overrides ? overrides.adhesionPayment : { id: "pay-1", adhesionId: "adh-1" },
   )
-  const graseFind = mock(async (_id: string) => overrides.gracePayment ?? { id: "grace-1", status: "pending" })
-  const markConfirmed = mock(async (_input: unknown) => ({ id: "grace-1", status: "confirmed" }))
-  const completeAndRestoreAccess = mock(async (_id: string) => ({ id: "grace-1", status: "completed" }))
+  const graceOwner = { accountId: "account-1", provider: "ROUTED_KEY" }
+  const graseFind = mock(async (_id: string) => ({ id: "grace-1", ...graceOwner, ...(overrides.gracePayment ?? { status: "pending" }) }))
+  const markConfirmed = mock(async (_input: unknown) => ({ id: "grace-1", status: "confirmed", ...graceOwner }))
+  const completeAndRestoreAccess = mock(async (_id: string) => ({ id: "grace-1", status: "completed", ...graceOwner }))
+  const cutOver = mock(async (_profileId: string, _provider: string) => undefined)
   const expectedAmountInCents = mock(async (_id: string) =>
     "expectedAmountInCents" in overrides ? overrides.expectedAmountInCents ?? null : 29990,
   )
@@ -29,6 +31,7 @@ function makeHarness(
     adhesionPayments: { findById: findAdhesionPayment } as never,
     adhesions: { markPaidFromProvider },
     gracePayments: { findById: graseFind, markConfirmed, completeAndRestoreAccess } as never,
+    legacyAsaasCutover: { cutOver },
     pendingActions: { expectedAmountInCents, applyById },
     backofficePayments: {
       expectedAmountInCents: mock(async () => null),
@@ -36,7 +39,7 @@ function makeHarness(
       markPaid: mock(async () => undefined),
     },
   })
-  return { service, markPaidFromProvider, markConfirmed, completeAndRestoreAccess, graseFind, expectedAmountInCents, applyById }
+  return { service, markPaidFromProvider, markConfirmed, completeAndRestoreAccess, cutOver, graseFind, expectedAmountInCents, applyById }
 }
 
 describe("PaymentOwnerSettlementService — PENDING_ACTION_ADDON", () => {
@@ -126,14 +129,32 @@ describe("PaymentOwnerSettlementService", () => {
     expect(completeAndRestoreAccess).toHaveBeenCalledWith("grace-1")
   })
 
-  it("BILLING_GRACE_PAYMENT: regularização já concluída é no-op idempotente", async () => {
-    const { service, markConfirmed, completeAndRestoreAccess } = makeHarness({ gracePayment: { status: "completed" } })
+  it("BILLING_GRACE_PAYMENT: depois de renovar, passa a conta legada para o provedor que recebeu", async () => {
+    const { service, cutOver } = makeHarness()
+
+    await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT })
+
+    expect(cutOver).toHaveBeenCalledWith("account-1", "ROUTED_KEY")
+  })
+
+  it("BILLING_GRACE_PAYMENT: regularização já concluída não renova de novo, mas repete o corte", async () => {
+    const { service, markConfirmed, completeAndRestoreAccess, cutOver } = makeHarness({ gracePayment: { status: "completed" } })
 
     const result = await service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT })
 
     expect(result).toBe("settled")
     expect(markConfirmed).not.toHaveBeenCalled()
     expect(completeAndRestoreAccess).not.toHaveBeenCalled()
+    expect(cutOver).toHaveBeenCalledWith("account-1", "ROUTED_KEY")
+  })
+
+  it("BILLING_GRACE_PAYMENT: falha do corte propaga para o evento ser reentregue", async () => {
+    const { service, cutOver } = makeHarness()
+    cutOver.mockRejectedValueOnce(new Error("Asaas 500"))
+
+    await expect(
+      service.settleConfirmed({ ownerType: "BILLING_GRACE_PAYMENT", ownerId: "grace-1", externalId: "pix_2", amountInCents: null, paidAt: PAID_AT }),
+    ).rejects.toThrow("Asaas 500")
   })
 
   it("owner sem efeito de domínio neste serviço devolve unsupported", async () => {
