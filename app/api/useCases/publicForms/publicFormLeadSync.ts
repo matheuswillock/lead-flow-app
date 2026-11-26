@@ -63,13 +63,16 @@ export async function findMatchingLead(
   teamId: string,
   data: ExtractedLeadData,
 ): Promise<Lead | undefined> {
+  const candidates = await publicFormsRepository.findLeadCandidates(
+    teamId,
+    data.email,
+    data.phone,
+    data.normalizedPhone,
+  )
+  // Lead desqualificado não recebe merge: uma nova resposta vira um lead novo
+  // (nova timeline) e o card desqualificado fica como estava, com o histórico.
   return pickBestLeadMatch(
-    await publicFormsRepository.findLeadCandidates(
-      teamId,
-      data.email,
-      data.phone,
-      data.normalizedPhone,
-    ),
+    candidates.filter((candidate) => candidate.status !== "disqualified"),
     data,
   )
 }
