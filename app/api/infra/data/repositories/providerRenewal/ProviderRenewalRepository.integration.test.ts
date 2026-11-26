@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { asaasSubscriptionSyncRepository } from "@/app/api/infra/data/repositories/billing/AsaasSubscriptionSyncRepository"
 import { billingEngineRepository } from "@/app/api/infra/data/repositories/billing/BillingEngineRepository"
 import { ProviderRenewalRepository } from "./ProviderRenewalRepository"
 
@@ -33,6 +34,9 @@ describe.skipIf(!RUN_INTEGRATION)("Fase C: consultas de renovação e carência 
     provider?: string | null
     asaasSubscriptionId?: string | null
     permanent?: boolean
+    /** Conta legada só com o id no perfil (o fallback que o sync do Asaas também aceita). */
+    withoutSubscriptionRow?: boolean
+    profileAsaasSubscriptionId?: string | null
   }) {
     const profile = await prisma.profile.create({
       data: {
@@ -44,20 +48,24 @@ describe.skipIf(!RUN_INTEGRATION)("Fase C: consultas de renovação e carência 
         subscriptionStatus: input.status,
         subscriptionNextDueDate: input.profileDue === undefined ? input.subscriptionDue : input.profileDue,
         hasPermanentSubscription: input.permanent ?? false,
+        asaasSubscriptionId: input.profileAsaasSubscriptionId ?? null,
+        subscriptionCycle: "monthly",
       },
       select: { id: true },
     })
     createdProfileIds.push(profile.id)
-    await prisma.profileSubscription.create({
-      data: {
-        profileId: profile.id,
-        subscriptionStatus: input.status,
-        subscriptionNextDueDate: input.subscriptionDue,
-        provider: input.provider ?? null,
-        asaasSubscriptionId: input.asaasSubscriptionId ?? null,
-        hasPermanentSubscription: input.permanent ?? false,
-      },
-    })
+    if (!input.withoutSubscriptionRow) {
+      await prisma.profileSubscription.create({
+        data: {
+          profileId: profile.id,
+          subscriptionStatus: input.status,
+          subscriptionNextDueDate: input.subscriptionDue,
+          provider: input.provider ?? null,
+          asaasSubscriptionId: input.asaasSubscriptionId ?? null,
+          hasPermanentSubscription: input.permanent ?? false,
+        },
+      })
+    }
     return profile.id
   }
 
@@ -77,6 +85,22 @@ describe.skipIf(!RUN_INTEGRATION)("Fase C: consultas de renovação e carência 
       const rows = await repository.listActiveRouterSubscriptionsDueBetween(window())
 
       expect(mine(rows)).toEqual([inWindow])
+    })
+
+    it("usa o vencimento efetivo: o mais antigo entre assinatura e perfil decide, e é o que volta", async () => {
+      const future = new Date(Date.now() + 30 * DAY_MS)
+      const profileOlder = await createAccount({ status: "active", subscriptionDue: future, profileDue: daysAgo(2), provider: "ROUTED_KEY" })
+      const subscriptionOlder = await createAccount({ status: "active", subscriptionDue: daysAgo(2), profileDue: future, provider: "ROUTED_KEY" })
+      // O perfil já passou do fim da carência: o efetivo está fora da janela, mesmo com a assinatura dentro.
+      const effectiveBeyondWindow = await createAccount({ status: "active", subscriptionDue: daysAgo(2), profileDue: daysAgo(9), provider: "ROUTED_KEY" })
+      const ids = [profileOlder, subscriptionOlder, effectiveBeyondWindow]
+
+      const rows = (await repository.listActiveRouterSubscriptionsDueBetween(window())).filter((row) => ids.includes(row.profileId))
+
+      expect(rows.map((row) => row.profileId).sort()).toEqual([profileOlder, subscriptionOlder].sort())
+      for (const row of rows) {
+        expect(row.dueDate.toISOString().slice(0, 10)).toBe(daysAgo(2).toISOString().slice(0, 10))
+      }
     })
 
     it("pagina por profileId sem repetir nem pular linhas", async () => {
@@ -113,13 +137,29 @@ describe.skipIf(!RUN_INTEGRATION)("Fase C: consultas de renovação e carência 
       expect(profile?.subscriptionStatus).toBe("past_due")
     })
 
+    it("compara com o vencimento efetivo (o do perfil, mais antigo): só a data efetiva marca a conta", async () => {
+      const effective = daysAgo(2)
+      const profileId = await createAccount({
+        status: "active",
+        subscriptionDue: new Date(Date.now() + 30 * DAY_MS),
+        profileDue: effective,
+        provider: "ROUTED_KEY",
+      })
+
+      expect(await repository.markPastDueIfStillDue(profileId, daysAgo(10))).toBe(false)
+      expect(await repository.markPastDueIfStillDue(profileId, effective)).toBe(true)
+
+      const subscription = await prisma.profileSubscription.findUnique({ where: { profileId }, select: { subscriptionStatus: true } })
+      expect(subscription?.subscriptionStatus).toBe("past_due")
+    })
+
     it("não reverte quem pagou no meio do caminho (vencimento mudou)", async () => {
       const staleDue = daysAgo(2)
       const profileId = await createAccount({ status: "active", subscriptionDue: staleDue, provider: "ROUTED_KEY" })
-      await prisma.profileSubscription.update({
-        where: { profileId },
-        data: { subscriptionNextDueDate: new Date(Date.now() + 30 * DAY_MS) },
-      })
+      // Um pagamento (completeAndRestoreAccess) adianta o vencimento na assinatura e no perfil.
+      const renewedDue = new Date(Date.now() + 30 * DAY_MS)
+      await prisma.profileSubscription.update({ where: { profileId }, data: { subscriptionNextDueDate: renewedDue } })
+      await prisma.profile.update({ where: { id: profileId }, data: { subscriptionNextDueDate: renewedDue } })
 
       expect(await repository.markPastDueIfStillDue(profileId, staleDue)).toBe(false)
 
@@ -135,6 +175,65 @@ describe.skipIf(!RUN_INTEGRATION)("Fase C: consultas de renovação e carência 
 
       expect(await repository.findLegacyAsaasSubscription(legacy)).toEqual({ asaasSubscriptionId: "sub_abc", account: "primary" })
       expect(await repository.findLegacyAsaasSubscription(router)).toBeNull()
+    })
+
+    it("acha o id que está só no perfil (sem linha de assinatura): é o que o sync do Asaas também aceita", async () => {
+      const profileOnly = await createAccount({
+        status: "active",
+        subscriptionDue: daysAgo(1),
+        withoutSubscriptionRow: true,
+        profileAsaasSubscriptionId: "sub_profile_only",
+      })
+
+      expect(await repository.findLegacyAsaasSubscription(profileOnly)).toEqual({ asaasSubscriptionId: "sub_profile_only", account: "primary" })
+    })
+
+    it("linha de assinatura sem id usa o do perfil; com id, o da assinatura vence", async () => {
+      const subscriptionWithoutId = await createAccount({ status: "active", subscriptionDue: daysAgo(1), profileAsaasSubscriptionId: "sub_from_profile" })
+      const subscriptionWins = await createAccount({
+        status: "active",
+        subscriptionDue: daysAgo(1),
+        asaasSubscriptionId: "sub_from_subscription",
+        profileAsaasSubscriptionId: "sub_from_profile",
+      })
+
+      expect(await repository.findLegacyAsaasSubscription(subscriptionWithoutId)).toMatchObject({ asaasSubscriptionId: "sub_from_profile" })
+      expect(await repository.findLegacyAsaasSubscription(subscriptionWins)).toMatchObject({ asaasSubscriptionId: "sub_from_subscription" })
+    })
+
+    it("conta já marcada com provedor não tem o que cancelar, mesmo com id no perfil", async () => {
+      const routed = await createAccount({
+        status: "active",
+        subscriptionDue: daysAgo(1),
+        provider: "ROUTED_KEY",
+        profileAsaasSubscriptionId: "sub_kept_for_audit",
+      })
+
+      expect(await repository.findLegacyAsaasSubscription(routed)).toBeNull()
+    })
+
+    it("marcar conta que só tem o id no perfil cria a linha espelhando o perfil e a tira do sync do Asaas", async () => {
+      const profileOnly = await createAccount({
+        status: "active",
+        subscriptionDue: daysAgo(1),
+        withoutSubscriptionRow: true,
+        profileAsaasSubscriptionId: "sub_profile_only",
+      })
+      const profileBefore = await prisma.profile.findUnique({ where: { id: profileOnly }, select: { subscriptionNextDueDate: true } })
+
+      await repository.markOnRouter(profileOnly, "FIRST_KEY")
+      await repository.markOnRouter(profileOnly, "SECOND_KEY")
+
+      const row = await prisma.profileSubscription.findUnique({ where: { profileId: profileOnly } })
+      expect(row).toMatchObject({
+        provider: "FIRST_KEY",
+        subscriptionStatus: "active",
+        subscriptionCycle: "monthly",
+        asaasSubscriptionId: "sub_profile_only",
+      })
+      expect(row?.subscriptionNextDueDate?.getTime()).toBe(profileBefore?.subscriptionNextDueDate?.getTime())
+      expect(await repository.findLegacyAsaasSubscription(profileOnly)).toBeNull()
+      expect((await asaasSubscriptionSyncRepository.getSyncSnapshot(profileOnly))?.isRoutedByProvider).toBe(true)
     })
 
     it("marca o provedor só quando a linha ainda não tem um (idempotente)", async () => {

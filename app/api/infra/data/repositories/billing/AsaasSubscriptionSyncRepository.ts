@@ -11,6 +11,12 @@ export interface AsaasSubscriptionSyncSnapshot {
   // `asaasSubscriptionId` era gravado sem a conta e o upsert caía no
   // `@default(primary)` do schema mesmo quando o pointer é legacy.
   asaasSubscriptionAccount: AsaasAccount;
+  /**
+   * A conta já é cobrada por um provedor do roteador (`ProfileSubscription.provider` preenchido). O
+   * id da assinatura do Asaas fica só como trilha de auditoria, e o Asaas devolveria a assinatura
+   * cancelada como inativa: o sync não pode gravar esse estado por cima do que o pagamento restaurou.
+   */
+  isRoutedByProvider: boolean;
 }
 
 export interface AsaasSubscriptionSyncData {
@@ -33,6 +39,7 @@ class PrismaAsaasSubscriptionSyncRepository {
           // TEM de vir da mesma linha que ganhou o id — ver abaixo.
           asaasSubscriptionAccount: true,
           hasPermanentSubscription: true,
+          provider: true,
         },
       }),
       prisma.profile.findUnique({
@@ -64,6 +71,7 @@ class PrismaAsaasSubscriptionSyncRepository {
       asaasSubscriptionAccount: subscriptionPointerWins
         ? (profileSubscription?.asaasSubscriptionAccount ?? "primary")
         : (profile?.asaasSubscriptionAccount ?? "primary"),
+      isRoutedByProvider: Boolean(profileSubscription?.provider),
     };
   }
 
