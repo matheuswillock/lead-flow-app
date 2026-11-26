@@ -8,7 +8,7 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
 
 ## F1. Badge de acesso do backoffice (Fase A2)
 
-**Estado:** implementado no head do PR #1381 (`ccb52a4ae`). Ausente na `origin/develop`.
+**Estado:** implementado e mergeado na `develop` (PR #1381). Os gates F1.G2 a F1.G5 seguem pendentes.
 
 **Arquivos:** `app/backoffice/(app)/clients/[masterId]/features/container/BackofficeClientDetailsContainer.tsx`. O rótulo "Acesso (leitura)" está na linha 644.
 
@@ -26,9 +26,9 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
 
 ## F2. Ação "Cancelar" na aba Faturas (Fase A3)
 
-**Estado:** implementado no head do PR #1381. Ausente na `origin/develop`.
+**Estado:** implementado e mergeado na `develop` (PR #1381).
 
-**Arquivos:** mesmo container de F1.
+**Arquivos:** mesmo container de F1. O menu de ações da linha está em `BackofficeInvoiceActionsMenu.tsx` e a regra em `features/utils/invoiceActions.ts`.
 - `canCancelInvoice` (linha 115): só mostra o botão quando a fatura não é `adhesion_external`, não está paga e não está `WAIVED`.
 - Botão "Cancelar" na linha da tabela (linha ~1310).
 - `AlertDialog` "Cancelar esta fatura?" (linha ~1651), com ação "Cancelar fatura".
@@ -37,13 +37,13 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - CHECK: `git grep -n "canCancelInvoice\|Cancelar esta fatura" origin/feature/bloqueio-assinatura-somente-leitura -- "app/backoffice"`
 - [ ] F2.G2: teste automatizado do botão e da condição de exibição.
   - CHECK: `git grep -ln "canCancelInvoice\|Cancelar fatura" <ref> -- "*.test.tsx"`
-  - EVIDENCE: nenhum teste encontrado. O plano exige esse teste.
+  - EVIDENCE: em 2026-11-17 nenhum teste foi encontrado. Atualização de 2026-11-26: a regra de exibição tem teste (`app/backoffice/(app)/clients/[masterId]/features/utils/invoiceActions.test.ts`, presente na `develop`). O botão e o diálogo em si seguem sem teste.
 - [ ] F2.G3: briefing `impeccable shape`, validação no navegador e revisão `impeccable`.
   - EVIDENCE: pendente.
 
 ## F3. Indicador de modo leitura no shell (Fase G)
 
-**Estado:** não iniciado. Depende do campo `mode` que `IFeatureAccessService` já retorna no PR (ver [03-backend.md](03-backend.md), nó B1).
+**Estado:** parcial. `ReadOnlyAccessBanner` (`app/[supabaseId]/components/ReadOnlyAccessBanner.tsx`, usado em `LayoutContent.tsx`) já aparece no shell quando a decisão de acesso é `read_only`. Ele lê `accountAccessDecision`, não o campo `mode` que `IFeatureAccessService` retorna (ver [03-backend.md](03-backend.md), nó B1). Faltam os botões de escrita desabilitados com explicação.
 
 - [ ] F3.G1: indicador exibido quando `mode === "read_only"`, com explicação da restrição.
   - EVIDENCE: pendente.
@@ -205,3 +205,44 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - `bun run design:check`: exit 0.
   - `bun run lint:pt-br:strict`: exit 0 (1259 arquivos).
   - `bun run typecheck`: NÃO concluído nesta rodada. A execução ficou na fila por outros `tsc` do mesmo worktree (máquina com 27 GB de 30 em uso) e não gravou código de saída até o registro. Pendente: repetir e ler o EXIT.
+
+## F12. Botão "Regularizar assinatura" no painel "Acesso não liberado" (regularização do master, D18)
+
+**Estado:** implementado em 2026-11-25 (`039ba5d15`) e mergeado.
+
+**Briefing:** [design/regularizar-assinatura-painel-bloqueado.md](design/regularizar-assinatura-painel-bloqueado.md), aprovado em 2026-11-25.
+
+**Arquivos:** `app/[supabaseId]/components/FeatureBlockedPanel.tsx` (painel e botão), `accountAccessRecovery.ts` (`canOfferPaymentFromBlockedFeature`, `getPaymentRecoveryHref`), `LayoutContent.tsx` (uso).
+
+- [x] F12.G1: a regra e a marcação do painel com e sem botão estão cobertas por teste.
+  - CHECK: `bun test --isolate --preload ./test/setup-happy-dom.ts "app/[supabaseId]/components"`
+  - EVIDENCE: 0 falhas em 2026-11-26 (142 testes no conjunto de componentes, checkout e add-on), incluindo `FeatureBlockedPanel.test.tsx`.
+- [x] F12.G2: tela vista no navegador com a conta de teste em carência, em 1280 e 375 px, e o clique leva à página de pagamento.
+  - EVIDENCE: prints enviados no chat em 2026-11-25 e 2026-11-26. O clique levou a `/billing-grace-payment` (2026-11-25) e depois a `/pagamento/[supabaseId]` (2026-11-26, depois da D15), onde a página "Renove sua assinatura" renderizou.
+- [ ] F12.G3: revisão `impeccable` completa.
+  - EVIDENCE: pendente. Só o detector automático rodou, sem achados.
+- [ ] F12.G4: leitor de tela e WebKit.
+  - EVIDENCE: Não verificado.
+
+## F13. Checkout em tela própria e confirmação com contador (D15, D16 e D17)
+
+**Estado:** implementado em 2026-11-26 (`1e6a8a88c`, `572020153`, `38595f69a`) e mergeado (PR #1431).
+
+**Briefing:** [design/checkout-pagamento-dedicado.md](design/checkout-pagamento-dedicado.md), aprovado em 2026-11-26.
+
+**Arquivos:** `app/pagamento/[supabaseId]/layout.tsx` e `page.tsx` (layout sem sidebar e checagem de dono), `components/checkout/CheckoutAccountHeader.tsx` (cabeçalho com "Sair"), `components/checkout/CheckoutAutoRedirect.tsx` (contador de 5 s e "Ir agora"), `components/checkout/CheckoutSuccess.tsx` (variantes `renewal` e `addon`), `components/public-checkout/PublicCheckoutFlow.tsx` (`successHref`), `app/addon-checkout/[pendingActionId]/page.tsx` e `AddOnCheckoutContainer.tsx` (login e destino).
+
+- [x] F13.G1: o contador começa em 5 s, oferece "Ir agora" e não tem botão de cancelar.
+  - CHECK: `bun test --isolate --preload ./test/setup-happy-dom.ts components/checkout`
+  - EVIDENCE: 19 testes, 0 falhas em 2026-11-26, incluindo `CheckoutAutoRedirect.test.tsx` (contagem e ausência de "Cancelar").
+- [x] F13.G2: checkout de regularização visto no navegador sem sidebar, com cabeçalho e "Sair", em desktop e em 375 px; a confirmação mostra o contador e redireciona ao dashboard.
+  - EVIDENCE: prints enviados no chat em 2026-11-26. O pagamento foi **simulado** no navegador (troca de `fetch` só para as chamadas do checkout, sem cobrança real). A contagem terminou em `/a343224a-.../dashboard`. Um defeito de margem lateral encontrado nessa verificação foi corrigido no layout.
+- [x] F13.G3: o alvo de toque do "Sair" tem 44 px no celular.
+  - EVIDENCE: a pipeline do PR #1431 reprovou o teste de responsividade do spec de regularização ("Sair" com 32 px em 360 px); corrigido com `max-lg:min-h-11` em `38595f69a`.
+- [ ] F13.G4: E2E de regularização e de add-on verdes depois da última correção.
+  - CHECK: `e2e/specs/product/billing-grace-payment.spec.ts` e `e2e/specs/checkout/addon-checkout.spec.ts`
+  - EVIDENCE: Não verificado por mim. No run 45840803886 (commit `572020153`) restaram 2 falhas: o alvo de toque do "Sair" (corrigido) e `templates-flow.spec.ts` (landing pages, instabilidade fora desta feature). O resultado depois de `38595f69a` não foi lido; o PR foi mergeado em seguida.
+- [ ] F13.G5: confirmação do add-on com pagamento confirmado de verdade.
+  - EVIDENCE: pendente. Precisa de uma cobrança de add-on real no banco local ou no sandbox.
+- [ ] F13.G6: cabeçalho com "Sair" no add-on e revisão `impeccable` completa.
+  - EVIDENCE: pendente. O add-on manteve o cabeçalho do `PublicCheckoutShell` (D16).
