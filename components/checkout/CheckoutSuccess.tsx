@@ -1,12 +1,11 @@
 "use client"
 
 import type { ComponentProps } from "react"
-import Link from "next/link"
-import { ArrowRight, CheckCircle2 } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
+import { CheckoutAutoRedirect } from "./CheckoutAutoRedirect"
 
 import { AdhesionSuccessScreen } from "@/app/adesao/[token]/features/components/AdhesionSuccessScreen"
 import { formatBRL } from "@/app/adesao/[token]/features/utils/adhesionPayment"
-import { Button } from "@/components/ui/button"
 
 type AdhesionScreenProps = ComponentProps<typeof AdhesionSuccessScreen>
 
@@ -65,12 +64,7 @@ function AddonSuccess({ email, planLabel, paymentLabel, total, ctaHref }: Omit<A
         </div>
       </dl>
 
-      <Button asChild size="lg" className="w-full max-lg:min-h-11 sm:w-fit sm:self-center">
-        <Link href={ctaHref}>
-          Voltar ao Corretor Studio
-          <ArrowRight data-icon="inline-end" aria-hidden />
-        </Link>
-      </Button>
+      <CheckoutAutoRedirect href={ctaHref} />
     </div>
   )
 }
@@ -85,13 +79,7 @@ function RenewalSuccess({ appHref }: { appHref: string }) {
         Assinatura reativada
       </h1>
       <p className="text-base text-muted-foreground">Pagamento confirmado. O acesso da sua equipe já está liberado.</p>
-      {/* Link comum (não do roteador): o dashboard recalcula o acesso com a assinatura em dia. */}
-      <Button asChild size="lg" className="max-lg:min-h-11">
-        <a href={appHref}>
-          Ir para o dashboard
-          <ArrowRight data-icon="inline-end" aria-hidden />
-        </a>
-      </Button>
+      <CheckoutAutoRedirect href={appHref} />
     </div>
   )
 }

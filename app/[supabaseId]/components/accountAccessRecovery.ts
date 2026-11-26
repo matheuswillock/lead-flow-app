@@ -8,8 +8,8 @@ const PAYMENT_RECOVERY_REASONS: readonly AccountAccessRestrictionReason[] = [
   "canceled",
 ]
 
-const PAYMENT_RECOVERY_SEGMENT = "billing-grace-payment"
-const PAYMENT_RECOVERY_PATH_PATTERN = new RegExp(`^/[^/]+/${PAYMENT_RECOVERY_SEGMENT}/?$`)
+const PAYMENT_RECOVERY_BASE_PATH = "/pagamento"
+const PAYMENT_RECOVERY_PATH_PATTERN = /^\/pagamento\/[^/]+\/?$/
 
 /**
  * Qual ação a tela de acesso pausado oferece:
@@ -33,7 +33,7 @@ export function isPaymentRecoveryPath(pathname: string | null | undefined): bool
 }
 
 export function getPaymentRecoveryHref(supabaseId: string): string {
-  return `/${supabaseId}/${PAYMENT_RECOVERY_SEGMENT}`
+  return `${PAYMENT_RECOVERY_BASE_PATH}/${supabaseId}`
 }
 
 /**

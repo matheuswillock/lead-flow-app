@@ -10,6 +10,7 @@ import {
   requiresAuth,
   requiresSessionPage,
   requiresManagerRole,
+  resolveLegacyBillingGracePaymentPath,
 } from "@/lib/proxy/route-access"
 import { resolveProfileRoleForProxy } from "@/lib/proxy/resolve-profile-role"
 import { guardAccountWrite, shouldGuardAccountWrite } from "@/lib/proxy/account-write-guard"
@@ -245,6 +246,14 @@ export async function proxy(request: NextRequest) {
     const cdpRedirectMatch = /^\/([0-9a-f-]{36})(\/cdp)(\/.*)?$/i.exec(pathname)
     if (cdpRedirectMatch) {
       const redirectUrl = new URL(`/${cdpRedirectMatch[1]}/radar${cdpRedirectMatch[3] ?? ""}`, request.url)
+      redirectUrl.search = request.nextUrl.search
+      return NextResponse.redirect(redirectUrl, { status: 308 })
+    }
+
+    // Checkout de regularização saiu do shell da conta: a rota antiga aponta para a página própria.
+    const legacyBillingGracePath = resolveLegacyBillingGracePaymentPath(pathname)
+    if (legacyBillingGracePath) {
+      const redirectUrl = new URL(legacyBillingGracePath, request.url)
       redirectUrl.search = request.nextUrl.search
       return NextResponse.redirect(redirectUrl, { status: 308 })
     }

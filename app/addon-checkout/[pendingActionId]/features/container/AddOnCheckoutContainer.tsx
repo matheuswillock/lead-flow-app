@@ -37,6 +37,8 @@ function getAttemptStorageKey(pendingActionId: string): string {
 
 interface AddOnCheckoutContainerProps {
   pendingActionId: string
+  /** Entrada da conta logada, para onde a confirmação do add-on leva. */
+  accountHref?: string
 }
 
 /** Meses podem ser fracionários (cobrança por dias): mostra até 2 casas, sem zeros à direita. */
@@ -44,7 +46,7 @@ function formatMonths(months: number): string {
   return months.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
-export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContainerProps) {
+export function AddOnCheckoutContainer({ pendingActionId, accountHref }: AddOnCheckoutContainerProps) {
   const { state, fetchCheckoutData, submitPayment, refreshPaymentStatus, clearPolling } = useAddOnCheckout()
 
   useEffect(() => {
@@ -231,6 +233,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       abacatePublicKey={state.data?.cardCheckout?.publicKey ?? null}
       availableMethods={availableMethods}
       successVariant="addon"
+      successHref={accountHref}
       successDescription={isPlatformPurchase ? PLATFORM_PURCHASE_SUCCESS_DESCRIPTION : undefined}
       onRetry={() => void fetchCheckoutData(pendingActionId)}
       onSubmit={async (input) => {

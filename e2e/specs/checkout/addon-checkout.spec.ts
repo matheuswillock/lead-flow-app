@@ -7,6 +7,7 @@
 
 import { expect, test, type Page } from "@playwright/test"
 import { runResponsiveChecks } from "../../support/responsive"
+import { injectE2eAuthCookie } from "../../fixtures/auth"
 
 const PURCHASE_ID = "e2e-platform-purchase"
 const PIX_CODE = "00020126E2EPIXCOPIAECOLA"
@@ -79,6 +80,11 @@ async function fillPayer(page: Page) {
   await page.getByLabel("CPF ou CNPJ").fill("52998224725")
 }
 
+// O checkout de add-on exige login: todos os cenários abrem com a sessão de teste.
+test.beforeEach(async ({ context }) => {
+  await injectE2eAuthCookie(context)
+})
+
 test.describe("addon-checkout — PIX interno para compra genérica", () => {
   test("gera o PIX sem pedir endereço nem oferecer cartão e confirma sem prometer crédito instantâneo", async ({
     page,
@@ -129,7 +135,8 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     await expect(page.getByText("Pagamento confirmado")).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText("Os itens contratados foram adicionados à assinatura da sua conta.")).toBeVisible()
     await expect(page.getByText("Os créditos são aplicados automaticamente em até 5 minutos.")).toBeVisible()
-    await expect(page.getByRole("link", { name: "Voltar ao Corretor Studio" })).toBeVisible()
+    await expect(page.getByText("Você será levado ao Corretor Studio em 5 s.")).toBeVisible()
+    await expect(page.getByRole("link", { name: "Ir agora" })).toBeVisible()
     // Add-on não envia acesso por e-mail nem pede senha: os itens entram na assinatura existente.
     await expect(page.getByText("Seu acesso foi enviado")).toHaveCount(0)
     await expect(page.getByText(/criar (sua )?senha/i)).toHaveCount(0)

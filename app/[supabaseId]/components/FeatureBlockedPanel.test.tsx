@@ -35,7 +35,7 @@ describe("FeatureBlockedPanel", () => {
 
     expect(markup).toContain("Acesso não liberado")
     expect(markup).toContain("Esta funcionalidade não está liberada para o seu usuário no momento.")
-    expect(markup).toContain('href="/conta-1/billing-grace-payment"')
+    expect(markup).toContain('href="/pagamento/conta-1"')
     expect(markup).toContain("Regularizar assinatura")
   })
 
@@ -46,7 +46,7 @@ describe("FeatureBlockedPanel", () => {
     }))
 
     expect(markup).toContain("Acesso não liberado")
-    expect(markup).not.toContain("billing-grace-payment")
+    expect(markup).not.toContain("/pagamento/")
     expect(markup).not.toContain("Regularizar assinatura")
   })
 })
