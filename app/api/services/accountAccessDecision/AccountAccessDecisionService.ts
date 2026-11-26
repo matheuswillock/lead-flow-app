@@ -3,15 +3,11 @@ import type {
   AccountAccessRecord,
 } from "@/app/api/shared/accountAccessDecision/types"
 import { resolveBillingGraceUntil as resolveDueDateGraceUntil } from "@/app/api/shared/billing/billingGraceWindow"
+import { isDueDateBeforeTodayInSaoPaulo } from "@/lib/billing/due-date"
 import type { IAccountAccessDecisionService } from "./IAccountAccessDecisionService"
 
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set(["active", "trial"])
 const RESTRICTED_SUBSCRIPTION_STATUSES = new Set(["past_due", "suspended", "canceled"])
-
-function isDueDateBeforeTodayInSaoPaulo(dueDate: Date, now: Date): boolean {
-  const today = now.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
-  return dueDate.toISOString().slice(0, 10) < today
-}
 
 function resolveBillingGraceUntil(account: AccountAccessRecord): Date | null {
   // A data de uma concessão só vale com a concessão marcada como ativa; uma data

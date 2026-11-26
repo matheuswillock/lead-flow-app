@@ -13,6 +13,7 @@ import {
   type RenewalAccount,
   type RenewalCycleQuote,
 } from "@/app/api/shared/billing/renewalQuote"
+import { normalizeRenewalCycle } from "@/lib/payment-provider/renewal-cycle"
 import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
 import type { Prisma } from "@prisma/client"
 import { readConfiguredAbacatePublicKey } from "@/lib/payment-methods/availability"
@@ -32,7 +33,11 @@ const ROUTE_VERSION = "BILLING-GRACE-PHASE-5"
 export type RenewalCycleOptionsLoader = () => Promise<SelfCheckoutCycleOption[]>
 
 export class BillingGracePaymentService implements IBillingGracePaymentService {
-  constructor(private readonly loadCycleOptions: RenewalCycleOptionsLoader) {}
+  constructor(
+    private readonly loadCycleOptions: RenewalCycleOptionsLoader,
+    /** Passa a conta legada do Asaas para o roteador quando a renovação é confirmada na hora (cartão). */
+    private readonly legacyAsaasCutover?: { cutOver(profileId: string, provider: string): Promise<void> },
+  ) {}
 
   async getQuote(supabaseId: string): Promise<BillingGracePaymentQuote> {
     const account = await billingGracePaymentRepository.findAccountContext(supabaseId)
@@ -46,7 +51,8 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
     const publicKey = availability.card ? await readConfiguredAbacatePublicKey() : null
     return {
       cycles,
-      currentCycle: account.currentCycle,
+      // Conta legada guarda YEARLY/SEMIANNUALLY: a tela pré-seleciona pelo prazo da tabela do checkout.
+      currentCycle: normalizeRenewalCycle(account.currentCycle),
       hasUnlimitedUsers: currentlyHasUnlimitedUsers(account),
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS).toISOString(),
       cardCheckout: publicKey ? {
@@ -127,7 +133,7 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
       revokedProfileIds,
       amountCents,
       effectivePriceCents: amountCents,
-      provider: "ABACATE_PAY",
+      provider: selected.provider,
       providerEnvironment: environment,
       idempotencyKey: input.idempotencyKey,
       quoteExpiresAt: new Date(Date.now() + QUOTE_TTL_MS),
@@ -220,9 +226,22 @@ export class BillingGracePaymentService implements IBillingGracePaymentService {
         providerExternalId: outcome.externalId,
         confirmedAt: new Date(),
       })
-      if (confirmed) return (await billingGracePaymentRepository.completeAndRestoreAccess(confirmed.id)) ?? confirmed
+      if (confirmed) {
+        const completed = (await billingGracePaymentRepository.completeAndRestoreAccess(confirmed.id)) ?? confirmed
+        await this.cutOverLegacyAsaas(completed)
+        return completed
+      }
     }
     return attached
+  }
+
+  /** Melhor esforço: o pagamento já foi aplicado, e a reentrega do evento do provedor repete o corte. */
+  private async cutOverLegacyAsaas(payment: { accountId: string; provider: string }) {
+    try {
+      await this.legacyAsaasCutover?.cutOver(payment.accountId, payment.provider)
+    } catch (error) {
+      console.error("[BillingGracePaymentService] falha no corte do Asaas após a renovação", { accountId: payment.accountId, error })
+    }
   }
 
   async getPayment(input: { id: string; supabaseId: string }) {

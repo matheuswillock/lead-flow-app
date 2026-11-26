@@ -38,6 +38,12 @@ export class AsaasSubscriptionSyncService {
       return null;
     }
 
+    // Conta já passada para o roteador: o Asaas só guarda a assinatura cancelada (auditoria), e
+    // consultá-la devolveria "inativa", que viraria `canceled` por cima do pagamento confirmado.
+    if (syncSnapshot.isRoutedByProvider) {
+      return null;
+    }
+
     if (!syncSnapshot.asaasSubscriptionId) {
       return null;
     }

@@ -34,6 +34,7 @@ import {
   applyKeptUsers,
   formatBRL,
   formatPeriod,
+  renewalCycleRadioId,
   revokedUsersOf,
 } from "./BillingGraceRenewalChoice";
 import {
@@ -128,11 +129,18 @@ export function BillingGracePaymentContainer() {
   const [requestedMethod, setRequestedMethod] = useState<BillingGracePaymentMethod>("PIX");
   const [phaseIndex, setPhaseIndex] = useState(PLAN_PHASE);
   const [chosenCycle, setChosenCycle] = useState<string | null>(null);
+  const [cycleToFocus, setCycleToFocus] = useState<string | null>(null);
   const [removedUserIds, setRemovedUserIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!cycleToFocus) return;
+    document.getElementById(renewalCycleRadioId(cycleToFocus))?.focus();
+    setCycleToFocus(null);
+  }, [cycleToFocus]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -224,6 +232,14 @@ export function BillingGracePaymentContainer() {
     if (cardToken) await createCardPayment({ cycle, keptUserIds, cardToken, installments });
   }
 
+  // Prazo que mantém usuários ilimitados (o anual): destino do aviso de quem os perde.
+  const keepUnlimitedCycle = quote.cycles.find((item) => item.unlimitedUsers)?.cycle;
+  // O aviso some ao escolher esse prazo (e o botão com ele): o foco vai para o prazo escolhido.
+  const selectKeepUnlimitedCycle = (target: string) => {
+    setChosenCycle(target);
+    setCycleToFocus(target);
+  };
+
   const planPhase = (
     <div className="flex flex-col gap-8">
       <BillingGraceCycleChoice
@@ -238,6 +254,7 @@ export function BillingGracePaymentContainer() {
           keptUserIds={new Set(keptUserIds)}
           disabled={isLoading}
           onToggleUser={toggleUser}
+          onKeepUnlimited={keepUnlimitedCycle ? () => selectKeepUnlimitedCycle(keepUnlimitedCycle) : undefined}
         />
       ) : null}
     </div>

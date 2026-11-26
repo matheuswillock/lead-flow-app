@@ -16,6 +16,14 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
   return new PaymentOwnerSettlementService({
     adhesionPayments: backofficeAdhesionPaymentRepository,
     gracePayments: billingGracePaymentRepository,
+    legacyAsaasCutover: {
+      async cutOver(profileId, provider) {
+        const { createLegacyAsaasRenewalCutover } = await import(
+          "@/app/api/useCases/providerRenewal/legacyAsaasCutoverComposition"
+        )
+        await createLegacyAsaasRenewalCutover().cutOver(profileId, provider)
+      },
+    },
     adhesions: {
       async markPaidFromProvider(adhesionId, input) {
         const { backofficeAdhesionService } = await import("../backofficeAdhesion/BackofficeAdhesionService")

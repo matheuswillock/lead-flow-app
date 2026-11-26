@@ -16,6 +16,7 @@ export function CheckoutMobilePayBar({
   isBusy,
   disabled,
   onContinue,
+  hint,
 }: {
   total: number
   caption: string
@@ -23,6 +24,8 @@ export function CheckoutMobilePayBar({
   isBusy: boolean
   disabled: boolean
   onContinue?: () => void
+  /** Motivo do botão desabilitado, no lugar da legenda; tocar nele leva ao que falta fazer. */
+  hint?: { label: string; onAction: () => void }
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_-16px_var(--foreground)] backdrop-blur lg:hidden">
@@ -31,7 +34,22 @@ export function CheckoutMobilePayBar({
           <span className="font-display text-xl leading-none font-extrabold tracking-[-0.02em] text-foreground tabular-nums">
             {formatBRL(total)}
           </span>
-          <span className="mt-1 text-xs text-muted-foreground">{caption}</span>
+          {hint ? (
+            // O próprio aviso é o atalho: um controle só, em vez de texto mais link. Alvo de toque de 44 px
+            // sem inflar a barra: a margem negativa devolve o espaço.
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              // Texto no primeiro plano e sublinhado: o laranja da marca (variante link) dá 2,89:1 em texto pequeno.
+              className="-my-2.5 h-auto min-h-11 justify-start px-0 py-0 text-left text-xs leading-snug whitespace-normal text-foreground underline underline-offset-2"
+              onClick={hint.onAction}
+            >
+              {hint.label}
+            </Button>
+          ) : (
+            <span className="mt-1 text-xs text-muted-foreground">{caption}</span>
+          )}
         </div>
         {/* Tipo fixo em "submit": trocar o tipo ao avançar de fase fazia o clique enviar o formulário. */}
         <Button

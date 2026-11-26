@@ -94,3 +94,29 @@ export function resolveDelinquencyTier(input: DelinquencyTierInput): Delinquency
 
   return "full_access";
 }
+
+/**
+ * Avisos da carência (vencimento até o dia anterior ao modo somente leitura). Não são degraus de
+ * acesso: o acesso continua completo, o aviso só lembra o master de renovar antes de perdê-lo.
+ */
+export type GraceNotice = "grace_started" | "grace_last_day";
+
+export type GraceNoticeInput = {
+  subscriptionStatus: string | null | undefined;
+  subscriptionNextDueDate: Date | null | undefined;
+  hasPermanentSubscription?: boolean;
+  now?: Date;
+};
+
+/**
+ * Qual aviso vale hoje para quem está na carência: o do início (dias 0 a 3 de atraso) ou o do
+ * último dia (dia 4, antes de virar somente leitura no dia 5). Fora da carência, nenhum.
+ */
+export function resolveGraceNotice(input: GraceNoticeInput): GraceNotice | null {
+  if (input.hasPermanentSubscription === true) return null;
+  if (input.subscriptionStatus !== "past_due" || !input.subscriptionNextDueDate) return null;
+
+  const daysLate = daysSince(input.subscriptionNextDueDate, input.now ?? new Date());
+  if (daysLate < 0 || daysLate >= DELINQUENCY_CRM_ONLY_AFTER_DAYS) return null;
+  return daysLate === DELINQUENCY_CRM_ONLY_AFTER_DAYS - 1 ? "grace_last_day" : "grace_started";
+}

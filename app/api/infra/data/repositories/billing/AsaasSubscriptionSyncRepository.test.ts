@@ -91,6 +91,38 @@ describe("AsaasSubscriptionSyncRepository.getSyncSnapshot — par (id, conta) da
     })
   })
 
+  it("conta com provedor do roteador na ProfileSubscription é marcada como roteada (o sync do Asaas a ignora)", async () => {
+    profileSubscriptionFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_cancelada_na_renovacao",
+      asaasSubscriptionAccount: "primary",
+      hasPermanentSubscription: false,
+      provider: "ROUTED_KEY",
+    }))
+    profileFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_cancelada_na_renovacao",
+      asaasSubscriptionAccount: "primary",
+      hasPermanentSubscription: false,
+    }))
+
+    const snapshot = await asaasSubscriptionSyncRepository.getSyncSnapshot("profile-routed")
+
+    expect(snapshot).toMatchObject({ isRoutedByProvider: true })
+  })
+
+  it("controle negativo: sem provedor (Asaas legado), a conta não é roteada", async () => {
+    profileSubscriptionFindUniqueMock.mockImplementation(async () => ({
+      asaasSubscriptionId: "sub_ativa",
+      asaasSubscriptionAccount: "primary",
+      hasPermanentSubscription: false,
+      provider: null,
+    }))
+    profileFindUniqueMock.mockImplementation(async () => null)
+
+    const snapshot = await asaasSubscriptionSyncRepository.getSyncSnapshot("profile-legacy")
+
+    expect(snapshot).toMatchObject({ isRoutedByProvider: false })
+  })
+
   it("sem ProfileSubscription nenhuma, cai no Profile inteiro", async () => {
     profileSubscriptionFindUniqueMock.mockImplementation(async () => null)
     profileFindUniqueMock.mockImplementation(async () => ({

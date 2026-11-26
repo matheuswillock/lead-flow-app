@@ -30,6 +30,37 @@ describe("AsaasSubscriptionSyncService.syncFromAsaas — roteamento por conta (T
     createAsaasClientMock.mockClear()
   })
 
+  it("conta já passada para o roteador: não consulta o Asaas nem grava (a assinatura cancelada voltaria inativa e viraria canceled)", async () => {
+    getSyncSnapshotMock.mockImplementationOnce(async () => ({
+      asaasSubscriptionId: "sub_cancelada_na_renovacao",
+      hasPermanentSubscription: false,
+      asaasSubscriptionAccount: "primary",
+      isRoutedByProvider: true,
+    }))
+
+    const syncedAt = await new AsaasSubscriptionSyncService().syncFromAsaas("profile-routed")
+
+    expect(syncedAt).toBeNull()
+    expect(createAsaasClientMock).not.toHaveBeenCalled()
+    expect(requestMock).not.toHaveBeenCalled()
+    expect(saveSyncDataMock).not.toHaveBeenCalled()
+  })
+
+  it("controle negativo: conta sem provedor continua sincronizando com o Asaas", async () => {
+    getSyncSnapshotMock.mockImplementationOnce(async () => ({
+      asaasSubscriptionId: "sub_ativa",
+      hasPermanentSubscription: false,
+      asaasSubscriptionAccount: "primary",
+      isRoutedByProvider: false,
+    }))
+
+    const syncedAt = await new AsaasSubscriptionSyncService().syncFromAsaas("profile-legacy")
+
+    expect(syncedAt).toBeInstanceOf(Date)
+    expect(createAsaasClientMock).toHaveBeenCalledWith("primary")
+    expect(saveSyncDataMock).toHaveBeenCalledTimes(1)
+  })
+
   it("perfil com asaasSubscriptionAccount=legacy → consulta via createAsaasClient('legacy')", async () => {
     getSyncSnapshotMock.mockImplementationOnce(async () => ({
       asaasSubscriptionId: "sub_legacy_1",

@@ -161,6 +161,61 @@ class BillingEngineRepository {
   }
 
   /**
+   * Quem está `past_due` e ainda na carência (vencimento efetivo depois de `graceStart`, que é hoje
+   * menos 5 dias): destinatários dos avisos da carência. O conjunto é pequeno (só quem venceu nos
+   * últimos dias), então basta a ordem estável por `profileId` e o cursor por ele, sem o cursor
+   * persistido do dunning. Quem tem qualquer das duas datas já além do corte é do dunning de
+   * degraus, não daqui.
+   */
+  async findPastDueSubscriptionsInGrace(params: {
+    take: number;
+    graceStart: Date;
+    afterProfileId?: string;
+  }): Promise<PastDueSubscriptionForDunningRow[]> {
+    return prisma.profileSubscription.findMany({
+      where: {
+        subscriptionStatus: "past_due",
+        hasPermanentSubscription: false,
+        AND: [
+          {
+            OR: [
+              { subscriptionNextDueDate: { gt: params.graceStart } },
+              { profile: { subscriptionNextDueDate: { gt: params.graceStart } } },
+            ],
+          },
+          // Nenhuma das duas datas pode estar além do corte. Sem `NOT (... OR ...)`: em SQL, negar
+          // uma comparação com data nula dá nulo e descartaria quem só tem a data no perfil.
+          { OR: [{ subscriptionNextDueDate: null }, { subscriptionNextDueDate: { gt: params.graceStart } }] },
+          {
+            OR: [
+              { profile: { subscriptionNextDueDate: null } },
+              { profile: { subscriptionNextDueDate: { gt: params.graceStart } } },
+            ],
+          },
+          ...(params.afterProfileId ? [{ profileId: { gt: params.afterProfileId } }] : []),
+        ],
+      },
+      select: {
+        profileId: true,
+        asaasSubscriptionId: true,
+        subscriptionStartDate: true,
+        subscriptionNextDueDate: true,
+        profile: {
+          select: {
+            email: true,
+            fullName: true,
+            supabaseId: true,
+            timezone: true,
+            subscriptionNextDueDate: true,
+          },
+        },
+      },
+      orderBy: { profileId: "asc" },
+      take: params.take,
+    });
+  }
+
+  /**
    * Dedupe do lembrete de inadimplência (T-20.28): já existe um aviso deste
    * degrau na timeline (SubscriptionChangeLog, append-only) desde o
    * vencimento atual? Filtra por `changeType` além do `eventType` porque
@@ -171,7 +226,8 @@ class BillingEngineRepository {
    */
   async hasDelinquencyNoticeSince(params: {
     profileId: string;
-    eventType: "reduced" | "cut";
+    /** `null` para os avisos da carência, que não são transição de status (só o `changeType` os distingue). */
+    eventType: "reduced" | "cut" | null;
     changeType: string;
     since: Date;
   }): Promise<boolean> {
@@ -196,7 +252,7 @@ class BillingEngineRepository {
    */
   async recordDelinquencyNotice(input: {
     profileId: string;
-    eventType: "reduced" | "cut";
+    eventType: "reduced" | "cut" | null;
     changeType: string;
     source: string;
     metadata: Prisma.InputJsonValue;

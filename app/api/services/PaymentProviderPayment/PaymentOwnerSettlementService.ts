@@ -29,6 +29,13 @@ export type PaymentOwnerSettlementDependencies = {
     IBillingGracePaymentRepository,
     "findById" | "markConfirmed" | "completeAndRestoreAccess"
   >
+  /**
+   * Passa a conta legada do Asaas para o roteador depois da renovação paga. Opcional: sem ele a
+   * regularização só renova. Idempotente (conta que já saiu do Asaas não faz nada).
+   */
+  readonly legacyAsaasCutover?: {
+    cutOver(profileId: string, provider: string): Promise<void>
+  }
   readonly pendingActions: {
     /** Valor em centavos cobrado para a ação; null quando a ação não existe. */
     expectedAmountInCents(pendingActionId: string): Promise<number | null>
@@ -116,13 +123,19 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
   private async settleGracePayment(input: OwnerSettlementInput): Promise<void> {
     const { gracePayments } = this.dependencies
     const current = await gracePayments.findById(input.ownerId)
-    if (current?.status === "completed") return
+    if (current?.status === "completed") {
+      // Reentrega do evento: a renovação já foi aplicada, mas o corte do Asaas pode ter falhado antes.
+      await this.dependencies.legacyAsaasCutover?.cutOver(current.accountId, current.provider)
+      return
+    }
     const payment = await gracePayments.markConfirmed({
       id: input.ownerId,
       providerExternalId: input.externalId,
       confirmedAt: input.paidAt,
     })
     if (!payment) throw new Error("Regularização não encontrada ou já processada")
-    await gracePayments.completeAndRestoreAccess(payment.id)
+    const completed = await gracePayments.completeAndRestoreAccess(payment.id)
+    // Falha do corte propaga: o evento é reentregue e o ramo acima tenta de novo.
+    await this.dependencies.legacyAsaasCutover?.cutOver(payment.accountId, (completed ?? payment).provider)
   }
 }
