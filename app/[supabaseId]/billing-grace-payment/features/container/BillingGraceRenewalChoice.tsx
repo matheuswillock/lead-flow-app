@@ -1,6 +1,6 @@
 'use client';
 
-import { Infinity as InfinityIcon, Layers, UserRound } from "lucide-react";
+import { AlertTriangle, Infinity as InfinityIcon, Info, Layers, UserRound } from "lucide-react";
 
 import {
   AlertDialog,
@@ -12,9 +12,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import type { BillingGraceCycleQuote } from "../context/BillingGracePaymentTypes";
+import { resolveUnlimitedLossNotice, type UnlimitedLossNotice } from "../utils/billingGraceUnlimitedLoss";
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const DATE = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
@@ -22,6 +24,9 @@ const DATE = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit"
 export const formatBRL = (value: number) => BRL.format(value);
 export const formatPeriod = (quote: Pick<BillingGraceCycleQuote, "periodStart" | "periodEnd">) =>
   `${DATE.format(new Date(quote.periodStart))} a ${DATE.format(new Date(quote.periodEnd))}`;
+
+/** Id do botão de escolha de um prazo; permite devolver o foco a ele quando outro controle o seleciona. */
+export const renewalCycleRadioId = (cycle: string) => `renewal-cycle-radio-${cycle}`;
 
 /** Prazo da renovação: cada opção mostra o total no PIX e o equivalente por mês. */
 export function BillingGraceCycleChoice({ cycles, value, disabled, onChange }: {
@@ -70,8 +75,13 @@ export function BillingGraceCycleChoice({ cycles, value, disabled, onChange }: {
                   <InfinityIcon className="size-3.5" aria-hidden />
                   Usuários ilimitados
                 </span>
+              ) : quote.losesUnlimitedUsers && quote.billedUsers.length > 0 && quote.extraUsersTotal > 0 ? (
+                <span className="mt-1 text-xs text-muted-foreground tabular-nums">
+                  Inclui {formatBRL(quote.extraUsersTotal)} de usuários adicionais
+                </span>
               ) : null}
               <RadioGroupItem
+                id={renewalCycleRadioId(quote.cycle)}
                 value={quote.cycle}
                 aria-labelledby={labelId}
                 className="absolute inset-0 aspect-auto size-full rounded-xl border-0 text-transparent disabled:cursor-not-allowed"
@@ -159,15 +169,96 @@ function KeepUserRow({ user, price, kept, disabled, onToggle }: {
   );
 }
 
+const ONLY_ANNUAL_INCLUDES_UNLIMITED = "Só o plano anual inclui usuários ilimitados.";
+
+function LossNoticeText({ notice }: { notice: UnlimitedLossNotice }) {
+  if (notice.kind === "no_extra_users") {
+    return <>{`${ONLY_ANNUAL_INCLUDES_UNLIMITED} Como você não tem usuários adicionais, não há cobrança extra agora. Quem você adicionar depois será cobrado por usuário.`}</>;
+  }
+  if (notice.kind === "all_removed") {
+    return <>{`${ONLY_ANNUAL_INCLUDES_UNLIMITED} Com todos os usuários adicionais desmarcados, nada é cobrado por eles, e eles perdem o acesso quando o pagamento for confirmado.`}</>;
+  }
+  const who = notice.userCount === 1 ? "1 usuário adicional passa a ser cobrado" : `${notice.userCount} usuários adicionais passam a ser cobrados`;
+  // No mensal o total do prazo é o próprio valor do mês; repetir os dois só confunde.
+  const isMonthly = notice.months === 1;
+  return (
+    <>
+      {`${ONLY_ANNUAL_INCLUDES_UNLIMITED} Neste prazo, ${who}: ${formatBRL(notice.monthlyPrice)} por usuário${isMonthly ? "" : " por mês"}, `}
+      <strong className="font-semibold text-foreground tabular-nums">{formatBRL(notice.periodTotal)}</strong>
+      {isMonthly ? " por mês." : ` nos ${notice.months} meses.`}
+    </>
+  );
+}
+
+/**
+ * Quem estava no anual tinha usuários ilimitados. Ao escolher outro prazo, a tela diz o que muda e
+ * quanto passa a custar, e oferece voltar ao anual. Com valor a pagar usa o tom de atenção; sem
+ * valor (conta sem usuários adicionais, todos desmarcados) é só informativo.
+ */
+function BillingGraceUnlimitedLossNotice({ notice, disabled, onKeepUnlimited }: {
+  notice: UnlimitedLossNotice | null
+  disabled: boolean
+  onKeepUnlimited?: () => void
+}) {
+  if (!notice) return null;
+  const charged = notice.kind === "charged";
+  const Icon = charged ? AlertTriangle : Info;
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm text-foreground",
+        charged
+          ? "border-semantic-warning-border bg-semantic-warning-surface"
+          : "border-semantic-info-border bg-semantic-info-surface",
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <Icon
+          className={cn(
+            "mt-0.5 size-4 shrink-0",
+            // O tom puro do token não chega a 3:1 sobre a superfície clara: mistura com o primeiro plano.
+            charged
+              ? "text-[color-mix(in_oklab,var(--semantic-warning)_55%,var(--foreground))]"
+              : "text-[color-mix(in_oklab,var(--semantic-info)_55%,var(--foreground))]",
+          )}
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="font-semibold">Você deixa de ter usuários ilimitados</p>
+          <p className="text-pretty text-foreground/80 [overflow-wrap:anywhere]">
+            <LossNoticeText notice={notice} />
+          </p>
+        </div>
+      </div>
+      {onKeepUnlimited ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={onKeepUnlimited}
+          className="h-auto min-h-8 w-full whitespace-normal py-1.5 max-lg:min-h-11 sm:w-fit"
+        >
+          <InfinityIcon className="size-4" aria-hidden />
+          Manter usuários ilimitados (plano anual)
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Tudo o que entra na renovação, pelo nome: o plano, cada usuário adicional (nome e e-mail) e
  * cada time adicional. Quando o prazo tem ilimitado, os usuários aparecem como incluídos.
  */
-export function BillingGraceBilledItems({ quote, keptUserIds, disabled, onToggleUser }: {
+export function BillingGraceBilledItems({ quote, keptUserIds, disabled, onToggleUser, onKeepUnlimited }: {
   quote: BillingGraceCycleQuote
   keptUserIds: ReadonlySet<string>
   disabled: boolean
   onToggleUser: (userId: string, kept: boolean) => void
+  /** Seleciona o prazo que mantém usuários ilimitados; ausente quando não há esse prazo. */
+  onKeepUnlimited?: () => void
 }) {
   return (
     <section aria-labelledby="renewal-items-title" className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
@@ -188,24 +279,33 @@ export function BillingGraceBilledItems({ quote, keptUserIds, disabled, onToggle
           <InfinityIcon className="mt-0.5 size-4 shrink-0 text-semantic-success" aria-hidden />
           Usuários ilimitados incluídos neste prazo, sem cobrança por usuário.
         </p>
-      ) : quote.accountUsers.length > 0 ? (
-        <ChargeGroup
-          icon={<UserRound className="size-4 text-primary" aria-hidden />}
-          title={`Usuários adicionais (${quote.billedUsers.length} de ${quote.accountUsers.length})`}
-          total={quote.extraUsersTotal}
-        >
-          {quote.accountUsers.map((user) => (
-            <KeepUserRow
-              key={user.id}
-              user={user}
-              price={Math.round(quote.extraUserPrice * quote.months * 100) / 100}
-              kept={keptUserIds.has(user.id)}
-              disabled={disabled}
-              onToggle={(kept) => onToggleUser(user.id, kept)}
-            />
-          ))}
-        </ChargeGroup>
-      ) : null}
+      ) : (
+        <>
+          <BillingGraceUnlimitedLossNotice
+            notice={resolveUnlimitedLossNotice(quote)}
+            disabled={disabled}
+            onKeepUnlimited={onKeepUnlimited}
+          />
+          {quote.accountUsers.length > 0 ? (
+            <ChargeGroup
+              icon={<UserRound className="size-4 text-primary" aria-hidden />}
+              title={`Usuários adicionais (${quote.billedUsers.length} de ${quote.accountUsers.length})`}
+              total={quote.extraUsersTotal}
+            >
+              {quote.accountUsers.map((user) => (
+                <KeepUserRow
+                  key={user.id}
+                  user={user}
+                  price={Math.round(quote.extraUserPrice * quote.months * 100) / 100}
+                  kept={keptUserIds.has(user.id)}
+                  disabled={disabled}
+                  onToggle={(kept) => onToggleUser(user.id, kept)}
+                />
+              ))}
+            </ChargeGroup>
+          ) : null}
+        </>
+      )}
 
       {quote.billedTeams.length > 0 ? (
         <ChargeGroup

@@ -50,6 +50,39 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
 - [ ] F3.G2: briefing `impeccable shape`, validação no navegador e revisão `impeccable`.
   - EVIDENCE: pendente.
 
+## F8. Renovação: aviso de perda do ilimitado (Fase C)
+
+**Estado:** implementado e com os seis passes do `impeccable` (G4) e a verificação renderizada dos componentes (G5) concluídos em 2026-11-25. Falta ver a tela completa com dados reais.
+
+**Briefing:** [design/renovacao-usuarios-adicionais.md](design/renovacao-usuarios-adicionais.md), aprovado pelo dono em 2026-11-25. As três perguntas abertas foram resolvidas pela recomendação do briefing: controle "Manter usuários ilimitados (plano anual)" entra, a linha "Inclui R$ X de usuários adicionais" entra em cada prazo, e a conta sem usuários adicionais recebe o aviso informativo sem valor.
+
+**Arquivos:** `BillingGraceRenewalChoice.tsx` (aviso e linha por prazo), `BillingGracePaymentContainer.tsx` (liga o controle ao prazo anual), `features/utils/billingGraceUnlimitedLoss.ts` (regra do aviso, com teste).
+
+- [x] F8.G1: briefing aprovado antes do JSX.
+  - EVIDENCE: aprovação do dono na conversa de 2026-11-25.
+- [x] F8.G2: regra do aviso testada (com valor, acompanha as caixas, todos desmarcados, sem usuários adicionais, sem perda).
+  - CHECK: `bun test "app/[supabaseId]/billing-grace-payment/features/utils/billingGraceUnlimitedLoss.test.ts"`
+  - EVIDENCE: EXIT=0, 5 testes.
+- [x] F8.G3: `bun run design:check` e typecheck.
+  - EVIDENCE: `design:check` EXIT=0 ("globals.css matches DESIGN.md"); typecheck EXIT=0. O hook automático do `impeccable` varreu os dois arquivos da tela sem achados.
+- [x] F8.G4: passes `impeccable harden`, `clarify`, `adapt`, `typeset`, `colorize` e `polish`, um por vez, em 2026-11-25.
+  - `harden`: preço de usuário zerado no backoffice não gera aviso nem a linha "Inclui R$ 0,00" (regra testada, 6 casos); o foco volta ao prazo escolhido quando "Manter usuários ilimitados" faz o aviso e o botão sumirem (por efeito do React, não por `requestAnimationFrame`, que falhou em aba em segundo plano).
+  - `clarify`: o aviso passou a dizer por que o ilimitado se perde ("Só o plano anual inclui usuários ilimitados."); no mensal o total não repete o valor por usuário; "nos 3 meses" no lugar de "no prazo de 3 meses". O rótulo do botão aprovado no briefing não mudou.
+  - `adapt`: em 320 px o rótulo do botão ultrapassava a borda (o botão base não quebra linha). Agora o botão cresce em altura e quebra o texto, com mínimo de 44 px no celular.
+  - `typeset`: título semibold, corpo em tom secundário, total do prazo em destaque (semibold, numerais tabulares), `text-pretty` no corpo.
+  - `colorize`: texto do corpo derivado do primeiro plano (não cinza genérico) e ícone escurecido por mistura do token com o primeiro plano, porque o tom puro do aviso não chegava a 3:1 sobre a superfície clara.
+  - `polish`: verificação renderizada nos dois temas e em 320, 375, 768 e 1440 px (ver G5).
+- [x] F8.G5: componentes renderizados em 375 px e 1440 px, com dados de exemplo.
+  - EVIDENCE: a tela real (`/[supabaseId]/billing-grace-payment`) exige login e banco, então usei uma página descartável (`/oferta/preview-renewal`) montando `BillingGraceCycleChoice` e `BillingGraceBilledItems` com cotações de exemplo, servida por `bun run dev` com o Postgres local. A página e o `.env` de exemplo foram removidos.
+    - 1440 px: aviso de atenção com 2 usuários (R$ 19,90 por usuário por mês, R$ 119,40 em 3 meses), controle de voltar ao anual, linha "Inclui R$ X de usuários adicionais" em cada prazo sem ilimitado. Visual coerente com o restante da tela (tema escuro).
+    - Interações: desmarcar um usuário muda o aviso para 1 usuário (R$ 59,70); desmarcar todos muda para o aviso informativo de ninguém cobrado; o controle seleciona o anual e o aviso dá lugar a "Usuários ilimitados incluídos neste prazo".
+    - 375 px, conta sem usuários adicionais: aviso informativo (tom de informação), sem rolagem horizontal (`scrollWidth` 375), botão com 44 px de altura.
+    - Teclado: o botão recebe foco com anel visível (`:focus-visible` com sombra de foco). Ao acioná-lo com Enter, o foco vai para o prazo anual, com anel visível.
+    - Contraste medido no DOM (WCAG), aviso de atenção com 2 usuários: escuro, corpo 8,74:1, título e total 12,73:1, ícone 7,20:1; claro, corpo 8,85:1, título e total 15,80:1, ícone 5,83:1. Aviso informativo, escuro: corpo 8,92:1, título 13,05:1, ícone 6,91:1. Todos acima de 4,5:1 (texto) e 3:1 (ícone).
+    - Larguras: 320 px (sem rolagem horizontal, nada ultrapassa a borda, botão quebra em 74 px de altura), 375 px, 768 px e 1440 px.
+  - Evidência: viewport emulado no Chromium do app, foco com teclado real (Tab e Enter). Não testado: Safari e Firefox, toque em aparelho físico, leitor de tela, zoom de 200%.
+  - NÃO verificado: a tela completa com dados reais (resumo do pedido, barra de pagamento no celular, fluxo de pagamento); estados vazio, carregando e erro dessa tela (não mudaram nesta alteração). O console mostrou um erro de hidratação, causado pela página descartável (lia a URL na renderização), não pelos componentes.
+
 ## F4. Página de assinatura restrita a master e delegados (Fase E)
 
 **Estado:** não verificado. Precisa ler `app/[supabaseId]/subscription/features/container/SubscriptionContainer.tsx` e a rota de `subscription-management`.
