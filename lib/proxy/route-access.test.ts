@@ -10,6 +10,7 @@ import {
   requiresAuth,
   requiresManagerRole,
   requiresSessionPage,
+  resolveLegacyBillingGracePaymentPath,
 } from "@/lib/proxy/route-access"
 
 const USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -21,10 +22,30 @@ describe("requiresSessionPage", () => {
     expect(isPublicPageRoute("/adquirir/creditos")).toBe(false)
   })
 
+  it("exige sessão no checkout de regularização e no checkout de add-on", () => {
+    expect(requiresSessionPage(`/pagamento/${USER_A}`)).toBe(true)
+    expect(requiresSessionPage("/addon-checkout/pending-1")).toBe(true)
+    expect(isPublicPageRoute("/addon-checkout/pending-1")).toBe(false)
+  })
+
   it("não afeta rotas públicas nem o app autenticado", () => {
     expect(requiresSessionPage("/prime")).toBe(false)
     expect(requiresSessionPage("/adquirir/creditos/outra")).toBe(false)
     expect(requiresSessionPage(`/${USER_A}/crm`)).toBe(false)
+    expect(requiresSessionPage("/pagamentos")).toBe(false)
+  })
+})
+
+describe("resolveLegacyBillingGracePaymentPath", () => {
+  it("manda a rota antiga da regularização para a página própria do checkout", () => {
+    expect(resolveLegacyBillingGracePaymentPath(`/${USER_A}/billing-grace-payment`)).toBe(`/pagamento/${USER_A}`)
+    expect(resolveLegacyBillingGracePaymentPath(`/${USER_A}/billing-grace-payment/`)).toBe(`/pagamento/${USER_A}`)
+  })
+
+  it("ignora outros caminhos e segmentos que não são UUID", () => {
+    expect(resolveLegacyBillingGracePaymentPath(`/${USER_A}/radar`)).toBeNull()
+    expect(resolveLegacyBillingGracePaymentPath("/nao-uuid/billing-grace-payment")).toBeNull()
+    expect(resolveLegacyBillingGracePaymentPath(`/pagamento/${USER_A}`)).toBeNull()
   })
 })
 

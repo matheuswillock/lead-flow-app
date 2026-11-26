@@ -17,6 +17,8 @@ import { PageBreadcrumbProvider } from "@/app/context/PageBreadcrumbContext"
 import { CampaignDispatchIndicator } from "./CampaignDispatchIndicator";
 import { TeamSwitchingScreen } from "./TeamSwitchingScreen";
 import { ReadOnlyAccessBanner } from "./ReadOnlyAccessBanner";
+import { FeatureBlockedPanel } from "./FeatureBlockedPanel";
+import { canOfferPaymentFromBlockedFeature } from "./accountAccessRecovery";
 import { shouldContainLayoutContent } from "@/lib/layout/layout-content-overflow";
 
 interface LayoutContentProps {
@@ -175,17 +177,10 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
                 </div>
               </div>
             ) : shouldBlockByFeature ? (
-              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-                <div className="text-center space-y-3 max-w-md">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted/40">
-                    <Users2 className="h-7 w-7 text-muted-foreground" />
-                  </div>
-                  <h2 className="text-xl font-semibold">Acesso não liberado</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Esta funcionalidade não está liberada para o seu usuário no momento.
-                  </p>
-                </div>
-              </div>
+              <FeatureBlockedPanel
+                supabaseId={supabaseId}
+                offerPayment={canOfferPaymentFromBlockedFeature(accountAccessDecision, isTeamMaster)}
+              />
             ) : (
               children
             )}

@@ -339,7 +339,7 @@ test.describe("app/[supabaseId]/subscription", () => {
 
     await expect(page.getByText("Pagamento Atrasado")).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Regularizar pagamento" }).click();
-    await expect(page).toHaveURL(/\/billing-grace-payment$/);
+    await expect(page).toHaveURL(/\/pagamento\/[^/]+$/);
   });
 
   test("responsivo: mobile-first sem overflow, touch targets e reduced-motion (inclui Alert de cancelada)", async ({ page }) => {

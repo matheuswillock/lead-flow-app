@@ -100,6 +100,7 @@ export function PublicCheckoutFlow({
   availableMethods,
   successVariant = "newContract",
   successDescription,
+  successHref = "/",
   provider,
   canRegeneratePix = false,
   abacatePublicKey,
@@ -124,6 +125,8 @@ export function PublicCheckoutFlow({
   successVariant?: "newContract" | "addon"
   /** Texto extra abaixo da tela de sucesso (ex.: prazo de crédito). A copy da variante já vem no CheckoutSuccess. */
   successDescription?: string
+  /** Para onde a confirmação do add-on leva após alguns segundos (padrão: página inicial pública). */
+  successHref?: string
   attemptStorageKey: string
   attemptDurationMs?: number
   details: PublicCheckoutDetails | null
@@ -402,7 +405,7 @@ export function PublicCheckoutFlow({
             planLabel={details.includedTitle}
             paymentLabel={isCard ? `Cartão de crédito em ${installments}x` : "PIX à vista"}
             total={orderTotal}
-            ctaHref="/"
+            ctaHref={successHref}
           />
         ) : (
           <CheckoutSuccess

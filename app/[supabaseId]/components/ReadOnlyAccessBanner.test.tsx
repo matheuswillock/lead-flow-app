@@ -13,7 +13,7 @@ describe("ReadOnlyAccessBanner", () => {
 
     expect(markup).toContain("Conta em modo somente leitura")
     expect(markup).toContain(MASTER_TEXT)
-    expect(markup).toContain('href="/conta-1/billing-grace-payment"')
+    expect(markup).toContain('href="/pagamento/conta-1"')
     expect(markup).toContain("Regularizar pagamento")
   })
 
@@ -21,7 +21,7 @@ describe("ReadOnlyAccessBanner", () => {
     const markup = renderToStaticMarkup(<ReadOnlyAccessBanner supabaseId="conta-1" isBillingOwner={false} />)
 
     expect(markup).toContain(MEMBER_TEXT)
-    expect(markup).not.toContain("billing-grace-payment")
+    expect(markup).not.toContain("/pagamento/")
     expect(markup).not.toContain("Regularizar pagamento")
   })
 
@@ -45,7 +45,7 @@ describe("ReadOnlyAccessBanner", () => {
   test("o botão de pagamento continua visível no celular, fora dos detalhes recolhidos", () => {
     const markup = renderToStaticMarkup(<ReadOnlyAccessBanner supabaseId="conta-1" isBillingOwner />)
     const detailsStart = markup.indexOf('data-testid="read-only-banner-details"')
-    const paymentLinkPosition = markup.indexOf("billing-grace-payment")
+    const paymentLinkPosition = markup.indexOf("/pagamento/conta-1")
 
     expect(detailsStart).toBeGreaterThan(-1)
     // O link fica depois do bloco de detalhes, não dentro dele

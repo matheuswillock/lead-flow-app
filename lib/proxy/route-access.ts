@@ -20,7 +20,6 @@ export const PUBLIC_PAGE_ROUTES = [
   "/backoffice-lead-form",
   "/agendamento",
   "/backoffice-agendamento",
-  "/addon-checkout",
   "/checkout",
   "/sentry-example-page",
   "/documentos",
@@ -35,7 +34,6 @@ const PUBLIC_PAGE_ROUTE_PREFIXES = [
   "/conversation/",
   "/agendamento/",
   "/backoffice-agendamento/",
-  "/addon-checkout/",
   "/oferta/",
   "/adesao/",
   "/cotacao/",
@@ -114,8 +112,22 @@ export function isPublicPageRoute(pathname: string): boolean {
 /** Páginas fora do app tenant que só abrem com sessão; sem ela vão ao login e voltam. */
 const SESSION_REQUIRED_PAGE_ROUTES = ["/adquirir/creditos"] as const
 
+/** Checkouts fora do shell da conta: o usuário precisa estar logado para pagar e voltar ao app. */
+const SESSION_REQUIRED_PAGE_PREFIXES = ["/pagamento/", "/addon-checkout/"] as const
+
 export function requiresSessionPage(pathname: string): boolean {
-  return (SESSION_REQUIRED_PAGE_ROUTES as readonly string[]).includes(pathname)
+  if ((SESSION_REQUIRED_PAGE_ROUTES as readonly string[]).includes(pathname)) return true
+  return SESSION_REQUIRED_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
+/**
+ * Rota antiga da regularização, dentro do shell da conta. Redireciona para `/pagamento/{id}`,
+ * a página própria do checkout. Retorna null quando o caminho não é a rota antiga.
+ */
+export function resolveLegacyBillingGracePaymentPath(pathname: string): string | null {
+  const match = /^\/([^/]+)\/billing-grace-payment\/?$/.exec(pathname)
+  if (!match || !UUID_RE.test(match[1])) return null
+  return `/pagamento/${match[1]}`
 }
 
 export function isLegacyTenantRoute(pathname: string): boolean {
