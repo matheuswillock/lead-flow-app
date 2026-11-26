@@ -165,7 +165,7 @@ test.describe.serial("gate de acesso da conta", () => {
     await expect(page.getByTestId("read-only-banner")).toBeVisible()
     await expect(page.getByRole("link", { name: "Regularizar pagamento" })).toHaveAttribute(
       "href",
-      `/${readOnlyAccount.supabaseId}/billing-grace-payment`
+      `/pagamento/${readOnlyAccount.supabaseId}`
     )
 
     // Dashboard faz parte do produto CRM contratado: continua acessível em leitura.
@@ -362,7 +362,7 @@ test.describe.serial("gate de acesso da conta", () => {
     await page.goto(await paymentLink.evaluate((link) => (link as HTMLAnchorElement).href), {
       waitUntil: "domcontentloaded",
     })
-    await expect(page).toHaveURL(new RegExp(`/${isolatedSupabaseId}/billing-grace-payment$`))
+    await expect(page).toHaveURL(new RegExp(`/pagamento/${isolatedSupabaseId}$`))
     await expect(page.getByRole("heading", { name: "Renove sua assinatura" })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole("heading", { name: "Seu acesso está pausado" })).toHaveCount(0)
 
@@ -390,7 +390,7 @@ test.describe.serial("gate de acesso da conta", () => {
     // O master (quem paga) tem uma única ação: reativar pela renovação.
     const paymentLink = page.getByRole("link", { name: "Reativar assinatura" })
     await expect(paymentLink).toHaveCount(1)
-    await expect(paymentLink).toHaveAttribute("href", `/${isolatedSupabaseId}/billing-grace-payment`)
+    await expect(paymentLink).toHaveAttribute("href", `/pagamento/${isolatedSupabaseId}`)
     await expect(page.getByRole("link", { name: /Fale com o time de assinaturas/ })).toHaveCount(0)
     await expect(page.getByRole("link")).toHaveCount(1)
     await expect(page.locator("header")).toHaveCount(0)

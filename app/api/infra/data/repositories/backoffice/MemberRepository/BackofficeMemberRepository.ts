@@ -1,5 +1,6 @@
 import type { UserFunction, UserRole } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { removedProfileEmailFor } from "@/lib/account/removed-profile-email"
 import type {
   IBackofficeMemberRepository,
   MemberAccountMembershipTemplate,
@@ -179,9 +180,14 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         })
       }
 
+      // Libera o e-mail: sem o tombstone, o endereço segue preso e bloqueia nova adesão.
       await tx.profile.update({
         where: { id: memberId },
-        data: { deletedAt: now, deletedByProfileId: actorProfileId },
+        data: {
+          deletedAt: now,
+          deletedByProfileId: actorProfileId,
+          email: removedProfileEmailFor(memberId),
+        },
       })
 
       await tx.backofficeDeletionAuditLog.create({
@@ -265,8 +271,15 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   }
 
   async deleteTeamMembership(teamId: string, profileId: string): Promise<void> {
-    await prisma.teamMember.delete({
-      where: { teamId_profileId: { teamId, profileId } },
+    // Remover o vínculo revoga o convite pendente: a versão sobe na mesma transação.
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.delete({
+        where: { teamId_profileId: { teamId, profileId } },
+      })
+      await tx.profile.update({
+        where: { id: profileId },
+        data: { inviteLinkVersion: { increment: 1 } },
+      })
     })
   }
 
@@ -278,6 +291,10 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
     await prisma.$transaction(async (tx) => {
       await tx.teamMember.delete({
         where: { teamId_profileId: { teamId: input.teamId, profileId: input.profileId } },
+      })
+      await tx.profile.update({
+        where: { id: input.profileId },
+        data: { inviteLinkVersion: { increment: 1 } },
       })
       await tx.backofficeDeletionAuditLog.create({
         data: {

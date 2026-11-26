@@ -239,8 +239,6 @@
       "app/api/services/support/SupportRequestService.ts",
       "app/api/email/route.ts",
       "app/api/email/send/route.ts",
-      "app/api/v1/backoffice/clients/[id]/route.ts",
-      "app/api/v1/backoffice/clients/route.ts",
       "app/api/v1/backoffice/users/[id]/route.ts",
       "app/api/v1/backoffice/users/route.ts",
       "app/api/v1/billing/summary/route.ts",
@@ -432,6 +430,7 @@
   "e2ePageCoverage": {
     "coveredBy": {
       "app/page.tsx": "e2e/specs/public/home.spec.ts",
+      "app/pagamento/[supabaseId]/page.tsx": "e2e/specs/product/billing-grace-payment.spec.ts",
       "app/[supabaseId]/email/campanhas/page.tsx": "e2e/specs/product/email-campanhas.spec.ts",
       "app/[supabaseId]/email/contatos/page.tsx": "e2e/specs/product/email-contatos.spec.ts",
       "app/[supabaseId]/email/configuracoes/page.tsx": "e2e/specs/product/email-configuracoes.spec.ts",

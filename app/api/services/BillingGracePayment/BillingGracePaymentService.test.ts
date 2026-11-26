@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, mock } from "bun:test"
 import type { RenewalAccount } from "@/app/api/shared/billing/renewalQuote"
 import type { SelfCheckoutCycleOption } from "@/lib/self-checkout/contracts"
 
+/** Carimbo do aceite que a rota envia; o serviço só repassa ao registro. */
+const TERMS = { termsAcceptedAt: "2026-11-23T12:00:00.000Z", termsVersion: "2026-08-27" }
+
 const CYCLE_OPTIONS: SelfCheckoutCycleOption[] = [
   { cycle: "monthly", label: "Mensal", months: 1, pixTotal: 59.9, monthlyEquivalent: 59.9, extraUserMonthlyPrice: 19.9, extraTeamMonthlyPrice: 29.9 },
   { cycle: "quarterly", label: "Trimestral", months: 3, pixTotal: 159.9, monthlyEquivalent: 53.3, extraUserMonthlyPrice: 19.9, extraTeamMonthlyPrice: 29.9 },
@@ -97,11 +100,19 @@ beforeEach(() => {
   }))
 })
 
+describe("BillingGracePaymentService — aceite dos termos", () => {
+  it("grava o carimbo do aceite no registro da renovação PIX e cartão", async () => {
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-terms-pix", cycle: "monthly" })
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining(TERMS))
+  })
+})
+
 describe("BillingGracePaymentService.createPixPayment — ambiente e provider", () => {
   it("seleciona o provider no ambiente configurado na composition, exigindo PIX", async () => {
     configuredEnvironment = "PRODUCTION"
 
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
 
     expect(createPaymentProviderRouter).toHaveBeenCalledWith("PRODUCTION")
     expect(select).toHaveBeenCalledWith({ environment: "PRODUCTION", requiredCapabilities: ["ONE_TIME_PAYMENT", "PIX"] })
@@ -112,7 +123,7 @@ describe("BillingGracePaymentService.createPixPayment — ambiente e provider", 
   it("não cria a linha de regularização quando nenhum provider está disponível", async () => {
     select.mockRejectedValue(new Error("Nenhum provider disponível"))
 
-    await expect(newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })).rejects.toThrow("Nenhum provider disponível")
+    await expect(newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })).rejects.toThrow("Nenhum provider disponível")
 
     expect(create).not.toHaveBeenCalled()
     expect(createSession).not.toHaveBeenCalled()
@@ -122,7 +133,7 @@ describe("BillingGracePaymentService.createPixPayment — ambiente e provider", 
   it("não consulta o provider quando a chave já tem pagamento da própria conta", async () => {
     findByIdempotencyKey.mockResolvedValue({ id: "payment-existing" })
 
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
 
     expect(select).not.toHaveBeenCalled()
   })
@@ -132,14 +143,14 @@ describe("BillingGracePaymentService.createPixPayment — escopo da chave de ide
   it("resolve a conta antes de qualquer consulta pela chave", async () => {
     findAccountContext.mockResolvedValue(null)
 
-    await expect(newService().createPixPayment({ supabaseId: "sb-x", idempotencyKey: "k-1", cycle: "monthly" })).rejects.toThrow("Somente o master")
+    await expect(newService().createPixPayment({ ...TERMS, supabaseId: "sb-x", idempotencyKey: "k-1", cycle: "monthly" })).rejects.toThrow("Somente o master")
 
     expect(findByIdempotencyKey).not.toHaveBeenCalled()
     expect(create).not.toHaveBeenCalled()
   })
 
   it("consulta a chave escopada pela conta do chamador", async () => {
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
 
     expect(findByIdempotencyKey).toHaveBeenCalledWith({ accountId: "account-a", idempotencyKey: "k-1" })
   })
@@ -148,7 +159,7 @@ describe("BillingGracePaymentService.createPixPayment — escopo da chave de ide
     const existing = { id: "payment-existing", accountId: "account-a" }
     findByIdempotencyKey.mockResolvedValue(existing)
 
-    const result = await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
+    const result = await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-1", cycle: "monthly" })
 
     expect(result as unknown).toBe(existing)
     expect(create).not.toHaveBeenCalled()
@@ -159,16 +170,16 @@ describe("BillingGracePaymentService.createPixPayment — escopo da chave de ide
     findAccountContext.mockResolvedValue(accountB)
     findByIdempotencyKey.mockImplementation(async ({ accountId }) => (accountId === "account-a" ? { id: "payment-of-a" } : null))
 
-    const result = (await newService().createPixPayment({ supabaseId: "sb-b", idempotencyKey: "shared-key", cycle: "monthly" })) as { id: string }
+    const result = (await newService().createPixPayment({ ...TERMS, supabaseId: "sb-b", idempotencyKey: "shared-key", cycle: "monthly" })) as { id: string }
 
     expect(result.id).toBe("payment-of-account-b")
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ accountId: "account-b", idempotencyKey: "shared-key", cycle: "monthly" }))
   })
 
   it("deriva as chaves de sessão e tentativa do provider do id do pagamento, não da chave do cliente", async () => {
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "shared-key", cycle: "monthly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "shared-key", cycle: "monthly" })
     findAccountContext.mockResolvedValue(accountB)
-    await newService().createPixPayment({ supabaseId: "sb-b", idempotencyKey: "shared-key", cycle: "monthly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-b", idempotencyKey: "shared-key", cycle: "monthly" })
 
     const sessionKeys = createSession.mock.calls.map(([input]) => input.idempotencyKey)
     const attemptKeys = createAttempt.mock.calls.map(([input]) => input.idempotencyKey)
@@ -186,7 +197,7 @@ describe("BillingGracePaymentService — prazo escolhido", () => {
       maxInstallments: 3,
     })))
     await service.createCardPayment({
-      supabaseId: "sb-a", idempotencyKey: "card-key", cycle: "monthly", cardToken: "ctok_ephemeral", installments: 1,
+      ...TERMS, supabaseId: "sb-a", idempotencyKey: "card-key", cycle: "monthly", cardToken: "ctok_ephemeral", installments: 1,
     })
     expect(select).toHaveBeenCalledWith(expect.objectContaining({ requiredCapabilities: ["ONE_TIME_PAYMENT", "CARD"] }))
     expect(createCardPayment).toHaveBeenCalledWith(expect.objectContaining({ amountInCents: 10170, token: "ctok_ephemeral", installments: 1 }))
@@ -194,7 +205,7 @@ describe("BillingGracePaymentService — prazo escolhido", () => {
   })
 
   it("cobra o prazo escolhido com os adicionais nominais e grava o ciclo", async () => {
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-2", cycle: "quarterly" })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-2", cycle: "quarterly" })
 
     // Trimestral 159,90 + 2 usuários adicionais (Ana e a manager Bia) 2 x 19,90 x 3 meses = 119,40; o único time é o incluído.
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ cycle: "quarterly", amountCents: 27930, revokedProfileIds: [] }))
@@ -202,20 +213,20 @@ describe("BillingGracePaymentService — prazo escolhido", () => {
   })
 
   it("cobra só os usuários mantidos e grava quem será revogado", async () => {
-    await newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-4", cycle: "monthly", keptUserIds: ["u-bia"] })
+    await newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-4", cycle: "monthly", keptUserIds: ["u-bia"] })
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 7980, revokedProfileIds: ["u-ana"] }))
   })
 
   it("recusa manter um usuário que não é da conta", async () => {
-    await expect(newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-5", cycle: "monthly", keptUserIds: ["u-outra-conta"] }))
+    await expect(newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-5", cycle: "monthly", keptUserIds: ["u-outra-conta"] }))
       .rejects.toThrow("A lista de usuários mudou")
 
     expect(create).not.toHaveBeenCalled()
   })
 
   it("recusa prazo fora da tabela vigente sem criar a cobrança", async () => {
-    await expect(newService().createPixPayment({ supabaseId: "sb-a", idempotencyKey: "k-3", cycle: "member_pro_100" }))
+    await expect(newService().createPixPayment({ ...TERMS, supabaseId: "sb-a", idempotencyKey: "k-3", cycle: "member_pro_100" }))
       .rejects.toThrow("Este prazo não está disponível")
 
     expect(create).not.toHaveBeenCalled()

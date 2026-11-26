@@ -102,7 +102,7 @@ export class PendingActionRepository implements IPendingActionRepository {
     return pendingAction;
   }
 
-  async updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void> {
+  async updatePaymentId(id: string, paymentId: string, account: AsaasAccountId | null): Promise<void> {
     await prisma.pendingAction.update({
       where: { id },
       data: { paymentId, asaasAccount: account },
@@ -147,6 +147,8 @@ export class PendingActionRepository implements IPendingActionRepository {
         providerSessionId: input.providerSessionId,
         providerAttemptId: input.providerAttemptId,
         providerExternalId: input.providerExternalId,
+        // Ação de provedor não tem conta Asaas (só o default legado, que não se aplica aqui).
+        asaasAccount: null,
       },
     });
   }
@@ -231,7 +233,14 @@ export class PendingActionRepository implements IPendingActionRepository {
   ): Promise<PendingActionOwnershipLookup | null> {
     return prisma.pendingAction.findFirst({
       where: { paymentId, masterId },
-      select: { id: true, masterId: true, status: true, asaasAccount: true },
+      select: {
+        id: true,
+        masterId: true,
+        status: true,
+        asaasAccount: true,
+        provider: true,
+        providerAttemptId: true,
+      },
     });
   }
 
@@ -449,6 +458,7 @@ export class PendingActionRepository implements IPendingActionRepository {
     params: {
       fullName: string;
       email: string;
+      phone?: string;
       role: UserRole;
       functions: UserFunction[];
       managerId: string;
@@ -458,6 +468,7 @@ export class PendingActionRepository implements IPendingActionRepository {
       data: {
         fullName: params.fullName,
         email: params.email,
+        phone: params.phone,
         role: params.role,
         functions: params.functions,
         managerId: params.managerId,

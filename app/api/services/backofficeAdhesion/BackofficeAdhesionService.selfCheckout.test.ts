@@ -128,6 +128,7 @@ function makeHarness(options: { product?: ReturnType<typeof buildCrmProduct> | n
   const repo = {
     findProfileIdByEmail: mock(async (_email: string): Promise<string | null> => null),
     createSelfCheckoutLead: mock(async (_input: unknown) => buildLead({ id: "lead-new" })),
+    appendLeadNote: mock(async (_leadId: string, _note: string) => {}),
     findByLeadId: mock(async (_leadId: string): Promise<BackofficeAdhesionWithRelations | null> => null),
     createAndMoveLeadToAdhesion: mock(async (data: CreatedInput) =>
       buildAdhesion({ ...data, id: "adhesion-new", leadId: data.leadId, monthlyBaseAmount: String(data.monthlyBaseAmount), totalAmount: String(data.totalAmount) })
@@ -373,6 +374,15 @@ describe("achado crítico: ledger e provider do PIX", () => {
     return h
   }
 
+  it("create() recusa nova adesão sem telefone, sem gravar nada", async () => {
+    const h = createOperatorAdhesion()
+    const input = { leadId: "lead-op", fullName: "Cliente Operador", email: "op@example.com", cycle: "monthly" as const, extraTeams: 0, extraUsers: 0 }
+
+    await expect(h.service.create(input, "op-1")).rejects.toThrow("Celular é obrigatório")
+    await expect(h.service.create({ ...input, phone: "" }, "op-1")).rejects.toThrow("Celular é obrigatório")
+    expect(h.repo.createAndMoveLeadToAdhesion).not.toHaveBeenCalled()
+  })
+
   it("âncora do operador: create() em modo checkout grava parcela ASAAS pendente e o PIX Abacate é recusado", async () => {
     const h = createOperatorAdhesion()
 
@@ -387,7 +397,7 @@ describe("achado crítico: ledger e provider do PIX", () => {
     expect(resolvePixProvider({ installmentLedger: ledger })).toBe("ASAAS")
 
     h.repo.findById.mockResolvedValue(buildAdhesion({ installmentLedger: ledger }))
-    await expect(h.service.createPixCheckout("tok", { fullName: "Maria Souza", email: "op@example.com", phone: "11999999999", cpfCnpj: "12345678909" }, "idem-1")).rejects.toThrow(
+    await expect(h.service.createPixCheckout("tok", { termsAccepted: true, fullName: "Maria Souza", email: "op@example.com", phone: "11999999999", cpfCnpj: "12345678909" }, "idem-1")).rejects.toThrow(
       "parcelas no Asaas"
     )
     expect(h.pixPayments.createPixPayment).not.toHaveBeenCalled()
@@ -410,8 +420,12 @@ describe("achado crítico: ledger e provider do PIX", () => {
 
     const view = await h.service.createPixCheckout(
       "tok",
-      { fullName: "Maria Souza", email: "maria@example.com", phone: "11999999999", cpfCnpj: "12345678909" },
+      { termsAccepted: true, fullName: "Maria Souza", email: "maria@example.com", phone: "11999999999", cpfCnpj: "12345678909" },
       "idem-1"
+    )
+    expect(h.repo.appendLeadNote).toHaveBeenCalledWith(
+      "lead-new",
+      expect.stringContaining("(versão 2026-08-27)")
     )
 
     expect(h.pixPayments.createPixPayment).toHaveBeenCalledTimes(1)

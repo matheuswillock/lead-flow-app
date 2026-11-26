@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { isLandlinePhone, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
+import { applyPhoneInput, isLandlinePhone, maskPhone, normalizeLeadPhoneDigits } from "@/lib/masks"
 
 describe("isLandlinePhone", () => {
   it("reconhece telefone fixo: DDD + 8 dígitos começando de 2 a 5", () => {
@@ -53,5 +53,27 @@ describe("maskPhone", () => {
     expect(maskPhone("55 11 99999-9999")).toBe("(11) 99999-9999")
     expect(maskPhone("5521973960888")).toBe("(21) 97396-0888")
     expect(maskPhone("+55 11 3333-4444")).toBe("(11) 3333-4444")
+  })
+})
+
+describe("applyPhoneInput", () => {
+  it("digitar o 12º dígito não troca o DDD: o número completo fica como está", () => {
+    // Sem a trava, maskPhone("(11) 99999-88887") devolve "(19) 99998-8887".
+    expect(applyPhoneInput("11999998888", "(11) 99999-88887", true)).toBe("11999998888")
+  })
+
+  it("DDD 55 também fica protegido ao digitar além do limite", () => {
+    expect(applyPhoneInput("55999998888", "(55) 99999-88887", true)).toBe("55999998888")
+  })
+
+  it("colar com +55 continua normalizando para o número nacional", () => {
+    expect(applyPhoneInput("", "+55 (11) 99999-8888", false)).toBe("11999998888")
+    expect(applyPhoneInput("11999998888", "5521973960888", false)).toBe("21973960888")
+  })
+
+  it("digitar dentro do limite segue normal, inclusive apagar", () => {
+    expect(applyPhoneInput("1199999888", "(11) 99999-8888", true)).toBe("11999998888")
+    expect(applyPhoneInput("11999998888", "(11) 99999-888", true)).toBe("1199999888")
+    expect(applyPhoneInput("11999998888", "", true)).toBe("")
   })
 })

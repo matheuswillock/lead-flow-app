@@ -37,4 +37,18 @@ export class BackofficeClientRepository implements IBackofficeClientRepository {
       data: { asaasCustomerId },
     })
   }
+
+  async updateCpfCnpj(id: string, cpfCnpj: string): Promise<BackofficeClient> {
+    return prisma.backofficeClient.update({
+      where: { id },
+      data: { cpfCnpj },
+    })
+  }
+
+  async updatePhone(id: string, phone: string): Promise<BackofficeClient> {
+    return prisma.backofficeClient.update({
+      where: { id },
+      data: { phone },
+    })
+  }
 }

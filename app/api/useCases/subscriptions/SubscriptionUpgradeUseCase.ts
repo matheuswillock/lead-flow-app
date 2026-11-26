@@ -20,6 +20,7 @@ import type { ISubscriptionUpgradeRepository } from "@/app/api/infra/data/reposi
 import { subscriptionUpgradeRepository } from "@/app/api/infra/data/repositories/subscriptionUpgrade/SubscriptionUpgradeRepository";
 import type { IAsaasCustomerGateway } from "@/app/api/infra/gateways/asaasCustomer/IAsaasCustomerGateway";
 import { resolvePrice, toBillingCycle } from "@/lib/billing/resolvePrice";
+import { registrationPhoneError } from "@/lib/masks";
 
 interface SubscriptionUpgradeUseCaseDependencies {
   repository?: ISubscriptionUpgradeRepository;
@@ -85,6 +86,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    */
   async createOperatorPayment(data: AddOperatorPaymentData): Promise<Output> {
     try {
+      const phoneError = registrationPhoneError(data.operatorData.phone);
+      if (phoneError) {
+        return new Output(false, [], [phoneError], null);
+      }
+
       // 1. Validar manager
       const manager = await this.repository.findManagerProfileBySupabaseId(data.managerId);
 
@@ -113,6 +119,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         teamId: null,
         name: data.operatorData.name,
         email: data.operatorData.email,
+        phone: data.operatorData.phone,
         role: data.operatorData.role,
         functions: data.operatorData.functions ?? [],
         paymentId: 'pending',
@@ -572,6 +579,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             supabaseId: supabaseUser.userId,
             fullName: pendingOperator.name,
             email: pendingOperator.email,
+            phone: pendingOperator.phone ?? undefined,
             role: pendingOperator.role as any,
             functions: pendingOperator.functions ?? [],
             managerId: pendingOperator.managerId,

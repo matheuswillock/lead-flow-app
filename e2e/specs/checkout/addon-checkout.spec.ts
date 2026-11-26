@@ -7,6 +7,7 @@
 
 import { expect, test, type Page } from "@playwright/test"
 import { runResponsiveChecks } from "../../support/responsive"
+import { injectE2eAuthCookie } from "../../fixtures/auth"
 
 const PURCHASE_ID = "e2e-platform-purchase"
 const PIX_CODE = "00020126E2EPIXCOPIAECOLA"
@@ -66,13 +67,23 @@ async function mockPlatformCheckout(page: Page, pixExpirations: string[] = [FAR_
   return state
 }
 
-async function fillPayer(page: Page) {
-  const fields = page.getByRole("textbox")
-  await fields.nth(0).fill("Maria Souza")
-  await fields.nth(1).fill("maria@example.com")
-  await fields.nth(2).fill("11999998888")
-  await fields.nth(3).fill("52998224725")
+/** Resumo é a primeira fase; Continuar leva à fase Pagamento, onde ficam os dados do pagador. */
+async function goToPaymentPhase(page: Page) {
+  await page.getByRole("button", { name: "Continuar" }).click()
+  await expect(page.getByLabel("Nome completo")).toBeVisible()
 }
+
+async function fillPayer(page: Page) {
+  await page.getByLabel("Nome completo").fill("Maria Souza")
+  await page.getByLabel("E-mail").fill("maria@example.com")
+  await page.getByLabel("Telefone").fill("11999998888")
+  await page.getByLabel("CPF ou CNPJ").fill("52998224725")
+}
+
+// O checkout de add-on exige login: todos os cenários abrem com a sessão de teste.
+test.beforeEach(async ({ context }) => {
+  await injectE2eAuthCookie(context)
+})
 
 test.describe("addon-checkout — PIX interno para compra genérica", () => {
   test("gera o PIX sem pedir endereço nem oferecer cartão e confirma sem prometer crédito instantâneo", async ({
@@ -81,29 +92,34 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     const mock = await mockPlatformCheckout(page)
 
     await page.goto(`/addon-checkout/${PURCHASE_ID}`)
-    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
 
+    // Sem cartão e sem endereço: a fase Resumo mostra só o plano e a forma de pagamento é PIX.
     await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
     await expect(page.getByText("CEP")).toHaveCount(0)
 
-    const submit = page.getByRole("button", { name: "Gerar QR Code Pix" })
-    await expect(submit).toBeDisabled()
+    await goToPaymentPhase(page)
+    await expect(page.getByText("CEP")).toHaveCount(0)
+    // Aceite implícito: o aviso fica ao lado do botão de pagar, sem caixa de aceite.
+    await expect(page.getByText("Ao pagar, você concorda com os")).toBeVisible()
+    await expect(page.getByRole("checkbox")).toHaveCount(0)
+
+    const submit = page.getByRole("button", { name: "Gerar QR Code PIX" })
     await fillPayer(page)
-    await expect(submit).toBeEnabled()
     await submit.click()
 
     await expect(page.getByText(PIX_CODE)).toBeVisible()
     await expect(page.getByAltText("QR Code PIX")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Copiar código PIX" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Copiar", exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Gerar novo PIX" })).toHaveCount(0)
 
-    // Rodapé identifica o Abacate e não usa a marca do Asaas.
-    await expect(page.getByText("Pagamento processado pela AbacatePay")).toBeVisible()
+    // Rodapé identifica o Corretor Studio como vendedor, sem marca de provedor.
+    await expect(page.getByText("Vendido por Corretor Studio")).toBeVisible()
     await expect(page.getByAltText("Asaas Pagamentos")).toHaveCount(0)
 
     expect(mock.paymentRequests).toHaveLength(1)
     expect(mock.paymentRequests[0].idempotencyKey).toContain(`platform-pix:${PURCHASE_ID}:`)
     expect(mock.paymentRequests[0].body).toEqual({
+      termsAccepted: true,
       method: "PIX",
       customer: {
         name: "Maria Souza",
@@ -117,7 +133,13 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     mock.status = "paid"
 
     await expect(page.getByText("Pagamento confirmado")).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText("Os itens contratados foram adicionados à assinatura da sua conta.")).toBeVisible()
     await expect(page.getByText("Os créditos são aplicados automaticamente em até 5 minutos.")).toBeVisible()
+    await expect(page.getByText("Você será levado ao Corretor Studio em 5 s.")).toBeVisible()
+    await expect(page.getByRole("link", { name: "Ir agora" })).toBeVisible()
+    // Add-on não envia acesso por e-mail nem pede senha: os itens entram na assinatura existente.
+    await expect(page.getByText("Seu acesso foi enviado")).toHaveCount(0)
+    await expect(page.getByText(/criar (sua )?senha/i)).toHaveCount(0)
     await expect(page.getByText(/imediatamente|instantane/i)).toHaveCount(0)
 
     await runResponsiveChecks(page)
@@ -137,14 +159,14 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     const mock = await mockPlatformCheckout(page, [PAST, FAR_FUTURE])
 
     await page.goto(`/addon-checkout/${PURCHASE_ID}`)
-    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+    await goToPaymentPhase(page)
     await fillPayer(page)
-    await page.getByRole("button", { name: "Gerar QR Code Pix" }).click()
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
 
-    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toBeVisible()
+    await expect(page.getByText("Este PIX expirou", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Gerar novo PIX" }).click()
 
-    await expect(page.getByText("Este PIX expirou. Gere um novo PIX para pagar.")).toHaveCount(0)
+    await expect(page.getByText("Este PIX expirou", { exact: true })).toHaveCount(0)
     expect(mock.paymentRequests).toHaveLength(2)
     expect(mock.paymentRequests[1].idempotencyKey).not.toBe(mock.paymentRequests[0].idempotencyKey)
     expect(mock.paymentRequests[1].body).toEqual(mock.paymentRequests[0].body)
@@ -156,9 +178,9 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
     await mockPlatformCheckout(page)
 
     await page.goto(`/addon-checkout/${PURCHASE_ID}`)
-    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
+    await goToPaymentPhase(page)
     await fillPayer(page)
-    await page.getByRole("button", { name: "Gerar QR Code Pix" }).click()
+    await page.getByRole("button", { name: "Gerar QR Code PIX" }).click()
     await expect(page.getByText(PIX_CODE)).toBeVisible()
 
     await runResponsiveChecks(page)
@@ -167,7 +189,11 @@ test.describe("addon-checkout — PIX interno para compra genérica", () => {
 
 const PENDING_ACTION_ID = "e2e-pending-action"
 
-async function mockPendingActionCheckout(page: Page, availableBillingTypes?: string[]) {
+async function mockPendingActionCheckout(
+  page: Page,
+  availableBillingTypes?: string[],
+  cardCheckout?: { provider: "ABACATE_PAY"; publicKey: string },
+) {
   // Sem compra de plataforma: força o caminho legado (pending action, Asaas).
   await page.route(`**/api/**/platform-checkout/${PENDING_ACTION_ID}`, async (route) => {
     await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ isValid: false }) })
@@ -201,6 +227,7 @@ async function mockPendingActionCheckout(page: Page, availableBillingTypes?: str
           state: "",
         },
         ...(availableBillingTypes ? { availableBillingTypes } : {}),
+        ...(cardCheckout ? { cardCheckout } : {}),
       }),
     })
   })
@@ -215,9 +242,8 @@ test.describe("addon-checkout — cartão desligado em checkouts Asaas", () => {
       await mockPendingActionCheckout(page, types ? [...types] : undefined)
 
       await page.goto(`/addon-checkout/${PENDING_ACTION_ID}`)
-      await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
 
-      await expect(page.getByRole("button", { name: "Gerar QR Code Pix" })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Gerar QR Code PIX" })).toBeVisible()
       await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
       await expect(page.getByText("Pagar com cartão")).toHaveCount(0)
       await expect(page.getByText("Número do cartão")).toHaveCount(0)
@@ -226,12 +252,20 @@ test.describe("addon-checkout — cartão desligado em checkouts Asaas", () => {
     })
   }
 
-  test("oferece cartão apenas quando o servidor declara CREDIT_CARD disponível", async ({ page }) => {
+  test("oferece cartão apenas quando o servidor declara CREDIT_CARD e há chave do Abacate", async ({ page }) => {
+    await mockPendingActionCheckout(page, ["PIX", "CREDIT_CARD"], { provider: "ABACATE_PAY", publicKey: "pk_test_publico" })
+
+    await page.goto(`/addon-checkout/${PENDING_ACTION_ID}`)
+
+    await expect(page.getByText("Cartão de crédito").first()).toBeVisible()
+  })
+
+  test("sem chave do Abacate o cartão some mesmo quando o servidor o declara", async ({ page }) => {
     await mockPendingActionCheckout(page, ["PIX", "CREDIT_CARD"])
 
     await page.goto(`/addon-checkout/${PENDING_ACTION_ID}`)
-    await page.getByRole("button", { name: /Finalizar Pagamento/ }).click()
 
-    await expect(page.getByText("Cartão de crédito").first()).toBeVisible()
+    await expect(page.getByRole("button", { name: "Gerar QR Code PIX" })).toBeVisible()
+    await expect(page.getByText("Cartão de crédito")).toHaveCount(0)
   })
 })

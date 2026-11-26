@@ -19,8 +19,8 @@ mock.module("@/app/context/FeatureAccessContext", () => ({
 
 const { AccountAccessGate } = await import("./AccountAccessGate")
 
-const PAYMENT_PATH = "/conta-1/billing-grace-payment"
-const PAYMENT_HREF = 'href="/conta-1/billing-grace-payment"'
+const PAYMENT_PATH = "/pagamento/conta-1"
+const PAYMENT_HREF = 'href="/pagamento/conta-1"'
 
 function renderGate({
   pathname,
@@ -54,7 +54,7 @@ test("quem não é master vê só o aviso, sem botão de pagamento nem WhatsApp"
 
   expect(markup).toContain("Avise o administrador desta conta")
   expect(markup).not.toContain("Reativar assinatura")
-  expect(markup).not.toContain("billing-grace-payment")
+  expect(markup).not.toContain("/pagamento/")
   expect(markup).not.toContain("wa.me")
 })
 
@@ -89,7 +89,7 @@ test("mantém a tela pausada na página de pagamento para quem não pode usá-la
 })
 
 test("a liberação vale só para a rota de pagamento: o resto segue pausado para o master", () => {
-  for (const pathname of ["/conta-1/subscription", "/conta-1/billing-grace-payment/extra"]) {
+  for (const pathname of ["/conta-1/subscription", "/pagamento/conta-1/extra"]) {
     const markup = renderGate({ pathname, reason: "past_due", isBillingOwner: true })
 
     expect(markup).toContain("Seu acesso está pausado")
@@ -235,8 +235,8 @@ test("somente leitura libera rotas sem slug de feature (ex.: assinatura), mesmo 
 })
 
 test("somente leitura libera a página de pagamento só para o master", () => {
-  const owner = renderReadOnlyGate({ pathname: "/conta-1/billing-grace-payment", isBillingOwner: true })
-  const member = renderReadOnlyGate({ pathname: "/conta-1/billing-grace-payment", isBillingOwner: false })
+  const owner = renderReadOnlyGate({ pathname: "/pagamento/conta-1", isBillingOwner: true })
+  const member = renderReadOnlyGate({ pathname: "/pagamento/conta-1", isBillingOwner: false })
 
   expect(owner).toContain("conteúdo da rota")
   expect(member).not.toContain("conteúdo da rota")

@@ -82,6 +82,7 @@ describe("AddOnCheckoutUseCase.createPayment — retomada de cobrança existente
     const useCase = new AddOnCheckoutUseCase()
 
     const result = await useCase.createPayment("pa-1", {
+      termsAccepted: true,
       billingType: "CREDIT_CARD",
       fullName: "Master Teste",
       email: "master@example.test",

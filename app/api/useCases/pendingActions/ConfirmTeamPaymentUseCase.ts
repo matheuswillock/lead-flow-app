@@ -10,6 +10,10 @@ import type {
   PendingActionOwnershipLookup,
 } from "@/app/api/infra/data/repositories/pendingAction/IPendingActionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
+import type {
+  PendingActionProviderPayment,
+  PendingActionProviderPaymentResult,
+} from "@/app/api/services/PaymentProviderPayment/PendingActionProviderPaymentService";
 import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
 import { Output } from "@/lib/output";
 
@@ -19,13 +23,25 @@ export type ConfirmTeamPaymentFailureReason =
   | "payment_not_confirmed"
   | "action_not_found"
   | "action_not_owned"
-  | "action_canceled";
+  | "action_canceled"
+  | "payment_unverifiable"
+  | "settlement_failed";
 
 function failure(reason: ConfirmTeamPaymentFailureReason, message: string): Output {
   return new Output(false, [], [message], { reason });
 }
 
 const ASAAS_ACCOUNTS: AsaasAccountId[] = ["primary", "legacy"];
+
+/** Carregada sob demanda: a composição do provedor puxa credenciais e adapters que a rota legada não usa. */
+const lazyProviderPayment: PendingActionProviderPayment = {
+  async settle(action) {
+    const { createPendingActionProviderPayment } = await import(
+      "@/app/api/useCases/paymentProviderPayment/pendingActionProviderPaymentComposition"
+    );
+    return createPendingActionProviderPayment().settle(action);
+  },
+};
 
 type AsaasPaymentLookup = { status?: string; externalReference?: string };
 
@@ -46,7 +62,8 @@ export class ConfirmTeamPaymentUseCase {
   constructor(
     private readonly profileRepository: IProfileRepository = defaultProfileRepository,
     private readonly teamMembersRepository: ITeamMembersRepository = defaultTeamMembersRepository,
-    private readonly pendingActionRepository: IPendingActionRepository = defaultPendingActionRepository
+    private readonly pendingActionRepository: IPendingActionRepository = defaultPendingActionRepository,
+    private readonly providerPayment: PendingActionProviderPayment = lazyProviderPayment
   ) {}
 
   async confirmTeamPayment(params: { supabaseId: string; paymentId: string }): Promise<Output> {
@@ -74,14 +91,63 @@ export class ConfirmTeamPaymentUseCase {
 
     const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
 
-    let action: PendingActionOwnershipLookup | null = billingOwnerId
+    const found = billingOwnerId
       ? await this.pendingActionRepository.findByPaymentIdAndMasterId(paymentId, billingOwnerId)
       : null;
 
+    // Ação com provedor registrado (qualquer um) é confirmada consultando o próprio provedor; o Asaas só
+    // vale para ação legada, sem provedor, e não conhece o paymentId "provider-…".
+    if (found?.provider) {
+      return this.confirmProviderAction(found, billingOwnerId);
+    }
+
+    return this.confirmLegacyAsaasAction({ paymentId, billingOwnerId, found });
+  }
+
+  private async confirmProviderAction(
+    action: PendingActionOwnershipLookup,
+    billingOwnerId: string | null
+  ): Promise<Output> {
+    if (action.masterId !== billingOwnerId) {
+      return failure("action_not_owned", "Ação não pertence a este master");
+    }
+
+    if (action.status === "canceled") {
+      return failure("action_canceled", "Ação cancelada");
+    }
+
+    const result = await this.providerPayment.settle({
+      id: action.id,
+      providerAttemptId: action.providerAttemptId ?? null,
+    });
+
+    return this.toProviderConfirmationOutput(result);
+  }
+
+  private toProviderConfirmationOutput(result: PendingActionProviderPaymentResult): Output {
+    switch (result.outcome) {
+      case "settled":
+        return new Output(true, ["Ação pendente aplicada com sucesso"], [], null);
+      case "not_confirmed":
+        return failure("payment_not_confirmed", "Pagamento ainda não foi confirmado");
+      case "indeterminate":
+        return failure("payment_unverifiable", result.message);
+      case "settlement_failed":
+        return failure("settlement_failed", result.message);
+    }
+  }
+
+  private async confirmLegacyAsaasAction(params: {
+    paymentId: string;
+    billingOwnerId: string | null;
+    found: PendingActionOwnershipLookup | null;
+  }): Promise<Output> {
+    const { paymentId, billingOwnerId } = params;
+    let action = params.found;
     let payment: AsaasPaymentLookup | null = null;
 
     if (action) {
-      const client = createAsaasClient(action.asaasAccount);
+      const client = createAsaasClient(action.asaasAccount ?? "primary");
       payment = await client.request(`${client.endpoints.payments}/${paymentId}`, {
         method: "GET",
       });
@@ -146,7 +212,7 @@ export class ConfirmTeamPaymentUseCase {
       return failure("action_canceled", "Ação cancelada");
     }
 
-    return pendingActionUseCase.applyPendingActionByPaymentId(paymentId, action.asaasAccount);
+    return pendingActionUseCase.applyPendingActionByPaymentId(paymentId, action.asaasAccount ?? "primary");
   }
 }
 

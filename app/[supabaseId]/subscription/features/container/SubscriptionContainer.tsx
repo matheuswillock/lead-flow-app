@@ -140,7 +140,7 @@ export function SubscriptionContainer() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button size="lg" className="max-lg:h-11" onClick={() => router.push(`/${supabaseId}/billing-grace-payment`)}>
+            <Button size="lg" className="max-lg:h-11" onClick={() => router.push(`/pagamento/${supabaseId}`)}>
               Regularizar pagamento
             </Button>
           </CardContent>
@@ -275,7 +275,7 @@ export function SubscriptionContainer() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push(`/${supabaseId}/billing-grace-payment`)}
+              onClick={() => router.push(`/pagamento/${supabaseId}`)}
               className="w-fit max-lg:h-11"
             >
               Regularizar pagamento

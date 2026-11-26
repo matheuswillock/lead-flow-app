@@ -53,6 +53,8 @@ export type SelfCheckoutContextValue = {
   isLookingUpCompany: boolean
   /** Valida os campos do pedido sem enviar; devolve o primeiro inválido (ou `null`). */
   validate: () => SelfCheckoutFieldName | null
+  /** Valida só os campos da fase (Continuar) e devolve o primeiro inválido entre eles. */
+  validatePhase: (fields: readonly SelfCheckoutFieldName[]) => SelfCheckoutFieldName | null
   values: SelfCheckoutFormValues
   fieldErrors: SelfCheckoutFieldErrors
   /** Chamado ao sair de um campo: a partir daí ele já mostra o erro se estiver vazio ou inválido. */
@@ -295,6 +297,21 @@ export function SelfCheckoutProvider({
     return validation.firstInvalidField
   }, [selectedCycle, values])
 
+  const validatePhase = useCallback(
+    (fields: readonly SelfCheckoutFieldName[]): SelfCheckoutFieldName | null => {
+      // Marcar como tocados mostra os erros dessas fases; os campos das fases seguintes continuam limpos.
+      setTouchedFields((current) => {
+        const next = { ...current }
+        for (const field of fields) next[field] = true
+        return next
+      })
+      const validation = validateSelfCheckoutForm(values, selectedCycle)
+      if (validation.ok) return null
+      return fields.find((field) => validation.errors[field]) ?? null
+    },
+    [selectedCycle, values],
+  )
+
   const submit = useCallback(async (): Promise<SelfCheckoutSubmitOutcome> => {
     if (submitLock.current || isRedirecting) return { kind: "ignored" }
 
@@ -355,6 +372,7 @@ export function SelfCheckoutProvider({
       orderToken,
       isLookingUpCompany,
       validate,
+      validatePhase,
       values,
       fieldErrors,
       markFieldTouched,
@@ -384,6 +402,7 @@ export function SelfCheckoutProvider({
       orderToken,
       isLookingUpCompany,
       validate,
+      validatePhase,
       values,
       fieldErrors,
       markFieldTouched,

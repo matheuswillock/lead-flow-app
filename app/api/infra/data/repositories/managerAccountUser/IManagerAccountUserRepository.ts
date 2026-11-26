@@ -22,6 +22,7 @@ export interface CreateAccountUserRecordsParams {
   masterId: string;
   fullName: string;
   email: string;
+  phone: string;
   role: UserRole;
   functions: UserFunction[];
   hasPermanentSubscription: boolean;

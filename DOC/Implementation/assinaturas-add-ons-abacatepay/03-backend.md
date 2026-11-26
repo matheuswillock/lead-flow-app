@@ -146,3 +146,10 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
 
 - [ ] B12.G1: e-mail vai ao responsável financeiro correto, com um único envio em duas execuções do cron.
   - EVIDENCE: pendente.
+
+## B13. Confirmação de time agnóstica e conta Asaas nullable
+
+Ação com provedor (`provider` preenchido) não tem conta Asaas: `corretor_studio_pending_actions."asaasAccount"` passa a ser nullable (migration `20261125090000`, idempotente; não altera dados — ações de provedor já gravadas mantêm `primary`, que o código ignora quando há provedor). `ConfirmTeamPaymentUseCase` confirma ação de provedor consultando o próprio provedor via `PendingActionProviderPaymentService` (`PaymentQueryCapability.getStatus`, provedor resolvido pela chave da tentativa); só `CONFIRMED` com valor conferido aplica, pela mesma liquidação do webhook (`PaymentOwnerSettlementService`, idempotente). Pendente, `UNKNOWN` ou erro do provedor devolvem falha sem aplicar. Ação sem provedor mantém o caminho Asaas, isolado em `confirmLegacyAsaasAction`.
+
+- [ ] B13.G1: confirmação de time por ação de provedor aplica só quando o provedor confirma e o valor confere.
+  - EVIDENCE: testes `ConfirmTeamPaymentUseCase.providerAction.test.ts` e `PendingActionProviderPaymentService.test.ts`. Execução da integração pendente.

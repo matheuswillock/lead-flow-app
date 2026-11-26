@@ -8,7 +8,7 @@
  */
 import { getFeatureSlugsForAppPath } from "@/lib/features/feature-route-access"
 
-const PAYMENT_PATH_PATTERN = /^\/[^/]+\/billing-grace-payment\/?$/
+const PAYMENT_PATH_PATTERN = /^\/pagamento\/[^/]+\/?$/
 
 export function isReadOnlyAllowedPath(
   pathname: string | null | undefined,

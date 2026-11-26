@@ -22,7 +22,14 @@ export interface BackofficeAdhesionPixCheckoutInput {
   cpfCnpj: string
 }
 
-export interface BackofficeAdhesionCardCheckoutInput {
+/** Aceite dos documentos legais exigido nas jornadas públicas de cobrança; o serviço grava o carimbo no lead. */
+export interface BackofficeAdhesionTermsAcceptance {
+  termsAccepted: true
+}
+
+export type BackofficeAdhesionPixCheckoutRequest = BackofficeAdhesionPixCheckoutInput & BackofficeAdhesionTermsAcceptance
+
+export interface BackofficeAdhesionCardCheckoutInput extends BackofficeAdhesionTermsAcceptance {
   /** Token de uso único (ctok_) do abacatepay.js; vale 60 s. Nunca número ou CVV do cartão. */
   cardToken: string
   installments: number
@@ -90,7 +97,7 @@ export interface BackofficeAdhesionUpdateInput {
   hasUnlimitedUsers?: boolean
 }
 
-export interface BackofficeAdhesionCheckoutInput {
+export interface BackofficeAdhesionCheckoutInput extends BackofficeAdhesionTermsAcceptance {
   fullName: string
   email: string
   phone: string
@@ -347,7 +354,7 @@ export interface IBackofficeAdhesionService {
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   createPixCheckout(
     token: string,
-    input: BackofficeAdhesionPixCheckoutInput,
+    input: BackofficeAdhesionPixCheckoutRequest,
     idempotencyKey: string
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   /**

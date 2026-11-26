@@ -28,6 +28,8 @@ import { getDispatchId } from "@/lib/email/dispatch-id";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { ProportionalChargeError } from "@/app/api/services/billing/proportionalAddonCharge";
+import type { ProportionalChargeData } from "@/app/api/services/billing/IIncrementalBillingService";
 import type { IIncrementalBillingService } from "@/app/api/services/billing/IIncrementalBillingService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase";
@@ -411,6 +413,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       masterId: managerId,
       fullName: validatedData.name,
       email,
+      phone: validatedData.phone,
       role: validatedData.role as UserRole,
       functions: validatedData.functions ?? [],
       hasPermanentSubscription: validatedData.hasPermanentSubscription ?? false,
@@ -522,6 +525,7 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
     const payload = {
       name: validatedData.name,
       email,
+      phone: validatedData.phone,
       role: validatedData.role,
       functions: validatedData.functions ?? [],
       teamId,
@@ -537,14 +541,23 @@ export class ManagerAccountUsersUseCase implements IManagerAccountUsersUseCase {
       targetRecurringTotal: projectedBilling.targetRecurringTotal,
     };
 
+    // Antes de criar a pending action: sem data de fim do ciclo não deve sobrar registro pendente.
+    let proportionalData: ProportionalChargeData;
+    try {
+      proportionalData = await this.billing.calculateProportionalAmount(managerId, "user");
+    } catch (error) {
+      if (error instanceof ProportionalChargeError) {
+        return { output: new Output(false, [], [error.message], null), status: 422 };
+      }
+      throw error;
+    }
+    const totalCharge = proportionalData.totalCharge ?? projectedBilling.billingDelta;
+
     const pendingAction = await this.repository.createPendingAddUserAction({
       masterId: managerId,
       teamId,
       payload,
     });
-
-    const proportionalData = await this.billing.calculateProportionalAmount(managerId, "user");
-    const totalCharge = proportionalData.totalCharge ?? projectedBilling.billingDelta;
 
     await this.repository.updatePendingActionPayload(pendingAction.id, {
       ...payload,
