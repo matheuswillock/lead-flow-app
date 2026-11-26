@@ -75,6 +75,6 @@ Não verificado: sandbox do AbacatePay e do Asaas; e-mail renderizado e enviado 
 
 1. **Tela (implementada, verificada renderizada nos componentes):** aviso de perda do ilimitado ao sair do anual, com valores, controle para voltar ao anual e linha por prazo (briefing [aprovado](design/renovacao-usuarios-adicionais.md), registro em `02-frontend.md` F8). Os seis passes do `impeccable` foram executados. Falta a tela completa com dados reais.
 2. **Cartão no `/checkout`:** o self-checkout ainda cobra cartão pelo Asaas. Mudança de tela, com briefing.
-3. **Botão de pagar desabilitado até o aceite dos termos:** hoje o checkout barra o envio com erro de validação (D7). Mudança de tela, com briefing.
+3. ~~Botão de pagar desabilitado até o aceite dos termos~~ (feito em 2026-11-26, só no `/checkout`; ver D7 e `02-frontend.md` F9). Falta ver a fase do cartão e o retry de pagamento na tela.
 4. **Acesso das contas do roteador:** o D14 troca `restricted` imediato por carência e somente leitura para quem venceu há 1 a 5 dias. Confirmar com o dono antes do deploy.
 5. **Preço por cliente (PAY-PRICING-T001):** a cotação de renovação usa só a tabela de prazos.

@@ -83,6 +83,36 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - Evidência: viewport emulado no Chromium do app, foco com teclado real (Tab e Enter). Não testado: Safari e Firefox, toque em aparelho físico, leitor de tela, zoom de 200%.
   - NÃO verificado: a tela completa com dados reais (resumo do pedido, barra de pagamento no celular, fluxo de pagamento); estados vazio, carregando e erro dessa tela (não mudaram nesta alteração). O console mostrou um erro de hidratação, causado pela página descartável (lia a URL na renderização), não pelos componentes.
 
+## F9. Checkout: botão de pagar bloqueado até o aceite dos termos (Fase C)
+
+**Estado:** implementado em 2026-11-26, verificado renderizado na tela real do `/checkout` e por E2E.
+
+**Briefing:** [design/checkout-aceite-termos.md](design/checkout-aceite-termos.md), aprovado pelo dono em 2026-11-26 com as três recomendações: só o `/checkout`; atalho no celular; caixa escondida no retry de pagamento. Decisão de produto em [D7](05-decisoes.md).
+
+**Arquivos:** `SelfCheckoutFormContainer.tsx` (regra, linha de apoio, bloqueio dos dois botões, caixa escondida no retry), `components/checkout/CheckoutMobilePayBar.tsx` (prop opcional `hint`, sem efeito nos outros checkouts), `SelfCheckoutTermsAcceptance.tsx` (`aria-required`), `features/utils/selfCheckoutTermsGate.ts` (regra, com teste), `e2e/specs/public/checkout.spec.ts`.
+
+- [x] F9.G1: briefing aprovado antes do JSX.
+  - EVIDENCE: aprovação do dono na conversa de 2026-11-26.
+- [x] F9.G2: regra testada.
+  - CHECK: `bun test app/checkout/features/utils/selfCheckoutTermsGate.test.ts`
+  - EVIDENCE: EXIT=0, 7 testes (bloqueia sem aceite, libera com aceite, desmarcar bloqueia de novo, pedido criado nunca bloqueia).
+- [x] F9.G3: E2E no navegador (Chromium, Playwright, servidor de desenvolvimento).
+  - CHECK: `E2E_REUSE_SERVER=1 E2E_BASE_URL=http://localhost:3000 npx playwright test e2e/specs/public/checkout.spec.ts`
+  - EVIDENCE: 18 de 18 passam (2 testes novos: desktop com bloqueio, linha de apoio e desmarcar; celular com "Continuar" livre, última fase bloqueada, atalho que foca a caixa e libera o botão).
+  - Teste existente corrigido: "valida os campos inline sem chamar a API" clicava em pagar sem marcar os termos e passaria a travar esperando o botão habilitar; agora marca a caixa antes. Era o único E2E afetado.
+  - Controle negativo: sem o `disabled` por termos, o teste novo do desktop falha ("Expected: disabled, Received: enabled"); restaurado e 18 de 18 verdes.
+  - Ressalva do E2E: o teste do celular dispara o clique do atalho por `dispatchEvent`, porque no `bun run dev` o selo do Next cobre esse canto e intercepta o toque (em build de produção o selo não existe).
+- [x] F9.G4: passes `impeccable harden`, `clarify`, `adapt`, `typeset`, `colorize` e `polish`, um por vez, em 2026-11-26.
+  - `harden`: com a caixa desmarcada o botão desabilitado bloqueia também o envio por Enter (nada é enviado e nenhum erro aparece); no retry de pagamento a caixa não aparece e o botão não exige aceite; o motivo fica associado ao botão por `aria-describedby`.
+  - `clarify`: mesmo verbo nos dois tamanhos ("Aceite os termos para gerar o QR Code PIX." no desktop, "Aceite os termos para pagar." no celular).
+  - `adapt`: no celular o texto e o link formavam três linhas e a barra crescia de 69 para 101 px; o aviso virou um controle só (o próprio texto é o atalho), com alvo de 44 px por margem negativa, e a barra ficou em 69 px também em 320 px.
+  - `typeset`: a linha de apoio do desktop tem o mesmo corpo da linha de segurança logo abaixo.
+  - `colorize`: o atalho usava o laranja da marca, que dá 2,89:1 em texto pequeno; agora usa o primeiro plano e é sublinhado (17,86:1).
+  - `polish`: tela real vista em 1440, 375 e 320 px.
+- [x] F9.G5: tela real renderizada (`/checkout`, dados da API local).
+  - EVIDENCE: 1440 px, botão "Gerar QR Code PIX" desabilitado (opacidade 0,5) com a linha "Aceite os termos para gerar o QR Code PIX." acima (contraste 4,83:1) e `aria-describedby`; a caixa tem `aria-required="true"`; marcar habilita o botão e some a linha; desmarcar bloqueia de novo. 375 px: "Continuar" habilitado na primeira fase; na última, o botão da barra desabilitado e o atalho "Aceite os termos para pagar." (44 px de altura) leva a caixa à vista e a foca; marcar libera o botão e o atalho some. 320 px: sem rolagem horizontal, sem sobreposição entre atalho e botão. Enter num campo com a caixa desmarcada: sem envio, sem erro, sem troca de fase.
+  - NÃO verificado: fase do cartão (o catálogo local não oferece cartão); retry de pagamento com pedido criado (a regra tem teste, mas a tela com `orderToken` não foi aberta); Safari, Firefox, toque em aparelho físico, leitor de tela, zoom de 200%; os outros E2E que usam a barra do celular (add-on, adesão, renovação) não foram reexecutados, e o `hint` é opcional neles.
+
 ## F4. Página de assinatura restrita a master e delegados (Fase E)
 
 **Estado:** não verificado. Precisa ler `app/[supabaseId]/subscription/features/container/SubscriptionContainer.tsx` e a rota de `subscription-management`.

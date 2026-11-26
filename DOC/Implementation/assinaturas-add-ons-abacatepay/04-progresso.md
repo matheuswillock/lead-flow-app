@@ -68,6 +68,10 @@ Cada linha cita o comando usado e o resultado observado.
 
 - 2026-11-25: validação da Fase C com banco real. Teste de integração novo (`test:integration:provider-renewal`, 8 testes, Postgres local) achou um defeito na consulta da carência: o filtro excluía quem só tem a data de vencimento no perfil (negação com data nula). Corrigido, teste verde. Suíte oficial `bun run test`: 6976 + 127 testes, 0 falhas (a auditoria de 2026-11-17 registrava 3 falhas e 3 erros na suíte completa; nesta data não há nenhum). Typecheck, lint e governança com exit 0.
 
+- 2026-11-26: Fase C, botão de pagar do `/checkout` bloqueado até o aceite dos termos (D7). Briefing aprovado com as três recomendações, seis passes do `impeccable`, tela real vista em 1440, 375 e 320 px. E2E do checkout 18 de 18 (2 novos, 1 corrigido; controle negativo feito). Suíte oficial 6983 + 127, typecheck, lint e governança com exit 0. Não verificado: fase do cartão, retry de pagamento na tela, Safari e Firefox.
+
+- 2026-11-26: revisão do Codex no PR #1432 (3 comentários inline, todos procedentes), corrigida em `d57070db9`. Id legado só no perfil agora é cancelado no corte; o sync do Asaas ignora conta com provedor do roteador; a transição para `past_due` usa o vencimento efetivo. Controle negativo: 5 testes de integração e 1 do sync falham sem as correções. Conversas respondidas e resolvidas. Suíte oficial 6987 + 127, typecheck, lint e governança com exit 0.
+
 ## Pendências que bloqueiam o push
 
 1. **Autorização para pular o hook** (`--no-verify`). Os erros de `withPrismaRetry` e os 3 falhas não identificados existem no código atual, inclusive na develop. Não pulo o hook sem sua autorização explícita. Alternativa: corrigir os três arquivos de `SubscriptionManagementUseCase` antes do push, o que deixa de ser escopo desta feature.
