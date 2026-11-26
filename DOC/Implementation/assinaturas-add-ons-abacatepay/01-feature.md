@@ -19,10 +19,10 @@
 |---|---|---|---|
 | A | Acesso em carência: liberação genérica por contrato, badge tri-estado do backoffice, botão "Cancelar" fatura | sim | implementada no PR, não na develop |
 | B | Add-ons (time, usuário, créditos) cobrados pelo AbacatePay | não | B-1 e B-2 implementadas localmente, não enviadas |
-| C | Assinatura e renovação via router, cron de renovação | não | não iniciada |
+| C | Renovação reativa pelo roteador: e-mail dos dois avisos da carência, `past_due` por data para contas do roteador, corte do Asaas na confirmação do pagamento, aviso de perda do ilimitado na tela de renovação (o cron de renovação antecipada foi removido, D8) | não | backend e tela implementados na branch da Fase C, sem sandbox. Ver [06-fase-c-renovacao.md](06-fase-c-renovacao.md) |
 | D | "Marcar como paga externamente" com comprovante (só backoffice) | não | não iniciada |
 | E | Página de assinatura restrita a master ou delegado | não | não verificada |
-| F | Alertas de inadimplência: verificar destinatário e fechar BILLING-GRACE-T002 | não | não iniciada |
+| F | Alertas de inadimplência: verificar destinatário e fechar BILLING-GRACE-T002 | não | parcial: os dois avisos da carência foram feitos na Fase C (D12). Falta confirmar o destinatário e os degraus de janela fixa (ver riscos) |
 | G | Indicador de modo leitura no shell; padronização visual das ações de fatura | não | não iniciada |
 
 ## Decisões fechadas
@@ -59,6 +59,8 @@ Mudança de código que a B-1 fez e que não foi decidida antes: a recusa de car
 - **Dado sensível no servidor hoje.** O add-on por cartão atual envia número e CVV ao servidor. D1 remove isso.
 - **Contas legadas sem `subscriptionNextDueDate`** continuam sem carência. Volume real em produção não foi medido.
 - **Decisão 13 da spec antiga diverge** da decisão atual (todo pagamento novo vai para o AbacatePay). A spec no Obsidian ainda não foi atualizada, e ela deixa de ser a fonte viva desta feature.
+- **Acesso das contas do roteador muda (D14).** O cron `subscription-overdue-transition` marca `past_due` a conta do roteador vencida há 1 a 5 dias. Antes, essas contas ficavam `active` e iam direto para `restricted`. Agora têm carência e depois somente leitura. É o comportamento pedido, mas muda o acesso de quem hoje cai direto em `restricted`. Confirmar antes do deploy.
+- **Corte do Asaas desligado por padrão (D10, D11).** Sem `PAYMENT_PROVIDER_RENEWAL_ENABLED=true`, a conta legada que renova pelo roteador continua com a assinatura recorrente no Asaas, com risco de cobrança em duplicidade. A documentação do Asaas diz que remover a assinatura apaga as cobranças pendentes, mas isso não foi confirmado no sandbox.
 - **PR #1381 não deve ser mergeado com os alertas de janela fixa.** Os lembretes por e-mail ainda usam os degraus 1–5, 6–15 e 16+ de `lib/billing/delinquency-tier.ts`. O controle de acesso já usa o cálculo dinâmico.
 
 ## Fontes

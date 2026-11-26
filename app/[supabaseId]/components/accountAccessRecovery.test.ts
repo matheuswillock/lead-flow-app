@@ -40,18 +40,18 @@ describe("getAccessPausedAction", () => {
 
 describe("isPaymentRecoveryPath", () => {
   test("libera só a página de pagamento da própria conta", () => {
-    expect(isPaymentRecoveryPath("/abc-123/billing-grace-payment")).toBe(true)
-    expect(isPaymentRecoveryPath("/abc-123/billing-grace-payment/")).toBe(true)
+    expect(isPaymentRecoveryPath("/pagamento/abc-123")).toBe(true)
+    expect(isPaymentRecoveryPath("/pagamento/abc-123/")).toBe(true)
   })
 
   test("não libera outras rotas, subrotas nem rotas parecidas", () => {
     expect(isPaymentRecoveryPath("/abc-123/dashboard")).toBe(false)
     expect(isPaymentRecoveryPath("/abc-123/subscription")).toBe(false)
-    expect(isPaymentRecoveryPath("/abc-123/billing-grace-payment/extra")).toBe(false)
-    expect(isPaymentRecoveryPath("/abc-123/billing-grace-payment-old")).toBe(false)
-    expect(isPaymentRecoveryPath("/abc-123/x/billing-grace-payment")).toBe(false)
-    expect(isPaymentRecoveryPath("/billing-grace-payment")).toBe(false)
-    expect(isPaymentRecoveryPath("//billing-grace-payment")).toBe(false)
+    expect(isPaymentRecoveryPath("/abc-123/billing-grace-payment")).toBe(false)
+    expect(isPaymentRecoveryPath("/pagamento/abc-123/extra")).toBe(false)
+    expect(isPaymentRecoveryPath("/pagamento-old/abc-123")).toBe(false)
+    expect(isPaymentRecoveryPath("/pagamento")).toBe(false)
+    expect(isPaymentRecoveryPath("//pagamento/abc-123")).toBe(false)
     expect(isPaymentRecoveryPath("")).toBe(false)
     expect(isPaymentRecoveryPath(null)).toBe(false)
     expect(isPaymentRecoveryPath(undefined)).toBe(false)
@@ -60,6 +60,6 @@ describe("isPaymentRecoveryPath", () => {
 
 describe("getPaymentRecoveryHref", () => {
   test("monta o link da página de pagamento da conta", () => {
-    expect(getPaymentRecoveryHref("abc-123")).toBe("/abc-123/billing-grace-payment")
+    expect(getPaymentRecoveryHref("abc-123")).toBe("/pagamento/abc-123")
   })
 })

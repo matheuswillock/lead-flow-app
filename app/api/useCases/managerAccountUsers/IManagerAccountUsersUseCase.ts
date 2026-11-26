@@ -57,6 +57,7 @@ export type AccountUserFunction = "SDR" | "CLOSER";
 export interface CreateAccountUserInput {
   name: string;
   email: string;
+  phone: string;
   role: AccountUserRole;
   functions?: AccountUserFunction[];
   billingType?: "PIX" | "CREDIT_CARD";

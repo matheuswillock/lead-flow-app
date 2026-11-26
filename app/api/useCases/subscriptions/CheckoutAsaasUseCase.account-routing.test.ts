@@ -133,6 +133,7 @@ function fakeRepos(overrides: Record<string, any> = {}) {
       teamId: "team-1",
       name: "Novo Operador",
       email: "novo-operador@example.test",
+      phone: "11999998888",
       role: "operator",
       functions: [],
       paymentId: "checkout_session_1",
@@ -424,6 +425,43 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
     expect(repos.teamMembersRepository.createMember).not.toHaveBeenCalled()
   })
 
+  it("operador sem telefone é recusado antes de criar o PendingOperator", async () => {
+    const repos = fakeRepos()
+    const useCase = createUseCase(repos)
+
+    const semTelefone = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" } as never,
+    })
+    const telefoneCurto = await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "1199", role: "operator" },
+    })
+
+    expect(semTelefone.isValid).toBe(false)
+    expect(semTelefone.errorMessages).toEqual(["Telefone é obrigatório"])
+    expect(telefoneCurto.isValid).toBe(false)
+    expect(repos.pendingOperatorRepository.create).not.toHaveBeenCalled()
+  })
+
+  it("grava o telefone no PendingOperator e o leva ao perfil criado depois do pagamento", async () => {
+    const repos = fakeRepos()
+    const useCase = createUseCase(repos)
+
+    await useCase.createOperatorCheckout({
+      managerId: manager.supabaseId,
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
+    })
+    expect(repos.pendingOperatorRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: "11999998888" })
+    )
+
+    await useCase.processOperatorCheckoutPaid("checkout_session_1", "pay_1", "primary")
+    expect(repos.profileRepository.createOperatorProfileFromPendingOperator).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: "11999998888" })
+    )
+  })
+
   it("achado Codex (PR #1137, P1, round 8): já existe checkout ativo para o e-mail — bloqueia o segundo antes de qualquer pagamento", async () => {
     const repos = fakeRepos({
       pendingOperatorRepository: {
@@ -434,7 +472,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
-      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
     })
 
     expect(result.isValid).toBe(false)
@@ -454,7 +492,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
-      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
     })
 
     expect(result.isValid).toBe(true)
@@ -473,7 +511,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
-      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
     })
 
     expect(result.isValid).toBe(false)
@@ -495,7 +533,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
-      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
     })
 
     expect(result.isValid).toBe(true)
@@ -583,7 +621,7 @@ describe("CheckoutAsaasUseCase — operador não fica pago-sem-entrega (E4/C22)"
 
     const result = await useCase.createOperatorCheckout({
       managerId: manager.supabaseId,
-      operatorData: { name: "Novo", email: "novo@example.test", role: "operator" },
+      operatorData: { name: "Novo", email: "novo@example.test", phone: "11999998888", role: "operator" },
     })
 
     expect(result.isValid).toBe(true)

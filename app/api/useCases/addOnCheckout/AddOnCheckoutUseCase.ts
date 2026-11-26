@@ -3,7 +3,8 @@ import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendi
 import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository";
 import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
-import { createAsaasClient, type AsaasAccountId } from "@/lib/asaas";
+import { validateRequestedInstallments } from "@/app/api/services/billing/proportionalAddonCharge";
+import { createAsaasClient } from "@/lib/asaas";
 import {
   assertCardChoiceAllowedForMaster,
   resolveAvailableBillingTypesForMaster,
@@ -13,6 +14,7 @@ import {
   readConfiguredAbacatePublicKey,
 } from "@/lib/payment-methods/availability";
 import { markedUnavailableOutput } from "@/lib/payment-methods/route-guard";
+import { LEGAL_DOCUMENTS_VERSION } from "@/lib/legal/legal-document-types";
 import type {
   AddOnCheckoutPaymentInput,
   CheckoutDetailsResponse,
@@ -191,7 +193,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         // PERSISTIDA no instante em que este paymentId nasceu — nunca o
         // helper asaas() legado (sempre primary), que devolvia 404 para
         // uma cobrança já criada na legacy (C33/E6).
-        const existingPaymentClient = createAsaasClient(pendingAction.asaasAccount);
+        const existingPaymentClient = createAsaasClient(pendingAction.asaasAccount ?? "primary");
         const existingPayment = await existingPaymentClient.request(
           `${existingPaymentClient.endpoints.payments}/${pendingAction.paymentId}`
         );
@@ -232,6 +234,23 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       await assertCardChoiceAllowedForMaster(input.billingType, pendingAction.master);
 
+      // O limite foi gravado no payload a partir do ciclo do contrato; PIX é sempre à vista.
+      const installments = input.billingType === "CREDIT_CARD" ? (input.installments ?? 1) : 1;
+      const installmentsError = validateRequestedInstallments(
+        installments,
+        Math.max(1, Math.floor(Number(payload.maxInstallments) || 1)),
+      );
+      if (installmentsError) {
+        return new Output(false, [], [installmentsError], null);
+      }
+
+      // Carimbo do aceite no próprio payload da ação pendente (JSON), sem coluna nova.
+      await pendingActionRepository.updatePayload(pendingActionId, {
+        ...payload,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: LEGAL_DOCUMENTS_VERSION,
+      });
+
       const addonLabel =
         pendingAction.actionType === "create_team"
           ? `Time adicional: ${payload.teamName}`
@@ -259,7 +278,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
           state: input.state,
         },
         cardToken: input.cardToken,
-        installments: input.installments,
+        installments,
         remoteIp: input.remoteIp,
       });
 
@@ -274,14 +293,8 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       const paymentId = chargeResult.paymentId;
 
-      // Achado Codex (PR #1137, P1): persiste a conta ONDE a cobrança
-      // nasceu de fato (a do master neste instante) — não deriva depois,
-      // porque o master pode migrar de conta (E4, checkout de operador).
-      await pendingActionRepository.updatePaymentId(
-        pendingActionId,
-        paymentId,
-        (pendingAction.master as { asaasCustomerAccount: AsaasAccountId }).asaasCustomerAccount
-      );
+      // A cobrança nasce sempre no provedor roteado (createIncrementalCharge): não há conta Asaas.
+      await pendingActionRepository.updatePaymentId(pendingActionId, paymentId, null);
 
       const response: Record<string, unknown> = {
         paymentId: chargeResult.paymentId,
@@ -418,7 +431,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         // que a cobrança nasceu (pendingAction.asaasAccount) — nunca deriva
         // de pendingAction.master.asaasCustomerAccount, que pode ter mudado
         // desde então (E4, checkout de operador migra o master de conta).
-        const account = pendingAction.asaasAccount;
+        const account = pendingAction.asaasAccount ?? "primary";
 
         try {
           const client = createAsaasClient(account);
@@ -475,7 +488,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         } else if (pendingAction.paymentId) {
           await pendingActionUseCase.applyPendingActionByPaymentId(
             pendingAction.paymentId,
-            pendingAction.asaasAccount
+            pendingAction.asaasAccount ?? "primary"
           );
         }
         currentStatus = "applied";
@@ -554,7 +567,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         // Mesmo achado Codex (PR #1137, P2) de createPayment: a conta
         // persistida em pendingAction.asaasAccount, não o helper asaas()
         // legado (sempre primary).
-        const billingTypeClient = createAsaasClient(pendingAction.asaasAccount);
+        const billingTypeClient = createAsaasClient(pendingAction.asaasAccount ?? "primary");
         const payment = await billingTypeClient.request(
           `${billingTypeClient.endpoints.payments}/${pendingAction.paymentId}`
         );

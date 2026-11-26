@@ -3,7 +3,7 @@ import type {
   BackofficePaymentItem,
   CreatePaymentFormData,
 } from "./IBackofficePaymentsService"
-import type { BackofficeClientItem } from "./IBackofficePaymentsService"
+import type { BackofficeCardCheckout, BackofficeClientItem } from "./IBackofficePaymentsService"
 import { API_CLIENT_BASE } from "@/lib/route-map";
 import { ApiRequestError } from "@/lib/http/api-request-error";
 
@@ -75,5 +75,10 @@ export class BackofficePaymentsService implements IBackofficePaymentsService {
   async listClients(): Promise<BackofficeClientItem[]> {
     const res = await fetch(`${API_CLIENT_BASE}/backoffice/clients`, { cache: "no-store" })
     return parseOutput<BackofficeClientItem[]>(res)
+  }
+
+  async loadCardCheckout(): Promise<BackofficeCardCheckout> {
+    const res = await fetch(`${API_CLIENT_BASE}/backoffice/payments/card-checkout`, { cache: "no-store" })
+    return parseOutput<BackofficeCardCheckout>(res)
   }
 }

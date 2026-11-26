@@ -15,4 +15,6 @@ export interface IBackofficeClientRepository {
   findMany(params?: { isActive?: boolean }): Promise<BackofficeClient[]>
   findById(id: string): Promise<BackofficeClient | null>
   updateAsaasCustomerId(id: string, asaasCustomerId: string): Promise<BackofficeClient>
+  updateCpfCnpj(id: string, cpfCnpj: string): Promise<BackofficeClient>
+  updatePhone(id: string, phone: string): Promise<BackofficeClient>
 }

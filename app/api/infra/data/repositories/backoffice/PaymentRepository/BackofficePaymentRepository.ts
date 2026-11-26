@@ -18,17 +18,16 @@ export class BackofficePaymentRepository implements IBackofficePaymentRepository
         dueDate: data.dueDate,
         description: data.description,
         asaasPaymentId: data.asaasPaymentId,
+        provider: data.provider,
+        ...(data.status ? { status: data.status } : {}),
         invoiceUrl: data.invoiceUrl,
         pixQrCode: data.pixQrCode,
         pixPayload: data.pixPayload,
         createdByProfileId: data.createdByProfileId,
-        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): toda
-        // cobrança nova nasce na conta primary — o único chamador
-        // (BackofficePaymentUseCase.createPayment) cria a cobrança no Asaas
-        // via asaasFetch, que aponta para a primary. Sem isso a coluna cai
-        // no default do schema (legacy) e o lookup do webhook, que filtra
-        // por conta, nunca encontra o pagamento.
-        asaasAccount: "primary",
+        // E4/E5 de [[10 — Fundações Multi-conta — Backend]] (C33): só a cobrança legada com id
+        // Asaas nasce na conta primary, porque o lookup do webhook legado filtra por conta.
+        // Cobrança de qualquer outro provedor não tem id Asaas e fica no default.
+        ...(data.asaasPaymentId ? { asaasAccount: "primary" as const } : {}),
       },
     })
   }

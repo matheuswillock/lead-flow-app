@@ -1101,6 +1101,7 @@ class PrismaProfileRepository implements IProfileRepository {
     supabaseId: string;
     fullName: string;
     email: string;
+    phone?: string | null;
     role: UserRole;
     functions: ("SDR" | "CLOSER")[];
     managerId: string;
@@ -1110,6 +1111,7 @@ class PrismaProfileRepository implements IProfileRepository {
         supabaseId: input.supabaseId,
         fullName: input.fullName,
         email: input.email,
+        phone: input.phone,
         role: input.role,
         functions: input.functions,
         managerId: input.managerId,

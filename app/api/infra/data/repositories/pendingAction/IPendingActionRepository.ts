@@ -110,7 +110,10 @@ export type PendingActionOwnershipLookup = {
   id: string;
   masterId: string;
   status: string;
-  asaasAccount: AsaasAccountId;
+  /** null em ação de provedor: a conta Asaas só existe no fluxo legado. */
+  asaasAccount: AsaasAccountId | null;
+  provider?: string | null;
+  providerAttemptId?: string | null;
 };
 
 export interface IPendingActionRepository {
@@ -128,7 +131,8 @@ export interface IPendingActionRepository {
   // ele — achado Codex (PR #1137, P1): master.asaasCustomerAccount muda
   // depois da cobrança nascer (E4), então nunca é seguro derivar em
   // consultas futuras.
-  updatePaymentId(id: string, paymentId: string, account: AsaasAccountId): Promise<void>;
+  // account null: cobrança de provedor (não pertence a nenhuma conta Asaas).
+  updatePaymentId(id: string, paymentId: string, account: AsaasAccountId | null): Promise<void>;
   clearPaymentId(id: string): Promise<void>;
   updateStatus(id: string, status: string): Promise<void>;
   updatePayload(id: string, payload: Record<string, unknown>): Promise<void>;
@@ -221,6 +225,8 @@ export interface IPendingActionRepository {
     params: {
       fullName: string;
       email: string;
+      /** Ausente só em ações pendentes criadas antes de o telefone ser obrigatório. */
+      phone?: string;
       role: UserRole;
       functions: UserFunction[];
       managerId: string;

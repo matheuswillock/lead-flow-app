@@ -1,4 +1,4 @@
-import type { AccountAccessRestrictionReason } from "@/app/api/shared/accountAccessDecision/types"
+import type { AccountAccessDecision, AccountAccessRestrictionReason } from "@/app/api/shared/accountAccessDecision/types"
 
 export type AccessPausedAction = "payment" | "support" | "none"
 
@@ -8,8 +8,8 @@ const PAYMENT_RECOVERY_REASONS: readonly AccountAccessRestrictionReason[] = [
   "canceled",
 ]
 
-const PAYMENT_RECOVERY_SEGMENT = "billing-grace-payment"
-const PAYMENT_RECOVERY_PATH_PATTERN = new RegExp(`^/[^/]+/${PAYMENT_RECOVERY_SEGMENT}/?$`)
+const PAYMENT_RECOVERY_BASE_PATH = "/pagamento"
+const PAYMENT_RECOVERY_PATH_PATTERN = /^\/pagamento\/[^/]+\/?$/
 
 /**
  * Qual ação a tela de acesso pausado oferece:
@@ -33,5 +33,19 @@ export function isPaymentRecoveryPath(pathname: string | null | undefined): bool
 }
 
 export function getPaymentRecoveryHref(supabaseId: string): string {
-  return `/${supabaseId}/${PAYMENT_RECOVERY_SEGMENT}`
+  return `${PAYMENT_RECOVERY_BASE_PATH}/${supabaseId}`
+}
+
+/**
+ * Painel "Acesso não liberado" oferece pagamento só ao master com cobrança pendente
+ * (carência de cobrança ou somente leitura). Sem pendência, a ausência de módulo não é
+ * problema de pagamento e o painel continua só com o texto.
+ */
+export function canOfferPaymentFromBlockedFeature(
+  decision: AccountAccessDecision | null | undefined,
+  isBillingOwner: boolean
+): boolean {
+  if (!isBillingOwner || !decision) return false
+  if (decision.state === "read_only") return true
+  return decision.state === "allowed" && Boolean(decision.billingGraceUntil)
 }

@@ -31,6 +31,7 @@ import { BackofficePlatformUsersRepository } from "../../infra/data/repositories
 import { incrementalBillingService } from "../../services/billing/IncrementalBillingService"
 import { memberProBillingUseCase } from "@/app/api/useCases/billing/MemberProBillingUseCase"
 import type { BillingOwnerProfile } from "../../services/billing/IIncrementalBillingService"
+import { ProportionalChargeError } from "@/app/api/services/billing/proportionalAddonCharge"
 import { backofficeIncrementalBillingCoordinator } from "./BackofficeIncrementalBillingCoordinator"
 import { backofficeBannedUsersRepository } from "../../infra/data/repositories/backoffice/BannedUsersRepository/BackofficeBannedUsersRepository"
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository"
@@ -2336,6 +2337,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_user")
       return new Output(true, ["Usuário convidado com sucesso"], [], { profileId })
     } catch (error) {
+      if (error instanceof ProportionalChargeError) return new Output(false, [], [error.message], null)
       console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser]", error)
       return new Output(false, [], ["Erro ao adicionar usuário"], null)
     }
@@ -2492,6 +2494,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       await memberProBillingUseCase.syncBillingAfterUsageChange(masterProfileId, "add_team")
       return new Output(true, ["Time criado com sucesso"], [], { teamId: team.id, name: team.name })
     } catch (error) {
+      if (error instanceof ProportionalChargeError) return new Output(false, [], [error.message], null)
       console.error("[BackofficePlatformUsersUseCase][addTeamToMasterUser]", error)
       return new Output(false, [], ["Erro ao criar time"], null)
     }

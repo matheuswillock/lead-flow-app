@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
 import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/BackofficeClientUseCase"
 import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
@@ -19,10 +18,7 @@ export async function GET(
     }
 
     const { id } = await params
-    const useCase = new BackofficeClientUseCase(
-      new BackofficeClientRepository(),
-      new AsaasCustomerService()
-    )
+    const useCase = new BackofficeClientUseCase(new BackofficeClientRepository())
     const output = await useCase.getClientById(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {

@@ -55,6 +55,7 @@ export class SubscriptionUpgradeRepository implements ISubscriptionUpgradeReposi
     teamId: true,
     name: true,
     email: true,
+    phone: true,
     role: true,
     functions: true,
     paymentId: true,
@@ -206,6 +207,7 @@ export class SubscriptionUpgradeRepository implements ISubscriptionUpgradeReposi
     teamId: string | null;
     name: string;
     email: string;
+    phone: string;
     role: string;
     functions: import("@prisma/client").UserFunction[];
     paymentId: string;
@@ -220,6 +222,7 @@ export class SubscriptionUpgradeRepository implements ISubscriptionUpgradeReposi
         teamId: input.teamId,
         name: input.name,
         email: input.email,
+        phone: input.phone,
         role: input.role as any,
         functions: input.functions,
         paymentId: input.paymentId,

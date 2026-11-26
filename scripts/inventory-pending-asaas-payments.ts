@@ -51,7 +51,8 @@ async function collectPendingActions(): Promise<InventoryRow[]> {
     source: "PendingAction" as const,
     id: row.id,
     asaasPaymentId: row.paymentId,
-    asaasAccount: row.asaasAccount,
+    // Ação de provedor não tem conta Asaas (asaasAccount null): rotulada, não inventariada como Asaas.
+    asaasAccount: row.asaasAccount ?? "provider",
     status: row.status,
     email: row.master?.email ?? null,
     amount: null,

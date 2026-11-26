@@ -66,6 +66,7 @@ export const CRON_MAX_DURATION_SECONDS: Readonly<Record<string, number>> = {
   "asaas-card-reauthorization-reminder": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "asaas-due-date-cutover": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "asaas-webhook-retry": 60,
+  "subscription-overdue-transition": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "backoffice-email-import": 60,
   "cleanup-orphan-media": VERCEL_DEFAULT_MAX_DURATION_SECONDS,
   "database-backup": 300,

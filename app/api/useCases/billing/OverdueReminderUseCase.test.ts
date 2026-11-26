@@ -60,8 +60,11 @@ mock.module(
     backofficeCronExecutionRepository: { findMany: cronExecutionFindManyMock },
   })
 )
+const findPastDueSubscriptionsInGraceMock = mock(
+  async (_params: { take: number; graceStart: Date; afterProfileId?: string }) => [] as unknown[]
+)
 const hasDelinquencyNoticeSinceMock = mock(
-  async (_params: { profileId: string; eventType: string; changeType: string; since: Date }) => false
+  async (_params: { profileId: string; eventType: string | null; changeType: string; since: Date }) => false
 )
 const recordDelinquencyNoticeMock = mock(
   async (_input: { profileId: string; eventType: string; [key: string]: unknown }) => {}
@@ -69,6 +72,7 @@ const recordDelinquencyNoticeMock = mock(
 mock.module("@/app/api/infra/data/repositories/billing/BillingEngineRepository", () => ({
   billingEngineRepository: {
     findPastDueSubscriptionsForDunning: findPastDueSubscriptionsForDunningMock,
+    findPastDueSubscriptionsInGrace: findPastDueSubscriptionsInGraceMock,
     hasDelinquencyNoticeSince: hasDelinquencyNoticeSinceMock,
     recordDelinquencyNotice: recordDelinquencyNoticeMock,
   },
@@ -107,6 +111,8 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
   beforeEach(() => {
     findPastDueSubscriptionsForDunningMock.mockReset()
     findPastDueSubscriptionsForDunningMock.mockImplementation(async () => [])
+    findPastDueSubscriptionsInGraceMock.mockReset()
+    findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [])
     hasDelinquencyNoticeSinceMock.mockReset()
     hasDelinquencyNoticeSinceMock.mockImplementation(async () => false)
     sendDelinquencyReminderEmailMock.mockReset()
@@ -118,6 +124,80 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     recordDelinquencyNoticeMock.mockImplementation(async () => {})
     cronExecutionFindManyMock.mockReset()
     cronExecutionFindManyMock.mockImplementation(async () => [])
+  })
+
+  describe("avisos da carência", () => {
+    it("dia 1 de atraso → envia o aviso do início da carência, com a data limite e o link do pagamento", async () => {
+      findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [
+        makeRow({ subscriptionNextDueDate: daysAgo(1) }),
+      ])
+
+      const output = await new OverdueReminderUseCase().processOverdueReminders()
+
+      expect(output.isValid).toBe(true)
+      expect(sendDelinquencyReminderEmailMock).toHaveBeenCalledTimes(1)
+      const sent = sendDelinquencyReminderEmailMock.mock.calls[0][0] as unknown as { tier: string; manageUrl: string; graceUntilLabel: string }
+      expect(sent.tier).toBe("grace_started")
+      expect(sent.manageUrl).toMatch(/\/pagamento\/supabase-1$/)
+      expect(sent.graceUntilLabel).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
+      // Aviso não é transição de status: grava a marca sem eventType, só com o changeType do aviso.
+      expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
+        profileId: "profile-1",
+        eventType: null,
+        changeType: "delinquency_grace_started",
+      })
+    })
+
+    it("dia 4 de atraso (último antes do somente leitura) → envia o aviso do último dia", async () => {
+      findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [
+        makeRow({ subscriptionNextDueDate: daysAgo(4) }),
+      ])
+
+      await new OverdueReminderUseCase().processOverdueReminders()
+
+      expect(sendDelinquencyReminderEmailMock.mock.calls[0][0]).toMatchObject({ tier: "grace_last_day" })
+      expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({ changeType: "delinquency_grace_last_day" })
+    })
+
+    it("aviso já enviado neste ciclo (dedupe) → não reenvia. Cada aviso tem a própria marca", async () => {
+      findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [
+        makeRow({ subscriptionNextDueDate: daysAgo(1) }),
+      ])
+      hasDelinquencyNoticeSinceMock.mockImplementation(async (params) => params.changeType === "delinquency_grace_started")
+
+      const output = await new OverdueReminderUseCase().processOverdueReminders()
+
+      expect(sendDelinquencyReminderEmailMock).not.toHaveBeenCalled()
+      expect(output.result).toMatchObject({ deduped: 1 })
+    })
+
+    it("vencimento efetivo já fora da carência (perfil mais antigo) → não manda aviso de carência", async () => {
+      findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [makeRowWithProfileDue(8, 1)])
+
+      await new OverdueReminderUseCase().processOverdueReminders()
+
+      expect(sendDelinquencyReminderEmailMock).not.toHaveBeenCalled()
+    })
+
+    it("consulta a carência com o corte em hoje - 5 dias", async () => {
+      await new OverdueReminderUseCase().processOverdueReminders()
+
+      const params = findPastDueSubscriptionsInGraceMock.mock.calls[0][0]
+      const expected = Date.now() - 5 * 24 * 60 * 60 * 1000
+      expect(Math.abs(params.graceStart.getTime() - expected)).toBeLessThan(5_000)
+    })
+
+    it("falha no envio do aviso da carência conta como falha e não grava marca", async () => {
+      findPastDueSubscriptionsInGraceMock.mockImplementation(async () => [
+        makeRow({ subscriptionNextDueDate: daysAgo(1) }),
+      ])
+      sendDelinquencyReminderEmailMock.mockImplementation(async () => ({ success: false, error: "resend fora" }))
+
+      const output = await new OverdueReminderUseCase().processOverdueReminders()
+
+      expect(output.result).toMatchObject({ failed: 1, sent: 0 })
+      expect(recordDelinquencyNoticeMock).not.toHaveBeenCalled()
+    })
   })
 
   it("dia 10 (crm_only) sem aviso prévio → envia e-mail com tier crm_only e loga eventType reduced", async () => {
@@ -134,7 +214,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     })
     // O botão do e-mail leva à página de pagamento, a única que o master alcança com a conta limitada.
     const manageUrl = (sendDelinquencyReminderEmailMock.mock.calls[0][0] as { manageUrl?: string }).manageUrl
-    expect(manageUrl).toMatch(/\/supabase-1\/billing-grace-payment$/)
+    expect(manageUrl).toMatch(/\/pagamento\/supabase-1$/)
     expect(recordDelinquencyNoticeMock).toHaveBeenCalledTimes(1)
     expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
       profileId: "profile-1",

@@ -27,7 +27,7 @@ const { BackofficeAdhesionService, PIX_PENDING_SWITCH_BLOCKED_MESSAGE } = await 
 
 const NOW = new Date("2026-10-21T12:00:00.000Z")
 const QUOTE = { adhesionId: "adhesion-1", billingType: "PIX", amount: 299.9, createdAt: "2026-10-21T11:59:00.000Z" } as Record<string, unknown>
-const payerInput = { fullName: "Maria Souza", email: "Maria@Example.com", phone: "(11) 99999-9999", cpfCnpj: "123.456.789-09" }
+const payerInput = { termsAccepted: true as const, fullName: "Maria Souza", email: "Maria@Example.com", phone: "(11) 99999-9999", cpfCnpj: "123.456.789-09" }
 
 function buildAdhesion(overrides: Record<string, unknown> = {}): BackofficeAdhesionWithRelations {
   return {
@@ -94,6 +94,7 @@ function makeHarness(adhesion: BackofficeAdhesionWithRelations) {
   const repo = {
     findById: mock(async () => state.adhesion),
     findProfileIdByEmail: mock(async () => null),
+    appendLeadNote: mock(async () => {}),
     updateCheckoutData: mock(async (_id: string, data: Record<string, unknown>) => {
       state.adhesion = { ...state.adhesion, ...data } as BackofficeAdhesionWithRelations
       return state.adhesion
@@ -463,7 +464,7 @@ describe("BackofficeAdhesionService — cartão e preset", () => {
     const h = makeHarness(buildAdhesion())
 
     await expect(
-      h.service.create({ leadId: "l", fullName: "Maria Souza", cycle: "monthly", extraTeams: 0, extraUsers: 0, billingType: "CREDIT_CARD" }, null),
+      h.service.create({ leadId: "l", fullName: "Maria Souza", phone: "11988887777", cycle: "monthly", extraTeams: 0, extraUsers: 0, billingType: "CREDIT_CARD" }, null),
     ).rejects.toThrow("cartão")
   })
 

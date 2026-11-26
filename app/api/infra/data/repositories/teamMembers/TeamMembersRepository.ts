@@ -306,8 +306,15 @@ export class TeamMembersRepository implements ITeamMembersRepository {
   }
 
   async deleteMember(teamId: string, profileId: string): Promise<void> {
-    await prisma.teamMember.delete({
-      where: { teamId_profileId: { teamId, profileId } },
+    // Remover o vínculo revoga o convite pendente: a versão sobe na mesma transação.
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.delete({
+        where: { teamId_profileId: { teamId, profileId } },
+      });
+      await tx.profile.update({
+        where: { id: profileId },
+        data: { inviteLinkVersion: { increment: 1 } },
+      });
     });
   }
 

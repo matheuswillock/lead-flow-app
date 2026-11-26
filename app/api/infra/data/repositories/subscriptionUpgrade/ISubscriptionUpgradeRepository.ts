@@ -72,6 +72,8 @@ export interface CreateOperatorProfileInput {
   supabaseId: string;
   fullName: string;
   email: string;
+  /** Ausente só em PendingOperator criado antes de o telefone ser obrigatório. */
+  phone?: string;
   role: UserRole;
   functions: UserFunction[];
   managerId: string;
@@ -105,6 +107,7 @@ export interface ISubscriptionUpgradeRepository {
     teamId: string | null;
     name: string;
     email: string;
+    phone: string;
     role: string;
     functions: UserFunction[];
     paymentId: string;

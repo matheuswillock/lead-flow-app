@@ -1,566 +1,303 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
-import { toast } from "sonner"
-import { useEffect, useMemo, useState } from "react"
+import type { ReactNode, RefObject } from "react"
 
-import { Button } from "@/components/ui/button"
+import { AbacateCardField, type AbacateCardFieldHandle } from "@/app/adesao/[token]/features/components/AbacateCardField"
+import { CheckoutInstallmentsSelect } from "@/components/checkout/CheckoutInstallmentsSelect"
 import { Badge } from "@/components/ui/badge"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { CepService } from "@/lib/services/CepService"
-import { maskCEP, maskCardNumber, maskPhone, formatDocumentInput, unmask } from "@/lib/masks"
-import { cn } from "@/lib/utils"
-import type { AvailableBillingTypes } from "@/lib/payment-methods/availability"
-import { pickBillingType, resolveCheckoutMethods } from "./checkoutMethods"
-import { Field, FieldGroup } from "./PublicCheckoutField"
-import { PixPaymentBlock } from "./PixPaymentBlock"
-import { AbacateCardField } from "@/app/adesao/[token]/features/components/AbacateCardField"
-import { useAbacateCard } from "@/app/adesao/[token]/features/context/AbacateCardHook"
-import type { PublicCheckoutBillingType, PublicCheckoutDetails, PublicCheckoutPaymentInput, PublicCheckoutPaymentView, PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
+import { formatDocumentInput, maskCEP, maskPhone, unmask } from "@/lib/masks"
+import { formatBRL } from "@/app/adesao/[token]/features/utils/adhesionPayment"
+import type { PaymentFieldErrors, PaymentFieldName } from "./publicCheckoutPhases"
+import type { PublicCheckoutPayerPrefill } from "./publicCheckoutTypes"
 
-function onlyDigits(value: string, maxLength: number): string {
-  return value.replace(/\D/g, "").slice(0, maxLength)
-}
+/** id do campo na página; o checkout usa para levar o foco ao primeiro erro. */
+export const publicCheckoutFieldId = (field: PaymentFieldName) => `public-checkout-${field}`
 
-function initialPaymentInput(prefill: PublicCheckoutPayerPrefill): PublicCheckoutPaymentInput {
-  return {
-    ...prefill,
-    billingType: "PIX",
-    installments: 1,
-    creditCard: {
-      holderName: "",
-      number: "",
-      expiryMonth: "",
-      expiryYear: "",
-      ccv: "",
-    },
-  }
-}
-
-const checkoutInputClassName =
-  "disabled:opacity-100 disabled:bg-muted/30 disabled:text-foreground/70 disabled:border-input"
-
-export function PublicCheckoutPaymentStep({
-  details,
-  billingType: requestedBillingType,
-  availableMethods,
-  prefill,
-  maxInstallments,
-  isSubmitting,
-  payment,
-  onSubmit,
-  onRefreshStatus,
-  pixOnly = false,
-  isPixExpired = false,
-  isRegeneratingPix = false,
-  onRegeneratePix,
-  abacatePublicKey,
-  skipAddress = false,
+function PaymentField({
+  field,
+  label,
+  error,
+  hint,
+  required = true,
+  children,
 }: {
-  isPixExpired?: boolean
-  isRegeneratingPix?: boolean
-  onRegeneratePix?: () => Promise<void>
-  abacatePublicKey?: string | null
-  skipAddress?: boolean
-  /** Legado: não coleta endereço. */
-  pixOnly?: boolean
-  /** Ausente = somente PIX. O cartão nunca é renderizado se não estiver aqui. */
-  availableMethods?: AvailableBillingTypes
-  details: PublicCheckoutDetails
-  billingType: PublicCheckoutBillingType
-  prefill: PublicCheckoutPayerPrefill
-  maxInstallments: number
-  isSubmitting: boolean
-  payment: PublicCheckoutPaymentView | null
-  onSubmit: (input: PublicCheckoutPaymentInput) => Promise<void>
-  onRefreshStatus?: (options?: { sync?: boolean }) => Promise<void>
+  field: PaymentFieldName | "complement"
+  label: string
+  error?: string
+  hint?: string
+  required?: boolean
+  children: ReactNode
 }) {
-  const abacateCard = useAbacateCard()
-  const billingType = pickBillingType(
-    requestedBillingType,
-    resolveCheckoutMethods({ availableMethods, pixOnly })
+  const id = field === "complement" ? "public-checkout-complement" : publicCheckoutFieldId(field)
+  return (
+    <Field data-invalid={error ? "true" : undefined}>
+      <FieldLabel htmlFor={id}>
+        {label}
+        {required ? (
+          <span aria-hidden="true" className="text-destructive">
+            {" "}
+            *
+          </span>
+        ) : null}
+        {hint ? <span className="font-normal text-muted-foreground"> ({hint})</span> : null}
+      </FieldLabel>
+      {children}
+      <FieldError>{error}</FieldError>
+    </Field>
   )
-  const [form, setForm] = useState<PublicCheckoutPaymentInput>(() => initialPaymentInput(prefill))
-  const [isValidatingPayment, setIsValidatingPayment] = useState(false)
-  const [isResolvingCep, setIsResolvingCep] = useState(false)
-  const [cepResolved, setCepResolved] = useState(false)
-  const [lastResolvedCep, setLastResolvedCep] = useState<string | null>(null)
+}
 
-  const hasPayment = Boolean(payment?.invoiceUrl || payment?.pix || (payment?.billingType === "CREDIT_CARD" && payment.status === "pending"))
-  const isLocked = isSubmitting || hasPayment
-  const isAddressLocked = isLocked || !cepResolved
-
-  const installmentsOptions = useMemo(() => {
-    const count = Math.max(1, Math.min(12, Math.trunc(maxInstallments || 1)))
-    return Array.from({ length: count }, (_, idx) => idx + 1)
-  }, [maxInstallments])
-
-  function updateField<K extends keyof PublicCheckoutPaymentInput>(
-    key: K,
-    value: PublicCheckoutPaymentInput[K]
-  ) {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  function updateCardField<K extends keyof PublicCheckoutPaymentInput["creditCard"]>(
-    key: K,
-    value: PublicCheckoutPaymentInput["creditCard"][K]
-  ) {
-    setForm((prev) => ({ ...prev, creditCard: { ...prev.creditCard, [key]: value } }))
-  }
-
-  async function submit() {
-    if (isLocked) return
-
-    try {
-      let cardToken: string | undefined
-      if (billingType === "CREDIT_CARD" && abacatePublicKey) {
-        const token = await abacateCard.tokenizeCard({ fullName: form.fullName, email: form.email, cnpj: form.cpfCnpj, phone: form.phone })
-        if (!token) return
-        cardToken = token
-      }
-      await onSubmit({
-        ...form,
-        billingType,
-        ...(cardToken ? { cardToken } : {}),
-        phone: onlyDigits(form.phone, 11),
-        cpfCnpj: onlyDigits(form.cpfCnpj, 14),
-        postalCode: onlyDigits(form.postalCode, 8),
-        creditCard: {
-          ...form.creditCard,
-          number: onlyDigits(form.creditCard.number, 19),
-          expiryMonth: onlyDigits(form.creditCard.expiryMonth, 2),
-          expiryYear: onlyDigits(form.creditCard.expiryYear, 4),
-          ccv: onlyDigits(form.creditCard.ccv, 4),
-        },
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao gerar pagamento"
-      toast.error(
-        message === "Endereço incompleto"
-          ? "Preencha CEP, número, endereço, bairro, cidade e estado."
-          : message
-      )
-    }
-  }
-
-  async function resolveCepIfNeeded(nextPostalCode: string) {
-    const cep = onlyDigits(nextPostalCode, 8)
-    if (cep.length !== 8) {
-      setCepResolved(false)
-      return
-    }
-
-    if (lastResolvedCep === cep) return
-
-    setIsResolvingCep(true)
-    try {
-      const data = await CepService.consultarCep(cep)
-      if (!data) {
-        setCepResolved(false)
-        toast.error("CEP inválido ou não encontrado.")
-        return
-      }
-
-      const formatted = CepService.formatarParaFormulario(data)
-      setForm((prev) => ({
-        ...prev,
-        postalCode: cep,
-        address: formatted.address,
-        neighborhood: formatted.neighborhood,
-        city: formatted.city,
-        state: formatted.state,
-        complement: formatted.complement || prev.complement,
-      }))
-      setCepResolved(true)
-      setLastResolvedCep(cep)
-    } finally {
-      setIsResolvingCep(false)
-    }
-  }
-
-  useEffect(() => {
-    const cep = onlyDigits(form.postalCode, 8)
-    if (!cep || cep.length !== 8) return
-    if (lastResolvedCep === cep) return
-    void resolveCepIfNeeded(cep)
-  }, [form.postalCode, lastResolvedCep])
-
-  async function validatePayment() {
-    if (!onRefreshStatus || isValidatingPayment) return
-    setIsValidatingPayment(true)
-    try {
-      await onRefreshStatus({ sync: true })
-    } finally {
-      setIsValidatingPayment(false)
-    }
-  }
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
-
-  const normalizedInvoiceItems = details.invoiceItems.map((item) => {
-    const unit = formatCurrency(item.unitAmountMonthly)
-      const total = formatCurrency(item.totalAmountMonthly)
-    return {
-      key: `${item.title}:${item.description}`,
-      title: `${item.quantity}x ${item.title}`,
-      description: item.description,
-      math: `${unit} × ${item.quantity} = ${total}`,
-      total,
-    }
-  })
-
-  const paymentPanel = (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-4">
-      <div className="text-sm font-semibold text-foreground">Resumo do que esta sendo faturado</div>
-      <div className="flex flex-col gap-3">
-        {normalizedInvoiceItems.map((item) => (
-          <div key={item.key} className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-foreground">{item.title}</div>
-              <div className="truncate text-xs text-muted-foreground">{item.description}</div>
-              <div className="text-[11px] text-muted-foreground">{item.math}</div>
-            </div>
-            <div className="shrink-0 text-sm font-semibold text-foreground">{item.total}</div>
-          </div>
-        ))}
-      </div>
-
-      <Separator />
-
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <div className="text-muted-foreground">Total mensal</div>
-        <div className="font-semibold text-foreground">{formatCurrency(details.billingTypePrices[billingType].monthly)}</div>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <div className="text-muted-foreground">Total</div>
-        <div className="font-semibold text-foreground">{formatCurrency(details.billingTypePrices[billingType].total)}</div>
-      </div>
-
-      {payment?.pix ? (
-        <>
-          <Separator />
-          <PixPaymentBlock
-            payload={payment.pix.payload}
-            encodedImage={payment.pix.encodedImage}
-            expirationDate={payment.pix.expirationDate}
-          />
-
-          {isPixExpired && onRegeneratePix ? (
-            <>
-              <p role="status" className="text-sm text-muted-foreground">
-                Este PIX expirou. Gere um novo PIX para pagar.
-              </p>
-              <Button
-                type="button"
-                className="max-lg:min-h-11"
-                onClick={onRegeneratePix}
-                disabled={isRegeneratingPix}
-              >
-                {isRegeneratingPix ? "Gerando..." : "Gerar novo PIX"}
-              </Button>
-            </>
-          ) : onRefreshStatus ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="max-lg:min-h-11"
-              onClick={validatePayment}
-              disabled={isValidatingPayment}
-            >
-              {isValidatingPayment ? "Validando..." : "Validar pagamento"}
-            </Button>
-          ) : null}
-        </>
-      ) : null}
-      {payment?.billingType === "CREDIT_CARD" && payment.status === "pending" ? (
-        <p role="status" className="text-sm text-muted-foreground">Pagamento enviado. Aguardando confirmação do banco.</p>
-      ) : null}
-    </div>
-  )
-
-  const isFormValid = useMemo(() => {
-    const fullName = form.fullName.trim().length >= 2
-    const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
-    const phone = onlyDigits(form.phone, 11).length >= 10
-    const cpfCnpj = onlyDigits(form.cpfCnpj, 14).length === 11 || onlyDigits(form.cpfCnpj, 14).length === 14
-    const postalCode = onlyDigits(form.postalCode, 8).length === 8
-
-    const addressOk =
-      cepResolved &&
-      form.address.trim().length > 1 &&
-      form.addressNumber.trim().length > 0 &&
-      form.neighborhood.trim().length > 1 &&
-      form.city.trim().length > 1 &&
-      form.state.trim().length === 2
-
-    if (!fullName || !email || !phone || !cpfCnpj) return false
-    if (!pixOnly && !skipAddress && (!postalCode || !addressOk)) return false
-
-    if (billingType === "CREDIT_CARD") {
-      if (abacatePublicKey) return true
-      const cc = form.creditCard
-      const holder = cc.holderName.trim().length >= 2
-      const number = onlyDigits(cc.number, 19).length >= 13
-      const mm = onlyDigits(cc.expiryMonth, 2).length === 2
-      const yy = onlyDigits(cc.expiryYear, 4).length >= 2
-      const ccv = onlyDigits(cc.ccv, 4).length >= 3
-      return holder && number && mm && yy && ccv
-    }
-
-    return true
-  }, [billingType, cepResolved, form, pixOnly, skipAddress, abacatePublicKey])
+/**
+ * Dados do pagador da fase Pagamento. Os campos ficam no formulário da página; o cartão entra
+ * como `children`, pelo campo seguro do Abacate Pay.
+ */
+export function PublicCheckoutPaymentStep({
+  form,
+  errors,
+  disabled,
+  addressLocked,
+  showAddress,
+  onFieldChange,
+  children,
+}: {
+  form: PublicCheckoutPayerPrefill
+  errors: PaymentFieldErrors
+  disabled: boolean
+  /** Endereço só libera depois que o CEP é resolvido. */
+  addressLocked: boolean
+  showAddress: boolean
+  onFieldChange: (field: keyof PublicCheckoutPayerPrefill, value: string) => void
+  children?: ReactNode
+}) {
+  const inputProps = { disabled, className: "max-lg:h-11" }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
-      <div className="flex flex-col gap-6">
+    <section aria-labelledby="public-checkout-payment-title" className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">Dados do Pagador</h2>
-        <p className="text-sm text-muted-foreground">
-          Confirme seus dados para finalizar o pagamento via{" "}
-          {billingType === "PIX" ? "PIX" : "cartão de crédito"}.
-        </p>
+        <h2 id="public-checkout-payment-title" className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground">
+          Seus dados
+        </h2>
+        <p className="text-sm text-muted-foreground">Campos marcados com * são obrigatórios.</p>
       </div>
 
-      <FieldGroup>
-        <Field label="Nome completo">
+      <FieldGroup className="flex flex-col gap-5">
+        <PaymentField field="fullName" label="Nome completo" error={errors.fullName}>
           <Input
+            id={publicCheckoutFieldId("fullName")}
+            name="fullName"
+            autoComplete="name"
             value={form.fullName}
-            onChange={(e) => updateField("fullName", e.target.value)}
-            disabled={isLocked}
-            className={checkoutInputClassName}
+            onChange={(event) => onFieldChange("fullName", event.target.value)}
+            aria-invalid={Boolean(errors.fullName)}
+            {...inputProps}
           />
-        </Field>
+        </PaymentField>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="E-mail">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <PaymentField field="email" label="E-mail" error={errors.email}>
             <Input
+              id={publicCheckoutFieldId("email")}
+              name="email"
               type="email"
+              autoComplete="email"
               value={form.email}
-              onChange={(e) => updateField("email", e.target.value)}
-              disabled={isLocked}
-              className={checkoutInputClassName}
+              onChange={(event) => onFieldChange("email", event.target.value)}
+              aria-invalid={Boolean(errors.email)}
+              {...inputProps}
             />
-          </Field>
-          <Field label="Telefone">
+          </PaymentField>
+          <PaymentField field="phone" label="Telefone" error={errors.phone}>
             <Input
+              id={publicCheckoutFieldId("phone")}
+              name="phone"
+              inputMode="tel"
+              autoComplete="tel"
               value={maskPhone(form.phone)}
-              onChange={(e) => updateField("phone", unmask(maskPhone(e.target.value)))}
-              disabled={isLocked}
-              className={checkoutInputClassName}
+              onChange={(event) => onFieldChange("phone", unmask(maskPhone(event.target.value)))}
+              aria-invalid={Boolean(errors.phone)}
+              {...inputProps}
             />
-          </Field>
+          </PaymentField>
         </div>
 
-        <Field label="CPF/CNPJ">
+        <PaymentField field="cpfCnpj" label="CPF ou CNPJ" error={errors.cpfCnpj}>
           <Input
+            id={publicCheckoutFieldId("cpfCnpj")}
+            name="cpfCnpj"
+            inputMode="numeric"
             value={formatDocumentInput(form.cpfCnpj)}
-            onChange={(e) => updateField("cpfCnpj", unmask(formatDocumentInput(e.target.value)))}
-            disabled={isLocked}
-            className={checkoutInputClassName}
+            onChange={(event) => onFieldChange("cpfCnpj", unmask(formatDocumentInput(event.target.value)))}
+            aria-invalid={Boolean(errors.cpfCnpj)}
+            {...inputProps}
           />
-        </Field>
+        </PaymentField>
 
-      {pixOnly || skipAddress ? null : (
-      <>
-      <Separator />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="CEP">
-          <Input
-            value={maskCEP(form.postalCode)}
-            onChange={(e) => {
-              const next = unmask(maskCEP(e.target.value))
-              updateField("postalCode", next)
-              void resolveCepIfNeeded(next)
-            }}
-            disabled={isLocked}
-            className={checkoutInputClassName}
-          />
-        </Field>
-        <Field label="Numero">
-          <Input
-            value={form.addressNumber}
-            onChange={(e) => updateField("addressNumber", e.target.value)}
-            disabled={isAddressLocked}
-            className={checkoutInputClassName}
-          />
-        </Field>
-      </div>
-
-      <Field label="Endereco">
-        <Input
-          value={form.address}
-          onChange={(e) => updateField("address", e.target.value)}
-          disabled={isAddressLocked}
-          className={checkoutInputClassName}
-        />
-      </Field>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Bairro">
-          <Input
-            value={form.neighborhood}
-            onChange={(e) => updateField("neighborhood", e.target.value)}
-            disabled={isAddressLocked}
-            className={checkoutInputClassName}
-          />
-        </Field>
-        <Field label="Complemento" hint="Opcional">
-          <Input
-            value={form.complement}
-            onChange={(e) => updateField("complement", e.target.value)}
-            disabled={isAddressLocked}
-            className={checkoutInputClassName}
-          />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Cidade">
-          <Input
-            value={form.city}
-            onChange={(e) => updateField("city", e.target.value)}
-            disabled={isAddressLocked}
-            className={checkoutInputClassName}
-          />
-        </Field>
-        <Field label="Estado">
-          <Input
-            value={form.state}
-            onChange={(e) => updateField("state", e.target.value.toUpperCase().slice(0, 2))}
-            disabled={isAddressLocked}
-            maxLength={2}
-            className={checkoutInputClassName}
-          />
-        </Field>
-      </div>
-      </>
-      )}
-      </FieldGroup>
-
-      {billingType === "CREDIT_CARD" ? (
-        <div className="flex flex-col gap-6">
-          <Separator />
-          <div className="flex flex-col gap-1">
-            <h3 className="text-lg font-semibold text-foreground">Cartão de crédito</h3>
-            <p className="text-sm text-muted-foreground">Preencha os dados do cartão para cobrar agora.</p>
-          </div>
-
-          {abacatePublicKey ? (
-            <AbacateCardField ref={abacateCard.cardFieldRef} publicKey={abacatePublicKey} amountInCents={Math.round(details.billingTypePrices.CREDIT_CARD.total * 100)} />
-          ) : <FieldGroup>
-            <Field label="Nome do titular">
-              <Input
-                value={form.creditCard.holderName}
-                onChange={(e) => updateCardField("holderName", e.target.value)}
-                disabled={isLocked}
-                className={checkoutInputClassName}
-              />
-            </Field>
-
-            <Field label="Número do cartão">
-              <Input
-                value={maskCardNumber(form.creditCard.number)}
-                onChange={(e) => updateCardField("number", unmask(maskCardNumber(e.target.value)))}
-                disabled={isLocked}
-                className={checkoutInputClassName}
-              />
-            </Field>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Mes">
+        {showAddress ? (
+          <>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <PaymentField field="postalCode" label="CEP" error={errors.postalCode}>
                 <Input
-                  value={form.creditCard.expiryMonth}
-                  onChange={(e) => updateCardField("expiryMonth", onlyDigits(e.target.value, 2))}
-                  disabled={isLocked}
-                  className={checkoutInputClassName}
+                  id={publicCheckoutFieldId("postalCode")}
+                  name="postalCode"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  value={maskCEP(form.postalCode)}
+                  onChange={(event) => onFieldChange("postalCode", unmask(maskCEP(event.target.value)))}
+                  aria-invalid={Boolean(errors.postalCode)}
+                  {...inputProps}
                 />
-              </Field>
-              <Field label="Ano">
+              </PaymentField>
+              <PaymentField field="addressNumber" label="Número" error={errors.addressNumber}>
                 <Input
-                  value={form.creditCard.expiryYear}
-                  onChange={(e) => updateCardField("expiryYear", onlyDigits(e.target.value, 4))}
-                  disabled={isLocked}
-                  className={checkoutInputClassName}
+                  id={publicCheckoutFieldId("addressNumber")}
+                  name="addressNumber"
+                  value={form.addressNumber}
+                  onChange={(event) => onFieldChange("addressNumber", event.target.value)}
+                  aria-invalid={Boolean(errors.addressNumber)}
+                  {...inputProps}
+                  disabled={disabled || addressLocked}
                 />
-              </Field>
-              <Field label="CVV">
-                <Input
-                  value={form.creditCard.ccv}
-                  onChange={(e) => updateCardField("ccv", onlyDigits(e.target.value, 4))}
-                  disabled={isLocked}
-                  className={checkoutInputClassName}
-                />
-              </Field>
+              </PaymentField>
             </div>
 
-            <Field
-              label="Parcelas"
-              hint={
-                details.installmentSplitMode === "CUSTOM"
-                  ? "Cronograma fixo desta precificação"
-                  : `Max: ${Math.max(1, maxInstallments)}`
-              }
-            >
-              {details.installmentSplitMode === "CUSTOM" &&
-              details.installmentSchedule &&
-              details.installmentSchedule.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {details.installmentSchedule.map((amount, index) => (
-                    <Badge key={`${index}-${amount}`} variant="secondary">
-                      {index + 1}ª: {formatCurrency(amount)}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {installmentsOptions.map((opt) => (
-                    <Button
-                      key={opt}
-                      type="button"
-                      variant={form.installments === opt ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => updateField("installments", opt)}
-                      disabled={isLocked}
-                    >
-                      {opt}x
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </Field>
-          </FieldGroup>}
-          {abacateCard.cardError ? <p role="alert" className="text-sm text-destructive">{abacateCard.cardError}</p> : null}
-        </div>
+            <PaymentField field="address" label="Endereço" error={errors.address}>
+              <Input
+                id={publicCheckoutFieldId("address")}
+                name="address"
+                value={form.address}
+                onChange={(event) => onFieldChange("address", event.target.value)}
+                aria-invalid={Boolean(errors.address)}
+                {...inputProps}
+                disabled={disabled || addressLocked}
+              />
+            </PaymentField>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <PaymentField field="neighborhood" label="Bairro" error={errors.neighborhood}>
+                <Input
+                  id={publicCheckoutFieldId("neighborhood")}
+                  name="neighborhood"
+                  value={form.neighborhood}
+                  onChange={(event) => onFieldChange("neighborhood", event.target.value)}
+                  aria-invalid={Boolean(errors.neighborhood)}
+                  {...inputProps}
+                  disabled={disabled || addressLocked}
+                />
+              </PaymentField>
+              <PaymentField field="complement" label="Complemento" required={false} hint="Opcional">
+                <Input
+                  id="public-checkout-complement"
+                  name="complement"
+                  value={form.complement}
+                  onChange={(event) => onFieldChange("complement", event.target.value)}
+                  {...inputProps}
+                  disabled={disabled || addressLocked}
+                />
+              </PaymentField>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_120px]">
+              <PaymentField field="city" label="Cidade" error={errors.city}>
+                <Input
+                  id={publicCheckoutFieldId("city")}
+                  name="city"
+                  value={form.city}
+                  onChange={(event) => onFieldChange("city", event.target.value)}
+                  aria-invalid={Boolean(errors.city)}
+                  {...inputProps}
+                  disabled={disabled || addressLocked}
+                />
+              </PaymentField>
+              <PaymentField field="state" label="UF" error={errors.state}>
+                <Input
+                  id={publicCheckoutFieldId("state")}
+                  name="state"
+                  autoComplete="address-level1"
+                  maxLength={2}
+                  value={form.state}
+                  onChange={(event) => onFieldChange("state", event.target.value.toUpperCase().slice(0, 2))}
+                  aria-invalid={Boolean(errors.state)}
+                  {...inputProps}
+                  disabled={disabled || addressLocked}
+                />
+              </PaymentField>
+            </div>
+          </>
+        ) : null}
+      </FieldGroup>
+
+      {children}
+    </section>
+  )
+}
+
+/**
+ * Dados do cartão: o número, a validade e o CVV ficam só no campo seguro do Abacate Pay (iframe).
+ * Aqui entram apenas o formulário seguro e as parcelas.
+ */
+export function PublicCheckoutCardSection({
+  publicKey,
+  amountInCents,
+  cardFieldRef,
+  error,
+  disabled,
+  total,
+  maxInstallments,
+  installments,
+  onInstallmentsChange,
+  installmentSchedule,
+}: {
+  publicKey: string
+  amountInCents: number
+  cardFieldRef: RefObject<AbacateCardFieldHandle | null>
+  error: string | null
+  disabled: boolean
+  total: number
+  maxInstallments: number
+  installments: number
+  onInstallmentsChange: (installments: number) => void
+  /** Cronograma fixo do contrato: mostra as parcelas, sem escolha. */
+  installmentSchedule?: number[] | null
+}) {
+  return (
+    <section aria-labelledby="public-checkout-card-title" className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h2 id="public-checkout-card-title" className="font-display text-xl leading-snug font-bold tracking-[-0.02em] text-foreground">
+          Dados do cartão
+        </h2>
+        <p className="text-sm text-muted-foreground">Crédito Visa ou Mastercard. O banco pode pedir uma confirmação no app.</p>
+      </div>
+
+      <AbacateCardField ref={cardFieldRef} publicKey={publicKey} amountInCents={amountInCents} />
+
+      {error ? (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {error}
+        </p>
       ) : null}
 
-      <div className="flex flex-col gap-3">
-        <Button
-          type="button"
-          size="lg"
-          className="max-lg:min-h-11"
-          onClick={submit}
-          disabled={isLocked || isResolvingCep || !isFormValid || isSubmitting || abacateCard.isTokenizing}
-        >
-          {isSubmitting ? (
-            <>
-              {billingType === "PIX" ? "Gerando pagamento..." : abacateCard.isTokenizing ? "Validando cartão..." : "Verificando pagamento..."}
-              <Loader2 data-icon="inline-end" className={cn("animate-spin")} aria-hidden="true" />
-            </>
-          ) : (
-            billingType === "PIX" ? "Gerar QR Code Pix" : "Pagar com cartão"
-          )}
-        </Button>
-      </div>
-      </div>
-
-      <div className="flex flex-col gap-3 lg:pt-9">
-        <div className="text-sm font-semibold text-foreground">Resumo da fatura</div>
-        {paymentPanel}
-      </div>
-    </div>
+      {installmentSchedule && installmentSchedule.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium text-foreground">Parcelas do contrato</span>
+          <div className="flex flex-wrap gap-2">
+            {installmentSchedule.map((amount, index) => (
+              <Badge key={`${index}-${amount}`} variant="secondary">
+                {index + 1}ª: {formatBRL(amount)}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      ) : maxInstallments > 1 ? (
+        <CheckoutInstallmentsSelect
+          total={total}
+          maxInstallments={maxInstallments}
+          value={installments}
+          disabled={disabled}
+          onChange={onInstallmentsChange}
+        />
+      ) : null}
+    </section>
   )
 }

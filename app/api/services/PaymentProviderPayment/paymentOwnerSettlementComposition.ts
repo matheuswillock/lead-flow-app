@@ -1,5 +1,8 @@
 import { backofficeAdhesionPaymentRepository } from "@/app/api/infra/data/repositories/backofficeAdhesionPayment/BackofficeAdhesionPaymentRepository"
 import { billingGracePaymentRepository } from "@/app/api/infra/data/repositories/billingGracePayment/BillingGracePaymentRepository"
+import { BackofficePaymentRepository } from "@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository"
+
+const BACKOFFICE_PAYMENT_SETTLED_STATUSES = new Set(["RECEIVED", "CONFIRMED"])
 import {
   PaymentOwnerSettlementService,
   type PaymentOwnerSettlement,
@@ -13,6 +16,14 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
   return new PaymentOwnerSettlementService({
     adhesionPayments: backofficeAdhesionPaymentRepository,
     gracePayments: billingGracePaymentRepository,
+    legacyAsaasCutover: {
+      async cutOver(profileId, provider) {
+        const { createLegacyAsaasRenewalCutover } = await import(
+          "@/app/api/useCases/providerRenewal/legacyAsaasCutoverComposition"
+        )
+        await createLegacyAsaasRenewalCutover().cutOver(profileId, provider)
+      },
+    },
     adhesions: {
       async markPaidFromProvider(adhesionId, input) {
         const { backofficeAdhesionService } = await import("../backofficeAdhesion/BackofficeAdhesionService")
@@ -34,5 +45,22 @@ export function createPaymentOwnerSettlement(): PaymentOwnerSettlement {
         return pendingActionUseCase.applyPendingActionById(pendingActionId)
       },
     },
+    backofficePayments: createBackofficePaymentSettlement(new BackofficePaymentRepository()),
   })
+}
+
+function createBackofficePaymentSettlement(repository: BackofficePaymentRepository) {
+  return {
+    async expectedAmountInCents(paymentId: string) {
+      const payment = await repository.findById(paymentId)
+      return payment ? Math.round(Number(payment.amount) * 100) : null
+    },
+    async isSettled(paymentId: string) {
+      const payment = await repository.findById(paymentId)
+      return payment ? BACKOFFICE_PAYMENT_SETTLED_STATUSES.has(payment.status) : false
+    },
+    async markPaid(paymentId: string) {
+      await repository.updateStatus(paymentId, "RECEIVED")
+    },
+  }
 }

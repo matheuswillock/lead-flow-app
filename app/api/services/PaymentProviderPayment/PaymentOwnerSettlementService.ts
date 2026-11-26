@@ -29,10 +29,23 @@ export type PaymentOwnerSettlementDependencies = {
     IBillingGracePaymentRepository,
     "findById" | "markConfirmed" | "completeAndRestoreAccess"
   >
+  /**
+   * Passa a conta legada do Asaas para o roteador depois da renovação paga. Opcional: sem ele a
+   * regularização só renova. Idempotente (conta que já saiu do Asaas não faz nada).
+   */
+  readonly legacyAsaasCutover?: {
+    cutOver(profileId: string, provider: string): Promise<void>
+  }
   readonly pendingActions: {
     /** Valor em centavos cobrado para a ação; null quando a ação não existe. */
     expectedAmountInCents(pendingActionId: string): Promise<number | null>
     applyById(pendingActionId: string): Promise<Output>
+  }
+  readonly backofficePayments: {
+    /** Valor em centavos da cobrança avulsa; null quando ela não existe. */
+    expectedAmountInCents(paymentId: string): Promise<number | null>
+    isSettled(paymentId: string): Promise<boolean>
+    markPaid(paymentId: string): Promise<void>
   }
 }
 
@@ -40,6 +53,7 @@ export const SETTLED_OWNER_TYPES: ReadonlySet<string> = new Set([
   PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_ADHESION,
   PAYMENT_PROVIDER_OWNER_TYPES.BILLING_GRACE_PAYMENT,
   PAYMENT_PROVIDER_OWNER_TYPES.PENDING_ACTION_ADDON,
+  PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_PAYMENT,
 ])
 
 export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
@@ -56,6 +70,10 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
     }
     if (input.ownerType === PAYMENT_PROVIDER_OWNER_TYPES.PENDING_ACTION_ADDON) {
       await this.settleAddOn(input)
+      return "settled"
+    }
+    if (input.ownerType === PAYMENT_PROVIDER_OWNER_TYPES.BACKOFFICE_PAYMENT) {
+      await this.settleBackofficePayment(input)
       return "settled"
     }
     return "unsupported"
@@ -77,6 +95,20 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
     }
   }
 
+  private async settleBackofficePayment(input: OwnerSettlementInput): Promise<void> {
+    const { backofficePayments } = this.dependencies
+    const expected = await backofficePayments.expectedAmountInCents(input.ownerId)
+    if (expected === null) throw new Error("Cobrança avulsa não encontrada")
+    if (input.amountInCents === null) {
+      throw new Error("Pagamento de cobrança avulsa sem valor informado pelo provider")
+    }
+    if (input.amountInCents !== expected) {
+      throw new Error("Valor pago não confere com a cobrança avulsa")
+    }
+    if (await backofficePayments.isSettled(input.ownerId)) return
+    await backofficePayments.markPaid(input.ownerId)
+  }
+
   private async settleAdhesion(input: OwnerSettlementInput): Promise<void> {
     const payment = await this.dependencies.adhesionPayments.findById(input.ownerId)
     if (!payment) throw new Error("Pagamento da adesão não encontrado")
@@ -91,13 +123,19 @@ export class PaymentOwnerSettlementService implements PaymentOwnerSettlement {
   private async settleGracePayment(input: OwnerSettlementInput): Promise<void> {
     const { gracePayments } = this.dependencies
     const current = await gracePayments.findById(input.ownerId)
-    if (current?.status === "completed") return
+    if (current?.status === "completed") {
+      // Reentrega do evento: a renovação já foi aplicada, mas o corte do Asaas pode ter falhado antes.
+      await this.dependencies.legacyAsaasCutover?.cutOver(current.accountId, current.provider)
+      return
+    }
     const payment = await gracePayments.markConfirmed({
       id: input.ownerId,
       providerExternalId: input.externalId,
       confirmedAt: input.paidAt,
     })
     if (!payment) throw new Error("Regularização não encontrada ou já processada")
-    await gracePayments.completeAndRestoreAccess(payment.id)
+    const completed = await gracePayments.completeAndRestoreAccess(payment.id)
+    // Falha do corte propaga: o evento é reentregue e o ramo acima tenta de novo.
+    await this.dependencies.legacyAsaasCutover?.cutOver(payment.accountId, (completed ?? payment).provider)
   }
 }

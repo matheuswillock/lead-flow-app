@@ -24,6 +24,7 @@ export interface IUpdateBillingProfileSubscriptionData {
 
 export interface IBillingRepository {
   getBillingSnapshot(masterId: string): Promise<BillingSnapshot | null>;
+  getSubscriptionCycle(profileId: string): Promise<string | null>;
   updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
   updateSubscriptionData(profileId: string, data: IUpdateBillingProfileSubscriptionData): Promise<void>;
 }

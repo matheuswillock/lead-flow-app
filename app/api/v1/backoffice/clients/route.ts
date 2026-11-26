@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest, connection } from "next/server";
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
 import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/BackofficeClientUseCase"
 import { BackofficePlatformUsersUseCase } from "@/app/api/useCases/backoffice/BackofficePlatformUsersUseCase"
 import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
@@ -9,10 +8,7 @@ import { BackofficePlatformUsersRepository } from "@/app/api/infra/data/reposito
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
 
 function makeUseCase() {
-  return new BackofficeClientUseCase(
-    new BackofficeClientRepository(),
-    new AsaasCustomerService()
-  )
+  return new BackofficeClientUseCase(new BackofficeClientRepository())
 }
 
 function makePlatformUsersUseCase() {
