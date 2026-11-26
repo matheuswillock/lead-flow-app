@@ -22,6 +22,11 @@ OPENWA_WEBHOOK_SECRET=<mesmo OPENWA_WEBHOOK_SECRET de .env.openwa na VPS>
 WHATSAPP_WEBHOOK_HEADER_SECRET=<segredo-aleatorio-com-no-minimo-32-caracteres>
 WHATSAPP_WEBHOOK_HEADER_ENFORCE=false
 
+# --- Convite de primeiro acesso ---
+# Assina o link de convite reutilizável (mín. 32 caracteres). Sem esta var o
+# build falha na validação de ambiente. Gerar com: openssl rand -hex 32
+INVITE_LINK_SECRET=<segredo-aleatorio-com-no-minimo-32-caracteres>
+
 # --- Agente Ops (VPS) ---
 # Token do agente Ops (após rotate no backoffice → /studio-bot/ops)
 BACKOFFICE_STUDIO_BOT_OPS_AGENT_TOKEN=<mesmo OPS_AGENT_TOKEN da VPS>
