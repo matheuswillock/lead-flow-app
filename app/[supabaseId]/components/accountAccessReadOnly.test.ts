@@ -40,8 +40,8 @@ describe("isReadOnlyAllowedPath", () => {
   })
 
   test("libera a página de pagamento só para o master", () => {
-    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", true, hasNothing)).toBe(true)
-    expect(isReadOnlyAllowedPath("/conta-1/billing-grace-payment", false, hasNothing)).toBe(false)
+    expect(isReadOnlyAllowedPath("/pagamento/conta-1", true, hasNothing)).toBe(true)
+    expect(isReadOnlyAllowedPath("/pagamento/conta-1", false, hasNothing)).toBe(false)
   })
 
   test("não confunde caminhos fora do padrão", () => {

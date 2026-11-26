@@ -29,7 +29,7 @@ Removido desta fase: o cron `provider-renewal`, o cobrador de D-5, o caso de uso
 
 **Entrada na carência.** O cron `subscription-overdue-transition` (diário, antes do aviso) marca `past_due` a conta do roteador que venceu nos últimos 5 dias. Sem ele a conta ficaria `active` e cairia em `restricted` no dia seguinte, sem carência nem e-mail (D14).
 
-**Aviso na carência.** O cron `overdue-reminder` (diário) lê quem está `past_due` com vencimento efetivo nos últimos 5 dias. Dia 0 a 3 de atraso: aviso "o período do seu plano está se encerrando". Dia 4: aviso "último dia antes do modo somente leitura". Cada aviso leva a data limite e o botão para `/billing-grace-payment`. Um por ciclo de atraso (dedupe em `SubscriptionChangeLog`).
+**Aviso na carência.** O cron `overdue-reminder` (diário) lê quem está `past_due` com vencimento efetivo nos últimos 5 dias. Dia 0 a 3 de atraso: aviso "o período do seu plano está se encerrando". Dia 4: aviso "último dia antes do modo somente leitura". Cada aviso leva a data limite e o botão para `/pagamento/[supabaseId]` (a página de renovação foi movida para esse caminho no PR #1431). Um por ciclo de atraso (dedupe em `SubscriptionChangeLog`).
 
 **Pagamento da renovação.** Já existente: página de pagamento, prazos e preços do backoffice, usuários e times adicionais cotados por prazo, PIX ou cartão pelo roteador. O prazo anterior da conta vem pré-selecionado.
 
@@ -59,7 +59,7 @@ O e-mail da carência não depende disso: sai com o cron existente assim que for
 | `bun test app/api/services/PaymentProviderPayment/PaymentOwnerSettlementService.test.ts` | EXIT=0 (12 testes) |
 | `bun test app/api/services/BillingGracePayment/BillingGracePaymentService.test.ts` | EXIT=0 (16 testes) |
 | `bun test app/api/lib/cron/cronStaleThresholds.test.ts` | EXIT=0 (9 testes) |
-| `bun test app/[supabaseId]/billing-grace-payment/features/utils/billingGraceUnlimitedLoss.test.ts` | EXIT=0 (6 testes) |
+| `bun test app/pagamento/[supabaseId]/features/utils/billingGraceUnlimitedLoss.test.ts` | EXIT=0 (6 testes) |
 | `DATABASE_URL=<Postgres local :55322> bun run test:integration:provider-renewal` | EXIT=0 (8 testes contra o Postgres local) |
 | Diretórios afetados, `bun test --isolate` (serviços de pagamento, regularização e decisão de acesso; casos de uso de cobrança e renovação; cron; `lib/billing`; `lib/payment-provider`; página de regularização; repositório de cobrança) | EXIT=0 (405 testes, 59 arquivos) |
 | `bun run test` (suíte oficial) | EXIT=0 (6976 testes em 1013 arquivos e 127 em 27 arquivos de UI, 0 falhas) |

@@ -61,7 +61,7 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
 - [x] F8.G1: briefing aprovado antes do JSX.
   - EVIDENCE: aprovação do dono na conversa de 2026-11-25.
 - [x] F8.G2: regra do aviso testada (com valor, acompanha as caixas, todos desmarcados, sem usuários adicionais, sem perda).
-  - CHECK: `bun test "app/[supabaseId]/billing-grace-payment/features/utils/billingGraceUnlimitedLoss.test.ts"`
+  - CHECK: `bun test "app/pagamento/[supabaseId]/features/utils/billingGraceUnlimitedLoss.test.ts"`
   - EVIDENCE: EXIT=0, 5 testes.
 - [x] F8.G3: `bun run design:check` e typecheck.
   - EVIDENCE: `design:check` EXIT=0 ("globals.css matches DESIGN.md"); typecheck EXIT=0. O hook automático do `impeccable` varreu os dois arquivos da tela sem achados.
@@ -73,7 +73,7 @@ Regra de origem: toda tela afetada passa primeiro pelo briefing `impeccable shap
   - `colorize`: texto do corpo derivado do primeiro plano (não cinza genérico) e ícone escurecido por mistura do token com o primeiro plano, porque o tom puro do aviso não chegava a 3:1 sobre a superfície clara.
   - `polish`: verificação renderizada nos dois temas e em 320, 375, 768 e 1440 px (ver G5).
 - [x] F8.G5: componentes renderizados em 375 px e 1440 px, com dados de exemplo.
-  - EVIDENCE: a tela real (`/[supabaseId]/billing-grace-payment`) exige login e banco, então usei uma página descartável (`/oferta/preview-renewal`) montando `BillingGraceCycleChoice` e `BillingGraceBilledItems` com cotações de exemplo, servida por `bun run dev` com o Postgres local. A página e o `.env` de exemplo foram removidos.
+  - EVIDENCE: a tela real (`/pagamento/[supabaseId]`, antes `/[supabaseId]/billing-grace-payment`) exige login e banco, então usei uma página descartável (`/oferta/preview-renewal`) montando `BillingGraceCycleChoice` e `BillingGraceBilledItems` com cotações de exemplo, servida por `bun run dev` com o Postgres local. A página e o `.env` de exemplo foram removidos.
     - 1440 px: aviso de atenção com 2 usuários (R$ 19,90 por usuário por mês, R$ 119,40 em 3 meses), controle de voltar ao anual, linha "Inclui R$ X de usuários adicionais" em cada prazo sem ilimitado. Visual coerente com o restante da tela (tema escuro).
     - Interações: desmarcar um usuário muda o aviso para 1 usuário (R$ 59,70); desmarcar todos muda para o aviso informativo de ninguém cobrado; o controle seleciona o anual e o aviso dá lugar a "Usuários ilimitados incluídos neste prazo".
     - 375 px, conta sem usuários adicionais: aviso informativo (tom de informação), sem rolagem horizontal (`scrollWidth` 375), botão com 44 px de altura.

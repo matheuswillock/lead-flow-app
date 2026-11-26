@@ -2,7 +2,7 @@
 
 **Status:** rascunho aguardando aprovação. Nenhum JSX foi escrito. Pela regra `screen-design-gate`, o JSX só começa depois da aprovação deste documento.
 **Superfície:** checkout (renovação do master pela carência).
-**Tela:** `app/[supabaseId]/billing-grace-payment/` (`BillingGraceRenewalChoice.tsx` e o container).
+**Tela:** `app/pagamento/[supabaseId]/` (antes `app/[supabaseId]/billing-grace-payment/`) (`BillingGraceRenewalChoice.tsx` e o container).
 **Decisões relacionadas:** [D7](../05-decisoes.md) (aceite no checkout), [D10](../05-decisoes.md) (corte do Asaas na confirmação).
 
 ## 1. Propósito

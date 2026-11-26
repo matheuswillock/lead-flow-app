@@ -83,7 +83,7 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
 
 ## D8. Renovação é reativa: sem cobrança antecipada (substitui a versão do cron de D-5)
 
-- **Decisão:** a renovação segue o fluxo que o produto já tem. O ciclo vence, a conta passa pela carência (`BILLING_GRACE_DAYS`, 5 dias) e depois fica somente leitura. Em qualquer momento o master abre a página de pagamento (`/billing-grace-payment`), escolhe o prazo (mensal, trimestral, semestral ou anual) com os preços do backoffice e paga. Não há PIX criado antes do vencimento e não há cron de renovação.
+- **Decisão:** a renovação segue o fluxo que o produto já tem. O ciclo vence, a conta passa pela carência (`BILLING_GRACE_DAYS`, 5 dias) e depois fica somente leitura. Em qualquer momento o master abre a página de pagamento (`/pagamento/[supabaseId]`, antes `/billing-grace-payment`), escolhe o prazo (mensal, trimestral, semestral ou anual) com os preços do backoffice e paga. Não há PIX criado antes do vencimento e não há cron de renovação.
 - **Por quê:** o dono do produto definiu a renovação assim em 2026-11-25. A versão anterior desta decisão (cron criando o PIX do ciclo em D-5) partia de uma leitura do item M13 que não era a pretendida, e foi removida (cron, cobrador, caso de uso e composição).
 - **Falha do provedor:** a regularização é iniciada pelo próprio master, na tela, com chave de idempotência por tentativa. Uma falha aparece para ele na hora e ele tenta de novo. Não há cobrança automática a duplicar.
 - **Status:** decidido em 2026-11-25. Substitui a decisão anterior de mesmo número.

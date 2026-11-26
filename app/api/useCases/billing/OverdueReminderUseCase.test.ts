@@ -138,7 +138,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
       expect(sendDelinquencyReminderEmailMock).toHaveBeenCalledTimes(1)
       const sent = sendDelinquencyReminderEmailMock.mock.calls[0][0] as unknown as { tier: string; manageUrl: string; graceUntilLabel: string }
       expect(sent.tier).toBe("grace_started")
-      expect(sent.manageUrl).toMatch(/\/supabase-1\/billing-grace-payment$/)
+      expect(sent.manageUrl).toMatch(/\/pagamento\/supabase-1$/)
       expect(sent.graceUntilLabel).toMatch(/^\d{2}\/\d{2}\/\d{4}$/)
       // Aviso não é transição de status: grava a marca sem eventType, só com o changeType do aviso.
       expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
@@ -214,7 +214,7 @@ describe("OverdueReminderUseCase.processOverdueReminders — Fase 4 (T-20.28)", 
     })
     // O botão do e-mail leva à página de pagamento, a única que o master alcança com a conta limitada.
     const manageUrl = (sendDelinquencyReminderEmailMock.mock.calls[0][0] as { manageUrl?: string }).manageUrl
-    expect(manageUrl).toMatch(/\/supabase-1\/billing-grace-payment$/)
+    expect(manageUrl).toMatch(/\/pagamento\/supabase-1$/)
     expect(recordDelinquencyNoticeMock).toHaveBeenCalledTimes(1)
     expect(recordDelinquencyNoticeMock.mock.calls[0][0]).toMatchObject({
       profileId: "profile-1",
