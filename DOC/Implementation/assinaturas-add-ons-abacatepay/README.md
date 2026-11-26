@@ -32,7 +32,7 @@ Data de referência: 2026-11-17. PR: [#1381](https://github.com/matheuswillock/l
 | Marcar como paga externamente (T5) | Não iniciado | Não iniciado | Fase D |
 | Página de assinatura (T6) | Não verificado | Não verificado | Fase E |
 | Renovação reativa pelo roteador (carência, `past_due` por data, corte do Asaas) | Implementado na branch da Fase C | Não se aplica | Sem sandbox. Corte do Asaas desligado por padrão (D10, D11) |
-| Aviso de perda do ilimitado na renovação | Cotação já existia | Implementado na branch da Fase C, passes do `impeccable` feitos | Componentes vistos renderizados, tela completa com dados reais não vista (F8) |
+| Aviso de perda do ilimitado na renovação | Cotação já existia | Implementado na branch da Fase C, passes do `impeccable` feitos | Vista com dados reais do banco local em 1440, 375 e 640 px (F10.G6) |
 | E-mail dos avisos da carência | Implementado na branch da Fase C (D12) | Não se aplica | E-mail não renderizado nem enviado de verdade |
 | Alertas de inadimplência (degraus 6 a 15 e 16+) | Não verificado | Não se aplica | Fase F |
 

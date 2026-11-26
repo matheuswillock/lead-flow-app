@@ -1,6 +1,6 @@
 # Briefing: botão de pagar bloqueado até o aceite dos termos (`/checkout`)
 
-**Status:** aprovado pelo dono em 2026-11-26, com as três recomendações (pergunta 1: só o `/checkout`; pergunta 2: atalho no celular; pergunta 3: a caixa some no retry de pagamento). Implementado. Registro do gate em [02-frontend.md](../02-frontend.md) (F9).
+**Status:** aprovado pelo dono em 2026-11-26, com as três recomendações (pergunta 1: só o `/checkout`; pergunta 2: atalho no celular; pergunta 3: a caixa some no retry de pagamento). Implementado. Registro do gate em [02-frontend.md](../02-frontend.md) (F11).
 
 **Refinamento feito na implementação (passes `adapt` e `colorize`):** no celular, o texto "Aceite os termos para pagar." e o link "Ir ao aceite" viraram **um único controle** (o próprio aviso é o atalho). Texto mais link quebrava em três linhas e inflava a barra de 69 para 101 px. O texto do atalho usa o primeiro plano e é sublinhado, porque o laranja da marca dava 2,89:1 em texto pequeno. A linha de apoio do desktop usa "Aceite os termos para..." (mesmo verbo do celular).
 **Superfície:** checkout (contratação, self-checkout).

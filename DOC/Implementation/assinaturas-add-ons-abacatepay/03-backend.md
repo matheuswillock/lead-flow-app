@@ -132,8 +132,8 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
   - EVIDENCE: EXIT=0, 5 e 12 testes. O caminho do cartão aprovado na hora não tem teste dedicado.
 - [ ] B9.G4: validação em sandbox do AbacatePay (aprovação e recusa) e do Asaas (cancelamento remove cobranças pendentes).
   - EVIDENCE: pendente. A documentação do Asaas confirma o comportamento, mas o sandbox não foi executado.
-- [ ] B9.G5: cartão na renovação e no `/checkout` (o self-checkout ainda cobra cartão pelo Asaas).
-  - EVIDENCE: pendente. Mudança de tela, com briefing.
+- [x] B9.G5: cartão na renovação e no `/checkout` já passa pelo AbacatePay. Esta pendência estava errada e foi retirada em 2026-11-26.
+  - EVIDENCE: a rota `app/api/v1/public-adhesions/[token]/card/route.ts` cobra "pelo Abacate (cartão transparente)" e só aceita o token `ctok_`; a oferta de cartão do `/checkout` vem de `resolveCardCheckout` (`provider: "ABACATE_PAY"`, só com cartão ligado e chave pública configurada); a renovação já tinha cartão pelo roteador. O comentário na linha 48 de `SelfCheckoutUseCase.ts` ("o cartão é cobrado pelo Asaas") só trata do portão da criação do pedido e induziu a nota errada. O comentário continua desatualizado no código.
 
 ## B10. Ações de fatura do backoffice (Fase D)
 

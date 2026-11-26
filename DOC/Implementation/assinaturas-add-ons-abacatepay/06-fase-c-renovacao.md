@@ -69,12 +69,24 @@ O e-mail da carência não depende disso: sai com o cron existente assim que for
 
 **Defeito achado pela integração (e corrigido).** A consulta `findPastDueSubscriptionsInGrace` excluía quem só tem a data de vencimento no perfil (o webhook do Asaas grava só a do perfil). Causa: a negação `NOT (a OR b)` do filtro dá nulo em SQL quando a data da assinatura é nula e descarta a linha. Os testes unitários não pegavam isso porque usam portas simuladas. O teste de integração ficou vermelho no código sem a correção (controle negativo) e passou depois de trocar a negação por comparações com `null` explícitas. O teste apaga o que cria (conferido: 0 linhas de teste sobrando no banco local).
 
-Não verificado: sandbox do AbacatePay e do Asaas; e-mail renderizado e enviado de verdade; o corte no caminho do cartão aprovado na hora (sem teste dedicado); a transição por data e o corte rodando como cron/webhook de ponta a ponta; E2E; a tela completa com dados reais. O `test:integration:provider-renewal:local` falha aqui porque `local:up` tenta recriar o contêiner do banco, que já existe por outro projeto do compose; rodei o teste direto contra o banco que já estava no ar. O teste não entrou no agregado `test:integration`.
+**Verificação de telas e E2E em 2026-11-26** (depois do merge com a `develop`, que moveu a renovação para `/pagamento/[supabaseId]`; Postgres local com o seed E2E, servidor de desenvolvimento em modo E2E):
+
+| Verificação | Resultado |
+|---|---|
+| Chromium: `e2e/specs/public/checkout.spec.ts` | 18 de 18 (inclui os 2 novos do botão bloqueado) |
+| Chromium: `billing-grace-payment`, `addon-checkout`, `adesao`, `public-checkout-states`, `account-access-gate` (com `DATABASE_URL` do Postgres local) | 31 de 31 |
+| Firefox (revisão 1543 do cache): `checkout.spec.ts`, `billing-grace-payment.spec.ts` e o spec descartável do cartão | 25 de 25 |
+| Fase do cartão e retry de pagamento do `/checkout` (spec descartável, campo de cartão simulado) | 2 de 2 em Chromium e em Firefox |
+| Tela de renovação real, com dados reais do banco local | vista em 1440, 375 e 640 px (ver `02-frontend.md` F10.G6) |
+
+O E2E `adesao.spec.ts` e `account-access-gate.spec.ts` falharam na primeira execução só porque o `DATABASE_URL` não estava definido (os dois montam dados direto no banco); com o banco local passaram.
+
+Não verificado: sandbox do AbacatePay e do Asaas; e-mail renderizado e enviado de verdade; **WebKit** (a revisão 2359 do cache não abre com este Playwright, que espera a 2336; instalar exige baixar o navegador, que não foi autorizado); leitor de tela real; zoom de texto do navegador (só o layout equivalente por largura); tokenização real do cartão contra o AbacatePay (o campo foi simulado); o corte no caminho do cartão aprovado na hora (sem teste dedicado); a transição por data e o corte rodando como cron/webhook de ponta a ponta. O `test:integration:provider-renewal:local` falha aqui porque `local:up` tenta recriar o contêiner do banco, que já existe por outro projeto do compose; rodei o teste direto contra o banco que já estava no ar. O teste não entrou no agregado `test:integration`.
 
 ## Pendências
 
-1. **Tela (implementada, verificada renderizada nos componentes):** aviso de perda do ilimitado ao sair do anual, com valores, controle para voltar ao anual e linha por prazo (briefing [aprovado](design/renovacao-usuarios-adicionais.md), registro em `02-frontend.md` F8). Os seis passes do `impeccable` foram executados. Falta a tela completa com dados reais.
-2. **Cartão no `/checkout`:** o self-checkout ainda cobra cartão pelo Asaas. Mudança de tela, com briefing.
-3. ~~Botão de pagar desabilitado até o aceite dos termos~~ (feito em 2026-11-26, só no `/checkout`; ver D7 e `02-frontend.md` F9). Falta ver a fase do cartão e o retry de pagamento na tela.
+1. **Tela (implementada, verificada renderizada nos componentes):** aviso de perda do ilimitado ao sair do anual, com valores, controle para voltar ao anual e linha por prazo (briefing [aprovado](design/renovacao-usuarios-adicionais.md), registro em `02-frontend.md` F10). Os seis passes do `impeccable` foram executados e a tela real foi vista com dados reais (F10.G6).
+2. ~~Cartão no `/checkout`~~: o cartão do `/checkout` e da renovação já passa pelo AbacatePay (ver `03-backend.md` B9.G5). Pendência retirada em 2026-11-26. Resta o comentário desatualizado em `SelfCheckoutUseCase.ts`, linha 48.
+3. ~~Botão de pagar desabilitado até o aceite dos termos~~ (feito em 2026-11-26, só no `/checkout`; ver D7 e `02-frontend.md` F11). A fase do cartão e o retry de pagamento foram vistos em 2026-11-26 com o campo de cartão simulado (F11.G6).
 4. **Acesso das contas do roteador:** o D14 troca `restricted` imediato por carência e somente leitura para quem venceu há 1 a 5 dias. Confirmar com o dono antes do deploy.
 5. **Preço por cliente (PAY-PRICING-T001):** a cotação de renovação usa só a tabela de prazos.

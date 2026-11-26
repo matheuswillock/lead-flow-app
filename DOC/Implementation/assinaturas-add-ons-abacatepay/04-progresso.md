@@ -72,6 +72,9 @@ Cada linha cita o comando usado e o resultado observado.
 
 - 2026-11-26: revisão do Codex no PR #1432 (3 comentários inline, todos procedentes), corrigida em `d57070db9`. Id legado só no perfil agora é cancelado no corte; o sync do Asaas ignora conta com provedor do roteador; a transição para `past_due` usa o vencimento efetivo. Controle negativo: 5 testes de integração e 1 do sync falham sem as correções. Conversas respondidas e resolvidas. Suíte oficial 6987 + 127, typecheck, lint e governança com exit 0.
 
+- 2026-11-26: PR #1432 com conflito contra a `develop`, que recebeu o PR #1431 e moveu a renovação para `/pagamento/[supabaseId]`. Merge normal da `develop` na branch (`84a1e98ef`), sem force; os avisos da carência passaram a apontar para a página nova. Suíte oficial 6997 + 127, typecheck, lint e governança com exit 0. Uma falha aparente de 4 testes (estouro de 5 s) foi do meu `.env` de exemplo esquecido na pasta, não do código.
+- 2026-11-26: verificação das telas da Fase C. Tela de renovação real com dados reais (1440, 375 e 640 px), fase do cartão e retry do `/checkout` (campo simulado), E2E de checkout, add-on, adesão, estados do checkout, renovação e acesso da conta em Chromium (49 de 49) e checkout, renovação e cartão em Firefox (25 de 25). Correção de registro: o cartão do `/checkout` já passa pelo AbacatePay, a pendência estava errada. As seções da Fase C no `02-frontend.md` foram renumeradas para F10 e F11 (a `develop` já usava F8 e F9). Não verificado: WebKit (não abre com este Playwright), leitor de tela, tokenização real do cartão.
+
 ## Pendências que bloqueiam o push
 
 1. **Autorização para pular o hook** (`--no-verify`). Os erros de `withPrismaRetry` e os 3 falhas não identificados existem no código atual, inclusive na develop. Não pulo o hook sem sua autorização explícita. Alternativa: corrigir os três arquivos de `SubscriptionManagementUseCase` antes do push, o que deixa de ser escopo desta feature.
