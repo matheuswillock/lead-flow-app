@@ -11,7 +11,9 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
 | Branch local | 5 commits à frente de `origin/feature/bloqueio-assinatura-somente-leitura`, 0 atrás. Conciliação concluída, sem force. |
 | Push | **bloqueado** pelo hook de pré-push (ver registro abaixo). Nada foi enviado nesta data. |
 | Fase B | B1 (cobrança de add-on) e B2 (consulta de status) implementadas localmente. Cartão de add-on bloqueado até decisão. |
-| Fases C, D, E, F, G | não iniciadas, ou não verificadas. |
+| Fase C | implementada na branch `feature/assinaturas-fase-c-renovacao-abacatepay` (backend, e-mail da carência e aviso na tela), sem sandbox. Depende dos commits da Fase B (PR #1414). Ver [06-fase-c-renovacao.md](06-fase-c-renovacao.md). |
+| Fases D, E, G | não iniciadas, ou não verificadas. |
+| Fase F | parcial: os dois avisos da carência foram feitos na Fase C (D12). |
 | Migration `provider*` | criada (`supabase/migrations/20261117120000_corretor_studio_pending_action_provider.sql`), **não aplicada**. |
 
 ## Árvore de execução
@@ -26,10 +28,10 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
   - 2.3 Troca de forma de pagamento (B5) — pendente
   - 2.4 Webhook e reconciliação (B6, B7) — pendente
   - 2.5 Campo `provider` em modelos do backoffice (B8) — pendente
-- 3 Assinatura e renovação (Fase C, B9) — pendente
+- 3 Renovação reativa pelo roteador (Fase C, B9) — implementada na branch da Fase C, sem sandbox
 - 4 Gestão de faturas (Fase D, B10, F5) — pendente
 - 5 Página de assinatura (Fase E, B11, F4) — pendente
-- 6 Alertas por e-mail (Fase F, B12) — pendente
+- 6 Alertas por e-mail (Fase F, B12) — parcial: avisos da carência feitos na Fase C (D12)
 - 7 Indicador de modo leitura e padronização visual (Fase G, F3, F6) — pendente
 
 ## Auditoria
@@ -62,6 +64,10 @@ Cada linha cita o comando usado e o resultado observado.
 - 2026-11-17: criação desta pasta de documentação, a partir do plano colado pelo usuário, no formato da rifa-casamento-online (plano, nós e folhas com gates, log append-only).
 - 2026-11-17: usuário respondeu as três decisões abertas. Registradas em `05-decisoes.md` (D1 a D4). Pedido para apenas documentar, sem alterar código. Documentação atualizada nos quatro arquivos.
 
+- 2026-11-25: Fase C. Decisão do dono: a renovação é reativa (carência, somente leitura, página de pagamento). O cron de cobrança antecipada (D-5) e o e-mail do PIX foram removidos (D8). Implementados: dois avisos por e-mail na carência (D12), `past_due` por data para contas do roteador (D14), corte do Asaas na confirmação do pagamento atrás do kill switch (D10, D11), prazo anterior normalizado na cotação, aviso de perda do ilimitado na tela de renovação (D13, briefing aprovado, seis passes do `impeccable`). Nada commitado, nada rodado contra provedores reais.
+
+- 2026-11-25: validação da Fase C com banco real. Teste de integração novo (`test:integration:provider-renewal`, 8 testes, Postgres local) achou um defeito na consulta da carência: o filtro excluía quem só tem a data de vencimento no perfil (negação com data nula). Corrigido, teste verde. Suíte oficial `bun run test`: 6976 + 127 testes, 0 falhas (a auditoria de 2026-11-17 registrava 3 falhas e 3 erros na suíte completa; nesta data não há nenhum). Typecheck, lint e governança com exit 0.
+
 ## Pendências que bloqueiam o push
 
 1. **Autorização para pular o hook** (`--no-verify`). Os erros de `withPrismaRetry` e os 3 falhas não identificados existem no código atual, inclusive na develop. Não pulo o hook sem sua autorização explícita. Alternativa: corrigir os três arquivos de `SubscriptionManagementUseCase` antes do push, o que deixa de ser escopo desta feature.
@@ -82,8 +88,12 @@ Validação com o `develop`, pedida pelo usuário: a adesão já usa o provider 
 - [ ] R1: todos os nós e folhas com gate cumprido ou abandonado com motivo.
   - EVIDENCE: pendente. Hoje há 11 gates marcados (8 no backend, 3 no frontend) e 30 pendentes nesses dois documentos.
 - [ ] R2: typecheck, lint e suíte de testes passam.
-  - EVIDENCE: typecheck passa. Suíte completa falha (3 falhas e 3 erros, ver auditoria).
+  - EVIDENCE: typecheck passa. Em 2026-11-17 a suíte completa falhava (3 falhas e 3 erros, ver auditoria). Na branch da Fase C, em 2026-11-25, `bun run test` terminou com exit 0 (6976 + 127 testes, 0 falhas), lint e governança também. Lembrete: isso vale para a branch da Fase C, que inclui a Fase B por merge; não foi rodado no PR #1381.
 - [ ] R3: toda tela afetada passa pelo briefing `impeccable shape` e pela revisão `impeccable`, e é verificada no navegador.
   - EVIDENCE: pendente. Nenhuma tela da Fase A foi verificada no navegador.
 - [ ] R4: revisão independente cobrindo conformidade com o plano, depois segurança e qualidade. Sem migration aplicada, sem cobrança real, sem deploy.
   - EVIDENCE: pendente.
+
+## Fase C (renovação pelo roteador)
+
+Status em 2026-11-25: a renovação é reativa (carência, somente leitura, página de pagamento), então o cron de D-5 foi removido (D8). Prontos e testados com portas simuladas: e-mail dos dois avisos da carência (D12), corte do Asaas na confirmação do pagamento atrás do kill switch (D10, D11) e prazo anterior normalizado para a pré-seleção (D13). Pendentes: aviso de perda do ilimitado na tela (briefing aguardando aprovação), cartão no `/checkout`, validação em sandbox. Detalhes em [06-fase-c-renovacao.md](06-fase-c-renovacao.md). A branch depende dos commits da Fase B (PR #1414, ainda não mergeada).

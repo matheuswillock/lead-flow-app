@@ -13,8 +13,12 @@ import {
   DELINQUENCY_CRM_ONLY_AFTER_DAYS,
   resolveDelinquencyTier,
   resolveEffectiveNextDueDate,
+  resolveGraceNotice,
   type DelinquencyTier,
+  type GraceNotice,
 } from "@/lib/billing/delinquency-tier";
+import type { ReminderTier } from "@/lib/billing/delinquency-reminder-copy";
+import { resolveBillingGraceUntil } from "@/app/api/shared/billing/billingGraceWindow";
 
 /**
  * Chave deste cron no `BackofficeCronExecution` — MESMA usada pela rota
@@ -31,6 +35,17 @@ const DELINQUENCY_EVENT_TYPE_BY_TIER: Record<"crm_only" | "cut_off", "reduced" |
 
 /** Marca de dedupe na timeline — ver `hasDelinquencyNoticeSince`. */
 const DELINQUENCY_REMINDER_CHANGE_TYPE = "delinquency_tier_reminder";
+/** Marca de dedupe de cada aviso da carência: um por aviso por ciclo de atraso. */
+const GRACE_NOTICE_CHANGE_TYPE: Record<GraceNotice, string> = {
+  grace_started: "delinquency_grace_started",
+  grace_last_day: "delinquency_grace_last_day",
+};
+const GRACE_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "America/Sao_Paulo",
+});
 const DELINQUENCY_REMINDER_SOURCE = "OverdueReminderUseCase";
 
 /** Linhas lidas por página do banco. */
@@ -137,6 +152,10 @@ export class OverdueReminderUseCase {
       skipped: 0,
       noticeLogFailed: 0,
     };
+
+    // A carência vem primeiro: são poucos avisos (quem venceu nos últimos dias) e o master ainda
+    // tem acesso completo para renovar sem perder nada.
+    await this.processGraceNotices(context, totals);
 
     // Achado P1 da revisão do lote unificado (PR #1207): o dedupe acontece
     // por linha, depois da query, então um `take` fixo fazia as mesmas linhas
@@ -255,13 +274,100 @@ export class OverdueReminderUseCase {
       return;
     }
 
-    const eventType = DELINQUENCY_EVENT_TYPE_BY_TIER[tier];
+    await this.notify(
+      {
+        row,
+        email,
+        effectiveDueDate,
+        tier,
+        eventType: DELINQUENCY_EVENT_TYPE_BY_TIER[tier],
+        changeType: DELINQUENCY_REMINDER_CHANGE_TYPE,
+      },
+      context,
+      totals,
+    );
+  }
+
+  /** Avisos da carência (início e último dia): conta ainda com acesso completo, e-mail pede a renovação. */
+  private async processGraceNotices(context: DunningRunContext, totals: DunningRunTotals): Promise<void> {
+    const graceStart = new Date(Date.now() - DELINQUENCY_CRM_ONLY_AFTER_DAYS * 24 * 60 * 60 * 1000);
+    let afterProfileId: string | undefined;
+
+    while (totals.sent + totals.failed < DUNNING_EMAIL_BUDGET) {
+      const page = await billingEngineRepository.findPastDueSubscriptionsInGrace({
+        take: DUNNING_PAGE_SIZE,
+        graceStart,
+        afterProfileId,
+      });
+
+      for (const row of page) {
+        if (totals.sent + totals.failed >= DUNNING_EMAIL_BUDGET) return;
+        await this.processGraceRow(row, context, totals);
+        afterProfileId = row.profileId;
+      }
+      if (page.length < DUNNING_PAGE_SIZE) return;
+    }
+  }
+
+  private async processGraceRow(
+    row: PastDueSubscriptionForDunningRow,
+    context: DunningRunContext,
+    totals: DunningRunTotals,
+  ): Promise<void> {
+    const email = row.profile.email;
+    const effectiveDueDate = resolveEffectiveNextDueDate(
+      row.subscriptionNextDueDate,
+      row.profile.subscriptionNextDueDate,
+    );
+    const tier = effectiveDueDate
+      ? resolveGraceNotice({ subscriptionStatus: "past_due", subscriptionNextDueDate: effectiveDueDate })
+      : null;
+    if (!email || !effectiveDueDate || !tier) {
+      totals.skipped += 1;
+      return;
+    }
+
+    const graceUntil = resolveBillingGraceUntil({
+      subscriptionStatus: "past_due",
+      subscriptionNextDueDate: effectiveDueDate,
+    });
+    await this.notify(
+      {
+        row,
+        email,
+        effectiveDueDate,
+        tier,
+        // Aviso não é transição de status: sem eventType, para não contar como "overdue" nas métricas.
+        eventType: null,
+        changeType: GRACE_NOTICE_CHANGE_TYPE[tier],
+        graceUntilLabel: graceUntil ? GRACE_DATE_FORMAT.format(graceUntil) : undefined,
+      },
+      context,
+      totals,
+    );
+  }
+
+  /** Dedupe, envio e marca de dedupe de um aviso. Compartilhado pelos degraus e pelos avisos da carência. */
+  private async notify(
+    notice: {
+      row: PastDueSubscriptionForDunningRow;
+      email: string;
+      effectiveDueDate: Date;
+      tier: ReminderTier;
+      eventType: "reduced" | "cut" | null;
+      changeType: string;
+      graceUntilLabel?: string;
+    },
+    context: DunningRunContext,
+    totals: DunningRunTotals,
+  ): Promise<void> {
+    const { row, email, effectiveDueDate, tier, eventType, changeType } = notice;
 
     try {
       const alreadyNotified = await billingEngineRepository.hasDelinquencyNoticeSince({
         profileId: row.profileId,
         eventType,
-        changeType: DELINQUENCY_REMINDER_CHANGE_TYPE,
+        changeType,
         since: effectiveDueDate,
       });
       if (alreadyNotified) {
@@ -279,6 +385,7 @@ export class OverdueReminderUseCase {
         userEmail: email,
         tier,
         manageUrl,
+        graceUntilLabel: notice.graceUntilLabel,
         idempotencyKey: `delinquency:${row.profileId}:${tier}:${effectiveDueDate.toISOString()}`,
       });
 
@@ -301,7 +408,7 @@ export class OverdueReminderUseCase {
         await billingEngineRepository.recordDelinquencyNotice({
           profileId: row.profileId,
           eventType,
-          changeType: DELINQUENCY_REMINDER_CHANGE_TYPE,
+          changeType,
           source: DELINQUENCY_REMINDER_SOURCE,
           metadata: { tier, subscriptionNextDueDate: effectiveDueDate.toISOString() },
         });

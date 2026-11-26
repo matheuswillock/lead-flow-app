@@ -25,7 +25,7 @@ import {
   buildLeadTransferActivatedEmailTemplate,
 } from "@/lib/email/lead-notification-templates";
 import { escapeIcsText } from "@/lib/email/escape-ics-text";
-import { getDelinquencyReminderCopy } from "@/lib/billing/delinquency-reminder-copy";
+import { getDelinquencyReminderCopy, type ReminderTier } from "@/lib/billing/delinquency-reminder-copy";
 
 export interface EmailTrackingMeta {
   teamId: string;
@@ -146,8 +146,10 @@ export interface SubscriptionConfirmationData {
 export interface DelinquencyReminderEmailData {
   userName: string;
   userEmail: string;
-  tier: "crm_only" | "cut_off";
+  tier: ReminderTier;
   manageUrl?: string;
+  /** Data limite da carência já formatada (dd/mm/aaaa); só usada nos avisos da carência. */
+  graceUntilLabel?: string;
   idempotencyKey?: string;
 }
 
@@ -1127,7 +1129,9 @@ export class EmailService {
     const appUrl = getAppUrl({ removeTrailingSlash: true });
     const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
 
-    const { subject, headline, bodyText } = getDelinquencyReminderCopy(data.tier);
+    const { subject, headline, bodyText } = getDelinquencyReminderCopy(data.tier, {
+      graceUntilLabel: data.graceUntilLabel,
+    });
 
     const html = `
       <!DOCTYPE html>

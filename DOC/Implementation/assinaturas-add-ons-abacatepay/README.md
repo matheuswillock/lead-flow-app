@@ -13,7 +13,9 @@ Data de referência: 2026-11-17. PR: [#1381](https://github.com/matheuswillock/l
 | [02-frontend.md](02-frontend.md) | Notas de implementação de frontend, com gates | Atualizado |
 | [03-backend.md](03-backend.md) | Notas de implementação de backend, com gates | Atualizado |
 | [04-progresso.md](04-progresso.md) | Status da entrega, auditoria e log | Atualizado |
-| [05-decisoes.md](05-decisoes.md) | Decisões D1 a D4 | Atualizado |
+| [05-decisoes.md](05-decisoes.md) | Decisões D1 a D14 | Atualizado em 2026-11-25 |
+| [06-fase-c-renovacao.md](06-fase-c-renovacao.md) | Fase C: renovação reativa, carência, corte do Asaas, validação | Atualizado em 2026-11-25 |
+| [design/](design/) | Briefings de tela (`impeccable shape`) | Inclui [renovacao-usuarios-adicionais.md](design/renovacao-usuarios-adicionais.md), aprovado em 2026-11-25 |
 
 ## Estado das SPECs
 
@@ -29,8 +31,10 @@ Data de referência: 2026-11-17. PR: [#1381](https://github.com/matheuswillock/l
 | Indicador de modo leitura (T4) | Campo `mode` pronto | Não iniciado | Fase G |
 | Marcar como paga externamente (T5) | Não iniciado | Não iniciado | Fase D |
 | Página de assinatura (T6) | Não verificado | Não verificado | Fase E |
-| Renovação via router | Não iniciado | Não se aplica | Fase C |
-| Alertas de inadimplência | Não verificado | Não se aplica | Fase F |
+| Renovação reativa pelo roteador (carência, `past_due` por data, corte do Asaas) | Implementado na branch da Fase C | Não se aplica | Sem sandbox. Corte do Asaas desligado por padrão (D10, D11) |
+| Aviso de perda do ilimitado na renovação | Cotação já existia | Implementado na branch da Fase C, passes do `impeccable` feitos | Componentes vistos renderizados, tela completa com dados reais não vista (F8) |
+| E-mail dos avisos da carência | Implementado na branch da Fase C (D12) | Não se aplica | E-mail não renderizado nem enviado de verdade |
+| Alertas de inadimplência (degraus 6 a 15 e 16+) | Não verificado | Não se aplica | Fase F |
 
 ## Ordem de leitura
 

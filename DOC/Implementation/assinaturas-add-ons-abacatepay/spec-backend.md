@@ -22,11 +22,11 @@ Arquitetura: `Route → UseCase → Service → Repository/Prisma`. Route só tr
 | Webhook AbacatePay para ação pendente | Não implementado | Confirmar ação pendente sem polling |
 | Reconciliação de `UNKNOWN` para add-on | Não implementado | Tratar owner `PENDING_ACTION_ADDON` |
 | Campo `provider` em faturas do backoffice | Não encontrado no schema | Decidir e migrar, ou registrar que não é necessário |
-| Assinatura e renovação via router | Não iniciado. `CheckoutAsaasUseCase` com 1270 linhas, todas Asaas | Router, cron de renovação e idempotência |
+| Renovação pelo roteador | Implementado na branch da Fase C como fluxo reativo (D8): página de pagamento com o roteador, `past_due` por data para contas do roteador (D14) e corte do Asaas na confirmação do pagamento (D10). `CheckoutAsaasUseCase` (1270 linhas, todas Asaas) não foi alterado | Sandbox do AbacatePay e do Asaas; cartão no `/checkout` |
 | Marcar fatura como paga externamente | Não iniciado | Rota e UseCase próprios, separados do waive |
 | Cancelar fatura no backoffice | Backend existente (`deleteMasterUserInvoice`) | Nenhum. Só o botão no front |
 | Restrição de página de assinatura na API | Não verificado | Negar a quem não é master nem delegado |
-| Alertas de inadimplência | `OverdueReminderUseCase` existe, usa `delinquency-tier` com janelas fixas | Confirmar destinatário e dedupe |
+| Alertas de inadimplência | `OverdueReminderUseCase` existe, usa `delinquency-tier` com janelas fixas nos degraus 6 a 15 e 16+. Os dois avisos da carência (início e último dia) foram acrescentados na Fase C (D12) | Confirmar destinatário e dedupe dos degraus |
 | Colunas `provider*` em `corretor_studio_pending_actions` | Migration criada em `supabase/migrations/20261117120000_corretor_studio_pending_action_provider.sql`, não aplicada | Aplicação pela pipeline, após merge na develop |
 
 ## 2. Regras de negócio
