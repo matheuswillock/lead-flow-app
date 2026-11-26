@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { getServerSessionUserId } from "@/lib/supabase/server-session-user";
 import { BillingGracePaymentProvider } from "./features/context/BillingGracePaymentContext";
 import { BillingGracePaymentContainer } from "./features/container/BillingGracePaymentContainer";
 
@@ -14,14 +14,13 @@ interface BillingGracePaymentPageProps {
  */
 export default async function BillingGracePaymentPage({ params }: BillingGracePaymentPageProps) {
   const { supabaseId } = await params;
-  const supabase = await createSupabaseServer();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const userId = await getServerSessionUserId();
 
-  if (!user) {
+  if (!userId) {
     redirect(`/sign-in?next=${encodeURIComponent(`/pagamento/${supabaseId}`)}`);
   }
-  if (user.id !== supabaseId) {
-    redirect(`/${user.id}/dashboard`);
+  if (userId !== supabaseId) {
+    redirect(`/${userId}/dashboard`);
   }
 
   return (
