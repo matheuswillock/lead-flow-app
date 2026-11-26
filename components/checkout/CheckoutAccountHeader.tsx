@@ -13,7 +13,7 @@ export function CheckoutAccountHeader() {
         <span className="truncate font-display text-sm font-semibold text-foreground">Corretor Studio</span>
       </div>
       <form action={signout}>
-        <Button type="submit" variant="ghost" size="sm">
+        <Button type="submit" variant="ghost" size="sm" className="max-lg:min-h-11">
           <LogOut data-icon="inline-start" aria-hidden />
           Sair
         </Button>
