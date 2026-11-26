@@ -145,6 +145,22 @@ describe("upsertLeadFromFormAnswers — lead desqualificado responde de novo", (
     expect(leadFromUpsertOutcome(result)?.id).toBe("lead-novo")
   })
 
+  it("create recusado por outra duplicata não faz merge no desqualificado (recuperação)", async () => {
+    // A primeira busca não enxerga candidato aberto; a criação falha por um
+    // conflito de CNPJ com outro lead aberto; a recuperação enxerga só o
+    // desqualificado pelo e-mail. Ele não pode receber a resposta.
+    findLeadCandidates.mockResolvedValue([DISQUALIFIED_LEAD])
+    createLead.mockResolvedValue({
+      isValid: false,
+      errorMessages: ["Já existe um lead com este CNPJ neste time (X1234Y)"],
+      successMessages: [],
+      result: null,
+    })
+
+    await expect(callUpsert()).rejects.toThrow()
+    expect(updateLead).not.toHaveBeenCalled()
+  })
+
   it("com lead aberto no mesmo e-mail, anexa ao aberto e nunca ao desqualificado", async () => {
     findLeadCandidates.mockResolvedValue([DISQUALIFIED_LEAD, OPEN_LEAD])
 
