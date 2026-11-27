@@ -6,7 +6,7 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
 
 ## B1. Acesso em carência por contrato (Fase A1)
 
-**Estado:** implementado no PR (commit `75984f629`). Ausente na `origin/develop`.
+**Estado:** implementado e mergeado na `develop` (PR #1381, commit `75984f629`).
 
 **Arquivo:** `app/api/services/featureAccess/FeatureAccessService.ts`
 
@@ -28,7 +28,7 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
 
 ## B2. Resolver tri-estado do backoffice (Fase A2)
 
-**Estado:** implementado no PR. Ausente na `origin/develop`.
+**Estado:** implementado e mergeado na `develop` (PR #1381).
 
 **Arquivos:** `app/api/useCases/backoffice/BackofficePlatformUsersUseCase.ts` (`resolveBackofficeAccessMode`, `resolveBackofficeHasAccess`) e `app/api/infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository.ts` (select com `subscriptionNextDueDate`, linhas 21 e 387).
 
@@ -39,7 +39,7 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
 
 ## B3. Cobrança de add-on via AbacatePay (Fase B1)
 
-**Estado:** implementado localmente (commit `511941cae`), com ajustes em `3bc6b4a8e`. Não está no PR nem na origin.
+**Estado:** implementado e mergeado (Fase B: PRs #1413, #1414 e #1431), a partir do commit `511941cae` e dos ajustes de `3bc6b4a8e`. A recusa de cartão sem token continua; o cartão com `ctok_` passou a ser aceito (B3.G6).
 
 **Arquivo:** `app/api/services/billing/IncrementalBillingService.ts`, método `createIncrementalCharge`.
 
@@ -67,7 +67,7 @@ Legenda: `[x]` verificado nesta data; `[ ]` pendente. `<ref>` é `origin/feature
 
 ## B4. Consulta de status de add-on (Fase B2)
 
-**Estado:** implementado localmente (commit `da0e03090`).
+**Estado:** implementado e mergeado (Fase B), a partir do commit `da0e03090`.
 
 **Arquivo:** `app/api/useCases/addOnCheckout/AddOnCheckoutUseCase.ts`, método `checkPaymentStatus`.
 
@@ -153,7 +153,7 @@ Motivo: AbacatePay não grava `paymentId` na ação. O bloco que cancela a cobra
 
 ## B12. Alertas de inadimplência (Fase F)
 
-**Estado:** parcial. `OverdueReminderUseCase` existe. Os textos e a faixa de cada degrau vêm de `lib/billing/delinquency-tier.ts`, que ainda usa janelas fixas. Em 2026-11-25 a Fase C acrescentou os dois avisos da carência (D12): início (dias 0 a 3) e último dia (dia 4), com dedupe por ciclo e link para `/billing-grace-payment`.
+**Estado:** parcial. `OverdueReminderUseCase` existe. Os textos e a faixa de cada degrau vêm de `lib/billing/delinquency-tier.ts`, que ainda usa janelas fixas. Em 2026-11-25 a Fase C acrescentou os dois avisos da carência (D12): início (dias 0 a 3) e último dia (dia 4), com dedupe por ciclo e link para `/pagamento/[supabaseId]` (antes da D15 era `/billing-grace-payment`).
 
 - [x] B12.G0: os avisos da carência saem uma vez por ciclo, com a data limite e o link do pagamento.
   - CHECK: `bun test app/api/useCases/billing/OverdueReminderUseCase.test.ts` e `bun test lib/billing/delinquency-tier.test.ts`
@@ -167,3 +167,25 @@ Ação com provedor (`provider` preenchido) não tem conta Asaas: `corretor_stud
 
 - [ ] B13.G1: confirmação de time por ação de provedor aplica só quando o provedor confirma e o valor confere.
   - EVIDENCE: testes `ConfirmTeamPaymentUseCase.providerAction.test.ts` e `PendingActionProviderPaymentService.test.ts`. Execução da integração pendente.
+
+## B14. Checkouts logados fora do shell: sessão obrigatória e rota nova (D15, D16)
+
+**Estado:** implementado e mergeado (commits `1e6a8a88c`, `572020153`; PR #1431), 2026-11-26.
+
+**Arquivos:**
+- `lib/proxy/route-access.ts`: `SESSION_REQUIRED_PAGE_PREFIXES` (`/pagamento/` e `/addon-checkout/`) alimenta `requiresSessionPage`; `/addon-checkout` saiu das rotas públicas; `resolveLegacyBillingGracePaymentPath` devolve `/pagamento/{id}` para a rota antiga `/{id}/billing-grace-payment`.
+- `proxy.ts`: responde 308 para o caminho de `resolveLegacyBillingGracePaymentPath`, antes da checagem de autenticação; sem sessão em página de sessão obrigatória, redireciona para `/sign-in?next=<caminho>`.
+- `lib/supabase/server-session-user.ts`: `getServerSessionUserId` resolve o usuário logado no servidor. Aceita o cookie assinado do E2E (`resolveE2eUser`), como o bootstrap da conta, e cai no Supabase (`auth.getUser`) quando não há cookie de teste.
+- `app/pagamento/[supabaseId]/page.tsx` e `app/addon-checkout/[pendingActionId]/page.tsx`: usam o helper. A regularização manda o não dono ao próprio dashboard.
+- Links que passaram a apontar para `/pagamento/[supabaseId]`: `getPaymentRecoveryHref` (banner, painel, modo leitura, gate), a página de assinatura (`SubscriptionContainer.tsx`) e o e-mail de inadimplência (`OverdueReminderUseCase.ts`). `accountAccessReadOnly.ts` e `accountAccessRecovery.ts` passaram a reconhecer o novo caminho.
+
+- [x] B14.G1: `/pagamento/` e `/addon-checkout/` exigem sessão e `/addon-checkout` não é público.
+  - CHECK: `bun test lib/proxy/route-access.test.ts proxy.test.ts`
+  - EVIDENCE: testes novos de `requiresSessionPage` (checkout, add-on, rotas parecidas que não entram) e de `resolveLegacyBillingGracePaymentPath`. Execução local em 2026-11-26 junto de outras áreas: 119 testes, 0 falhas. O job `ci / CI Light (VPS)` do run 45828436193 terminou com sucesso.
+- [x] B14.G2: a rota antiga redireciona e o caminho novo exige sessão, de ponta a ponta.
+  - CHECK: `curl -s -o /dev/null -w "%{http_code} %{redirect_url}" http://localhost:3200/<id>/billing-grace-payment` e a mesma chamada em `/pagamento/<id>` e em `/addon-checkout/<id>` sem sessão
+  - EVIDENCE: 308 para `/pagamento/<id>`; 307 para `/sign-in?next=%2Fpagamento%2F<id>`; 307 para `/sign-in?next=%2Faddon-checkout%2F<id>`. Verificado em 2026-11-26, no servidor local.
+- [x] B14.G3: a sessão de teste do E2E é reconhecida pelas páginas novas.
+  - EVIDENCE: a primeira execução da pipeline falhou em 13 testes porque as páginas liam só o Supabase; depois de `getServerSessionUserId` (`572020153`), as falhas de sessão sumiram (restou a de alvo de toque do "Sair", corrigida em `38595f69a`).
+- [ ] B14.G4: a API do add-on exige que o usuário pertença ao time da cobrança.
+  - EVIDENCE: pendente. `GET /api/v1/addon-checkout/[pendingActionId]` continua acessível pelo id (D16).
