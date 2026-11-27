@@ -99,6 +99,7 @@ export function WhatsAppVerificationPanel({
             setCode("")
           }}
           aria-describedby="whatsapp-phone-hint"
+          className="h-11"
           disabled={isRequesting || isVerifying}
         />
         <p id="whatsapp-phone-hint" className="text-xs text-muted-foreground">Informe o número com código do país, por exemplo +5511999999999.</p>
