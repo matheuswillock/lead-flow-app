@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
-import { disconnectPrisma } from "../../support/db"
+import { disconnectPrisma, getPrisma } from "../../support/db"
 import { runResponsiveChecks } from "../../support/responsive"
 import { API_CLIENT_BASE } from "../../../lib/route-map"
 
@@ -37,18 +38,40 @@ async function mockBethaniaApi(page: Page) {
     if (pathname === "/api/v1/backoffice/bethania/controls" || pathname === "/api/v1/backoffice/bethania/sender") {
       return route.fulfill({ json: { updated: true, webhookUrl } })
     }
-    if (pathname.startsWith("/api/v1/")) return route.fulfill({ status: 200, json: { isValid: true, result: {} } })
     return route.continue()
   })
 }
 
 test.describe("backoffice Bethânia", () => {
+  let profileId: string | undefined
+  let supabaseId = ""
+  let email = ""
+
+  test.beforeAll(async () => {
+    const prisma = getPrisma()
+    supabaseId = randomUUID()
+    email = `e2e.backoffice.studio-bot.${randomUUID()}@example.com`
+    const profile = await prisma.profile.create({
+      data: { supabaseId, email, fullName: "E2E Backoffice Bethânia", role: "backoffice" },
+      select: { id: true },
+    })
+    profileId = profile.id
+    await prisma.backofficeUser.create({
+      data: { profileId: profile.id, email, fullAccess: true, isActive: true },
+    })
+  })
+
   test.beforeEach(async ({ context, page }) => {
-    await injectE2eAuthCookie(context)
+    await injectE2eAuthCookie(context, { supabaseId, email })
     await mockBethaniaApi(page)
   })
 
   test.afterAll(async () => {
+    if (profileId) {
+      const prisma = getPrisma()
+      await prisma.backofficeUser.deleteMany({ where: { profileId } })
+      await prisma.profile.deleteMany({ where: { id: profileId } })
+    }
     await disconnectPrisma()
   })
 

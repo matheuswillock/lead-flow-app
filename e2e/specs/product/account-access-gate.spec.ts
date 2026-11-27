@@ -7,6 +7,11 @@ import { runResponsiveChecks } from "../../support/responsive"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+function fakeVerifiedWhatsAppPhone(supabaseId: string) {
+  const suffix = supabaseId.replace(/\D/g, "").slice(-7).padStart(7, "0")
+  return `+1555${suffix}`
+}
+
 async function createPastDueMaster(dueDaysAgo: number) {
   const prisma = getPrisma()
   const supabaseId = randomUUID()
@@ -23,6 +28,8 @@ async function createPastDueMaster(dueDaysAgo: number) {
       fullName: "E2E Account Access Calendar",
       isMaster: true,
       subscriptionStatus: "past_due",
+      whatsappPhone: fakeVerifiedWhatsAppPhone(supabaseId),
+      whatsappPhoneVerifiedAt: new Date(),
     },
   })
   const team = await prisma.team.create({
@@ -61,6 +68,8 @@ test.describe.serial("gate de acesso da conta", () => {
         fullName: "E2E Account Access",
         isMaster: true,
         subscriptionStatus: "past_due",
+        whatsappPhone: fakeVerifiedWhatsAppPhone(isolatedSupabaseId),
+        whatsappPhoneVerifiedAt: new Date(),
       },
     })
     isolatedProfileId = profile.id

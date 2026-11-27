@@ -199,7 +199,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Agora não</AlertDialogCancel>
+              <AlertDialogCancel className="min-h-11">Agora não</AlertDialogCancel>
               <AlertDialogAction
                 asChild
                 onClick={(event) => {
@@ -208,7 +208,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
                   router.push(buildWhatsAppAccountPath(supabaseId, returnPath));
                 }}
               >
-                <Button>Ir para minha conta</Button>
+                <Button className="min-h-11">Ir para minha conta</Button>
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
