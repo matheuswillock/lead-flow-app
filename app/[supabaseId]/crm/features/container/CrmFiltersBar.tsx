@@ -89,6 +89,8 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
     periodEnd: filters.periodEnd || "",
     scheduledPeriodStart: filters.scheduledPeriodStart || "",
     scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
+    updatedPeriodStart: filters.updatedPeriodStart || "",
+    updatedPeriodEnd: filters.updatedPeriodEnd || "",
     onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
     onlyTransfer: originFilter === "transfer",
     originFilter,
@@ -176,6 +178,26 @@ export function CrmFiltersBar() {
     };
   }, [crmFilters.scheduledPeriodStart, crmFilters.scheduledPeriodEnd]);
 
+  const updatedDateRange = useMemo<DateRange | undefined>(() => {
+    if (!crmFilters.updatedPeriodStart) return undefined;
+    return {
+      from: parseDateKey(crmFilters.updatedPeriodStart),
+      to: parseDateKey(crmFilters.updatedPeriodEnd),
+    };
+  }, [crmFilters.updatedPeriodStart, crmFilters.updatedPeriodEnd]);
+
+  const handleUpdatedDateChange = (range: DateRange | undefined) => {
+    if (!range?.from) {
+      setCrmFilters({ ...crmFilters, updatedPeriodStart: "", updatedPeriodEnd: "" });
+      return;
+    }
+    setCrmFilters({
+      ...crmFilters,
+      updatedPeriodStart: format(range.from, "yyyy-MM-dd"),
+      updatedPeriodEnd: range.to ? format(range.to, "yyyy-MM-dd") : "",
+    });
+  };
+
   const handleCreatedDateChange = (range: DateRange | undefined) => {
     if (!range?.from) {
       setCrmFilters({ ...crmFilters, periodStart: "", periodEnd: "" });
@@ -227,6 +249,11 @@ export function CrmFiltersBar() {
     if (queryJson.scheduledPeriodStart) {
       parts.push(
         `Agendamento: ${queryJson.scheduledPeriodStart}${queryJson.scheduledPeriodEnd ? ` até ${queryJson.scheduledPeriodEnd}` : ""}`
+      );
+    }
+    if (queryJson.updatedPeriodStart) {
+      parts.push(
+        `Última atualização: ${queryJson.updatedPeriodStart}${queryJson.updatedPeriodEnd ? ` até ${queryJson.updatedPeriodEnd}` : ""}`
       );
     }
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
@@ -299,6 +326,11 @@ export function CrmFiltersBar() {
         title="Data de Criação"
         value={createdDateRange}
         onChange={handleCreatedDateChange}
+      />
+      <LeadsDateFilter
+        title="Última atualização"
+        value={updatedDateRange}
+        onChange={handleUpdatedDateChange}
       />
       <LeadsDateFilter
         title="Data de Agendamento"

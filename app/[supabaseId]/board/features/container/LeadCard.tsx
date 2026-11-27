@@ -221,6 +221,11 @@ function LeadCardComponent({
                             Entrada: {formatDate(lead.createdAt, tz)}
                         </div>
                     )}
+                    {showEntryDate && (
+                        <div className="mt-1 text-xs text-accent-foreground">
+                            Atualizado: {formatDate(lead.updatedAt, tz)}
+                        </div>
+                    )}
                 </CardHeader>
             )}
             <CardContent className="flex flex-col gap-2">

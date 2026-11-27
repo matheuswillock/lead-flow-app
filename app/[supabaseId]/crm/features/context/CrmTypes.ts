@@ -17,6 +17,8 @@ export interface CrmFiltersState {
   periodEnd: string;
   scheduledPeriodStart: string;
   scheduledPeriodEnd: string;
+  updatedPeriodStart: string;
+  updatedPeriodEnd: string;
   onlyMeetingsHeld: boolean;
   onlyTransfer: boolean;
   originFilter: LeadOriginFilterValue | "";
@@ -35,6 +37,8 @@ export const DEFAULT_CRM_FILTERS: CrmFiltersState = {
   periodEnd: "",
   scheduledPeriodStart: "",
   scheduledPeriodEnd: "",
+  updatedPeriodStart: "",
+  updatedPeriodEnd: "",
   onlyMeetingsHeld: false,
   onlyTransfer: false,
   originFilter: "",
@@ -53,6 +57,8 @@ export const isCrmFiltersEmpty = (filters: CrmFiltersState): boolean =>
   !filters.periodEnd &&
   !filters.scheduledPeriodStart &&
   !filters.scheduledPeriodEnd &&
+  !filters.updatedPeriodStart &&
+  !filters.updatedPeriodEnd &&
   !filters.onlyMeetingsHeld &&
   !filters.onlyTransfer &&
   !filters.originFilter &&

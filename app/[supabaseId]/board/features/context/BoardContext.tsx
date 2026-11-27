@@ -1560,6 +1560,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     return labels;
   }, []);
 
+  const updatedStart = externalFilters?.updatedPeriodStart ?? "";
+  const updatedEnd = externalFilters?.updatedPeriodEnd ?? "";
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const inQuery = (l: Lead) =>
@@ -1592,6 +1595,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const beforeEnd = !periodEnd || createdKey <= periodEnd;
       return afterStart && beforeEnd;
     };
+    const inUpdatedPeriod = (l: Lead) => {
+      if (!updatedStart && !updatedEnd) return true;
+      const updatedKey = formatDateKey(l.updatedAt, tz);
+      if (!updatedKey) return false;
+      const afterStart = !updatedStart || updatedKey >= updatedStart;
+      const beforeEnd = !updatedEnd || updatedKey <= updatedEnd;
+      return afterStart && beforeEnd;
+    };
     const inScheduledPeriod = (l: Lead) => {
       if (!scheduledPeriodStart && !scheduledPeriodEnd) return true;
       if (!l.meetingDate) return false;
@@ -1619,6 +1630,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               inOrigin(l) &&
               inDraft(l) &&
               inPeriod(l) &&
+              inUpdatedPeriod(l) &&
               inScheduledPeriod(l)
           )
         : [];
@@ -1639,6 +1651,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     periodEnd,
     scheduledPeriodStart,
     scheduledPeriodEnd,
+    updatedStart,
+    updatedEnd,
     statusFilter,
     tz,
   ]);
