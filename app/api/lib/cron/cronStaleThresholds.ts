@@ -43,10 +43,16 @@ export const UNKNOWN_CRON_MAX_DURATION_SECONDS = 900
  *   completo consumia ~60% da quota mensal de egress do Supabase). A rota
  *   `/api/v1/backoffice/cron/database-backup` segue disponível para disparo
  *   manual, que hoje é a DR externa do projeto.
+ * - `asaas-card-reauthorization-reminder` e `asaas-due-date-cutover`: agendamento
+ *   removido em 2026-11-27 porque o provider ativo do backoffice é o AbacatePay
+ *   e a migração entre contas Asaas não deve mais notificar clientes. As rotas
+ *   seguem disponíveis para disparo manual.
  */
 export const MANUALLY_TRIGGERED_CRON_KEYS: ReadonlySet<string> = new Set([
   "database-backup",
   "payment-provider-maintenance",
+  "asaas-card-reauthorization-reminder",
+  "asaas-due-date-cutover",
 ])
 
 /**

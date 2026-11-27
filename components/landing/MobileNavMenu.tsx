@@ -2,10 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu } from "lucide-react"
+import { LogIn, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { DemoRequestDialogButton } from "./DemoRequestDialog"
 
 const navLinks = [
   { label: "Plataforma", href: "/#crm" },
@@ -52,12 +51,14 @@ export function MobileNavMenu() {
             >
               Contratar online
             </Link>
-            <DemoRequestDialogButton
+            <Link
+              href="/sign-in"
               onClick={() => setOpen(false)}
-              className="landing-secondary-cta min-h-11 rounded-2xl px-4 py-3 text-left text-base font-medium transition-colors hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-3 text-base font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              Demonstração
-            </DemoRequestDialogButton>
+              <LogIn className="size-4" aria-hidden />
+              Entrar
+            </Link>
           </nav>
         </SheetContent>
       </Sheet>
