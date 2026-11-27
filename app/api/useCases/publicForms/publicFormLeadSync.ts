@@ -63,15 +63,22 @@ export async function findMatchingLead(
   teamId: string,
   data: ExtractedLeadData,
 ): Promise<Lead | undefined> {
-  return pickBestLeadMatch(
-    await publicFormsRepository.findLeadCandidates(
-      teamId,
-      data.email,
-      data.phone,
-      data.normalizedPhone,
-    ),
-    data,
+  const candidates = await publicFormsRepository.findLeadCandidates(
+    teamId,
+    data.email,
+    data.phone,
+    data.normalizedPhone,
   )
+  return pickBestLeadMatch(withoutDisqualifiedLeads(candidates), data)
+}
+
+/**
+ * Lead desqualificado não recebe merge: uma nova resposta vira um lead novo
+ * (nova timeline) e o card desqualificado fica como estava, com o histórico.
+ * Vale para toda busca de match, inclusive a de recuperação após create recusado.
+ */
+function withoutDisqualifiedLeads(candidates: Lead[]): Lead[] {
+  return candidates.filter((candidate) => candidate.status !== "disqualified")
 }
 
 function pickBestLeadMatch(candidates: Lead[], data: ExtractedLeadData): Lead | undefined {
@@ -207,11 +214,13 @@ async function reconcileLeadAfterFailedCreate(
 ): Promise<UpsertLeadOutcome | null> {
   const teamId = context.form.teamId
   const live = pickBestLeadMatch(
-    await publicFormsRepository.findLeadCandidates(
-      teamId,
-      extracted.email,
-      extracted.phone,
-      extracted.normalizedPhone,
+    withoutDisqualifiedLeads(
+      await publicFormsRepository.findLeadCandidates(
+        teamId,
+        extracted.email,
+        extracted.phone,
+        extracted.normalizedPhone,
+      ),
     ),
     extracted,
   )
