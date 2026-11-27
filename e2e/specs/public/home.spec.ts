@@ -28,7 +28,7 @@ test.describe("app/page", () => {
     await expect(page.locator("#demo-first-name")).toHaveCSS("font-size", "16px");
   });
 
-  test("prioriza a contratação na hero e mantém demonstração como segunda CTA", async ({ page }) => {
+  test("prioriza a contratação na hero e mantém demonstração só como texto com link", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
 
@@ -36,6 +36,8 @@ test.describe("app/page", () => {
       "href",
       "/checkout",
     );
+
+    await expect(page.locator("header").getByRole("button", { name: /demonstra/i })).toHaveCount(0);
 
     const heroCheckout = page.locator("#top").getByRole("link", { name: "Contratar online" });
     const heroDemo = page.locator("#top").getByRole("button", { name: "Solicitar demonstração" });
@@ -69,7 +71,10 @@ test.describe("app/page", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await page.getByRole("button", { name: "Abrir menu de navegação" }).click();
-    await expect(page.getByRole("dialog").getByRole("link", { name: "Contratar online" })).toBeVisible();
+    const mobileMenu = page.getByRole("dialog");
+    await expect(mobileMenu.getByRole("link", { name: "Contratar online" })).toBeVisible();
+    await expect(mobileMenu.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/sign-in");
+    await expect(mobileMenu.getByRole("button", { name: /demonstra/i })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
     await runResponsiveChecks(page);
