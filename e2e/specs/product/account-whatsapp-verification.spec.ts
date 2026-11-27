@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
+import { createProfileOutput } from "../../../app/api/v1/profiles/DTO/profileResponseDTO"
 import { API_CLIENT_BASE } from "../../../lib/route-map"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { disconnectPrisma, getPrisma } from "../../support/db"
@@ -34,7 +35,9 @@ async function createWhatsAppFixture(): Promise<WhatsAppFixture> {
   const team = await prisma.team.create({
     data: { name: `E2E WhatsApp ${supabaseId.slice(0, 8)}`, masterId: profile.id },
   })
-  await prisma.teamMember.create({ data: { teamId: team.id, profileId: profile.id, role: "manager" } })
+  await prisma.teamMember.create({
+    data: { teamId: team.id, profileId: profile.id, role: "manager" },
+  })
   await prisma.profile.update({ where: { id: profile.id }, data: { activeTeamId: team.id } })
   return { profileId: profile.id, supabaseId, email, teamId: team.id }
 }
@@ -52,16 +55,28 @@ const accountPath = (supabaseId: string) => `/${supabaseId}/account`
 const phone = "+15551234567"
 
 async function dismissAnnouncement(page: Page) {
-  const closeButton = page.getByRole("button", { name: "Close" })
-  if (await closeButton.isVisible().catch(() => false)) {
+  const announcement = page.getByRole("dialog", { name: /Novidades no Corretor Studio/ })
+  const closeButton = announcement.getByRole("button", { name: "Close" })
+  const main = page.getByRole("main")
+
+  await expect
+    .poll(
+      async () =>
+        (await announcement.isVisible().catch(() => false)) ||
+        (await main.isVisible().catch(() => false)),
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+
+  if (await announcement.isVisible().catch(() => false)) {
     await closeButton.click()
-    await expect(page.getByRole("dialog", { name: /Novidades no Corretor Studio/ })).toBeHidden()
+    await expect(announcement).toBeHidden()
   }
 }
 
 async function mockAccountApi(
   page: Page,
-  profileId: string,
+  fixture: WhatsAppFixture,
   options: { requestError?: boolean } = {},
 ) {
   let requestedPhone: string | null = null
@@ -71,6 +86,76 @@ async function mockAccountApi(
     const pathname = url.pathname.startsWith(`${API_CLIENT_BASE}/`)
       ? url.pathname.replace(API_CLIENT_BASE, "/api/v1")
       : url.pathname
+    const method = route.request().method()
+
+    if (method === "GET" && pathname === `/api/v1/profiles/${fixture.supabaseId}`) {
+      const prisma = getPrisma()
+      const profile = await prisma.profile.findUnique({
+        where: { id: fixture.profileId },
+        include: {
+          googleConnection: {
+            select: { refreshToken: true, revokedAt: true, googleEmail: true },
+          },
+          operators: {
+            select: {
+              id: true,
+              fullName: true,
+              profileIconUrl: true,
+              email: true,
+              role: true,
+              functions: true,
+              googleConnection: {
+                select: { refreshToken: true, revokedAt: true, googleEmail: true },
+              },
+            },
+          },
+          manager: {
+            select: {
+              id: true,
+              fullName: true,
+              profileIconUrl: true,
+              email: true,
+              role: true,
+              functions: true,
+            },
+          },
+        },
+      })
+      const activeTeamMembership = profile?.activeTeamId
+        ? await prisma.teamMember.findUnique({
+            where: {
+              teamId_profileId: {
+                teamId: profile.activeTeamId,
+                profileId: profile.id,
+              },
+            },
+            select: {
+              role: true,
+              functions: true,
+              canCreateAccountUsers: true,
+              canManageAccountTeams: true,
+              canTransferAccountLeads: true,
+            },
+          })
+        : null
+
+      return route.fulfill({
+        status: 200,
+        json: createProfileOutput(profile ? { ...profile, activeTeamMembership } : null),
+      })
+    }
+
+    if (method === "POST" && pathname === "/api/v1/subscriptions/check") {
+      return route.fulfill({
+        status: 200,
+        json: {
+          isValid: true,
+          successMessages: [],
+          errorMessages: [],
+          result: { userExists: true, hasActiveSubscription: true, userRole: "master" },
+        },
+      })
+    }
 
     if (pathname.endsWith("/whatsapp-verification/request-code")) {
       if (options.requestError) {
@@ -87,7 +172,7 @@ async function mockAccountApi(
         return route.fulfill({ status: 400, json: { error: "Código inválido ou expirado." } })
       }
       await getPrisma().profile.update({
-        where: { id: profileId },
+        where: { id: fixture.profileId },
         data: { whatsappPhone: requestedPhone, whatsappPhoneVerifiedAt: new Date() },
       })
       return route.fulfill({ status: 200, json: { success: true } })
@@ -115,13 +200,15 @@ test.describe("verificação de WhatsApp na conta", () => {
     await disconnectPrisma()
   })
 
-  test("usuário verificado não recebe alerta e vê o estado confirmado no painel", async ({ page }) => {
+  test("usuário verificado não recebe alerta e vê o estado confirmado no painel", async ({
+    page,
+  }) => {
     const user = fixture!
     await getPrisma().profile.update({
       where: { id: user.profileId },
       data: { whatsappPhone: phone, whatsappPhoneVerifiedAt: new Date() },
     })
-    await mockAccountApi(page, user.profileId)
+    await mockAccountApi(page, user)
 
     await page.goto(dashboardPath(user.supabaseId))
     await dismissAnnouncement(page)
@@ -131,15 +218,19 @@ test.describe("verificação de WhatsApp na conta", () => {
     await page.goto(accountPath(user.supabaseId))
     await dismissAnnouncement(page)
     await expect(page.getByRole("heading", { name: "WhatsApp para notificações" })).toBeVisible()
-    await expect(page.getByRole("status", { name: "WhatsApp verificado" })).toBeVisible()
+    await expect(
+      page.getByRole("status").filter({ hasText: /^WhatsApp verificado$/ }),
+    ).toBeVisible()
     await runResponsiveChecks(page)
   })
 
-  test("alerta abre Minha conta e a confirmação retorna ao destino sem expor o OTP na URL", async ({ page }) => {
+  test("alerta abre Minha conta e a confirmação retorna ao destino sem expor o OTP na URL", async ({
+    page,
+  }) => {
     const user = fixture!
     const originalPath = dashboardPath(user.supabaseId)
     const userAccountPath = accountPath(user.supabaseId)
-    await mockAccountApi(page, user.profileId)
+    await mockAccountApi(page, user)
 
     await page.goto(originalPath)
     await dismissAnnouncement(page)
@@ -148,7 +239,9 @@ test.describe("verificação de WhatsApp na conta", () => {
     })
     await page.getByRole("button", { name: "Ir para minha conta" }).click()
 
-    await expect(page).toHaveURL(new RegExp(`${userAccountPath.replaceAll("/", "\\/")}\\?returnTo=`))
+    await expect(page).toHaveURL(
+      new RegExp(`${userAccountPath.replaceAll("/", "\\/")}\\?returnTo=`),
+    )
     await expect(page.getByText("Minha conta", { exact: true })).toBeVisible()
     await expect(page.getByRole("heading", { name: "WhatsApp para notificações" })).toBeVisible()
 
@@ -168,9 +261,11 @@ test.describe("verificação de WhatsApp na conta", () => {
     expect(page.url()).not.toContain("654321")
   })
 
-  test("erro do transporte falso permanece acessível no painel e não expõe o código", async ({ page }) => {
+  test("erro do transporte falso permanece acessível no painel e não expõe o código", async ({
+    page,
+  }) => {
     const user = fixture!
-    await mockAccountApi(page, user.profileId, { requestError: true })
+    await mockAccountApi(page, user, { requestError: true })
 
     await page.goto(accountPath(user.supabaseId))
     await dismissAnnouncement(page)
