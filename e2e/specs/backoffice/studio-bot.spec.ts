@@ -2,10 +2,12 @@ import { expect, test, type Page } from "@playwright/test"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { disconnectPrisma } from "../../support/db"
 import { runResponsiveChecks } from "../../support/responsive"
+import { API_CLIENT_BASE } from "../../../lib/route-map"
 
 const appOrigin = new URL(process.env.E2E_BASE_URL || "http://127.0.0.1:3000").origin
 const eventType = "schedule.created_or_rescheduled"
 const webhookUrl = "https://sender.example.test/"
+const apiBethaniaPath = `${API_CLIENT_BASE}/backoffice/bethania`
 const overview = {
   paused: false,
   events: [{ eventType, description: "Agendamento criado ou reagendado", paused: false }],
@@ -15,11 +17,14 @@ const overview = {
 async function mockBethaniaApi(page: Page) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
+    const pathname = url.pathname.startsWith(`${API_CLIENT_BASE}/`)
+      ? url.pathname.replace(API_CLIENT_BASE, "/api/v1")
+      : url.pathname
     if (url.origin !== appOrigin) return route.abort()
-    if (url.pathname === "/api/v1/backoffice/bethania" && route.request().method() === "GET") {
+    if (pathname === "/api/v1/backoffice/bethania" && route.request().method() === "GET") {
       return route.fulfill({ json: overview })
     }
-    if (url.pathname === "/api/v1/backoffice/bethania/logs") {
+    if (pathname === "/api/v1/backoffice/bethania/logs") {
       return route.fulfill({
         json: {
           logs: [{ id: "log-e2e", eventType, status: "failed", errorCode: "HTTP_503", createdAt: "2026-11-23T12:00:00.000Z", attempts: 2 }],
@@ -29,10 +34,10 @@ async function mockBethaniaApi(page: Page) {
         },
       })
     }
-    if (url.pathname === "/api/v1/backoffice/bethania/controls" || url.pathname === "/api/v1/backoffice/bethania/sender") {
+    if (pathname === "/api/v1/backoffice/bethania/controls" || pathname === "/api/v1/backoffice/bethania/sender") {
       return route.fulfill({ json: { updated: true, webhookUrl } })
     }
-    if (url.pathname.startsWith("/api/v1/")) return route.fulfill({ status: 200, json: { isValid: true, result: {} } })
+    if (pathname.startsWith("/api/v1/")) return route.fulfill({ status: 200, json: { isValid: true, result: {} } })
     return route.continue()
   })
 }
@@ -58,7 +63,7 @@ test.describe("backoffice Bethânia", () => {
     await expect(page.getByRole("textbox", { name: "URL do webhook" })).toHaveValue(webhookUrl)
     await expect(page.getByText(/HTTP_503/)).toBeVisible()
 
-    const senderUpdate = page.waitForRequest((request) => request.url().includes("/api/v1/backoffice/bethania/sender") && request.method() === "PATCH")
+    const senderUpdate = page.waitForRequest((request) => request.url().includes(`${apiBethaniaPath}/sender`) && request.method() === "PATCH")
     await page.getByRole("button", { name: "Salvar URL" }).click()
     expect((await senderUpdate).postDataJSON()).toEqual({ webhookUrl })
 

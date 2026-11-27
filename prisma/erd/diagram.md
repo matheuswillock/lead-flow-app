@@ -58,6 +58,16 @@ no no
     
 
 
+        BethaniaOutboxStatus {
+            pending pending
+sending sending
+sent sent
+failed failed
+suppressed suppressed
+        }
+    
+
+
         TeamMeetingSlotReservationSource {
             internal internal
 public_form public_form
@@ -1847,6 +1857,8 @@ fixed fixed
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
+    String whatsappPhone "❓"
+    DateTime whatsappPhoneVerifiedAt "❓"
     String cpfCnpj "❓"
     String postalCode "❓"
     String address "❓"
@@ -3193,6 +3205,63 @@ fixed fixed
     DateTime sentAt 
     Int leadCount 
     String channel 
+    DateTime createdAt 
+    }
+  
+
+  "bethania_verification_challenges" {
+    String id "🗝️"
+    String phone 
+    String codeHash 
+    DateTime expiresAt 
+    Int attempts 
+    DateTime consumedAt "❓"
+    DateTime createdAt 
+    }
+  
+
+  "bethania_sender_configs" {
+    String id "🗝️"
+    String webhookUrl 
+    DateTime updatedAt 
+    }
+  
+
+  "bethania_global_controls" {
+    String id "🗝️"
+    Boolean paused 
+    DateTime updatedAt 
+    }
+  
+
+  "bethania_event_controls" {
+    String eventType "🗝️"
+    Boolean paused 
+    DateTime updatedAt 
+    }
+  
+
+  "bethania_outbox" {
+    String id "🗝️"
+    String idempotencyKey 
+    String eventType 
+    String phone "❓"
+    String message "❓"
+    BethaniaOutboxStatus status 
+    Int attempts 
+    DateTime nextAttemptAt 
+    DateTime lockedAt "❓"
+    String lastErrorCode "❓"
+    DateTime createdAt 
+    DateTime deliveredAt "❓"
+    }
+  
+
+  "bethania_delivery_logs" {
+    String id "🗝️"
+    String eventType 
+    BethaniaOutboxStatus status 
+    String errorCode "❓"
     DateTime createdAt 
     }
   
@@ -5624,6 +5693,15 @@ fixed fixed
     "corretor_studio_notifications" }o--|| corretor_studio_teams : "team"
     "meeting_follow_up_digest_logs" }o--|| corretor_studio_profiles : "recipient"
     "meeting_follow_up_digest_logs" }o--|| corretor_studio_teams : "team"
+    "bethania_verification_challenges" }o--|| corretor_studio_profiles : "profile"
+    "bethania_sender_configs" }o--|o corretor_studio_profiles : "updatedBy"
+    "bethania_global_controls" }o--|o corretor_studio_profiles : "updatedBy"
+    "bethania_event_controls" }o--|o corretor_studio_profiles : "updatedBy"
+    "bethania_outbox" |o--|| "BethaniaOutboxStatus" : "enum:status"
+    "bethania_outbox" }o--|| corretor_studio_profiles : "profile"
+    "bethania_delivery_logs" |o--|| "BethaniaOutboxStatus" : "enum:status"
+    "bethania_delivery_logs" }o--|o bethania_outbox : "outbox"
+    "bethania_delivery_logs" }o--|o corretor_studio_profiles : "recipient"
     "corretor_studio_profile_web_push_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_web_push_consents" |o--|| "WebPushConsentStatus" : "enum:status"
     "corretor_studio_profile_web_push_consents" |o--|| corretor_studio_profiles : "profile"

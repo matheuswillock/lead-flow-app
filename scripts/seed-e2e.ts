@@ -236,6 +236,9 @@ async function upsertE2eMaster(prisma: PrismaClient) {
     supabaseId: E2E_MASTER_SUPABASE_ID,
     email: E2E_MASTER_EMAIL,
     fullName: E2E_MASTER_FULL_NAME,
+    // Keep generic UI specs past onboarding; the WhatsApp spec mocks its own state.
+    whatsappPhone: "+15551234567",
+    whatsappPhoneVerifiedAt: new Date("2026-01-01T00:00:00.000Z"),
     isMaster: true,
     role: "manager" as const,
     hasPermanentSubscription: true,

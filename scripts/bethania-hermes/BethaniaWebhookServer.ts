@@ -55,13 +55,19 @@ function signatureIsValid(secret: string, timestamp: string | undefined, signatu
 async function readBody(request: IncomingMessage, maxBytes: number): Promise<Buffer | null> {
   const chunks: Buffer[] = []
   let size = 0
+  let tooLarge = false
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    if (tooLarge) continue
+    if (size + buffer.length > maxBytes) {
+      tooLarge = true
+      chunks.length = 0
+      continue
+    }
     size += buffer.length
-    if (size > maxBytes) return null
     chunks.push(buffer)
   }
-  return Buffer.concat(chunks)
+  return tooLarge ? null : Buffer.concat(chunks)
 }
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse, options: BethaniaWebhookOptions): Promise<void> {

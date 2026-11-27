@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
-import { getPrisma, disconnectPrisma } from "../../support/db"
 import { E2E_MASTER_EMAIL, E2E_MASTER_SUPABASE_ID } from "../../support/e2e-ids"
+import { API_CLIENT_BASE } from "../../../lib/route-map"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
 import { runResponsiveChecks } from "../../support/responsive"
 
@@ -12,19 +12,11 @@ const appOrigin = new URL(
     process.env.NEXT_PUBLIC_APP_URL ||
     "http://127.0.0.1:3000",
 ).origin
+const matchesAppApi = (url: URL) =>
+  url.origin === appOrigin &&
+  (url.pathname.startsWith(`${API_CLIENT_BASE}/`) || url.pathname.startsWith("/api/v1/"))
 const accountPath = `/${supabaseId}/account`
 const phone = "+15551234567"
-let originalWhatsAppContact: { whatsappPhone: string | null; whatsappPhoneVerifiedAt: Date | null } | null = null
-
-async function setWhatsAppVerified(verified: boolean) {
-  await getPrisma().profile.update({
-    where: { supabaseId },
-    data: {
-      whatsappPhone: verified ? phone : null,
-      whatsappPhoneVerifiedAt: verified ? new Date("2026-11-23T12:00:00.000Z") : null,
-    },
-  })
-}
 
 async function dismissAnnouncement(page: Page) {
   const closeButton = page.getByRole("button", { name: "Close" })
@@ -44,7 +36,7 @@ async function mockAccountApi(
     return route.continue()
   })
 
-  await page.route("**/api/v1/**", async (route) => {
+  await page.route(matchesAppApi, async (route) => {
     const url = new URL(route.request().url())
     const method = route.request().method()
     const pathname = url.pathname
@@ -99,30 +91,10 @@ async function mockAccountApi(
 }
 
 test.describe("verificação de WhatsApp na conta", () => {
-  test.beforeAll(async () => {
-    const profile = await getPrisma().profile.findUnique({
-      where: { supabaseId },
-      select: { whatsappPhone: true, whatsappPhoneVerifiedAt: true },
-    })
-    if (!profile) throw new Error("E2E master profile not found")
-    originalWhatsAppContact = profile
-  })
-
-  test.afterAll(async () => {
-    if (originalWhatsAppContact) {
-      await getPrisma().profile.update({
-        where: { supabaseId },
-        data: originalWhatsAppContact,
-      })
-    }
-    await disconnectPrisma()
-  })
-
   test("usuário verificado não recebe alerta e vê o estado confirmado no painel", async ({
     context,
     page,
   }) => {
-    await setWhatsAppVerified(true)
     await injectE2eAuthCookie(context, { supabaseId, email: E2E_MASTER_EMAIL })
     await mockAccountApi(page, { verified: true })
 
@@ -142,7 +114,6 @@ test.describe("verificação de WhatsApp na conta", () => {
     context,
     page,
   }) => {
-    await setWhatsAppVerified(false)
     await injectE2eAuthCookie(context, { supabaseId, email: E2E_MASTER_EMAIL })
     await mockAccountApi(page)
 
@@ -178,7 +149,6 @@ test.describe("verificação de WhatsApp na conta", () => {
     context,
     page,
   }) => {
-    await setWhatsAppVerified(false)
     await injectE2eAuthCookie(context, { supabaseId, email: E2E_MASTER_EMAIL })
     await mockAccountApi(page, { requestError: true })
 
