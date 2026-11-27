@@ -2,6 +2,54 @@
 
 Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md) · [03-backend.md](03-backend.md) · [05-decisoes.md](05-decisoes.md)
 
+## Estado da entrega (2026-11-26)
+
+Este arquivo é append-only. Os blocos de 2026-11-17 abaixo ficam como histórico e foram superados por este. Plano completo em [07-plano-das-fases.md](07-plano-das-fases.md).
+
+| Item | Situação |
+|---|---|
+| Fase A | **Entregue.** PR #1381 mergeado na `develop` em 2026-11-18T17:49Z. |
+| Fase B | **Entregue**, sem sandbox. PRs #1408 (2026-11-18), #1413 (2026-11-19), #1414 (2026-11-25) e #1431 (2026-11-26T15:06Z). |
+| Fase C | **Entregue**, sem sandbox. PR #1432 mergeado em 2026-11-26T18:23Z. Ver [06-fase-c-renovacao.md](06-fase-c-renovacao.md). |
+| Regularização do master (A e C) | **Entregue.** Botão no painel bloqueado (`039ba5d15`), checkout em `/pagamento/[supabaseId]`, add-on com login e confirmação com contador de 5 s (`1e6a8a88c`, `572020153`, `38595f69a`). D15 a D18. |
+| Fase D | Não iniciada. Nenhum marcador de baixa externa na `develop`. |
+| Fase E | Não iniciada. Nenhuma rota de assinatura usa `hasDelegatedTeamManagementAccess`. |
+| Fase F | Parcial. Avisos da carência feitos (D12). Faltam destinatário correto e os degraus de janela fixa. |
+| Fase G | Parcial. `ReadOnlyAccessBanner` no shell. Faltam botões de escrita desabilitados e a padronização visual. |
+| Migrations `provider*` | Existem na `develop` (por exemplo `20261117120000_corretor_studio_pending_action_provider.sql`). Aplicação em banco compartilhado: Não verificado; segue o fluxo da pipeline, com autorização do dono. |
+| Sandbox AbacatePay e Asaas | Não verificado. |
+| Esta documentação | Branch `feature/assinaturas-plano-fases-docs`, criada de `origin/develop`. |
+
+### Gates raiz em 2026-11-26
+
+- [ ] R1: todos os nós e folhas com gate cumprido ou abandonado com motivo.
+  - EVIDENCE: pendente. Fases D, E e F e parte da G seguem abertas, e vários gates dos nós antigos continuam sem evidência.
+- [x] R2: typecheck, lint e suíte de testes passam.
+  - EVIDENCE: no push de 2026-11-26 a validação do hook (`governance:sync`, `governance:check`, `lint`, `typecheck`, `test`) terminou com sucesso. Antes de corrigir o teste do e-mail de inadimplência, o `test` do hook tinha 1 falha (`OverdueReminderUseCase.test.ts`); depois do commit `c948f5230`, 0 falhas.
+- [ ] R3: toda tela afetada passa por briefing `impeccable shape`, revisão `impeccable` e verificação no navegador.
+  - EVIDENCE: parcial. As telas de regularização (F12, F13) têm briefing aprovado e foram vistas no navegador; a revisão `impeccable` completa e a verificação das telas da Fase A seguem pendentes.
+- [ ] R4: revisão independente cobrindo conformidade com o plano, segurança e qualidade. Sem migration aplicada, sem cobrança real, sem deploy.
+  - EVIDENCE: parcial. O PR #1432 teve revisão do Codex (3 comentários, corrigidos em `d57070db9`). As demais entregas não tiveram revisão independente registrada aqui.
+
+## Auditoria (2026-11-26)
+
+Comandos rodados em `HEAD`, que na data era `origin/develop` (branch `feature/assinaturas-plano-fases-docs` recém-criada).
+
+| Verificação | Comando | Resultado |
+|---|---|---|
+| Fase A na `develop` (acesso) | `git grep -l "resolveBackofficeAccessMode" HEAD -- app lib` | `BackofficePlatformUsersUseCase.ts` e `BackofficePlatformUsersUseCase.planInfo.test.ts` |
+| Fase A na `develop` (cancelar) | `git grep -l "canCancelInvoice" HEAD -- app lib` | `BackofficeInvoiceActionsMenu.tsx`, `invoiceActions.ts` e `invoiceActions.test.ts` |
+| Fase A: carência genérica | `git grep -l "readOnlyWindow\|isGenericBillingGrace" HEAD -- app/api/services/featureAccess` | `FeatureAccessService.ts` |
+| Fase B: cobrador roteado | `git grep -l "routed-charge" HEAD -- app lib` | `IncrementalBillingService.ts` e `BackofficePaymentUseCase.ts` |
+| Fase B: migration `provider*` | `git grep -l "provider_external_id" HEAD -- supabase/migrations prisma` | 4 migrations, incluindo `20261117120000_corretor_studio_pending_action_provider.sql`, e `schema.prisma` |
+| Regularização: painel | `git grep -l "FeatureBlockedPanel" HEAD -- app` | `FeatureBlockedPanel.tsx`, seu teste e `LayoutContent.tsx` |
+| Regularização: rota, sessão e contador | `git grep -l "CheckoutAutoRedirect\|resolveLegacyBillingGracePaymentPath\|getServerSessionUserId" HEAD -- app components lib proxy.ts` | 9 arquivos, entre eles `proxy.ts`, `route-access.ts`, `server-session-user.ts` e `CheckoutAutoRedirect.tsx` |
+| Fase D ausente | `git grep -nw "externalPayment\|markPaidExternally\|paidExternally" HEAD -- app lib prisma supabase/migrations` | sem resultado. (A busca sem `-w` acertava `externalPaymentId` do webhook, que não é a baixa externa.) |
+| Fase D: ponto de entrada | `git grep -n "Confirmar recebimento em dinheiro" HEAD -- app` | `BackofficeClientInvoiceDetailsContainer.tsx`, linha 354 |
+| Fase E ausente | `git grep -n "hasDelegatedTeamManagementAccess" HEAD -- "app/api/v1/subscription-management" "app/[supabaseId]/subscription" app/api/useCases/subscriptions` | sem resultado. O helper existe em `app/api/v1/utils/teamAccess.ts` (linha 298) |
+| Fase G parcial | `git grep -l "ReadOnlyAccessBanner" HEAD -- app` | `ReadOnlyAccessBanner.tsx`, seu teste e `LayoutContent.tsx` |
+| Merge dos PRs | `gh pr view <n> --json state,mergedAt` | #1381 2026-11-18T17:49:50Z; #1408 2026-11-18T20:10:40Z; #1413 2026-11-19T13:40:40Z; #1414 2026-11-25T15:19:52Z; #1431 2026-11-26T15:06:03Z; #1432 2026-11-26T18:23:13Z; #1395 2026-11-16T17:55:55Z; #1423 2026-11-23T15:02:55Z |
+
 ## Estado da entrega (2026-11-17)
 
 | Item | Situação |
@@ -74,6 +122,19 @@ Cada linha cita o comando usado e o resultado observado.
 
 - 2026-11-26: PR #1432 com conflito contra a `develop`, que recebeu o PR #1431 e moveu a renovação para `/pagamento/[supabaseId]`. Merge normal da `develop` na branch (`84a1e98ef`), sem force; os avisos da carência passaram a apontar para a página nova. Suíte oficial 6997 + 127, typecheck, lint e governança com exit 0. Uma falha aparente de 4 testes (estouro de 5 s) foi do meu `.env` de exemplo esquecido na pasta, não do código.
 - 2026-11-26: verificação das telas da Fase C. Tela de renovação real com dados reais (1440, 375 e 640 px), fase do cartão e retry do `/checkout` (campo simulado), E2E de checkout, add-on, adesão, estados do checkout, renovação e acesso da conta em Chromium (49 de 49) e checkout, renovação e cartão em Firefox (25 de 25). Correção de registro: o cartão do `/checkout` já passa pelo AbacatePay, a pendência estava errada. As seções da Fase C no `02-frontend.md` foram renumeradas para F10 e F11 (a `develop` já usava F8 e F9). Não verificado: WebKit (não abre com este Playwright), leitor de tela, tokenização real do cartão.
+
+- 2026-11-18: Fase A entregue. PR #1381 mergeado na `develop` às 17:49Z. No mesmo dia, a Fase B começou a entrar: add-ons AbacatePay sem fallback Asaas (`495cb589b`) e correção do review do #1407 (`247e05ba2`, PR #1408 às 20:10Z).
+- 2026-11-19: PR #1413 mergeado (13:40Z). Entrou a cobrança avulsa do backoffice por PIX e cartão (`cd40a2a87`) e o bloqueio da troca de forma quando a cobrança AbacatePay não tem `paymentId` (`e13b54b69`).
+- 2026-11-23: refatoração do roteador e da confirmação agnósticas ao provedor (`3874db353`, `b49503ae6`), telefone do cliente obrigatório na cobrança (`57b19eb3a`). PR #1423 (`billing-grace-expiry-2026-12-05`) mergeado às 15:02Z.
+- 2026-11-24: checkouts em fases com kit compartilhado (`f9676c7b1`, PR #1428) e add-ons AbacatePay com confirmação agnóstica e parcelamento por ciclo (`8242b3cff`, D6).
+- 2026-11-25: PR #1414 mergeado (15:19Z). Botão "Regularizar assinatura" no painel "Acesso não liberado" (`039ba5d15`, D18): briefing aprovado, 6943 testes passando, validação do pre-push completa, prints em desktop e celular enviados no chat. A Fase C foi implementada na branch dela no mesmo dia (ver entradas acima).
+- 2026-11-26: pedido do dono: o checkout de regularização abria dentro do shell com sidebar e precisava ser uma página própria, mantendo o usuário logado, com uma tela final que leva ao Corretor Studio em 5 s; o mesmo vale para o add-on. Briefing aprovado e três decisões (rota `/pagamento/[supabaseId]`, login no add-on, destino da tela final). Implementado em `1e6a8a88c` (D15, D16, D17).
+- 2026-11-26: primeiro push bloqueado pelo pre-push: 1 falha em `OverdueReminderUseCase.test.ts`, que esperava o link antigo `/billing-grace-payment` no e-mail de inadimplência. Corrigido em `c948f5230`; o push seguinte passou nas 11 etapas da validação.
+- 2026-11-26: pipeline do PR #1431 (run 45828436193) reprovou o E2E em 13 testes e bloqueou o Quality Gate. Causa principal: as páginas novas liam o usuário só pelo Supabase, e o cookie assinado do E2E não passa por ele, então o servidor mandava ao login. Corrigido com `getServerSessionUserId` (`572020153`), mais as URLs antigas em `account-access-gate.spec.ts` e `subscription.spec.ts`. O erro `Continuar` não encontrado nos 8 testes de add-on veio da mesma causa.
+- 2026-11-26: segundo run (45840803886, commit `572020153`) com 2 falhas. Uma era nossa: o botão "Sair" do cabeçalho tinha 32 px em 360 px, abaixo dos 44 px que o teste de responsividade exige; corrigido em `38595f69a`. A outra, `templates-flow.spec.ts` (landing pages, `main#top` duplicado), não passa por arquivo alterado e a `develop` também tem falhas recentes de E2E; não foi tocada. O resultado do E2E depois de `38595f69a` não foi lido nesta nota.
+- 2026-11-26: PR #1431 mergeado às 15:06Z. PR #1432 (Fase C) mergeado às 18:23Z, depois de merge da `develop` que moveu a renovação para `/pagamento/[supabaseId]`.
+- 2026-11-26: a pedido do dono, o botão "Cancelar" do redirecionamento foi retirado da confirmação final (D17). O contador e "Ir agora" ficam. Validação: testes de `components/checkout` (19), lint e tela simulada no navegador sem o botão.
+- 2026-11-26: documentação recriada. Este conjunto passa a ter o plano completo das fases A a G ([07-plano-das-fases.md](07-plano-das-fases.md)), as decisões D15 a D18, os nós B14, F12 e F13, os briefings das duas telas novas e os estados reconciliados com a `develop`. Auditoria dos estados na seção "Auditoria (2026-11-26)".
 
 ## Pendências que bloqueiam o push
 
