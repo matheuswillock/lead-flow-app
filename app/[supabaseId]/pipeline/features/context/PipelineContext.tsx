@@ -60,7 +60,8 @@ export type PipelineTableColumnKey =
   | "closerId"
   | "meetingDate"
   | "contacts"
-  | "createdAt";
+  | "createdAt"
+  | "updatedAt";
 
 export type PipelineTableColumnVisibility = Record<PipelineTableColumnKey, boolean>;
 
@@ -80,6 +81,7 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibi
   meetingDate: true,
   contacts: false,
   createdAt: false,
+  updatedAt: false,
 };
 
 export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
@@ -97,6 +99,7 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
   "closerId",
   "meetingDate",
   "createdAt",
+  "updatedAt",
 ];
 
 interface IPipelineContextState {
@@ -799,6 +802,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     const activeClosers = externalFilters?.closerFilter ?? [];
     const activeStart = externalFilters !== undefined ? externalFilters.periodStart : periodStart;
     const activeEnd = externalFilters !== undefined ? externalFilters.periodEnd : periodEnd;
+    const activeUpdatedStart = externalFilters?.updatedPeriodStart ?? "";
+    const activeUpdatedEnd = externalFilters?.updatedPeriodEnd ?? "";
     const activeScheduledStart =
       externalFilters !== undefined ? externalFilters.scheduledPeriodStart : "";
     const activeScheduledEnd =
@@ -846,6 +851,15 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const beforeEnd = !activeEnd || createdKey <= activeEnd;
       const matchesPeriod = afterStart && beforeEnd;
 
+      let matchesUpdatedPeriod = true;
+      if (activeUpdatedStart || activeUpdatedEnd) {
+        const updatedKey = formatDateKey(lead.updatedAt, tz);
+        matchesUpdatedPeriod =
+          Boolean(updatedKey) &&
+          (!activeUpdatedStart || updatedKey >= activeUpdatedStart) &&
+          (!activeUpdatedEnd || updatedKey <= activeUpdatedEnd);
+      }
+
       let matchesScheduledPeriod = true;
       if (activeScheduledStart || activeScheduledEnd) {
         if (!lead.meetingDate) {
@@ -884,6 +898,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         matchesNeedsReschedule &&
         matchesOrigin &&
         matchesPeriod &&
+        matchesUpdatedPeriod &&
         matchesScheduledPeriod
       );
     });

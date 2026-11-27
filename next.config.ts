@@ -11,9 +11,14 @@ import {
   getWhatsAppSecurityHeaders,
 } from "./lib/security/site-frame-ancestors";
 
-// Validate environment variables at build time
-// Skip in CI — secrets are not injected during the build step
-if (process.env.CI !== 'true') {
+// Validate environment variables at build time.
+// GitHub Actions CI does not inject secrets during the build step, so it is skipped there.
+// Vercel does inject them, so its build MUST fail when a required variable is missing —
+// including when the project exposes the system `CI` variable as "true".
+const skipBuildEnvValidation =
+  process.env.CI === 'true' && process.env.VERCEL !== '1';
+
+if (!skipBuildEnvValidation) {
   console.info('\n🔍 Validating environment variables...\n');
   const envValidation = validateEnv();
 
