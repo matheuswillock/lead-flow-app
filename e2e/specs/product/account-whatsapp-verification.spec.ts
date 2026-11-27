@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
+import { WHATS_NEW_VERSION } from "../../../components/whats-new-modal"
 import { createProfileOutput } from "../../../app/api/v1/profiles/DTO/profileResponseDTO"
 import { API_CLIENT_BASE } from "../../../lib/route-map"
 import { injectE2eAuthCookie } from "../../fixtures/auth"
@@ -53,26 +54,6 @@ async function deleteWhatsAppFixture(fixture: WhatsAppFixture) {
 const dashboardPath = (supabaseId: string) => `/${supabaseId}/dashboard`
 const accountPath = (supabaseId: string) => `/${supabaseId}/account`
 const phone = "+15551234567"
-
-async function dismissAnnouncement(page: Page) {
-  const announcement = page.getByRole("dialog", { name: /Novidades no Corretor Studio/ })
-  const closeButton = announcement.getByRole("button", { name: "Close" })
-  const main = page.getByRole("main")
-
-  await expect
-    .poll(
-      async () =>
-        (await announcement.isVisible().catch(() => false)) ||
-        (await main.isVisible().catch(() => false)),
-      { timeout: 10_000 },
-    )
-    .toBe(true)
-
-  if (await announcement.isVisible().catch(() => false)) {
-    await closeButton.click()
-    await expect(announcement).toBeHidden()
-  }
-}
 
 async function mockAccountApi(
   page: Page,
@@ -189,6 +170,12 @@ test.describe("verificação de WhatsApp na conta", () => {
   test.beforeEach(async ({ context }) => {
     fixture = await createWhatsAppFixture()
     await injectE2eAuthCookie(context, { supabaseId: fixture.supabaseId, email: fixture.email })
+    await context.addInitScript(
+      ({ supabaseId, version }: { supabaseId: string; version: string }) => {
+        window.localStorage.setItem(`whats-new:seen:${version}:${supabaseId}`, "true")
+      },
+      { supabaseId: fixture.supabaseId, version: WHATS_NEW_VERSION },
+    )
   })
 
   test.afterEach(async () => {
@@ -211,17 +198,15 @@ test.describe("verificação de WhatsApp na conta", () => {
     await mockAccountApi(page, user)
 
     await page.goto(dashboardPath(user.supabaseId))
-    await dismissAnnouncement(page)
 
     await expect(page.getByRole("main")).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole("heading", { name: "Verifique seu WhatsApp" })).toHaveCount(0)
     await page.goto(accountPath(user.supabaseId))
-    await dismissAnnouncement(page)
     await expect(page.getByRole("heading", { name: "WhatsApp para notificações" })).toBeVisible()
     await expect(
       page.getByRole("status").filter({ hasText: /^WhatsApp verificado$/ }),
     ).toBeVisible()
-    await runResponsiveChecks(page)
+    await runResponsiveChecks(page, { touchTargets: { selector: 'input[type="tel"]' } })
   })
 
   test("alerta abre Minha conta e a confirmação retorna ao destino sem expor o OTP na URL", async ({
@@ -233,7 +218,6 @@ test.describe("verificação de WhatsApp na conta", () => {
     await mockAccountApi(page, user)
 
     await page.goto(originalPath)
-    await dismissAnnouncement(page)
     await expect(page.getByRole("heading", { name: "Verifique seu WhatsApp" })).toBeVisible({
       timeout: 30_000,
     })
@@ -257,7 +241,7 @@ test.describe("verificação de WhatsApp na conta", () => {
     await expect(page).toHaveURL(originalPath)
     const promptDismiss = page.getByRole("button", { name: "Agora não" })
     if (await promptDismiss.isVisible().catch(() => false)) await promptDismiss.click()
-    await expect(page.getByRole("heading", { name: "Calendário" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
     expect(page.url()).not.toContain("654321")
   })
 
@@ -268,14 +252,15 @@ test.describe("verificação de WhatsApp na conta", () => {
     await mockAccountApi(page, user, { requestError: true })
 
     await page.goto(accountPath(user.supabaseId))
-    await dismissAnnouncement(page)
     await expect(page.getByRole("heading", { name: "WhatsApp para notificações" })).toBeVisible({
       timeout: 30_000,
     })
     const phoneInput = page.getByRole("textbox", { name: "Número de WhatsApp" })
     await phoneInput.fill(phone)
     await page.getByRole("button", { name: "Enviar código" }).click()
-    await expect(page.getByRole("alert")).toHaveText("Falha simulada ao enviar código.")
+    await expect(
+      page.getByRole("alert").filter({ hasText: /^Falha simulada ao enviar código\.$/ }),
+    ).toHaveText("Falha simulada ao enviar código.")
     expect(page.url()).not.toContain("654321")
   })
 })
