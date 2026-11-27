@@ -31,6 +31,7 @@ const BASE_VALID_ENV: Record<string, string> = {
   NEXT_PUBLIC_SENTRY_DSN: "https://sentry.example.com/1",
   ENCRYPTION_KEY: "a".repeat(64),
   NEXT_PUBLIC_ENCRYPTION_KEY: "b".repeat(64),
+  INVITE_LINK_SECRET: "invite-link-secret-with-at-least-32-chars",
   INTEGRATIONS_ENCRYPTION_KEY: "c".repeat(32),
   META_VERIFY_TOKEN: "meta-verify-token",
   OPENWA_API_URL: "http://openwa:3333",
@@ -86,5 +87,18 @@ describe("envSchema — envs legacy do Asaas (E2)", () => {
       expect(result.data.ASAAS_LEGACY_API_KEY).toBeUndefined()
       expect(result.data.ASAAS_LEGACY_WEBHOOK_TOKEN).toBeUndefined()
     }
+  })
+})
+
+describe("envSchema — INVITE_LINK_SECRET (link de convite)", () => {
+  // Sem esta var o envio do convite falha em runtime (lib/auth/invite-link-token.ts);
+  // a validação de build/startup precisa acusar antes do deploy.
+  it("exige o segredo com pelo menos 32 caracteres", () => {
+    const withoutSecret: Record<string, string> = { ...BASE_VALID_ENV }
+    delete withoutSecret.INVITE_LINK_SECRET
+
+    expect(envSchema.safeParse(withoutSecret).success).toBe(false)
+    expect(envSchema.safeParse({ ...BASE_VALID_ENV, INVITE_LINK_SECRET: "curto" }).success).toBe(false)
+    expect(envSchema.safeParse(BASE_VALID_ENV).success).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 # Decisões: assinaturas e add-ons
 
-Registro de decisões desta feature. Substitui a consulta ao Obsidian. Datas de referência: 2026-11-17. Confirmadas pelo usuário na conversa.
+Registro de decisões desta feature. Substitui a consulta ao Obsidian. Datas de referência: 2026-11-17 a 2026-11-26. Confirmadas pelo usuário na conversa.
 
 Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md) · [03-backend.md](03-backend.md) · [04-progresso.md](04-progresso.md) · [spec-backend.md](spec-backend.md) · [spec-frontend.md](spec-frontend.md)
 
@@ -117,7 +117,7 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
 
 ## D12. E-mail da carência: dois avisos, com link para a página de pagamento
 
-- **Decisão:** o cron `overdue-reminder` (já existente) ganhou um passo antes dos degraus: envia ao master, durante a carência, dois avisos de que o ciclo está se encerrando. O primeiro sai quando a conta é vista como `past_due` (dias 0 a 3 de atraso). O segundo sai no último dia antes do modo somente leitura (dia 4). Cada aviso tem a data limite da carência e o botão para `/billing-grace-payment`.
+- **Decisão:** o cron `overdue-reminder` (já existente) ganhou um passo antes dos degraus: envia ao master, durante a carência, dois avisos de que o ciclo está se encerrando. O primeiro sai quando a conta é vista como `past_due` (dias 0 a 3 de atraso). O segundo sai no último dia antes do modo somente leitura (dia 4). Cada aviso tem a data limite da carência e o botão para a página de pagamento (`/pagamento/[supabaseId]`; antes da D15 era `/billing-grace-payment`).
 - **Dedupe:** um aviso por ciclo de atraso, gravado em `SubscriptionChangeLog` com `eventType` nulo e `changeType` próprio (`delinquency_grace_started`, `delinquency_grace_last_day`). Fica nulo para não contar como transição "overdue" nas métricas de ciclo de vida. Sem migration.
 - **Regra dos dias:** `resolveGraceNotice` em `lib/billing/delinquency-tier.ts`. Não altera `resolveDelinquencyTier` nem o acesso.
 - **Texto:** `lib/billing/delinquency-reminder-copy.ts`. Cita os prazos (mensal, trimestral, semestral ou anual) e que usuários e times adicionais aparecem antes de pagar.
@@ -141,3 +141,34 @@ Referências: [01-feature.md](01-feature.md) · [02-frontend.md](02-frontend.md)
 - **Corrigido (servidor):** conta legada guardava `YEARLY` ou `SEMIANNUALLY` e abria no primeiro prazo da lista. A cotação devolve o prazo normalizado (`annual`, `semiannual`), então o pré-selecionado funciona para todas as contas.
 - **Tela:** aviso a quem perde o ilimitado ao sair do anual, com os valores, controle "Manter usuários ilimitados (plano anual)" e linha "Inclui R$ X de usuários adicionais" em cada prazo. Briefing [aprovado em 2026-11-25](design/renovacao-usuarios-adicionais.md). Implementada; falta a verificação renderizada.
 - **Status:** decidido em 2026-11-25.
+
+## D15. Checkout de regularização em tela própria, fora do shell da conta
+
+- **Problema:** a regularização abria dentro do layout da conta (com sidebar), como se o master estivesse usando o app. Para quem está pagando, isso mistura navegação do produto com um fluxo de cobrança.
+- **Decisão:** o checkout de regularização mora em `/pagamento/[supabaseId]`, num layout próprio (`app/pagamento/[supabaseId]/layout.tsx`) com cabeçalho enxuto (logo e "Sair") e sem sidebar. O usuário continua logado: a rota exige sessão e só o dono da conta (o `supabaseId` da URL igual ao usuário logado) vê o checkout; os demais voltam ao próprio dashboard.
+- **Rota antiga:** `/[supabaseId]/billing-grace-payment` responde 308 para `/pagamento/[supabaseId]` (`resolveLegacyBillingGracePaymentPath`, aplicado em `proxy.ts`). Os links do banner, do painel, do modo leitura, da página de assinatura e do e-mail de inadimplência apontam para a rota nova.
+- **Sessão no servidor:** o helper `getServerSessionUserId` (`lib/supabase/server-session-user.ts`) resolve o usuário como o bootstrap da conta faz, aceitando também o cookie assinado do E2E. Sem ele, a página mandava o E2E ao login.
+- **Briefing:** [design/checkout-pagamento-dedicado.md](design/checkout-pagamento-dedicado.md), aprovado pelo dono em 2026-11-26 (rota `/pagamento/[supabaseId]`).
+- **Status:** decidido e implementado em 2026-11-26 (`1e6a8a88c`, `572020153`, `38595f69a`; PR #1431).
+
+## D16. Checkout de add-on exige login
+
+- **Decisão:** `/addon-checkout/[pendingActionId]` deixou de ser público. O proxy trata `/addon-checkout/` e `/pagamento/` como páginas de sessão obrigatória (`SESSION_REQUIRED_PAGE_PREFIXES` em `lib/proxy/route-access.ts`); sem sessão, vai para `/sign-in?next=<caminho>` e volta para a mesma URL.
+- **Limite conhecido:** a proteção é da página. A API `/api/v1/addon-checkout/[pendingActionId]` continua acessível pelo id da cobrança, como antes. Exigir que o usuário pertença ao time da cobrança na API é um endurecimento à parte, que não foi feito.
+- **Efeito:** o E2E do add-on precisa da sessão de teste (`injectE2eAuthCookie`).
+- **Cabeçalho:** o add-on manteve o cabeçalho do `PublicCheckoutShell`. O cabeçalho com "Sair" não foi adicionado ali, porque ficava duplicado e com o botão ilegível sobre o fundo claro. Pendência de produto.
+- **Status:** decidido pelo dono em 2026-11-26; implementado na página e no proxy. API: pendente.
+
+## D17. Confirmação final com contador de 5 segundos, sem cancelar
+
+- **Decisão:** depois do pagamento confirmado, a tela de sucesso (renovação "Assinatura reativada" e add-on "Pagamento confirmado") mostra "Você será levado ao Corretor Studio em N s." e o botão "Ir agora". O redirecionamento usa navegação completa, para o dashboard recalcular o acesso já pago. Componente: `components/checkout/CheckoutAutoRedirect.tsx`.
+- **Sem cancelar:** a primeira versão tinha um botão "Cancelar" e uma mensagem de redirecionamento cancelado. O dono pediu para retirar em 2026-11-26.
+- **Destino:** `/[supabaseId]/dashboard`. O briefing aprovado dizia "entrada da conta (`/[supabaseId]`)", mas essa raiz não tem página e daria 404. O dashboard é o destino que a tela de renovação já usava.
+- **Status:** decidido e implementado em 2026-11-26. Não verificado: confirmação do add-on com pagamento confirmado de verdade (só a renovação foi vista, com o pagamento simulado no navegador).
+
+## D18. Botão "Regularizar assinatura" no painel "Acesso não liberado"
+
+- **Problema:** o painel de bloqueio por falta de módulo não oferecia caminho para o master pagar, mesmo quando a causa era a assinatura em carência ou somente leitura.
+- **Decisão:** o painel (`FeatureBlockedPanel`) mostra o botão "Regularizar assinatura" só quando o usuário é o master e a conta tem cobrança pendente (carência ativa ou `read_only`). A regra é `canOfferPaymentFromBlockedFeature` (`app/[supabaseId]/components/accountAccessRecovery.ts`). Sem cobrança pendente, ou para quem não é master, o painel segue só com o texto.
+- **Briefing:** [design/regularizar-assinatura-painel-bloqueado.md](design/regularizar-assinatura-painel-bloqueado.md), aprovado pelo dono em 2026-11-25.
+- **Status:** decidido e implementado em 2026-11-25 (`039ba5d15`).
