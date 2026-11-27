@@ -1,6 +1,8 @@
 import { ActivityType, LeadStatus, Prisma, type InviteDispatchStatus, type Lead, type LeadsSchedule } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { buildStudioActivityData } from "@/lib/studio-feed-identity";
+import { buildScheduleChangePlan } from "@/lib/bethania/agenda-planner";
+import { enqueueBethaniaOutboxInTransaction } from "@/app/api/infra/data/repositories/bethania-outbox/EnqueueBethaniaOutboxTransaction";
 
 type CalendarResult = {
   eventId: string;
@@ -10,6 +12,8 @@ type CalendarResult = {
 export type PersistLeadScheduleInput = {
   scheduleId: string;
   leadId: string;
+  leadName: string;
+  recipientTimezone: string;
   closerId: string;
   meetingDate: Date;
   durationMinutes: number;
@@ -124,6 +128,19 @@ export class LeadSchedulePersistenceRepository {
               : input.existingSchedule?.reminder30MinSentAt,
         },
       });
+
+      const scheduleEvent = buildScheduleChangePlan({
+        scheduleId: schedule.id,
+        profile: { id: input.closerId, timezone: input.recipientTimezone },
+        actorProfileId: input.createdByProfileId,
+        previousDate: input.existingSchedule?.date ?? null,
+        nextDate: input.meetingDate,
+        updatedAt: schedule.updatedAt,
+        leadName: input.leadName,
+      });
+      if (scheduleEvent) {
+        await enqueueBethaniaOutboxInTransaction(tx, scheduleEvent);
+      }
 
       const lead = await tx.lead.update({
         where: { id: input.leadId },

@@ -882,6 +882,8 @@ export class LeadScheduleService implements ILeadScheduleService {
     const persisted = await leadSchedulePersistenceRepository.persist({
       scheduleId,
       leadId,
+      leadName,
+      recipientTimezone: closerProfile.timezone || "America/Sao_Paulo",
       closerId,
       meetingDate,
       durationMinutes,

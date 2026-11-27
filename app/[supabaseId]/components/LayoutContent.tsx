@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamContext } from "@/app/context/TeamContext";
@@ -20,6 +20,22 @@ import { ReadOnlyAccessBanner } from "./ReadOnlyAccessBanner";
 import { FeatureBlockedPanel } from "./FeatureBlockedPanel";
 import { canOfferPaymentFromBlockedFeature } from "./accountAccessRecovery";
 import { shouldContainLayoutContent } from "@/lib/layout/layout-content-overflow";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  buildWhatsAppAccountPath,
+  getAccountReturnPath,
+  shouldShowWhatsAppVerificationPrompt,
+} from "../account/whatsappVerification.client";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -35,6 +51,13 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoading, error } = useUserContext();
+  const [whatsAppPromptDismissed, setWhatsAppPromptDismissed] = useState(false);
+  const shouldPromptForWhatsApp = shouldShowWhatsAppVerificationPrompt(
+    user,
+    isLoading,
+    pathname,
+    supabaseId,
+  );
   const {
     teams,
     isLoading: teamsLoading,
@@ -161,6 +184,35 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
           <ReadOnlyAccessBanner supabaseId={supabaseId} isBillingOwner={isTeamMaster} />
         ) : null}
         <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal && !isReadOnlyAccess} />
+        <AlertDialog
+          open={shouldPromptForWhatsApp && !whatsAppPromptDismissed}
+          onOpenChange={(open) => {
+            if (!open) setWhatsAppPromptDismissed(true);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Verifique seu WhatsApp</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cadastre e confirme seu número na Minha conta para receber notificações da agenda.
+                Você pode fazer isso agora ou continuar usando a plataforma.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Agora não</AlertDialogCancel>
+              <AlertDialogAction
+                asChild
+                onClick={(event) => {
+                  event.preventDefault();
+                  const returnPath = getAccountReturnPath(pathname, supabaseId);
+                  router.push(buildWhatsAppAccountPath(supabaseId, returnPath));
+                }}
+              >
+                <Button>Ir para minha conta</Button>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <CampaignDispatchIndicator />
         <div className={`flex min-h-0 flex-1 flex-col ${containsPageScroll ? "overflow-hidden" : "overflow-auto"}`}>
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">

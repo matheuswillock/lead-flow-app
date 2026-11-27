@@ -10,16 +10,13 @@ export async function assertProfileOwnership(
   request: NextRequest,
   requestedSupabaseId: string,
 ): Promise<ProfileOwnershipAccessResult> {
-  let authenticatedSupabaseId = request.headers.get("x-supabase-user-id")
-
-  if (!authenticatedSupabaseId) {
-    const supabase = await createSupabaseServer()
-    if (supabase) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      authenticatedSupabaseId = user?.id ?? null
-    }
+  const supabase = await createSupabaseServer()
+  let authenticatedSupabaseId: string | null = null
+  if (supabase) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    authenticatedSupabaseId = user?.id ?? null
   }
 
   if (!authenticatedSupabaseId) {

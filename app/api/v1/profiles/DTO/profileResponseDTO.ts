@@ -18,6 +18,8 @@ export interface ProfileResponseDTO {
   email: string;
   supabaseId: string | null;
   phone: string | null;
+  whatsappPhone: string | null;
+  whatsappPhoneVerifiedAt: string | null;
   fullName: string | null;
   cpfCnpj: string | null;
   postalCode: string | null;
@@ -93,6 +95,12 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     email: profile.email,
     supabaseId: profile.supabaseId,
     phone: profile.phone,
+    whatsappPhone: profile.whatsappPhone ?? null,
+    whatsappPhoneVerifiedAt: profile.whatsappPhoneVerifiedAt
+      ? (profile.whatsappPhoneVerifiedAt instanceof Date
+          ? profile.whatsappPhoneVerifiedAt.toISOString()
+          : profile.whatsappPhoneVerifiedAt)
+      : null,
     fullName: profile.fullName,
     cpfCnpj: profile.cpfCnpj ?? null,
     postalCode: profile.postalCode ?? null,

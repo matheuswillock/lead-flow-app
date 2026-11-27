@@ -74,6 +74,11 @@ export async function PUT(
       return NextResponse.json(output, { status: 400 });
     }
 
+    const access = await assertProfileOwnership(request, supabaseId);
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status });
+    }
+
     const body = await request.json();
 
     let updateData;
