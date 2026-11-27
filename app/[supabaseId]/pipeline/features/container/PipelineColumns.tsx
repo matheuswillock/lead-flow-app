@@ -85,6 +85,7 @@ export const PIPELINE_COLUMN_SCREEN_CLASS: Readonly<Record<string, string>> = {
   closerId: "hidden xl:table-cell",
   currentHealthPlan: "hidden 2xl:table-cell",
   createdAt: "hidden 2xl:table-cell",
+  updatedAt: "hidden 2xl:table-cell",
   leadCode: "hidden 2xl:table-cell",
   contacts: "hidden 2xl:table-cell",
 };
@@ -529,6 +530,27 @@ export const createColumns = ({
       }
 
       return true
+    },
+  },
+  {
+    accessorKey: "updatedAt",
+    meta: { label: "Última atualização" },
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className={headerButtonClass}
+        >
+          Última atualização
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      return <div className="text-sm">{formatDate(row.getValue("updatedAt"), tz)}</div>
     },
   },
 ]
