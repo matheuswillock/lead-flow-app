@@ -35,10 +35,9 @@ export function LandingHero() {
               <ArrowRight className="size-5" aria-hidden />
             </Link>
             <DemoRequestDialogButton
-              className="landing-secondary-cta inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-6 py-3 text-base font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center justify-center px-2 text-sm font-medium text-landing-muted underline underline-offset-4 transition-colors hover:text-[var(--landing-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               Solicitar demonstração
-              <ArrowRight className="size-5" aria-hidden />
             </DemoRequestDialogButton>
           </div>
           <p className="mt-3 text-sm text-landing-muted">Escolha seu plano e pague por PIX.</p>
