@@ -14,11 +14,44 @@ import type { Prisma, UserFunction, UserRole } from "@prisma/client";
 import { buildAddedToTeamEmail } from "@/lib/emails/buildAddedToTeamEmail";
 import { getAppUrl } from "@/lib/utils/app-url";
 
+export type ExternalPaymentMetadata = {
+  reference: string;
+  proofUrl: string | null;
+  operatorId: string;
+  paidAt: string;
+};
+
 type ApplyPendingActionOptions = {
   skipSubscriptionSync?: boolean;
   paymentStatus?: string;
   waivedReason?: string;
+  externalPayment?: ExternalPaymentMetadata;
 };
+
+function buildAppliedPayload(
+  payload: Record<string, any>,
+  applyOptions?: {
+    paymentStatus?: string;
+    waivedReason?: string;
+    externalPayment?: ExternalPaymentMetadata;
+  }
+): Record<string, any> {
+  return {
+    ...payload,
+    paymentStatus: applyOptions?.paymentStatus ?? "CONFIRMED",
+    ...(applyOptions?.waivedReason
+      ? {
+          waivedReason: applyOptions.waivedReason,
+          waivedAt: new Date().toISOString(),
+        }
+      : {}),
+    ...(applyOptions?.externalPayment
+      ? {
+          externalPayment: applyOptions.externalPayment,
+        }
+      : {}),
+  };
+}
 
 type ResolvedPendingAction = ApplicablePendingAction;
 type PendingActionPayload = Record<string, any>;
@@ -80,6 +113,33 @@ export class PendingActionUseCase {
     }
 
     return this.applyResolvedPendingAction(action);
+  }
+
+  /**
+   * Aplica uma PendingAction após baixa manual externa no backoffice.
+   * Nunca reutiliza o mecanismo de waive (WAIVED).
+   */
+  async applyPendingActionByExternalPayment(
+    pendingActionId: string,
+    externalPayment: ExternalPaymentMetadata
+  ): Promise<Output> {
+    const action = await pendingActionRepository.findApplicableById(pendingActionId);
+    if (!action) {
+      return new Output(false, [], ["Ação pendente não encontrada"], null);
+    }
+
+    if (action.status === "applied") {
+      return new Output(false, [], ["Esta fatura já foi paga ou aplicada"], null);
+    }
+
+    if (action.status !== "pending") {
+      return new Output(false, [], ["Apenas faturas pendentes podem ser marcadas como pagas externamente"], null);
+    }
+
+    return this.applyResolvedPendingAction(action, undefined, {
+      paymentStatus: "EXTERNAL",
+      externalPayment,
+    });
   }
 
   // account: conta Asaas de onde o evento se origina (E3 de
@@ -301,26 +361,27 @@ export class PendingActionUseCase {
     try {
       const appliedResult = await pendingActionRepository.runInTransaction(async (tx) => {
         if (action.actionType === "create_team") {
-          return this.applyCreateTeam(tx, action, paymentId);
+          return this.applyCreateTeam(tx, action, paymentId, options);
         }
 
         if (action.actionType === "add_member") {
-          return this.applyAddMember(tx, action, paymentId);
+          return this.applyAddMember(tx, action, paymentId, options);
         }
 
         if (action.actionType === "add_user") {
           return this.applyAddUser(tx, action, paymentId, {
             paymentStatus,
             waivedReason: options?.waivedReason,
+            externalPayment: options?.externalPayment,
           });
         }
 
         if (action.actionType === "transfer_team") {
-          return this.applyTransferTeam(tx, action, paymentId);
+          return this.applyTransferTeam(tx, action, paymentId, options);
         }
 
         if (action.actionType === "update_subscription_credits") {
-          return this.applyUpdateSubscriptionCredits(tx, action, paymentId);
+          return this.applyUpdateSubscriptionCredits(tx, action, paymentId, options);
         }
 
         throw new Error(`Tipo de ação não suportado: ${action.actionType}`);
@@ -348,16 +409,14 @@ export class PendingActionUseCase {
           });
 
           await pendingActionRepository.updatePayload(action.id, {
-            ...(action.payload as PendingActionPayload),
-            paymentStatus,
+            ...buildAppliedPayload(action.payload as PendingActionPayload, options),
             subscriptionSyncStatus: "updated",
             subscriptionUpdatedAt: new Date().toISOString(),
           });
         } catch (subscriptionError) {
           console.error("[PendingActionUseCase] Falha ao sincronizar assinatura recorrente:", subscriptionError);
           await pendingActionRepository.updatePayload(action.id, {
-            ...(action.payload as PendingActionPayload),
-            paymentStatus,
+            ...buildAppliedPayload(action.payload as PendingActionPayload, options),
             subscriptionSyncStatus: "failed",
           });
         }
@@ -383,7 +442,8 @@ export class PendingActionUseCase {
   private async applyCreateTeam(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: ApplyPendingActionOptions
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamName = (payload.teamName as string | undefined) ?? (payload.name as string | undefined);
@@ -418,10 +478,7 @@ export class PendingActionUseCase {
       id: action.id,
       paymentId: paymentId ?? action.paymentId,
       teamId: team.id,
-      payload: {
-        ...payload,
-        paymentStatus: "CONFIRMED",
-      },
+      payload: buildAppliedPayload(payload, applyOptions),
     });
 
     return { teamId: team.id };
@@ -430,7 +487,8 @@ export class PendingActionUseCase {
   private async applyAddMember(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: ApplyPendingActionOptions
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamId = action.teamId || payload.teamId;
@@ -464,10 +522,7 @@ export class PendingActionUseCase {
       id: action.id,
       paymentId: paymentId ?? action.paymentId,
       teamId,
-      payload: {
-        ...payload,
-        paymentStatus: "CONFIRMED",
-      },
+      payload: buildAppliedPayload(payload, applyOptions),
     });
 
     return { teamId };
@@ -477,7 +532,7 @@ export class PendingActionUseCase {
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
     paymentId?: string,
-    applyOptions?: { paymentStatus?: string; waivedReason?: string }
+    applyOptions?: { paymentStatus?: string; waivedReason?: string; externalPayment?: ExternalPaymentMetadata }
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamId = action.teamId || payload.teamId;
@@ -552,16 +607,7 @@ export class PendingActionUseCase {
       id: action.id,
       paymentId: nextPaymentId,
       teamId,
-      payload: {
-        ...payload,
-        paymentStatus,
-        ...(applyOptions?.waivedReason
-          ? {
-              waivedReason: applyOptions.waivedReason,
-              waivedAt: new Date().toISOString(),
-            }
-          : {}),
-      },
+      payload: buildAppliedPayload(payload, applyOptions),
     });
 
     return {
@@ -578,7 +624,8 @@ export class PendingActionUseCase {
   private async applyTransferTeam(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: ApplyPendingActionOptions
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const teamId = action.teamId || payload.teamId;
@@ -607,10 +654,7 @@ export class PendingActionUseCase {
       id: action.id,
       paymentId: paymentId ?? action.paymentId,
       teamId,
-      payload: {
-        ...payload,
-        paymentStatus: "CONFIRMED",
-      },
+      payload: buildAppliedPayload(payload, applyOptions),
     });
 
     return { teamId };
@@ -619,7 +663,8 @@ export class PendingActionUseCase {
   private async applyUpdateSubscriptionCredits(
     tx: Prisma.TransactionClient,
     action: ResolvedPendingAction,
-    paymentId?: string
+    paymentId?: string,
+    applyOptions?: ApplyPendingActionOptions
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
     const addedTeamCredits = Math.max(0, Number(payload.addedTeamCredits ?? 0));
@@ -637,10 +682,7 @@ export class PendingActionUseCase {
     await pendingActionRepository.markApplied(tx, {
       id: action.id,
       paymentId: paymentId ?? action.paymentId,
-      payload: {
-        ...payload,
-        paymentStatus: "CONFIRMED",
-      },
+      payload: buildAppliedPayload(payload, applyOptions),
     });
 
     return { teamId: action.teamId ?? "" };

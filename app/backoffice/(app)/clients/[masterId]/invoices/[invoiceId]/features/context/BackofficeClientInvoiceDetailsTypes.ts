@@ -26,4 +26,10 @@ export interface BackofficeClientInvoiceDetails {
   deleted: boolean
   checkoutUrl: string | null
   pendingActionId: string | null
+  externalPayment?: {
+    reference: string
+    proofUrl: string | null
+    operatorId: string
+    paidAt: string
+  } | null
 }

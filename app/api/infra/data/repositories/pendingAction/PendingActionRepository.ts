@@ -178,6 +178,7 @@ export class PendingActionRepository implements IPendingActionRepository {
         actionType: true,
         status: true,
         paymentId: true,
+        provider: true,
         teamId: true,
         createdAt: true,
         updatedAt: true,

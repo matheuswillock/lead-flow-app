@@ -53,6 +53,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeClientInvoiceDetails } from "../context/BackofficeClientInvoiceDetailsContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
+import { BackofficeExternalPaymentDialog } from "../../../../features/components/BackofficeExternalPaymentDialog"
+import { canMarkInvoicePaidExternally } from "../../../../features/utils/invoiceActions"
 
 const STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -113,15 +115,18 @@ export function BackofficeClientInvoiceDetailsContainer() {
     isSendingNotification,
     isUpdatingInvoice,
     isDeletingInvoice,
+    isMarkingPaidExternally,
     error,
     reload,
     sendStatusNotification,
     updateInvoice,
     deleteInvoice,
+    markPaidExternally,
   } = useBackofficeClientInvoiceDetails()
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isRemoveChargeOpen, setIsRemoveChargeOpen] = useState(false)
+  const [isExternalPaymentOpen, setIsExternalPaymentOpen] = useState(false)
   const [editValue, setEditValue] = useState("")
   const [editDueDate, setEditDueDate] = useState("")
   const params = useParams()
@@ -163,6 +168,7 @@ export function BackofficeClientInvoiceDetailsContainer() {
   const isExternalAdhesionInvoice = currentInvoice.source === "adhesion_external"
   const statusBadge = STATUS_BADGES[currentInvoice.statusGroup]
   const isPaidInvoice = currentInvoice.statusGroup === "paid"
+  const canMarkPaidExternally = canMarkInvoicePaidExternally(currentInvoice)
   const canEditInvoice =
     !isExternalAdhesionInvoice &&
     !currentInvoice.deleted &&
@@ -283,7 +289,7 @@ export function BackofficeClientInvoiceDetailsContainer() {
                 {invoice.invoiceName} · {invoice.invoiceIdDisplay}
               </span>
               <Badge variant={statusBadge.variant} className={statusBadge.className}>
-                {isExternalAdhesionInvoice
+                {isExternalAdhesionInvoice || invoice.status === "EXTERNAL"
                   ? "Pago externamente"
                   : invoice.status === "WAIVED"
                     ? "Dispensada"
@@ -349,9 +355,15 @@ export function BackofficeClientInvoiceDetailsContainer() {
                     Ver comprovante
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {!isPaidInvoice ? (
-                    <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
-                      Confirmar recebimento em dinheiro
+                  {canMarkPaidExternally ? (
+                    <DropdownMenuItem
+                      disabled={isMarkingPaidExternally}
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        setIsExternalPaymentOpen(true)
+                      }}
+                    >
+                      Marcar como paga externamente
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem
@@ -463,6 +475,31 @@ export function BackofficeClientInvoiceDetailsContainer() {
                 <span className="text-muted-foreground">Linha excluída no Asaas: </span>
                 <span className="font-medium">{invoice.deleted ? "Sim" : "Não"}</span>
               </p>
+              {invoice.externalPayment ? (
+                <>
+                  <p>
+                    <span className="text-muted-foreground">Referência da baixa externa: </span>
+                    <span className="font-medium">{invoice.externalPayment.reference}</span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Data da baixa externa: </span>
+                    <span className="font-medium">{formatDate(invoice.externalPayment.paidAt, tz)}</span>
+                  </p>
+                  {invoice.externalPayment.proofUrl ? (
+                    <p>
+                      <span className="text-muted-foreground">Comprovante externo: </span>
+                      <a
+                        href={invoice.externalPayment.proofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Abrir comprovante
+                      </a>
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
               {invoice.bankSlipUrl ? (
                 <p>
                   <span className="text-muted-foreground">Boleto: </span>
@@ -620,6 +657,14 @@ export function BackofficeClientInvoiceDetailsContainer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BackofficeExternalPaymentDialog
+        open={isExternalPaymentOpen}
+        invoiceLabel={invoice.invoiceIdDisplay}
+        isSubmitting={isMarkingPaidExternally}
+        onOpenChange={setIsExternalPaymentOpen}
+        onConfirm={markPaidExternally}
+      />
     </div>
   )
 }
