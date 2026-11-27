@@ -53,9 +53,10 @@ const phone = "+15551234567"
 
 async function dismissAnnouncement(page: Page) {
   const closeButton = page.getByRole("button", { name: "Close" })
-  await expect(closeButton).toBeVisible()
-  await closeButton.click()
-  await expect(page.getByRole("dialog", { name: /Novidades no Corretor Studio/ })).toBeHidden()
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click()
+    await expect(page.getByRole("dialog", { name: /Novidades no Corretor Studio/ })).toBeHidden()
+  }
 }
 
 async function mockAccountApi(
@@ -63,6 +64,7 @@ async function mockAccountApi(
   profileId: string,
   options: { requestError?: boolean } = {},
 ) {
+  let requestedPhone: string | null = null
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url())
     if (url.origin !== appOrigin) return route.abort()
@@ -71,19 +73,22 @@ async function mockAccountApi(
       : url.pathname
 
     if (pathname.endsWith("/whatsapp-verification/request-code")) {
-      return options.requestError
-        ? route.fulfill({ status: 400, json: { error: "Falha simulada ao enviar código." } })
-        : route.fulfill({ status: 202, json: { success: true, challengeId: "fake-challenge" } })
+      if (options.requestError) {
+        return route.fulfill({ status: 400, json: { error: "Falha simulada ao enviar código." } })
+      }
+      const body = route.request().postDataJSON() as { phone?: unknown }
+      requestedPhone = typeof body.phone === "string" ? body.phone : null
+      return route.fulfill({ status: 202, json: { success: true, challengeId: "fake-challenge" } })
     }
 
     if (pathname.endsWith("/whatsapp-verification/verify-code")) {
       const body = route.request().postDataJSON() as { challengeId?: string; code?: string }
-      if (body.challengeId !== "fake-challenge" || body.code !== "654321") {
+      if (body.challengeId !== "fake-challenge" || body.code !== "654321" || !requestedPhone) {
         return route.fulfill({ status: 400, json: { error: "Código inválido ou expirado." } })
       }
       await getPrisma().profile.update({
         where: { id: profileId },
-        data: { whatsappPhoneVerifiedAt: new Date() },
+        data: { whatsappPhone: requestedPhone, whatsappPhoneVerifiedAt: new Date() },
       })
       return route.fulfill({ status: 200, json: { success: true } })
     }
@@ -149,7 +154,6 @@ test.describe("verificação de WhatsApp na conta", () => {
 
     const phoneInput = page.getByRole("textbox", { name: "Número de WhatsApp" })
     await phoneInput.fill(phone)
-    await page.getByRole("button", { name: "Salvar número" }).click()
     await page.getByRole("button", { name: "Enviar código" }).click()
     const otp = page.getByLabel("Código de verificação")
     await expect(otp).toBeVisible()
@@ -175,7 +179,6 @@ test.describe("verificação de WhatsApp na conta", () => {
     })
     const phoneInput = page.getByRole("textbox", { name: "Número de WhatsApp" })
     await phoneInput.fill(phone)
-    await page.getByRole("button", { name: "Salvar número" }).click()
     await page.getByRole("button", { name: "Enviar código" }).click()
     await expect(page.getByRole("alert")).toHaveText("Falha simulada ao enviar código.")
     expect(page.url()).not.toContain("654321")

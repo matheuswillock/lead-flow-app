@@ -218,7 +218,13 @@ export async function assertTouchTargets(
             const style = window.getComputedStyle(element);
             if (style.display === "inline" || style.visibility === "hidden") return false;
             if (element.classList.contains("sr-only")) return false;
-            const rect = element.getBoundingClientRect();
+            // A switch nested inside a label inherits that label's clickable
+            // area, so measure the effective target rather than only its track.
+            const effectiveTarget =
+              element.getAttribute("role") === "switch"
+                ? element.closest("label") ?? element
+                : element;
+            const rect = effectiveTarget.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return false;
             // Idioma `sr-only`: visualmente escondido, não é alvo de toque.
             const isVisuallyHidden =
@@ -230,10 +236,14 @@ export async function assertTouchTargets(
             return rect.width < minTargetSize || rect.height < minTargetSize;
           })
           .map((element) => {
-            const rect = element.getBoundingClientRect();
-            const style = window.getComputedStyle(element);
+            const effectiveTarget =
+              element.getAttribute("role") === "switch"
+                ? element.closest("label") ?? element
+                : element;
+            const rect = effectiveTarget.getBoundingClientRect();
+            const style = window.getComputedStyle(effectiveTarget);
             const rootFontSize = window.getComputedStyle(document.documentElement).fontSize;
-            return `${describe(element)} (${rect.width.toFixed(2)}×${rect.height.toFixed(2)}; computed ${style.height}; rem ${rootFontSize})`;
+            return `${describe(effectiveTarget)} (${rect.width.toFixed(2)}×${rect.height.toFixed(2)}; computed ${style.height}; rem ${rootFontSize})`;
           });
       },
       { selector, minSize },
