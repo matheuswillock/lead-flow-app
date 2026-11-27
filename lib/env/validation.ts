@@ -169,6 +169,13 @@ export const envSchema = z.object({
   // Encryption keys
   ENCRYPTION_KEY: hexKeySchema.describe('Server-side encryption key'),
   NEXT_PUBLIC_ENCRYPTION_KEY: hexKeySchema.describe('Client-side encryption key'),
+  // Assina o link de convite reutilizável (lib/auth/invite-link-token.ts).
+  INVITE_LINK_SECRET: z
+    .string()
+    .min(32, {
+      message: 'Must be at least 32 characters (generate with: openssl rand -hex 32)',
+    })
+    .describe('HMAC secret for the reusable invite link'),
   PASSWORD_RESET_AUDIT_IP_HASH_SECRET: z
     .string()
     .min(1)
