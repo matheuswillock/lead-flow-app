@@ -84,6 +84,14 @@ enum MeetingHeald {
   no
 }
 
+enum BethaniaOutboxStatus {
+  pending
+  sending
+  sent
+  failed
+  suppressed
+}
+
 enum TeamMeetingSlotReservationSource {
   internal
   public_form
@@ -1157,6 +1165,8 @@ model Profile {
   supabaseId               String?             @unique @db.Uuid
   fullName                 String?             @db.Text
   phone                    String?             @db.Text
+  whatsappPhone            String?             @db.Text
+  whatsappPhoneVerifiedAt  DateTime?           @db.Timestamptz(6)
   cpfCnpj                  String?             @db.Text
   postalCode               String?             @db.Text
   address                  String?             @db.Text
@@ -1307,6 +1317,12 @@ model Profile {
   backofficeBotAiProposals             BackofficeBotAiProposal[]
   backofficeBotAiConfigurationsUpdated BackofficeBotAiConfiguration[]        @relation("BackofficeBotAiConfigurationUpdatedBy")
   backofficeBotHostOpsJobs             BackofficeBotHostOpsJob[]
+  bethaniaVerificationChallenges       BethaniaVerificationChallenge[]
+  bethaniaOutbox                       BethaniaOutbox[]
+  bethaniaDeliveryLogs                 BethaniaDeliveryLog[]
+  bethaniaGlobalControlsUpdated        BethaniaGlobalControl[]               @relation("BethaniaGlobalControlUpdater")
+  bethaniaSenderConfigsUpdated         BethaniaSenderConfig[]                @relation("BethaniaSenderConfigUpdater")
+  bethaniaEventControlsUpdated         BethaniaEventControl[]                @relation("BethaniaEventControlUpdater")
   backofficeBansReceived               BackofficeBannedUser[]                @relation("BackofficeBannedUserTarget")
   backofficeBansIssued                 BackofficeBannedUser[]                @relation("BackofficeBannedUserIssuer")
   backofficeBansLifted                 BackofficeBannedUser[]                @relation("BackofficeBannedUserLifter")
@@ -3730,6 +3746,97 @@ model MeetingFollowUpDigestLog {
   @@index([recipientProfileId, teamId, digestDate])
   @@index([sentAt(sort: Desc)])
   @@map("meeting_follow_up_digest_logs")
+}
+
+model BethaniaVerificationChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  profileId  String    @db.Uuid
+  phone      String    @db.Text
+  codeHash   String    @db.Text
+  expiresAt  DateTime  @db.Timestamptz(6)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, createdAt(sort: Desc)])
+  @@index([phone, createdAt(sort: Desc)])
+  @@map("bethania_verification_challenges")
+}
+
+model BethaniaSenderConfig {
+  id                 String   @id @default("singleton") @db.Text
+  webhookUrl         String   @db.Text
+  updatedByProfileId String?  @db.Uuid
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile? @relation("BethaniaSenderConfigUpdater", fields: [updatedByProfileId], references: [id], onDelete: SetNull)
+
+  @@map("bethania_sender_configs")
+}
+
+model BethaniaGlobalControl {
+  id                 String   @id @default("global") @db.Text
+  paused             Boolean  @default(false)
+  updatedByProfileId String?  @db.Uuid
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile? @relation("BethaniaGlobalControlUpdater", fields: [updatedByProfileId], references: [id], onDelete: SetNull)
+
+  @@map("bethania_global_controls")
+}
+
+model BethaniaEventControl {
+  eventType          String   @id @db.Text
+  paused             Boolean  @default(false)
+  updatedByProfileId String?  @db.Uuid
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  updatedBy Profile? @relation("BethaniaEventControlUpdater", fields: [updatedByProfileId], references: [id], onDelete: SetNull)
+
+  @@map("bethania_event_controls")
+}
+
+model BethaniaOutbox {
+  id             String               @id @default(uuid()) @db.Uuid
+  idempotencyKey String               @unique @db.Text
+  eventType      String               @db.Text
+  profileId      String               @db.Uuid
+  phone          String?              @db.Text
+  message        String?              @db.Text
+  status         BethaniaOutboxStatus @default(pending)
+  attempts       Int                  @default(0)
+  nextAttemptAt  DateTime             @default(now()) @db.Timestamptz(6)
+  lockedAt       DateTime?            @db.Timestamptz(6)
+  lastErrorCode  String?              @db.Text
+  createdAt      DateTime             @default(now()) @db.Timestamptz(6)
+  deliveredAt    DateTime?            @db.Timestamptz(6)
+
+  profile Profile               @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  logs    BethaniaDeliveryLog[]
+
+  @@index([status, nextAttemptAt])
+  @@index([profileId, eventType, createdAt(sort: Desc)])
+  @@map("bethania_outbox")
+}
+
+model BethaniaDeliveryLog {
+  id                 String               @id @default(uuid()) @db.Uuid
+  outboxId           String?              @db.Uuid
+  recipientProfileId String?              @db.Uuid
+  eventType          String               @db.Text
+  status             BethaniaOutboxStatus
+  errorCode          String?              @db.Text
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+
+  outbox    BethaniaOutbox? @relation(fields: [outboxId], references: [id], onDelete: SetNull)
+  recipient Profile?        @relation(fields: [recipientProfileId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([recipientProfileId, createdAt(sort: Desc)])
+  @@map("bethania_delivery_logs")
 }
 
 model ProfileWebPushSubscription {

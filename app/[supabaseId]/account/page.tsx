@@ -51,7 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
@@ -61,6 +61,8 @@ import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { MemberProCountdownBadge } from "./features/components/MemberProCountdownBadge";
 import { BethaniaConnectionCard } from "./features/components/BethaniaConnectionCard";
 import { API_CLIENT_BASE } from "@/lib/route-map";
+import { WhatsAppVerificationPanel } from "./features/components/WhatsAppVerificationPanel";
+import { getAccountReturnPath } from "./whatsappVerification.client";
 
 const ALL_GOOGLE_SCOPES = [
   {
@@ -122,6 +124,7 @@ export default function AccountProfilePage() {
   
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string;
 
   const form = useUpdateAccountForm();
@@ -623,6 +626,12 @@ export default function AccountProfilePage() {
     }
   }
 
+  async function handleWhatsAppVerified() {
+    await refreshUser();
+    const returnPath = getAccountReturnPath(searchParams.get("returnTo"), supabaseId);
+    if (returnPath) router.replace(returnPath);
+  }
+
   async function handleDeleteAccount() {
     if (!deletePassword) {
       toast.error("Digite sua senha para confirmar a exclusão");
@@ -816,6 +825,15 @@ export default function AccountProfilePage() {
                       </div>
                     </div>
                   </section>
+
+                  <Separator />
+
+                  <WhatsAppVerificationPanel
+                    supabaseId={supabaseId}
+                    whatsappPhone={user?.whatsappPhone ?? null}
+                    verifiedAt={user?.whatsappPhoneVerifiedAt ?? null}
+                    onVerified={() => void handleWhatsAppVerified()}
+                  />
 
                   <Separator />
 

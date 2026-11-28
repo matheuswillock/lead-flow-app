@@ -8,10 +8,11 @@ mock.module("next/server", () => ({
 }));
 mock.module("server-only", () => ({}));
 
-// Sem header de identidade o assertProfileOwnership tenta a sessao do Supabase,
-// que le cookies() — indisponivel fora de request scope no bun test.
+let authenticatedSupabaseId: string | null = null
 mock.module("@/lib/supabase/server", () => ({
-  createSupabaseServer: mock(async () => null),
+  createSupabaseServer: mock(async () => ({
+    auth: { getUser: mock(async () => ({ data: { user: authenticatedSupabaseId ? { id: authenticatedSupabaseId } : null } })) },
+  })),
 }));
 
 const getTimezoneMock = mock(async (_supabaseId: string) => ({
@@ -58,6 +59,7 @@ function req(method: string, headerSupabaseId?: string) {
 const params = Promise.resolve({ supabaseId: OUTRO });
 
 beforeEach(() => {
+  authenticatedSupabaseId = null;
   getTimezoneMock.mockClear();
   updateTimezoneMock.mockClear();
   invalidateMock.mockClear();
@@ -79,6 +81,7 @@ describe("GET exige dono do perfil", () => {
   });
 
   it("403 quando o autenticado e outro perfil", async () => {
+    authenticatedSupabaseId = DONO;
     const response = await GET(req("GET", DONO), { params });
 
     expect(response.status).toBe(403);
@@ -86,6 +89,7 @@ describe("GET exige dono do perfil", () => {
   });
 
   it("200 para o proprio dono", async () => {
+    authenticatedSupabaseId = OUTRO;
     const response = await GET(req("GET", OUTRO), { params });
 
     expect(response.status).toBe(200);
@@ -103,6 +107,7 @@ describe("PATCH exige dono do perfil", () => {
   });
 
   it("403 para perfil de outra conta, sem purgar cache alheio", async () => {
+    authenticatedSupabaseId = DONO;
     const response = await PATCH(req("PATCH", DONO), { params });
 
     expect(response.status).toBe(403);
@@ -112,6 +117,7 @@ describe("PATCH exige dono do perfil", () => {
   });
 
   it("200 para o proprio dono, invalidando os times afetados", async () => {
+    authenticatedSupabaseId = OUTRO;
     const response = await PATCH(req("PATCH", OUTRO), { params });
 
     expect(response.status).toBe(200);

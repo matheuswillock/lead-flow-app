@@ -32,6 +32,8 @@ export interface UserData {
   supabaseId: string | null;
   fullName: string | null;
   phone: string | null;
+  whatsappPhone: string | null;
+  whatsappPhoneVerifiedAt: string | null;
   cpfCnpj: string | null;
   postalCode: string | null;
   address: string | null;
