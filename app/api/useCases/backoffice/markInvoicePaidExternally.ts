@@ -202,28 +202,46 @@ export async function executeMarkMasterUserInvoicePaidExternally(
   }
 
   if (targetAction.provider) {
-    // Multi-provider (ex.: AbacatePay): não chama Asaas; verifica se o provedor já confirmou pagamento.
+    // Multi-provider (ex.: AbacatePay): não chama Asaas; só permite baixa externa quando não há cobrança aberta ou já paga no provedor.
     if (targetAction.providerAttemptId) {
       const attempt = await deps.findProviderAttemptById(targetAction.providerAttemptId)
       if (attempt?.status === "CONFIRMED") {
         return new Output(false, [], ["Esta fatura já está paga no provedor"], null)
       }
       if (attempt?.externalId) {
+        let remote: { status: string }
         try {
-          const remote = await deps.queryProviderStatus({
+          remote = await deps.queryProviderStatus({
             provider: attempt.provider,
             environment: attempt.environment,
             externalAccountContext: attempt.externalAccountContext,
             externalId: attempt.externalId,
             method: paymentMethodFromFingerprint(attempt.requestFingerprint) ?? "PIX",
           })
-          if (remote.status === "CONFIRMED") {
-            return new Output(false, [], ["Esta fatura já está paga no provedor"], null)
-          }
         } catch (queryError) {
           console.warn(
             "[BackofficePlatformUsersUseCase][markMasterUserInvoicePaidExternally] Falha ao consultar provedor antes da baixa externa:",
             queryError
+          )
+          return new Output(
+            false,
+            [],
+            ["Não foi possível consultar a cobrança no provedor antes da baixa externa"],
+            null
+          )
+        }
+
+        if (remote.status === "CONFIRMED") {
+          return new Output(false, [], ["Esta fatura já está paga no provedor"], null)
+        }
+        if (remote.status === "PENDING" || remote.status === "UNKNOWN") {
+          return new Output(
+            false,
+            [],
+            [
+              "Há uma cobrança aberta no provedor que não pode ser cancelada automaticamente; aguarde o vencimento ou trate no provedor antes da baixa externa",
+            ],
+            null
           )
         }
       }

@@ -70,8 +70,49 @@ describe("executeMarkMasterUserInvoicePaidExternally (Fase D)", () => {
     })
   })
 
-  it("para pending_action com provider ABACATE_PAY pendente, consulta provedor agnóstico sem chamar Asaas", async () => {
+  it("para pending_action com provider ABACATE_PAY e tentativa expirada/cancelada, aplica sem chamar Asaas", async () => {
     const deps = makeDeps({
+      findPendingActionById: mock(async () => ({
+        id: "pa-1",
+        masterId: "master-1",
+        actionType: "create_team",
+        status: "pending",
+        paymentId: null,
+        asaasAccount: null,
+        provider: "ABACATE_PAY",
+        providerAttemptId: "att-1",
+        payload: { totalCharge: 199 },
+      })),
+      findProviderAttemptById: mock(async () => ({
+        id: "att-1",
+        ownerType: "PENDING_ACTION_ADDON",
+        ownerId: "pa-1",
+        provider: "ABACATE_PAY",
+        environment: "PRODUCTION" as const,
+        externalAccountContext: "default",
+        externalId: "bill_123",
+        requestFingerprint: "PIX:fp",
+        status: "PENDING",
+      })),
+      queryProviderStatus: mock(async () => ({ status: "EXPIRED" })),
+    })
+
+    const output = await executeMarkMasterUserInvoicePaidExternally(
+      "master-1",
+      "pending-action-pa-1",
+      { reference: "TED-998" },
+      actor,
+      deps
+    )
+
+    expect(output.isValid).toBe(true)
+    expect(deps.queryProviderStatus).toHaveBeenCalledTimes(1)
+    expect(deps.cancelAsaasPayment).not.toHaveBeenCalled()
+    expect(deps.applyExternalPayment).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejeita quando há cobrança ainda PENDING ou falha ao consultar o provedor multi-provider", async () => {
+    const openDeps = makeDeps({
       findPendingActionById: mock(async () => ({
         id: "pa-1",
         masterId: "master-1",
@@ -97,18 +138,34 @@ describe("executeMarkMasterUserInvoicePaidExternally (Fase D)", () => {
       queryProviderStatus: mock(async () => ({ status: "PENDING" })),
     })
 
-    const output = await executeMarkMasterUserInvoicePaidExternally(
+    const openOut = await executeMarkMasterUserInvoicePaidExternally(
       "master-1",
       "pending-action-pa-1",
       { reference: "TED-998" },
       actor,
-      deps
+      openDeps
     )
+    expect(openOut.isValid).toBe(false)
+    expect(openOut.errorMessages[0]).toContain("cobrança aberta no provedor")
+    expect(openDeps.applyExternalPayment).not.toHaveBeenCalled()
 
-    expect(output.isValid).toBe(true)
-    expect(deps.queryProviderStatus).toHaveBeenCalledTimes(1)
-    expect(deps.cancelAsaasPayment).not.toHaveBeenCalled()
-    expect(deps.applyExternalPayment).toHaveBeenCalledTimes(1)
+    const errorDeps = makeDeps({
+      findPendingActionById: openDeps.findPendingActionById,
+      findProviderAttemptById: openDeps.findProviderAttemptById,
+      queryProviderStatus: mock(async () => {
+        throw new Error("timeout")
+      }),
+    })
+    const errOut = await executeMarkMasterUserInvoicePaidExternally(
+      "master-1",
+      "pending-action-pa-1",
+      { reference: "TED-998" },
+      actor,
+      errorDeps
+    )
+    expect(errOut.isValid).toBe(false)
+    expect(errOut.errorMessages[0]).toContain("Não foi possível consultar")
+    expect(errorDeps.applyExternalPayment).not.toHaveBeenCalled()
   })
 
   it("rejeita quando o provedor multi-provider já confirma pagamento (CONFIRMED)", async () => {
