@@ -1,6 +1,7 @@
 import "server-only"
 import { isIP } from "node:net"
-import { prisma } from "@/app/api/infra/data/prisma"
+import { backofficeBethaniaRepository } from "@/app/api/infra/data/repositories/backofficeBethania/PrismaBackofficeBethaniaRepository"
+import type { BackofficeBethaniaRepository } from "./BackofficeBethaniaRepository"
 import { assertPublicBethaniaSenderHost, type BethaniaHostResolver } from "./BethaniaSenderUrlPolicy"
 import { Output } from "@/lib/output"
 
@@ -14,19 +15,6 @@ export const BETHANIA_AGENDA_EVENTS = [
 const EVENT_TYPES = new Set<string>(BETHANIA_AGENDA_EVENTS.map(({ eventType }) => eventType))
 type LogStatus = "pending" | "sending" | "sent" | "failed" | "suppressed"
 const LOG_STATUSES = new Set<LogStatus>(["pending", "sending", "sent", "failed", "suppressed"])
-
-type Database = {
-  bethaniaSenderConfig: {
-    findUnique(args: unknown): Promise<{ webhookUrl: string; updatedByProfileId: string } | null>
-    upsert(args: unknown): Promise<{ webhookUrl: string; updatedByProfileId: string }>
-  }
-  bethaniaGlobalControl: { findUnique(args: unknown): Promise<{ paused: boolean } | null>; upsert(args: unknown): Promise<unknown> }
-  bethaniaEventControl: { findMany(args: unknown): Promise<Array<{ eventType: string; paused: boolean }>>; upsert(args: unknown): Promise<unknown> }
-  bethaniaDeliveryLog: {
-    findMany(args: unknown): Promise<Array<{ id: string; eventType: string; status: string; errorCode: string | null; createdAt: Date; outbox: { attempts: number } | null }>>
-    count(args: unknown): Promise<number>
-  }
-}
 
 type HealthFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type Dependencies = {
@@ -45,7 +33,10 @@ export class BackofficeBethaniaUseCase {
   private readonly fetcher: HealthFetcher;
   private readonly timeoutMs: number
 
-  constructor(private readonly db: Database = prisma as unknown as Database, private readonly dependencies: Dependencies = {}) {
+  constructor(
+    private readonly repository: BackofficeBethaniaRepository = backofficeBethaniaRepository,
+    private readonly dependencies: Dependencies = {},
+  ) {
     this.fetcher = dependencies.fetcher ?? fetch
     this.timeoutMs = dependencies.timeoutMs ?? 2_000
   }
@@ -78,13 +69,13 @@ export class BackofficeBethaniaUseCase {
   }
 
   async getOverview() {
-    const [global, controls] = await Promise.all([
-      this.db.bethaniaGlobalControl.findUnique({ where: { id: "global" }, select: { paused: true } }),
-      this.db.bethaniaEventControl.findMany({ select: { eventType: true, paused: true } }),
+    const [globalPaused, controls] = await Promise.all([
+      this.repository.getGlobalPause(),
+      this.repository.listEventControls(),
     ])
     const controlByType = new Map(controls.map((control) => [control.eventType, control.paused]))
     return {
-      paused: global?.paused ?? false,
+      paused: globalPaused,
       events: BETHANIA_AGENDA_EVENTS.map((event) => ({ ...event, paused: controlByType.get(event.eventType) ?? false })),
       sender: await this.getSenderHealth(),
     }
@@ -93,18 +84,14 @@ export class BackofficeBethaniaUseCase {
   async setPause(input: { scope: "global" | "event"; eventType?: string; paused: boolean; actorProfileId: string }): Promise<boolean> {
     if (typeof input.paused !== "boolean") return false
     if (input.scope === "global") {
-      await this.db.bethaniaGlobalControl.upsert({
-        where: { id: "global" },
-        create: { id: "global", paused: input.paused, updatedByProfileId: input.actorProfileId },
-        update: { paused: input.paused, updatedByProfileId: input.actorProfileId },
-      })
+      await this.repository.setGlobalPause({ paused: input.paused, actorProfileId: input.actorProfileId })
       return true
     }
     if (!input.eventType || !EVENT_TYPES.has(input.eventType)) return false
-    await this.db.bethaniaEventControl.upsert({
-      where: { eventType: input.eventType },
-      create: { eventType: input.eventType, paused: input.paused, updatedByProfileId: input.actorProfileId },
-      update: { paused: input.paused, updatedByProfileId: input.actorProfileId },
+    await this.repository.setEventPause({
+      eventType: input.eventType,
+      paused: input.paused,
+      actorProfileId: input.actorProfileId,
     })
     return true
   }
@@ -113,41 +100,45 @@ export class BackofficeBethaniaUseCase {
     const nodeEnv = this.dependencies.nodeEnv ?? process.env.NODE_ENV
     const webhookUrl = validateBethaniaSenderUrl(input.webhookUrl, nodeEnv)
     await assertPublicBethaniaSenderHost(webhookUrl, this.dependencies.lookupHost, nodeEnv)
-    return this.db.bethaniaSenderConfig.upsert({
-      where: { id: "singleton" },
-      create: { id: "singleton", webhookUrl, updatedByProfileId: input.actorProfileId },
-      update: { webhookUrl, updatedByProfileId: input.actorProfileId },
-      select: { webhookUrl: true, updatedByProfileId: true },
-    })
+    return this.repository.upsertSenderConfig({ webhookUrl, actorProfileId: input.actorProfileId })
   }
 
   async listLogs(input: { eventType?: string | null; status?: string | null; page: number; pageSize: number }) {
     const page = Number.isInteger(input.page) && input.page > 0 ? input.page : 1
     const pageSize = Number.isInteger(input.pageSize) ? Math.min(Math.max(input.pageSize, 1), 100) : 25
-    const where: Record<string, string> = {}
+    let eventType: string | undefined
+    let status: string | undefined
     if (input.eventType) {
       if (!EVENT_TYPES.has(input.eventType)) return { logs: [], page, pageSize, total: 0 }
-      where.eventType = input.eventType
+      eventType = input.eventType
     }
     if (input.status) {
       if (!LOG_STATUSES.has(input.status as LogStatus)) return { logs: [], page, pageSize, total: 0 }
-      where.status = input.status
+      status = input.status
     }
-    const [rows, total] = await Promise.all([
-      this.db.bethaniaDeliveryLog.findMany({
-        where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize,
-        select: { id: true, eventType: true, status: true, errorCode: true, createdAt: true, outbox: { select: { attempts: true } } },
-      }),
-      this.db.bethaniaDeliveryLog.count({ where }),
-    ])
+    const { rows, total } = await this.repository.listLogs({
+      eventType,
+      status,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    })
     return {
-      logs: rows.map(({ id, eventType, status, errorCode, createdAt, outbox }) => ({ id, eventType, status, errorCode, createdAt, attempts: outbox?.attempts ?? 0 })),
-      page, pageSize, total,
+      logs: rows.map(({ id, eventType: rowEventType, status: rowStatus, errorCode, createdAt, attempts }) => ({
+        id,
+        eventType: rowEventType,
+        status: rowStatus,
+        errorCode,
+        createdAt,
+        attempts,
+      })),
+      page,
+      pageSize,
+      total,
     }
   }
 
   async getConfiguredSenderUrl(): Promise<string | null> {
-    const saved = await this.db.bethaniaSenderConfig.findUnique({ where: { id: "singleton" }, select: { webhookUrl: true } })
+    const saved = await this.repository.getSenderConfig()
     if (!saved) return null
     const nodeEnv = this.dependencies.nodeEnv ?? process.env.NODE_ENV
     try {

@@ -25,14 +25,13 @@ export interface WhatsAppVerificationRepository {
   incrementFailedAttempt(input: {
     supabaseId: string
     id: string
-    expectedAttempts: number
+    maxAttempts: number
     now: Date
   }): Promise<void>
   consumeAndSetPhone(input: {
     supabaseId: string
     id: string
     phone: string
-    expectedAttempts: number
     maxAttempts: number
     now: Date
   }): Promise<boolean>

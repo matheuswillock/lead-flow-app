@@ -3,15 +3,32 @@ mock.module("server-only", () => ({}))
 const { BackofficeBethaniaUseCase } = await import("./BackofficeBethaniaUseCase")
 
 function setup(senderUrl: string | undefined = "http://127.0.0.1:8787") {
-  const db = {
-    bethaniaSenderConfig: { findUnique: mock(async () => senderUrl ? { webhookUrl: senderUrl, updatedByProfileId: "actor-1" } : null), upsert: mock(async (args: any) => args) },
-    bethaniaGlobalControl: { findUnique: mock(async () => ({ paused: true })) },
-    bethaniaEventControl: { findMany: mock(async () => [{ eventType: "agenda.daily_0700", paused: true }]), upsert: mock(async (args: any) => args) },
-    bethaniaDeliveryLog: { findMany: mock(async () => [{ id: "l1", eventType: "agenda.daily_0700", status: "failed", errorCode: "X", createdAt: new Date(0), outbox: { attempts: 3, phone: "+15551234567", message: "secret" } }]), count: mock(async () => 1) },
+  const repository = {
+    getGlobalPause: mock(async () => true),
+    listEventControls: mock(async () => [{ eventType: "agenda.daily_0700", paused: true }]),
+    setGlobalPause: mock(async () => undefined),
+    setEventPause: mock(async () => undefined),
+    getSenderConfig: mock(async () => (senderUrl ? { webhookUrl: senderUrl } : null)),
+    upsertSenderConfig: mock(async (input: { webhookUrl: string; actorProfileId: string }) => input),
+    listLogs: mock(async () => ({
+      rows: [
+        {
+          id: "l1",
+          eventType: "agenda.daily_0700",
+          status: "failed",
+          errorCode: "X",
+          createdAt: new Date(0),
+          attempts: 3,
+          phone: "+15551234567",
+          message: "secret",
+        },
+      ],
+      total: 1,
+    })),
   }
   const fetcher = mock(async () => new Response("ok", { status: 200 }))
-  const useCase = new BackofficeBethaniaUseCase(db as any, { fetcher: fetcher as any, timeoutMs: 10 })
-  return { useCase, db, fetcher }
+  const useCase = new BackofficeBethaniaUseCase(repository as any, { fetcher: fetcher as any, timeoutMs: 10 })
+  return { useCase, repository, fetcher }
 }
 
 describe("BackofficeBethaniaUseCase", () => {
@@ -36,19 +53,25 @@ describe("BackofficeBethaniaUseCase", () => {
   })
 
   it("updates a validated global or event pause with actor ID", async () => {
-    const { useCase, db } = setup()
+    const { useCase, repository } = setup()
     await useCase.setPause({ scope: "event", eventType: "agenda.daily_0700", paused: true, actorProfileId: "actor-1" })
-    expect(db.bethaniaEventControl.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { eventType: "agenda.daily_0700" },
-      create: { eventType: "agenda.daily_0700", paused: true, updatedByProfileId: "actor-1" },
-    }))
+    expect(repository.setEventPause).toHaveBeenCalledWith({
+      eventType: "agenda.daily_0700",
+      paused: true,
+      actorProfileId: "actor-1",
+    })
     expect(await useCase.setPause({ scope: "event", eventType: "invalid", paused: true, actorProfileId: "actor-1" })).toBe(false)
   })
 
   it("returns paginated filtered logs without recipient, phone, message, or payload", async () => {
-    const { useCase, db } = setup()
+    const { useCase, repository } = setup()
     const result = await useCase.listLogs({ eventType: "agenda.daily_0700", status: "failed", page: 2, pageSize: 10 })
-    expect(db.bethaniaDeliveryLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 10 }))
+    expect(repository.listLogs).toHaveBeenCalledWith({
+      eventType: "agenda.daily_0700",
+      status: "failed",
+      skip: 10,
+      take: 10,
+    })
     expect(result.total).toBe(1)
     expect(JSON.stringify(result)).not.toMatch(/15551234567|secret|recipient|phone|payload/)
   })
@@ -60,9 +83,9 @@ describe("BackofficeBethaniaUseCase", () => {
   })
 
   it("accepts a public HTTPS origin configured in backoffice without a static origin allowlist", async () => {
-    const { db } = setup()
+    const { repository } = setup()
     const lookupHost = mock(async () => [{ address: "8.8.8.8", family: 4 }])
-    const useCase = new BackofficeBethaniaUseCase(db as any, {
+    const useCase = new BackofficeBethaniaUseCase(repository as any, {
       nodeEnv: "production",
       lookupHost,
     })
@@ -70,16 +93,16 @@ describe("BackofficeBethaniaUseCase", () => {
     await useCase.setSenderUrl({ webhookUrl: "https://bethania.example.net/", actorProfileId: "actor-1" })
 
     expect(lookupHost).toHaveBeenCalledWith("bethania.example.net")
-    expect(db.bethaniaSenderConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: { id: "singleton", webhookUrl: "https://bethania.example.net/", updatedByProfileId: "actor-1" },
-      update: { webhookUrl: "https://bethania.example.net/", updatedByProfileId: "actor-1" },
-    }))
+    expect(repository.upsertSenderConfig).toHaveBeenCalledWith({
+      webhookUrl: "https://bethania.example.net/",
+      actorProfileId: "actor-1",
+    })
   })
 
   it("still rejects a backoffice origin resolving to a private address", async () => {
-    const { db } = setup()
+    const { repository } = setup()
     const lookupHost = mock(async () => [{ address: "10.0.0.8", family: 4 }])
-    const useCase = new BackofficeBethaniaUseCase(db as any, {
+    const useCase = new BackofficeBethaniaUseCase(repository as any, {
       nodeEnv: "production",
       lookupHost,
     })
@@ -89,13 +112,13 @@ describe("BackofficeBethaniaUseCase", () => {
       actorProfileId: "actor-1",
     })).rejects.toThrow("URL do conector não permitida")
 
-    expect(db.bethaniaSenderConfig.upsert).not.toHaveBeenCalled()
+    expect(repository.upsertSenderConfig).not.toHaveBeenCalled()
   })
 
   it("loads the public HTTPS origin persisted by backoffice without a static origin allowlist", async () => {
-    const { db } = setup("https://bethania.example.net/")
+    const { repository } = setup("https://bethania.example.net/")
     const lookupHost = mock(async () => [{ address: "8.8.8.8", family: 4 }])
-    const useCase = new BackofficeBethaniaUseCase(db as any, {
+    const useCase = new BackofficeBethaniaUseCase(repository as any, {
       nodeEnv: "production",
       lookupHost,
     })

@@ -60,8 +60,10 @@ function setup(getSenderUrl: () => Promise<string | null> = async () => "https:/
     findChallenge: mock(async (supabaseId: string, id: string) =>
       supabaseId === "user-1" && id === challenge.id ? challengeRepo.findUnique() : null,
     ),
-    incrementFailedAttempt: mock(async () => {
-      await challengeRepo.updateMany({ data: { attempts: { increment: 1 } } })
+    incrementFailedAttempt: mock(async (input: { maxAttempts: number }) => {
+      if (challenge.attempts < input.maxAttempts) {
+        await challengeRepo.updateMany({ data: { attempts: { increment: 1 } } })
+      }
     }),
     consumeAndSetPhone: mock(async (input: any) => {
       await challengeRepo.updateMany({ data: { consumedAt: input.now } })

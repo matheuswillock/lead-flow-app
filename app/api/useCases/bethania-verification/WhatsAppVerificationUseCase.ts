@@ -138,7 +138,7 @@ export class WhatsAppVerificationUseCase {
         await this.repository.incrementFailedAttempt({
           supabaseId,
           id: challenge.id,
-          expectedAttempts: challenge.attempts,
+          maxAttempts: MAX_WHATSAPP_VERIFICATION_ATTEMPTS,
           now,
         })
         return { ok: false, message: GENERIC_INVALID }
@@ -148,7 +148,6 @@ export class WhatsAppVerificationUseCase {
         supabaseId,
         id: challenge.id,
         phone: challenge.phone,
-        expectedAttempts: challenge.attempts,
         maxAttempts: MAX_WHATSAPP_VERIFICATION_ATTEMPTS,
         now,
       })

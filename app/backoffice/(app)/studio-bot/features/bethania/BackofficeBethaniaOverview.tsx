@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Activity, ChevronLeft, ChevronRight, CircleOff, Clock3, Server, Webhook } from "lucide-react"
+import Link from "next/link"
+import { Activity, ChevronLeft, ChevronRight, CircleOff, Clock3, Link2, MessageSquare, Radio, ScrollText, Server, ServerCog, ShieldCheck, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,14 @@ import { useBackofficeBethania } from "./BackofficeBethaniaContext"
 
 const HEALTH_LABELS = { healthy: "Conector saudável", unhealthy: "Conector indisponível", unconfigured: "Conector não configurado" } as const
 const LOG_LABELS: Record<string, string> = { pending: "Pendente", sending: "Enviando", sent: "Entregue", failed: "Falhou", suppressed: "Suprimido" }
+const STUDIO_BOT_LINKS = [
+  { href: "/backoffice/studio-bot/canal", label: "Gerenciar canal", icon: Radio },
+  { href: "/backoffice/studio-bot/vinculacoes", label: "Ver vinculações", icon: Link2 },
+  { href: "/backoffice/studio-bot/conversas", label: "Abrir inbox", icon: MessageSquare },
+  { href: "/backoffice/studio-bot/verificacoes", label: "Auditoria de verificações", icon: ShieldCheck },
+  { href: "/backoffice/studio-bot/ops", label: "Ops / Host", icon: ServerCog },
+  { href: "/backoffice/studio-bot/ia", label: "IA", icon: ScrollText },
+] as const
 
 export function BackofficeBethaniaOverview() {
   const { overview, events, logs, selectedEventType, logsPage, logsPageSize, logsTotal, isLoading, isSaving, error, setSelectedEventType, setLogsPage, togglePause, setSenderUrl } = useBackofficeBethania()
@@ -46,6 +55,21 @@ export function BackofficeBethaniaOverview() {
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div className="flex flex-col gap-1"><CardTitle className="flex items-center gap-2 text-base"><Webhook aria-hidden="true" className="size-4" /> Registros de entrega</CardTitle><CardDescription>Últimas tentativas para o evento selecionado.</CardDescription></div><label className="flex flex-col gap-1 text-sm font-medium">Filtrar por evento<select className="min-h-11 rounded-md border bg-background px-3 text-sm" value={selectedEventType} onChange={(event) => setSelectedEventType(event.target.value)} aria-label="Filtrar registros por evento">{events.map((item) => <option key={item.eventType} value={item.eventType}>{item.description}</option>)}</select></label></CardHeader>
         <CardContent className="flex flex-col gap-3">{logs.length ? logs.map((log) => <div key={log.id} className="flex flex-col gap-2 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 flex-col gap-1"><div className="flex flex-wrap items-center gap-2"><Badge variant={log.status === "failed" ? "destructive" : "secondary"}>{LOG_LABELS[log.status] ?? log.status}</Badge><span className="text-xs text-muted-foreground">{log.attempts} {log.attempts === 1 ? "tentativa" : "tentativas"}</span></div><code className="break-all text-xs text-muted-foreground">{log.errorCode ? `Código: ${log.errorCode}` : "Sem código de erro"}</code></div><time className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground" dateTime={log.createdAt}><Clock3 aria-hidden="true" className="size-4" />{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(log.createdAt))}</time></div>) : <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground"><CircleOff aria-hidden="true" className="size-4" />Nenhum registro para este evento.</div>}<div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{logsTotal} registros · página {logsPage} de {lastPage}</p><div className="flex gap-2"><Button type="button" variant="outline" className="min-h-11" aria-label="Página anterior" disabled={logsPage <= 1} onClick={() => setLogsPage(logsPage - 1)}><ChevronLeft data-icon="inline-start" />Anterior</Button><Button type="button" variant="outline" className="min-h-11" aria-label="Próxima página" disabled={logsPage >= lastPage} onClick={() => setLogsPage(logsPage + 1)}>Próxima página<ChevronRight data-icon="inline-end" /></Button></div></div><Separator /><p className="text-xs text-muted-foreground">{selectedEvent ? `Evento: ${selectedEvent.description}` : "Selecione um evento para consultar os registros."}</p></CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Telas do Studio Bot</CardTitle><CardDescription>Acesso direto às páginas operacionais complementares.</CardDescription></CardHeader>
+        <CardContent>
+          <nav aria-label="Navegação do Studio Bot" className="flex flex-wrap gap-2">
+            {STUDIO_BOT_LINKS.map(({ href, label, icon: Icon }) => (
+              <Button key={href} variant="outline" size="sm" className="min-h-11" asChild>
+                <Link href={href}>
+                  <Icon className="size-4" data-icon="inline-start" />
+                  {label}
+                </Link>
+              </Button>
+            ))}
+          </nav>
+        </CardContent>
       </Card>
       <p className="sr-only" aria-live="polite">{isSaving ? "Salvando pausa" : ""}</p>
     </main>

@@ -68,7 +68,7 @@ export class PrismaWhatsAppVerificationRepository implements WhatsAppVerificatio
   async incrementFailedAttempt(input: {
     supabaseId: string
     id: string
-    expectedAttempts: number
+    maxAttempts: number
     now: Date
   }): Promise<void> {
     const profile = await prisma.profile.findUnique({ where: { supabaseId: input.supabaseId }, select: { id: true } })
@@ -78,7 +78,7 @@ export class PrismaWhatsAppVerificationRepository implements WhatsAppVerificatio
         id: input.id,
         profileId: profile.id,
         consumedAt: null,
-        attempts: input.expectedAttempts,
+        attempts: { lt: input.maxAttempts },
         expiresAt: { gt: input.now },
       },
       data: { attempts: { increment: 1 } },
@@ -89,7 +89,6 @@ export class PrismaWhatsAppVerificationRepository implements WhatsAppVerificatio
     supabaseId: string
     id: string
     phone: string
-    expectedAttempts: number
     maxAttempts: number
     now: Date
   }): Promise<boolean> {
@@ -102,7 +101,7 @@ export class PrismaWhatsAppVerificationRepository implements WhatsAppVerificatio
           profileId: profile.id,
           phone: input.phone,
           consumedAt: null,
-          attempts: { equals: input.expectedAttempts, lt: input.maxAttempts },
+          attempts: { lt: input.maxAttempts },
           expiresAt: { gt: input.now },
         },
         data: { consumedAt: input.now },

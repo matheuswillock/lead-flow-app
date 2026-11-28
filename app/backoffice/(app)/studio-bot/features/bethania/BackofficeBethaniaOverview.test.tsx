@@ -75,4 +75,22 @@ describe("BackofficeBethaniaOverview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salvar URL" }))
     await waitFor(() => expect(service.calls).toContainEqual({ senderUrl: "https://new-sender.example.com" }))
   })
+
+  it("preserves navigation links to the existing Studio Bot screens", async () => {
+    const service = fakeService()
+    render(<BackofficeBethaniaProvider service={service}><BackofficeBethaniaOverview /></BackofficeBethaniaProvider>)
+
+    const nav = await screen.findByRole("navigation", { name: "Navegação do Studio Bot" })
+    expect(nav).toBeDefined()
+    for (const [name, href] of [
+      ["Gerenciar canal", "/backoffice/studio-bot/canal"],
+      ["Ver vinculações", "/backoffice/studio-bot/vinculacoes"],
+      ["Abrir inbox", "/backoffice/studio-bot/conversas"],
+      ["Auditoria de verificações", "/backoffice/studio-bot/verificacoes"],
+      ["Ops / Host", "/backoffice/studio-bot/ops"],
+      ["IA", "/backoffice/studio-bot/ia"],
+    ]) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href)
+    }
+  })
 })
