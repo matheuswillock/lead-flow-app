@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import { requireSubscriptionManagementAccess } from "../requireSubscriptionManagementAccess";
 
 export async function POST(request: NextRequest) {
   try {
-    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id');
-    if (!authenticatedSupabaseId) {
-      const unauthorizedResult = {
-        isValid: false,
-        successMessages: [],
-        errorMessages: ['Não autenticado'],
-        result: null
-      };
-      return NextResponse.json(unauthorizedResult, { status: 401 });
-    }
-
-    const accessDeniedResponse = await requireWritableAccountAccess(authenticatedSupabaseId);
+    const accessDeniedResponse = await requireSubscriptionManagementAccess(request, "write");
     if (accessDeniedResponse) {
       return accessDeniedResponse;
     }
+
+    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id')!;
 
     const body = await request.json();
     const { supabaseId: supabaseIdParam, ...paymentData } = body;

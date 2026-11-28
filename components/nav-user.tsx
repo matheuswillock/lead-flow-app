@@ -24,6 +24,7 @@ import { Bell, CircleUser, CreditCard, EllipsisVertical, LogOut } from "lucide-r
 import { useTransition } from "react"
 import { signout } from "@/app/actions/auth"
 import { useUser } from "@/app/context/UserContext"
+import { useTeamContext } from "@/app/context/TeamContext"
 import { NavLink } from "@/components/ui/nav-link"
 import { useNotifications } from "@/app/[supabaseId]/notifications/features/context/NotificationsHook"
 
@@ -33,11 +34,13 @@ export function NavUser({
   supabaseId?: string
 }) {
   const { user } = useUser();
+  const { isTeamMaster, activeTeam } = useTeamContext();
   const { isMobile } = useSidebar()
   const [isPending, startTransition] = useTransition()
   const { unreadCount } = useNotifications();
   
-  const isMaster = user?.isMaster === true;
+  const canManageSubscription =
+    user?.isMaster === true || isTeamMaster || activeTeam?.canManageAccountTeams === true;
   const unreadLabel = unreadCount > 99 ? "99+" : String(unreadCount);
 
   const getInitials = (name: string) => {
@@ -128,7 +131,7 @@ export function NavUser({
                   className="w-full"
                 />
               </DropdownMenuItem>
-              {isMaster && (
+              {canManageSubscription && (
                 <DropdownMenuItem asChild className="cursor-pointer">
                   <NavLink
                     icon={CreditCard}

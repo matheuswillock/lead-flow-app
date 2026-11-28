@@ -1,27 +1,18 @@
 import { NextRequest, NextResponse, connection } from "next/server";
 import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase';
 import { rethrowIfPrerenderInterrupted } from '@/lib/http/rethrow-if-prerender-interrupted';
-import { requireActiveAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import { requireSubscriptionManagementAccess } from "../requireSubscriptionManagementAccess";
 
 export async function GET(request: NextRequest) {
   await connection();
 
   try {
-    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id');
-    if (!authenticatedSupabaseId) {
-      const unauthorizedResult = {
-        isValid: false,
-        successMessages: [],
-        errorMessages: ['Não autenticado'],
-        result: null
-      };
-      return NextResponse.json(unauthorizedResult, { status: 401 });
-    }
-
-    const accessDeniedResponse = await requireActiveAccountAccess(authenticatedSupabaseId);
+    const accessDeniedResponse = await requireSubscriptionManagementAccess(request, "read");
     if (accessDeniedResponse) {
       return accessDeniedResponse;
     }
+
+    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id')!;
 
     const { searchParams } = new URL(request.url);
     const supabaseIdParam = searchParams.get('supabaseId');

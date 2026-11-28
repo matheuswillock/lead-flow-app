@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { subscriptionManagementUseCase } from "@/app/api/useCases/subscriptionManagement/SubscriptionManagementUseCase";
 import { rethrowIfPrerenderInterrupted } from "@/lib/http/rethrow-if-prerender-interrupted";
-import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAccountAccess";
+import { requireSubscriptionManagementAccess } from "../../requireSubscriptionManagementAccess";
 
 /**
  * POST /api/v1/subscription-management/invoices/retry
@@ -9,23 +9,12 @@ import { requireWritableAccountAccess } from "@/app/api/v1/utils/requireActiveAc
  */
 export async function POST(request: NextRequest) {
   try {
-    const authenticatedSupabaseId = request.headers.get("x-supabase-user-id");
-    if (!authenticatedSupabaseId) {
-      return NextResponse.json(
-        {
-          isValid: false,
-          successMessages: [],
-          errorMessages: ["Não autenticado"],
-          result: null,
-        },
-        { status: 401 }
-      );
-    }
-
-  const accessDeniedResponse = await requireWritableAccountAccess(authenticatedSupabaseId);
+    const accessDeniedResponse = await requireSubscriptionManagementAccess(request, "write");
     if (accessDeniedResponse) {
       return accessDeniedResponse;
     }
+
+    const authenticatedSupabaseId = request.headers.get("x-supabase-user-id")!;
 
     const body = await request.json();
     const invoiceId = typeof body?.invoiceId === "string" ? body.invoiceId : "";
