@@ -20,6 +20,14 @@ mock.module("@/app/api/v1/utils/requireActiveAccountAccess", () => ({
   requireWritableAccountAccess,
 }))
 
+mock.module("@/app/api/v1/utils/teamAccess", () => ({
+  getTeamAccess: mock(async () => ({
+    access: { isMaster: true, canManageAccountTeams: false },
+  })),
+  hasDelegatedTeamManagementAccess: (access: { isMaster: boolean; canManageAccountTeams: boolean }) =>
+    access.isMaster || access.canManageAccountTeams,
+}))
+
 const { GET } = await import("./route")
 
 beforeEach(() => {

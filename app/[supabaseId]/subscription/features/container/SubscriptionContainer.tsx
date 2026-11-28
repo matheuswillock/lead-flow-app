@@ -55,7 +55,9 @@ export function SubscriptionContainer() {
   } = useSubscriptionContext();
 
   const { hasAccess, isBeta, showsBetaLabel, userRole } = useFeatureAccess();
-  const { isTeamMaster, activeRole, accountAccessDecision } = useTeamContext();
+  const { isTeamMaster, activeTeam, activeRole, accountAccessDecision, isLoading: isTeamLoading } = useTeamContext();
+  const canAccessSubscription =
+    isTeamMaster || userRole.isMaster || activeTeam?.canManageAccountTeams === true;
   const isReadOnly = accountAccessDecision?.state === 'read_only';
   const isPermanentSubscription = subscription?.hasPermanentSubscription === true;
   const hasTemporaryAccess =
@@ -112,8 +114,29 @@ export function SubscriptionContainer() {
     }
   };
 
-  if (isLoading && !subscription) {
+  if ((isLoading && !subscription) || isTeamLoading) {
     return <SubscriptionSkeleton />;
+  }
+
+  if (!canAccessSubscription) {
+    return (
+      <div className="flex flex-col gap-6">
+        <SubscriptionHeader />
+        <Card className="mx-auto max-w-2xl">
+          <CardHeader>
+            <CardTitle>Acesso restrito</CardTitle>
+            <CardDescription>
+              Apenas o responsável pela conta (master) ou um gerente com delegação de times pode acessar a assinatura.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => router.push(`/${supabaseId}/dashboard`)}>
+              Voltar ao painel
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   if (error) {
