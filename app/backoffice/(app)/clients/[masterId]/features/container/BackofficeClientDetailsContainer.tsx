@@ -64,6 +64,7 @@ import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
 import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
 import { BackofficeInvoiceActionsMenu } from "../components/BackofficeInvoiceActionsMenu"
+import { BackofficeExternalPaymentDialog } from "../components/BackofficeExternalPaymentDialog"
 import { BackofficeClientEmailsProvider } from "../emails/context/BackofficeClientEmailsContext"
 import { BackofficeClientEmailsShell } from "../emails/container/BackofficeClientEmailsShell"
 import type { EmailSection } from "../emails/context/BackofficeClientEmailsTypes"
@@ -113,7 +114,9 @@ const INVOICE_STATUS_BADGES: Record<
 
 function getInvoiceStatusLabel(invoice: BackofficeClientInvoice): string {
   if (invoice.status === "WAIVED") return "Dispensada"
-  if (invoice.source === "adhesion_external") return "Pago externamente"
+  if (invoice.source === "adhesion_external" || invoice.status === "EXTERNAL") {
+    return "Pago externamente"
+  }
   if (invoice.status === "PENDING" && invoice.source === "pending_action") {
     return "Aguardando checkout"
   }
@@ -257,6 +260,7 @@ export function BackofficeClientDetailsContainer() {
     isPendingActionsLoading,
     isCancelingPendingAction,
     isCancelingInvoice,
+    isMarkingInvoicePaidExternally,
     error,
     teamsError,
     invoicesError,
@@ -271,6 +275,7 @@ export function BackofficeClientDetailsContainer() {
     setInvoicesPage,
     cancelPendingAction,
     cancelInvoice,
+    markInvoicePaidExternally,
     reload,
     clearFilters,
   } = useBackofficeClientDetails()
@@ -307,6 +312,8 @@ export function BackofficeClientDetailsContainer() {
   const [addingMasterTeamId, setAddingMasterTeamId] = useState<string | null>(null)
   const [selectedEmailTeamId, setSelectedEmailTeamId] = useState<string | null>(null)
   const [invoiceToCancel, setInvoiceToCancel] = useState<BackofficeClientInvoice | null>(null)
+  const [invoiceToMarkPaidExternally, setInvoiceToMarkPaidExternally] =
+    useState<BackofficeClientInvoice | null>(null)
   const [pendingActionToCancel, setPendingActionToCancel] =
     useState<BackofficeClientPendingAction | null>(null)
   const emailSection = parseEmailSection(searchParams.get("emailSection"))
@@ -1216,6 +1223,7 @@ export function BackofficeClientDetailsContainer() {
                                 invoice={invoice}
                                 clientId={details.id}
                                 onCancel={setInvoiceToCancel}
+                                onMarkPaidExternally={setInvoiceToMarkPaidExternally}
                                 triggerClassName="size-11 shrink-0"
                               />
                             </div>
@@ -1312,6 +1320,7 @@ export function BackofficeClientDetailsContainer() {
                                       invoice={invoice}
                                       clientId={details.id}
                                       onCancel={setInvoiceToCancel}
+                                      onMarkPaidExternally={setInvoiceToMarkPaidExternally}
                                     />
                                   </TableCell>
                                 </TableRow>
@@ -1687,6 +1696,21 @@ export function BackofficeClientDetailsContainer() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          <BackofficeExternalPaymentDialog
+            open={invoiceToMarkPaidExternally !== null}
+            invoiceLabel={invoiceToMarkPaidExternally?.invoiceIdDisplay ?? null}
+            isSubmitting={isMarkingInvoicePaidExternally}
+            onOpenChange={(open) => {
+              if (!open) setInvoiceToMarkPaidExternally(null)
+            }}
+            onConfirm={(input) => {
+              if (!invoiceToMarkPaidExternally) {
+                return Promise.reject(new Error("Nenhuma fatura selecionada"))
+              }
+              return markInvoicePaidExternally(invoiceToMarkPaidExternally.id, input)
+            }}
+          />
         </>
       )}
 

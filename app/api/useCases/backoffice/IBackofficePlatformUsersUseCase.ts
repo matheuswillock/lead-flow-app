@@ -1,5 +1,11 @@
 import type { Output } from "@/lib/output"
 
+export interface BackofficeExternalPaymentInput {
+  reference: string
+  proofUrl?: string | null
+  paidAt?: string | null
+}
+
 export interface BackofficeAuditActor {
   profileId: string
   backofficeUserId: string | null
@@ -66,6 +72,13 @@ export interface IBackofficePlatformUsersUseCase {
   notifyMasterUserInvoiceStatusEmail(
     masterProfileId: string,
     invoiceId: string
+  ): Promise<Output>
+
+  markMasterUserInvoicePaidExternally(
+    masterProfileId: string,
+    invoiceId: string,
+    input: BackofficeExternalPaymentInput,
+    actor: BackofficeAuditActor
   ): Promise<Output>
 
   updateMasterUser(

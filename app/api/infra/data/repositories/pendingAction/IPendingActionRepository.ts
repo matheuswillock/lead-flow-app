@@ -100,6 +100,7 @@ export type BillingPendingActionRecord = {
   actionType: string;
   status: string;
   paymentId: string | null;
+  provider?: string | null;
   teamId: string | null;
   createdAt: Date;
   updatedAt: Date;

@@ -72,6 +72,7 @@ interface BackofficeClientDetailsContextValue {
   isPendingActionsLoading: boolean
   isCancelingPendingAction: boolean
   isCancelingInvoice: boolean
+  isMarkingInvoicePaidExternally: boolean
   error: string | null
   teamsError: string | null
   invoicesError: string | null
@@ -97,6 +98,10 @@ interface BackofficeClientDetailsContextValue {
   fetchPendingActions: () => Promise<void>
   cancelPendingAction: (pendingActionId: string) => Promise<string>
   cancelInvoice: (invoiceId: string) => Promise<string>
+  markInvoicePaidExternally: (
+    invoiceId: string,
+    input: { reference: string; proofUrl?: string | null }
+  ) => Promise<string>
   reload: () => Promise<void>
   clearFilters: () => Promise<void>
 }
@@ -138,6 +143,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
   const [isPendingActionsLoading, setIsPendingActionsLoading] = useState(true)
   const [isCancelingPendingAction, setIsCancelingPendingAction] = useState(false)
   const [isCancelingInvoice, setIsCancelingInvoice] = useState(false)
+  const [isMarkingInvoicePaidExternally, setIsMarkingInvoicePaidExternally] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [teamsError, setTeamsError] = useState<string | null>(null)
   const [invoicesError, setInvoicesError] = useState<string | null>(null)
@@ -380,6 +386,36 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
     service,
   ])
 
+  const markInvoicePaidExternally = useCallback(
+    async (invoiceId: string, input: { reference: string; proofUrl?: string | null }) => {
+      if (isMarkingInvoicePaidExternally) {
+        throw new Error("Baixa externa já em andamento")
+      }
+
+      setIsMarkingInvoicePaidExternally(true)
+      try {
+        const result = await service.markInvoicePaidExternally(masterId, invoiceId, input)
+        await Promise.all([
+          loadInvoices(invoicesPagination.page, invoicesPagination.pageSize, invoiceFilters),
+          loadPendingActions(),
+        ])
+        return result.message
+      } finally {
+        setIsMarkingInvoicePaidExternally(false)
+      }
+    },
+    [
+      invoiceFilters,
+      invoicesPagination.page,
+      invoicesPagination.pageSize,
+      isMarkingInvoicePaidExternally,
+      loadInvoices,
+      loadPendingActions,
+      masterId,
+      service,
+    ]
+  )
+
   const reload = useCallback(async () => {
     await Promise.all([
       loadDetails(filters, teamsPagination.page, teamsPagination.pageSize),
@@ -432,6 +468,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         isPendingActionsLoading,
         isCancelingPendingAction,
         isCancelingInvoice,
+        isMarkingInvoicePaidExternally,
         error,
         teamsError,
         invoicesError,
@@ -449,6 +486,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         fetchPendingActions,
         cancelPendingAction,
         cancelInvoice,
+        markInvoicePaidExternally,
         reload,
         clearFilters,
       }}

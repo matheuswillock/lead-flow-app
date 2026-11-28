@@ -62,6 +62,12 @@ export interface IBackofficeClientDetailsService {
     invoiceId: string
   ): Promise<{ message: string }>
 
+  markInvoicePaidExternally(
+    masterId: string,
+    invoiceId: string,
+    input: { reference: string; proofUrl?: string | null }
+  ): Promise<{ message: string }>
+
   updateClient(
     masterId: string,
     data: {

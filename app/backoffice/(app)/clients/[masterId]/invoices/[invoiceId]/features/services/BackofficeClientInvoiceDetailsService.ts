@@ -88,4 +88,34 @@ export class BackofficeClientInvoiceDetailsService
       message: data.successMessages?.[0] ?? "Cobrança removida com sucesso",
     }
   }
+
+  async markPaidExternally(
+    masterId: string,
+    invoiceId: string,
+    input: { reference: string; proofUrl?: string | null }
+  ): Promise<{ message: string }> {
+    const response = await fetch(
+      `${API_CLIENT_BASE}/backoffice/platform-users/${masterId}/invoices/${invoiceId}/external-payment`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reference: input.reference,
+          proofUrl: input.proofUrl ?? null,
+        }),
+      }
+    )
+
+    const data = await response.json()
+
+    if (!data.isValid) {
+      throw new Error(data.errorMessages?.[0] ?? "Erro ao marcar a fatura como paga externamente")
+    }
+
+    return {
+      message: data.successMessages?.[0] ?? "Fatura marcada como paga externamente com sucesso",
+    }
+  }
 }

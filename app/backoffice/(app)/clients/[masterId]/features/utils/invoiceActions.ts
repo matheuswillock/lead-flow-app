@@ -12,3 +12,21 @@ export function canCancelInvoice(invoice: BackofficeClientInvoice): boolean {
       invoice.source === "pending_action")
   )
 }
+
+/** Baixa externa disponível apenas para faturas pendentes ligadas a uma ação pendente. */
+export function canMarkInvoicePaidExternally(
+  invoice: Pick<
+    BackofficeClientInvoice,
+    "source" | "statusGroup" | "status" | "pendingActionId"
+  > & { deleted?: boolean }
+): boolean {
+  return (
+    invoice.source !== "adhesion_external" &&
+    !invoice.deleted &&
+    invoice.statusGroup !== "paid" &&
+    invoice.status !== "WAIVED" &&
+    invoice.status !== "CANCELED" &&
+    invoice.status !== "FAILED" &&
+    (invoice.source === "pending_action" || Boolean(invoice.pendingActionId))
+  )
+}

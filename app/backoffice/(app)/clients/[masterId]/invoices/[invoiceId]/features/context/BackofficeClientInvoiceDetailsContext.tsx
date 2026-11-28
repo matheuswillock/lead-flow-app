@@ -18,11 +18,13 @@ interface BackofficeClientInvoiceDetailsContextValue {
   isSendingNotification: boolean
   isUpdatingInvoice: boolean
   isDeletingInvoice: boolean
+  isMarkingPaidExternally: boolean
   error: string | null
   reload: () => Promise<void>
   sendStatusNotification: () => Promise<string>
   updateInvoice: (data: { value: number; dueDate: string }) => Promise<void>
   deleteInvoice: () => Promise<string>
+  markPaidExternally: (input: { reference: string; proofUrl?: string | null }) => Promise<string>
 }
 
 const BackofficeClientInvoiceDetailsContext = createContext<
@@ -47,6 +49,7 @@ export function BackofficeClientInvoiceDetailsProvider({
   const [isSendingNotification, setIsSendingNotification] = useState(false)
   const [isUpdatingInvoice, setIsUpdatingInvoice] = useState(false)
   const [isDeletingInvoice, setIsDeletingInvoice] = useState(false)
+  const [isMarkingPaidExternally, setIsMarkingPaidExternally] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -118,6 +121,24 @@ export function BackofficeClientInvoiceDetailsProvider({
     }
   }, [invoiceId, isDeletingInvoice, masterId, service])
 
+  const markPaidExternally = useCallback(
+    async (input: { reference: string; proofUrl?: string | null }) => {
+      if (isMarkingPaidExternally) {
+        return "Baixa externa já em andamento"
+      }
+
+      setIsMarkingPaidExternally(true)
+      try {
+        const result = await service.markPaidExternally(masterId, invoiceId, input)
+        await loadInvoice()
+        return result.message
+      } finally {
+        setIsMarkingPaidExternally(false)
+      }
+    },
+    [invoiceId, isMarkingPaidExternally, loadInvoice, masterId, service]
+  )
+
   return (
     <BackofficeClientInvoiceDetailsContext.Provider
       value={{
@@ -126,11 +147,13 @@ export function BackofficeClientInvoiceDetailsProvider({
         isSendingNotification,
         isUpdatingInvoice,
         isDeletingInvoice,
+        isMarkingPaidExternally,
         error,
         reload: loadInvoice,
         sendStatusNotification,
         updateInvoice,
         deleteInvoice,
+        markPaidExternally,
       }}
     >
       {children}

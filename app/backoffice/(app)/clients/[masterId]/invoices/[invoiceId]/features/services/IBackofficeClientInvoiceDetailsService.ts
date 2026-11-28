@@ -9,4 +9,9 @@ export interface IBackofficeClientInvoiceDetailsService {
     data: { value: number; dueDate: string }
   ): Promise<BackofficeClientInvoiceDetails>
   deleteInvoice(masterId: string, invoiceId: string): Promise<{ message: string }>
+  markPaidExternally(
+    masterId: string,
+    invoiceId: string,
+    input: { reference: string; proofUrl?: string | null }
+  ): Promise<{ message: string }>
 }

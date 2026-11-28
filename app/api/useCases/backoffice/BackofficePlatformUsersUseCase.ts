@@ -10,8 +10,16 @@ import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import type {
   BackofficeAuditActor,
+  BackofficeExternalPaymentInput,
   IBackofficePlatformUsersUseCase,
 } from "./IBackofficePlatformUsersUseCase"
+import { paymentProviderSessionRepository } from "@/app/api/infra/data/repositories/paymentProviderSession/PaymentProviderSessionRepository"
+import { resolvePaymentQueryProvider } from "@/app/api/useCases/paymentProviderPayment/paymentProviderPaymentComposition"
+import {
+  pendingActionUseCase,
+  type ExternalPaymentMetadata,
+} from "@/app/api/useCases/pendingActions/PendingActionUseCase"
+import { executeMarkMasterUserInvoicePaidExternally } from "./markInvoicePaidExternally"
 import { auditLogWriter } from "@/app/api/useCases/audit/AuditLogWriter"
 import { buildAuditActorMetadata } from "@/app/api/useCases/audit/auditActor"
 import {
@@ -208,9 +216,24 @@ function readPayloadCharge(payload: Record<string, unknown>): number {
   return Number.isFinite(billingDelta) && billingDelta > 0 ? billingDelta : 0
 }
 
+function readExternalPaymentFromPayload(
+  payload: Record<string, unknown>
+): ExternalPaymentMetadata | null {
+  const raw = payload.externalPayment
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const record = raw as Record<string, unknown>
+  const reference = typeof record.reference === "string" ? record.reference.trim() : ""
+  const paidAt = typeof record.paidAt === "string" ? record.paidAt.trim() : ""
+  const operatorId = typeof record.operatorId === "string" ? record.operatorId.trim() : ""
+  const proofUrl = typeof record.proofUrl === "string" && record.proofUrl.trim() ? record.proofUrl.trim() : null
+  if (!reference || !paidAt) return null
+  return { reference, proofUrl, operatorId, paidAt }
+}
+
 function mapPendingActionStatus(action: {
   status: string
   paymentId: string | null
+  provider?: string | null
   payload: Record<string, unknown>
 }): { status: string; statusGroup: "paid" | "overdue" | "upcoming" | "other" } {
   if (action.status === "pending") {
@@ -223,7 +246,10 @@ function mapPendingActionStatus(action: {
     if (action.payload.paymentStatus === "WAIVED") {
       return { status: "WAIVED", statusGroup: "other" }
     }
-    if (action.paymentId) {
+    if (action.payload.paymentStatus === "EXTERNAL" || readExternalPaymentFromPayload(action.payload)) {
+      return { status: "EXTERNAL", statusGroup: "paid" }
+    }
+    if (action.paymentId || action.provider) {
       return { status: "CONFIRMED", statusGroup: "paid" }
     }
     return { status: "APPLIED", statusGroup: "other" }
@@ -298,10 +324,11 @@ const CANCELABLE_ASAAS_STATUSES = new Set(["PENDING", "AWAITING_RISK_ANALYSIS", 
 
 async function cancelOpenAsaasPayment(
   paymentId: string,
-  account: AsaasAccountId = "primary"
+  account: AsaasAccountId = "primary",
+  clientFactory: (account: AsaasAccountId) => AsaasClientLike = (acc) => createAsaasClient(acc)
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const client = createAsaasClient(account)
+    const client = clientFactory(account)
     const payment = (await client.request(`${client.endpoints.payments}/${paymentId}`, {
       method: "GET",
     })) as AsaasPaymentItem
@@ -1019,6 +1046,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           description: payment.description,
         })
         const status = payment.status ?? "PENDING"
+        const linkedPendingId = parsePendingActionInvoiceId(payment.externalReference ?? "")
         return {
           id: payment.id,
           invoiceIdDisplay: payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id,
@@ -1037,7 +1065,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           bankSlipUrl: payment.bankSlipUrl ?? null,
           invoiceNumber: payment.invoiceNumber ?? null,
           checkoutUrl: null,
-          pendingActionId: null,
+          pendingActionId: linkedPendingId,
           sortDate: getSortableInvoiceDate(payment),
           account: payment.account ?? null,
         }
@@ -1057,15 +1085,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         if (action.paymentId && coveredPaymentIds.has(action.paymentId)) continue
 
         const classification = classifyPendingActionInvoice(action.actionType)
+        const externalPayment = readExternalPaymentFromPayload(payload)
         const mappedStatus = mapPendingActionStatus({
           status: action.status,
           paymentId: action.paymentId,
+          provider: action.provider,
           payload,
         })
         const createdIso = action.createdAt.toISOString()
         const createdDate = createdIso.slice(0, 10)
-        const billingType =
-          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+        const billingType = externalPayment
+          ? "EXTERNAL"
+          : typeof payload.billingType === "string"
+            ? payload.billingType
+            : "UNDEFINED"
 
         pendingRows.push({
           id: buildPendingActionInvoiceId(action.id),
@@ -1078,7 +1111,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           value: charge,
           dateCreated: createdDate,
           dueDate: createdDate,
-          paymentDate: null,
+          paymentDate: externalPayment?.paidAt ?? null,
           description: buildPendingActionDescription(action.actionType, payload),
           billingType,
           invoiceUrl: null,
@@ -1258,14 +1291,19 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             : {}
         const charge = readPayloadCharge(payload)
         const classification = classifyPendingActionInvoice(action.actionType)
+        const externalPayment = readExternalPaymentFromPayload(payload)
         const mappedStatus = mapPendingActionStatus({
           status: action.status,
           paymentId: action.paymentId,
+          provider: action.provider,
           payload,
         })
         const createdDate = action.createdAt.toISOString().slice(0, 10)
-        const billingType =
-          typeof payload.billingType === "string" ? payload.billingType : "UNDEFINED"
+        const billingType = externalPayment
+          ? "EXTERNAL"
+          : typeof payload.billingType === "string"
+            ? payload.billingType
+            : "UNDEFINED"
 
         return new Output(true, [], [], {
           id: buildPendingActionInvoiceId(action.id),
@@ -1284,18 +1322,19 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           description: buildPendingActionDescription(action.actionType, payload),
           dateCreated: createdDate,
           dueDate: createdDate,
-          paymentDate: null,
-          confirmedDate: null,
+          paymentDate: externalPayment?.paidAt ?? null,
+          confirmedDate: externalPayment?.paidAt ?? null,
           invoiceNumber: null,
           installmentNumber: null,
-          externalReference: buildPendingActionInvoiceId(action.id),
+          externalReference: externalPayment?.reference ?? buildPendingActionInvoiceId(action.id),
           invoiceUrl: null,
           bankSlipUrl: null,
-          transactionReceiptUrl: null,
+          transactionReceiptUrl: externalPayment?.proofUrl ?? null,
           deleted: false,
           checkoutUrl:
             action.status === "pending" ? getFullUrl(`/addon-checkout/${action.id}`) : null,
           pendingActionId: action.id,
+          externalPayment,
         })
       }
 
@@ -1405,7 +1444,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
           payment.transactionReceiptUrl ?? payment.pixTransaction?.transactionReceiptUrl ?? null,
         deleted: Boolean(payment.deleted),
         checkoutUrl: null,
-        pendingActionId: null,
+        pendingActionId: parsePendingActionInvoiceId(payment.externalReference ?? ""),
       })
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
@@ -1752,6 +1791,64 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         error,
       })
       return new Output(false, [], ["Erro ao remover a cobrança"], null)
+    }
+  }
+
+  async markMasterUserInvoicePaidExternally(
+    masterProfileId: string,
+    invoiceId: string,
+    input: BackofficeExternalPaymentInput,
+    actor: BackofficeAuditActor
+  ): Promise<Output> {
+    try {
+      return await executeMarkMasterUserInvoicePaidExternally(
+        masterProfileId,
+        invoiceId,
+        input,
+        actor,
+        {
+          findMasterById: (id) => this.platformUsersRepository.findMasterUserBillingById(id),
+          findAdhesionsByProfileId: (id) => this.adhesionRepository.findByCreatedProfileId(id),
+          findPendingActionById: (id) => pendingActionRepository.findByIdSimple(id),
+          findPendingActionByPaymentId: (paymentId) =>
+            pendingActionRepository.findByPaymentId(paymentId),
+          findProviderAttemptById: (attemptId) =>
+            paymentProviderSessionRepository.findAttemptById(attemptId),
+          queryProviderStatus: async (queryInput) => {
+            const provider = await resolvePaymentQueryProvider({
+              provider: queryInput.provider,
+              environment: queryInput.environment,
+              externalAccountContext: queryInput.externalAccountContext,
+            })
+            return provider.getStatus({
+              externalId: queryInput.externalId,
+              method: queryInput.method,
+            })
+          },
+          cancelAsaasPayment: (paymentId, account) => cancelOpenAsaasPayment(paymentId, account),
+          clearPendingActionPaymentId: (pendingActionId) =>
+            pendingActionRepository.clearPaymentId(pendingActionId),
+          findAsaasPaymentAcrossAccounts: (paymentId, accounts) =>
+            findPaymentAcrossAccounts(paymentId, accounts),
+          resolveKnownAsaasAccounts: (profile, adhesions) =>
+            resolveKnownAsaasAccounts(profile, adhesions),
+          guardLegacyInvoiceWrite: (account) =>
+            guardLegacyInvoiceWrite(account, isLegacyInvoiceWritesEnabled()),
+          applyExternalPayment: (pendingActionId, externalPayment) =>
+            pendingActionUseCase.applyPendingActionByExternalPayment(
+              pendingActionId,
+              externalPayment
+            ),
+        }
+      )
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][markMasterUserInvoicePaidExternally]", {
+        masterProfileId,
+        invoiceId,
+        actorProfileId: actor.profileId,
+        error,
+      })
+      return new Output(false, [], ["Erro ao marcar a fatura como paga externamente"], null)
     }
   }
 
