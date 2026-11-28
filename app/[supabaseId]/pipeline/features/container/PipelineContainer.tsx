@@ -41,6 +41,7 @@ const PIPELINE_TABLE_COLUMN_OPTIONS = [
   { key: "closerId", label: "Closer" },
   { key: "meetingDate", label: "Reunião" },
   { key: "createdAt", label: "Criado em" },
+  { key: "updatedAt", label: "Última atualização" },
 ] as const;
 
 interface PipelineContainerProps {

@@ -1,7 +1,6 @@
 import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, LogIn } from "lucide-react"
-import { DemoRequestDialogButton } from "./DemoRequestDialog"
 import { MobileNavMenu } from "./MobileNavMenu"
 
 export function LandingHeader() {
@@ -46,11 +45,6 @@ export function LandingHeader() {
             <LogIn className="size-4" aria-hidden />
             Entrar
           </Link>
-          <DemoRequestDialogButton
-            className="landing-secondary-cta hidden min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:inline-flex"
-          >
-            Solicitar demonstração
-          </DemoRequestDialogButton>
           <Link
             href="/checkout"
             className="landing-primary-cta inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
